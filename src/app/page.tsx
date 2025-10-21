@@ -149,7 +149,7 @@ export default function Page() {
               </svg>
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Enter OTP</h2>
-            <p className="text-gray-600">We've sent a 6-digit code to {formData.phone || formData.email}</p>
+            <p className="text-gray-600">We&apos;ve sent a 6-digit code to {formData.phone || formData.email}</p>
           </div>
 
           <form onSubmit={handleOtpSubmit} className="space-y-4">
