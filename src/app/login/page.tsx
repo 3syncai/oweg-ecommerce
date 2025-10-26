@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -26,7 +26,7 @@ type BIPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
-export default function LoginPage() {
+function LoginPageInner() {
   // THEME
   const BRAND = "#2E7D32"; // adjust if you want a different green
 
@@ -41,14 +41,15 @@ export default function LoginPage() {
   }, [searchParams]);
 
   // ONLINE / OFFLINE (PWA-friendly UX)
-  const [isOnline, setIsOnline] = useState(
-    typeof navigator !== "undefined" ? navigator.onLine : true
-  );
+  const [isOnline, setIsOnline] = useState(true);
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
+    setMounted(true);
     const online = () => setIsOnline(true);
     const offline = () => setIsOnline(false);
     window.addEventListener("online", online);
     window.addEventListener("offline", offline);
+    if (typeof navigator !== "undefined") setIsOnline(navigator.onLine);
     return () => {
       window.removeEventListener("online", online);
       window.removeEventListener("offline", offline);
@@ -264,8 +265,8 @@ export default function LoginPage() {
         </div>
       </header>
 
-      {/* Offline banner */}
-      {!isOnline && (
+      {/* Offline banner (after mount to avoid hydration mismatch) */}
+      {mounted && !isOnline && (
         <div className="mx-auto max-w-6xl px-4 pt-3">
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 text-sm">
             You are offline. Forms are disabled until connection is restored.
@@ -895,4 +896,12 @@ export default function LoginPage() {
       )}
     </div>
   );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
+  )
 }

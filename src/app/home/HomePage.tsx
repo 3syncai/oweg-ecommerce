@@ -2,7 +2,7 @@
 // @ts-nocheck
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-
+import NextImage from 'next/image'
 // --------------------------------------------------
 // OWEG Home – React + Tailwind single-file prototype
 // Next.js compatible. Tailwind required. Accessible, mobile-first.
@@ -30,7 +30,6 @@ function SafeImage({ src, alt = '', className = '', seed }: { src: string[] | st
   const label = alt || String(seed || 'Image');
   const [current, setCurrent] = useState(svgThumb(label));
 
-  const providedKey = JSON.stringify(provided);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -53,7 +52,7 @@ function SafeImage({ src, alt = '', className = '', seed }: { src: string[] | st
     return () => {
       cancelled = true;
     };
-  }, [providedKey, label]);
+  }, [provided, label]);
 
   return (
     <img
@@ -372,8 +371,8 @@ function HeaderNav() {
       <div className="mx-auto max-w-7xl px-3 sm:px-6">
         <div className="flex h-16 items-center justify-between gap-4">
           <div className="flex items-center gap-6">
-            <a href="#" className="flex items-center gap-2">
-              <img src={"oweg_logo.jpeg"} alt="OWEG logo" className="h-8 w-auto" />
+            <a href="#" className="flex items-center gap-2" aria-label="OWEG Home">
+              <NextImage src="/oweg_logo.jpeg" alt="OWEG logo" width={120} height={32} className="h-8 w-auto" priority />
             </a>
             <nav className="hidden items-center gap-4 md:flex">
               <div className="relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>

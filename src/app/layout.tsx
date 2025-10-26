@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegister from "./sw-register";
@@ -21,8 +21,12 @@ export const metadata: Metadata = {
   description: "Shop home appliances, kitchen utensils, and electronics at OWEG.",
   applicationName: "OWEG",
   manifest: "/manifest.webmanifest",
-  themeColor: "#16a34a",
   other: { display: "standalone" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#16a34a",
+  colorScheme: "light",
 };
 
 export default function RootLayout({
