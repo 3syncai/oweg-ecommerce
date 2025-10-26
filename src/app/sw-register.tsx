@@ -14,7 +14,6 @@ export default function ServiceWorkerRegister() {
           // Placeholder for future update UI
         })
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('SW registration failed', err)
       }
     }
@@ -28,4 +27,3 @@ export default function ServiceWorkerRegister() {
 
   return null
 }
-

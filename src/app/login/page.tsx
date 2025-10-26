@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
+import Link from "next/link";
+import Image from "next/image";
 import {
   Mail,
   Eye,
@@ -141,7 +143,7 @@ export default function LoginPage() {
       // });
       await new Promise((r) => setTimeout(r, 800));
       // router.push("/account")
-    } catch (err) {
+    } catch {
       setError("Login failed. Please try again.");
     } finally {
       setBusy(false);
@@ -165,7 +167,7 @@ export default function LoginPage() {
       await new Promise((r) => setTimeout(r, 700));
       setOtpSent(true);
       setCooldown(30);
-    } catch (e) {
+    } catch {
       setError("Could not send OTP. Try again.");
     } finally {
       setBusy(false);
@@ -245,7 +247,7 @@ export default function LoginPage() {
       {/* Header */}
       <header className="border-b bg-white">
         <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-start gap-2">
-          <a href="/" className="flex items-center gap-2" aria-label="Go to Home">
+          <Link href="/" className="flex items-center gap-2" aria-label="Go to Home">
             <div
               className="h-9 w-9 rounded-md text-white grid place-items-center font-bold"
               style={{ backgroundColor: BRAND }}
@@ -258,7 +260,7 @@ export default function LoginPage() {
             >
               OWEG
             </span>
-          </a>
+          </Link>
         </div>
       </header>
 
@@ -442,13 +444,9 @@ export default function LoginPage() {
                     />
                     <span>Remember me</span>
                   </label>
-                  <a
-                    href="/forgot"
-                    className="hover:underline"
-                    style={{ color: BRAND }}
-                  >
+                  <Link href="/forgot" className="hover:underline" style={{ color: BRAND }}>
                     Forgot password?
-                  </a>
+                  </Link>
                 </div>
               )}
 
@@ -500,17 +498,13 @@ export default function LoginPage() {
 
               <p className="text-xs leading-relaxed text-slate-600">
                 By continuing, you agree to our{" "}
-                <a className="underline" href="/terms" style={{ color: BRAND }}>
+                <Link className="underline" href="/terms" style={{ color: BRAND }}>
                   Terms
-                </a>{" "}
+                </Link>{" "}
                 and{" "}
-                <a
-                  className="underline"
-                  href="/privacy"
-                  style={{ color: BRAND }}
-                >
+                <Link className="underline" href="/privacy" style={{ color: BRAND }}>
                   Privacy Policy
-                </a>
+                </Link>
                 .
               </p>
 
@@ -534,11 +528,7 @@ export default function LoginPage() {
             style={{ borderColor: "#d9ead9" }}
           >
             <div className="relative h-full min-h-[16rem]">
-              <img
-                src={PROMO_IMAGE_URL}
-                alt="Current OWEG promotion"
-                className="absolute inset-0 h-full w-full object-cover"
-              />
+              <Image src={PROMO_IMAGE_URL} alt="Current OWEG promotion" fill className="object-cover" />
             </div>
           </aside>
         </div>

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 // @ts-nocheck
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -22,9 +22,7 @@ function svgThumb(label: string) {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-// Brand logo (vector) embedded as a data URI so it always renders
-const LOGO_SRC =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPQAAABKCAYAAABM6zePAAABT0lEQVR4nO3XwQmCMBQF4dCxWwBgXzkE2S5g8JYERtGleBH5Qb9rTAZRS2fCzi3fRwAAAAAAAAAAAAAAAAAAAAAAAPg5cG1rLr7w0n1v0W0n0O7yJ+DmC3H3d3XH5vMcrk9nq3i79x6r8m9t8w5Qh0xPv2pQ30UiQ0fC2zEA2q3c7YF8bIG8d0zqg0K2JdUQ8fdi2Q6n6blzyQbS7Gz7cS5CrK9hl7f2m2wJkQf2Tf1Yg9GKVQfQd3Z0tVqg3i99l2m2gJkQf2TftYg9GKVQfQd3Z0tVqg3i99l2m2gJkQf2Tf1Yg9GKVQfQd3Z0tVqg3i99l2m2gJl6W7Lx1yq9uX6b1b1j2wY0qf3rG3y5b9c8s7m9H0j2tO1z5b9c8t7m9H0j5Y1+2fGfQf8QAAAAAAAAAAAAAAAAAAAAAAAH4R4p6N3S5C5oAAAAASUVORK5CYII=';
+// (Removed unused inline brand logo; using public image instead)
 
 // Progressive image: shows inline SVG immediately; then loads network image.
 function SafeImage({ src, alt = '', className = '', seed }: { src: string[] | string; alt?: string; className?: string; seed?: string | number }) {
@@ -32,6 +30,7 @@ function SafeImage({ src, alt = '', className = '', seed }: { src: string[] | st
   const label = alt || String(seed || 'Image');
   const [current, setCurrent] = useState(svgThumb(label));
 
+  const providedKey = JSON.stringify(provided);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -54,7 +53,7 @@ function SafeImage({ src, alt = '', className = '', seed }: { src: string[] | st
     return () => {
       cancelled = true;
     };
-  }, [JSON.stringify(provided), label]);
+  }, [providedKey, label]);
 
   return (
     <img
@@ -79,8 +78,10 @@ const categories = [
   { name: 'Stationery', image: unsplash('stationery, office') },
 ];
 
+type CategoryGroup = { name: string; items: string[] };
+type CategoryTreeItem = { name: string; hero: string; groups: CategoryGroup[] };
 // Amazon-like category tree (3 levels max)
-const categoryTree = [
+const categoryTree: CategoryTreeItem[] = [
   {
     name: 'Electronics',
     hero: unsplash('electronics flatlay green'),
@@ -138,7 +139,8 @@ const categoryTree = [
 
 const brands = ['Balaji', 'NovaTech', 'Homify', 'PureGlow', 'Stride+', 'PaperPro'];
 
-const dealsByTab: Record<string, any[]> = {
+type ProductItem = { id: string | number; title: string; image: string; moq: number; unitPrice: number; mrp: number; offPercent: number; eta: string; rating: number };
+const dealsByTab: Record<string, ProductItem[]> = {
   Electronics: [
     { id: 'el-1', title: 'Bluetooth Earbuds Pro', image: unsplash('bluetooth earbuds, earphones'), moq: 5, unitPrice: 1299, mrp: 1899, offPercent: 32, eta: '24-48h', rating: 4 },
     { id: 'el-2', title: 'Power Bank 20,000 mAh', image: unsplash('power bank, portable charger'), moq: 5, unitPrice: 1699, mrp: 2499, offPercent: 32, eta: '2-4d', rating: 5 },
@@ -171,7 +173,7 @@ const dealsByTab: Record<string, any[]> = {
   ],
 };
 
-const newArrivals = [
+const newArrivals: ProductItem[] = [
   { id: 'n-1', title: 'Smartwatch S2', image: unsplash('smartwatch'), moq: 1, unitPrice: 1999, mrp: 2799, offPercent: 29, eta: '2-4d', rating: 4 },
   { id: 'n-2', title: 'Wireless Speaker Mini', image: unsplash('wireless speaker'), moq: 1, unitPrice: 999, mrp: 1499, offPercent: 33, eta: '24-48h', rating: 4 },
   { id: 'n-3', title: 'Ceramic Dinner Set (18 pc)', image: unsplash('dinner set, ceramic plates'), moq: 1, unitPrice: 2190, mrp: 2990, offPercent: 27, eta: '3-5d', rating: 5 },
@@ -219,7 +221,7 @@ function RatingStars({ value }: { value: number }) {
   );
 }
 
-function ProductCardBulk({ item }: { item?: any }) {
+function ProductCardBulk({ item }: { item?: ProductItem }) {
   if (!item) {
     return (
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
@@ -269,7 +271,10 @@ function TopTicker() {
     { id: 5, text: 'New arrivals daily • Fresh styles & top brands' },
   ];
   const [i, setI] = useState(0);
-  useEffect(() => { const t = setInterval(() => setI((v) => (v + 1) % items.length), 4000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    const t = setInterval(() => setI((v) => (v + 1) % items.length), 4000);
+    return () => clearInterval(t);
+  }, [items.length]);
   const prev = () => setI((v) => (v - 1 + items.length) % items.length);
   const next = () => setI((v) => (v + 1) % items.length);
   return (
@@ -339,7 +344,7 @@ function MegaMenu({ open }: { open: boolean }) {
         {/* Right: groups + hero */}
         <div className="col-span-8 grid grid-cols-2 gap-4">
           <div className="space-y-3">
-            {dept.groups.map((g: any) => (
+            {dept.groups.map((g) => (
               <div key={g.name}>
                 <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">{g.name}</div>
                 <div className="flex flex-wrap gap-2">
@@ -376,7 +381,7 @@ function HeaderNav() {
                 <MegaMenu open={open} />
               </div>
               <a className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100" href="#deals">Deals</a>
-              <a className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100" href="#new">What's New</a>
+              <a className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100" href="#new">What&apos;s New</a>
               <a className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100" href="#delivery">Delivery</a>
               <a className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100" href="#track">Track Order</a>
               <a className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100" href="#help">Help</a>
@@ -483,7 +488,7 @@ function DealsTabs() {
   return (
     <section className="mx-auto max-w-7xl px-3 py-10 sm:px-6" id="deals">
       <div className="mb-5 flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-slate-900">Today's Best Deals</h2>
+        <h2 className="text-2xl font-bold text-slate-900">Today&apos;s Best Deals</h2>
         <div className="hidden gap-2 md:flex">
           {tabs.map((t) => (
             <button key={t} onClick={() => setActive(t)} className={`rounded-full px-3 py-1.5 text-sm font-semibold ${active === t ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{t}</button>
@@ -506,7 +511,7 @@ function WhatsNew() {
   return (
     <section id="new" className="mx-auto max-w-7xl px-3 py-10 sm:px-6">
       <div className="mb-6 flex items-end justify-between">
-        <h2 className="text-2xl font-bold text-slate-900">What's New</h2>
+        <h2 className="text-2xl font-bold text-slate-900">What&apos;s New</h2>
         <a className="text-sm font-semibold text-emerald-600 hover:underline" href="#">View all</a>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -540,7 +545,7 @@ function DeliveryInfo() {
 }
 
 function TrackOrder() {
-  function handleSubmit(e: any) { e.preventDefault(); alert('Demo: connect to your order tracking API here.'); }
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) { e.preventDefault(); alert('Demo: connect to your order tracking API here.'); }
   return (
     <section id="track" className="mx-auto max-w-7xl px-3 py-10 sm:px-6">
       <h2 className="mb-4 text-2xl font-bold text-slate-900">Track your order</h2>
@@ -592,7 +597,7 @@ function Footer() {
           </div>
           <div>
             <div className="mb-3 text-sm font-semibold text-slate-900">Explore</div>
-            <ul className="space-y-2 text-sm text-slate-600"><li><a href="#deals" className="hover:underline">Deals</a></li><li><a href="#new" className="hover:underline">What's New</a></li><li><a href="#delivery" className="hover:underline">Delivery</a></li><li><a href="#track" className="hover:underline">Track Order</a></li></ul>
+            <ul className="space-y-2 text-sm text-slate-600"><li><a href="#deals" className="hover:underline">Deals</a></li><li><a href="#new" className="hover:underline">What&apos;s New</a></li><li><a href="#delivery" className="hover:underline">Delivery</a></li><li><a href="#track" className="hover:underline">Track Order</a></li></ul>
           </div>
           <div>
             <div className="mb-3 text-sm font-semibold text-slate-900">Legal</div>
