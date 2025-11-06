@@ -247,6 +247,10 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
       });
     shippingProfile = shippingProfileResult[0];
   }
+  if (!shippingProfile) {
+    throw new Error("Failed to resolve shipping profile");
+  }
+  const shippingProfileId = shippingProfile.id;
 
   const fulfillmentSet = await fulfillmentModuleService.createFulfillmentSets({
     name: "European Warehouse delivery",
@@ -304,7 +308,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
         price_type: "flat",
         provider_id: "manual_manual",
         service_zone_id: fulfillmentSet.service_zones[0].id,
-        shipping_profile_id: shippingProfile.id,
+        shipping_profile_id: shippingProfileId,
         type: {
           label: "Standard",
           description: "Ship in 2-3 days.",
@@ -342,7 +346,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
         price_type: "flat",
         provider_id: "manual_manual",
         service_zone_id: fulfillmentSet.service_zones[0].id,
-        shipping_profile_id: shippingProfile.id,
+        shipping_profile_id: shippingProfileId,
         type: {
           label: "Express",
           description: "Ship in 24 hours.",
@@ -444,14 +448,14 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
         {
           title: "Medusa T-Shirt",
           category_ids: [
-            categoryResult.find((cat) => cat.name === "Shirts")!.id,
+            categoryResult.find((cat: { id: string; name: string }) => cat.name === "Shirts")!.id,
           ],
           description:
             "Reimagine the feeling of a classic T-shirt. With our cotton T-shirts, everyday essentials no longer have to be ordinary.",
           handle: "t-shirt",
           weight: 400,
           status: ProductStatus.PUBLISHED,
-          shipping_profile_id: shippingProfile.id,
+          shipping_profile_id: shippingProfileId,
           images: [
             {
               url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/tee-black-front.png",
@@ -631,14 +635,14 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
         {
           title: "Medusa Sweatshirt",
           category_ids: [
-            categoryResult.find((cat) => cat.name === "Sweatshirts")!.id,
+            categoryResult.find((cat: { id: string; name: string }) => cat.name === "Sweatshirts")!.id,
           ],
           description:
             "Reimagine the feeling of a classic sweatshirt. With our cotton sweatshirt, everyday essentials no longer have to be ordinary.",
           handle: "sweatshirt",
           weight: 400,
           status: ProductStatus.PUBLISHED,
-          shipping_profile_id: shippingProfile.id,
+          shipping_profile_id: shippingProfileId,
           images: [
             {
               url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/sweatshirt-vintage-front.png",
@@ -732,14 +736,14 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
         {
           title: "Medusa Sweatpants",
           category_ids: [
-            categoryResult.find((cat) => cat.name === "Pants")!.id,
+            categoryResult.find((cat: { id: string; name: string }) => cat.name === "Pants")!.id,
           ],
           description:
             "Reimagine the feeling of classic sweatpants. With our cotton sweatpants, everyday essentials no longer have to be ordinary.",
           handle: "sweatpants",
           weight: 400,
           status: ProductStatus.PUBLISHED,
-          shipping_profile_id: shippingProfile.id,
+          shipping_profile_id: shippingProfileId,
           images: [
             {
               url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/sweatpants-gray-front.png",
@@ -833,14 +837,14 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
         {
           title: "Medusa Shorts",
           category_ids: [
-            categoryResult.find((cat) => cat.name === "Merch")!.id,
+            categoryResult.find((cat: { id: string; name: string }) => cat.name === "Merch")!.id,
           ],
           description:
             "Reimagine the feeling of classic shorts. With our cotton shorts, everyday essentials no longer have to be ordinary.",
           handle: "shorts",
           weight: 400,
           status: ProductStatus.PUBLISHED,
-          shipping_profile_id: shippingProfile.id,
+          shipping_profile_id: shippingProfileId,
           images: [
             {
               url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/shorts-vintage-front.png",
