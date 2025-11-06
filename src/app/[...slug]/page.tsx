@@ -1,5 +1,6 @@
-export default function PlaceholderPage({ params }: { params: { slug?: string[] } }) {
-  const path = '/' + (params.slug?.join('/') || '')
+export default async function PlaceholderPage({ params }: { params: Promise<{ slug?: string[] }> }) {
+  const { slug } = await params
+  const path = '/' + (slug?.join('/') || '')
   return (
     <div className="min-h-[100svh] bg-white text-slate-900 grid place-items-center p-8">
       <div className="text-center">
@@ -9,5 +10,4 @@ export default function PlaceholderPage({ params }: { params: { slug?: string[] 
     </div>
   )
 }
-
 
