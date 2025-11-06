@@ -1,0 +1,7 @@
+my-medusa-store/.medusa/**
+**/.medusa/**
+**/public/admin/assets/**
+.next/**
+out/**
+build/**
+node_modules/**

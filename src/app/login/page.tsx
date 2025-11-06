@@ -11,6 +11,7 @@ import { FcGoogle } from "react-icons/fc";
 // Tailwind required. Install icons: npm i lucide-react react-icons
 
 // Minimal type for the PWA install prompt (not in TS lib by default)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 type BIPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
