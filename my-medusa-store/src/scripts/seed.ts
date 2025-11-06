@@ -1,4 +1,10 @@
-import { CreateInventoryLevelInput, ExecArgs } from "@medusajs/framework/types";
+// Local types to avoid namespace/type issues from external package types
+type SeedExecArgs = { container: any };
+type InventoryLevelInput = {
+  location_id: string;
+  stocked_quantity: number;
+  inventory_item_id: string;
+};
 import {
   ContainerRegistrationKeys,
   Modules,
@@ -32,12 +38,22 @@ const updateStoreCurrencies = createWorkflow(
     supported_currencies: { currency_code: string; is_default?: boolean }[];
     store_id: string;
   }) => {
-    const normalizedInput = transform({ input }, (data) => {
+    const normalizedInput = transform(
+      { input },
+      (data: {
+        input: {
+          supported_currencies: {
+            currency_code: string;
+            is_default?: boolean;
+          }[];
+          store_id: string;
+        };
+      }) => {
       return {
         selector: { id: data.input.store_id },
         update: {
           supported_currencies: data.input.supported_currencies.map(
-            (currency) => {
+            (currency: { currency_code: string; is_default?: boolean }) => {
               return {
                 currency_code: currency.currency_code,
                 is_default: currency.is_default ?? false,
@@ -46,7 +62,8 @@ const updateStoreCurrencies = createWorkflow(
           ),
         },
       };
-    });
+    }
+    );
 
     const stores = updateStoresStep(normalizedInput);
 
@@ -54,7 +71,7 @@ const updateStoreCurrencies = createWorkflow(
   }
 );
 
-export default async function seedDemoData({ container }: ExecArgs) {
+export default async function seedDemoData({ container }: SeedExecArgs) {
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
   const link = container.resolve(ContainerRegistrationKeys.LINK);
   const query = container.resolve(ContainerRegistrationKeys.QUERY);
@@ -388,7 +405,7 @@ export default async function seedDemoData({ container }: ExecArgs) {
         {
           title: "Medusa T-Shirt",
           category_ids: [
-            categoryResult.find((cat) => cat.name === "Shirts")!.id,
+            categoryResult.find((cat: { id: string; name: string }) => cat.name === "Shirts")!.id,
           ],
           description:
             "Reimagine the feeling of a classic T-shirt. With our cotton T-shirts, everyday essentials no longer have to be ordinary.",
@@ -575,7 +592,7 @@ export default async function seedDemoData({ container }: ExecArgs) {
         {
           title: "Medusa Sweatshirt",
           category_ids: [
-            categoryResult.find((cat) => cat.name === "Sweatshirts")!.id,
+            categoryResult.find((cat: { id: string; name: string }) => cat.name === "Sweatshirts")!.id,
           ],
           description:
             "Reimagine the feeling of a classic sweatshirt. With our cotton sweatshirt, everyday essentials no longer have to be ordinary.",
@@ -676,7 +693,7 @@ export default async function seedDemoData({ container }: ExecArgs) {
         {
           title: "Medusa Sweatpants",
           category_ids: [
-            categoryResult.find((cat) => cat.name === "Pants")!.id,
+            categoryResult.find((cat: { id: string; name: string }) => cat.name === "Pants")!.id,
           ],
           description:
             "Reimagine the feeling of classic sweatpants. With our cotton sweatpants, everyday essentials no longer have to be ordinary.",
@@ -777,7 +794,7 @@ export default async function seedDemoData({ container }: ExecArgs) {
         {
           title: "Medusa Shorts",
           category_ids: [
-            categoryResult.find((cat) => cat.name === "Merch")!.id,
+            categoryResult.find((cat: { id: string; name: string }) => cat.name === "Merch")!.id,
           ],
           description:
             "Reimagine the feeling of classic shorts. With our cotton shorts, everyday essentials no longer have to be ordinary.",
@@ -887,7 +904,7 @@ export default async function seedDemoData({ container }: ExecArgs) {
     fields: ["id"],
   });
 
-  const inventoryLevels: CreateInventoryLevelInput[] = [];
+  const inventoryLevels: InventoryLevelInput[] = [];
   for (const inventoryItem of inventoryItems) {
     const inventoryLevel = {
       location_id: stockLocation.id,
