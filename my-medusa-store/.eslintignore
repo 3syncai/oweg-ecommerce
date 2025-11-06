@@ -1,0 +1,5 @@
+.medusa/**
+server/public/admin/assets/**
+node_modules/**
+dist/**
+build/**

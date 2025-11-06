@@ -1,8 +1,9 @@
-import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
+// Minimal types to avoid coupling to framework types at build time
+type Res = { sendStatus: (code: number) => void }
 
 export async function GET(
-  req: MedusaRequest,
-  res: MedusaResponse
+  _req: unknown,
+  res: Res
 ) {
   res.sendStatus(200);
 }

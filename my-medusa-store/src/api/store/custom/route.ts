@@ -1,8 +1,8 @@
-import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
+type Res = { sendStatus: (code: number) => void }
 
 export async function GET(
-  req: MedusaRequest,
-  res: MedusaResponse
+  _req: unknown,
+  res: Res
 ) {
   res.sendStatus(200);
 }
