@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { loadEnv } = require("@medusajs/utils");
 loadEnv("test", process.cwd());
 

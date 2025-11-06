@@ -1,1 +1,2 @@
-export default {}
+const messages = {}
+export default messages
