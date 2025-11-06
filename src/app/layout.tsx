@@ -1,7 +1,10 @@
+// app/layout.tsx
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegister from "./sw-register";
+import Footer from "./footer/Footer"; // <-- check path, change if needed
+import Header from "./header/Header"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,7 +41,20 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ServiceWorkerRegister />
-        {children}
+
+        {/* Layout wrapper: makes page min-height = viewport and pushes footer down */}
+        <div className="min-h-screen flex flex-col">
+          {/* If you have a Header/Nav, render it here */}
+          <Header />
+
+          {/* Main content grows to take remaining space */}
+          <main className="flex-1">
+            {children}
+          </main>
+
+          {/* Footer placed after main so it stays at bottom */}
+          <Footer />
+        </div>
       </body>
     </html>
   );

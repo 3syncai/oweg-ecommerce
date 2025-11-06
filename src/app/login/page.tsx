@@ -3,18 +3,8 @@
 import React, { useMemo, useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import {
-  Mail,
-  Eye,
-  EyeOff,
-  X,
-  UserPlus,
-  Loader2,
-  Phone,
-  Smartphone,
-} from "lucide-react";
+import { Mail, Eye, EyeOff, X, UserPlus, Loader2 } from "lucide-react";
 import { FcGoogle } from "react-icons/fc";
-import { useSearchParams } from "next/navigation";
 
 // OWEG Login + Register -- green theme + PWA-friendly behaviors
 // File: app/login/page.tsx (Next.js App Router)
@@ -33,12 +23,8 @@ function LoginPageInner() {
   // VIEW
   const [tab, setTab] = useState<"password" | "otp">("password");
   const [showPwd, setShowPwd] = useState(false);
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const searchParams = useSearchParams();
-  useEffect(() => {
-    const m = searchParams?.get("mode");
-    if (m === "register") setMode("register");
-  }, [searchParams]);
+  // Keep setMode for dead code references in disabled slide-over
+  const [, setMode] = useState<"login" | "register">("login");
 
   // ONLINE / OFFLINE (PWA-friendly UX)
   const [isOnline, setIsOnline] = useState(true);
@@ -57,19 +43,7 @@ function LoginPageInner() {
   }, []);
 
   // Optional: in-page PWA install CTA
-  const [installEvent, setInstallEvent] = useState<BIPromptEvent | null>(null);
-  useEffect(() => {
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setInstallEvent(e as BIPromptEvent);
-    };
-    window.addEventListener("beforeinstallprompt", handler as EventListener);
-    return () =>
-      window.removeEventListener(
-        "beforeinstallprompt",
-        handler as EventListener
-      );
-  }, []);
+  // Removed beforeinstallprompt handler (unused)
 
   // LOGIN
   const [identifier, setIdentifier] = useState("");
@@ -199,71 +173,10 @@ function LoginPageInner() {
   return (
     <div className="min-h-[100svh] bg-white text-slate-800">
       {/* Top green utichlity bar */}
-      <div className="text-white text-xs" style={{ backgroundColor: BRAND }}>
-        <div className="mx-auto max-w-6xl px-4 py-2 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-5">
-            <span className="inline-flex items-center gap-2">
-              <Phone className="h-3.5 w-3.5" />
-              <span>Contact Us: 879 778 7877</span>
-            </span>
-            <span className="hidden sm:inline opacity-80">|</span>
-            <a
-              href="mailto:owegonline@oweg.in"
-              className="inline-flex items-center gap-2 hover:underline"
-            >
-              <Mail className="h-3.5 w-3.5" />
-              <span>owegonline@oweg.in</span>
-            </a>
-          </div>
-          <div className="hidden sm:flex items-center gap-3">
-            {installEvent && (
-              <button
-                onClick={async () => {
-                  await installEvent.prompt();
-                  try {
-                    await installEvent.userChoice;
-                  } catch {}
-                  setInstallEvent(null);
-                }}
-                className="rounded-full border border-white/30 bg-white/10 px-3 py-1 hover:bg-white/20"
-              >
-                Install App
-              </button>
-            )}
-            <a href="#" className="hover:underline">
-              Sell With Us
-            </a>
-            <span className="opacity-80">|</span>
-            <a
-              href="#"
-              className="inline-flex items-center gap-1 hover:underline"
-            >
-              <span>Download App</span>
-              <Smartphone className="h-3.5 w-3.5" />
-            </a>
-          </div>
-        </div>
-      </div>
+      
 
       {/* Header */}
-      <header className="border-b bg-white">
-        <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-start gap-2">
-          <Link href="/" className="flex items-center gap-2" aria-label="Go to Home">
-            <div
-              className="h-9 w-9 rounded-md text-white grid place-items-center font-bold"
-              style={{ backgroundColor: BRAND }}
-            >
-              O
-            </div>
-            <span
-              className="text-2xl font-semibold tracking-tight"
-              style={{ color: BRAND }}
-            >
-              OWEG
-            </span>
-          </Link>
-        </div>
-      </header>
+
 
       {/* Offline banner (after mount to avoid hydration mismatch) */}
       {mounted && !isOnline && (
@@ -353,7 +266,7 @@ function LoginPageInner() {
                       required
                       type={showPwd ? "text" : "password"}
                       autoComplete="current-password"
-                      placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                      placeholder="Enter your Password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="w-full rounded-lg border bg-white px-3 py-2.5 pr-10 text-[15px] outline-none ring-4 ring-transparent"
@@ -511,14 +424,9 @@ function LoginPageInner() {
 
               <p className="text-sm text-slate-700">
                 New to OWEG?{" "}
-                <button
-                  type="button"
-                  onClick={() => setMode("register")}
-                  className="font-medium underline"
-                  style={{ color: BRAND }}
-                >
+                <Link href="/signup" className="font-medium underline" style={{ color: BRAND }}>
                   Create your account
-                </button>
+                </Link>
               </p>
             </form>
           </section>
@@ -542,8 +450,8 @@ function LoginPageInner() {
         </div>
       </footer>
 
-      {/* REGISTER SLIDE-OVER */}
-      {mode === "register" && (
+      {/* REGISTER SLIDE-OVER disabled; using dedicated /signup page */}
+      {false && (
         <div
           className="fixed inset-0 z-50"
           aria-labelledby="register-title"
