@@ -1,5 +1,33 @@
 // Local types to avoid namespace/type issues from external package types
-type SeedExecArgs = { container: any };
+type LoggerLike = { info: (msg: string) => void };
+type LinkLike = { create: (links: Record<string, unknown>) => Promise<unknown> };
+type QueryLike = {
+  graph: (args: { entity: string; fields: string[] }) => Promise<{
+    data: Array<{ id: string }>;
+  }>;
+};
+type FulfillmentModuleServiceLike = {
+  listShippingProfiles: (args: { type: string }) => Promise<Array<{ id: string }>>;
+  createFulfillmentSets: (input: unknown) => Promise<{ id: string; service_zones: Array<{ id: string }> }>;
+};
+type SalesChannelModuleServiceLike = {
+  listSalesChannels: (args: { name?: string }) => Promise<Array<{ id: string }>>;
+};
+type StoreModuleServiceLike = {
+  listStores: () => Promise<Array<{ id: string }>>;
+};
+type ContainerLike = {
+  resolve: (
+    key: unknown
+  ) =>
+    | LoggerLike
+    | LinkLike
+    | QueryLike
+    | FulfillmentModuleServiceLike
+    | SalesChannelModuleServiceLike
+    | StoreModuleServiceLike;
+};
+type SeedExecArgs = { container: ContainerLike };
 type InventoryLevelInput = {
   location_id: string;
   stocked_quantity: number;
@@ -72,12 +100,23 @@ const updateStoreCurrencies = createWorkflow(
 );
 
 export default async function seedDemoData({ container }: SeedExecArgs) {
-  const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
-  const link = container.resolve(ContainerRegistrationKeys.LINK);
-  const query = container.resolve(ContainerRegistrationKeys.QUERY);
-  const fulfillmentModuleService = container.resolve(Modules.FULFILLMENT);
-  const salesChannelModuleService = container.resolve(Modules.SALES_CHANNEL);
-  const storeModuleService = container.resolve(Modules.STORE);
+  const logger = container.resolve(
+    ContainerRegistrationKeys.LOGGER
+  ) as LoggerLike;
+  const link = container.resolve(ContainerRegistrationKeys.LINK) as LinkLike;
+  const query = container.resolve(ContainerRegistrationKeys.QUERY) as QueryLike;
+  const fulfillmentModuleService = container.resolve(
+    Modules.FULFILLMENT
+  ) as FulfillmentModuleServiceLike;
+  const salesChannelModuleService = container.resolve(
+    Modules.SALES_CHANNEL
+  ) as SalesChannelModuleServiceLike;
+  const storeModuleService = container.resolve(
+    Modules.STORE
+  ) as StoreModuleServiceLike;
+  // Core workflows expect a Medusa container; cast locally for calls
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const medusaC = container as unknown as any;
 
   const countries = ["gb", "de", "dk", "se", "fr", "es", "it"];
 
@@ -90,7 +129,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
   if (!defaultSalesChannel.length) {
     // create the default sales channel
     const { result: salesChannelResult } = await createSalesChannelsWorkflow(
-      container
+      medusaC
     ).run({
       input: {
         salesChannelsData: [
@@ -103,7 +142,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
     defaultSalesChannel = salesChannelResult;
   }
 
-  await updateStoreCurrencies(container).run({
+  await updateStoreCurrencies(medusaC).run({
     input: {
       store_id: store.id,
       supported_currencies: [
@@ -118,7 +157,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
     },
   });
 
-  await updateStoresWorkflow(container).run({
+  await updateStoresWorkflow(medusaC).run({
     input: {
       selector: { id: store.id },
       update: {
@@ -127,7 +166,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
     },
   });
   logger.info("Seeding region data...");
-  const { result: regionResult } = await createRegionsWorkflow(container).run({
+  const { result: regionResult } = await createRegionsWorkflow(medusaC).run({
     input: {
       regions: [
         {
@@ -143,7 +182,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
   logger.info("Finished seeding regions.");
 
   logger.info("Seeding tax regions...");
-  await createTaxRegionsWorkflow(container).run({
+  await createTaxRegionsWorkflow(medusaC).run({
     input: countries.map((country_code) => ({
       country_code,
       provider_id: "tp_system",
@@ -153,7 +192,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
 
   logger.info("Seeding stock location data...");
   const { result: stockLocationResult } = await createStockLocationsWorkflow(
-    container
+    medusaC
   ).run({
     input: {
       locations: [
@@ -170,7 +209,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
   });
   const stockLocation = stockLocationResult[0];
 
-  await updateStoresWorkflow(container).run({
+  await updateStoresWorkflow(medusaC).run({
     input: {
       selector: { id: store.id },
       update: {
@@ -196,7 +235,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
 
   if (!shippingProfile) {
     const { result: shippingProfileResult } =
-      await createShippingProfilesWorkflow(container).run({
+      await createShippingProfilesWorkflow(medusaC).run({
         input: {
           data: [
             {
@@ -258,7 +297,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
     },
   });
 
-  await createShippingOptionsWorkflow(container).run({
+  await createShippingOptionsWorkflow(medusaC).run({
     input: [
       {
         name: "Standard Shipping",
@@ -340,7 +379,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
   });
   logger.info("Finished seeding fulfillment data.");
 
-  await linkSalesChannelsToStockLocationWorkflow(container).run({
+  await linkSalesChannelsToStockLocationWorkflow(medusaC).run({
     input: {
       id: stockLocation.id,
       add: [defaultSalesChannel[0].id],
@@ -349,9 +388,9 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
   logger.info("Finished seeding stock location data.");
 
   logger.info("Seeding publishable API key data...");
-  const { result: publishableApiKeyResult } = await createApiKeysWorkflow(
-    container
-  ).run({
+    const { result: publishableApiKeyResult } = await createApiKeysWorkflow(
+      medusaC
+    ).run({
     input: {
       api_keys: [
         {
@@ -364,7 +403,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
   });
   const publishableApiKey = publishableApiKeyResult[0];
 
-  await linkSalesChannelsToApiKeyWorkflow(container).run({
+  await linkSalesChannelsToApiKeyWorkflow(medusaC).run({
     input: {
       id: publishableApiKey.id,
       add: [defaultSalesChannel[0].id],
@@ -375,7 +414,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
   logger.info("Seeding product data...");
 
   const { result: categoryResult } = await createProductCategoriesWorkflow(
-    container
+    medusaC
   ).run({
     input: {
       product_categories: [
@@ -399,13 +438,13 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
     },
   });
 
-  await createProductsWorkflow(container).run({
+  await createProductsWorkflow(medusaC).run({
     input: {
       products: [
         {
           title: "Medusa T-Shirt",
           category_ids: [
-            categoryResult.find((cat: { id: string; name: string }) => cat.name === "Shirts")!.id,
+            categoryResult.find((cat) => cat.name === "Shirts")!.id,
           ],
           description:
             "Reimagine the feeling of a classic T-shirt. With our cotton T-shirts, everyday essentials no longer have to be ordinary.",
@@ -592,7 +631,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
         {
           title: "Medusa Sweatshirt",
           category_ids: [
-            categoryResult.find((cat: { id: string; name: string }) => cat.name === "Sweatshirts")!.id,
+            categoryResult.find((cat) => cat.name === "Sweatshirts")!.id,
           ],
           description:
             "Reimagine the feeling of a classic sweatshirt. With our cotton sweatshirt, everyday essentials no longer have to be ordinary.",
@@ -693,7 +732,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
         {
           title: "Medusa Sweatpants",
           category_ids: [
-            categoryResult.find((cat: { id: string; name: string }) => cat.name === "Pants")!.id,
+            categoryResult.find((cat) => cat.name === "Pants")!.id,
           ],
           description:
             "Reimagine the feeling of classic sweatpants. With our cotton sweatpants, everyday essentials no longer have to be ordinary.",
@@ -794,7 +833,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
         {
           title: "Medusa Shorts",
           category_ids: [
-            categoryResult.find((cat: { id: string; name: string }) => cat.name === "Merch")!.id,
+            categoryResult.find((cat) => cat.name === "Merch")!.id,
           ],
           description:
             "Reimagine the feeling of classic shorts. With our cotton shorts, everyday essentials no longer have to be ordinary.",
@@ -914,7 +953,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
     inventoryLevels.push(inventoryLevel);
   }
 
-  await createInventoryLevelsWorkflow(container).run({
+  await createInventoryLevelsWorkflow(medusaC).run({
     input: {
       inventory_levels: inventoryLevels,
     },
