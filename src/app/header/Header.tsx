@@ -1,35 +1,116 @@
 "use client";
 
-import { MapPin, Search, ShoppingCart, User, Menu } from "lucide-react";
+import { MapPin, Search, ShoppingCart, User, Menu, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+// import {
+//   Select,
+//   SelectContent,
+//   SelectItem,
+//   SelectTrigger,
+//   SelectValue,
+// } from "@/components/ui/select";
 import Link from "next/link";
 import Image from "next/image";
+import React from "react";
+
+const FALLBACK_COLLECTIONS = [
+  "Home Appliances",
+  "Kitchen Appliances",
+  "Computer & Mobile Accessories",
+  "Surveillance & Security",
+  "Clothing",
+  "Bags",
+  "Hardware",
+  "Toys & Games",
+  "Health Care",
+  "Stationery",
+  "Beauty & Personal Care",
+  "Jewellery",
+  "Umbrellas",
+]
 
 const Header = () => {
-  const categories = [
-    "Home Appliances",
-    "Kitchen Appliances",
-    "Computer & Mobile Accessories",
-    "Surveillance & Security",
-    "Clothing",
-    "Bags",
-    "Hardware",
-    "Toys & Games",
-    "Health Care",
-    "Stationery",
-    "Beauty & Personal Care",
-    "Jewellery",
-    "Umbrellas"
+  const [collections, setCollections] = React.useState<{ id?: string; title: string; handle?: string; created_at?: string }[]>([])
+  const [catsByCollection, setCatsByCollection] = React.useState<Record<string, { title: string; handle?: string }[]>>({})
+  const [browseOpen, setBrowseOpen] = React.useState(false)
+  const [expandedCol, setExpandedCol] = React.useState<string | null>(null)
+  const [selectedFilter, setSelectedFilter] = React.useState<
+    | { type: 'collection'; id?: string; handle?: string; title: string }
+    | { type: 'category'; id?: string; handle?: string; title: string }
+    | { type: 'all'; title: string }
+    | null
+  >({ type: 'all', title: 'All' })
+  const [q, setQ] = React.useState("")
+  const [suggestions, setSuggestions] = React.useState<{ id: string; name: string; image?: string }[]>([])
+  const [showSuggest, setShowSuggest] = React.useState(false)
+  
 
-  ];
+    React.useEffect(() => {
+    let cancelled = false
+    fetch('/api/medusa/collections')
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return
+        type Col = { id?: string; title?: string; name?: string; handle?: string; created_at?: string }
+        type OutCol = { id?: string; title: string; handle?: string; created_at?: string }
+        const cols = (d.collections as Col[] || [])
+          .map<OutCol>((c) => ({ id: c.id, title: (c.title || c.name || '').toString(), handle: c.handle, created_at: c.created_at }))
+          .filter((c) => !!c.title)
+          .sort((a, b) => {
+            const ad = a.created_at ? new Date(a.created_at).getTime() : 0
+            const bd = b.created_at ? new Date(b.created_at).getTime() : 0
+            if (ad && bd) return ad - bd // oldest first (admin created order)
+            if (ad && !bd) return -1
+            if (!ad && bd) return 1
+            return String(a.title).localeCompare(String(b.title))
+          })
+        if (cols.length) setCollections(cols)
+        else setCollections(FALLBACK_COLLECTIONS.map((t) => ({ title: t })))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  function ensureCatsForCollection(col: { id?: string; handle?: string }) {
+    const key = col.id || col.handle
+    if (!key || catsByCollection[key]) return
+    fetch(`/api/medusa/collections/${encodeURIComponent(key)}/categories`)
+      .then(r => r.json())
+      .then(d => {
+        type Cat = { title?: string; name?: string; handle?: string }
+        const arr = (d.categories as Cat[] || [])
+          .map((c) => ({ title: (c.title || c.name || '').toString(), handle: c.handle }))
+          .filter((c) => !!c.title)
+        setCatsByCollection(prev => ({ ...prev, [key]: arr }))
+      })
+      .catch(() => {})
+  }
+
+  // Debounced suggestions
+  React.useEffect(() => {
+    const id = setTimeout(() => {
+      if (q.trim().length < 2) { setSuggestions([]); return }
+      const params = new URLSearchParams({ q })
+      if (selectedFilter?.type === 'category') {
+        if (selectedFilter.handle) params.append('category', selectedFilter.handle)
+      } else if (selectedFilter?.type === 'collection') {
+        if (selectedFilter.id) params.append('collectionId', selectedFilter.id)
+        else if (selectedFilter.handle) params.append('collection', selectedFilter.handle)
+      } else if (selectedFilter?.type === 'all') {
+        // global search; no scoping param
+      }
+      fetch(`/api/medusa/search?${params.toString()}`)
+        .then(r => r.json())
+        .then(d => {
+          type S = { id: string; name: string; image?: string }
+          const list: S[] = (d.products as S[] || []).map((p) => ({ id: p.id, name: p.name, image: p.image }))
+          setSuggestions(list)
+        })
+        .catch(() => setSuggestions([]))
+    }, 250)
+    return () => clearTimeout(id)
+  }, [q, selectedFilter])
 
   return (
     <header className="w-full header-root">
@@ -73,26 +154,107 @@ const Header = () => {
 
             {/* Search Bar */}
             <div className="flex-1 max-w-2xl">
-              <div className="flex gap-2">
-                <Select defaultValue="all">
-                  <SelectTrigger className="w-24 bg-header-bg border-header-text/20">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="electronics">Electronics</SelectItem>
-                    <SelectItem value="fashion">Fashion</SelectItem>
-                  </SelectContent>
-                </Select>
-                <div className="flex-1 flex">
+              <div className="flex gap-2 relative">
+                {/* Browse dropdown with Collections -> Categories */}
+                <div className="relative" data-browse-root>
+                  <button
+                    onClick={() => setBrowseOpen((v) => !v)}
+                    className="w-48 bg-header-bg border border-header-text/20 rounded-md px-3 h-10 text-sm flex items-center justify-between"
+                  >
+                    <span className="truncate">{selectedFilter ? selectedFilter.title : 'Browse'}</span>
+                    <ChevronDown className={`w-4 h-4 transition-transform ${browseOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {browseOpen && (
+                    <div className="absolute left-0 mt-2 z-50 bg-white rounded-md shadow-lg ring-1 ring-black/5 w-[320px] max-h-[70vh] overflow-auto p-1">
+                      <div className="mb-1 border-b border-gray-100 pb-1">
+                        <button
+                          onClick={() => { setSelectedFilter({ type: 'all', title: 'All' }); setBrowseOpen(false); setExpandedCol(null) }}
+                          className="w-full text-left px-2 py-2 text-sm hover:bg-gray-100 rounded"
+                        >
+                          All
+                        </button>
+                      </div>
+                      {((collections.length ? collections : FALLBACK_COLLECTIONS.map((t) => ({ title: t })) ) as {id?:string; handle?:string; title:string}[]).map((c) => {
+                        const key = c.id || c.handle || c.title
+                        const isOpen = expandedCol === key
+                        const cats = catsByCollection[key] || []
+                        return (
+                          <div key={key} className="">
+                            <button
+                              onClick={() => {
+                                setExpandedCol(isOpen ? null : key)
+                                if (!isOpen) ensureCatsForCollection(c)
+                              }}
+                              className="w-full flex items-center justify-between px-2 py-2 text-sm hover:bg-gray-100 rounded"
+                            >
+                              <span className="truncate text-left">{c.title}</span>
+                              <ChevronRight className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                            </button>
+                            {isOpen && (
+                              <div className="pl-3 pb-2">
+                                {cats.length ? (
+                                  cats.map((cat) => (
+                                    <button
+                                      key={`${key}-${cat.title}`}
+                                      onClick={() => {
+                                        setSelectedFilter({ type: 'category', title: cat.title, handle: cat.handle })
+                                        setBrowseOpen(false)
+                                        setExpandedCol(null)
+                                      }}
+                                      className="w-full text-left block px-2 py-1.5 text-sm text-gray-800 hover:bg-gray-100 rounded"
+                                    >
+                                      {cat.title}
+                                    </button>
+                                  ))
+                                ) : (
+                                  <div className="px-2 py-1.5 text-sm text-gray-500">No categories</div>
+                                )}
+                                <div className="mt-1">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedFilter({ type: 'collection', title: c.title, handle: c.handle, id: c.id })
+                                      setBrowseOpen(false)
+                                      setExpandedCol(null)
+                                    }}
+                                    className="px-2 py-1.5 text-xs text-header-accent hover:underline"
+                                  >
+                                    Use entire collection
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 flex relative">
                   <Input
                     type="text"
-                    placeholder="Search products..."
+                    placeholder={selectedFilter ? `Search in ${selectedFilter.title}...` : 'Search products...'}
                     className="rounded-r-none border-header-text/20"
+                    value={q}
+                    onChange={(e) => { setQ(e.target.value); setShowSuggest(true) }}
+                    onFocus={() => setShowSuggest(true)}
                   />
                   <Button className="rounded-l-none bg-header-accent hover:bg-header-accent/90 text-white">
                     <Search className="w-5 h-5" />
                   </Button>
+                  {showSuggest && q.length >= 2 && suggestions.length > 0 && (
+                    <div className="absolute top-full left-0 mt-1 z-50 w-full bg-white rounded-md shadow-lg ring-1 ring-black/5 max-h-[60vh] overflow-auto">
+                      {suggestions.map((s) => (
+                        <div key={s.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                          {s.image ? (
+                            <Image src={s.image} alt={s.name} width={36} height={36} className="rounded object-cover" />
+                          ) : (
+                            <div className="w-9 h-9 bg-gray-200 rounded" />
+                          )}
+                          <div className="text-sm text-gray-800 truncate">{s.name}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -127,7 +289,7 @@ const Header = () => {
 
             {/* Cart */}
             <div className="flex items-center gap-2 cursor-pointer group">
-              <div className="relative">
+              <div className="relative" data-browse-root>
                 <ShoppingCart className="w-6 h-6 text-header-text group-hover:text-header-accent transition-colors" />
                 <span className="absolute -top-2 -right-2 bg-header-accent text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                   0
@@ -144,22 +306,40 @@ const Header = () => {
       {/* Navigation Bar */}
       <nav className="bg-header-nav-bg">
         <div className="container mx-auto px-4">
-          <div className="flex items-center gap-6 overflow-x-auto">
+          <div className="flex items-center gap-6 overflow-visible">
             {/* All Button */}
             <button className="flex items-center gap-2 py-3 text-header-text hover:text-header-accent transition-colors whitespace-nowrap">
               <Menu className="w-5 h-5" />
               <span className="font-medium">All</span>
             </button>
 
-            {/* Category Links */}
-            {categories.map((category) => (
-              <a
-                key={category}
-                href="#"
-                className="nav-link relative py-3 text-sm text-header-text font-medium whitespace-nowrap transition-colors"
-              >
-                {category}
-              </a>
+            {/* Collection Links */}
+            {((collections.length ? collections : FALLBACK_COLLECTIONS.map((t) => ({ title: t }))) as {id?:string; handle?:string; title:string}[]).map((c) => (
+              <div key={c.title} className="relative group" onMouseEnter={() => ensureCatsForCollection(c)}>
+                <a
+                  href={c.handle ? `/collections/${c.handle}` : "#"}
+                  className="nav-link relative py-3 text-sm text-header-text font-medium whitespace-nowrap transition-colors"
+                >
+                  {c.title}
+                </a>
+                {/* Dropdown: show categories on hover */}
+                <div className="absolute left-0 top-full mt-1 hidden group-hover:block z-50">
+                  <div className="min-w-[240px] max-h-[60vh] overflow-auto rounded-md bg-white shadow-lg ring-1 ring-black/5 p-2 grid grid-cols-1 sm:grid-cols-2 gap-1">
+                    {((catsByCollection[c.id || c.handle || ''] || [])).map((cat) => (
+                      <a
+                        key={`${c.title}-${cat.title}`}
+                        href={cat.handle ? `/c/${cat.handle}` : "#"}
+                        className="block rounded px-3 py-2 text-sm text-gray-800 hover:bg-gray-100"
+                      >
+                        {cat.title}
+                      </a>
+                    ))}
+                    {(!catsByCollection[c.id || c.handle || ''] || (catsByCollection[c.id || c.handle || '']?.length === 0)) && (
+                      <div className="px-3 py-2 text-sm text-gray-500">No categories</div>
+                    )}
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -284,8 +464,18 @@ const Header = () => {
           }
         }
       `}</style>
+      <script dangerouslySetInnerHTML={{ __html: `
+        document.addEventListener('click', function(e){
+          const dd = document.querySelector('[data-browse-root]');
+          if(!dd) return;
+          if(!dd.contains(e.target)){
+            try { window.__setBrowseOpen && window.__setBrowseOpen(false) } catch {}
+          }
+        });
+      `}} />
     </header>
   );
 };
 
 export default Header;
+

@@ -3,41 +3,33 @@
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import React from 'react'
 
 
-// Mock data for products
-const nonStickCookwares = [
-  { id: 1, name: '2 Layer Electric Lunch Box for Office, Portable Lunch Warmer...', price: 949, mrp: 1499, discount: 37, image: 'https://images.unsplash.com/photo-1584990347449-39b4aa02d0f7?w=400&h=400&fit=crop', limitedDeal: true },
-  { id: 2, name: '24 Energy High Quality Mosquito Bat With Led Light...', price: 350, mrp: 699, discount: 50, image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=400&h=400&fit=crop', limitedDeal: true },
-  { id: 3, name: '3D Crystal Ball Night Light Mix Design', price: 390, mrp: 590, discount: 34, image: 'https://images.unsplash.com/photo-1585659722983-3a675dabf23d?w=400&h=400&fit=crop', limitedDeal: true },
-  { id: 4, name: '24 Energy Rechargeable 18 Hi-Bright Led Tube Electric...', price: 450, mrp: 900, discount: 50, image: 'https://images.unsplash.com/photo-1565183928294-7d22f2d8d78e?w=400&h=400&fit=crop', limitedDeal: true },
-  { id: 5, name: '24 Energy Rechargeable 18 Hi-Bright Led Tube Electric...', price: 450, mrp: 900, discount: 50, image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=400&h=400&fit=crop', limitedDeal: true },
-];
+// Data will be loaded from Medusa store API via Next.js API routes
 
-const fans = [
-  { id: 1, name: '2 Layer Electric Lunch Box for Office, Portable Lunch Warmer...', price: 949, mrp: 1499, discount: 37, image: 'https://images.unsplash.com/photo-1622122201714-77da0ca8e5d2?w=400&h=400&fit=crop', limitedDeal: true },
-  { id: 2, name: '24 Energy High Quality Mosquito Bat With Led Light...', price: 350, mrp: 699, discount: 50, image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop', limitedDeal: true },
-  { id: 3, name: '3D Crystal Ball Night Light Mix Design', price: 390, mrp: 590, discount: 34, image: 'https://images.unsplash.com/photo-1622122201714-77da0ca8e5d2?w=400&h=400&fit=crop', limitedDeal: true },
-  { id: 4, name: '24 Energy Rechargeable 18 Hi-Bright Led Tube Electric...', price: 450, mrp: 900, discount: 50, image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop', limitedDeal: true },
-  { id: 5, name: '24 Energy Rechargeable 18 Hi-Bright Led Tube Electric...', price: 450, mrp: 900, discount: 50, image: 'https://images.unsplash.com/photo-1622122201714-77da0ca8e5d2?w=400&h=400&fit=crop', limitedDeal: true },
-];
+// UI product type (used by carousel/cards)
+type UIProduct = {
+  id: string | number
+  name: string
+  image: string
+  price: number
+  mrp: number
+  discount: number
+  limitedDeal?: boolean
+  variant_id?: string
+}
 
-const mensClothes = [
-  { id: 1, name: 'Mens Slim Fit Jeans', price: 949, mrp: 1499, discount: 37, image: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=400&h=400&fit=crop', limitedDeal: true },
-  { id: 2, name: 'Mens Casual Trousers', price: 350, mrp: 699, discount: 50, image: 'https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=400&h=400&fit=crop', limitedDeal: true },
-  { id: 3, name: 'Mens Denim Jeans', price: 390, mrp: 590, discount: 34, image: 'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=400&h=400&fit=crop', limitedDeal: true },
-  { id: 4, name: 'Mens Cargo Pants', price: 450, mrp: 900, discount: 50, image: 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=400&h=400&fit=crop', limitedDeal: true },
-  { id: 5, name: 'Mens Chino Pants', price: 450, mrp: 900, discount: 50, image: 'https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=400&h=400&fit=crop', limitedDeal: true },
-];
+const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })
 
 
 // Product Card Component
-function ProductCard({ product }: { product: typeof nonStickCookwares[0] }) {
+function ProductCard({ product }: { product: UIProduct }) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
     <div 
-      className="flex-shrink-0 w-[300px] bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+      className="group relative flex-shrink-0 w-[300px] bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -49,9 +41,18 @@ function ProductCard({ product }: { product: typeof nonStickCookwares[0] }) {
           className={`object-cover transition-transform duration-500 ${isHovered ? 'scale-110' : 'scale-100'}`}
           sizes="200px"
         />
-        <button className={`absolute bottom-2 right-2 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white hover:bg-green-600 transition-all duration-300 hover:scale-110 hover:rotate-90 ${isHovered ? 'opacity-100' : 'opacity-80'}`}>
-          <span className="text-xl leading-none">+</span>
-        </button>
+        <div className={`absolute inset-y-2 right-2 flex flex-col gap-2 transition-all duration-300 ${isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'}`}>
+          <button onClick={async () => {
+              if (!product.variant_id) { alert('This product is not purchasable yet'); return }
+              try {
+                await fetch('/api/medusa/cart', { method: 'POST' })
+                const r = await fetch('/api/medusa/cart/line-items', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ variant_id: product.variant_id, quantity: 1 }) })
+                if (!r.ok) throw new Error('add failed')
+                alert('Added to cart')
+              } catch { alert('Could not add to cart') }
+            }} title="Add to Cart" className="w-9 h-9 rounded-full bg-green-500 text-white flex items-center justify-center shadow hover:bg-green-600">+</button>
+          <button onClick={() => alert('Please login to add to wishlist')} title="Add to Wishlist" className="w-9 h-9 rounded-full bg-white text-gray-700 flex items-center justify-center shadow border hover:text-red-500">♡</button>
+        </div>
       </div>
       <div className="p-3">
         <div className="flex items-start gap-2 mb-2">
@@ -66,8 +67,8 @@ function ProductCard({ product }: { product: typeof nonStickCookwares[0] }) {
         </div>
         <div className="mb-2">
           <div className="flex items-baseline gap-2">
-            <span className="text-lg font-bold text-gray-900">₹{product.price}</span>
-            <span className="text-sm text-gray-500 line-through">M.R.P: ₹{product.mrp}</span>
+            <span className="text-lg font-bold text-gray-900">{inr.format(product.price)}</span>
+            <span className="text-sm text-gray-500 line-through">M.R.P: {inr.format(product.mrp)}</span>
           </div>
         </div>
         <p className="text-sm text-gray-700 line-clamp-2">{product.name}</p>
@@ -77,7 +78,7 @@ function ProductCard({ product }: { product: typeof nonStickCookwares[0] }) {
 }
 
 // Product Carousel Component
-function ProductCarousel({ title, products }: { title: string; products: typeof nonStickCookwares }) {
+function ProductCarousel({ title, products }: { title: string; products: UIProduct[] }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scroll = (direction: 'left' | 'right') => {
@@ -276,23 +277,59 @@ function PromoBanners() {
 
 
 export default function HomePage() {
+  const [nonStick, setNonStick] = useState<UIProduct[]>([])
+  const [fanProducts, setFanProducts] = useState<UIProduct[]>([])
+  const [mensCloth, setMensCloth] = useState<UIProduct[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const [a, b, c] = await Promise.all([
+          fetch(`/api/medusa/products?tag=${encodeURIComponent('Non-Stick Cookwares')}&limit=20`).then(r => r.json()),
+          fetch(`/api/medusa/products?tag=${encodeURIComponent('Fans')}&limit=20`).then(r => r.json()),
+          fetch(`/api/medusa/products?tag=${encodeURIComponent('Mens Cloths')}&limit=20`).then(r => r.json()),
+        ])
+        if (!cancelled) {
+          setNonStick(a.products || [])
+          setFanProducts(b.products || [])
+          setMensCloth(c.products || [])
+        }
+      } catch (e) {
+        console.error('Failed loading products', e)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="max-w-8xl mx-auto py-6">
         <div className="px-4">
           <HeroBanner />
         </div>
-        <ProductCarousel title="Non-Stick Cookwares" products={nonStickCookwares} />
-        <ProductCarousel title="Fans" products={fans} />
+        <ProductCarousel title="Non-Stick Cookwares" products={nonStick} />
+        <ProductCarousel title="Fans" products={fanProducts} />
         <div className="px-4">
           <PromoBanners />
         </div>
-        
-        <ProductCarousel title="Mens Cloths" products={mensClothes} />
-
-        
-        
+        <ProductCarousel title="Mens Cloths" products={mensCloth} />
+        {loading && (
+          <div className="px-4 text-sm text-gray-500">Loading products from store…</div>
+        )}
       </main>
     </div>
   );
 }
+
+
+
+
+
+
