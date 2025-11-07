@@ -287,9 +287,9 @@ export default function HomePage() {
     async function load() {
       try {
         const [a, b, c] = await Promise.all([
-          fetch(`/api/medusa/products?tag=${encodeURIComponent('Non-Stick Cookwares')}&limit=20`).then(r => r.json()),
-          fetch(`/api/medusa/products?tag=${encodeURIComponent('Fans')}&limit=20`).then(r => r.json()),
-          fetch(`/api/medusa/products?tag=${encodeURIComponent('Mens Cloths')}&limit=20`).then(r => r.json()),
+          fetch(`/api/medusa/products?type=${encodeURIComponent('Non-Stick Cookwares')}&limit=20`).then(r => r.json()),
+          fetch(`/api/medusa/products?type=${encodeURIComponent('Fans')}&limit=20`).then(r => r.json()),
+          fetch(`/api/medusa/products?type=${encodeURIComponent('Mens Cloths')}&limit=20`).then(r => r.json()),
         ])
         if (!cancelled) {
           setNonStick(a.products || [])

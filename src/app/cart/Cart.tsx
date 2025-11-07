@@ -15,6 +15,14 @@ interface CartItemUI {
   quantity: number;
   image?: string;
   currency?: string;
+  meta?: {
+    productId?: string;
+    categories?: string[];
+    categoryHandles?: string[];
+    tags?: string[];
+    type?: string;
+    collectionId?: string;
+  };
 }
 
 type ApiCart = Record<string, unknown>;
@@ -76,7 +84,7 @@ const Cart: React.FC = () => {
                 name: "24 Energy 100 Watt Emergency Bulb",
                 price: 490,
                 quantity: 1,
-                image: "/placeholder.svg",
+                image: "/next.svg",
                 currency: "INR",
               },
               {
@@ -84,7 +92,7 @@ const Cart: React.FC = () => {
                 name: "24 Energy High Quality Mosquito Bat With Led Light",
                 price: 350,
                 quantity: 2,
-                image: "/placeholder.svg",
+                image: "/next.svg",
                 currency: "INR",
               },
             ]);
@@ -125,10 +133,34 @@ const Cart: React.FC = () => {
             toStringOrUndefined((it.variant as ApiCart)?.title) ||
             toStringOrUndefined(((it.variant as ApiCart)?.product as ApiCart)?.title) ||
             "Item";
-          const img =
+          const image =
             toStringOrUndefined(it.thumbnail) ||
             toStringOrUndefined(it.image) ||
             toStringOrUndefined(((it.variant as ApiCart)?.product as ApiCart)?.thumbnail);
+
+          const variant = (it.variant as ApiCart) || ({} as ApiCart);
+          const product = (variant.product as ApiCart) || ({} as ApiCart);
+          const productId = toStringOrUndefined(product.id) || toStringOrUndefined(variant.product_id) || toStringOrUndefined((it as ApiCart).product_id);
+          const categoriesArr = Array.isArray((product as ApiCart)?.categories) ? ((product as ApiCart).categories as ApiCart[]) : [];
+          const categories = categoriesArr
+            .map((c) => toStringOrUndefined((c as ApiCart).name) || toStringOrUndefined((c as ApiCart).title) || toStringOrUndefined((c as ApiCart).handle))
+            .filter(Boolean) as string[];
+          const categoryHandles = categoriesArr
+            .map((c) => toStringOrUndefined((c as ApiCart).handle))
+            .filter(Boolean) as string[];
+          const tagsArr = Array.isArray((product as ApiCart)?.tags) ? ((product as ApiCart).tags as ApiCart[]) : [];
+          const tags = tagsArr
+            .map((t) => toStringOrUndefined((t as ApiCart).value) || toStringOrUndefined((t as ApiCart).handle))
+            .filter(Boolean) as string[];
+          const typeVal =
+            toStringOrUndefined(((product as ApiCart)?.type as ApiCart)?.value) ||
+            toStringOrUndefined(((product as ApiCart)?.type as ApiCart)?.handle) ||
+            toStringOrUndefined((it as ApiCart).product_type) ||
+            undefined;
+          const collectionId =
+            toStringOrUndefined((product as ApiCart)?.collection_id) ||
+            toStringOrUndefined(((product as ApiCart)?.collection as ApiCart)?.id) ||
+            undefined;
 
           const qty = Math.max(1, toNumber(it.quantity, 1));
           // attempt to read price-like fields
@@ -143,10 +175,18 @@ const Cart: React.FC = () => {
           return {
             id: String(it.id ?? Math.random().toString(36).slice(2, 9)),
             name: String(name),
-            image: img ? String(img) : undefined,
+            image: image ? String(image) : undefined,
             quantity: qty,
             price: Number(unitMajor),
             currency: typeof regionCurrency === "string" ? regionCurrency.toUpperCase() : undefined,
+            meta: {
+              productId: productId,
+              categories,
+              categoryHandles,
+              tags,
+              type: typeVal,
+              collectionId,
+            },
           };
         });
 
@@ -190,39 +230,81 @@ const Cart: React.FC = () => {
   const shipping = 0;
   const total = subtotal + shipping;
 
-  const recommendedProducts: {
-    id: number;
+  // Recommended products from cart item relations (type/tag/category)
+  type UIProduct = {
+    id: string | number;
     name: string;
+    image: string;
     price: number;
     mrp: number;
-    discount: string;
-    image: string;
-  }[] = [
-    {
-      id: 1,
-      name: "24 Energy High Quality Mosquito Bat With Led Light",
-      price: 350,
-      mrp: 699,
-      discount: "50% off",
-      image: "/placeholder.svg",
-    },
-    {
-      id: 2,
-      name: "24 Energy High Quality Mosquito Bat With Led Light",
-      price: 350,
-      mrp: 699,
-      discount: "50% off",
-      image: "/placeholder.svg",
-    },
-    {
-      id: 3,
-      name: "24 Energy High Quality Mosquito Bat With Led Light",
-      price: 350,
-      mrp: 699,
-      discount: "50% off",
-      image: "/placeholder.svg",
-    },
-  ];
+    discount: number;
+    variant_id?: string;
+  };
+  const [recommended, setRecommended] = useState<UIProduct[]>([]);
+  const [loadingRecommended, setLoadingRecommended] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadRelated() {
+      if (!cartItems.length) {
+        setRecommended([]);
+        return;
+      }
+      setLoadingRecommended(true);
+      try {
+        const typeSet = new Set<string>();
+        const tagSet = new Set<string>();
+        const catSet = new Set<string>();
+        const excludeIds = new Set<string | undefined>();
+        for (const it of cartItems) {
+          if (it.meta?.type) typeSet.add(it.meta.type);
+          for (const t of it.meta?.tags || []) tagSet.add(t);
+          for (const c of it.meta?.categories || []) catSet.add(c);
+          excludeIds.add(it.meta?.productId);
+        }
+
+        const picks: Array<{ kind: "type" | "tag" | "category"; v: string }> = [];
+        for (const v of Array.from(typeSet).slice(0, 2)) picks.push({ kind: "type", v });
+        for (const v of Array.from(tagSet).slice(0, 2)) picks.push({ kind: "tag", v });
+        for (const v of Array.from(catSet).slice(0, 2)) picks.push({ kind: "category", v });
+        if (!picks.length) {
+          setRecommended([]);
+          return;
+        }
+
+        const results = await Promise.all(
+          picks.map(async (p) => {
+            try {
+              const r = await fetch(`/api/medusa/products?${p.kind}=${encodeURIComponent(p.v)}&limit=12`, { cache: "no-store" });
+              if (!r.ok) return { products: [] } as { products: UIProduct[] };
+              return (await r.json()) as { products: UIProduct[] };
+            } catch {
+              return { products: [] } as { products: UIProduct[] };
+            }
+          })
+        );
+
+        const seen = new Set<string | number>();
+        const flat: UIProduct[] = [];
+        for (const res of results) {
+          for (const p of res.products || []) {
+            if (excludeIds.has(String(p.id))) continue;
+            const key = `${p.id}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            flat.push(p);
+          }
+        }
+        if (!cancelled) setRecommended(flat.slice(0, 9));
+      } finally {
+        if (!cancelled) setLoadingRecommended(false);
+      }
+    }
+    loadRelated();
+    return () => {
+      cancelled = true;
+    };
+  }, [cartItems]);
 
   return (
     <div className="min-h-screen flex flex-col bg-white text-slate-900">
@@ -276,7 +358,7 @@ const Cart: React.FC = () => {
 
                       <div className="w-20 h-20 flex-shrink-0 rounded overflow-hidden bg-slate-100 flex items-center justify-center shadow-sm">
                         {item.image ? (
-                          <Image src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                          <Image src={item.image} alt={item.name} width={80} height={80} className="w-full h-full object-cover" />
                         ) : (
                           <div className="text-slate-400">No image</div>
                         )}
@@ -375,21 +457,17 @@ const Cart: React.FC = () => {
 
               {/* Recommended */}
               <div>
-                <h2 className="text-lg font-semibold mb-4">Customers Who Bought Items in Your Recent History Also Bought</h2>
+                <h2 className="text-lg font-semibold mb-4">Customers Who Brought Items in Your Recent History Also Bought</h2>
+                {loadingRecommended && (
+                  <div className="text-sm text-slate-500 mb-2">Finding related products…</div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                  {recommendedProducts.map((p) => (
+                  {recommended.map((p) => (
                     <div key={p.id} className="border rounded-lg overflow-hidden bg-white hover:shadow-lg transition transform hover:-translate-y-1">
                       <div className="relative aspect-[4/3] bg-slate-50 flex items-center justify-center">
-                        <Image src={p.image} alt={p.name} className="w-full h-full object-cover" />
-                        <button
-                          title="Add"
-                          type="button"
-                          className="absolute bottom-3 right-3 w-10 h-10 bg-green-600 hover:bg-green-700 text-white rounded-full flex items-center justify-center transition"
-                        >
-                          <Plus className="w-5 h-5" />
-                        </button>
+                        <Image src={p.image} alt={p.name} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-cover" />
                         <div className="absolute top-3 left-3 flex gap-2">
-                          <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold">{p.discount}</span>
+                          <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold">{p.discount}% off</span>
                         </div>
                       </div>
                       <div className="p-3">
@@ -401,6 +479,9 @@ const Cart: React.FC = () => {
                       </div>
                     </div>
                   ))}
+                  {!loadingRecommended && recommended.length === 0 && (
+                    <div className="text-slate-500 text-sm">No related products yet.</div>
+                  )}
                 </div>
               </div>
             </div>

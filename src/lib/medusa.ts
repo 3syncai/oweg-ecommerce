@@ -12,6 +12,7 @@ export type MedusaProduct = {
   images?: { url: string }[]
   categories?: Array<{ id: string; handle?: string; name?: string }>
   tags?: Array<{ id: string; value?: string; handle?: string }>
+  type?: { id: string; value?: string; handle?: string }
   variants?: Array<{
     id: string
     prices?: Array<{ amount: number; currency_code: string }>
@@ -244,6 +245,68 @@ export async function fetchProductsByTag(tagValue: string, limit = 20) {
   throw new Error(`Failed products by tag`)
 }
 
+export type MedusaProductType = {
+  id: string
+  value?: string
+  handle?: string
+}
+
+export async function fetchProductsByType(typeValue: string, limit = 20) {
+  const norm = (s: string) =>
+    s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, "")
+  const wanted = norm(typeValue)
+  const candidates = (() => {
+    const set = new Set<string>()
+    set.add(wanted)
+    if (wanted.endsWith("s")) set.add(wanted.slice(0, -1))
+    else set.add(`${wanted}s`)
+    if (wanted.endsWith("ies")) set.add(wanted.slice(0, -3) + "y")
+    if (wanted.endsWith("y")) set.add(wanted.slice(0, -1) + "ies")
+    if (wanted.endsWith("es")) set.add(wanted.slice(0, -2))
+    return set
+  })()
+  const matches = (val?: string) => candidates.has(norm(val || ""))
+
+  // 1) Try resolving type id via store product-types endpoint (if available)
+  try {
+    const tRes = await api(`/store/product-types?q=${encodeURIComponent(typeValue)}`)
+    if (tRes.ok) {
+      const tData = await tRes.json()
+      const typesArr = (tData.product_types || tData.types || []) as MedusaProductType[]
+      const match = typesArr.find((t) => matches(t.value || t.handle || ""))
+      if (match?.id) {
+        for (const url of [
+          `/store/products?limit=${encodeURIComponent(String(limit))}&type_id[]=${encodeURIComponent(match.id)}`,
+          `/store/products?limit=${encodeURIComponent(String(limit))}&type_id=${encodeURIComponent(match.id)}`,
+        ]) {
+          const res = await api(url)
+          if (res.ok) {
+            const data = await res.json()
+            const items = (data.products || data || []) as MedusaProduct[]
+            if (Array.isArray(items) && items.length) return items
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // 2) Fallback: expand type and filter client-side (best effort)
+  try {
+    const res = await api(
+      `/store/products?limit=${encodeURIComponent(String(Math.max(limit, 50)))}&expand=type`
+    )
+    if (res.ok) {
+      const data = await res.json()
+      const items = (data.products || data || []) as MedusaProduct[]
+      const filtered = items.filter((p) => matches(p.type?.value || p.type?.handle || ""))
+      if (filtered.length) return filtered.slice(0, limit)
+    }
+  } catch {}
+
+  // 3) Last fallback: return empty to avoid 500s; route can try category fallback
+  return []
+}
+
 // Fetch whether a collection has at least one product in a given category
 export async function hasProductsForCollectionCategory(
   collectionId: string,
@@ -302,7 +365,7 @@ export function toUiProduct(p: MedusaProduct) {
       : 0
 
   const image =
-    p.thumbnail || p.images?.[0]?.url || "/placeholder.png"
+    p.thumbnail || p.images?.[0]?.url || "/oweg_logo.png"
 
   return {
     id: p.id,
