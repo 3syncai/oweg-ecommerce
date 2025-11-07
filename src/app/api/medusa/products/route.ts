@@ -3,6 +3,7 @@ import {
   findCategoryByTitleOrHandle,
   fetchProductsByCategoryId,
   fetchProductsByTag,
+  fetchProductsByType,
   toUiProduct,
 } from "@/lib/medusa"
 
@@ -14,11 +15,23 @@ export async function GET(req: NextRequest) {
     const category = searchParams.get("category")
     const categoryId = searchParams.get("categoryId")
     const tag = searchParams.get("tag")
+    const type = searchParams.get("type")
     const limit = Number(searchParams.get("limit") || 20)
-    if (!category && !categoryId && !tag) return NextResponse.json({ products: [] })
+    if (!category && !categoryId && !tag && !type) return NextResponse.json({ products: [] })
 
     let products
-    if (tag) {
+    if (type) {
+      products = await fetchProductsByType(type, limit)
+      // Fallback: if no products by type, try category with same label
+      if (!products || products.length === 0) {
+        const cat = await findCategoryByTitleOrHandle(type)
+        if (cat?.id) {
+          try {
+            products = await fetchProductsByCategoryId(cat.id, limit)
+          } catch {}
+        }
+      }
+    } else if (tag) {
       products = await fetchProductsByTag(tag, limit)
       // Fallback: if no products by tag, try matching a category with the same label
       if (!products || products.length === 0) {
