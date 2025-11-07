@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
       LEFT JOIN oc_product_description pd ON p.product_id = pd.product_id AND pd.language_id = ?
     `;
 
-    const params: any[] = [languageId];
+    const params: (string | number)[] = [languageId];
     const whereClauses: string[] = [];
 
     if (categoryId) {
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
 
     // Count
     let countQuery = `SELECT COUNT(DISTINCT p.product_id) as total FROM oc_product p`;
-    const countParams: any[] = [];
+    const countParams: (string | number)[] = [];
 
     if (categoryId) {
       countQuery += ` INNER JOIN oc_product_to_category pc ON p.product_id = pc.product_id`;
@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
       if (maxPrice) countParams.push(parseFloat(maxPrice));
     }
 
-    const countResult = await executeReadQuery<any[]>(countQuery, countParams);
+    const countResult = await executeReadQuery<Array<{ total: number }>>(countQuery, countParams);
     const total = countResult[0]?.total || 0;
 
     return NextResponse.json({

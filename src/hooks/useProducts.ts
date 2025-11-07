@@ -385,7 +385,7 @@ export function useProductsByCategory(
     setError(null);
 
     try {
-      const params: any = {
+      const params: Record<string, string | number> = {
         offset: page * limit,
         limit,
       };

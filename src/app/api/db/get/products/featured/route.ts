@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
       FROM oc_product 
       WHERE status = 1
     `;
-    const countResult = await executeReadQuery<any[]>(countQuery);
+    const countResult = await executeReadQuery<Array<{ total: number }>>(countQuery);
     const total = countResult[0]?.total || 0;
 
     return NextResponse.json({

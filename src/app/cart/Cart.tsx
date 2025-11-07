@@ -101,10 +101,10 @@ const Cart: React.FC = () => {
         const data = (await res.json()) as ApiCart;
         const cart = (data?.cart ?? data) as ApiCart | undefined;
 
-        // Currency detection (not currently used but kept for future use)
-        // const regionCurrency =
-        //   (cart && (cart.region as ApiCart)?.currency_code) ||
-        //   (cart && cart.currency_code);
+        // Extract currency for cart items
+        const regionCurrency =
+          (cart && (cart.region as ApiCart)?.currency_code) ||
+          (cart && cart.currency_code);
 
         const rawItems =
           (cart && ((cart.items as unknown) ?? (cart.line_items as unknown))) ??
@@ -353,7 +353,6 @@ const Cart: React.FC = () => {
 
                       <div className="w-20 h-20 flex-shrink-0 rounded overflow-hidden bg-slate-100 flex items-center justify-center shadow-sm">
                         {item.image ? (
-                          <Image src={item.image} alt={item.name} width={80} height={80} className="w-full h-full object-cover" />
                           <Image src={item.image} alt={item.name} width={80} height={80} className="w-full h-full object-cover" />
                         ) : (
                           <div className="text-slate-400">No image</div>

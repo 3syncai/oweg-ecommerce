@@ -29,27 +29,33 @@ export async function GET(req: NextRequest) {
       ORDER BY c.parent_id ASC, c.sort_order ASC, cd.name ASC
     `;
 
-    const allCategories = await executeReadQuery<any[]>(query, [languageId]);
+    const allCategories = await executeReadQuery<Array<Record<string, unknown>>>(query, [languageId]);
 
     // Build hierarchical structure
-    const categoryMap = new Map();
-    const topLevelCategories: any[] = [];
+    const categoryMap = new Map<number, Record<string, unknown>>();
+    const topLevelCategories: Array<Record<string, unknown>> = [];
 
     // First pass: create map of all categories
     allCategories.forEach(cat => {
-      categoryMap.set(cat.category_id, { ...cat, subcategories: [] });
+      const catId = Number(cat.category_id);
+      categoryMap.set(catId, { ...cat, subcategories: [] });
     });
 
     // Second pass: build hierarchy
     allCategories.forEach(cat => {
-      if (cat.parent_id === 0) {
+      const catId = Number(cat.category_id);
+      const parentId = Number(cat.parent_id);
+      
+      if (parentId === 0) {
         // Top level category
-        topLevelCategories.push(categoryMap.get(cat.category_id));
+        const category = categoryMap.get(catId);
+        if (category) topLevelCategories.push(category);
       } else {
         // Subcategory - add to parent
-        const parent = categoryMap.get(cat.parent_id);
-        if (parent) {
-          parent.subcategories.push(categoryMap.get(cat.category_id));
+        const parent = categoryMap.get(parentId);
+        const category = categoryMap.get(catId);
+        if (parent && category && Array.isArray(parent.subcategories)) {
+          (parent.subcategories as Array<Record<string, unknown>>).push(category);
         }
       }
     });

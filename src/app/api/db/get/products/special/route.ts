@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
         AND ps.date_start <= NOW() 
         AND (ps.date_end = '0000-00-00' OR ps.date_end >= NOW())
     `;
-    const countResult = await executeReadQuery<any[]>(countQuery);
+    const countResult = await executeReadQuery<Array<{ total: number }>>(countQuery);
     const total = countResult[0]?.total || 0;
 
     return NextResponse.json({

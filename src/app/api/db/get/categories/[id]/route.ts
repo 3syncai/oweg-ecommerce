@@ -34,7 +34,7 @@ export async function GET(
       WHERE c.category_id = ?
     `;
 
-    const category = await executeReadQuery<any[]>(categoryQuery, [languageId, id]);
+    const category = await executeReadQuery<Array<Record<string, unknown>>>(categoryQuery, [languageId, id]);
 
     if (!category || category.length === 0) {
       return NextResponse.json(
@@ -64,7 +64,7 @@ export async function GET(
       FROM oc_product_to_category
       WHERE category_id = ?
     `;
-    const countResult = await executeReadQuery<any[]>(countQuery, [id]);
+    const countResult = await executeReadQuery<Array<{ product_count: number }>>(countQuery, [id]);
 
     return NextResponse.json({
       success: true,

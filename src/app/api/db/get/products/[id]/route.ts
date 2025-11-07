@@ -39,7 +39,7 @@ export async function GET(
       LIMIT 1
     `;
 
-    const result = await executeReadQuery<any[]>(query, [languageId, id]);
+    const result = await executeReadQuery<Array<Record<string, unknown>>>(query, [languageId, id]);
 
     if (!result || result.length === 0) {
       return NextResponse.json(

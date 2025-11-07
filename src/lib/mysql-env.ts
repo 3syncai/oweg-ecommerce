@@ -58,9 +58,9 @@ export function getPool(): mysql.Pool {
   return pool;
 }
 
-export async function executeReadQuery<T = any>(
+export async function executeReadQuery<T = unknown>(
   query: string,
-  params: any[] = []
+  params: (string | number | boolean | null)[] = []
 ): Promise<T> {
   const normalizedQuery = query.trim().toUpperCase();
   const writeOperations = [
@@ -141,11 +141,11 @@ export function validatePagination(
 
 export async function getAllTables(): Promise<string[]> {
   const query = 'SHOW TABLES';
-  const rows = await executeReadQuery<any[]>(query);
+  const rows = await executeReadQuery<Array<Record<string, unknown>>>(query);
   return rows.map((row) => Object.values(row)[0] as string);
 }
 
-export async function getTableSchema(tableName: string): Promise<any[]> {
+export async function getTableSchema(tableName: string): Promise<Array<Record<string, unknown>>> {
   const query = `DESCRIBE ${escapeIdentifier(tableName)}`;
   return await executeReadQuery(query);
 }

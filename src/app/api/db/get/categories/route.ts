@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
       LEFT JOIN oc_category_description cd ON c.category_id = cd.category_id AND cd.language_id = ?
     `;
 
-    const params: any[] = [languageId];
+    const params: (string | number)[] = [languageId];
 
     if (parentId !== null && parentId !== undefined) {
       query += ` WHERE c.parent_id = ?`;
@@ -51,14 +51,14 @@ export async function GET(req: NextRequest) {
 
     // Get total count
     let countQuery = `SELECT COUNT(*) as total FROM oc_category`;
-    const countParams: any[] = [];
+    const countParams: (string | number)[] = [];
     
     if (parentId !== null && parentId !== undefined) {
       countQuery += ` WHERE parent_id = ?`;
       countParams.push(parentId);
     }
 
-    const countResult = await executeReadQuery<any[]>(countQuery, countParams);
+    const countResult = await executeReadQuery<Array<{ total: number }>>(countQuery, countParams);
     const total = countResult[0]?.total || 0;
 
     return NextResponse.json({

@@ -49,7 +49,7 @@ export async function GET(
       INNER JOIN oc_product_to_category pc ON p.product_id = pc.product_id
       WHERE pc.category_id = ?
     `;
-    const countResult = await executeReadQuery<any[]>(countQuery, [id]);
+    const countResult = await executeReadQuery<Array<{ total: number }>>(countQuery, [id]);
     const total = countResult[0]?.total || 0;
 
     return NextResponse.json({

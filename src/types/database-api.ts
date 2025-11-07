@@ -51,7 +51,7 @@ export interface Product {
   thumbnail?: string;
   created_at?: string;
   updated_at?: string;
-  [key: string]: any; // Allow additional fields from your database
+  [key: string]: unknown; // Allow additional fields from your database
 }
 
 // ============================================================================
@@ -90,7 +90,7 @@ export interface ProductsListData {
 }
 
 export interface SingleProductData {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface ProductsByCategoryData {
@@ -215,7 +215,7 @@ export function isApiError<T>(
  * Helper function to build query string from parameters
  */
 export function buildQueryString(
-  params: Record<string, any>
+  params: Record<string, unknown>
 ): string {
   const searchParams = new URLSearchParams();
   
@@ -234,7 +234,7 @@ export function buildQueryString(
  */
 export async function fetchApi<T>(
   endpoint: string,
-  params?: Record<string, any>
+  params?: Record<string, unknown>
 ): Promise<ApiResponse<T>> {
   const queryString = params ? buildQueryString(params) : '';
   const response = await fetch(`${endpoint}${queryString}`);

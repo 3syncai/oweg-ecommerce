@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
       LEFT JOIN oc_product_description pd ON p.product_id = pd.product_id AND pd.language_id = ?
     `;
 
-    const params: any[] = [languageId];
+    const params: (string | number)[] = [languageId];
 
     // Build WHERE clause
     const whereClauses: string[] = [];
@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
       FROM oc_product p
       LEFT JOIN oc_product_description pd ON p.product_id = pd.product_id AND pd.language_id = ?
     `;
-    const countParams: any[] = [languageId];
+    const countParams: (string | number)[] = [languageId];
     
     if (whereClauses.length > 0) {
       const countWhere = whereClauses.join(' AND ');
@@ -125,7 +125,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const countResult = await executeReadQuery<any[]>(countQuery, countParams);
+    const countResult = await executeReadQuery<Array<{ total: number }>>(countQuery, countParams);
     const total = countResult[0]?.total || 0;
 
     return NextResponse.json({

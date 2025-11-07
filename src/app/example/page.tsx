@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 
 interface Product {
   product_id: number;
@@ -9,6 +10,9 @@ interface Product {
   quantity: number;
   image: string;
   viewed?: number;
+  model?: string;
+  sku?: string;
+  status?: number;
 }
 
 interface Category {
@@ -221,36 +225,36 @@ export default function ExamplePage() {
           </div>
 
           {/* Render based on data type */}
-          {data.success && activeTab === 'products' && (
-            <ProductsList products={data.data.products} pagination={data.data.pagination} />
+          {data.success && activeTab === 'products' && data.data && (
+            <ProductsList products={(data.data as { products: Product[] }).products} pagination={(data.data as { pagination: { total: number; offset: number; limit: number } }).pagination} />
           )}
 
-          {data.success && activeTab === 'product-single' && (
-            <SingleProduct product={data.data.product} images={data.data.images} categories={data.data.categories} />
+          {data.success && activeTab === 'product-single' && data.data && (
+            <SingleProduct product={(data.data as { product: Product }).product} images={(data.data as { images?: Array<{ image: string }> }).images} categories={(data.data as { categories?: Array<{ category_id: number; category_name: string }> }).categories} />
           )}
 
-          {data.success && (activeTab === 'search' || activeTab === 'category-products' || activeTab === 'featured' || activeTab === 'latest') && (
-            <ProductsList products={data.data.products} pagination={data.data.pagination} />
+          {data.success && (activeTab === 'search' || activeTab === 'category-products' || activeTab === 'featured' || activeTab === 'latest') && data.data && (
+            <ProductsList products={(data.data as { products: Product[] }).products} pagination={(data.data as { pagination: { total: number; offset: number; limit: number } }).pagination} />
           )}
 
-          {data.success && activeTab === 'special' && (
-            <SpecialProducts products={data.data.products} />
+          {data.success && activeTab === 'special' && data.data && (
+            <SpecialProducts products={(data.data as { products: Array<Product & { special_price: string }> }).products} />
           )}
 
-          {data.success && activeTab === 'stats' && (
-            <StatsDisplay stats={data.data} />
+          {data.success && activeTab === 'stats' && data.data && (
+            <StatsDisplay stats={(data.data as { statistics: Stats; topViewed?: Array<{ product_id: number; name: string; price: string; viewed: number }> })} />
           )}
 
-          {data.success && activeTab === 'categories' && (
-            <CategoriesList categories={data.data.categories} />
+          {data.success && activeTab === 'categories' && data.data && (
+            <CategoriesList categories={(data.data as { categories: Category[] }).categories} />
           )}
 
-          {data.success && activeTab === 'category-single' && (
-            <SingleCategory category={data.data} />
+          {data.success && activeTab === 'category-single' && data.data && (
+            <SingleCategory category={(data.data as { category: Category; product_count?: number; subcategories?: Array<{ category_id: number; name: string }> })} />
           )}
 
-          {data.success && activeTab === 'navigation' && (
-            <NavigationTree categories={data.data.categories} />
+          {data.success && activeTab === 'navigation' && data.data && (
+            <NavigationTree categories={(data.data as { categories: Category[] }).categories} />
           )}
 
           {/* Raw JSON */}
@@ -323,20 +327,20 @@ function ProductsList({ products, pagination }: { products: Product[]; paginatio
             backgroundColor: 'white'
           }}>
             {product.image ? (
-              <img 
-                src={getImageUrl(product.image)}
-                alt={product.name}
-                style={{ 
-                  width: '100%', 
-                  height: '200px', 
-                  objectFit: 'cover',
-                  borderRadius: '5px',
-                  marginBottom: '10px'
-                }}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = 'https://www.oweg.in/image/no_image.png';
-                }}
-              />
+              <div style={{ position: 'relative', width: '100%', height: '200px', borderRadius: '5px', marginBottom: '10px' }}>
+                <Image 
+                  src={getImageUrl(product.image)}
+                  alt={product.name}
+                  fill
+                  style={{ 
+                    objectFit: 'cover',
+                    borderRadius: '5px',
+                  }}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://www.oweg.in/image/no_image.png';
+                  }}
+                />
+              </div>
             ) : (
               <div style={{ 
                 width: '100%', 
@@ -414,21 +418,21 @@ function SingleProduct({ product, images, categories }: { product: Product; imag
           <h3 style={{ marginTop: '20px' }}>Images ({images?.length || 0})</h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
             {images?.slice(0, 5).map((img, idx: number) => (
-              <img
-                key={idx}
-                src={getImageUrl(img.image)}
-                alt={`Product image ${idx + 1}`}
-                style={{ 
-                  width: '80px',
-                  height: '80px',
-                  objectFit: 'cover',
-                  borderRadius: '5px',
-                  border: '1px solid #ddd'
-                }}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = 'https://www.oweg.in/image/no_image.png';
-                }}
-              />
+              <div key={idx} style={{ position: 'relative', width: '80px', height: '80px' }}>
+                <Image
+                  src={getImageUrl(img.image)}
+                  alt={`Product image ${idx + 1}`}
+                  fill
+                  style={{ 
+                    objectFit: 'cover',
+                    borderRadius: '5px',
+                    border: '1px solid #ddd'
+                  }}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://www.oweg.in/image/no_image.png';
+                  }}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -474,20 +478,20 @@ function SpecialProducts({ products }: { products: Array<Product & { special_pri
               SALE
             </div>
             {product.image && (
-              <img 
-                src={getImageUrl(product.image)}
-                alt={product.name}
-                style={{ 
-                  width: '100%', 
-                  height: '180px', 
-                  objectFit: 'cover',
-                  borderRadius: '5px',
-                  marginBottom: '10px'
-                }}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = 'https://www.oweg.in/image/no_image.png';
-                }}
-              />
+              <div style={{ position: 'relative', width: '100%', height: '180px', marginBottom: '10px' }}>
+                <Image 
+                  src={getImageUrl(product.image)}
+                  alt={product.name}
+                  fill
+                  style={{ 
+                    objectFit: 'cover',
+                    borderRadius: '5px',
+                  }}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://www.oweg.in/image/no_image.png';
+                  }}
+                />
+              </div>
             )}
             <h4 style={{ margin: '10px 0', fontSize: '14px' }}>{product.name}</h4>
             <p style={{ fontSize: '12px', color: '#999', textDecoration: 'line-through' }}>
@@ -554,7 +558,7 @@ function StatsDisplay({ stats }: { stats: { statistics: Stats; topViewed?: Array
   );
 }
 
-function StatCard({ title, value, color }: { title: string; value: any; color: string }) {
+function StatCard({ title, value, color }: { title: string; value: string | number; color: string }) {
   return (
     <div style={{ 
       backgroundColor: 'white',

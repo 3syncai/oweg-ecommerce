@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { executeReadQuery } from '@/lib/mysql';
 
 export const dynamic = 'force-dynamic';
@@ -72,23 +72,25 @@ export async function GET() {
     `;
     const categoryDistribution = await executeReadQuery(categoryQuery);
 
+    const firstStat = stats[0] || {};
+    
     return NextResponse.json({
       success: true,
       data: {
         statistics: {
-          totalProducts: stats[0]?.totalProducts || 0,
-          activeProducts: stats[0]?.activeProducts || 0,
-          inactiveProducts: stats[0]?.inactiveProducts || 0,
+          totalProducts: Number(firstStat.totalProducts) || 0,
+          activeProducts: Number(firstStat.activeProducts) || 0,
+          inactiveProducts: Number(firstStat.inactiveProducts) || 0,
           pricing: {
-            min: parseFloat(stats[0]?.minPrice || '0'),
-            max: parseFloat(stats[0]?.maxPrice || '0'),
-            average: parseFloat((parseFloat(stats[0]?.avgPrice || '0')).toFixed(2)),
+            min: parseFloat(String(firstStat.minPrice || '0')),
+            max: parseFloat(String(firstStat.maxPrice || '0')),
+            average: parseFloat((parseFloat(String(firstStat.avgPrice || '0'))).toFixed(2)),
           },
           stock: {
-            inStock: stats[0]?.inStockCount || 0,
-            outOfStock: stats[0]?.outOfStockCount || 0,
+            inStock: Number(firstStat.inStockCount) || 0,
+            outOfStock: Number(firstStat.outOfStockCount) || 0,
           },
-          totalViews: stats[0]?.totalViews || 0,
+          totalViews: Number(firstStat.totalViews) || 0,
         },
         topViewed,
         recentProducts,
