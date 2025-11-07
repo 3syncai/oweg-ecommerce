@@ -288,7 +288,7 @@ const Header = () => {
             </div>
 
             {/* Cart */}
-            <div className="flex items-center gap-2 cursor-pointer group">
+            <Link href="/cart" className="flex items-center gap-2 cursor-pointer group">
               <div className="relative" data-browse-root>
                 <ShoppingCart className="w-6 h-6 text-header-text group-hover:text-header-accent transition-colors" />
                 <span className="absolute -top-2 -right-2 bg-header-accent text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
@@ -298,7 +298,7 @@ const Header = () => {
               <span className="hidden lg:block text-sm font-medium text-header-text group-hover:text-header-accent transition-colors">
                 Cart
               </span>
-            </div>
+            </Link>
           </div>
         </div>
       </div>
@@ -478,4 +478,3 @@ const Header = () => {
 };
 
 export default Header;
-
