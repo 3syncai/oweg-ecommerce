@@ -619,7 +619,7 @@ function SingleCategory({ category }: { category: { category: Category; product_
       <p><strong>Category ID:</strong> {category.category.category_id}</p>
       <p><strong>Total Products:</strong> {category.product_count || 0}</p>
       
-      {category.subcategories?.length > 0 && (
+      {category.subcategories && category.subcategories.length > 0 && (
         <>
           <h3 style={{ marginTop: '20px' }}>Subcategories ({category.subcategories.length})</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '10px' }}>

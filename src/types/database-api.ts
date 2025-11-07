@@ -169,6 +169,7 @@ export interface ProductsQueryParams {
   sortBy?: string;
   sortOrder?: 'ASC' | 'DESC';
   table?: string;
+  [key: string]: unknown;
 }
 
 export interface ProductsByCategoryQueryParams {
@@ -189,6 +190,7 @@ export interface ProductSearchQueryParams {
   offset?: number;
   sortBy?: string;
   sortOrder?: 'ASC' | 'DESC';
+  [key: string]: unknown;
 }
 
 // ============================================================================
