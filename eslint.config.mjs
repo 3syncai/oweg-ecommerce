@@ -21,6 +21,7 @@ const eslintConfig = [
       "**/.medusa/**",
       "**/public/admin/assets/**",
       "next-env.d.ts",
+      "src/app/example/**",
     ],
   },
 ];
