@@ -36,7 +36,6 @@ const toStringOrUndefined = (v: unknown): string | undefined =>
 
 const Cart: React.FC = () => {
   const [cartItems, setCartItems] = useState<CartItemUI[]>([]);
-  const [currency, setCurrency] = useState<string>("INR");
   const [couponCode, setCouponCode] = useState<string>("");
   const [mounted, setMounted] = useState<boolean>(false);
   const [removingIds, setRemovingIds] = useState<Record<string, boolean>>({});
@@ -69,7 +68,6 @@ const Cart: React.FC = () => {
         if (!res.ok) {
           // fallback demo items if API not available
           if (!cancelled) {
-            setCurrency("INR");
             setCartItems([
               {
                 id: "demo-1",
@@ -95,12 +93,10 @@ const Cart: React.FC = () => {
         const data = (await res.json()) as ApiCart;
         const cart = (data?.cart ?? data) as ApiCart | undefined;
 
-        const regionCurrency =
-          (cart && (cart.region as ApiCart)?.currency_code) ||
-          (cart && cart.currency_code);
-        if (typeof regionCurrency === "string") {
-          setCurrency(String(regionCurrency).toUpperCase());
-        }
+        // Currency detection (not currently used but kept for future use)
+        // const regionCurrency =
+        //   (cart && (cart.region as ApiCart)?.currency_code) ||
+        //   (cart && cart.currency_code);
 
         const rawItems =
           (cart && ((cart.items as unknown) ?? (cart.line_items as unknown))) ??
@@ -153,9 +149,8 @@ const Cart: React.FC = () => {
         if (!cancelled) {
           setCartItems(mapped);
         }
-      } catch (err) {
+      } catch {
         // ignore and keep demo if set
-        // console.error(err);
       }
     }
 
@@ -276,7 +271,7 @@ const Cart: React.FC = () => {
 
                       <div className="w-20 h-20 flex-shrink-0 rounded overflow-hidden bg-slate-100 flex items-center justify-center shadow-sm">
                         {item.image ? (
-                          <Image src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                          <Image src={item.image} alt={item.name} width={80} height={80} className="w-full h-full object-cover" />
                         ) : (
                           <div className="text-slate-400">No image</div>
                         )}
@@ -346,7 +341,6 @@ const Cart: React.FC = () => {
                   onClick={() => {
                     // demo update
                     // In production, call your API to sync cart.
-                    // eslint-disable-next-line no-alert
                     alert("Cart updated (demo).");
                   }}
                 >
@@ -365,7 +359,6 @@ const Cart: React.FC = () => {
                 <Button
                   className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 transition"
                   onClick={() => {
-                    // eslint-disable-next-line no-alert
                     alert(`Applying coupon: ${couponCode || "(empty)"}`);
                   }}
                 >
@@ -380,7 +373,7 @@ const Cart: React.FC = () => {
                   {recommendedProducts.map((p) => (
                     <div key={p.id} className="border rounded-lg overflow-hidden bg-white hover:shadow-lg transition transform hover:-translate-y-1">
                       <div className="relative aspect-[4/3] bg-slate-50 flex items-center justify-center">
-                        <Image src={p.image} alt={p.name} className="w-full h-full object-cover" />
+                        <Image src={p.image} alt={p.name} width={300} height={225} className="w-full h-full object-cover" />
                         <button
                           title="Add"
                           type="button"
@@ -425,7 +418,6 @@ const Cart: React.FC = () => {
                 <Button
                   className="w-full bg-green-600 hover:bg-green-700 text-white py-4 mt-4 transition"
                   onClick={() => {
-                    // eslint-disable-next-line no-alert
                     alert("Proceed to checkout (demo)");
                   }}
                 >

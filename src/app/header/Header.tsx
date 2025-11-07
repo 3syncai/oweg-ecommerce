@@ -45,6 +45,22 @@ const Header = () => {
   const [suggestions, setSuggestions] = React.useState<{ id: string; name: string; image?: string }[]>([])
   const [showSuggest, setShowSuggest] = React.useState(false)
   
+  // Handle click outside to close dropdowns
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const browseRoot = document.querySelector('[data-browse-root]');
+      if (browseRoot && !browseRoot.contains(target)) {
+        setBrowseOpen(false);
+      }
+      if (!target.closest('.relative.flex')) {
+        setShowSuggest(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+  
 
     React.useEffect(() => {
     let cancelled = false
@@ -464,15 +480,6 @@ const Header = () => {
           }
         }
       `}</style>
-      <script dangerouslySetInnerHTML={{ __html: `
-        document.addEventListener('click', function(e){
-          const dd = document.querySelector('[data-browse-root]');
-          if(!dd) return;
-          if(!dd.contains(e.target)){
-            try { window.__setBrowseOpen && window.__setBrowseOpen(false) } catch {}
-          }
-        });
-      `}} />
     </header>
   );
 };
