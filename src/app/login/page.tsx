@@ -182,9 +182,9 @@ function LoginPageInner() {
     
     try {
       setBusy(true);
-      const fullIdentifier = inputType === "phone" 
-        ? `${countryCode}${identifier}` 
-        : identifier;
+      // const fullIdentifier = inputType === "phone" 
+      //   ? `${countryCode}${identifier}` 
+      //   : identifier;
         
       // await fetch("/api/auth/send-otp", {
       //   method: "POST",
@@ -314,12 +314,11 @@ function LoginPageInner() {
                       onChange={(e) => handleIdentifierChange(e.target.value)}
                       className="w-full rounded-lg border border-slate-200 bg-white py-3.5 pr-12 text-[16px] outline-none focus:ring-2 focus:ring-offset-1 transition"
                       style={{ 
-                        paddingLeft: inputType === "phone" ? "130px" : "16px",
-                        focusRingColor: BRAND_LIGHT 
+                        paddingLeft: inputType === "phone" ? "130px" : "16px"
                       }}
                       onFocus={(e) => {
                         e.currentTarget.style.borderColor = BRAND;
-                        e.currentTarget.style.boxShadow = `0 0 0 3px ${BRAND}20`;
+                        e.currentTarget.style.boxShadow = `0 0 0 3px ${BRAND_LIGHT}40`;
                       }}
                       onBlur={(e) => {
                         e.currentTarget.style.borderColor = "#e2e8f0";
