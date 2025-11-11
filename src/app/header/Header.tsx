@@ -14,21 +14,21 @@ import Link from "next/link";
 import Image from "next/image";
 import React from "react";
 
-const FALLBACK_COLLECTIONS = [
-  "Home Appliances",
-  "Kitchen Appliances",
-  "Computer & Mobile Accessories",
-  "Surveillance & Security",
-  "Clothing",
-  "Bags",
-  "Hardware",
-  "Toys & Games",
-  "Health Care",
-  "Stationery",
-  "Beauty & Personal Care",
-  "Jewellery",
-  "Umbrellas",
-]
+const MENU_COLLECTIONS = [
+  { title: "Home Appliances", handle: "home-appliances" },
+  { title: "Kitchen Appliances", handle: "kitchen-appliances" },
+  { title: "Computer & Mobile Accessories", handle: "computer-&-mobile-accessories" },
+  { title: "Surveillance & Security", handle: "surveillance-&-security" },
+  { title: "Clothing", handle: "clothing" },
+  { title: "Bags", handle: "bags" },
+  { title: "Hardware", handle: "hardware" },
+  { title: "Toys & Games", handle: "toys-&-games" },
+  { title: "Health Care", handle: "health-care" },
+  { title: "Stationery", handle: "stationery" },
+  { title: "Beauty & Personal Care", handle: "beauty-&-personal-care" },
+  { title: "Jewellery", handle: "jewellery" },
+  { title: "Umbrellas", handle: "umbrellas" },
+];
 
 const Header = () => {
   const [collections, setCollections] = React.useState<{ id?: string; title: string; handle?: string; created_at?: string }[]>([])
@@ -70,7 +70,7 @@ const Header = () => {
         if (cancelled) return
         type Col = { id?: string; title?: string; name?: string; handle?: string; created_at?: string }
         type OutCol = { id?: string; title: string; handle?: string; created_at?: string }
-        const cols = (d.collections as Col[] || [])
+        const cols = ((d.collections as Col[]) || [])
           .map<OutCol>((c) => ({ id: c.id, title: (c.title || c.name || '').toString(), handle: c.handle, created_at: c.created_at }))
           .filter((c) => !!c.title)
           .sort((a, b) => {
@@ -81,8 +81,16 @@ const Header = () => {
             if (!ad && bd) return 1
             return String(a.title).localeCompare(String(b.title))
           })
-        if (cols.length) setCollections(cols)
-        else setCollections(FALLBACK_COLLECTIONS.map((t) => ({ title: t })))
+        const allowed = MENU_COLLECTIONS.map((menu) => {
+          const match = cols.find((c) => {
+            const menuHandle = (menu.handle || menu.title).toLowerCase();
+            const handleMatch = c.handle ? c.handle.toLowerCase() === menuHandle : false;
+            const titleMatch = c.title.toLowerCase() === menu.title.toLowerCase();
+            return handleMatch || titleMatch;
+          });
+          return match ? match : { title: menu.title, handle: menu.handle };
+        });
+        setCollections(allowed);
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -190,8 +198,8 @@ const Header = () => {
                           All
                         </button>
                       </div>
-                      {((collections.length ? collections : FALLBACK_COLLECTIONS.map((t) => ({ title: t })) ) as {id?:string; handle?:string; title:string}[]).map((c) => {
-                        const key = c.id || c.handle || c.title
+                      {(collections.length ? collections : MENU_COLLECTIONS.map((m) => ({ id: undefined as undefined, title: m.title, handle: m.handle })) ).map((c) => {
+              const key = c.id || c.handle || c.title
                         const isOpen = expandedCol === key
                         const cats = catsByCollection[key] || []
                         return (
@@ -330,7 +338,7 @@ const Header = () => {
             </button>
 
             {/* Collection Links */}
-            {((collections.length ? collections : FALLBACK_COLLECTIONS.map((t) => ({ title: t }))) as {id?:string; handle?:string; title:string}[]).map((c) => (
+            {(collections.length ? collections : MENU_COLLECTIONS.map((m) => ({ id: undefined as undefined, title: m.title, handle: m.handle })) ).map((c) => (
               <div key={c.title} className="relative group" onMouseEnter={() => ensureCatsForCollection(c)}>
                 <a
                   href={c.handle ? `/collections/${c.handle}` : "#"}

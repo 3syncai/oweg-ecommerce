@@ -24,12 +24,14 @@
   "dependencies": {
     "@medusajs/admin-sdk": "2.11.3",
     "@medusajs/cli": "2.11.3",
+    "@medusajs/file": "^2.11.3",
+    "@medusajs/file-s3": "^2.11.3",
     "@medusajs/framework": "2.11.3",
     "@medusajs/medusa": "2.11.3"
   },
   "devDependencies": {
     "@medusajs/test-utils": "2.11.3",
-    "@swc/core": "1.5.7",
+    "@swc/core": "^1.15.0",
     "@swc/jest": "^0.2.36",
     "@types/jest": "^29.5.13",
     "@types/node": "^20.0.0",

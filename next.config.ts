@@ -29,6 +29,14 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'www.oweg.in',
       },
+      {
+        protocol: 'https',
+        hostname: 'oweg.in',
+      },
+      {
+        protocol: 'https',
+        hostname: 'oweg-product-images.s3.ap-south-1.amazonaws.com',
+      },
     ],
   },
   typescript: {

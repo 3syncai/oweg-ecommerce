@@ -8,6 +8,7 @@ export type MedusaCategory = {
 export type MedusaProduct = {
   id: string
   title: string
+  subtitle?: string
   thumbnail?: string | null
   images?: { url: string }[]
   categories?: Array<{ id: string; handle?: string; name?: string }>
@@ -45,6 +46,98 @@ const SALES_CHANNEL_ID =
   process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID ||
   process.env.MEDUSA_SALES_CHANNEL_ID ||
   ""
+
+const DEFAULT_CURRENCY_CODE =
+  (
+    process.env.NEXT_PUBLIC_MEDUSA_CURRENCY_CODE ||
+    process.env.MEDUSA_CURRENCY_CODE ||
+    process.env.NEXT_PUBLIC_STORE_CURRENCY ||
+    "inr"
+  )
+    .toLowerCase()
+    .trim()
+
+const COMMON_EXPAND = "variants,variants.prices,price"
+
+type ProductFetchOptions = {
+  includeType?: boolean
+}
+
+function createBaseSearchParams(
+  limit: number,
+  extras: Array<[string, string | undefined]> = []
+) {
+  const params = new URLSearchParams()
+  params.set("limit", String(limit))
+  for (const [key, value] of extras) {
+    if (value !== undefined && value !== "") {
+      params.append(key, value)
+    }
+  }
+  return params
+}
+
+function cloneParams(params: URLSearchParams) {
+  return new URLSearchParams(params.toString())
+}
+
+async function fetchStoreProducts(
+  baseParams: URLSearchParams,
+  options?: ProductFetchOptions
+) {
+  const attempts: URLSearchParams[] = []
+
+  // Attempt 1: include expand + currency (if supported by backend)
+  const advanced = cloneParams(baseParams)
+  advanced.set(
+    "expand",
+    options?.includeType ? `${COMMON_EXPAND},type` : COMMON_EXPAND
+  )
+  if (DEFAULT_CURRENCY_CODE) {
+    advanced.set("currency_code", DEFAULT_CURRENCY_CODE)
+  }
+  attempts.push(advanced)
+
+  // Attempt 2: drop currency_code (some setups support expand but not currency)
+  const expandOnly = cloneParams(baseParams)
+  expandOnly.set(
+    "expand",
+    options?.includeType ? `${COMMON_EXPAND},type` : COMMON_EXPAND
+  )
+  attempts.push(expandOnly)
+
+  // Final attempt: bare minimum parameters
+  attempts.push(cloneParams(baseParams))
+
+  let lastStatus: number | undefined
+  let lastResponseBody: unknown
+
+  for (const params of attempts) {
+    const res = await api(`/store/products?${params.toString()}`)
+    lastStatus = res.status
+    if (res.ok) {
+      const data = await res.json()
+      return (data.products || data || []) as MedusaProduct[]
+    }
+
+    // Capture response body for troubleshooting but continue trying fallbacks
+    try {
+      lastResponseBody = await res.json()
+    } catch {
+      lastResponseBody = await res.text()
+    }
+
+    // Try the next attempt for 400/422 style validation errors, otherwise break
+    if (![400, 401, 404, 422].includes(res.status)) {
+      break
+    }
+  }
+
+  throw new Error(
+    `Failed products: ${lastStatus ?? "unknown"}${lastResponseBody ? ` ${JSON.stringify(lastResponseBody)}` : ""
+    }`
+  )
+}
 
 function api(path: string, init?: RequestInit) {
   const base = MEDUSA_URL!.replace(/\/$/, "")
@@ -164,34 +257,30 @@ export async function searchProducts(params: {
   categoryId?: string
   collectionId?: string
 }): Promise<MedusaProduct[]> {
-  const sp = new URLSearchParams()
-  sp.append("q", params.q)
-  sp.append("limit", String(params.limit ?? 10))
-  if (params.categoryId) sp.append("category_id", params.categoryId)
-  if (params.collectionId) sp.append("collection_id", params.collectionId)
-  const res = await api(`/store/products?${sp.toString()}`)
-  if (!res.ok) throw new Error(`Failed search: ${res.status}`)
-  const data = await res.json()
-  return (data.products || data || []) as MedusaProduct[]
+  const baseParams = createBaseSearchParams(params.limit ?? 10, [
+    ["q", params.q],
+    ["category_id", params.categoryId],
+    ["collection_id", params.collectionId],
+  ])
+  return await fetchStoreProducts(baseParams)
 }
 
 export async function fetchProductsByCategoryId(categoryId: string, limit = 20) {
-  const base = `/store/products?limit=${encodeURIComponent(String(limit))}`
   const candidates = [
-    `${base}&category_id[]=${encodeURIComponent(categoryId)}`,
-    `${base}&category_id=${encodeURIComponent(categoryId)}`,
+    createBaseSearchParams(limit, [["category_id[]", categoryId]]),
+    createBaseSearchParams(limit, [["category_id", categoryId]]),
   ]
 
-  let lastStatus: number | undefined
-  for (const url of candidates) {
-    const res = await api(url)
-    lastStatus = res.status
-    if (!res.ok) continue
-    const data = await res.json()
-    const items = (data.products || data || []) as MedusaProduct[]
-    if (Array.isArray(items)) return items
+  let lastError: Error | undefined
+  for (const params of candidates) {
+    try {
+      const items = await fetchStoreProducts(params)
+      if (Array.isArray(items)) return items
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+    }
   }
-  throw new Error(`Failed products: ${lastStatus ?? "unknown"}`)
+  throw lastError ?? new Error("Failed products")
 }
 
 export async function fetchProductsByTag(tagValue: string, limit = 20) {
@@ -200,16 +289,15 @@ export async function fetchProductsByTag(tagValue: string, limit = 20) {
   const wanted = norm(tagValue)
 
   // 1) Try direct tag filters first (some Medusa versions support these)
-  const base = `/store/products?limit=${encodeURIComponent(String(limit))}`
   for (const url of [
-    `${base}&tags[]=${encodeURIComponent(tagValue)}`,
-    `${base}&tag=${encodeURIComponent(tagValue)}`,
+    createBaseSearchParams(limit, [["tags[]", tagValue]]),
+    createBaseSearchParams(limit, [["tag", tagValue]]),
   ]) {
-    const res = await api(url)
-    if (res.ok) {
-      const data = await res.json()
-      const items = (data.products || data || []) as MedusaProduct[]
+    try {
+      const items = await fetchStoreProducts(url)
       if (Array.isArray(items) && items.length) return items
+    } catch {
+      // move to next fallback
     }
   }
 
@@ -222,14 +310,14 @@ export async function fetchProductsByTag(tagValue: string, limit = 20) {
       const match = tagsArr.find((t) => norm(t.value || t.handle || "") === wanted)
       if (match?.id) {
         for (const url of [
-          `${base}&tag_id[]=${encodeURIComponent(match.id)}`,
-          `${base}&tag_id=${encodeURIComponent(match.id)}`,
+          createBaseSearchParams(limit, [["tag_id[]", match.id]]),
+          createBaseSearchParams(limit, [["tag_id", match.id]]),
         ]) {
-          const res = await api(url)
-          if (res.ok) {
-            const data = await res.json()
-            const items = (data.products || data || []) as MedusaProduct[]
+          try {
+            const items = await fetchStoreProducts(url)
             if (Array.isArray(items) && items.length) return items
+          } catch {
+            // continue to next fallback
           }
         }
       }
@@ -237,12 +325,7 @@ export async function fetchProductsByTag(tagValue: string, limit = 20) {
   } catch {}
 
   // 3) Fallback: fetch without expand and return first page (UI will still show products)
-  const res = await api(`/store/products?limit=${encodeURIComponent(String(limit))}`)
-  if (res.ok) {
-    const data = await res.json()
-    return (data.products || data || []) as MedusaProduct[]
-  }
-  throw new Error(`Failed products by tag`)
+  return await fetchStoreProducts(createBaseSearchParams(limit))
 }
 
 export type MedusaProductType = {
@@ -276,14 +359,14 @@ export async function fetchProductsByType(typeValue: string, limit = 20) {
       const match = typesArr.find((t) => matches(t.value || t.handle || ""))
       if (match?.id) {
         for (const url of [
-          `/store/products?limit=${encodeURIComponent(String(limit))}&type_id[]=${encodeURIComponent(match.id)}`,
-          `/store/products?limit=${encodeURIComponent(String(limit))}&type_id=${encodeURIComponent(match.id)}`,
+          createBaseSearchParams(limit, [["type_id[]", match.id]]),
+          createBaseSearchParams(limit, [["type_id", match.id]]),
         ]) {
-          const res = await api(url)
-          if (res.ok) {
-            const data = await res.json()
-            const items = (data.products || data || []) as MedusaProduct[]
+          try {
+            const items = await fetchStoreProducts(url, { includeType: true })
             if (Array.isArray(items) && items.length) return items
+          } catch {
+            // try next candidate or fallback
           }
         }
       }
@@ -292,15 +375,12 @@ export async function fetchProductsByType(typeValue: string, limit = 20) {
 
   // 2) Fallback: expand type and filter client-side (best effort)
   try {
-    const res = await api(
-      `/store/products?limit=${encodeURIComponent(String(Math.max(limit, 50)))}&expand=type`
+    const items = await fetchStoreProducts(
+      createBaseSearchParams(Math.max(limit, 50)),
+      { includeType: true }
     )
-    if (res.ok) {
-      const data = await res.json()
-      const items = (data.products || data || []) as MedusaProduct[]
-      const filtered = items.filter((p) => matches(p.type?.value || p.type?.handle || ""))
-      if (filtered.length) return filtered.slice(0, limit)
-    }
+    const filtered = items.filter((p) => matches(p.type?.value || p.type?.handle || ""))
+    if (filtered.length) return filtered.slice(0, limit)
   } catch {}
 
   // 3) Last fallback: return empty to avoid 500s; route can try category fallback
@@ -312,16 +392,22 @@ export async function hasProductsForCollectionCategory(
   collectionId: string,
   categoryId: string
 ): Promise<boolean> {
-  const base = `/store/products?limit=1`
-  for (const url of [
-    `${base}&collection_id[]=${encodeURIComponent(collectionId)}&category_id[]=${encodeURIComponent(categoryId)}`,
-    `${base}&collection_id=${encodeURIComponent(collectionId)}&category_id=${encodeURIComponent(categoryId)}`,
+  for (const params of [
+    createBaseSearchParams(1, [
+      ["collection_id[]", collectionId],
+      ["category_id[]", categoryId],
+    ]),
+    createBaseSearchParams(1, [
+      ["collection_id", collectionId],
+      ["category_id", categoryId],
+    ]),
   ]) {
-    const res = await api(url)
-    if (!res.ok) continue
-    const data = await res.json()
-    const items = (data.products || data || []) as MedusaProduct[]
-    if (Array.isArray(items) && items.length > 0) return true
+    try {
+      const items = await fetchStoreProducts(params)
+      if (Array.isArray(items) && items.length > 0) return true
+    } catch {
+      // try next combination
+    }
   }
   return false
 }
@@ -340,7 +426,25 @@ export async function fetchCategoriesForCollection(collectionId: string): Promis
   return matches
 }
 
-export function toUiProduct(p: MedusaProduct) {
+export function toUiProduct(
+  p: MedusaProduct,
+  override?: { price?: number; mrp?: number }
+) {
+  // Validate product has required fields
+  if (!p?.id || !p?.title) {
+    console.warn("Incomplete product data:", p)
+    return {
+      id: p?.id || "unknown",
+      name: p?.title || "Unnamed Product",
+      image: p?.thumbnail || p?.images?.[0]?.url || "/oweg_logo.png",
+      price: 0,
+      mrp: 0,
+      discount: 0,
+      limitedDeal: false,
+      variant_id: p?.variants?.[0]?.id,
+    }
+  }
+
   // Try medusa price helpers first
   const calculated = p.price?.calculated_price
   const original = p.price?.original_price
@@ -348,16 +452,18 @@ export function toUiProduct(p: MedusaProduct) {
   // Fallback to first variant price in minor units (e.g., cents/paise)
   const firstAmountMinor = p.variants?.[0]?.prices?.[0]?.amount
   const amountMajor =
-    typeof calculated === "number"
+    override?.price ??
+    (typeof calculated === "number"
       ? calculated
       : typeof firstAmountMinor === "number"
       ? firstAmountMinor / 100
-      : undefined
+      : undefined)
 
   const originalMajor =
-    typeof original === "number" && original > 0
+    override?.mrp ??
+    (typeof original === "number" && original > 0
       ? original
-      : amountMajor
+      : amountMajor)
 
   const discount =
     amountMajor && originalMajor && originalMajor > amountMajor
@@ -371,8 +477,8 @@ export function toUiProduct(p: MedusaProduct) {
     id: p.id,
     name: p.title,
     image,
-    price: amountMajor || 0,
-    mrp: originalMajor || amountMajor || 0,
+    price: amountMajor ?? 0,
+    mrp: originalMajor ?? amountMajor ?? 0,
     discount,
     limitedDeal: discount >= 20,
     variant_id: p.variants?.[0]?.id,
