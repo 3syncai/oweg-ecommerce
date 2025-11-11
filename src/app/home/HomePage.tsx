@@ -114,7 +114,7 @@ function ProductCarousel({ title, products }: { title: string; products: UIProdu
       </div>
       <div
         ref={scrollRef}
-        className="flex gap-4 overflow-x-auto scrollbar-hidden pb-4 -mx-4 px-4 scroll-smooth"
+        className="flex gap-4 overflow-x-auto scrollbar-hidden pb-4 scroll-smooth snap-x snap-mandatory"
       >
         {products.map((product) => (
           <ProductCard key={product.id} product={product} />

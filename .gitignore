@@ -62,3 +62,15 @@ next-env.d.ts
 .idea/
 Thumbs.db
 CON
+
+# Local scripts and sensitive folders (do not commit)
+oc-api/
+oc-api/**
+
+# Ensure nested node_modules are ignored
+node_modules/
+**/node_modules/
+
+# my-medusa-store local secrets and deps
+my-medusa-store/.env
+my-medusa-store/node_modules/
