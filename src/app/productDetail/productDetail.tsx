@@ -1,8 +1,8 @@
-'use client'
+"use client";
 
-import React, { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
-import Image from 'next/image'
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import Link from "next/link";
+import Image from "next/image";
 import {
   Bookmark,
   Check,
@@ -17,328 +17,499 @@ import {
   Star,
   Truck,
   Wallet,
-} from 'lucide-react'
-import type { DetailedProduct as DetailedProductType } from '@/lib/medusa'
+  Edit2,
+  X,
+  MapPin,
+} from "lucide-react";
+import type { DetailedProduct as DetailedProductType } from "@/lib/medusa";
+import {
+  getSavedLocation,
+  saveLocation,
+  isValidPincode,
+  fetchLocationByPincode,
+  type LocationData,
+} from "@/app/header/locationUtils";
 
 type ProductDetailProps = {
-  productId: string
-}
+  productId: string;
+};
 
 type RelatedProduct = {
-  id: string | number
-  name: string
-  image: string
-  price: number
-  mrp: number
-  discount: number
-  handle?: string
-  variant_id?: string
-}
+  id: string | number;
+  name: string;
+  image: string;
+  price: number;
+  mrp: number;
+  discount: number;
+  handle?: string;
+  variant_id?: string;
+};
 
-const FALLBACK_IMAGE = '/oweg_logo.png'
-const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })
+const FALLBACK_IMAGE = "/oweg_logo.png";
+const inr = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+});
 const DESCRIPTION_TABS = [
-  { id: 'description', label: 'Description' },
-  { id: 'reviews', label: 'Reviews' },
-  { id: 'compare', label: 'Compare' },
-] as const
-type DescriptionTab = (typeof DESCRIPTION_TABS)[number]['id']
-type PinStatus = 'idle' | 'checking' | 'available' | 'unavailable'
+  { id: "description", label: "Description" },
+  { id: "reviews", label: "Reviews" },
+  { id: "compare", label: "Compare" },
+] as const;
+type DescriptionTab = (typeof DESCRIPTION_TABS)[number]["id"];
+type PinStatus = "idle" | "checking" | "available" | "unavailable";
 
 export default function ProductDetailPage({ productId }: ProductDetailProps) {
-  const [product, setProduct] = useState<DetailedProductType | null>(null)
-  const [related, setRelated] = useState<RelatedProduct[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [selectedImage, setSelectedImage] = useState(0)
-  const [quantity, setQuantity] = useState(1)
-  const [loadingRelated, setLoadingRelated] = useState(false)
-  const [activeTab, setActiveTab] = useState<DescriptionTab>('description')
-  const [pinCode, setPinCode] = useState('')
-  const [pinStatus, setPinStatus] = useState<PinStatus>('idle')
-  const [pinMessage, setPinMessage] = useState('')
-  const categoryId = product?.primaryCategoryId
-  const currentProductId = product?.id
+  const [product, setProduct] = useState<DetailedProductType | null>(null);
+  const [related, setRelated] = useState<RelatedProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState(0);
+  const [quantity, setQuantity] = useState(1);
+  const [loadingRelated, setLoadingRelated] = useState(false);
+  const [activeTab, setActiveTab] = useState<DescriptionTab>("description");
+  const [pinCode, setPinCode] = useState("");
+  const [pinStatus, setPinStatus] = useState<PinStatus>("idle");
+  const [pinMessage, setPinMessage] = useState("");
+  const [isEditingPin, setIsEditingPin] = useState(false);
+  const [savedLocation, setSavedLocation] = useState<LocationData | null>(null);
+  const categoryId = product?.primaryCategoryId;
+  const currentProductId = product?.id;
+
+  // Load saved location on mount
+  useEffect(() => {
+    const saved = getSavedLocation();
+    if (saved && saved.pincode) {
+      setSavedLocation(saved);
+      setPinCode(saved.pincode);
+      setIsEditingPin(false);
+      // Auto-check delivery when pincode is loaded
+      checkDeliveryAvailability(saved.pincode);
+    }
+  }, []);
+
+  // Function to check delivery availability
+  const checkDeliveryAvailability = (pincodeToCheck: string) => {
+    if (!pincodeToCheck || !isValidPincode(pincodeToCheck)) {
+      setPinStatus("idle");
+      setPinMessage("");
+      return;
+    }
+
+    setPinStatus("checking");
+    setPinMessage("");
+
+    const deadline = Date.now() + 3 * 24 * 60 * 60 * 1000;
+    const eta = new Intl.DateTimeFormat("en-IN", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    }).format(new Date(deadline));
+
+    setTimeout(() => {
+      const available = !pincodeToCheck.trim().startsWith("9");
+      setPinStatus(available ? "available" : "unavailable");
+      setPinMessage(
+        available
+          ? `FREE delivery available. Expected by ${eta}.`
+          : "Delivery is currently unavailable for this PIN code."
+      );
+    }, 600);
+  };
 
   useEffect(() => {
-    let cancelled = false
+    let cancelled = false;
     async function loadProduct() {
-      if (!productId) return
-      setLoading(true)
-      setError(null)
-      setSelectedImage(0)
-      setQuantity(1)
+      if (!productId) return;
+      setLoading(true);
+      setError(null);
+      setSelectedImage(0);
+      setQuantity(1);
       try {
-        const res = await fetch(`/api/medusa/products/${encodeURIComponent(productId)}`, {
-          cache: 'no-store',
-        })
+        const res = await fetch(
+          `/api/medusa/products/${encodeURIComponent(productId)}`,
+          {
+            cache: "no-store",
+          }
+        );
         if (!res.ok) {
-          throw new Error(res.status === 404 ? 'Product not found' : 'Unable to load product')
+          throw new Error(
+            res.status === 404 ? "Product not found" : "Unable to load product"
+          );
         }
-        const data = await res.json()
+        const data = await res.json();
         if (!cancelled) {
-          setProduct(data.product as DetailedProductType)
+          setProduct(data.product as DetailedProductType);
         }
       } catch (err) {
         if (!cancelled) {
-          setProduct(null)
-          setError(err instanceof Error ? err.message : 'Unable to load product')
+          setProduct(null);
+          setError(
+            err instanceof Error ? err.message : "Unable to load product"
+          );
         }
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) setLoading(false);
       }
     }
-    loadProduct()
+    loadProduct();
     return () => {
-      cancelled = true
-    }
-  }, [productId])
+      cancelled = true;
+    };
+  }, [productId]);
 
   useEffect(() => {
-    const id = categoryId
+    const id = categoryId;
     if (!id) {
-      setRelated([])
-      return
+      setRelated([]);
+      return;
     }
-    const safeCategoryId: string = id
-    let cancelled = false
+    const safeCategoryId: string = id;
+    let cancelled = false;
     async function loadRelated() {
-      setLoadingRelated(true)
+      setLoadingRelated(true);
       try {
-        const res = await fetch(`/api/medusa/products?categoryId=${encodeURIComponent(safeCategoryId)}&limit=10`, {
-          cache: 'no-store',
-        })
-        if (!res.ok) return
-        const data = await res.json()
+        const res = await fetch(
+          `/api/medusa/products?categoryId=${encodeURIComponent(
+            safeCategoryId
+          )}&limit=10`,
+          {
+            cache: "no-store",
+          }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
         const list: RelatedProduct[] = (data.products || [])
           .filter((p: RelatedProduct) => p.id !== currentProductId)
-          .map((p: RelatedProduct) => p)
-        if (!cancelled) setRelated(list)
+          .map((p: RelatedProduct) => p);
+        if (!cancelled) setRelated(list);
       } catch {
-        if (!cancelled) setRelated([])
+        if (!cancelled) setRelated([]);
       } finally {
-        if (!cancelled) setLoadingRelated(false)
+        if (!cancelled) setLoadingRelated(false);
       }
     }
-    loadRelated()
+    loadRelated();
     return () => {
-      cancelled = true
-    }
-  }, [categoryId, currentProductId])
+      cancelled = true;
+    };
+  }, [categoryId, currentProductId]);
 
   useEffect(() => {
-    setActiveTab('description')
-    setPinStatus('idle')
-    setPinMessage('')
-    setPinCode('')
-  }, [productId])
-
-  const getMetaValue = (key: string) => {
-    const meta = product?.metadata as Record<string, unknown> | null | undefined
-    if (!meta) return undefined
-    return meta[key]
-  }
-
-  const getMetaString = (key: string) => {
-    const value = getMetaValue(key)
-    return typeof value === 'string' ? value : undefined
-  }
-
-  const getMetaNumber = (key: string) => {
-    const value = getMetaValue(key)
-    if (typeof value === 'number') return value
-    if (typeof value === 'string') {
-      const parsed = Number(value)
-      return Number.isFinite(parsed) ? parsed : undefined
+    setActiveTab("description");
+    // Don't reset pin status/code when product changes if we have saved location
+    if (!savedLocation) {
+      setPinStatus("idle");
+      setPinMessage("");
+      setPinCode("");
+      setIsEditingPin(false);
     }
-    return undefined
-  }
+  }, [productId, savedLocation]);
+
+  const getMetaValue = useCallback(
+    (key: string) => {
+      const meta = product?.metadata as
+        | Record<string, unknown>
+        | null
+        | undefined;
+      if (!meta) return undefined;
+      return meta[key];
+    },
+    [product]
+  );
+
+  const getMetaString = useCallback(
+    (key: string) => {
+      const value = getMetaValue(key);
+      return typeof value === "string" ? value : undefined;
+    },
+    [getMetaValue]
+  );
+
+  const getMetaNumber = useCallback(
+    (key: string) => {
+      const value = getMetaValue(key);
+      if (typeof value === "number") return value;
+      if (typeof value === "string") {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : undefined;
+      }
+      return undefined;
+    },
+    [getMetaValue]
+  );
 
   const galleryImages = useMemo(() => {
     if (product?.images?.length) {
-      return product.images
+      return product.images;
     }
-    return [FALLBACK_IMAGE]
-  }, [product])
+    return [FALLBACK_IMAGE];
+  }, [product]);
 
-  const galleryKey = useMemo(() => galleryImages.join('|'), [galleryImages])
+  const galleryKey = useMemo(() => galleryImages.join("|"), [galleryImages]);
 
   useEffect(() => {
-    setSelectedImage(0)
-  }, [galleryKey])
+    setSelectedImage(0);
+  }, [galleryKey]);
 
   const highlights = useMemo(() => {
-    if (product?.highlights?.length) return product.highlights
-    if (product?.tags?.length) return product.tags
-    if (product?.categories?.length) return product.categories.map((c) => c.title).filter(Boolean)
-    return []
-  }, [product])
+    if (product?.highlights?.length) return product.highlights;
+    if (product?.tags?.length) return product.tags;
+    if (product?.categories?.length)
+      return product.categories.map((c) => c.title).filter(Boolean);
+    return [];
+  }, [product]);
 
   const brandName = useMemo(() => {
-    const fromMeta = getMetaString('brand')
+    const fromMeta = getMetaString("brand");
     return (
       fromMeta ||
       product?.collection?.title ||
       product?.categories?.[0]?.title ||
-      'OWEG Assured'
-    )
-  }, [product])
+      "OWEG Assured"
+    );
+  }, [product, getMetaString]);
 
   const ratingValue = useMemo(() => {
-    const metaRating = getMetaNumber('rating')
+    const metaRating = getMetaNumber("rating");
     if (metaRating && Number.isFinite(metaRating)) {
-      return Math.min(5, Math.max(0, Number(metaRating)))
+      return Math.min(5, Math.max(0, Number(metaRating)));
     }
-    return 4.8
-  }, [product])
+    return 4.8;
+  }, [getMetaNumber]);
 
   const reviewCount = useMemo(() => {
-    const value = getMetaNumber('reviews')
-    return Number.isFinite(value) && value ? value : 120
-  }, [product])
+    const value = getMetaNumber("reviews");
+    return Number.isFinite(value) && value ? value : 120;
+  }, [getMetaNumber]);
 
   const viewCount = useMemo(() => {
-    const value = getMetaNumber('views')
-    return Number.isFinite(value) && value ? value : 7000
-  }, [product])
+    const value = getMetaNumber("views");
+    return Number.isFinite(value) && value ? value : 7000;
+  }, [getMetaNumber]);
 
   const slugify = (value: string) =>
     value
       .toLowerCase()
       .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)+/g, '')
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)+/g, "");
 
   const breadcrumbItems = useMemo(() => {
-    const items: Array<{ label: string; href?: string }> = [{ label: 'Home', href: '/' }]
-    const categoryTrail: Array<{ label: string; href?: string }> = []
-    const placeholders = new Set(['category', 'categories', 'uncategorized', 'default'])
-    const seenLabels = new Set<string>()
+    const items: Array<{ label: string; href?: string }> = [
+      { label: "Home", href: "/" },
+    ];
+    const categoryTrail: Array<{ label: string; href?: string }> = [];
+    const placeholders = new Set([
+      "category",
+      "categories",
+      "uncategorized",
+      "default",
+    ]);
+    const seenLabels = new Set<string>();
 
     product?.categories?.forEach((cat) => {
-      const raw = (cat.title || cat.handle || '').replace(/[-_]+/g, ' ').trim()
-      if (!raw) return
-      const norm = raw.toLowerCase()
-      if (placeholders.has(norm)) return
-      if (seenLabels.has(norm)) return
-      seenLabels.add(norm)
-      const fallbackHref = slugify(raw)
+      const raw = (cat.title || cat.handle || "").replace(/[-_]+/g, " ").trim();
+      if (!raw) return;
+      const norm = raw.toLowerCase();
+      if (placeholders.has(norm)) return;
+      if (seenLabels.has(norm)) return;
+      seenLabels.add(norm);
+      const fallbackHref = slugify(raw);
       categoryTrail.push({
         label: raw,
-        href: cat.handle ? `/category/${cat.handle}` : fallbackHref ? `/category/${fallbackHref}` : undefined,
-      })
-    })
+        href: cat.handle
+          ? `/category/${cat.handle}`
+          : fallbackHref
+          ? `/category/${fallbackHref}`
+          : undefined,
+      });
+    });
 
     if (!categoryTrail.length && product?.type) {
-      categoryTrail.push({ label: product.type })
+      categoryTrail.push({ label: product.type });
     }
 
-    items.push(...categoryTrail.slice(0, 2))
+    items.push(...categoryTrail.slice(0, 2));
 
     if (product?.title) {
-      items.push({ label: product.title })
+      items.push({ label: product.title });
     }
-    return items
-  }, [product])
+    return items;
+  }, [product]);
 
   const breadcrumbPillClass =
-    'inline-flex items-center rounded-full border border-green-100 bg-[#eaf6e6] px-3 py-1 text-sm font-medium text-green-700 transition-colors hover:bg-green-100'
+    "inline-flex items-center rounded-full border border-green-100 bg-[#eaf6e6] px-3 py-1 text-sm font-medium text-green-700 transition-colors hover:bg-green-100";
 
   const detailPairs = useMemo(() => {
-    if (!product) return []
-    const entries: Array<{ label: string; value: string }> = []
-    if (product.type) entries.push({ label: 'Type', value: product.type })
+    if (!product) return [];
+    const entries: Array<{ label: string; value: string }> = [];
+    if (product.type) entries.push({ label: "Type", value: product.type });
     if (product.collection?.title) {
-      entries.push({ label: 'Collection', value: product.collection.title })
+      entries.push({ label: "Collection", value: product.collection.title });
     }
     if (product.categories?.length) {
       entries.push({
-        label: 'Category',
-        value: product.categories.map((c) => c.title).filter(Boolean).join(', '),
-      })
+        label: "Category",
+        value: product.categories
+          .map((c) => c.title)
+          .filter(Boolean)
+          .join(", "),
+      });
     }
     if (product.tags?.length) {
-      entries.push({ label: 'Tags', value: product.tags.join(', ') })
+      entries.push({ label: "Tags", value: product.tags.join(", ") });
     }
-    return entries
-  }, [product])
+    return entries;
+  }, [product]);
 
-  const hasStock = true
+  const hasStock = true;
 
   const handleQuantityChange = (delta: number) => {
-    setQuantity((prev) => Math.max(1, prev + delta))
-  }
+    setQuantity((prev) => Math.max(1, prev + delta));
+  };
 
   const handleAddToCart = async () => {
     if (!product?.variant_id) {
-      alert('This product is not purchasable yet')
-      return
+      alert("This product is not purchasable yet");
+      return;
     }
     try {
-      await fetch('/api/medusa/cart', { method: 'POST' })
-      const res = await fetch('/api/medusa/cart/line-items', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
+      await fetch("/api/medusa/cart", { method: "POST" });
+      const res = await fetch("/api/medusa/cart/line-items", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ variant_id: product.variant_id, quantity }),
-      })
-      if (!res.ok) throw new Error('Add to cart failed')
-      alert('Added to cart')
+      });
+      if (!res.ok) throw new Error("Add to cart failed");
+      alert("Added to cart");
     } catch (err) {
-      console.error(err)
-      alert('Unable to add to cart right now.')
+      console.error(err);
+      alert("Unable to add to cart right now.");
     }
-  }
+  };
 
   const handleBuyNow = () => {
-    alert('Buy Now will redirect to checkout soon.')
-  }
+    alert("Buy Now will redirect to checkout soon.");
+  };
 
   const shareProduct = async () => {
-    if (typeof navigator !== 'undefined' && navigator.share && product) {
+    if (typeof navigator !== "undefined" && navigator.share && product) {
       try {
         await navigator.share({
           title: product.title,
-          text: product.subtitle || product.description || '',
+          text: product.subtitle || product.description || "",
           url: window.location.href,
-        })
-        return
+        });
+        return;
       } catch {
         // fallthrough
       }
     }
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      await navigator.clipboard.writeText(window.location.href)
-      alert('Product link copied!')
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(window.location.href);
+      alert("Product link copied!");
     }
-  }
+  };
 
-  const handlePinCheck = () => {
-    if (!pinCode || pinCode.trim().length < 6) {
-      setPinMessage('Please enter a valid 6 digit PIN code')
-      setPinStatus('unavailable')
-      return
+  const handlePinCheck = async () => {
+    if (!pinCode || !isValidPincode(pinCode)) {
+      setPinMessage("Please enter a valid 6 digit PIN code");
+      setPinStatus("unavailable");
+      return;
     }
-    setPinStatus('checking')
-    setPinMessage('')
-    const deadline = Date.now() + 3 * 24 * 60 * 60 * 1000
-    const eta = new Intl.DateTimeFormat('en-IN', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-    }).format(new Date(deadline))
 
-    setTimeout(() => {
-      const available = !pinCode.trim().startsWith('9')
-      setPinStatus(available ? 'available' : 'unavailable')
-      setPinMessage(
-        available
-          ? `FREE delivery available. Expected by ${eta}.`
-          : 'Delivery is currently unavailable for this PIN code.'
-      )
-    }, 600)
-  }
+    const cleanPincode = pinCode.replace(/\D/g, "");
+    setPinStatus("checking");
+    setPinMessage("");
 
-  const descriptionHasHtml = Boolean(product?.description && /<\/?[a-z][\s\S]*>/i.test(product.description))
+    try {
+      // Fetch location details from pincode
+      const locationData = await fetchLocationByPincode(cleanPincode);
+
+      if (locationData) {
+        // Update saved location with fetched city/state
+        const updatedLocation: LocationData = {
+          city: locationData.city,
+          state: locationData.state,
+          pincode: locationData.pincode,
+        };
+
+        saveLocation(updatedLocation);
+        setSavedLocation(updatedLocation);
+
+        // Dispatch custom event to notify header
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("locationUpdated", { detail: updatedLocation })
+          );
+        }
+
+        // Check delivery availability
+        checkDeliveryAvailability(cleanPincode);
+        setIsEditingPin(false);
+      } else {
+        // If location fetch fails, still save pincode but keep existing city/state
+        const newLocation: LocationData = savedLocation
+          ? { ...savedLocation, pincode: cleanPincode }
+          : { city: "", state: "", pincode: cleanPincode };
+
+        saveLocation(newLocation);
+        setSavedLocation(newLocation);
+
+        // Dispatch custom event
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("locationUpdated", { detail: newLocation })
+          );
+        }
+
+        checkDeliveryAvailability(cleanPincode);
+        setIsEditingPin(false);
+      }
+    } catch (err) {
+      console.error("Failed to fetch location:", err);
+      // Still save pincode even if location fetch fails
+      const newLocation: LocationData = savedLocation
+        ? { ...savedLocation, pincode: cleanPincode }
+        : { city: "", state: "", pincode: cleanPincode };
+
+      saveLocation(newLocation);
+      setSavedLocation(newLocation);
+
+      // Dispatch custom event
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("locationUpdated", { detail: newLocation })
+        );
+      }
+
+      checkDeliveryAvailability(cleanPincode);
+      setIsEditingPin(false);
+    }
+  };
+
+  const handleEditPin = () => {
+    setIsEditingPin(true);
+    setPinStatus("idle");
+    setPinMessage("");
+  };
+
+  const handleCancelEdit = () => {
+    if (savedLocation) {
+      setPinCode(savedLocation.pincode);
+      setIsEditingPin(false);
+      checkDeliveryAvailability(savedLocation.pincode);
+    } else {
+      setPinCode("");
+      setIsEditingPin(false);
+      setPinStatus("idle");
+      setPinMessage("");
+    }
+  };
+
+  const descriptionHasHtml = Boolean(
+    product?.description && /<\/?[a-z][\s\S]*>/i.test(product.description)
+  );
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f3f8f3] font-sans">
@@ -355,7 +526,9 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
             <React.Fragment key={`${item.label}-${idx}`}>
               {idx > 0 && <ChevronRight className="w-4 h-4 text-green-500" />}
               {idx === breadcrumbItems.length - 1 ? (
-                <span className="text-slate-900 font-semibold">{item.label}</span>
+                <span className="text-slate-900 font-semibold">
+                  {item.label}
+                </span>
               ) : item.href ? (
                 <Link href={item.href} className={breadcrumbPillClass}>
                   {item.label}
@@ -381,9 +554,14 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
           </div>
         ) : error ? (
           <div className="bg-white border border-red-100 text-red-600 rounded-2xl p-8 text-center">
-            <p className="text-lg font-semibold mb-2">We couldn&apos;t load this product</p>
+            <p className="text-lg font-semibold mb-2">
+              We couldn&apos;t load this product
+            </p>
             <p className="text-sm text-red-500 mb-4">{error}</p>
-            <Link href="/" className="text-green-600 font-medium hover:underline">
+            <Link
+              href="/"
+              className="text-green-600 font-medium hover:underline"
+            >
               Continue shopping
             </Link>
           </div>
@@ -405,7 +583,9 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                       <button
                         type="button"
                         onClick={() =>
-                          setSelectedImage((prev) => (prev === 0 ? galleryImages.length - 1 : prev - 1))
+                          setSelectedImage((prev) =>
+                            prev === 0 ? galleryImages.length - 1 : prev - 1
+                          )
                         }
                         className="w-10 h-10 rounded-full bg-white/90 text-slate-700 flex items-center justify-center shadow border border-slate-100"
                       >
@@ -414,7 +594,9 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                       <button
                         type="button"
                         onClick={() =>
-                          setSelectedImage((prev) => (prev === galleryImages.length - 1 ? 0 : prev + 1))
+                          setSelectedImage((prev) =>
+                            prev === galleryImages.length - 1 ? 0 : prev + 1
+                          )
                         }
                         className="w-10 h-10 rounded-full bg-white/90 text-slate-700 flex items-center justify-center shadow border border-slate-100"
                       >
@@ -423,7 +605,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                     </div>
                   )}
                 </div>
-                 <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-4 gap-3">
                   {galleryImages.map((img, idx) => (
                     <button
                       key={img + idx}
@@ -432,7 +614,9 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                       onMouseEnter={() => setSelectedImage(idx)}
                       onFocus={() => setSelectedImage(idx)}
                       className={`aspect-square rounded-2xl border ${
-                        selectedImage === idx ? 'border-green-500 ring-2 ring-green-100' : 'border-slate-200'
+                        selectedImage === idx
+                          ? "border-green-500 ring-2 ring-green-100"
+                          : "border-slate-200"
                       } overflow-hidden bg-white`}
                     >
                       <Image
@@ -449,36 +633,61 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
 
               <div className="bg-white rounded-[32px] border border-[var(--detail-border)] p-6 lg:p-8 shadow-sm space-y-5">
                 <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-wide text-green-700">
-                  <span className="bg-green-50 text-green-700 px-3 py-1 rounded-full">OWEG Exclusive</span>
+                  <span className="bg-green-50 text-green-700 px-3 py-1 rounded-full">
+                    OWEG Exclusive
+                  </span>
                   <span className="text-slate-400">|</span>
                   <span>{brandName}</span>
                 </div>
-                <h1 className="text-2xl lg:text-3xl font-semibold text-slate-900">{product.title}</h1>
-                {product.subtitle && <p className="text-slate-500">{product.subtitle}</p>}
+                <h1 className="text-2xl lg:text-3xl font-semibold text-slate-900">
+                  {product.title}
+                </h1>
+                {product.subtitle && (
+                  <p className="text-slate-500">{product.subtitle}</p>
+                )}
 
                 <div className="flex flex-wrap items-end gap-3">
-                  <div className="text-3xl font-bold text-slate-900">{inr.format(product.price)}</div>
-                  <div className="text-lg text-slate-400 line-through">{inr.format(product.mrp)}</div>
+                  <div className="text-3xl font-bold text-slate-900">
+                    {inr.format(product.price)}
+                  </div>
+                  <div className="text-lg text-slate-400 line-through">
+                    {inr.format(product.mrp)}
+                  </div>
                   {product.discount > 0 && (
                     <span className="text-sm font-semibold text-green-600 bg-green-100/60 px-3 py-1 rounded-full">
                       {product.discount}% OFF
                     </span>
                   )}
                 </div>
-                <div className="text-sm text-slate-500">Inclusive of all taxes | Prices shown in {product.currency}</div>
+                <div className="text-sm text-slate-500">
+                  Inclusive of all taxes | Prices shown in {product.currency}
+                </div>
 
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600">
                   <div className="flex items-center gap-1">
                     <Star className="w-4 h-4 text-yellow-500" />
-                    <span className="font-semibold text-slate-900">{ratingValue.toFixed(1)}</span>
-                    <span className="text-slate-400">({reviewCount}+ ratings)</span>
+                    <span className="font-semibold text-slate-900">
+                      {ratingValue.toFixed(1)}
+                    </span>
+                    <span className="text-slate-400">
+                      ({reviewCount}+ ratings)
+                    </span>
                   </div>
                   <div className="flex items-center gap-1 text-slate-600">
-                    <Eye className="w-4 h-4 text-slate-500" aria-hidden="true" />
-                    <span>{new Intl.NumberFormat('en-IN').format(viewCount)}+ views</span>
+                    <Eye
+                      className="w-4 h-4 text-slate-500"
+                      aria-hidden="true"
+                    />
+                    <span>
+                      {new Intl.NumberFormat("en-IN").format(viewCount)}+ views
+                    </span>
                   </div>
-                  <div className={`text-sm font-medium ${hasStock ? 'text-green-600' : 'text-red-500'}`}>
-                    {hasStock ? 'In stock' : 'Limited availability'}
+                  <div
+                    className={`text-sm font-medium ${
+                      hasStock ? "text-green-600" : "text-red-500"
+                    }`}
+                  >
+                    {hasStock ? "In stock" : "Limited availability"}
                   </div>
                 </div>
 
@@ -492,7 +701,9 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                     >
                       <Minus className="w-4 h-4" />
                     </button>
-                    <div className="px-4 text-base font-semibold text-slate-900">{quantity}</div>
+                    <div className="px-4 text-base font-semibold text-slate-900">
+                      {quantity}
+                    </div>
                     <button
                       type="button"
                       onClick={() => handleQuantityChange(1)}
@@ -544,38 +755,119 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                   <div className="flex items-start gap-3">
                     <Truck className="w-6 h-6 text-green-600" />
                     <div className="flex-1">
-                      <p className="font-semibold text-slate-900">Free Delivery</p>
-                      <p className="text-sm text-slate-500">Enter your postal code for delivery availability</p>
+                      <p className="font-semibold text-slate-900">
+                        Free Delivery
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        Enter your postal code for delivery availability
+                      </p>
                       <div className="mt-3 flex flex-col gap-2">
-                        <div className="flex gap-2">
-                          <input
-                            value={pinCode}
-                            onChange={(event) => {
-                              setPinCode(event.target.value)
-                              setPinStatus('idle')
-                              setPinMessage('')
-                            }}
-                            type="text"
-                            maxLength={6}
-                            placeholder="Enter PIN code"
-                            className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
-                          />
-                          <button
-                            type="button"
-                            onClick={handlePinCheck}
-                            className="rounded-full bg-green-600 px-4 py-2 text-white text-sm font-semibold"
-                          >
-                            Check
-                          </button>
-                        </div>
-                        {pinStatus !== 'idle' && (
-                          <p
-                            className={`text-sm ${
-                              pinStatus === 'available' ? 'text-green-600' : pinStatus === 'checking' ? 'text-slate-500' : 'text-red-500'
-                            }`}
-                          >
-                            {pinStatus === 'checking' ? 'Checking serviceability...' : pinMessage}
-                          </p>
+                        {/* Display mode - when pincode is set and not editing */}
+                        {savedLocation && !isEditingPin && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between bg-white rounded-full border border-green-200 px-4 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <MapPin className="w-4 h-4 text-green-600" />
+                                <div>
+                                  <p className="text-sm font-medium text-slate-900">
+                                    {savedLocation.city
+                                      ? `${savedLocation.city}, ${savedLocation.state}`
+                                      : `PIN: ${savedLocation.pincode}`}
+                                  </p>
+                                  {savedLocation.pincode && (
+                                    <p className="text-xs text-slate-500">
+                                      PIN: {savedLocation.pincode}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleEditPin}
+                                className="flex items-center gap-1 text-sm text-green-600 hover:text-green-700 font-medium px-2 py-1 hover:bg-green-50 rounded-full transition"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                                Edit
+                              </button>
+                            </div>
+                            {pinStatus === "available" && (
+                              <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 rounded-full px-4 py-2">
+                                <Check className="w-4 h-4" />
+                                <span className="font-medium">
+                                  {pinMessage || "Available for delivery"}
+                                </span>
+                              </div>
+                            )}
+                            {pinStatus === "unavailable" && (
+                              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-full px-4 py-2">
+                                <X className="w-4 h-4" />
+                                <span>
+                                  {pinMessage ||
+                                    "Delivery unavailable for this PIN code"}
+                                </span>
+                              </div>
+                            )}
+                            {pinStatus === "checking" && (
+                              <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 rounded-full px-4 py-2">
+                                <span>Checking serviceability...</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Edit mode - when user clicks Edit or no saved location */}
+                        {(!savedLocation || isEditingPin) && (
+                          <div className="space-y-2">
+                            <div className="flex gap-2">
+                              <input
+                                value={pinCode}
+                                onChange={(event) => {
+                                  const value = event.target.value
+                                    .replace(/\D/g, "")
+                                    .slice(0, 6);
+                                  setPinCode(value);
+                                  setPinStatus("idle");
+                                  setPinMessage("");
+                                }}
+                                type="text"
+                                maxLength={6}
+                                placeholder="Enter PIN code"
+                                className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+                              />
+                              <button
+                                type="button"
+                                onClick={handlePinCheck}
+                                disabled={pinStatus === "checking"}
+                                className="rounded-full bg-green-600 px-4 py-2 text-white text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {pinStatus === "checking" ? "..." : "Check"}
+                              </button>
+                              {isEditingPin && (
+                                <button
+                                  type="button"
+                                  onClick={handleCancelEdit}
+                                  className="rounded-full border border-slate-300 px-4 py-2 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                            {pinStatus !== "idle" && (
+                              <p
+                                className={`text-sm ${
+                                  pinStatus === "available"
+                                    ? "text-green-600"
+                                    : pinStatus === "checking"
+                                    ? "text-slate-500"
+                                    : "text-red-500"
+                                }`}
+                              >
+                                {pinStatus === "checking"
+                                  ? "Checking serviceability..."
+                                  : pinMessage}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -583,15 +875,23 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                   <div className="flex items-start gap-3 border-t border-dashed border-slate-200 pt-4">
                     <RotateCcw className="w-6 h-6 text-green-600" />
                     <div>
-                      <p className="font-semibold text-slate-900">Return Delivery</p>
-                      <p className="text-sm text-slate-500">7 days easy return & replacement on defects.</p>
+                      <p className="font-semibold text-slate-900">
+                        Return Delivery
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        7 days easy return & replacement on defects.
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3 border-t border-dashed border-slate-200 pt-4">
                     <Wallet className="w-6 h-6 text-green-600" />
                     <div>
-                      <p className="font-semibold text-slate-900">Cash on Delivery</p>
-                      <p className="text-sm text-slate-500">Pay at your doorstep via cash or card.</p>
+                      <p className="font-semibold text-slate-900">
+                        Cash on Delivery
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        Pay at your doorstep via cash or card.
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -608,42 +908,53 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                       onClick={() => setActiveTab(tab.id)}
                       className={`pb-3 text-sm font-semibold transition-all border-b-2 ${
                         activeTab === tab.id
-                          ? 'text-green-700 border-green-600'
-                          : 'text-slate-400 border-transparent hover:text-slate-600'
+                          ? "text-green-700 border-green-600"
+                          : "text-slate-400 border-transparent hover:text-slate-600"
                       }`}
                     >
                       {tab.label}
                     </button>
                   ))}
                 </div>
-                {activeTab === 'description' && (
+                {activeTab === "description" && (
                   <div className="space-y-8">
                     <div>
-                      <h2 className="text-lg font-semibold text-slate-900 mb-3">Product Description</h2>
+                      <h2 className="text-lg font-semibold text-slate-900 mb-3">
+                        Product Description
+                      </h2>
                       {product.description ? (
                         descriptionHasHtml ? (
                           <div
                             className="prose prose-sm max-w-none text-slate-700"
-                            dangerouslySetInnerHTML={{ __html: product.description }}
+                            dangerouslySetInnerHTML={{
+                              __html: product.description,
+                            }}
                           />
                         ) : (
                           product.description
                             .split(/\n+/)
                             .filter(Boolean)
                             .map((para, idx) => (
-                              <p key={idx} className="text-sm text-slate-600 mb-3 leading-relaxed">
+                              <p
+                                key={idx}
+                                className="text-sm text-slate-600 mb-3 leading-relaxed"
+                              >
                                 {para}
                               </p>
                             ))
                         )
                       ) : (
-                        <p className="text-sm text-slate-500">Detailed description will be available soon.</p>
+                        <p className="text-sm text-slate-500">
+                          Detailed description will be available soon.
+                        </p>
                       )}
                     </div>
 
                     {highlights.length > 0 && (
                       <div>
-                        <h3 className="text-lg font-semibold text-slate-900 mb-3">Benefits</h3>
+                        <h3 className="text-lg font-semibold text-slate-900 mb-3">
+                          Benefits
+                        </h3>
                         <div className="grid sm:grid-cols-2 gap-3">
                           {highlights.map((highlight) => (
                             <div
@@ -660,15 +971,21 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
 
                     {detailPairs.length > 0 && (
                       <div>
-                        <h3 className="text-lg font-semibold text-slate-900 mb-4">Product Details</h3>
+                        <h3 className="text-lg font-semibold text-slate-900 mb-4">
+                          Product Details
+                        </h3>
                         <div className="space-y-3">
                           {detailPairs.map((pair) => (
                             <div
                               key={pair.label}
                               className="flex flex-col rounded-2xl border border-slate-100 bg-[#f9fcf8] px-4 py-3 text-sm"
                             >
-                              <span className="text-xs uppercase tracking-wide text-slate-500">{pair.label}</span>
-                              <span className="text-base font-semibold text-slate-800">{pair.value}</span>
+                              <span className="text-xs uppercase tracking-wide text-slate-500">
+                                {pair.label}
+                              </span>
+                              <span className="text-base font-semibold text-slate-800">
+                                {pair.value}
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -676,14 +993,16 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                     )}
                   </div>
                 )}
-                {activeTab === 'reviews' && (
+                {activeTab === "reviews" && (
                   <div className="text-sm text-slate-600">
-                    Reviews will appear here once shoppers share their experience. Check back soon!
+                    Reviews will appear here once shoppers share their
+                    experience. Check back soon!
                   </div>
                 )}
-                {activeTab === 'compare' && (
+                {activeTab === "compare" && (
                   <div className="text-sm text-slate-600">
-                    Comparison data is being prepared for this product. We&apos;ll highlight alternatives shortly.
+                    Comparison data is being prepared for this product.
+                    We&apos;ll highlight alternatives shortly.
                   </div>
                 )}
               </div>
@@ -692,10 +1011,18 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
             <section className="mt-12 bg-white rounded-[32px] border border-[var(--detail-border)] p-6 lg:p-8 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
                 <div>
-                  <h2 className="text-xl font-semibold text-slate-900">Similar items you might also like</h2>
-                  <p className="text-sm text-slate-500">Hand-picked recommendations based on this product.</p>
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    Similar items you might also like
+                  </h2>
+                  <p className="text-sm text-slate-500">
+                    Hand-picked recommendations based on this product.
+                  </p>
                 </div>
-                {loadingRelated && <span className="text-sm text-slate-500">Loading suggestions...</span>}
+                {loadingRelated && (
+                  <span className="text-sm text-slate-500">
+                    Loading suggestions...
+                  </span>
+                )}
               </div>
               {related.length === 0 && !loadingRelated ? (
                 <div className="text-sm text-slate-500 bg-[#f8fbf8] rounded-2xl border border-dashed border-[var(--detail-border)] p-6">
@@ -704,8 +1031,12 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
               ) : (
                 <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {related.map((item) => {
-                    const slug = encodeURIComponent(String(item.handle || item.id))
-                    const href = `/productDetail/${slug}?id=${encodeURIComponent(String(item.id))}`
+                    const slug = encodeURIComponent(
+                      String(item.handle || item.id)
+                    );
+                    const href = `/productDetail/${slug}?id=${encodeURIComponent(
+                      String(item.id)
+                    )}`;
                     return (
                       <Link
                         key={item.id}
@@ -725,10 +1056,16 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                             className="object-contain p-4"
                           />
                         </div>
-                        <p className="text-sm font-medium text-slate-800 line-clamp-2 flex-1">{item.name}</p>
+                        <p className="text-sm font-medium text-slate-800 line-clamp-2 flex-1">
+                          {item.name}
+                        </p>
                         <div className="flex items-baseline gap-2 mt-2">
-                          <span className="text-lg font-semibold text-slate-900">{inr.format(item.price)}</span>
-                          <span className="text-xs text-slate-400 line-through">{inr.format(item.mrp)}</span>
+                          <span className="text-lg font-semibold text-slate-900">
+                            {inr.format(item.price)}
+                          </span>
+                          <span className="text-xs text-slate-400 line-through">
+                            {inr.format(item.mrp)}
+                          </span>
                         </div>
                         <button
                           type="button"
@@ -738,7 +1075,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                           +
                         </button>
                       </Link>
-                    )
+                    );
                   })}
                 </div>
               )}
@@ -747,5 +1084,5 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
         ) : null}
       </main>
     </div>
-  )
+  );
 }
