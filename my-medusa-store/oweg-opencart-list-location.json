@@ -1,0 +1,25 @@
+﻿{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowListWithinOpencart",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::oweg-media-mumbai-krj-2025",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "opencart/*",
+            "opencart/_health/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "AllowGetBucketLocation",
+      "Effect": "Allow",
+      "Action": "s3:GetBucketLocation",
+      "Resource": "arn:aws:s3:::oweg-media-mumbai-krj-2025"
+    }
+  ]
+}

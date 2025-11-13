@@ -1,6 +1,6 @@
-﻿import { loadEnv, defineConfig } from "@medusajs/framework/utils";
+﻿import { loadEnv, defineConfig } from '@medusajs/framework/utils'
 
-loadEnv(process.env.NODE_ENV || "development", process.cwd());
+loadEnv(process.env.NODE_ENV || 'development', process.cwd())
 
 module.exports = defineConfig({
   projectConfig: {
@@ -15,16 +15,14 @@ module.exports = defineConfig({
   },
   modules: [
     {
-      resolve: "@medusajs/auth",
+      resolve: '@medusajs/auth',
       options: {
         providers: [
-          {
-            resolve: "@medusajs/auth-emailpass",
-            id: "emailpass",
-          },
+          { id: 'emailpass' }, // email+password login
+          { id: 'session' },   // cookie-based admin session
         ],
       },
     },
     { resolve: "./src/modules/customer" },
   ],
-});
+})
