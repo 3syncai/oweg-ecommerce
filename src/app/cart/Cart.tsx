@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 interface CartItemUI {
   id: string;
   name: string;
-  price: number; // major unit (e.g., 350 -> ₹350)
+  price: number; // major unit (e.g., 350 -> â‚¹350)
   quantity: number;
   image?: string;
   currency?: string;
@@ -56,14 +56,14 @@ const Cart: React.FC = () => {
   const formatCurrency = (value: number | null | undefined): string => {
     const v = typeof value === "number" ? value : 0;
     try {
-      // Use en-IN grouping but prefix explicit ₹ to avoid locale auto-selection
+      // Use en-IN grouping but prefix explicit â‚¹ to avoid locale auto-selection
       const formatted = new Intl.NumberFormat("en-IN", {
         minimumFractionDigits: 0,
         maximumFractionDigits: Number.isInteger(v) ? 0 : 2,
       }).format(v);
-      return `₹${formatted}`;
+      return `â‚¹${formatted}`;
     } catch {
-      return `₹${Math.round(Number(v))}`;
+      return `â‚¹${Math.round(Number(v))}`;
     }
   };
 
@@ -234,6 +234,7 @@ const Cart: React.FC = () => {
     mrp: number;
     discount: number;
     variant_id?: string;
+    handle?: string;
   };
   const [recommended, setRecommended] = useState<UIProduct[]>([]);
   const [loadingRecommended, setLoadingRecommended] = useState(false);
@@ -455,30 +456,31 @@ const Cart: React.FC = () => {
                   <div className="text-sm text-slate-500 mb-2">Finding related products…</div>
                 )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                  {recommended.map((p) => (
-                    <div key={p.id} className="border rounded-lg overflow-hidden bg-white hover:shadow-lg transition transform hover:-translate-y-1">
-                      <div className="relative aspect-[4/3] bg-slate-50 flex items-center justify-center">
-                        <Image src={p.image} alt={p.name} width={300} height={225} className="w-full h-full object-cover" />
-                        <button
-                          title="Add"
-                          type="button"
-                          className="absolute bottom-3 right-3 w-10 h-10 bg-green-600 hover:bg-green-700 text-white rounded-full flex items-center justify-center transition"
-                        >
-                          <Plus className="w-5 h-5" />
-                        </button>
-                        <div className="absolute top-3 left-3 flex gap-2">
-                          <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold">{p.discount}% off</span>
+                  {recommended.map((p) => {
+                    const slug = encodeURIComponent(String(p.handle || p.id))
+                    const href = `/productDetail/${slug}?id=${encodeURIComponent(String(p.id))}`
+                    return (
+                      <Link
+                        key={p.id}
+                        href={href}
+                        className="border rounded-lg overflow-hidden bg-white hover:shadow-lg transition transform hover:-translate-y-1"
+                      >
+                        <div className="relative aspect-[4/3] bg-slate-50 flex items-center justify-center">
+                          <Image src={p.image} alt={p.name} width={300} height={225} className="w-full h-full object-cover" />
+                          <div className="absolute top-3 left-3 flex gap-2">
+                            <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold">{p.discount}% off</span>
+                          </div>
                         </div>
-                      </div>
-                      <div className="p-3">
-                        <p className="text-sm font-medium text-slate-800 line-clamp-2">{p.name}</p>
-                        <div className="flex items-baseline gap-3 mt-2">
-                          <div className="text-xl font-bold">{formatCurrency(p.price)}</div>
-                          <div className="text-sm text-slate-400 line-through">M.R.P: {formatCurrency(p.mrp)}</div>
+                        <div className="p-3">
+                          <p className="text-sm font-medium text-slate-800 line-clamp-2">{p.name}</p>
+                          <div className="flex items-baseline gap-3 mt-2">
+                            <div className="text-xl font-bold">{formatCurrency(p.price)}</div>
+                            <div className="text-sm text-slate-400 line-through">M.R.P: {formatCurrency(p.mrp)}</div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  ))}
+                      </Link>
+                    )
+                  })}
                   {!loadingRecommended && recommended.length === 0 && (
                     <div className="text-slate-500 text-sm">No related products yet.</div>
                   )}
@@ -521,4 +523,8 @@ const Cart: React.FC = () => {
 };
 
 export default Cart;
+
+
+
+
 

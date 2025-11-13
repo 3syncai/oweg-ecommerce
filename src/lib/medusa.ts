@@ -1,26 +1,67 @@
+import { executeReadQuery } from "@/lib/mysql"
+
 export type MedusaCategory = {
   id: string
   name?: string
   title?: string
   handle?: string
+  parent_category_id?: string | null
+  parent_category?: { id?: string | null } | null
+  category_children?: MedusaCategory[]
 }
 
 export type MedusaProduct = {
   id: string
   title: string
+  subtitle?: string
+  description?: string
+  handle?: string
   thumbnail?: string | null
   images?: { url: string }[]
-  categories?: Array<{ id: string; handle?: string; name?: string }>
+  categories?: Array<{ id: string; handle?: string; name?: string; title?: string }>
   tags?: Array<{ id: string; value?: string; handle?: string }>
   type?: { id: string; value?: string; handle?: string }
+  collection?: { id?: string; title?: string; handle?: string }
   variants?: Array<{
     id: string
+    title?: string
+    inventory_quantity?: number
+    options?: Array<{ id: string; value?: string; option_id?: string }>
     prices?: Array<{ amount: number; currency_code: string }>
   }>
   price?: {
     calculated_price?: number
     original_price?: number
   }
+  metadata?: Record<string, unknown>
+}
+
+export type DetailedProduct = {
+  id: string
+  title: string
+  subtitle?: string
+  description?: string
+  handle?: string
+  price: number
+  mrp: number
+  discount: number
+  currency: string
+  images: string[]
+  thumbnail?: string
+  variant_id?: string
+  variants: Array<{ id: string; title?: string; inventory_quantity?: number }>
+  categories: Array<{ id: string; title: string; handle?: string }>
+  tags: string[]
+  type?: string
+  collection?: { id?: string; title?: string; handle?: string } | null
+  primaryCategoryId?: string
+  highlights: string[]
+  metadata?: Record<string, unknown> | null
+}
+
+type PriceOverride = {
+  price?: number
+  mrp?: number
 }
 
 export type MedusaCollection = {
@@ -35,35 +76,139 @@ const MEDUSA_URL =
   process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL ||
   "http://localhost:9000"
 
-const PUBLISHABLE_KEY =
-  process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY ||
-  process.env.MEDUSA_PUBLISHABLE_KEY ||
-  process.env.MEDUSA_PUBLISHABLE_API_KEY ||
-  ""
+function getPublishableKey() {
+  return (
+    process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY ||
+    process.env.MEDUSA_PUBLISHABLE_KEY ||
+    process.env.MEDUSA_PUBLISHABLE_API_KEY ||
+    ""
+  )
+}
 
-const SALES_CHANNEL_ID =
-  process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID ||
-  process.env.MEDUSA_SALES_CHANNEL_ID ||
-  ""
+function getSalesChannelId() {
+  return (
+    process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID ||
+    process.env.MEDUSA_SALES_CHANNEL_ID ||
+    ""
+  )
+}
+
+const DEFAULT_CURRENCY_CODE =
+  (
+    process.env.NEXT_PUBLIC_MEDUSA_CURRENCY_CODE ||
+    process.env.MEDUSA_CURRENCY_CODE ||
+    process.env.NEXT_PUBLIC_STORE_CURRENCY ||
+    "inr"
+  )
+    .toLowerCase()
+    .trim()
+
+const COMMON_EXPAND = "variants,variants.prices,price"
+
+type ProductFetchOptions = {
+  includeType?: boolean
+}
+
+function createBaseSearchParams(
+  limit: number,
+  extras: Array<[string, string | undefined]> = []
+) {
+  const params = new URLSearchParams()
+  params.set("limit", String(limit))
+  for (const [key, value] of extras) {
+    if (value !== undefined && value !== "") {
+      params.append(key, value)
+    }
+  }
+  return params
+}
+
+function cloneParams(params: URLSearchParams) {
+  return new URLSearchParams(params.toString())
+}
+
+async function fetchStoreProducts(
+  baseParams: URLSearchParams,
+  options?: ProductFetchOptions
+) {
+  const attempts: URLSearchParams[] = []
+
+  // Attempt 1: include expand + currency (if supported by backend)
+  const advanced = cloneParams(baseParams)
+  advanced.set(
+    "expand",
+    options?.includeType ? `${COMMON_EXPAND},type` : COMMON_EXPAND
+  )
+  if (DEFAULT_CURRENCY_CODE) {
+    advanced.set("currency_code", DEFAULT_CURRENCY_CODE)
+  }
+  attempts.push(advanced)
+
+  // Attempt 2: drop currency_code (some setups support expand but not currency)
+  const expandOnly = cloneParams(baseParams)
+  expandOnly.set(
+    "expand",
+    options?.includeType ? `${COMMON_EXPAND},type` : COMMON_EXPAND
+  )
+  attempts.push(expandOnly)
+
+  // Final attempt: bare minimum parameters
+  attempts.push(cloneParams(baseParams))
+
+  let lastStatus: number | undefined
+  let lastResponseBody: unknown
+
+  for (const params of attempts) {
+    const res = await api(`/store/products?${params.toString()}`)
+    lastStatus = res.status
+    if (res.ok) {
+      const data = await res.json()
+      return (data.products || data || []) as MedusaProduct[]
+    }
+
+    // Capture response body for troubleshooting but continue trying fallbacks
+    try {
+      lastResponseBody = await res.json()
+    } catch {
+      lastResponseBody = await res.text()
+    }
+
+    // Try the next attempt for 400/422 style validation errors, otherwise break
+    if (![400, 401, 404, 422].includes(res.status)) {
+      break
+    }
+  }
+
+  throw new Error(
+    `Failed products: ${lastStatus ?? "unknown"}${lastResponseBody ? ` ${JSON.stringify(lastResponseBody)}` : ""
+    }`
+  )
+}
 
 function api(path: string, init?: RequestInit) {
   const base = MEDUSA_URL!.replace(/\/$/, "")
   const url = `${base}${path}`
+  const publishableKey = getPublishableKey()
+  const salesChannelId = getSalesChannelId()
   return fetch(url, {
     // Force server-side fetch when called from route handlers
     cache: "no-store",
     ...init,
     headers: {
       "content-type": "application/json",
-      ...(PUBLISHABLE_KEY ? { "x-publishable-api-key": PUBLISHABLE_KEY } : {}),
-      ...(SALES_CHANNEL_ID ? { "x-sales-channel-id": SALES_CHANNEL_ID } : {}),
+      ...(publishableKey ? { "x-publishable-api-key": publishableKey } : {}),
+      ...(salesChannelId ? { "x-sales-channel-id": salesChannelId } : {}),
       ...(init?.headers || {}),
     },
   })
 }
 
 export async function fetchCategories(): Promise<MedusaCategory[]> {
-  const res = await api("/store/product-categories?limit=100")
+  const params = new URLSearchParams({
+    limit: "100",
+    include_descendants_tree: "true",
+  })
+  const res = await api(`/store/product-categories?${params.toString()}`)
   if (!res.ok) throw new Error(`Failed categories: ${res.status}`)
   const data = await res.json()
   // Support v1 ({ product_categories }) and v2 ({ categories }) shapes
@@ -99,7 +244,11 @@ export async function findCategoryByTitleOrHandle(
       `${base}/store/product-categories?handle=${encodeURIComponent(targetSlug)}`,
       `${base}/store/product-categories?q=${encodeURIComponent(q)}`,
     ]) {
-      const res = await fetch(url, { cache: "no-store", headers: { ...(PUBLISHABLE_KEY ? { "x-publishable-api-key": PUBLISHABLE_KEY } : {}) } })
+      const pk = getPublishableKey()
+      const res = await fetch(url, {
+        cache: "no-store",
+        headers: { ...(pk ? { "x-publishable-api-key": pk } : {}) },
+      })
       if (!res.ok) continue
       const data = await res.json()
       const arr = (data.product_categories || data.categories || []) as MedusaCategory[]
@@ -142,7 +291,15 @@ export async function findCollectionByTitleOrHandle(
       `${base}/store/collections?handle=${encodeURIComponent(targetSlug)}`,
       `${base}/store/collections?q=${encodeURIComponent(q)}`,
     ]) {
-      const res = await fetch(url, { cache: "no-store", headers: { ...(PUBLISHABLE_KEY ? { "x-publishable-api-key": PUBLISHABLE_KEY } : {}), ...(SALES_CHANNEL_ID ? { "x-sales-channel-id": SALES_CHANNEL_ID } : {}) } })
+      const pk = getPublishableKey()
+      const sc = getSalesChannelId()
+      const res = await fetch(url, {
+        cache: "no-store",
+        headers: {
+          ...(pk ? { "x-publishable-api-key": pk } : {}),
+          ...(sc ? { "x-sales-channel-id": sc } : {}),
+        },
+      })
       if (!res.ok) continue
       const data = await res.json()
       const arr = (data.collections || data || []) as MedusaCollection[]
@@ -164,34 +321,30 @@ export async function searchProducts(params: {
   categoryId?: string
   collectionId?: string
 }): Promise<MedusaProduct[]> {
-  const sp = new URLSearchParams()
-  sp.append("q", params.q)
-  sp.append("limit", String(params.limit ?? 10))
-  if (params.categoryId) sp.append("category_id", params.categoryId)
-  if (params.collectionId) sp.append("collection_id", params.collectionId)
-  const res = await api(`/store/products?${sp.toString()}`)
-  if (!res.ok) throw new Error(`Failed search: ${res.status}`)
-  const data = await res.json()
-  return (data.products || data || []) as MedusaProduct[]
+  const baseParams = createBaseSearchParams(params.limit ?? 10, [
+    ["q", params.q],
+    ["category_id", params.categoryId],
+    ["collection_id", params.collectionId],
+  ])
+  return await fetchStoreProducts(baseParams)
 }
 
 export async function fetchProductsByCategoryId(categoryId: string, limit = 20) {
-  const base = `/store/products?limit=${encodeURIComponent(String(limit))}`
   const candidates = [
-    `${base}&category_id[]=${encodeURIComponent(categoryId)}`,
-    `${base}&category_id=${encodeURIComponent(categoryId)}`,
+    createBaseSearchParams(limit, [["category_id[]", categoryId]]),
+    createBaseSearchParams(limit, [["category_id", categoryId]]),
   ]
 
-  let lastStatus: number | undefined
-  for (const url of candidates) {
-    const res = await api(url)
-    lastStatus = res.status
-    if (!res.ok) continue
-    const data = await res.json()
-    const items = (data.products || data || []) as MedusaProduct[]
-    if (Array.isArray(items)) return items
+  let lastError: Error | undefined
+  for (const params of candidates) {
+    try {
+      const items = await fetchStoreProducts(params)
+      if (Array.isArray(items)) return items
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+    }
   }
-  throw new Error(`Failed products: ${lastStatus ?? "unknown"}`)
+  throw lastError ?? new Error("Failed products")
 }
 
 export async function fetchProductsByTag(tagValue: string, limit = 20) {
@@ -200,16 +353,15 @@ export async function fetchProductsByTag(tagValue: string, limit = 20) {
   const wanted = norm(tagValue)
 
   // 1) Try direct tag filters first (some Medusa versions support these)
-  const base = `/store/products?limit=${encodeURIComponent(String(limit))}`
   for (const url of [
-    `${base}&tags[]=${encodeURIComponent(tagValue)}`,
-    `${base}&tag=${encodeURIComponent(tagValue)}`,
+    createBaseSearchParams(limit, [["tags[]", tagValue]]),
+    createBaseSearchParams(limit, [["tag", tagValue]]),
   ]) {
-    const res = await api(url)
-    if (res.ok) {
-      const data = await res.json()
-      const items = (data.products || data || []) as MedusaProduct[]
+    try {
+      const items = await fetchStoreProducts(url)
       if (Array.isArray(items) && items.length) return items
+    } catch {
+      // move to next fallback
     }
   }
 
@@ -222,14 +374,14 @@ export async function fetchProductsByTag(tagValue: string, limit = 20) {
       const match = tagsArr.find((t) => norm(t.value || t.handle || "") === wanted)
       if (match?.id) {
         for (const url of [
-          `${base}&tag_id[]=${encodeURIComponent(match.id)}`,
-          `${base}&tag_id=${encodeURIComponent(match.id)}`,
+          createBaseSearchParams(limit, [["tag_id[]", match.id]]),
+          createBaseSearchParams(limit, [["tag_id", match.id]]),
         ]) {
-          const res = await api(url)
-          if (res.ok) {
-            const data = await res.json()
-            const items = (data.products || data || []) as MedusaProduct[]
+          try {
+            const items = await fetchStoreProducts(url)
             if (Array.isArray(items) && items.length) return items
+          } catch {
+            // continue to next fallback
           }
         }
       }
@@ -237,12 +389,7 @@ export async function fetchProductsByTag(tagValue: string, limit = 20) {
   } catch {}
 
   // 3) Fallback: fetch without expand and return first page (UI will still show products)
-  const res = await api(`/store/products?limit=${encodeURIComponent(String(limit))}`)
-  if (res.ok) {
-    const data = await res.json()
-    return (data.products || data || []) as MedusaProduct[]
-  }
-  throw new Error(`Failed products by tag`)
+  return await fetchStoreProducts(createBaseSearchParams(limit))
 }
 
 export type MedusaProductType = {
@@ -276,14 +423,14 @@ export async function fetchProductsByType(typeValue: string, limit = 20) {
       const match = typesArr.find((t) => matches(t.value || t.handle || ""))
       if (match?.id) {
         for (const url of [
-          `/store/products?limit=${encodeURIComponent(String(limit))}&type_id[]=${encodeURIComponent(match.id)}`,
-          `/store/products?limit=${encodeURIComponent(String(limit))}&type_id=${encodeURIComponent(match.id)}`,
+          createBaseSearchParams(limit, [["type_id[]", match.id]]),
+          createBaseSearchParams(limit, [["type_id", match.id]]),
         ]) {
-          const res = await api(url)
-          if (res.ok) {
-            const data = await res.json()
-            const items = (data.products || data || []) as MedusaProduct[]
+          try {
+            const items = await fetchStoreProducts(url, { includeType: true })
             if (Array.isArray(items) && items.length) return items
+          } catch {
+            // try next candidate or fallback
           }
         }
       }
@@ -292,15 +439,12 @@ export async function fetchProductsByType(typeValue: string, limit = 20) {
 
   // 2) Fallback: expand type and filter client-side (best effort)
   try {
-    const res = await api(
-      `/store/products?limit=${encodeURIComponent(String(Math.max(limit, 50)))}&expand=type`
+    const items = await fetchStoreProducts(
+      createBaseSearchParams(Math.max(limit, 50)),
+      { includeType: true }
     )
-    if (res.ok) {
-      const data = await res.json()
-      const items = (data.products || data || []) as MedusaProduct[]
-      const filtered = items.filter((p) => matches(p.type?.value || p.type?.handle || ""))
-      if (filtered.length) return filtered.slice(0, limit)
-    }
+    const filtered = items.filter((p) => matches(p.type?.value || p.type?.handle || ""))
+    if (filtered.length) return filtered.slice(0, limit)
   } catch {}
 
   // 3) Last fallback: return empty to avoid 500s; route can try category fallback
@@ -312,16 +456,22 @@ export async function hasProductsForCollectionCategory(
   collectionId: string,
   categoryId: string
 ): Promise<boolean> {
-  const base = `/store/products?limit=1`
-  for (const url of [
-    `${base}&collection_id[]=${encodeURIComponent(collectionId)}&category_id[]=${encodeURIComponent(categoryId)}`,
-    `${base}&collection_id=${encodeURIComponent(collectionId)}&category_id=${encodeURIComponent(categoryId)}`,
+  for (const params of [
+    createBaseSearchParams(1, [
+      ["collection_id[]", collectionId],
+      ["category_id[]", categoryId],
+    ]),
+    createBaseSearchParams(1, [
+      ["collection_id", collectionId],
+      ["category_id", categoryId],
+    ]),
   ]) {
-    const res = await api(url)
-    if (!res.ok) continue
-    const data = await res.json()
-    const items = (data.products || data || []) as MedusaProduct[]
-    if (Array.isArray(items) && items.length > 0) return true
+    try {
+      const items = await fetchStoreProducts(params)
+      if (Array.isArray(items) && items.length > 0) return true
+    } catch {
+      // try next combination
+    }
   }
   return false
 }
@@ -340,41 +490,255 @@ export async function fetchCategoriesForCollection(collectionId: string): Promis
   return matches
 }
 
-export function toUiProduct(p: MedusaProduct) {
-  // Try medusa price helpers first
+function resolveMajorFromMinor(amount?: number | null) {
+  if (typeof amount !== "number") return undefined
+  return amount > 1000 ? amount / 100 : amount
+}
+
+function collectProductImages(p: MedusaProduct) {
+  const urls = [
+    p.thumbnail,
+    ...(p.images?.map((img) => img.url) || []),
+  ].filter((url): url is string => !!url)
+  return Array.from(new Set(urls))
+}
+
+export function toDetailedProduct(
+  p: MedusaProduct,
+  override?: PriceOverride
+): DetailedProduct {
+  const { amountMajor, originalMajor, discount } = computeUiPrice(p, override)
+  const categories =
+    p.categories?.map((cat) => ({
+      id: cat.id,
+      title: (cat.name || cat.title || "").toString() || "Category",
+      handle: cat.handle,
+    })) || []
+
+  const tags = (p.tags || [])
+    .map((t) => t.value || t.handle || "")
+    .filter((v): v is string => !!v)
+
+  const highlights = tags.length
+    ? tags
+    : categories.map((c) => c.title).filter(Boolean)
+
+  return {
+    id: p.id,
+    title: p.title,
+    subtitle: p.subtitle,
+    description: p.description,
+    handle: p.handle,
+    price: amountMajor ?? 0,
+    mrp: originalMajor ?? amountMajor ?? 0,
+    discount,
+    currency: DEFAULT_CURRENCY_CODE.toUpperCase(),
+    images: collectProductImages(p),
+    thumbnail: p.thumbnail || undefined,
+    variant_id: p.variants?.[0]?.id,
+    variants:
+      p.variants?.map((v) => ({
+        id: v.id,
+        title: v.title,
+        inventory_quantity: v.inventory_quantity,
+      })) || [],
+    categories,
+    tags,
+    type: p.type?.value || p.type?.handle,
+    collection: p.collection
+      ? {
+          id: p.collection.id,
+          title: p.collection.title,
+          handle: p.collection.handle,
+        }
+      : null,
+    primaryCategoryId: categories[0]?.id,
+    highlights,
+    metadata: p.metadata || null,
+  }
+}
+
+function computeUiPrice(p: MedusaProduct, override?: PriceOverride) {
   const calculated = p.price?.calculated_price
   const original = p.price?.original_price
-
-  // Fallback to first variant price in minor units (e.g., cents/paise)
   const firstAmountMinor = p.variants?.[0]?.prices?.[0]?.amount
   const amountMajor =
-    typeof calculated === "number"
+    override?.price ??
+    (typeof calculated === "number"
       ? calculated
-      : typeof firstAmountMinor === "number"
-      ? firstAmountMinor / 100
-      : undefined
+      : resolveMajorFromMinor(firstAmountMinor))
 
   const originalMajor =
-    typeof original === "number" && original > 0
+    override?.mrp ??
+    (typeof original === "number" && original > 0
       ? original
-      : amountMajor
+      : amountMajor)
 
   const discount =
     amountMajor && originalMajor && originalMajor > amountMajor
       ? Math.round(((originalMajor - amountMajor) / originalMajor) * 100)
       : 0
 
-  const image =
-    p.thumbnail || p.images?.[0]?.url || "/oweg_logo.png"
+  return { amountMajor, originalMajor, discount }
+}
+
+export function toUiProduct(p: MedusaProduct, override?: PriceOverride) {
+  if (!p?.id || !p?.title) {
+    console.warn("Incomplete product data:", p)
+  }
+
+  const { amountMajor, originalMajor, discount } = computeUiPrice(p, override)
+  const image = collectProductImages(p)[0] || "/oweg_logo.png"
 
   return {
-    id: p.id,
-    name: p.title,
+    id: p?.id || "unknown",
+    name: p?.title || "Unnamed Product",
     image,
-    price: amountMajor || 0,
-    mrp: originalMajor || amountMajor || 0,
+    price: amountMajor ?? 0,
+    mrp: originalMajor ?? amountMajor ?? 0,
     discount,
     limitedDeal: discount >= 20,
-    variant_id: p.variants?.[0]?.id,
+    variant_id: p?.variants?.[0]?.id,
+    handle: p?.handle,
+  }
+}
+
+export async function fetchProductDetail(
+  idOrHandle: string
+): Promise<DetailedProduct | null> {
+  const target = idOrHandle?.trim()
+  if (!target) return null
+
+  const detailExpand = `${COMMON_EXPAND},images,tags,categories,type,collection`
+  const paramVariants: URLSearchParams[] = []
+  if (DEFAULT_CURRENCY_CODE) {
+    const withCurrency = new URLSearchParams()
+    withCurrency.set("expand", detailExpand)
+    withCurrency.set("currency_code", DEFAULT_CURRENCY_CODE)
+    paramVariants.push(withCurrency)
+  }
+  const expandOnly = new URLSearchParams()
+  expandOnly.set("expand", detailExpand)
+  paramVariants.push(expandOnly)
+  paramVariants.push(new URLSearchParams())
+
+  const attempts: string[] = []
+  const seen = new Set<string>()
+  const registerAttempt = (path: string) => {
+    if (!seen.has(path)) {
+      seen.add(path)
+      attempts.push(path)
+    }
+  }
+
+  const encodedTarget = encodeURIComponent(target)
+  for (const params of paramVariants) {
+    const query = params.toString()
+    registerAttempt(
+      `/store/products/${encodedTarget}${query ? `?${query}` : ""}`
+    )
+
+    const baseList = new URLSearchParams(params)
+    baseList.set("limit", "1")
+
+    const handleParams = new URLSearchParams(baseList)
+    handleParams.set("handle", target)
+    registerAttempt(`/store/products?${handleParams.toString()}`)
+
+    const handleArrayParams = new URLSearchParams(baseList)
+    handleArrayParams.append("handle[]", target)
+    registerAttempt(`/store/products?${handleArrayParams.toString()}`)
+
+    const idsParam = new URLSearchParams(baseList)
+    idsParam.append("ids[]", target)
+    registerAttempt(`/store/products?${idsParam.toString()}`)
+
+    const idParam = new URLSearchParams(baseList)
+    idParam.set("id", target)
+    registerAttempt(`/store/products?${idParam.toString()}`)
+  }
+
+  // Last resort: rely on free-text search without expand/currency filters.
+  const searchParams = new URLSearchParams()
+  searchParams.set("limit", "1")
+  searchParams.set("q", target)
+  registerAttempt(`/store/products?${searchParams.toString()}`)
+
+  for (const path of attempts) {
+    try {
+      const res = await api(path)
+      if (!res.ok) continue
+      const data = await res.json()
+      const product = (data.product || data.products?.[0] || data) as
+        | MedusaProduct
+        | undefined
+      if (product?.id) {
+        const override = await fetchPriceOverrideForName(
+          product.title || product.subtitle || product.handle
+        )
+        return toDetailedProduct(product, override)
+      }
+    } catch {
+      // try next path
+    }
+  }
+  return null
+}
+
+async function fetchPriceOverrideForName(
+  originalName?: string | null
+): Promise<PriceOverride | undefined> {
+  if (!originalName) return undefined
+  try {
+    const rows = await executeReadQuery<
+      Array<{ price: string | null; special_price: string | null }>
+    >(
+      `
+        SELECT 
+          p.price,
+          (
+            SELECT ps.price
+            FROM oc_product_special ps
+            WHERE ps.product_id = p.product_id
+              AND (ps.date_start = '0000-00-00' OR ps.date_start <= NOW())
+              AND (ps.date_end = '0000-00-00' OR ps.date_end >= NOW())
+            ORDER BY ps.priority ASC, ps.price ASC
+            LIMIT 1
+          ) AS special_price
+        FROM oc_product p
+        INNER JOIN oc_product_description pd 
+          ON p.product_id = pd.product_id AND pd.language_id = 1
+        WHERE pd.name = ?
+        LIMIT 1
+      `,
+      [originalName]
+    )
+
+    const row = rows[0]
+    if (!row) return undefined
+
+    const basePrice = parseFloat(row.price || "")
+    const specialPrice = row.special_price
+      ? parseFloat(row.special_price)
+      : undefined
+
+    if (!Number.isFinite(basePrice) && !Number.isFinite(specialPrice)) {
+      return undefined
+    }
+
+    const effectiveSpecial = Number.isFinite(specialPrice)
+      ? (specialPrice as number)
+      : undefined
+    const effectiveBase = Number.isFinite(basePrice)
+      ? (basePrice as number)
+      : undefined
+
+    return {
+      price: effectiveSpecial ?? effectiveBase,
+      mrp: effectiveBase ?? effectiveSpecial,
+    }
+  } catch (err) {
+    console.warn("Failed to fetch price override for", originalName, err)
+    return undefined
   }
 }

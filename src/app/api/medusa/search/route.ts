@@ -31,8 +31,8 @@ export async function GET(req: NextRequest) {
       colId = c?.id
     }
 
-    const prods = await searchProducts({ q, limit, categoryId: catId, collectionId: colId })
-    const ui = prods.map(toUiProduct)
+  const prods = await searchProducts({ q, limit, categoryId: catId, collectionId: colId })
+  const ui = prods.map((p) => toUiProduct(p))
     return NextResponse.json({ products: ui })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "failed"

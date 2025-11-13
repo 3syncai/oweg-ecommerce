@@ -52,3 +52,5 @@ storage/
 coverage/
 .nyc_output/
 .vercel/
+yarn.lock
+my-medusa-store/yarn.lock

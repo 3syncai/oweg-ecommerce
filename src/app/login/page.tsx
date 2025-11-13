@@ -1,31 +1,57 @@
 "use client";
 
-import React, { useMemo, useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Mail, Eye, EyeOff, X, UserPlus, Loader2 } from "lucide-react";
+import { Mail, Eye, EyeOff, Phone, Loader2, ChevronDown, Lock, KeyRound } from "lucide-react";
 import { FcGoogle } from "react-icons/fc";
 
-// OWEG Login + Register -- green theme + PWA-friendly behaviors
+// OWEG Modern Login -- Simplified two-step flow with intelligent detection
 // File: app/login/page.tsx (Next.js App Router)
-// Tailwind required. Install icons: npm i lucide-react react-icons
 
-// Minimal type for the PWA install prompt (not in TS lib by default)
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-type BIPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
+// Country codes for phone number support
+const COUNTRY_CODES = [
+  { code: "+91", country: "IN", flag: "🇮🇳", name: "India" },
+  { code: "+1", country: "US", flag: "🇺🇸", name: "USA" },
+  { code: "+44", country: "GB", flag: "🇬🇧", name: "UK" },
+  { code: "+971", country: "AE", flag: "🇦🇪", name: "UAE" },
+  { code: "+65", country: "SG", flag: "🇸🇬", name: "Singapore" },
+];
+
+type InputType = "email" | "phone" | "unknown";
 
 function LoginPageInner() {
   // THEME
-  const BRAND = "#2E7D32"; // adjust if you want a different green
+  const BRAND = "#7AC943";
+  const BRAND_LIGHT = "#8FD95A";
 
-  // VIEW
-  const [tab, setTab] = useState<"password" | "otp">("password");
+  // STEP MANAGEMENT
+  const [step, setStep] = useState<1 | 2>(1); // Step 1: Identifier, Step 2: Auth method
+
+  // INPUT DETECTION
+  const [identifier, setIdentifier] = useState("");
+  const [inputType, setInputType] = useState<InputType>("unknown");
+  const [countryCode, setCountryCode] = useState("+91");
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
+
+  // AUTH
+  const [authMethod, setAuthMethod] = useState<"password" | "otp">("password");
+  const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
   const [showPwd, setShowPwd] = useState(false);
-  // Keep setMode for dead code references in disabled slide-over
-  const [, setMode] = useState<"login" | "register">("login");
+
+  // OTP helpers
+  const [otpSent, setOtpSent] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setInterval(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [cooldown]);
+
+  // UI STATE
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // ONLINE / OFFLINE (PWA-friendly UX)
   const [isOnline, setIsOnline] = useState(true);
@@ -43,81 +69,103 @@ function LoginPageInner() {
     };
   }, []);
 
-  // Optional: in-page PWA install CTA
-  // Removed beforeinstallprompt handler (unused)
+  // INTELLIGENT INPUT DETECTION
+  const detectInputType = (value: string): InputType => {
+    // Remove spaces and special characters for detection
+    const cleaned = value.replace(/[\s\-\(\)]/g, "");
+    
+    // Check if it's all digits (phone number)
+    if (/^\d+$/.test(cleaned)) {
+      // Indian phone numbers start with 6-9 and are 10 digits
+      if (/^[6-9]\d{0,9}$/.test(cleaned)) {
+        return "phone";
+      }
+      // Any other number pattern
+      if (cleaned.length >= 1) {
+        return "phone";
+      }
+    }
+    
+    // Check if it contains @ symbol (email)
+    if (value.includes("@")) {
+      return "email";
+    }
+    
+    // Check if it looks like an email without @ yet
+    if (/^[a-zA-Z0-9._-]+$/.test(value) && value.length > 0) {
+      return "unknown"; // Could be email or username
+    }
+    
+    return "unknown";
+  };
 
-  // LOGIN
-  const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
-  const [otp, setOtp] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Handle identifier input change
+  const handleIdentifierChange = (value: string) => {
+    setIdentifier(value);
+    const type = detectInputType(value);
+    setInputType(type);
+  };
 
-  // OTP helpers
-  const [otpSent, setOtpSent] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const t = setInterval(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
-    return () => clearInterval(t);
-  }, [cooldown]);
+  // ACTIONS
+  async function handleStepOne(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    
+    if (!identifier.trim()) {
+      return setError("Please enter your email or mobile number");
+    }
+    
+    // Validate based on detected type
+    if (inputType === "phone") {
+      const cleaned = identifier.replace(/[\s\-\(\)]/g, "");
+      if (cleaned.length < 10) {
+        return setError("Please enter a valid mobile number");
+      }
+    } else if (inputType === "email") {
+      if (!identifier.includes("@") || !identifier.includes(".")) {
+        return setError("Please enter a valid email address");
+      }
+    }
+    
+    // Move to step 2
+    setStep(2);
+  }
 
-  // REGISTER
-  const [reg, setReg] = useState({
-    type: "individual" as "individual" | "business",
-    referral: "",
-    first: "",
-    last: "",
-    email: "",
-    mobile: "",
-    pwd: "",
-    confirm: "",
-    newsletter: "yes" as "yes" | "no",
-    gst: "",
-    company: "",
-  });
-  const [regError, setRegError] = useState("");
-
-  const gstValid = useMemo(() => {
-    if (reg.type !== "business") return true;
-    return /^[0-9A-Z]{15}$/.test(reg.gst || "");
-  }, [reg.type, reg.gst]);
-
-  const regCanSubmit = useMemo(() => {
-    const basic =
-      reg.first &&
-      reg.last &&
-      reg.email &&
-      reg.mobile &&
-      reg.pwd &&
-      reg.confirm;
-    const okPwd = reg.pwd === reg.confirm;
-    const businessOk = reg.type !== "business" || (gstValid && reg.company);
-    return Boolean(basic && okPwd && businessOk);
-  }, [reg, gstValid]);
-
-  // ACTIONS -- wire to your APIs
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!identifier) return setError("Please enter email or mobile.");
-    if (tab === "password" && !password)
-      return setError("Please enter your password.");
-    if (tab === "otp" && !otp) return setError("Please enter the OTP.");
-    if (!navigator.onLine)
+    
+    if (authMethod === "password" && !password) {
+      return setError("Please enter your password");
+    }
+    if (authMethod === "otp" && !otp) {
+      return setError("Please enter the OTP");
+    }
+    if (!navigator.onLine) {
       return setError("You are offline. Connect to the internet to sign in.");
+    }
 
     try {
       setBusy(true);
       // Example PWA-safe fetch (no caching of auth):
+      const fullIdentifier = inputType === "phone" 
+        ? `${countryCode}${identifier}` 
+        : identifier;
+      
       // await fetch("/api/auth/login", {
       //   method: "POST",
       //   headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
       //   cache: "no-store",
       //   credentials: "include",
-      //   body: JSON.stringify({ identifier, password })
+      //   body: JSON.stringify({ 
+      //     identifier: fullIdentifier, 
+      //     password: authMethod === "password" ? password : undefined,
+      //     otp: authMethod === "otp" ? otp : undefined 
+      //   })
       // });
+      
       await new Promise((r) => setTimeout(r, 800));
+      console.log("Login with:", fullIdentifier);
       // router.push("/account")
     } catch {
       setError("Login failed. Please try again.");
@@ -128,18 +176,23 @@ function LoginPageInner() {
 
   async function handleSendOtp() {
     setError(null);
-    if (!identifier) return setError("Enter your email or mobile first.");
-    if (!navigator.onLine)
+    if (!navigator.onLine) {
       return setError("You are offline. Connect to request an OTP.");
+    }
+    
     try {
       setBusy(true);
-      // Example PWA-safe fetch (no caching):
+      // const fullIdentifier = inputType === "phone" 
+      //   ? `${countryCode}${identifier}` 
+      //   : identifier;
+        
       // await fetch("/api/auth/send-otp", {
       //   method: "POST",
       //   headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
       //   cache: "no-store",
-      //   body: JSON.stringify({ identifier })
+      //   body: JSON.stringify({ identifier: fullIdentifier })
       // });
+      
       await new Promise((r) => setTimeout(r, 700));
       setOtpSent(true);
       setCooldown(30);
@@ -154,655 +207,435 @@ function LoginPageInner() {
     alert("Google sign-in placeholder");
   }
 
-  function handleRegister(e: React.FormEvent) {
-    e.preventDefault();
-    if (reg.pwd !== reg.confirm) return setRegError("Passwords do not match");
-    if (reg.type === "business" && !gstValid)
-      return setRegError("Please enter a valid 15-character GSTIN");
-    setRegError("");
-    alert(
-      `Registered ${reg.first} ${reg.last} as ${reg.type}` +
-        (reg.type === "business"
-          ? ` (GST: ${reg.gst}, Company: ${reg.company})`
-          : "")
-    );
+  function handleBack() {
+    setStep(1);
+    setError(null);
+    setPassword("");
+    setOtp("");
+    setOtpSent(false);
+  }
+
+  function handleEditIdentifier() {
+    setStep(1);
+    setError(null);
   }
 
   // Public banner image for preview (replace with your own when ready)
   const PROMO_IMAGE_URL = "/loginofferbanner.webp";
 
+  // Get current country
+  const selectedCountry = COUNTRY_CODES.find(c => c.code === countryCode) || COUNTRY_CODES[0];
+
   return (
-    <div className="min-h-[100svh] bg-white text-slate-800">
-      {/* Top green utichlity bar */}
-      
-
-      {/* Header */}
-
-
+    <div 
+      className="min-h-[100svh] bg-gradient-to-br from-slate-50 to-green-50/30 text-slate-800"
+      style={{ fontFamily: 'OPTIHandelGothic-Light, "Inter", "Arial", sans-serif' }}
+    >
       {/* Offline banner (after mount to avoid hydration mismatch) */}
       {mounted && !isOnline && (
         <div className="mx-auto max-w-6xl px-4 pt-3">
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 text-sm">
-            You are offline. Forms are disabled until connection is restored.
+            ⚠️ You are offline. Forms are disabled until connection is restored.
           </div>
         </div>
       )}
 
       {/* Main: Login + Promo panel */}
-      <main className="mx-auto max-w-6xl px-4 py-8">
-        <div className="grid gap-6 md:grid-cols-2">
+      <main className="mx-auto max-w-7xl px-4 py-12 md:py-20">
+        <div className="grid gap-8 md:grid-cols-2 items-stretch">
           {/* Login card */}
-          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm order-2 md:order-1">
-            <h1 className="text-lg font-semibold" style={{ color: BRAND }}>
-              Login
-            </h1>
-
-            {/* Segmented tabs */}
-            <div
-              className="mt-3 inline-flex rounded-lg bg-green-50 p-1 text-sm"
-              style={{ borderColor: BRAND }}
-            >
-              <button
-                onClick={() => setTab("password")}
-                className={
-                  "rounded-md px-3 py-1.5 transition " +
-                  (tab === "password"
-                    ? "bg-white shadow"
-                    : "text-slate-700 hover:text-slate-900")
-                }
-                style={tab === "password" ? { color: BRAND } : undefined}
-              >
-                Password
-              </button>
-              <button
-                onClick={() => setTab("otp")}
-                className={
-                  "rounded-md px-3 py-1.5 transition " +
-                  (tab === "otp"
-                    ? "bg-white shadow"
-                    : "text-slate-700 hover:text-slate-900")
-                }
-                style={tab === "otp" ? { color: BRAND } : undefined}
-              >
-                OTP
-              </button>
+          <section className="rounded-2xl border border-slate-200/60 bg-white/90 backdrop-blur-sm p-8 md:p-10 shadow-xl order-2 md:order-1 flex flex-col">
+            {/* Header */}
+            <div className="mb-8">
+              <h1 className="text-3xl font-bold mb-2" style={{ color: BRAND }}>
+                {step === 1 ? "Welcome Back" : "Sign In"}
+              </h1>
+              <p className="text-slate-600 text-sm">
+                {step === 1 
+                  ? "Enter your details to continue" 
+                  : "Choose how you'd like to sign in"}
+              </p>
             </div>
 
-            <form onSubmit={handleLogin} className="mt-5 grid gap-4" noValidate>
-              {/* Identifier */}
-              <label htmlFor="identifier" className="grid gap-1">
-                <span className="text-sm font-medium">
-                  Email address or Mobile
-                </span>
-                <div className="relative">
-                  <input
-                    id="identifier"
-                    name="identifier"
-                    required
-                    type="text"
-                    inputMode="email"
-                    autoComplete="username"
-                    placeholder="jane@doe.com or 9876543210"
-                    value={identifier}
-                    onChange={(e) => setIdentifier(e.target.value)}
-                    className="w-full rounded-lg border bg-white px-3 py-2.5 pr-9 text-[15px] outline-none ring-4 ring-transparent"
-                    style={{ borderColor: "#c7d7c9" }}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = BRAND)}
-                    onBlur={(e) =>
-                      (e.currentTarget.style.borderColor = "#c7d7c9")
-                    }
-                  />
-                  <Mail className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 opacity-60" />
-                </div>
-              </label>
-
-              {/* Password or OTP */}
-              {tab === "password" ? (
-                <label htmlFor="password" className="grid gap-1">
-                  <span className="text-sm font-medium">Password</span>
+            {/* STEP 1: Identifier Input */}
+            {step === 1 && (
+              <form onSubmit={handleStepOne} className="grid gap-6" noValidate>
+                <div className="grid gap-2">
+                  <label htmlFor="identifier" className="text-sm font-medium text-slate-700">
+                    Email or Mobile Number
+                  </label>
                   <div className="relative">
+                    {/* Country Code Dropdown for Phone */}
+                    {inputType === "phone" && (
+                      <div className="absolute left-0 top-0 bottom-0 flex items-center">
+                        <button
+                          type="button"
+                          onClick={() => setShowCountryDropdown(!showCountryDropdown)}
+                          className="h-full px-3 flex items-center gap-1 border-r hover:bg-slate-50 rounded-l-lg transition cursor-pointer"
+                          style={{ borderColor: "#e2e8f0" }}
+                        >
+                          <span className="text-lg">{selectedCountry.flag}</span>
+                          <span className="text-sm font-medium text-slate-700">{selectedCountry.code}</span>
+                          <ChevronDown className="h-3 w-3 text-slate-500" />
+                        </button>
+                        
+                        {/* Dropdown Menu */}
+                        {showCountryDropdown && (
+                          <div className="absolute top-full left-0 mt-1 bg-white border rounded-lg shadow-lg z-10 py-1 w-48">
+                            {COUNTRY_CODES.map((country) => (
+                              <button
+                                key={country.code}
+                                type="button"
+                                onClick={() => {
+                                  setCountryCode(country.code);
+                                  setShowCountryDropdown(false);
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 text-sm cursor-pointer"
+                              >
+                                <span className="text-lg">{country.flag}</span>
+                                <span className="font-medium">{country.code}</span>
+                                <span className="text-slate-600">{country.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <input
-                      id="password"
-                      name="password"
+                      id="identifier"
+                      name="identifier"
                       required
-                      type={showPwd ? "text" : "password"}
-                      autoComplete="current-password"
-                      placeholder="Enter your Password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full rounded-lg border bg-white px-3 py-2.5 pr-10 text-[15px] outline-none ring-4 ring-transparent"
-                      style={{ borderColor: "#c7d7c9" }}
-                      onFocus={(e) =>
-                        (e.currentTarget.style.borderColor = BRAND)
-                      }
-                      onBlur={(e) =>
-                        (e.currentTarget.style.borderColor = "#c7d7c9")
-                      }
+                      type="text"
+                      inputMode={inputType === "phone" ? "tel" : "email"}
+                      autoComplete="username"
+                      placeholder={inputType === "phone" ? "9876543210" : "jane@example.com"}
+                      value={identifier}
+                      onChange={(e) => handleIdentifierChange(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-white py-3.5 pr-12 text-[16px] outline-none focus:ring-2 focus:ring-offset-1 transition"
+                      style={{ 
+                        paddingLeft: inputType === "phone" ? "130px" : "16px"
+                      }}
+                      onFocus={(e) => {
+                        e.currentTarget.style.borderColor = BRAND;
+                        e.currentTarget.style.boxShadow = `0 0 0 3px ${BRAND_LIGHT}40`;
+                      }}
+                      onBlur={(e) => {
+                        e.currentTarget.style.borderColor = "#e2e8f0";
+                        e.currentTarget.style.boxShadow = "none";
+                      }}
                     />
+                    
+                    {/* Dynamic Icon */}
+                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                      {inputType === "phone" ? (
+                        <Phone className="h-5 w-5 text-green-600" />
+                      ) : inputType === "email" ? (
+                        <Mail className="h-5 w-5 text-blue-600" />
+                      ) : (
+                        <Mail className="h-5 w-5 text-slate-400" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Error */}
+                {error && (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 flex items-start gap-2">
+                    <span className="text-rose-500 font-bold">⚠</span>
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                {/* Continue Button */}
+                <button
+                  type="submit"
+                  disabled={!identifier || busy || !isOnline}
+                  className="w-full rounded-lg px-6 py-3.5 font-semibold text-white transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 cursor-pointer"
+                  style={{ backgroundColor: BRAND }}
+                >
+                  {busy ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Please wait...
+                    </span>
+                  ) : (
+                    "Continue →"
+                  )}
+                </button>
+
+                {/* Divider */}
+                <div className="relative my-2">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-200"></div>
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="bg-white px-4 text-slate-500">or</span>
+                  </div>
+                </div>
+
+                {/* Social Login */}
+                <button
+                  type="button"
+                  onClick={onGoogle}
+                  disabled={!isOnline}
+                  className="w-full rounded-lg border-2 border-slate-200 bg-white px-6 py-3.5 font-medium text-slate-700 transition-all hover:bg-slate-50 hover:border-slate-300 active:scale-[.98] disabled:opacity-50 cursor-pointer"
+                >
+                  <span className="flex items-center justify-center gap-3">
+                    <FcGoogle className="h-5 w-5" />
+                    Continue with Google
+                  </span>
+                </button>
+
+                {/* Footer Links */}
+                <div className="text-center space-y-3 pt-4">
+                  <p className="text-sm text-slate-600">
+                    New to OWEG?{" "}
+                    <Link href="/signup" className="font-semibold hover:underline cursor-pointer" style={{ color: BRAND }}>
+                      Create an account
+                    </Link>
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    By continuing, you agree to our{" "}
+                    <Link className="underline hover:text-slate-700 cursor-pointer" href="/terms">
+                      Terms
+                    </Link>{" "}
+                    and{" "}
+                    <Link className="underline hover:text-slate-700 cursor-pointer" href="/privacy">
+                      Privacy Policy
+                    </Link>
+                  </p>
+                </div>
+              </form>
+            )}
+
+            {/* STEP 2: Authentication Method */}
+            {step === 2 && (
+              <form onSubmit={handleLogin} className="grid gap-6" noValidate>
+                {/* Show identifier with edit option */}
+                <div className="bg-slate-50 rounded-lg p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {inputType === "phone" ? (
+                      <Phone className="h-5 w-5 text-green-600" />
+                    ) : (
+                      <Mail className="h-5 w-5 text-blue-600" />
+                    )}
+                    <div>
+                      <p className="text-xs text-slate-500">Signing in as:</p>
+                      <p className="font-medium text-slate-800">
+                        {inputType === "phone" ? `${countryCode} ${identifier}` : identifier}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleEditIdentifier}
+                    className="text-sm font-medium hover:underline cursor-pointer"
+                    style={{ color: BRAND }}
+                  >
+                    Edit
+                  </button>
+                </div>
+
+                {/* Auth Method Selector - Compact */}
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium text-slate-700">
+                    Choose authentication method
+                  </label>
+                  <div className="inline-flex w-full rounded-lg border border-slate-200 p-1 bg-slate-50">
                     <button
                       type="button"
-                      onClick={() => setShowPwd((s) => !s)}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-500 hover:bg-slate-50"
-                      aria-label={showPwd ? "Hide password" : "Show password"}
+                      onClick={() => setAuthMethod("password")}
+                      className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                        authMethod === "password"
+                          ? "bg-white shadow-sm text-slate-800"
+                          : "text-slate-600 hover:text-slate-800"
+                      }`}
+                      style={authMethod === "password" ? { color: BRAND } : undefined}
                     >
-                      {showPwd ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
+                      <Lock className="h-4 w-4" />
+                      Password
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAuthMethod("otp")}
+                      className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                        authMethod === "otp"
+                          ? "bg-white shadow-sm text-slate-800"
+                          : "text-slate-600 hover:text-slate-800"
+                      }`}
+                      style={authMethod === "otp" ? { color: BRAND } : undefined}
+                    >
+                      <KeyRound className="h-4 w-4" />
+                      OTP
                     </button>
                   </div>
-                </label>
-              ) : (
-                <div className="grid gap-3">
-                  <div className="flex items-center gap-2">
+                </div>
+
+                {/* Password Field */}
+                {authMethod === "password" && (
+                  <div className="grid gap-2">
+                    <div className="flex items-center justify-between">
+                      <label htmlFor="password" className="text-sm font-medium text-slate-700">
+                        Password
+                      </label>
+                      <Link href="/forgot" className="text-xs font-medium hover:underline cursor-pointer" style={{ color: BRAND }}>
+                        Forgot password?
+                      </Link>
+                    </div>
+                    <div className="relative">
+                      <input
+                        id="password"
+                        name="password"
+                        required
+                        type={showPwd ? "text" : "password"}
+                        autoComplete="current-password"
+                        placeholder="Enter your password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3.5 pr-12 text-[16px] outline-none transition"
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = BRAND;
+                          e.currentTarget.style.boxShadow = `0 0 0 3px ${BRAND}20`;
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = "#e2e8f0";
+                          e.currentTarget.style.boxShadow = "none";
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPwd(!showPwd)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-500 hover:bg-slate-100 cursor-pointer"
+                        aria-label={showPwd ? "Hide password" : "Show password"}
+                      >
+                        {showPwd ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* OTP Field */}
+                {authMethod === "otp" && (
+                  <div className="grid gap-3">
                     <button
                       type="button"
                       disabled={busy || cooldown > 0 || !isOnline}
                       onClick={handleSendOtp}
-                      className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm hover:bg-green-50 disabled:opacity-50"
+                      className="w-full rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all hover:bg-green-50 disabled:opacity-50 cursor-pointer"
                       style={{ borderColor: BRAND, color: BRAND }}
                     >
                       {busy ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : null}
-                      {!isOnline
-                        ? "Go online to send OTP"
-                        : otpSent
-                        ? cooldown > 0
-                          ? `Resend in ${cooldown}s`
-                          : "Resend OTP"
-                        : "Send OTP"}
+                        <span className="flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Sending...
+                        </span>
+                      ) : !isOnline ? (
+                        "Go online to send OTP"
+                      ) : otpSent ? (
+                        cooldown > 0 ? (
+                          `Resend OTP in ${cooldown}s`
+                        ) : (
+                          "Resend OTP"
+                        )
+                      ) : (
+                        `Send OTP to ${inputType === "phone" ? "mobile" : "email"}`
+                      )}
                     </button>
-                    <span className="text-xs text-slate-500">
-                      OTP will be sent to your email/mobile.
-                    </span>
+
+                    {otpSent && (
+                      <div className="grid gap-2">
+                        <label htmlFor="otp" className="text-sm font-medium text-slate-700">
+                          Enter OTP
+                        </label>
+                        <input
+                          id="otp"
+                          name="otp"
+                          required
+                          inputMode="numeric"
+                          pattern="[0-9]{4,8}"
+                          autoComplete="one-time-code"
+                          placeholder="Enter 6-digit code"
+                          value={otp}
+                          onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                          maxLength={6}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3.5 text-center text-2xl tracking-widest font-semibold outline-none transition"
+                          onFocus={(e) => {
+                            e.currentTarget.style.borderColor = BRAND;
+                            e.currentTarget.style.boxShadow = `0 0 0 3px ${BRAND}20`;
+                          }}
+                          onBlur={(e) => {
+                            e.currentTarget.style.borderColor = "#e2e8f0";
+                            e.currentTarget.style.boxShadow = "none";
+                          }}
+                        />
+                        <p className="text-xs text-slate-500 text-center">
+                          OTP sent to {inputType === "phone" ? `${countryCode} ${identifier}` : identifier}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <label htmlFor="otp" className="grid gap-1">
-                    <span className="text-sm font-medium">Enter OTP</span>
-                    <input
-                      id="otp"
-                      name="otp"
-                      required
-                      inputMode="numeric"
-                      pattern="[0-9]{4,8}"
-                      autoComplete="one-time-code"
-                      placeholder="6-digit code"
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value)}
-                      className="w-full rounded-lg border bg-white px-3 py-2.5 text-[15px] outline-none ring-4 ring-transparent"
-                      style={{ borderColor: "#c7d7c9" }}
-                      onFocus={(e) =>
-                        (e.currentTarget.style.borderColor = BRAND)
-                      }
-                      onBlur={(e) =>
-                        (e.currentTarget.style.borderColor = "#c7d7c9")
-                      }
-                    />
-                  </label>
-                </div>
-              )}
+                )}
 
-              {/* Utilities */}
-              {tab === "password" && (
-                <div className="flex items-center justify-between text-sm">
-                  <label
-                    htmlFor="remember"
-                    className="inline-flex items-center gap-2"
-                  >
-                    <input
-                      id="remember"
-                      name="remember"
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-white"
-                      style={{ accentColor: BRAND }}
-                    />
-                    <span>Remember me</span>
-                  </label>
-                  <Link href="/forgot" className="hover:underline" style={{ color: BRAND }}>
-                    Forgot password?
-                  </Link>
-                </div>
-              )}
-
-              {/* Error */}
-              {error && (
-                <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                  {error}
-                </div>
-              )}
-
-              {/* Submit */}
-              <button
-                type="submit"
-                disabled={busy || !isOnline}
-                className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-medium text-white hover:opacity-95 active:scale-[.99] disabled:opacity-60"
-                style={{ backgroundColor: BRAND }}
-              >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {!isOnline
-                  ? "Go online to continue"
-                  : tab === "password"
-                  ? "Continue"
-                  : "Verify & Continue"}
-              </button>
-
-              {/* Divider */}
-              <div className="relative my-2 text-center text-xs text-slate-400">
-                <span className="before:absolute before:left-0 before:top-1/2 before:h-px before:w-2/5 before:-translate-y-1/2 before:bg-slate-200 after:absolute after:right-0 after:top-1/2 after:h-px after:w-2/5 after:-translate-y-1/2 after:bg-slate-200">
-                  or
-                </span>
-              </div>
-
-              {/* Social */}
-              <div className="grid gap-3">
-                <button
-                  type="button"
-                  onClick={onGoogle}
-                  className="rounded-lg border bg-white px-4 py-2.5 hover:bg-green-50"
-                  style={{ borderColor: BRAND }}
-                >
-                  <div
-                    className="mx-auto flex items-center justify-center gap-2 text-sm font-medium"
-                    style={{ color: BRAND }}
-                  >
-                    <FcGoogle className="h-4 w-4" /> Continue with Google
+                {/* Error */}
+                {error && (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 flex items-start gap-2">
+                    <span className="text-rose-500 font-bold">⚠</span>
+                    <span>{error}</span>
                   </div>
-                </button>
-              </div>
+                )}
 
-              <p className="text-xs leading-relaxed text-slate-600">
-                By continuing, you agree to our{" "}
-                <Link className="underline" href="/terms" style={{ color: BRAND }}>
-                  Terms
-                </Link>{" "}
-                and{" "}
-                <Link className="underline" href="/privacy" style={{ color: BRAND }}>
-                  Privacy Policy
-                </Link>
-                .
-              </p>
+                {/* Action Buttons */}
+                <div className="grid gap-3 pt-2">
+                  <button
+                    type="submit"
+                    disabled={busy || !isOnline || (authMethod === "password" && !password) || (authMethod === "otp" && !otp)}
+                    className="w-full rounded-lg px-6 py-3.5 font-semibold text-white transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 cursor-pointer"
+                    style={{ backgroundColor: BRAND }}
+                  >
+                    {busy ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Signing in...
+                      </span>
+                    ) : (
+                      "Sign In"
+                    )}
+                  </button>
 
-              <p className="text-sm text-slate-700">
-                New to OWEG?{" "}
-                <Link href="/signup" className="font-medium underline" style={{ color: BRAND }}>
-                  Create your account
-                </Link>
-              </p>
-            </form>
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    className="w-full rounded-lg border-2 border-slate-200 bg-white px-6 py-3 font-medium text-slate-700 transition-all hover:bg-slate-50 active:scale-[.98] cursor-pointer"
+                  >
+                    ← Back
+                  </button>
+                </div>
+              </form>
+            )}
           </section>
 
-          {/* Offers/Ads panel */}
-          <aside
-            className="order-1 md:order-2 rounded-xl border bg-white shadow-sm overflow-hidden p-0"
-            style={{ borderColor: "#d9ead9" }}
-          >
-            <div className="relative h-full min-h-[16rem]">
-              <Image src={PROMO_IMAGE_URL} alt="Current OWEG promotion" fill className="object-cover" />
+          {/* Promo panel - Image Banner */}
+          <aside className="order-1 md:order-2 rounded-2xl overflow-hidden shadow-2xl bg-white">
+            <div className="relative w-full h-full min-h-[28rem]">
+              <Image 
+                src={PROMO_IMAGE_URL} 
+                alt="OWEG Promotional Banner" 
+                fill 
+                className="object-cover"
+                priority
+              />
             </div>
           </aside>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t bg-white">
+      <footer className="border-t border-slate-200/60 bg-white/50 backdrop-blur-sm">
         <div className="mx-auto max-w-6xl px-4 py-6 text-center text-xs text-slate-500">
-          &copy; {new Date().getFullYear()} OWEG
+          &copy; {new Date().getFullYear()} OWEG. All rights reserved.
         </div>
       </footer>
-
-      {/* REGISTER SLIDE-OVER disabled; using dedicated /signup page */}
-      {false && (
-        <div
-          className="fixed inset-0 z-50"
-          aria-labelledby="register-title"
-          aria-modal="true"
-          role="dialog"
-        >
-          <div
-            className="absolute inset-0 bg-black/30"
-            onClick={() => setMode("login")}
-          />
-          <section className="absolute right-0 top-0 h-full w-full max-w-2xl overflow-auto border-l bg-white shadow-2xl">
-            <div className="border-b" style={{ backgroundColor: "#f3faf3" }}>
-              <div className="mx-auto max-w-2xl px-6 py-4 flex items-center justify-between">
-                <h3
-                  id="register-title"
-                  className="text-lg font-semibold"
-                  style={{ color: BRAND }}
-                >
-                  Create account
-                </h3>
-                <button
-                  onClick={() => setMode("login")}
-                  className="rounded-md p-2 text-slate-500 hover:bg-slate-100"
-                  aria-label="Close register"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            <form
-              onSubmit={handleRegister}
-              className="mx-auto max-w-2xl px-6 py-6 grid gap-5"
-            >
-              {/* Are you */}
-              <fieldset className="grid gap-2">
-                <legend className="text-sm font-medium">Are you</legend>
-                <div className="inline-flex rounded-lg bg-green-50 p-1 text-sm w-max">
-                  <button
-                    type="button"
-                    onClick={() => setReg({ ...reg, type: "individual" })}
-                    className={
-                      "rounded-md px-3 py-1.5 transition " +
-                      (reg.type === "individual"
-                        ? "bg-white shadow"
-                        : "text-slate-700 hover:text-slate-900")
-                    }
-                    style={
-                      reg.type === "individual" ? { color: BRAND } : undefined
-                    }
-                  >
-                    Individual
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setReg({ ...reg, type: "business" })}
-                    className={
-                      "rounded-md px-3 py-1.5 transition " +
-                      (reg.type === "business"
-                        ? "bg-white shadow"
-                        : "text-slate-700 hover:text-slate-900")
-                    }
-                    style={
-                      reg.type === "business" ? { color: BRAND } : undefined
-                    }
-                  >
-                    Business
-                  </button>
-                </div>
-              </fieldset>
-
-              {/* Business-only */}
-              {reg.type === "business" && (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="grid gap-1" htmlFor="gst">
-                    <span className="text-sm font-medium">GST No</span>
-                    <input
-                      id="gst"
-                      name="gst"
-                      required
-                      maxLength={15}
-                      value={reg.gst}
-                      onChange={(e) =>
-                        setReg({ ...reg, gst: e.target.value.toUpperCase() })
-                      }
-                      placeholder="27ABCDE1234F1Z5"
-                      pattern="[0-9A-Z]{15}"
-                      className="w-full rounded-lg border bg-white px-3 py-2.5 outline-none ring-4 ring-transparent"
-                      style={{ borderColor: "#c7d7c9" }}
-                      onFocus={(e) =>
-                        (e.currentTarget.style.borderColor = BRAND)
-                      }
-                      onBlur={(e) =>
-                        (e.currentTarget.style.borderColor = "#c7d7c9")
-                      }
-                    />
-                  </label>
-                  <label className="grid gap-1" htmlFor="company">
-                    <span className="text-sm font-medium">Company Name</span>
-                    <input
-                      id="company"
-                      name="company"
-                      required
-                      value={reg.company}
-                      onChange={(e) =>
-                        setReg({ ...reg, company: e.target.value })
-                      }
-                      placeholder="Registered business name"
-                      className="w-full rounded-lg border bg-white px-3 py-2.5 outline-none ring-4 ring-transparent"
-                      style={{ borderColor: "#c7d7c9" }}
-                      onFocus={(e) =>
-                        (e.currentTarget.style.borderColor = BRAND)
-                      }
-                      onBlur={(e) =>
-                        (e.currentTarget.style.borderColor = "#c7d7c9")
-                      }
-                    />
-                  </label>
-                </div>
-              )}
-              {reg.type === "business" && !gstValid && (
-                <p className="text-sm text-rose-600" aria-live="polite">
-                  GSTIN must be 15 characters (A-Z, 0-9).
-                </p>
-              )}
-
-              {/* Referral */}
-              <label className="grid gap-1" htmlFor="referral">
-                <span className="text-sm font-medium">Referral Code</span>
-                <input
-                  id="referral"
-                  name="referral"
-                  type="text"
-                  value={reg.referral}
-                  onChange={(e) => setReg({ ...reg, referral: e.target.value })}
-                  placeholder="Optional"
-                  className="w-full rounded-lg border bg-white px-3 py-2.5 outline-none ring-4 ring-transparent"
-                  style={{ borderColor: "#c7d7c9" }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = BRAND)}
-                  onBlur={(e) =>
-                    (e.currentTarget.style.borderColor = "#c7d7c9")
-                  }
-                />
-              </label>
-
-              {/* Name */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="grid gap-1" htmlFor="first">
-                  <span className="text-sm font-medium">First Name</span>
-                  <input
-                    id="first"
-                    name="first"
-                    required
-                    type="text"
-                    autoComplete="given-name"
-                    value={reg.first}
-                    onChange={(e) => setReg({ ...reg, first: e.target.value })}
-                    placeholder="First Name"
-                    className="w-full rounded-lg border bg-white px-3 py-2.5 outline-none ring-4 ring-transparent"
-                    style={{ borderColor: "#c7d7c9" }}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = BRAND)}
-                    onBlur={(e) =>
-                      (e.currentTarget.style.borderColor = "#c7d7c9")
-                    }
-                  />
-                </label>
-                <label className="grid gap-1" htmlFor="last">
-                  <span className="text-sm font-medium">Last Name</span>
-                  <input
-                    id="last"
-                    name="last"
-                    required
-                    type="text"
-                    autoComplete="family-name"
-                    value={reg.last}
-                    onChange={(e) => setReg({ ...reg, last: e.target.value })}
-                    placeholder="Last Name"
-                    className="w-full rounded-lg border bg-white px-3 py-2.5 outline-none ring-4 ring-transparent"
-                    style={{ borderColor: "#c7d7c9" }}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = BRAND)}
-                    onBlur={(e) =>
-                      (e.currentTarget.style.borderColor = "#c7d7c9")
-                    }
-                  />
-                </label>
-              </div>
-
-              {/* Email & Mobile */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="grid gap-1" htmlFor="email">
-                  <span className="text-sm font-medium">E-Mail</span>
-                  <input
-                    id="email"
-                    name="email"
-                    required
-                    type="email"
-                    autoComplete="email"
-                    value={reg.email}
-                    onChange={(e) => setReg({ ...reg, email: e.target.value })}
-                    placeholder="name@example.com"
-                    className="w-full rounded-lg border bg-white px-3 py-2.5 outline-none ring-4 ring-transparent"
-                    style={{ borderColor: "#c7d7c9" }}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = BRAND)}
-                    onBlur={(e) =>
-                      (e.currentTarget.style.borderColor = "#c7d7c9")
-                    }
-                  />
-                </label>
-                <label className="grid gap-1" htmlFor="mobile">
-                  <span className="text-sm font-medium">Mobile</span>
-                  <input
-                    id="mobile"
-                    name="mobile"
-                    required
-                    inputMode="tel"
-                    pattern="[0-9]{10}"
-                    autoComplete="tel"
-                    value={reg.mobile}
-                    onChange={(e) => setReg({ ...reg, mobile: e.target.value })}
-                    placeholder="10-digit mobile number"
-                    className="w-full rounded-lg border bg-white px-3 py-2.5 outline-none ring-4 ring-transparent"
-                    style={{ borderColor: "#c7d7c9" }}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = BRAND)}
-                    onBlur={(e) =>
-                      (e.currentTarget.style.borderColor = "#c7d7c9")
-                    }
-                  />
-                </label>
-              </div>
-
-              {/* Passwords */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="grid gap-1" htmlFor="pwd">
-                  <span className="text-sm font-medium">Your Password</span>
-                  <input
-                    id="pwd"
-                    name="pwd"
-                    required
-                    type="password"
-                    autoComplete="new-password"
-                    value={reg.pwd}
-                    onChange={(e) => setReg({ ...reg, pwd: e.target.value })}
-                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
-                    className="w-full rounded-lg border bg-white px-3 py-2.5 outline-none ring-4 ring-transparent"
-                    style={{ borderColor: "#c7d7c9" }}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = BRAND)}
-                    onBlur={(e) =>
-                      (e.currentTarget.style.borderColor = "#c7d7c9")
-                    }
-                  />
-                </label>
-                <label className="grid gap-1" htmlFor="confirm">
-                  <span className="text-sm font-medium">Password Confirm</span>
-                  <input
-                    id="confirm"
-                    name="confirm"
-                    required
-                    type="password"
-                    autoComplete="new-password"
-                    value={reg.confirm}
-                    onChange={(e) =>
-                      setReg({ ...reg, confirm: e.target.value })
-                    }
-                    placeholder="Repeat password"
-                    className="w-full rounded-lg border bg-white px-3 py-2.5 outline-none ring-4 ring-transparent"
-                    style={{ borderColor: "#c7d7c9" }}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = BRAND)}
-                    onBlur={(e) =>
-                      (e.currentTarget.style.borderColor = "#c7d7c9")
-                    }
-                  />
-                </label>
-              </div>
-              {reg.pwd && reg.confirm && reg.pwd !== reg.confirm && (
-                <p className="text-sm text-rose-600" aria-live="polite">
-                  Passwords do not match.
-                </p>
-              )}
-
-              {/* Newsletter */}
-              <fieldset className="grid gap-1">
-                <legend className="text-sm font-medium">
-                  Newsletter -- Subscribe
-                </legend>
-                <div className="inline-flex gap-2 rounded-lg bg-green-50 p-1 text-sm w-max">
-                  <button
-                    type="button"
-                    onClick={() => setReg({ ...reg, newsletter: "yes" })}
-                    className={
-                      "rounded-md px-3 py-1.5 transition " +
-                      (reg.newsletter === "yes"
-                        ? "bg-white shadow"
-                        : "text-slate-700 hover:text-slate-900")
-                    }
-                    style={
-                      reg.newsletter === "yes" ? { color: BRAND } : undefined
-                    }
-                  >
-                    Yes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setReg({ ...reg, newsletter: "no" })}
-                    className={
-                      "rounded-md px-3 py-1.5 transition " +
-                      (reg.newsletter === "no"
-                        ? "bg-white shadow"
-                        : "text-slate-700 hover:text-slate-900")
-                    }
-                    style={
-                      reg.newsletter === "no" ? { color: BRAND } : undefined
-                    }
-                  >
-                    No
-                  </button>
-                </div>
-              </fieldset>
-
-              {/* Actions */}
-              {regError && (
-                <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                  {regError}
-                </div>
-              )}
-              <div className="mt-1 flex flex-wrap items-center gap-3">
-                <button
-                  type="submit"
-                  disabled={!regCanSubmit || !isOnline}
-                  className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 font-medium text-white disabled:opacity-50 hover:opacity-95 active:scale-[.99]"
-                  style={{ backgroundColor: BRAND }}
-                >
-                  <UserPlus className="h-4 w-4" /> Submit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("login")}
-                  className="inline-flex items-center gap-2 rounded-lg border bg-white px-4 py-2.5 text-slate-700 hover:bg-green-50"
-                  style={{ borderColor: BRAND }}
-                >
-                  <X className="h-4 w-4" /> Cancel
-                </button>
-              </div>
-
-              <p className="text-xs text-slate-500">
-                By creating an account, you agree to our Terms & Privacy Policy.
-              </p>
-            </form>
-          </section>
-        </div>
-      )}
     </div>
   );
 }

@@ -3,6 +3,19 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Custom Font - OPTIHandelGothic-Light */
+/* To use this font, add the font file to /public/fonts/ directory and uncomment below */
+/*
+@font-face {
+  font-family: 'OPTIHandelGothic-Light';
+  src: url('/fonts/OPTIHandelGothic-Light.woff2') format('woff2'),
+       url('/fonts/OPTIHandelGothic-Light.woff') format('woff');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+*/
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
