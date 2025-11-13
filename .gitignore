@@ -74,3 +74,4 @@ node_modules/
 # my-medusa-store local secrets and deps
 my-medusa-store/.env
 my-medusa-store/node_modules/
+my-medusa-store/yarn.lock
