@@ -1,7 +1,8 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import React from 'react'
 
@@ -18,6 +19,7 @@ type UIProduct = {
   discount: number
   limitedDeal?: boolean
   variant_id?: string
+  handle?: string
 }
 
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })
@@ -25,10 +27,35 @@ const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' 
 
 // Product Card Component
 function ProductCard({ product }: { product: UIProduct }) {
-  const [isHovered, setIsHovered] = useState(false);
+  const [isHovered, setIsHovered] = useState(false)
+  const idParam = encodeURIComponent(String(product.id))
+  const slug = encodeURIComponent(String(product.handle || product.id))
+  const productHref = `/productDetail/${slug}?id=${idParam}`
+
+  const handleQuickAdd = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!product.variant_id) {
+      alert('This product is not purchasable yet')
+      return
+    }
+    try {
+      await fetch('/api/medusa/cart', { method: 'POST' })
+      const r = await fetch('/api/medusa/cart/line-items', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ variant_id: product.variant_id, quantity: 1 }),
+      })
+      if (!r.ok) throw new Error('add failed')
+      alert('Added to cart')
+    } catch {
+      alert('Could not add to cart')
+    }
+  }
 
   return (
-    <div 
+    <Link
+      href={productHref}
       className="group relative flex-shrink-0 w-[300px] bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -42,16 +69,26 @@ function ProductCard({ product }: { product: UIProduct }) {
           sizes="200px"
         />
         <div className={`absolute inset-y-2 right-2 flex flex-col gap-2 transition-all duration-300 ${isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'}`}>
-          <button onClick={async () => {
-              if (!product.variant_id) { alert('This product is not purchasable yet'); return }
-              try {
-                await fetch('/api/medusa/cart', { method: 'POST' })
-                const r = await fetch('/api/medusa/cart/line-items', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ variant_id: product.variant_id, quantity: 1 }) })
-                if (!r.ok) throw new Error('add failed')
-                alert('Added to cart')
-              } catch { alert('Could not add to cart') }
-            }} title="Add to Cart" className="w-9 h-9 rounded-full bg-green-500 text-white flex items-center justify-center shadow hover:bg-green-600">+</button>
-          <button onClick={() => alert('Please login to add to wishlist')} title="Add to Wishlist" className="w-9 h-9 rounded-full bg-white text-gray-700 flex items-center justify-center shadow border hover:text-red-500">♡</button>
+          <button
+            type="button"
+            onClick={handleQuickAdd}
+            title="Add to Cart"
+            className="w-9 h-9 rounded-full bg-green-500 text-white flex items-center justify-center shadow hover:bg-green-600"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              alert('Please login to add to wishlist')
+            }}
+            title="Add to Wishlist"
+            className="w-9 h-9 rounded-full bg-white text-gray-700 flex items-center justify-center shadow border hover:text-red-500"
+          >
+            ❤
+          </button>
         </div>
       </div>
       <div className="p-3">
@@ -73,10 +110,9 @@ function ProductCard({ product }: { product: UIProduct }) {
         </div>
         <p className="text-sm text-gray-700 line-clamp-2">{product.name}</p>
       </div>
-    </div>
-  );
+    </Link>
+  )
 }
-
 // Product Carousel Component
 function ProductCarousel({ title, products }: { title: string; products: UIProduct[] }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -321,12 +357,13 @@ export default function HomePage() {
         </div>
         <ProductCarousel title="Mens Cloths" products={mensCloth} />
         {loading && (
-          <div className="px-4 text-sm text-gray-500">Loading products from store…</div>
+          <div className="px-4 text-sm text-gray-500">Loading products from storeâ€¦</div>
         )}
       </main>
     </div>
   );
 }
+
 
 
 
