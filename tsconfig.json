@@ -22,6 +22,16 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "src/app/sw.js"],
-  "exclude": ["node_modules", "src/app/example"]
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    ".next/types/**/*.ts",
+    "src/app/sw.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "src/app/example",
+    "my-medusa-store"
+  ]
 }

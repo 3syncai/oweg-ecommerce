@@ -1,9 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
-  MapPin,
   Search,
   ShoppingCart,
   User,
@@ -16,11 +15,23 @@ import { Input } from "@/components/ui/input";
 import type { MedusaCategory } from "@/lib/medusa";
 import Link from "next/link";
 import Image from "next/image";
+import LocationSelector from "./LocationSelector";
+import LocationModal from "./LocationModal";
+import {
+  getSavedLocation,
+  getUserGeolocation,
+  reverseGeocode,
+  saveLocation,
+  type LocationData,
+} from "./locationUtils";
 
 const MENU_COLLECTIONS = [
   { title: "Home Appliances", handle: "home-appliances" },
   { title: "Kitchen Appliances", handle: "kitchen-appliances" },
-  { title: "Computer & Mobile Accessories", handle: "computer-&-mobile-accessories" },
+  {
+    title: "Computer & Mobile Accessories",
+    handle: "computer-&-mobile-accessories",
+  },
   { title: "Surveillance & Security", handle: "surveillance-&-security" },
   { title: "Clothing", handle: "clothing" },
   { title: "Bags", handle: "bags" },
@@ -58,7 +69,8 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
     if (!cat?.id) return;
     const parentId =
       (cat.parent_category_id as string | null | undefined) ??
-      ((cat.parent_category as { id?: string | null } | undefined)?.id ?? null);
+      (cat.parent_category as { id?: string | null } | undefined)?.id ??
+      null;
     nodes.set(cat.id, {
       id: cat.id,
       title: normalizeCategoryTitle(cat),
@@ -69,7 +81,8 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
   });
 
   categories.forEach((cat) => {
-    const children = (cat.category_children as MedusaCategory[] | undefined) || [];
+    const children =
+      (cat.category_children as MedusaCategory[] | undefined) || [];
     children.forEach((child) => {
       if (!child?.id) return;
       if (!nodes.has(child.id)) {
@@ -118,18 +131,29 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
 };
 
 const Header: React.FC = () => {
+  // Location state
+  const [location, setLocation] = useState<LocationData | null>(null);
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+
+  // Existing state
   const [collections, setCollections] = React.useState<
     { id?: string; title: string; handle?: string; created_at?: string }[]
   >([]);
-  const [catsByCollection, setCatsByCollection] = React.useState<Record<string, { title: string; handle?: string }[]>>({});
+  const [catsByCollection, setCatsByCollection] = React.useState<
+    Record<string, { title: string; handle?: string }[]>
+  >({});
   const [browseOpen, setBrowseOpen] = React.useState(false);
   const [expandedCol, setExpandedCol] = React.useState<string | null>(null);
   const [navCategories, setNavCategories] = React.useState<NavCategory[]>([]);
-  const [overflowCategories, setOverflowCategories] = React.useState<NavCategory[]>([]);
+  const [overflowCategories, setOverflowCategories] = React.useState<
+    NavCategory[]
+  >([]);
   const [navCatsLoading, setNavCatsLoading] = React.useState(true);
 
   // dropdown states for portal:
-  const [activeCategoryId, setActiveCategoryId] = React.useState<string | null>(null);
+  const [activeCategoryId, setActiveCategoryId] = React.useState<string | null>(
+    null
+  );
   const [allOpen, setAllOpen] = React.useState(false);
 
   const [selectedFilter, setSelectedFilter] = React.useState<
@@ -140,7 +164,9 @@ const Header: React.FC = () => {
   >({ type: "all", title: "All" });
 
   const [q, setQ] = React.useState("");
-  const [suggestions, setSuggestions] = React.useState<{ id: string; name: string; image?: string; handle?: string }[]>([]);
+  const [suggestions, setSuggestions] = React.useState<
+    { id: string; name: string; image?: string; handle?: string }[]
+  >([]);
   const [showSuggest, setShowSuggest] = React.useState(false);
   const moreMenuRef = React.useRef<HTMLDivElement | null>(null);
   const mountedRef = React.useRef(false);
@@ -152,6 +178,82 @@ const Header: React.FC = () => {
   // timers to control delayed hide (prevents disappearing while moving mouse)
   const hideTimerRef = React.useRef<number | null>(null);
   const allHideTimerRef = React.useRef<number | null>(null);
+
+  // Function to load location from localStorage and update state
+  const syncLocation = useCallback(() => {
+    const saved = getSavedLocation();
+    if (saved) {
+      setLocation(saved);
+    }
+  }, []);
+
+  // Load saved location on mount, or auto-detect if not saved
+  useEffect(() => {
+    syncLocation();
+
+    // If no saved location, automatically try to detect it when user allows
+    const autoDetectLocation = async () => {
+      try {
+        const position = await getUserGeolocation();
+        const { latitude, longitude } = position.coords;
+        const detectedLocation = await reverseGeocode(latitude, longitude);
+
+        if (detectedLocation) {
+          saveLocation(detectedLocation);
+          setLocation(detectedLocation);
+        }
+        // If detection fails silently, user can manually set location via modal
+      } catch (err) {
+        // Silently fail - user can manually open modal to set location
+        // Don't show modal automatically to avoid interrupting user experience
+        console.log("Auto-location detection failed or denied:", err);
+      }
+    };
+
+    // Small delay to avoid blocking initial render
+    const timer = setTimeout(() => {
+      const saved = getSavedLocation();
+      if (!saved) {
+        autoDetectLocation();
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [syncLocation]);
+
+  // Listen for location changes from other components (e.g., product detail page)
+  useEffect(() => {
+    // Listen for custom 'locationChanged' event (fired when location is updated in same tab)
+    const handleLocationChanged = () => {
+      syncLocation();
+    };
+
+    // Listen for storage events (for cross-tab sync)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "oweg_user_location") {
+        syncLocation();
+      }
+    };
+
+    // Listen for window focus (fallback to sync on tab switch)
+    const handleFocus = () => {
+      syncLocation();
+    };
+
+    window.addEventListener("locationChanged", handleLocationChanged);
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      window.removeEventListener("locationChanged", handleLocationChanged);
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [syncLocation]);
+
+  const handleLocationSelect = (newLocation: LocationData) => {
+    setLocation(newLocation);
+  };
 
   // For re-positioning on resize/scroll
   const [, forceRerender] = React.useState(0);
@@ -166,6 +268,45 @@ const Header: React.FC = () => {
       mountedRef.current = false;
     };
   }, []);
+
+  // helpers: start/clear hide timers for category dropdown
+  const clearHideTimer = useCallback(() => {
+    if (hideTimerRef.current) {
+      window.clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  }, []);
+
+  // increased default delay slightly so user moving mouse has buffer
+  const startHideTimer = useCallback(
+    (delay = 350) => {
+      clearHideTimer();
+      hideTimerRef.current = window.setTimeout(
+        () => setActiveCategoryId(null),
+        delay
+      );
+    },
+    [clearHideTimer]
+  );
+
+  // same for All dropdown (kept a longer delay for All)
+  const clearAllHideTimer = useCallback(() => {
+    if (allHideTimerRef.current) {
+      window.clearTimeout(allHideTimerRef.current);
+      allHideTimerRef.current = null;
+    }
+  }, []);
+
+  const startAllHideTimer = useCallback(
+    (delay = 600) => {
+      clearAllHideTimer();
+      allHideTimerRef.current = window.setTimeout(
+        () => setAllOpen(false),
+        delay
+      );
+    },
+    [clearAllHideTimer]
+  );
 
   // Handle click outside to close dropdowns
   React.useEffect(() => {
@@ -188,7 +329,7 @@ const Header: React.FC = () => {
     };
     document.addEventListener("click", handleClickOutside);
     return () => document.removeEventListener("click", handleClickOutside);
-  }, []);
+  }, [startHideTimer]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -196,10 +337,26 @@ const Header: React.FC = () => {
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return;
-        type Col = { id?: string; title?: string; name?: string; handle?: string; created_at?: string };
-        type OutCol = { id?: string; title: string; handle?: string; created_at?: string };
+        type Col = {
+          id?: string;
+          title?: string;
+          name?: string;
+          handle?: string;
+          created_at?: string;
+        };
+        type OutCol = {
+          id?: string;
+          title: string;
+          handle?: string;
+          created_at?: string;
+        };
         const cols = ((d.collections as Col[]) || [])
-          .map<OutCol>((c) => ({ id: c.id, title: (c.title || c.name || "").toString(), handle: c.handle, created_at: c.created_at }))
+          .map<OutCol>((c) => ({
+            id: c.id,
+            title: (c.title || c.name || "").toString(),
+            handle: c.handle,
+            created_at: c.created_at,
+          }))
           .filter((c) => !!c.title)
           .sort((a, b) => {
             const ad = a.created_at ? new Date(a.created_at).getTime() : 0;
@@ -212,8 +369,11 @@ const Header: React.FC = () => {
         const allowed = MENU_COLLECTIONS.map((menu) => {
           const match = cols.find((c) => {
             const menuHandle = (menu.handle || menu.title).toLowerCase();
-            const handleMatch = c.handle ? c.handle.toLowerCase() === menuHandle : false;
-            const titleMatch = c.title.toLowerCase() === menu.title.toLowerCase();
+            const handleMatch = c.handle
+              ? c.handle.toLowerCase() === menuHandle
+              : false;
+            const titleMatch =
+              c.title.toLowerCase() === menu.title.toLowerCase();
             return handleMatch || titleMatch;
           });
           return match ? match : { title: menu.title, handle: menu.handle };
@@ -231,10 +391,14 @@ const Header: React.FC = () => {
     let cancelled = false;
     async function loadNavCategories() {
       try {
-        const res = await fetch("/api/medusa/categories", { cache: "no-store" });
+        const res = await fetch("/api/medusa/categories", {
+          cache: "no-store",
+        });
         if (!res.ok) throw new Error("failed categories");
         const data = await res.json();
-        const raw = Array.isArray(data.categories) ? (data.categories as MedusaCategory[]) : [];
+        const raw = Array.isArray(data.categories)
+          ? (data.categories as MedusaCategory[])
+          : [];
         const { withChildren, withoutChildren } = buildNavCategories(raw);
         if (!cancelled) {
           setNavCategories(withChildren);
@@ -262,8 +426,11 @@ const Header: React.FC = () => {
       .then((r) => r.json())
       .then((d) => {
         type Cat = { title?: string; name?: string; handle?: string };
-        const arr = (d.categories as Cat[] || [])
-          .map((c) => ({ title: (c.title || c.name || "").toString(), handle: c.handle }))
+        const arr = ((d.categories as Cat[]) || [])
+          .map((c) => ({
+            title: (c.title || c.name || "").toString(),
+            handle: c.handle,
+          }))
           .filter((c) => !!c.title);
         setCatsByCollection((prev) => ({ ...prev, [key]: arr }));
       })
@@ -279,18 +446,25 @@ const Header: React.FC = () => {
       }
       const params = new URLSearchParams({ q });
       if (selectedFilter?.type === "category") {
-        if (selectedFilter.handle) params.append("category", selectedFilter.handle);
+        if (selectedFilter.handle)
+          params.append("category", selectedFilter.handle);
       } else if (selectedFilter?.type === "collection") {
         if (selectedFilter.id) params.append("collectionId", selectedFilter.id);
-        else if (selectedFilter.handle) params.append("collection", selectedFilter.handle);
+        else if (selectedFilter.handle)
+          params.append("collection", selectedFilter.handle);
       } else if (selectedFilter?.type === "all") {
         // nothing
       }
       fetch(`/api/medusa/search?${params.toString()}`)
         .then((r) => r.json())
         .then((d) => {
-          type S = { id: string; name: string; image?: string; handle?: string };
-          const list: S[] = (d.products as S[] || []).map((p) => ({
+          type S = {
+            id: string;
+            name: string;
+            image?: string;
+            handle?: string;
+          };
+          const list: S[] = ((d.products as S[]) || []).map((p) => ({
             id: p.id,
             name: p.name,
             image: (p as S).image,
@@ -310,7 +484,11 @@ const Header: React.FC = () => {
     preferMaxWidth = 360
   ): React.CSSProperties => {
     if (!triggerEl) {
-      return { left: 0, top: 0, visibility: "hidden" as const } as React.CSSProperties;
+      return {
+        left: 0,
+        top: 0,
+        visibility: "hidden" as const,
+      } as React.CSSProperties;
     }
     const rect = triggerEl.getBoundingClientRect();
     const gutter = 8;
@@ -319,7 +497,10 @@ const Header: React.FC = () => {
     const minWidth = 220;
     const viewportRight = window.innerWidth - 16;
     const availableRight = Math.max(200, viewportRight - rect.left);
-    const width = Math.min(maxWidth, Math.max(minWidth, Math.min(availableRight, 420)));
+    const width = Math.min(
+      maxWidth,
+      Math.max(minWidth, Math.min(availableRight, 420))
+    );
     let left = rect.left;
     if (left + width + 16 > window.innerWidth) {
       left = Math.max(8, window.innerWidth - width - 16);
@@ -334,31 +515,6 @@ const Header: React.FC = () => {
     };
   };
 
-  // helpers: start/clear hide timers for category dropdown
-  const clearHideTimer = () => {
-    if (hideTimerRef.current) {
-      window.clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
-    }
-  };
-  // increased default delay slightly so user moving mouse has buffer
-  const startHideTimer = (delay = 350) => {
-    clearHideTimer();
-    hideTimerRef.current = window.setTimeout(() => setActiveCategoryId(null), delay);
-  };
-
-  // same for All dropdown (kept a longer delay for All)
-  const clearAllHideTimer = () => {
-    if (allHideTimerRef.current) {
-      window.clearTimeout(allHideTimerRef.current);
-      allHideTimerRef.current = null;
-    }
-  };
-  const startAllHideTimer = (delay = 600) => {
-    clearAllHideTimer();
-    allHideTimerRef.current = window.setTimeout(() => setAllOpen(false), delay);
-  };
-
   // Dropdown portal for active category
   const CategoryPortal: React.FC = () => {
     if (!activeCategoryId) return null;
@@ -370,7 +526,14 @@ const Header: React.FC = () => {
     return createPortal(
       <div
         // allow pointer to reach other nav items by disabling capture on wrapper
-        style={{ position: "fixed", left: 0, top: 0, right: 0, bottom: 0, pointerEvents: "none" }}
+        style={{
+          position: "fixed",
+          left: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+          pointerEvents: "none",
+        }}
         aria-hidden={!active}
       >
         <div
@@ -415,7 +578,14 @@ const Header: React.FC = () => {
 
     return createPortal(
       <div
-        style={{ position: "fixed", left: 0, top: 0, right: 0, bottom: 0, pointerEvents: "auto" }}
+        style={{
+          position: "fixed",
+          left: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+          pointerEvents: "auto",
+        }}
         onMouseEnter={() => clearAllHideTimer()}
         onMouseLeave={() => startAllHideTimer()}
       >
@@ -433,11 +603,15 @@ const Header: React.FC = () => {
           role="menu"
         >
           <div style={{ padding: 8 }} className="pb-3">
-            <div className="px-2 py-1 text-xs text-gray-500 font-semibold">More Categories</div>
+            <div className="px-2 py-1 text-xs text-gray-500 font-semibold">
+              More Categories
+            </div>
           </div>
           <div className="divide-y divide-gray-100">
             {navCatsLoading && overflowCategories.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-gray-500">Loading categories…</div>
+              <div className="px-3 py-2 text-sm text-gray-500">
+                Loading categories…
+              </div>
             ) : overflowCategories.length ? (
               overflowCategories.map((cat) => (
                 <Link
@@ -451,7 +625,9 @@ const Header: React.FC = () => {
                 </Link>
               ))
             ) : (
-              <div className="px-3 py-2 text-sm text-gray-500">No additional categories</div>
+              <div className="px-3 py-2 text-sm text-gray-500">
+                No additional categories
+              </div>
             )}
           </div>
         </div>
@@ -465,8 +641,12 @@ const Header: React.FC = () => {
       {/* Top Bar */}
       <div className="bg-header-top-bg text-header-top-text py-2 text-center text-sm">
         <p>
-          Get 10% Extra off! - Use Code <span className="font-semibold">OWEG10</span>{" "}
-          <a href="#" className="underline hover:text-header-accent transition-colors">
+          Get 10% Extra off! - Use Code{" "}
+          <span className="font-semibold">OWEG10</span>{" "}
+          <a
+            href="#"
+            className="underline hover:text-header-accent transition-colors"
+          >
             ShopNow
           </a>
         </p>
@@ -480,18 +660,23 @@ const Header: React.FC = () => {
             <div className="flex items-center gap-2">
               <div className="text-3xl font-bold">
                 <Link href="/" className="flex items-center logo-link">
-                  <Image src="/oweg_logo.png" alt="OWEG" width={100} height={32} className="h-8 w-auto" />
+                  <Image
+                    src="/oweg_logo.png"
+                    alt="OWEG"
+                    width={100}
+                    height={32}
+                    className="h-8 w-auto"
+                  />
                 </Link>
               </div>
             </div>
 
             {/* Delivery Location */}
-            <div className="hidden lg:flex items-center gap-2 text-sm location-block">
-              <MapPin className="w-5 h-5 text-header-text" />
-              <div>
-                <p className="text-header-text text-xs">Deliver to John</p>
-                <p className="text-header-text font-medium">Bangalore 560034</p>
-              </div>
+            <div className="hidden lg:flex items-center">
+              <LocationSelector
+                location={location}
+                onClick={() => setIsLocationModalOpen(true)}
+              />
             </div>
 
             {/* Search Bar */}
@@ -504,8 +689,14 @@ const Header: React.FC = () => {
                     className="w-48 bg-header-bg border border-header-text/20 rounded-md px-3 h-10 text-sm flex items-center justify-between"
                     type="button"
                   >
-                    <span className="truncate">{selectedFilter ? selectedFilter.title : "Browse"}</span>
-                    <ChevronDown className={`w-4 h-4 transition-transform ${browseOpen ? "rotate-180" : ""}`} />
+                    <span className="truncate">
+                      {selectedFilter ? selectedFilter.title : "Browse"}
+                    </span>
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform ${
+                        browseOpen ? "rotate-180" : ""
+                      }`}
+                    />
                   </button>
                   {browseOpen && (
                     <div className="absolute left-0 mt-2 z-50 bg-white rounded-md shadow-lg ring-1 ring-black/5 w-[320px] max-h-[70vh] overflow-auto p-1">
@@ -522,7 +713,14 @@ const Header: React.FC = () => {
                           All
                         </button>
                       </div>
-                      {(collections.length ? collections : MENU_COLLECTIONS.map((m) => ({ id: undefined as undefined, title: m.title, handle: m.handle })) ).map((c) => {
+                      {(collections.length
+                        ? collections
+                        : MENU_COLLECTIONS.map((m) => ({
+                            id: undefined as undefined,
+                            title: m.title,
+                            handle: m.handle,
+                          }))
+                      ).map((c) => {
                         const key = c.id || c.handle || c.title;
                         const isOpen = expandedCol === key;
                         const cats = catsByCollection[key] || [];
@@ -536,8 +734,14 @@ const Header: React.FC = () => {
                               className="w-full flex items-center justify-between px-2 py-2 text-sm hover:bg-gray-100 rounded"
                               type="button"
                             >
-                              <span className="truncate text-left">{c.title}</span>
-                              <ChevronRight className={`w-4 h-4 transition-transform ${isOpen ? "rotate-90" : ""}`} />
+                              <span className="truncate text-left">
+                                {c.title}
+                              </span>
+                              <ChevronRight
+                                className={`w-4 h-4 transition-transform ${
+                                  isOpen ? "rotate-90" : ""
+                                }`}
+                              />
                             </button>
                             {isOpen && (
                               <div className="pl-3 pb-2">
@@ -546,7 +750,11 @@ const Header: React.FC = () => {
                                     <button
                                       key={`${key}-${cat.title}`}
                                       onClick={() => {
-                                        setSelectedFilter({ type: "category", title: cat.title, handle: cat.handle });
+                                        setSelectedFilter({
+                                          type: "category",
+                                          title: cat.title,
+                                          handle: cat.handle,
+                                        });
                                         setBrowseOpen(false);
                                         setExpandedCol(null);
                                       }}
@@ -557,12 +765,19 @@ const Header: React.FC = () => {
                                     </button>
                                   ))
                                 ) : (
-                                  <div className="px-2 py-1.5 text-sm text-gray-500">No categories</div>
+                                  <div className="px-2 py-1.5 text-sm text-gray-500">
+                                    No categories
+                                  </div>
                                 )}
                                 <div className="mt-1">
                                   <button
                                     onClick={() => {
-                                      setSelectedFilter({ type: "collection", title: c.title, handle: c.handle, id: c.id });
+                                      setSelectedFilter({
+                                        type: "collection",
+                                        title: c.title,
+                                        handle: c.handle,
+                                        id: c.id,
+                                      });
                                       setBrowseOpen(false);
                                       setExpandedCol(null);
                                     }}
@@ -584,7 +799,11 @@ const Header: React.FC = () => {
                 <div className="flex-1 flex relative">
                   <Input
                     type="text"
-                    placeholder={selectedFilter ? `Search in ${selectedFilter.title}...` : "Search products..."}
+                    placeholder={
+                      selectedFilter
+                        ? `Search in ${selectedFilter.title}...`
+                        : "Search products..."
+                    }
                     className="rounded-r-none border-header-text/20"
                     value={q}
                     onChange={(e) => {
@@ -593,14 +812,21 @@ const Header: React.FC = () => {
                     }}
                     onFocus={() => setShowSuggest(true)}
                   />
-                  <Button className="rounded-l-none bg-header-accent hover:bg-header-accent/90 text-white" type="button">
+                  <Button
+                    className="rounded-l-none bg-header-accent hover:bg-header-accent/90 text-white"
+                    type="button"
+                  >
                     <Search className="w-5 h-5" />
                   </Button>
                   {showSuggest && q.length >= 2 && suggestions.length > 0 && (
                     <div className="absolute top-full left-0 mt-1 z-50 w-full bg-white rounded-md shadow-lg ring-1 ring-black/5 max-h-[60vh] overflow-auto">
                       {suggestions.map((s) => {
-                        const slug = encodeURIComponent(String(s.handle || s.id))
-                        const href = `/productDetail/${slug}?id=${encodeURIComponent(String(s.id))}`
+                        const slug = encodeURIComponent(
+                          String(s.handle || s.id)
+                        );
+                        const href = `/productDetail/${slug}?id=${encodeURIComponent(
+                          String(s.id)
+                        )}`;
                         return (
                           <Link
                             key={s.id}
@@ -609,13 +835,21 @@ const Header: React.FC = () => {
                             onClick={() => setShowSuggest(false)}
                           >
                             {s.image ? (
-                              <Image src={s.image} alt={s.name} width={36} height={36} className="rounded object-cover" />
+                              <Image
+                                src={s.image}
+                                alt={s.name}
+                                width={36}
+                                height={36}
+                                className="rounded object-cover"
+                              />
                             ) : (
                               <div className="w-9 h-9 bg-gray-200 rounded" />
                             )}
-                            <div className="text-sm text-gray-800 truncate">{s.name}</div>
+                            <div className="text-sm text-gray-800 truncate">
+                              {s.name}
+                            </div>
                           </Link>
-                        )
+                        );
                       })}
                     </div>
                   )}
@@ -635,7 +869,9 @@ const Header: React.FC = () => {
                 </Button>
               </Link>
               <Link href="/signup">
-                <Button className="bg-header-accent hover:bg-header-accent/90 text-white">Sign Up</Button>
+                <Button className="bg-header-accent hover:bg-header-accent/90 text-white">
+                  Sign Up
+                </Button>
               </Link>
             </div>
 
@@ -643,17 +879,26 @@ const Header: React.FC = () => {
             <div className="hidden lg:flex items-center gap-2 cursor-pointer group">
               <div className="text-right">
                 <p className="text-xs text-header-text">Returns</p>
-                <p className="text-sm font-medium text-header-text group-hover:text-header-accent transition-colors">& Orders</p>
+                <p className="text-sm font-medium text-header-text group-hover:text-header-accent transition-colors">
+                  & Orders
+                </p>
               </div>
             </div>
 
             {/* Cart */}
-            <Link href="/cart" className="flex items-center gap-2 cursor-pointer group">
+            <Link
+              href="/cart"
+              className="flex items-center gap-2 cursor-pointer group"
+            >
               <div className="relative" data-browse-root>
                 <ShoppingCart className="w-6 h-6 text-header-text group-hover:text-header-accent transition-colors" />
-                <span className="absolute -top-2 -right-2 bg-header-accent text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">0</span>
+                <span className="absolute -top-2 -right-2 bg-header-accent text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  0
+                </span>
               </div>
-              <span className="hidden lg:block text-sm font-medium text-header-text group-hover:text-header-accent transition-colors">Cart</span>
+              <span className="hidden lg:block text-sm font-medium text-header-text group-hover:text-header-accent transition-colors">
+                Cart
+              </span>
             </Link>
           </div>
         </div>
@@ -668,7 +913,10 @@ const Header: React.FC = () => {
             <div
               ref={moreMenuRef}
               className="relative flex-shrink-0"
-              onMouseEnter={() => { clearAllHideTimer(); setAllOpen(true); }}
+              onMouseEnter={() => {
+                clearAllHideTimer();
+                setAllOpen(true);
+              }}
               onMouseLeave={() => startAllHideTimer()}
             >
               <button
@@ -676,7 +924,9 @@ const Header: React.FC = () => {
                   allTriggerRef.current = el;
                 }}
                 className="flex items-center gap-2 py-3 text-header-text hover:text-header-accent transition-colors whitespace-nowrap"
-                onClick={() => { setAllOpen((v) => !v); }}
+                onClick={() => {
+                  setAllOpen((v) => !v);
+                }}
                 aria-haspopup="menu"
                 aria-expanded={allOpen}
                 type="button"
@@ -688,21 +938,32 @@ const Header: React.FC = () => {
 
             {/* Primary categories with dropdown triggers */}
             {navCatsLoading ? (
-              <div className="py-3 text-sm text-gray-500">Loading categories…</div>
+              <div className="py-3 text-sm text-gray-500">
+                Loading categories…
+              </div>
             ) : navCategories.length > 0 ? (
               navCategories.map((cat) => (
                 <div
                   key={cat.id}
                   data-nav-category
                   className="relative flex-shrink-0 group"
-                  onMouseEnter={() => { clearHideTimer(); setActiveCategoryId(cat.id); }}
+                  onMouseEnter={() => {
+                    clearHideTimer();
+                    setActiveCategoryId(cat.id);
+                  }}
                   onMouseLeave={() => startHideTimer()}
                 >
                   <div
-                    ref={(el: HTMLElement | null) => { triggersRef.current[cat.id] = el; }}
+                    ref={(el: HTMLElement | null) => {
+                      triggersRef.current[cat.id] = el;
+                    }}
                     className="nav-link relative py-3 pr-6 md:pr-0 text-sm text-header-text font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer"
                     onClick={() => {
-                      setSelectedFilter({ type: "category", title: cat.title, handle: cat.handle });
+                      setSelectedFilter({
+                        type: "category",
+                        title: cat.title,
+                        handle: cat.handle,
+                      });
                     }}
                   >
                     <span className="truncate">{cat.title}</span>
@@ -715,17 +976,25 @@ const Header: React.FC = () => {
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      setActiveCategoryId((prev) => (prev === cat.id ? null : cat.id));
+                      setActiveCategoryId((prev) =>
+                        prev === cat.id ? null : cat.id
+                      );
                     }}
                     aria-label={`Toggle ${cat.title} menu`}
                     type="button"
                   >
-                    <ChevronDown className={`w-4 h-4 transition-transform ${activeCategoryId === cat.id ? "rotate-180" : ""}`} />
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform ${
+                        activeCategoryId === cat.id ? "rotate-180" : ""
+                      }`}
+                    />
                   </button>
                 </div>
               ))
             ) : (
-              <div className="py-3 text-sm text-gray-500">No categories found.</div>
+              <div className="py-3 text-sm text-gray-500">
+                No categories found.
+              </div>
             )}
           </div>
         </div>
@@ -734,6 +1003,14 @@ const Header: React.FC = () => {
       {/* Render dropdown portals (so they're never clipped by nav overflow) */}
       <CategoryPortal />
       <AllPortal />
+
+      {/* Location Modal */}
+      <LocationModal
+        isOpen={isLocationModalOpen}
+        onClose={() => setIsLocationModalOpen(false)}
+        currentLocation={location}
+        onLocationSelect={handleLocationSelect}
+      />
 
       {/* Internal styles (no external file) */}
       <style jsx global>{`
@@ -745,7 +1022,7 @@ const Header: React.FC = () => {
           font-display: swap;
         }
         :root {
-          --header-accent: #7AC943;
+          --header-accent: #7ac943;
           --header-top-bg: #000000;
           --header-top-text: #ffffff;
           --header-bg: #ffffff;
@@ -754,8 +1031,8 @@ const Header: React.FC = () => {
           --header-muted: #6b7280;
         }
         .header-root {
-          font-family: "OPTIHandelGothic-Light", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-            Roboto, "Helvetica Neue", Arial;
+          font-family: "OPTIHandelGothic-Light", ui-sans-serif, system-ui,
+            -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
         }
@@ -810,7 +1087,8 @@ const Header: React.FC = () => {
           width: 0%;
           background: var(--header-accent);
           transform-origin: left center;
-          transition: width 260ms cubic-bezier(.2,.9,.2,1), opacity 200ms ease;
+          transition: width 260ms cubic-bezier(0.2, 0.9, 0.2, 1),
+            opacity 200ms ease;
           opacity: 0;
         }
         .nav-link:hover {
