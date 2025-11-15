@@ -1,11 +1,8 @@
 import fs from 'fs';
-import path from 'path';
 
 console.log('╔══════════════════════════════════════════════════════╗');
 console.log('║     S3 Configuration Diagnostic Tool                ║');
 console.log('╚══════════════════════════════════════════════════════╝\n');
-
-const medusaPath = process.cwd();
 
 // Check 1: package.json dependencies
 console.log('1️⃣ Checking package.json dependencies...');
@@ -34,7 +31,7 @@ try {
     console.log('⚠️  @medusajs/file: NOT FOUND');
   }
 } catch (e) {
-  console.log('❌ Could not read package.json');
+  console.log('❌ Could not read package.json', e instanceof Error ? e.message : e);
 }
 
 // Check 2: .env file
@@ -66,7 +63,7 @@ try {
     }
   });
 } catch (e) {
-  console.log('❌ Could not read .env file');
+  console.log('❌ Could not read .env file', e instanceof Error ? e.message : e);
 }
 
 // Check 3: medusa-config file
@@ -120,7 +117,8 @@ for (const configFile of configFiles) {
       }
       
     } catch (e) {
-      console.log(`⚠️  Could not read ${configFile}: ${e.message}`);
+      const message = e instanceof Error ? e.message : String(e);
+      console.log(`⚠️  Could not read ${configFile}: ${message}`);
     }
     break;
   }
@@ -144,7 +142,7 @@ try {
     console.log('⚠️  Server responded but health check failed');
   }
 } catch (e) {
-  console.log('❌ Medusa server is NOT running');
+  console.log('❌ Medusa server is NOT running', e instanceof Error ? e.message : e);
   console.log('   Start it with: npm run dev');
 }
 

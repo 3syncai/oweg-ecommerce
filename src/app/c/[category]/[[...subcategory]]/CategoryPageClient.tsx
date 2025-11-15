@@ -15,6 +15,36 @@ import { useCategoryProducts } from "@/hooks/useCategoryProducts";
 import type { MedusaCategory } from "@/services/medusa";
 import { SectionHeading } from "@/components/ui/section-heading";
 
+function extractBrandFromName(name: string) {
+  if (!name) return undefined;
+  const normalized = name.trim();
+  if (!normalized) return undefined;
+  // Take first one or two tokens depending on uppercase pattern
+  const tokens = normalized.split(/\s+/);
+  if (tokens.length === 0) return undefined;
+  const first = tokens[0]?.replace(/[^A-Za-z0-9&]/g, "");
+  if (!first || first.length < 2) return undefined;
+
+  // If the second token is uppercase (likely part of brand), include it
+  const second = tokens[1]?.replace(/[^A-Za-z0-9&]/g, "");
+  if (second && /^[A-Z]/.test(second) && second.length > 1) {
+    return `${first} ${second}`.trim();
+  }
+
+  return first;
+}
+
+const DEFAULT_BRAND_OPTIONS = [
+  "Nelkon",
+  "Paras",
+  "Syska",
+  "Maharaja",
+  "Crompton",
+  "Oweg",
+  "Bajaj",
+  "Pigeon",
+];
+
 type CategoryPageClientProps = {
   category: MedusaCategory;
   subcategories: MedusaCategory[];
@@ -76,6 +106,26 @@ export function CategoryPageClient({
   );
 
   // Apply client-side filters
+  const derivedBrandOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    products.forEach((product) => {
+      const brand = extractBrandFromName(product.name);
+      if (brand) {
+        counts.set(brand, (counts.get(brand) ?? 0) + 1);
+      }
+    });
+    return Array.from(counts.entries())
+      .sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0].localeCompare(b[0]);
+      })
+      .map(([brand]) => brand);
+  }, [products]);
+
+  const brandOptions = derivedBrandOptions.length
+    ? derivedBrandOptions
+    : DEFAULT_BRAND_OPTIONS;
+
   const filteredProducts = useMemo(() => {
     let filtered = [...products];
 
@@ -198,6 +248,7 @@ export function CategoryPageClient({
               selectedSubcategory={subcategoryHandle}
               dealPreview={dealPreview}
               dealCount={dealCount}
+              brandOptions={brandOptions}
             />
           </aside>
 

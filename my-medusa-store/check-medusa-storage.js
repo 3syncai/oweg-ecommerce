@@ -173,7 +173,7 @@ async function checkStorageConfig(token) {
   // Test upload endpoint (just check if it exists)
   console.log('\n🧪 Testing upload endpoint...');
   try {
-    const uploadRes = await fetch(`${MEDUSA_URL}/admin/uploads`, {
+    await fetch(`${MEDUSA_URL}/admin/uploads`, {
       method: 'OPTIONS',
       headers: {
         "Authorization": `Bearer ${token}`,
@@ -182,7 +182,10 @@ async function checkStorageConfig(token) {
     
     console.log(`✅ Upload endpoint is accessible`);
   } catch (e) {
-    console.log(`⚠️  Could not test upload endpoint`);
+    console.log(
+      `⚠️  Could not test upload endpoint`,
+      e instanceof Error ? e.message : e
+    );
   }
   
   console.log('\n🎉 Analysis complete!\n');
