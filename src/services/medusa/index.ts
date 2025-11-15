@@ -160,7 +160,7 @@ export function buildCategoryTree(
     
     const parentId =
       cat.parent_category_id ||
-      (cat.parent_category as any)?.id ||
+      cat.parent_category?.id ||
       null;
 
     if (!parentId) {

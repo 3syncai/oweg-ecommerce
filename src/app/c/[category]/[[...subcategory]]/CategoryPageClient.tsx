@@ -183,8 +183,6 @@ export function CategoryPageClient({
     ? "Loading products…"
     : `${filteredProducts.length} products available`;
 
-  const showEmptyState = !isLoading && filteredProducts.length === 0;
-
   return (
     <div className="bg-gray-50 min-h-screen">
       {/* Main Content Area */}
