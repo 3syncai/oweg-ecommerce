@@ -461,7 +461,7 @@ const Cart: React.FC = () => {
 
   useEffect(() => {
     setMounted(true);
-  }, [applyCartPayload]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -511,7 +511,7 @@ const Cart: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applyCartPayload]);
 
   const updateQuantity = async (
     id: string,

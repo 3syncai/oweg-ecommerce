@@ -25,6 +25,7 @@ type FilterSidebarProps = {
   onFilterChange?: (next: Partial<FilterState>) => void;
   dealPreview?: DealPreview[];
   dealCount?: number;
+  brandOptions?: string[];
 };
 
 export type FilterState = {
@@ -58,6 +59,7 @@ export function FilterSidebar({
   onFilterChange,
   dealPreview,
   dealCount,
+  brandOptions = [],
 }: FilterSidebarProps) {
   const [showAllSubcategories, setShowAllSubcategories] = useState(false);
   const [showAllBrands, setShowAllBrands] = useState(false);
@@ -75,18 +77,6 @@ export function FilterSidebar({
     );
   }, [filters.priceMin, filters.priceMax]);
 
-  // Mock brands - in production, fetch from API or product metadata
-  const brands = [
-    "Nelkon",
-    "Paras",
-    "Syska",
-    "Maharaja",
-    "Crompton",
-    "Oweg",
-    "Bajaj",
-    "Pigeon",
-  ];
-
   const displayedSubcategories = showAllSubcategories
     ? subcategories.filter((s) =>
         (s.title || s.name || "")
@@ -95,9 +85,19 @@ export function FilterSidebar({
       )
     : subcategories.slice(0, 5);
 
+  const filteredBrandOptions = useMemo(() => {
+    if (!showAllBrands || !searchBrand.trim()) {
+      return brandOptions;
+    }
+    const searchTerm = searchBrand.trim().toLowerCase();
+    return brandOptions.filter((brand) =>
+      brand.toLowerCase().includes(searchTerm)
+    );
+  }, [brandOptions, showAllBrands, searchBrand]);
+
   const displayedBrands = showAllBrands
-    ? brands.filter((b) => b.toLowerCase().includes(searchBrand.toLowerCase()))
-    : brands.slice(0, 8);
+    ? filteredBrandOptions
+    : brandOptions.slice(0, 8);
 
   const handleRatingToggle = (rating: number) => {
     const currentRatings = filters.ratings || [];
@@ -255,53 +255,61 @@ export function FilterSidebar({
         <div className="mb-6">
           <h3 className="font-semibold text-gray-900 mb-3">Brand</h3>
 
-          {showAllBrands && (
-            <div className="mb-3">
-              <Input
-                type="text"
-                placeholder="Search"
-                value={searchBrand}
-                onChange={(e) => setSearchBrand(e.target.value)}
-                className="w-full"
-              />
-            </div>
-          )}
-
-          <ul className="space-y-2">
-            {displayedBrands.map((brand) => (
-              <li key={brand}>
-                <label className="flex items-center gap-2 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={(filters.brands || []).includes(brand)}
-                    onChange={() => handleBrandToggle(brand)}
-                    className="w-4 h-4 accent-[#7AC943]"
+          {brandOptions.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              No brand data available for this category.
+            </p>
+          ) : (
+            <>
+              {showAllBrands && (
+                <div className="mb-3">
+                  <Input
+                    type="text"
+                    placeholder="Search"
+                    value={searchBrand}
+                    onChange={(e) => setSearchBrand(e.target.value)}
+                    className="w-full"
                   />
-                  <span className="text-sm text-gray-700 group-hover:text-[#7AC943]">
-                    {brand}
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
-
-          {brands.length > 8 && (
-            <button
-              onClick={() => setShowAllBrands(!showAllBrands)}
-              className="flex items-center gap-1 text-sm text-[#7AC943] hover:underline mt-2"
-            >
-              {showAllBrands ? (
-                <>
-                  <ChevronDown className="w-4 h-4" />
-                  See less
-                </>
-              ) : (
-                <>
-                  <ChevronRight className="w-4 h-4" />
-                  See more
-                </>
+                </div>
               )}
-            </button>
+
+              <ul className="space-y-2">
+                {displayedBrands.map((brand) => (
+                  <li key={brand}>
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={(filters.brands || []).includes(brand)}
+                        onChange={() => handleBrandToggle(brand)}
+                        className="w-4 h-4 accent-[#7AC943]"
+                      />
+                      <span className="text-sm text-gray-700 group-hover:text-[#7AC943]">
+                        {brand}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+
+              {brandOptions.length > 8 && (
+                <button
+                  onClick={() => setShowAllBrands(!showAllBrands)}
+                  className="flex items-center gap-1 text-sm text-[#7AC943] hover:underline mt-2"
+                >
+                  {showAllBrands ? (
+                    <>
+                      <ChevronDown className="w-4 h-4" />
+                      See less
+                    </>
+                  ) : (
+                    <>
+                      <ChevronRight className="w-4 h-4" />
+                      See more
+                    </>
+                  )}
+                </button>
+              )}
+            </>
           )}
         </div>
 

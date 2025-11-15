@@ -169,29 +169,6 @@ const Header: React.FC = () => {
     };
   }, []);
 
-  // Handle click outside to close dropdowns
-  React.useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const browseRoot = document.querySelector("[data-browse-root]");
-      if (browseRoot && !browseRoot.contains(target)) {
-        setBrowseOpen(false);
-      }
-      if (!target.closest(".relative.flex")) {
-        setShowSuggest(false);
-      }
-      if (moreMenuRef.current && !moreMenuRef.current.contains(target)) {
-        setAllOpen(false);
-      }
-      if (!target.closest("[data-nav-category]")) {
-        // start a short delay before closing active category to allow mouse to enter portal
-        startHideTimer();
-      }
-    };
-    document.addEventListener("click", handleClickOutside);
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, []);
-
   React.useEffect(() => {
     let cancelled = false;
     fetch("/api/medusa/collections")
@@ -337,29 +314,58 @@ const Header: React.FC = () => {
   };
 
   // helpers: start/clear hide timers for category dropdown
-  const clearHideTimer = () => {
+  const clearHideTimer = React.useCallback(() => {
     if (hideTimerRef.current) {
       window.clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
     }
-  };
+  }, []);
   // increased default delay slightly so user moving mouse has buffer
-  const startHideTimer = (delay = 350) => {
-    clearHideTimer();
-    hideTimerRef.current = window.setTimeout(() => setActiveCategoryId(null), delay);
-  };
+  const startHideTimer = React.useCallback(
+    (delay = 350) => {
+      clearHideTimer();
+      hideTimerRef.current = window.setTimeout(() => setActiveCategoryId(null), delay);
+    },
+    [clearHideTimer]
+  );
 
   // same for All dropdown (kept a longer delay for All)
-  const clearAllHideTimer = () => {
+  const clearAllHideTimer = React.useCallback(() => {
     if (allHideTimerRef.current) {
       window.clearTimeout(allHideTimerRef.current);
       allHideTimerRef.current = null;
     }
-  };
-  const startAllHideTimer = (delay = 600) => {
-    clearAllHideTimer();
-    allHideTimerRef.current = window.setTimeout(() => setAllOpen(false), delay);
-  };
+  }, []);
+  const startAllHideTimer = React.useCallback(
+    (delay = 600) => {
+      clearAllHideTimer();
+      allHideTimerRef.current = window.setTimeout(() => setAllOpen(false), delay);
+    },
+    [clearAllHideTimer]
+  );
+
+  // Handle click outside to close dropdowns
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const browseRoot = document.querySelector("[data-browse-root]");
+      if (browseRoot && !browseRoot.contains(target)) {
+        setBrowseOpen(false);
+      }
+      if (!target.closest(".relative.flex")) {
+        setShowSuggest(false);
+      }
+      if (moreMenuRef.current && !moreMenuRef.current.contains(target)) {
+        setAllOpen(false);
+      }
+      if (!target.closest("[data-nav-category]")) {
+        // start a short delay before closing active category to allow mouse to enter portal
+        startHideTimer();
+      }
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [startHideTimer]);
 
   // Dropdown portal for active category
   const CategoryPortal: React.FC = () => {
