@@ -370,7 +370,7 @@ const Header: React.FC = () => {
     return createPortal(
       <div
         // allow pointer to reach other nav items by disabling capture on wrapper
-        style={{ position: "fixed", left: 0, top: 0, right: 0, bottom: 0, pointerEvents: "none" }}
+        style={{ position: "fixed", left: 0, top: 0, right: 0, bottom: 0, pointerEvents: "none", zIndex: 1300 }}
         aria-hidden={!active}
       >
         <div
@@ -415,7 +415,7 @@ const Header: React.FC = () => {
 
     return createPortal(
       <div
-        style={{ position: "fixed", left: 0, top: 0, right: 0, bottom: 0, pointerEvents: "auto" }}
+        style={{ position: "fixed", left: 0, top: 0, right: 0, bottom: 0, pointerEvents: "auto", zIndex: 1250 }}
         onMouseEnter={() => clearAllHideTimer()}
         onMouseLeave={() => startAllHideTimer()}
       >
@@ -461,7 +461,7 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header className="w-full header-root sticky top-0 z-50 bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+    <header className="w-full header-root sticky top-0 z-[120] bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       {/* Top Bar */}
       <div className="bg-header-top-bg text-header-top-text py-2 text-center text-sm">
         <p>
@@ -690,40 +690,44 @@ const Header: React.FC = () => {
             {navCatsLoading ? (
               <div className="py-3 text-sm text-gray-500">Loading categories…</div>
             ) : navCategories.length > 0 ? (
-              navCategories.map((cat) => (
-                <div
-                  key={cat.id}
-                  data-nav-category
-                  className="relative flex-shrink-0 group"
-                  onMouseEnter={() => { clearHideTimer(); setActiveCategoryId(cat.id); }}
-                  onMouseLeave={() => startHideTimer()}
-                >
+              navCategories.map((cat) => {
+                const categoryHref = cat.handle ? `/c/${cat.handle}` : "#";
+                return (
                   <div
-                    ref={(el: HTMLElement | null) => { triggersRef.current[cat.id] = el; }}
-                    className="nav-link relative py-3 pr-6 md:pr-0 text-sm text-header-text font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer"
-                    onClick={() => {
-                      setSelectedFilter({ type: "category", title: cat.title, handle: cat.handle });
-                    }}
+                    key={cat.id}
+                    data-nav-category
+                    className="relative flex-shrink-0 group"
+                    onMouseEnter={() => { clearHideTimer(); setActiveCategoryId(cat.id); }}
+                    onMouseLeave={() => startHideTimer()}
                   >
-                    <span className="truncate">{cat.title}</span>
-                    <ChevronDown className="hidden md:inline-block w-3.5 h-3.5 text-header-muted transition group-hover:text-header-accent" />
-                  </div>
+                    <Link
+                      href={categoryHref}
+                      ref={(el: HTMLAnchorElement | null) => { triggersRef.current[cat.id] = el; }}
+                      className="nav-link relative py-3 pr-6 md:pr-0 text-sm text-header-text font-medium whitespace-nowrap transition-colors hover:text-header-accent flex items-center gap-1"
+                      onClick={() => {
+                        setSelectedFilter({ type: "category", title: cat.title, handle: cat.handle });
+                      }}
+                    >
+                      <span className="truncate">{cat.title}</span>
+                      <ChevronDown className="hidden md:inline-block w-3.5 h-3.5 text-header-muted transition group-hover:text-header-accent" />
+                    </Link>
 
-                  {/* mobile toggle */}
-                  <button
-                    className="md:hidden absolute right-0 top-1/2 -translate-y-1/2 p-1 text-header-text"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setActiveCategoryId((prev) => (prev === cat.id ? null : cat.id));
-                    }}
-                    aria-label={`Toggle ${cat.title} menu`}
-                    type="button"
-                  >
-                    <ChevronDown className={`w-4 h-4 transition-transform ${activeCategoryId === cat.id ? "rotate-180" : ""}`} />
-                  </button>
-                </div>
-              ))
+                    {/* mobile toggle */}
+                    <button
+                      className="md:hidden absolute right-0 top-1/2 -translate-y-1/2 p-1 text-header-text"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setActiveCategoryId((prev) => (prev === cat.id ? null : cat.id));
+                      }}
+                      aria-label={`Toggle ${cat.title} menu`}
+                      type="button"
+                    >
+                      <ChevronDown className={`w-4 h-4 transition-transform ${activeCategoryId === cat.id ? "rotate-180" : ""}`} />
+                    </button>
+                  </div>
+                );
+              })
             ) : (
               <div className="py-3 text-sm text-gray-500">No categories found.</div>
             )}

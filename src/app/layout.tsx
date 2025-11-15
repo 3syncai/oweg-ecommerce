@@ -5,6 +5,7 @@ import "./globals.css";
 import ServiceWorkerRegister from "./sw-register";
 import Footer from "./footer/Footer"; // <-- check path, change if needed
 import Header from "./header/Header"
+import { Providers } from "./providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,21 +44,23 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
       >
-        <ServiceWorkerRegister />
+        <Providers>
+          <ServiceWorkerRegister />
 
-        {/* Layout wrapper: makes page min-height = viewport and pushes footer down */}
-        <div className="min-h-screen flex flex-col">
-          {/* If you have a Header/Nav, render it here */}
-          <Header />
+          {/* Layout wrapper: makes page min-height = viewport and pushes footer down */}
+          <div className="min-h-screen flex flex-col">
+            {/* If you have a Header/Nav, render it here */}
+            <Header />
 
-          {/* Main content grows to take remaining space */}
-          <main className="flex-1">
-            {children}
-          </main>
+            {/* Main content grows to take remaining space */}
+            <main className="flex-1">
+              {children}
+            </main>
 
-          {/* Footer placed after main so it stays at bottom */}
-          <Footer />
-        </div>
+            {/* Footer placed after main so it stays at bottom */}
+            <Footer />
+          </div>
+        </Providers>
       </body>
     </html>
   );

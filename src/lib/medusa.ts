@@ -62,6 +62,8 @@ export type DetailedProduct = {
 type PriceOverride = {
   price?: number
   mrp?: number
+  isDeal?: boolean
+  opencartId?: string | number
 }
 
 export type MedusaCollection = {
@@ -589,6 +591,7 @@ export function toUiProduct(p: MedusaProduct, override?: PriceOverride) {
 
   const { amountMajor, originalMajor, discount } = computeUiPrice(p, override)
   const image = collectProductImages(p)[0] || "/oweg_logo.png"
+  const metadata = (p.metadata || {}) as Record<string, unknown>
 
   return {
     id: p?.id || "unknown",
@@ -597,7 +600,10 @@ export function toUiProduct(p: MedusaProduct, override?: PriceOverride) {
     price: amountMajor ?? 0,
     mrp: originalMajor ?? amountMajor ?? 0,
     discount,
-    limitedDeal: discount >= 20,
+    limitedDeal: override?.isDeal ?? discount >= 20,
+    opencartId:
+      override?.opencartId ??
+      (metadata["opencart_id"] as string | number | undefined),
     variant_id: p?.variants?.[0]?.id,
     handle: p?.handle,
   }
