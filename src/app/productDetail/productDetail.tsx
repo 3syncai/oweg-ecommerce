@@ -1,51 +1,91 @@
-'use client'
+﻿'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
+import { ChevronRight, Heart, Plus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import type { DetailedProduct as DetailedProductType, MedusaCategory } from '@/lib/medusa'
+import Breadcrumbs from './components/Breadcrumbs'
+import CompareTable from './components/CompareTable'
+import DeliveryInfo from './components/DeliveryInfo'
+import DescriptionTabs from './components/DescriptionTabs'
+import ProductGallery from './components/ProductGallery'
+import ProductSummary from './components/ProductSummary'
+import type {
+  BreadcrumbItem,
+  CompareFilters,
+  ComparisonColumn,
+  DescriptionTab,
+  PinStatus,
+  ProductDetailProps,
+  RelatedProduct,
+} from './types'
 import {
-  Bookmark,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
-  Minus,
-  Plus,
-  RotateCcw,
-  Share2,
-  ShoppingCart,
-  Star,
-  Truck,
-  Wallet,
-} from 'lucide-react'
-import type { DetailedProduct as DetailedProductType } from '@/lib/medusa'
+  deriveColorName,
+  extractMetaNumber,
+  extractMetaString,
+  formatDimensionsDisplay,
+  formatWeightDisplay,
+  type MetaRecord,
+} from './utils/metadata'
+import {
+  notifyCartAddError,
+  notifyCartAddSuccess,
+  notifyCartUnavailable,
+  notifyCheckoutComingSoon,
+  notifyOutOfStock,
+  notifyWishlistLogin,
+  notifyWishlistSuccess,
+} from '@/lib/notifications'
+import { useCartSummary } from '@/contexts/CartProvider'
 
-type ProductDetailProps = {
-  productId: string
+type CategoryNode = Pick<MedusaCategory, 'id' | 'title' | 'name' | 'handle'> & {
+  category_children?: CategoryNode[]
 }
 
-type RelatedProduct = {
-  id: string | number
-  name: string
-  image: string
-  price: number
-  mrp: number
-  discount: number
+type CategoryMapEntry = {
+  title: string
   handle?: string
-  variant_id?: string
+  parentId?: string | null
 }
 
 const FALLBACK_IMAGE = '/oweg_logo.png'
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })
-const DESCRIPTION_TABS = [
-  { id: 'description', label: 'Description' },
-  { id: 'reviews', label: 'Reviews' },
-  { id: 'compare', label: 'Compare' },
-] as const
-type DescriptionTab = (typeof DESCRIPTION_TABS)[number]['id']
-type PinStatus = 'idle' | 'checking' | 'available' | 'unavailable'
+
+function deriveBrandName(name?: string) {
+  if (!name) return 'Other'
+  const firstToken = name.trim().split(/\s+/)[0]
+  return firstToken ? firstToken.replace(/[^a-z0-9]/gi, '') || 'Other' : 'Other'
+}
+
+function enrichRelatedProduct(item: RelatedProduct): RelatedProduct {
+  return {
+    ...item,
+    brand: item.brand || deriveBrandName(item.name),
+    color: item.color || deriveColorName(item.name),
+    highlights: item.highlights || [],
+  }
+}
+
+
+function buildSummaryFromDetail(detail?: DetailedProductType | null, item?: RelatedProduct): string {
+  const meta = detail?.metadata as MetaRecord
+  return (
+    extractMetaString(meta, 'summary') ||
+    extractMetaString(meta, 'features') ||
+    (detail?.highlights?.length ? detail.highlights.join(', ') : undefined) ||
+    detail?.subtitle ||
+    (detail?.description ? detail.description.split(/\n+/).find((segment) => segment.trim().length)?.trim() : undefined) ||
+    (item?.highlights?.length ? item.highlights.join(', ') : undefined) ||
+    '-'
+  )
+}
+
 
 export default function ProductDetailPage({ productId }: ProductDetailProps) {
+  const router = useRouter()
   const [product, setProduct] = useState<DetailedProductType | null>(null)
   const [related, setRelated] = useState<RelatedProduct[]>([])
   const [loading, setLoading] = useState(true)
@@ -57,8 +97,67 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
   const [pinCode, setPinCode] = useState('')
   const [pinStatus, setPinStatus] = useState<PinStatus>('idle')
   const [pinMessage, setPinMessage] = useState('')
-  const categoryId = product?.primaryCategoryId
+  const [compareModalOpen, setCompareModalOpen] = useState(false)
+  const [compareFilters, setCompareFilters] = useState<CompareFilters>({ brand: 'All', color: 'All' })
+  const [compareSelection, setCompareSelection] = useState<RelatedProduct[]>([])
+  const [compareDetails, setCompareDetails] = useState<Record<string, DetailedProductType | null>>({})
+  const [compareDetailsLoading, setCompareDetailsLoading] = useState<Record<string, boolean>>({})
+  const [categoryMap, setCategoryMap] = useState<Record<string, CategoryMapEntry>>({})
+  const { syncFromCartPayload } = useCartSummary()
+  const outOfStockToastRef = useRef<string | null>(null)
+
+  const goToCart = useCallback(() => {
+    router.push('/cart')
+  }, [router])
   const currentProductId = product?.id
+  const categoryIds = useMemo(
+    () => Array.from(new Set((product?.categories || []).map((cat) => cat.id).filter((id): id is string => !!id))),
+    [product?.categories]
+  )
+  const primaryAwareCategoryIds = useMemo(() => {
+    const ids = new Set<string>(categoryIds)
+    if (product?.primaryCategoryId) {
+      ids.add(product.primaryCategoryId)
+    }
+    return Array.from(ids)
+  }, [categoryIds, product?.primaryCategoryId])
+  const categoryHandles = useMemo(
+    () => Array.from(new Set((product?.categories || []).map((cat) => cat.handle).filter((handle): handle is string => !!handle))),
+    [product?.categories]
+  )
+
+  useEffect(() => {
+    let ignore = false
+    async function loadCategories() {
+      try {
+        const res = await fetch('/api/medusa/categories', { cache: 'no-store' })
+        if (!res.ok) return
+        const data = await res.json()
+        const entries: Record<string, CategoryMapEntry> = {}
+        const walk = (cat: CategoryNode, parentId: string | null) => {
+          if (!cat || !cat.id) return
+          entries[cat.id] = {
+            title: (cat.title || cat.name || 'Category').toString(),
+            handle: cat.handle || undefined,
+            parentId,
+          }
+          const children = cat.category_children || []
+          children.forEach((child) => walk(child, cat.id!))
+        }
+        const rootCats = (data.categories || []) as CategoryNode[]
+        rootCats.forEach((cat) => walk(cat, null))
+        if (!ignore) {
+          setCategoryMap(entries)
+        }
+      } catch {
+        // ignore
+      }
+    }
+    loadCategories()
+    return () => {
+      ignore = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -95,25 +194,78 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
   }, [productId])
 
   useEffect(() => {
-    const id = categoryId
-    if (!id) {
+    const typeQuery = product?.type || undefined
+    const categoryLabel = product?.categories?.[0]?.title
+    const tagValues = product?.tags || []
+    const hasCategoryContext = primaryAwareCategoryIds.length || categoryHandles.length
+
+    if (!hasCategoryContext && !typeQuery && !categoryLabel && !tagValues.length) {
       setRelated([])
       return
     }
-    const safeCategoryId: string = id
+
     let cancelled = false
-    async function loadRelated() {
-      setLoadingRelated(true)
+    const fetchCandidates = async (path: string) => {
       try {
-        const res = await fetch(`/api/medusa/products?categoryId=${encodeURIComponent(safeCategoryId)}&limit=10`, {
-          cache: 'no-store',
-        })
-        if (!res.ok) return
+        const res = await fetch(path, { cache: 'no-store' })
+        if (!res.ok) return []
         const data = await res.json()
         const list: RelatedProduct[] = (data.products || [])
           .filter((p: RelatedProduct) => p.id !== currentProductId)
-          .map((p: RelatedProduct) => p)
-        if (!cancelled) setRelated(list)
+          .map((p: RelatedProduct) => enrichRelatedProduct(p))
+        return list
+      } catch {
+        return []
+      }
+    }
+
+    async function loadRelated() {
+      setLoadingRelated(true)
+      try {
+        const categoryPaths: string[] = [
+          ...primaryAwareCategoryIds.map((id) => `/api/medusa/products?categoryId=${encodeURIComponent(id)}&limit=24`),
+          ...categoryHandles.map((handle) => `/api/medusa/products?category=${encodeURIComponent(handle)}&limit=24`),
+        ]
+        const fallbackPaths: string[] = []
+        if (typeQuery) {
+          fallbackPaths.push(`/api/medusa/products?type=${encodeURIComponent(typeQuery)}&limit=24`)
+        }
+        if (categoryLabel) {
+          fallbackPaths.push(`/api/medusa/products?category=${encodeURIComponent(categoryLabel)}&limit=24`)
+        }
+        tagValues.forEach((tag) => {
+          fallbackPaths.push(`/api/medusa/products?tag=${encodeURIComponent(tag)}&limit=24`)
+        })
+
+        const seen = new Map<string | number, RelatedProduct>()
+        const runPaths = async (paths: string[]) => {
+          for (const path of paths) {
+            const batch = await fetchCandidates(path)
+            batch.forEach((item) => {
+              if (!seen.has(item.id)) {
+                seen.set(item.id, item)
+              }
+            })
+            if (seen.size >= 24) break
+          }
+        }
+
+        if (categoryPaths.length) {
+          await runPaths(categoryPaths)
+        }
+        if (seen.size === 0 && fallbackPaths.length) {
+          await runPaths(fallbackPaths)
+        }
+
+        if (!cancelled) {
+          const result = Array.from(seen.values())
+          const categorySet = new Set(primaryAwareCategoryIds)
+          const filtered =
+            categorySet.size > 0
+              ? result.filter((item) => item.category_ids?.some((id) => categorySet.has(id)))
+              : result
+          setRelated(filtered.length ? filtered : result)
+        }
       } catch {
         if (!cancelled) setRelated([])
       } finally {
@@ -124,35 +276,46 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
     return () => {
       cancelled = true
     }
-  }, [categoryId, currentProductId])
+  }, [primaryAwareCategoryIds, categoryHandles, product?.type, product?.categories, product?.tags, currentProductId])
 
   useEffect(() => {
     setActiveTab('description')
     setPinStatus('idle')
     setPinMessage('')
     setPinCode('')
+    setCompareSelection([])
   }, [productId])
 
-  const getMetaValue = (key: string) => {
-    const meta = product?.metadata as Record<string, unknown> | null | undefined
-    if (!meta) return undefined
-    return meta[key]
-  }
+  const metadata = product?.metadata as MetaRecord
 
-  const getMetaString = (key: string) => {
-    const value = getMetaValue(key)
-    return typeof value === 'string' ? value : undefined
-  }
+  const getMetaValue = useCallback(
+    (key: string) => {
+      if (!metadata) return undefined
+      return metadata[key]
+    },
+    [metadata]
+  )
 
-  const getMetaNumber = (key: string) => {
-    const value = getMetaValue(key)
-    if (typeof value === 'number') return value
-    if (typeof value === 'string') {
-      const parsed = Number(value)
-      return Number.isFinite(parsed) ? parsed : undefined
-    }
-    return undefined
-  }
+  const getMetaString = useCallback(
+    (key: string) => {
+      const value = getMetaValue(key)
+      return typeof value === 'string' ? value : undefined
+    },
+    [getMetaValue]
+  )
+
+  const getMetaNumber = useCallback(
+    (key: string) => {
+      const value = getMetaValue(key)
+      if (typeof value === 'number') return value
+      if (typeof value === 'string') {
+        const parsed = Number(value)
+        return Number.isFinite(parsed) ? parsed : undefined
+      }
+      return undefined
+    },
+    [getMetaValue]
+  )
 
   const galleryImages = useMemo(() => {
     if (product?.images?.length) {
@@ -182,7 +345,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
       product?.categories?.[0]?.title ||
       'OWEG Assured'
     )
-  }, [product])
+  }, [product, getMetaString])
 
   const ratingValue = useMemo(() => {
     const metaRating = getMetaNumber('rating')
@@ -190,17 +353,96 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
       return Math.min(5, Math.max(0, Number(metaRating)))
     }
     return 4.8
-  }, [product])
+  }, [getMetaNumber])
 
   const reviewCount = useMemo(() => {
     const value = getMetaNumber('reviews')
     return Number.isFinite(value) && value ? value : 120
-  }, [product])
+  }, [getMetaNumber])
 
   const viewCount = useMemo(() => {
     const value = getMetaNumber('views')
     return Number.isFinite(value) && value ? value : 7000
-  }, [product])
+  }, [getMetaNumber])
+
+  const compareOptions = useMemo(() => related, [related])
+  const availableBrands = useMemo(() => {
+    const set = new Set<string>()
+    compareOptions.forEach((item) => {
+      if (item.brand) set.add(item.brand)
+    })
+    return ['All', ...Array.from(set).sort()]
+  }, [compareOptions])
+  const availableColors = useMemo(() => {
+    const set = new Set<string>()
+    compareOptions.forEach((item) => {
+      if (item.color && item.color !== 'All') set.add(item.color)
+    })
+    return ['All', ...Array.from(set).sort()]
+  }, [compareOptions])
+  const filteredCompareOptions = useMemo(() => {
+    return compareOptions.filter((item) => {
+      const brandMatch = compareFilters.brand === 'All' || item.brand === compareFilters.brand
+      const colorMatch = compareFilters.color === 'All' || item.color === compareFilters.color
+      return brandMatch && colorMatch
+    })
+  }, [compareOptions, compareFilters])
+
+  useEffect(() => {
+    setCompareFilters((prev) => {
+      const brandValid = availableBrands.includes(prev.brand) ? prev.brand : 'All'
+      const colorValid = availableColors.includes(prev.color) ? prev.color : 'All'
+      if (brandValid === prev.brand && colorValid === prev.color) return prev
+      return { brand: brandValid, color: colorValid }
+    })
+  }, [availableBrands, availableColors])
+
+  const isSelectedForCompare = (id: string | number) =>
+    compareSelection.some((item) => item.id === id)
+
+  const ensureCompareDetail = useCallback(
+    (item: RelatedProduct) => {
+      const key = String(item.id)
+      if (compareDetails[key] !== undefined || compareDetailsLoading[key]) return
+      setCompareDetailsLoading((prev) => ({ ...prev, [key]: true }))
+      ;(async () => {
+        try {
+          const res = await fetch(`/api/medusa/products/${encodeURIComponent(String(item.id))}`, {
+            cache: 'no-store',
+          })
+          if (res.ok) {
+            const data = await res.json()
+            setCompareDetails((prev) => ({ ...prev, [key]: (data.product as DetailedProductType) || null }))
+          } else {
+            setCompareDetails((prev) => ({ ...prev, [key]: null }))
+          }
+        } catch {
+          setCompareDetails((prev) => ({ ...prev, [key]: null }))
+        } finally {
+          setCompareDetailsLoading((prev) => {
+            const next = { ...prev }
+            delete next[key]
+            return next
+          })
+        }
+      })()
+    },
+    [compareDetails, compareDetailsLoading]
+  )
+
+  const toggleCompareSelection = (item: RelatedProduct) => {
+    setCompareSelection((prev) => {
+      if (prev.some((selected) => selected.id === item.id)) {
+        return prev.filter((selected) => selected.id !== item.id)
+      }
+      ensureCompareDetail(item)
+      return [...prev, item]
+    })
+  }
+
+  const removeFromCompareSelection = (id: string | number) => {
+    setCompareSelection((prev) => prev.filter((item) => item.id !== id))
+  }
 
   const slugify = (value: string) =>
     value
@@ -209,21 +451,41 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)+/g, '')
 
-  const breadcrumbItems = useMemo(() => {
+  const mappedCategoryTrail = useMemo(() => {
+    if (!product?.primaryCategoryId || !Object.keys(categoryMap).length) return []
+    const path: Array<{ label: string; href?: string }> = []
+    const visited = new Set<string>()
+    let cursor: string | null | undefined = product.primaryCategoryId
+    while (cursor && !visited.has(cursor)) {
+      visited.add(cursor)
+      const node: CategoryMapEntry | undefined = categoryMap[cursor]
+      if (!node) break
+      path.push({
+        label: node.title,
+        href: node.handle ? `/category/${node.handle}` : undefined,
+      })
+      cursor = node.parentId || null
+    }
+    return path.reverse()
+  }, [product?.primaryCategoryId, categoryMap])
+
+  const breadcrumbItems: BreadcrumbItem[] = useMemo(() => {
     const items: Array<{ label: string; href?: string }> = [{ label: 'Home', href: '/' }]
-    const categoryTrail: Array<{ label: string; href?: string }> = []
+    const categoryTrail: Array<{ id?: string; label: string; href?: string }> = []
     const placeholders = new Set(['category', 'categories', 'uncategorized', 'default'])
-    const seenLabels = new Set<string>()
+    const seenKeys = new Set<string>()
 
     product?.categories?.forEach((cat) => {
       const raw = (cat.title || cat.handle || '').replace(/[-_]+/g, ' ').trim()
       if (!raw) return
       const norm = raw.toLowerCase()
       if (placeholders.has(norm)) return
-      if (seenLabels.has(norm)) return
-      seenLabels.add(norm)
+      const key = cat.id || norm
+      if (seenKeys.has(key)) return
+      seenKeys.add(key)
       const fallbackHref = slugify(raw)
       categoryTrail.push({
+        id: cat.id,
         label: raw,
         href: cat.handle ? `/category/${cat.handle}` : fallbackHref ? `/category/${fallbackHref}` : undefined,
       })
@@ -233,16 +495,115 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
       categoryTrail.push({ label: product.type })
     }
 
-    items.push(...categoryTrail.slice(0, 2))
+    const fallbackTrail = categoryTrail.map(({ label, href }) => ({ label, href }))
+    const finalTrail = mappedCategoryTrail.length ? mappedCategoryTrail : fallbackTrail
+
+    items.push(...finalTrail)
 
     if (product?.title) {
       items.push({ label: product.title })
     }
     return items
-  }, [product])
+  }, [product, mappedCategoryTrail])
 
   const breadcrumbPillClass =
     'inline-flex items-center rounded-full border border-green-100 bg-[#eaf6e6] px-3 py-1 text-sm font-medium text-green-700 transition-colors hover:bg-green-100'
+
+  const baseComparisonCard = useMemo<RelatedProduct | null>(() => {
+    if (!product) return null
+    return {
+      id: product.id,
+      name: product.title,
+      image: product.images?.[0] || product.thumbnail || FALLBACK_IMAGE,
+      price: product.price,
+      mrp: product.mrp,
+      discount: product.discount,
+      handle: product.handle,
+      variant_id: product.variant_id,
+      brand: brandName,
+      color: deriveColorName(product.title),
+      highlights: product.highlights?.slice(0, 4) || [],
+    }
+  }, [product, brandName])
+
+  const comparisonProducts = useMemo(() => {
+    if (!baseComparisonCard) return []
+    const unique = new Map<string | number, RelatedProduct>()
+    compareSelection.forEach((item) => unique.set(item.id, item))
+    const selections = Array.from(unique.values()).map((item) => ({
+      ...item,
+      highlights: item.highlights && item.highlights.length ? item.highlights : ['Popular pick', `${item.discount}% off`],
+    }))
+    return [baseComparisonCard, ...selections]
+  }, [baseComparisonCard, compareSelection])
+
+  const comparisonColumns = useMemo<ComparisonColumn[]>(() => {
+    return comparisonProducts.map((item, idx) => {
+      const key = String(item.id)
+      const isBase = idx === 0
+      const detail = isBase ? product : compareDetails[key]
+      const meta = (detail?.metadata as MetaRecord) || null
+      const loading = !isBase && Boolean(compareDetailsLoading[key]) && !detail
+      const brand =
+        extractMetaString(meta, 'brand') ||
+        detail?.collection?.title ||
+        item.brand ||
+        'OWEG Assured'
+      const model =
+        extractMetaString(meta, 'model') ||
+        extractMetaString(meta, 'model_no') ||
+        extractMetaString(meta, 'model_number') ||
+        detail?.handle ||
+        item.handle ||
+        '-'
+      const inventory = detail?.variants?.[0]?.inventory_quantity
+      let availabilityLabel = '-'
+      let availabilityState: 'in' | 'out' | 'unknown' = 'unknown'
+      if (typeof inventory === 'number') {
+        if (inventory > 0) {
+          availabilityLabel = 'In stock'
+          availabilityState = 'in'
+        } else {
+          availabilityLabel = 'Out of stock'
+          availabilityState = 'out'
+        }
+      }
+      const rating =
+        extractMetaNumber(meta, 'rating') ??
+        (isBase ? ratingValue : 4.5)
+      const summary = buildSummaryFromDetail(detail || null, item)
+      const weight = formatWeightDisplay(detail)
+      const dimensions = formatDimensionsDisplay(detail)
+      const variantId = detail?.variants?.[0]?.id || item.variant_id
+      const slug = encodeURIComponent(String(item.handle || item.id))
+      const productHref = `/productDetail/${slug}?id=${encodeURIComponent(String(item.id))}`
+      return {
+        key,
+        item,
+        idx,
+        isBase,
+        detail,
+        loading,
+        brand,
+        model,
+        availabilityLabel,
+        availabilityState,
+        rating,
+        summary,
+        weight,
+        dimensions,
+        variantId,
+        productHref,
+      }
+    })
+  }, [comparisonProducts, product, compareDetails, compareDetailsLoading, ratingValue])
+
+
+  const handleCompareNow = () => {
+    if (!compareSelection.length) return
+    setCompareModalOpen(false)
+    setActiveTab('compare')
+  }
 
   const detailPairs = useMemo(() => {
     if (!product) return []
@@ -263,34 +624,76 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
     return entries
   }, [product])
 
-  const hasStock = true
+  const hasStock = useMemo(() => {
+    if (!product?.variants?.length) return true
+    return product.variants.some((variant) => {
+      if (typeof variant.inventory_quantity === 'number') {
+        return variant.inventory_quantity > 0
+      }
+      return true
+    })
+  }, [product?.variants])
+
+  useEffect(() => {
+    if (!product?.id) return
+    if (!hasStock) {
+      if (outOfStockToastRef.current !== product.id) {
+        notifyOutOfStock()
+        outOfStockToastRef.current = product.id
+      }
+    } else {
+      outOfStockToastRef.current = null
+    }
+  }, [product?.id, hasStock])
 
   const handleQuantityChange = (delta: number) => {
     setQuantity((prev) => Math.max(1, prev + delta))
   }
 
-  const handleAddToCart = async () => {
-    if (!product?.variant_id) {
-      alert('This product is not purchasable yet')
+  const addVariantToCart = async (variantId?: string, qty = 1) => {
+    if (!variantId) {
+      notifyCartUnavailable()
       return
     }
     try {
-      await fetch('/api/medusa/cart', { method: 'POST' })
+      await fetch('/api/medusa/cart', { method: 'POST', credentials: 'include' })
       const res = await fetch('/api/medusa/cart/line-items', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ variant_id: product.variant_id, quantity }),
+        body: JSON.stringify({ variant_id: variantId, quantity: qty }),
+        credentials: 'include',
       })
-      if (!res.ok) throw new Error('Add to cart failed')
-      alert('Added to cart')
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) {
+        const message =
+          (payload && (payload.error || payload.message)) || 'Unable to add to cart right now.'
+        throw new Error(message)
+      }
+      if (payload) {
+        syncFromCartPayload(payload)
+      }
+      notifyCartAddSuccess(product?.title ?? 'Item', qty, goToCart)
     } catch (err) {
-      console.error(err)
-      alert('Unable to add to cart right now.')
+      console.warn('addVariantToCart failed', err)
+      const message = err instanceof Error ? err.message : undefined
+      notifyCartAddError(message)
     }
   }
 
+  const handleAddToCart = async () => {
+    await addVariantToCart(product?.variant_id, quantity)
+  }
+
   const handleBuyNow = () => {
-    alert('Buy Now will redirect to checkout soon.')
+    notifyCheckoutComingSoon()
+  }
+
+  const handleAddToWishlist = () => {
+    notifyWishlistLogin(() => router.push('/login'))
+  }
+
+  const handleSaveForLater = () => {
+    notifyWishlistSuccess(product?.title ?? 'Item')
   }
 
   const shareProduct = async () => {
@@ -308,8 +711,16 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
     }
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       await navigator.clipboard.writeText(window.location.href)
-      alert('Product link copied!')
+      toast.success('Product link copied!', {
+        description: 'Share it with your friends.',
+      })
     }
+  }
+
+  const handlePinInputChange = (value: string) => {
+    setPinCode(value)
+    setPinStatus('idle')
+    setPinMessage('')
   }
 
   const handlePinCheck = () => {
@@ -341,7 +752,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
   const descriptionHasHtml = Boolean(product?.description && /<\/?[a-z][\s\S]*>/i.test(product.description))
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#f3f8f3] font-sans">
+    <div className="flex min-h-screen flex-col bg-[#f3f8f3] font-sans overflow-x-hidden">
       <style>{`
         :root {
           --detail-accent: #7bc24f;
@@ -350,22 +761,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
         }
       `}</style>
       <main className="w-full max-w-7xl mx-auto px-4 py-8 lg:py-12 flex-1">
-        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 mb-6">
-          {breadcrumbItems.map((item, idx) => (
-            <React.Fragment key={`${item.label}-${idx}`}>
-              {idx > 0 && <ChevronRight className="w-4 h-4 text-green-500" />}
-              {idx === breadcrumbItems.length - 1 ? (
-                <span className="text-slate-900 font-semibold">{item.label}</span>
-              ) : item.href ? (
-                <Link href={item.href} className={breadcrumbPillClass}>
-                  {item.label}
-                </Link>
-              ) : (
-                <span className={breadcrumbPillClass}>{item.label}</span>
-              )}
-            </React.Fragment>
-          ))}
-        </div>
+        <Breadcrumbs items={breadcrumbItems} pillClassName={breadcrumbPillClass} />
 
         {loading ? (
           <div className="animate-pulse space-y-6">
@@ -390,362 +786,325 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
         ) : product ? (
           <>
             <section className="grid lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)] gap-8 lg:gap-10 mb-10">
-              <div className="space-y-4">
-                <div className="relative aspect-square rounded-[32px] border border-[var(--detail-border)] bg-white shadow-sm overflow-hidden group">
-                  <Image
-                    src={galleryImages[selectedImage] || FALLBACK_IMAGE}
-                    alt={product.title}
-                    fill
-                    sizes="(max-width: 1024px) 100vw, 50vw"
-                    className="object-contain p-4 lg:p-10 transition-transform duration-300 group-hover:scale-105"
-                    priority
-                  />
-                  {galleryImages.length > 1 && (
-                    <div className="absolute inset-x-0 bottom-4 flex justify-between px-4">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSelectedImage((prev) => (prev === 0 ? galleryImages.length - 1 : prev - 1))
-                        }
-                        className="w-10 h-10 rounded-full bg-white/90 text-slate-700 flex items-center justify-center shadow border border-slate-100"
-                      >
-                        <ChevronLeft className="w-5 h-5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSelectedImage((prev) => (prev === galleryImages.length - 1 ? 0 : prev + 1))
-                        }
-                        className="w-10 h-10 rounded-full bg-white/90 text-slate-700 flex items-center justify-center shadow border border-slate-100"
-                      >
-                        <ChevronRight className="w-5 h-5" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-                 <div className="grid grid-cols-4 gap-3">
-                  {galleryImages.map((img, idx) => (
-                    <button
-                      key={img + idx}
-                      type="button"
-                      onClick={() => setSelectedImage(idx)}
-                      onMouseEnter={() => setSelectedImage(idx)}
-                      onFocus={() => setSelectedImage(idx)}
-                      className={`aspect-square rounded-2xl border ${
-                        selectedImage === idx ? 'border-green-500 ring-2 ring-green-100' : 'border-slate-200'
-                      } overflow-hidden bg-white`}
-                    >
-                      <Image
-                        src={img}
-                        alt={`${product.title}-${idx}`}
-                        width={200}
-                        height={200}
-                        className="object-contain w-full h-full p-2"
-                      />
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-[32px] border border-[var(--detail-border)] p-6 lg:p-8 shadow-sm space-y-5">
-                <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-wide text-green-700">
-                  <span className="bg-green-50 text-green-700 px-3 py-1 rounded-full">OWEG Exclusive</span>
-                  <span className="text-slate-400">|</span>
-                  <span>{brandName}</span>
-                </div>
-                <h1 className="text-2xl lg:text-3xl font-semibold text-slate-900">{product.title}</h1>
-                {product.subtitle && <p className="text-slate-500">{product.subtitle}</p>}
-
-                <div className="flex flex-wrap items-end gap-3">
-                  <div className="text-3xl font-bold text-slate-900">{inr.format(product.price)}</div>
-                  <div className="text-lg text-slate-400 line-through">{inr.format(product.mrp)}</div>
-                  {product.discount > 0 && (
-                    <span className="text-sm font-semibold text-green-600 bg-green-100/60 px-3 py-1 rounded-full">
-                      {product.discount}% OFF
-                    </span>
-                  )}
-                </div>
-                <div className="text-sm text-slate-500">Inclusive of all taxes | Prices shown in {product.currency}</div>
-
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600">
-                  <div className="flex items-center gap-1">
-                    <Star className="w-4 h-4 text-yellow-500" />
-                    <span className="font-semibold text-slate-900">{ratingValue.toFixed(1)}</span>
-                    <span className="text-slate-400">({reviewCount}+ ratings)</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-slate-600">
-                    <Eye className="w-4 h-4 text-slate-500" aria-hidden="true" />
-                    <span>{new Intl.NumberFormat('en-IN').format(viewCount)}+ views</span>
-                  </div>
-                  <div className={`text-sm font-medium ${hasStock ? 'text-green-600' : 'text-red-500'}`}>
-                    {hasStock ? 'In stock' : 'Limited availability'}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-6">
-                  <div className="flex items-center border border-slate-200 rounded-full overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => handleQuantityChange(-1)}
-                      className="px-3 py-2 text-slate-600 hover:bg-slate-50"
-                      aria-label="Decrease quantity"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </button>
-                    <div className="px-4 text-base font-semibold text-slate-900">{quantity}</div>
-                    <button
-                      type="button"
-                      onClick={() => handleQuantityChange(1)}
-                      className="px-3 py-2 text-slate-600 hover:bg-slate-50"
-                      aria-label="Increase quantity"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="flex gap-3 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={handleAddToCart}
-                      className="inline-flex items-center gap-2 rounded-full bg-green-600 px-6 py-3 text-white font-semibold shadow hover:bg-green-700 transition"
-                    >
-                      <ShoppingCart className="w-4 h-4" />
-                      Add to cart
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleBuyNow}
-                      className="inline-flex items-center gap-2 rounded-full border border-green-600 px-6 py-3 text-green-700 font-semibold hover:bg-green-50 transition"
-                    >
-                      Buy now
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={handleAddToCart}
-                    className="flex items-center gap-2 text-sm text-slate-600 hover:text-green-600 transition"
-                  >
-                    <Bookmark className="w-4 h-4" />
-                    Save for later
-                  </button>
-                  <button
-                    type="button"
-                    onClick={shareProduct}
-                    className="flex items-center gap-2 text-sm text-slate-600 hover:text-green-600 transition"
-                  >
-                    <Share2 className="w-4 h-4" />
-                    Share
-                  </button>
-                </div>
-
-                <div className="space-y-4 rounded-3xl border border-[var(--detail-border)] bg-[#f8fbf8] p-5">
-                  <div className="flex items-start gap-3">
-                    <Truck className="w-6 h-6 text-green-600" />
-                    <div className="flex-1">
-                      <p className="font-semibold text-slate-900">Free Delivery</p>
-                      <p className="text-sm text-slate-500">Enter your postal code for delivery availability</p>
-                      <div className="mt-3 flex flex-col gap-2">
-                        <div className="flex gap-2">
-                          <input
-                            value={pinCode}
-                            onChange={(event) => {
-                              setPinCode(event.target.value)
-                              setPinStatus('idle')
-                              setPinMessage('')
-                            }}
-                            type="text"
-                            maxLength={6}
-                            placeholder="Enter PIN code"
-                            className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
-                          />
-                          <button
-                            type="button"
-                            onClick={handlePinCheck}
-                            className="rounded-full bg-green-600 px-4 py-2 text-white text-sm font-semibold"
-                          >
-                            Check
-                          </button>
-                        </div>
-                        {pinStatus !== 'idle' && (
-                          <p
-                            className={`text-sm ${
-                              pinStatus === 'available' ? 'text-green-600' : pinStatus === 'checking' ? 'text-slate-500' : 'text-red-500'
-                            }`}
-                          >
-                            {pinStatus === 'checking' ? 'Checking serviceability...' : pinMessage}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3 border-t border-dashed border-slate-200 pt-4">
-                    <RotateCcw className="w-6 h-6 text-green-600" />
-                    <div>
-                      <p className="font-semibold text-slate-900">Return Delivery</p>
-                      <p className="text-sm text-slate-500">7 days easy return & replacement on defects.</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3 border-t border-dashed border-slate-200 pt-4">
-                    <Wallet className="w-6 h-6 text-green-600" />
-                    <div>
-                      <p className="font-semibold text-slate-900">Cash on Delivery</p>
-                      <p className="text-sm text-slate-500">Pay at your doorstep via cash or card.</p>
-                    </div>
-                  </div>
-                </div>
+              <ProductGallery
+                images={galleryImages}
+                selectedIndex={selectedImage}
+                onSelect={setSelectedImage}
+                fallback={FALLBACK_IMAGE}
+              />
+              <div className="space-y-5 lg:pl-4">
+                <ProductSummary
+                  product={product}
+                  brandName={brandName}
+                  ratingValue={ratingValue}
+                  reviewCount={reviewCount}
+                  viewCount={viewCount}
+                  hasStock={hasStock}
+                  quantity={quantity}
+                  onQuantityChange={handleQuantityChange}
+                  onAddToCart={handleAddToCart}
+                  onBuyNow={handleBuyNow}
+                  onShare={shareProduct}
+                  onSaveForLater={handleSaveForLater}
+                  onOpenCompare={() => setCompareModalOpen(true)}
+                  formatPrice={(value) => inr.format(value)}
+                />
+                <DeliveryInfo
+                  pinCode={pinCode}
+                  pinStatus={pinStatus}
+                  pinMessage={pinMessage}
+                  onPinCodeChange={handlePinInputChange}
+                  onCheck={handlePinCheck}
+                />
               </div>
             </section>
 
             <section className="mt-10">
-              <div className="bg-white rounded-[32px] border border-[var(--detail-border)] p-6 lg:p-8 shadow-sm">
-                <div className="flex gap-6 border-b border-slate-100 mb-6">
-                  {DESCRIPTION_TABS.map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`pb-3 text-sm font-semibold transition-all border-b-2 ${
-                        activeTab === tab.id
-                          ? 'text-green-700 border-green-600'
-                          : 'text-slate-400 border-transparent hover:text-slate-600'
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-                {activeTab === 'description' && (
-                  <div className="space-y-8">
-                    <div>
-                      <h2 className="text-lg font-semibold text-slate-900 mb-3">Product Description</h2>
-                      {product.description ? (
-                        descriptionHasHtml ? (
-                          <div
-                            className="prose prose-sm max-w-none text-slate-700"
-                            dangerouslySetInnerHTML={{ __html: product.description }}
-                          />
-                        ) : (
-                          product.description
-                            .split(/\n+/)
-                            .filter(Boolean)
-                            .map((para, idx) => (
-                              <p key={idx} className="text-sm text-slate-600 mb-3 leading-relaxed">
-                                {para}
-                              </p>
-                            ))
-                        )
-                      ) : (
-                        <p className="text-sm text-slate-500">Detailed description will be available soon.</p>
-                      )}
-                    </div>
-
-                    {highlights.length > 0 && (
-                      <div>
-                        <h3 className="text-lg font-semibold text-slate-900 mb-3">Benefits</h3>
-                        <div className="grid sm:grid-cols-2 gap-3">
-                          {highlights.map((highlight) => (
-                            <div
-                              key={`benefit-${highlight}`}
-                              className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-[#f9fcf8] p-3 text-sm text-slate-700"
-                            >
-                              <Check className="w-4 h-4 text-green-600 mt-1" />
-                              <span>{highlight}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {detailPairs.length > 0 && (
-                      <div>
-                        <h3 className="text-lg font-semibold text-slate-900 mb-4">Product Details</h3>
-                        <div className="space-y-3">
-                          {detailPairs.map((pair) => (
-                            <div
-                              key={pair.label}
-                              className="flex flex-col rounded-2xl border border-slate-100 bg-[#f9fcf8] px-4 py-3 text-sm"
-                            >
-                              <span className="text-xs uppercase tracking-wide text-slate-500">{pair.label}</span>
-                              <span className="text-base font-semibold text-slate-800">{pair.value}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-                {activeTab === 'reviews' && (
-                  <div className="text-sm text-slate-600">
-                    Reviews will appear here once shoppers share their experience. Check back soon!
-                  </div>
-                )}
-                {activeTab === 'compare' && (
-                  <div className="text-sm text-slate-600">
-                    Comparison data is being prepared for this product. We&apos;ll highlight alternatives shortly.
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section className="mt-12 bg-white rounded-[32px] border border-[var(--detail-border)] p-6 lg:p-8 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-                <div>
-                  <h2 className="text-xl font-semibold text-slate-900">Similar items you might also like</h2>
-                  <p className="text-sm text-slate-500">Hand-picked recommendations based on this product.</p>
-                </div>
-                {loadingRelated && <span className="text-sm text-slate-500">Loading suggestions...</span>}
-              </div>
-              {related.length === 0 && !loadingRelated ? (
-                <div className="text-sm text-slate-500 bg-[#f8fbf8] rounded-2xl border border-dashed border-[var(--detail-border)] p-6">
-                  We&apos;re curating recommendations for this product.
-                </div>
-              ) : (
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {related.map((item) => {
-                    const slug = encodeURIComponent(String(item.handle || item.id))
-                    const href = `/productDetail/${slug}?id=${encodeURIComponent(String(item.id))}`
-                    return (
-                      <Link
-                        key={item.id}
-                        href={href}
-                        className="relative bg-white border border-slate-100 rounded-3xl p-4 hover:shadow-lg transition flex flex-col"
+              <DescriptionTabs
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                product={product}
+                descriptionHasHtml={descriptionHasHtml}
+                highlights={highlights}
+                detailPairs={detailPairs}
+              />
+              {activeTab === 'compare' && (
+                <div className="mt-8 space-y-4 lg:pl-4">
+                  {comparisonProducts.length <= 1 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-600">
+                      <p className="mb-3">
+                        Select a few similar products to compare specs side-by-side.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setCompareModalOpen(true)}
+                        className="rounded-full bg-green-600 px-5 py-2 text-white font-semibold hover:bg-green-700"
                       >
-                        {item.discount > 0 && (
-                          <span className="absolute top-3 left-3 text-[11px] font-semibold text-white bg-red-600 px-2 py-1 rounded-full shadow">
-                            {item.discount}% off
-                          </span>
-                        )}
-                        <div className="relative aspect-square rounded-2xl bg-slate-50 overflow-hidden mb-3">
-                          <Image
-                            src={item.image || FALLBACK_IMAGE}
-                            alt={item.name}
-                            fill
-                            className="object-contain p-4"
-                          />
+                        Choose products to compare
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <CompareTable
+                        columns={comparisonColumns}
+                        formatPrice={(value) => inr.format(value)}
+                        onRemove={removeFromCompareSelection}
+                        onAddToCart={addVariantToCart}
+                        onWishlist={handleAddToWishlist}
+                      />
+                      {comparisonProducts.length > 1 && (
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-800 shadow-sm">
+                          <p className="font-semibold text-green-700 mb-1">Suggested pick</p>
+                          <p className="mb-2 text-xs text-slate-500">
+                            Based on comparative factors, this product offers the best balance:
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const recommended = comparisonProducts.slice(1).sort((a, b) => {
+                                const discountDiff = (b.discount || 0) - (a.discount || 0)
+                                if (discountDiff !== 0) return discountDiff
+                                const wattA = a.summary?.wattage ? parseFloat(a.summary.wattage) : Infinity
+                                const wattB = b.summary?.wattage ? parseFloat(b.summary.wattage) : Infinity
+                                return wattA - wattB
+                              })[0]
+                              if (recommended) {
+                                const slug = encodeURIComponent(String(recommended.handle || recommended.id))
+                                const href = `/productDetail/${slug}?id=${encodeURIComponent(String(recommended.id))}`
+                                window.location.href = href
+                              }
+                            }}
+                            className="flex items-center justify-between w-full rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-left hover:bg-green-100 transition"
+                          >
+                            <div>
+                              <p className="text-sm font-semibold">
+                                {
+                                  comparisonProducts.slice(1).sort((a, b) => (b.discount || 0) - (a.discount || 0))[0]?.name ||
+                                  comparisonProducts[1].name
+                                }
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                Tap to open detail page with full specs.
+                              </p>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-green-600" />
+                          </button>
                         </div>
-                        <p className="text-sm font-medium text-slate-800 line-clamp-2 flex-1">{item.name}</p>
-                        <div className="flex items-baseline gap-2 mt-2">
-                          <span className="text-lg font-semibold text-slate-900">{inr.format(item.price)}</span>
-                          <span className="text-xs text-slate-400 line-through">{inr.format(item.mrp)}</span>
-                        </div>
-                        <button
-                          type="button"
-                          className="absolute bottom-4 right-4 w-8 h-8 rounded-full bg-green-600 text-white flex items-center justify-center shadow"
-                          aria-label="Add similar item to cart"
-                        >
-                          +
-                        </button>
-                      </Link>
-                    )
-                  })}
+                      )}
+                    </>
+                  )}
                 </div>
               )}
+            </section>
+
+            <section className="mt-12">
+              <div className="space-y-5 lg:pl-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h1 className="text-xl font-bold text-slate-900">Similar items you might also like</h1>
+                    <p className="text-sm text-slate-500">Hand-picked recommendations based on this product.</p>
+                  </div>
+                  {loadingRelated && <span className="text-sm text-slate-500">Loading suggestions...</span>}
+                </div>
+                {related.length === 0 && !loadingRelated ? (
+                  <div className="text-sm text-slate-500 border border-dashed border-[var(--detail-border)] rounded-2xl px-4 py-3 bg-white/60">
+                    We&apos;re curating recommendations for this product.
+                  </div>
+                ) : (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {related.map((item) => {
+                      const slug = encodeURIComponent(String(item.handle || item.id))
+                      const href = `/productDetail/${slug}?id=${encodeURIComponent(String(item.id))}`
+                      return (
+                        <Link
+                          key={item.id}
+                          href={href}
+                          className="group relative flex flex-col gap-3 p-2 text-left"
+                        >
+                          {item.discount > 0 && (
+                            <span className="absolute top-2 left-2 z-10 text-[11px] font-semibold text-white bg-red-600 px-2 py-1 rounded-full shadow">
+                              {item.discount}% off
+                            </span>
+                          )}
+                          <div className="relative aspect-square overflow-hidden rounded-2xl bg-white shadow-sm">
+                            <Image
+                              src={item.image || FALLBACK_IMAGE}
+                              alt={item.name}
+                              fill
+                              className="object-contain p-4 transition-transform duration-500 group-hover:scale-105"
+                            />
+                            <div className="absolute inset-y-3 right-3 flex flex-col gap-2 opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  notifyCartAddError('Please open the product detail page to add this item to your cart.')
+                                }}
+                                className="w-9 h-9 rounded-full bg-green-500 text-white flex items-center justify-center shadow hover:bg-green-600"
+                                aria-label="Add to cart"
+                              >
+                                <Plus className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  notifyWishlistLogin(() => router.push('/login'))
+                                }}
+                                className="w-9 h-9 rounded-full bg-white text-slate-600 flex items-center justify-center shadow border border-slate-200 hover:text-red-500"
+                                aria-label="Add to wishlist"
+                              >
+                                <Heart className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-sm font-medium text-slate-800 line-clamp-2">{item.name}</p>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-lg font-semibold text-slate-900">{inr.format(item.price)}</span>
+                            <span className="text-xs text-slate-400 line-through">{inr.format(item.mrp)}</span>
+                          </div>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             </section>
           </>
         ) : null}
       </main>
-    </div>
+      {compareModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-3 py-6">
+          <div className="w-full max-w-4xl rounded-3xl bg-white p-6 shadow-2xl border border-slate-100">
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900">Compare similar products</h3>
+                <p className="text-sm text-slate-500">
+                  Select items from the same category to see a quick spec comparison.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCompareModalOpen(false)}
+                className="rounded-full border border-slate-200 px-3 py-1 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <label className="text-sm font-medium text-slate-600">
+                Brand
+                <select
+                  value={compareFilters.brand}
+                  onChange={(e) => setCompareFilters((prev) => ({ ...prev, brand: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+                >
+                  {availableBrands.map((brand) => (
+                    <option key={brand} value={brand}>
+                      {brand === 'All' ? 'All brands' : brand}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm font-medium text-slate-600">
+                Color
+                <select
+                  value={compareFilters.color}
+                  onChange={(e) => setCompareFilters((prev) => ({ ...prev, color: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+                >
+                  {availableColors.map((color) => (
+                    <option key={color} value={color}>
+                      {color === 'All' ? 'All colors' : color}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-4 max-h-72 overflow-y-auto pr-1">
+              {filteredCompareOptions.length === 0 ? (
+                <p className="text-sm text-slate-500">No products match the selected filters.</p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {filteredCompareOptions.map((item) => {
+                    const selected = isSelectedForCompare(item.id)
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => toggleCompareSelection(item)}
+                        className={`flex items-start gap-3 rounded-2xl border px-3 py-2 text-left transition ${
+                          selected ? 'border-green-400 bg-green-50' : 'border-slate-200 bg-white hover:border-slate-300'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          readOnly
+                          className="h-4 w-4 rounded border-slate-300 text-green-600 focus:ring-green-500 mt-1"
+                        />
+                        <div className="relative h-12 w-12 flex-shrink-0 rounded-lg bg-slate-50 overflow-hidden">
+                          <Image
+                            src={item.image || FALLBACK_IMAGE}
+                            alt={item.name}
+                            fill
+                            className="object-contain p-1.5"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-slate-900 line-clamp-2">{item.name}</p>
+                          <p className="text-xs text-slate-500">
+                            {item.brand || 'Other'} Â· {item.color || 'All'}
+                          </p>
+                          <p className="text-sm font-medium text-slate-800 mt-1">{inr.format(item.price)}</p>
+                          <div className="text-xs text-slate-500 mt-1 space-y-1">
+                          {item.summary?.wattage && <p>Wattage: {item.summary.wattage}</p>}
+                          {item.summary?.size && <p>Sweep: {item.summary.size}</p>}
+                          {item.summary?.bestFor && <p>Best for: {item.summary.bestFor}</p>}
+                          {item.summary?.noiseLevel && <p>Noise: {item.summary.noiseLevel}</p>}
+                          {item.summary?.warranty && <p>Warranty: {item.summary.warranty}</p>}
+                        </div>
+                      </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setCompareSelection([])}
+                className="text-sm text-slate-500 hover:text-slate-800"
+              >
+                Clear selection
+              </button>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-500">
+                  {compareSelection.length} product{compareSelection.length === 1 ? '' : 's'} selected
+                </span>
+                <button
+                  type="button"
+                  disabled={!compareSelection.length}
+                  onClick={handleCompareNow}
+                  className={`rounded-full px-5 py-2 text-sm font-semibold transition ${
+                    compareSelection.length
+                      ? 'bg-green-600 text-white hover:bg-green-700'
+                      : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                  }`}
+                >
+                  Compare now
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div> 
   )
 }

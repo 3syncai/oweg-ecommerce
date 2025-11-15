@@ -22,12 +22,21 @@ export type MedusaProduct = {
   tags?: Array<{ id: string; value?: string; handle?: string }>
   type?: { id: string; value?: string; handle?: string }
   collection?: { id?: string; title?: string; handle?: string }
+  weight?: number | null
+  length?: number | null
+  height?: number | null
+  width?: number | null
   variants?: Array<{
     id: string
     title?: string
     inventory_quantity?: number
     options?: Array<{ id: string; value?: string; option_id?: string }>
     prices?: Array<{ amount: number; currency_code: string }>
+    weight?: number | null
+    length?: number | null
+    height?: number | null
+    width?: number | null
+    metadata?: Record<string, unknown> | null
   }>
   price?: {
     calculated_price?: number
@@ -49,7 +58,16 @@ export type DetailedProduct = {
   images: string[]
   thumbnail?: string
   variant_id?: string
-  variants: Array<{ id: string; title?: string; inventory_quantity?: number }>
+  variants: Array<{
+    id: string
+    title?: string
+    inventory_quantity?: number
+    weight?: number | null
+    length?: number | null
+    height?: number | null
+    width?: number | null
+    metadata?: Record<string, unknown> | null
+  }>
   categories: Array<{ id: string; title: string; handle?: string }>
   tags: string[]
   type?: string
@@ -525,6 +543,61 @@ export function toDetailedProduct(
     ? tags
     : categories.map((c) => c.title).filter(Boolean)
 
+  const primaryVariant = p.variants?.[0]
+  const normalizedMetadata: Record<string, unknown> = { ...(p.metadata || {}) }
+
+  const mergeMetadata = (source?: Record<string, unknown> | null) => {
+    if (!source) return
+    Object.entries(source).forEach(([key, value]) => {
+      if (
+        value !== undefined &&
+        value !== null &&
+        normalizedMetadata[key] === undefined
+      ) {
+        normalizedMetadata[key] = value
+      }
+    })
+  }
+
+  const measurementValue = (
+    ...values: Array<number | null | undefined>
+  ): number | undefined => {
+    for (const val of values) {
+      if (val !== undefined && val !== null && Number.isFinite(val)) {
+        return val
+      }
+    }
+    return undefined
+  }
+
+  const registerMeasurement = (keys: string[], value?: number) => {
+    if (value === undefined) return
+    keys.forEach((key) => {
+      if (normalizedMetadata[key] === undefined) {
+        normalizedMetadata[key] = value
+      }
+    })
+  }
+
+  registerMeasurement(
+    ["weight_kg", "weight"],
+    measurementValue(p.weight, primaryVariant?.weight)
+  )
+  registerMeasurement(
+    ["height_cm", "height"],
+    measurementValue(p.height, primaryVariant?.height)
+  )
+  registerMeasurement(
+    ["width_cm", "width"],
+    measurementValue(p.width, primaryVariant?.width)
+  )
+  registerMeasurement(
+    ["length_cm", "length"],
+    measurementValue(p.length, primaryVariant?.length)
+  )
+
+  mergeMetadata(primaryVariant?.metadata || null)
+
   return {
     id: p.id,
     title: p.title,
@@ -543,6 +616,11 @@ export function toDetailedProduct(
         id: v.id,
         title: v.title,
         inventory_quantity: v.inventory_quantity,
+        weight: v.weight ?? null,
+        length: v.length ?? null,
+        height: v.height ?? null,
+        width: v.width ?? null,
+        metadata: v.metadata || null,
       })) || [],
     categories,
     tags,
@@ -556,7 +634,8 @@ export function toDetailedProduct(
       : null,
     primaryCategoryId: categories[0]?.id,
     highlights,
-    metadata: p.metadata || null,
+    metadata:
+      Object.keys(normalizedMetadata).length > 0 ? normalizedMetadata : null,
   }
 }
 
@@ -606,6 +685,7 @@ export function toUiProduct(p: MedusaProduct, override?: PriceOverride) {
       (metadata["opencart_id"] as string | number | undefined),
     variant_id: p?.variants?.[0]?.id,
     handle: p?.handle,
+    category_ids: p?.categories?.map((c) => c.id).filter((id): id is string => !!id) || [],
   }
 }
 

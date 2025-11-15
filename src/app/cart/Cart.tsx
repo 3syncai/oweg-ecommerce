@@ -1,17 +1,33 @@
-﻿"use client";
+"use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Minus, Plus, X, ChevronRight } from "lucide-react";
+import { Minus, Plus, Trash2, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useCartSummary } from "@/contexts/CartProvider";
+import {
+  extractCartObject,
+  type CartApiPayload,
+  toMajorUnits,
+  ZERO_DECIMAL_CURRENCIES,
+} from "@/lib/cart-helpers";
+import {
+  notifyActionError,
+  notifyCartUpdated,
+  notifyCheckoutComingSoon,
+  notifyCouponApplied,
+  notifyCouponInvalid,
+  notifyQuantityUpdated,
+  notifyRemoveItem,
+} from "@/lib/notifications";
 
 interface CartItemUI {
   id: string;
   name: string;
-  price: number; // major unit (e.g., 350 -> â‚¹350)
+  price: number; // major unit (e.g., 350 -> 350)
   quantity: number;
   image?: string;
   currency?: string;
@@ -24,8 +40,6 @@ interface CartItemUI {
     collectionId?: string;
   };
 }
-
-type ApiCart = Record<string, unknown>;
 
 /**
  * Safe helpers to read unknown API shapes
@@ -42,37 +56,422 @@ const toNumber = (v: unknown, fallback = 0): number => {
 const toStringOrUndefined = (v: unknown): string | undefined =>
   typeof v === "string" ? v : v == null ? undefined : String(v);
 
+/**
+ * Try to find the first numeric amount from nested payloads.
+ */
+const extractFirstAmount = (...sources: Array<unknown>): number | undefined => {
+  const seen = new WeakSet<object>();
+  const dig = (value: unknown, depth: number): number | undefined => {
+    if (value == null || depth > 6) return undefined;
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim() !== "") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    if (typeof value === "object") {
+      if (seen.has(value as object)) return undefined;
+      seen.add(value as object);
+      const obj = value as Record<string, unknown>;
+      const nestedKeys = [
+        "amount",
+        "value",
+        "calculated",
+        "original",
+        "incl_tax",
+        "excl_tax",
+        "calculated_amount",
+        "original_amount",
+        "presentment_amount",
+        "raw_amount",
+        "price",
+      ];
+      for (const key of nestedKeys) {
+        if (obj[key] !== undefined) {
+          const found = dig(obj[key], depth + 1);
+          if (found !== undefined) return found;
+        }
+      }
+      for (const val of Object.values(obj)) {
+        const found = dig(val, depth + 1);
+        if (found !== undefined) return found;
+      }
+    }
+    return undefined;
+  };
+
+  for (const source of sources) {
+    const result = dig(source, 0);
+    if (result !== undefined) return result;
+  }
+  return undefined;
+};
+
+const DEFAULT_CURRENCY = "INR";
+
+/**
+ * Robust currency formatter that respects zero-decimal currencies.
+ * Expects `value` in major units (e.g., 350 means ₹350).
+ */
+const formatCurrency = (
+  value: number | null | undefined,
+  currencyCode: string = DEFAULT_CURRENCY
+): string => {
+  const v = typeof value === "number" ? value : 0;
+  const safeCurrency = currencyCode?.toUpperCase() || DEFAULT_CURRENCY;
+  const zeroDecimals = ZERO_DECIMAL_CURRENCIES.has(safeCurrency);
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: safeCurrency,
+      minimumFractionDigits: zeroDecimals ? 0 : Number.isInteger(v) ? 0 : 2,
+      maximumFractionDigits: zeroDecimals ? 0 : 2,
+    }).format(v);
+  } catch {
+    const digits = zeroDecimals ? 0 : 2;
+    return `${safeCurrency} ${Number.isFinite(v) ? v.toFixed(digits) : String(v)}`;
+  }
+};
+
+const REMOVE_ANIMATION_MS = 320;
+
+/**
+ * Convert a raw numeric 'amount' to major units using safer heuristics.
+ *
+ * IMPORTANT changes:
+ * - We DO NOT divide moderately-large values like 1609 by 100.
+ * - We only divide when it's extremely likely the value is in minor units (e.g., paise integers like 160900).
+ */
+function minorToMajorHeuristic(raw: number | undefined, currency?: string): number | undefined {
+  if (raw === undefined || raw === null || !Number.isFinite(raw)) return undefined;
+  const cur = (currency || DEFAULT_CURRENCY).toUpperCase();
+  // If currency is zero-decimal, treat raw as already major.
+  if (ZERO_DECIMAL_CURRENCIES.has(cur)) {
+    return raw;
+  }
+
+  // If raw has decimal part -> it's already a major-unit number (e.g., 1516.94)
+  if (Math.abs(raw % 1) > 1e-9) {
+    return raw;
+  }
+
+  const abs = Math.abs(raw);
+
+  // If value is extremely large (e.g., > 100,000) -> likely minor units (paise)
+  // Example: 160900 -> 1609.00 after dividing by 100
+  if (abs >= 100000) {
+    return raw / 100;
+  }
+
+  // For moderate values (like 1609) assume it's already major (do NOT divide).
+  return raw;
+}
+
+/**
+ * Try to convert candidate raw numbers (from various fields) to a plausible major unit.
+ * We intentionally prefer *discounted / presentment / line-total derived* values first.
+ */
+function resolvePreferredMajor(
+  candidates: {
+    derivedUnit?: number | undefined;
+    presentment?: number | undefined;
+    calculated?: number | undefined;
+    unitRaw?: number | undefined;
+    variantRaw?: number | undefined;
+    productRaw?: number | undefined;
+  },
+  currency?: string
+): number {
+  // Order of preference:
+  // 1) derivedUnit (line total / qty) — usually reflects discounts applied
+  // 2) presentment / calculated fields from price_set (these often show final price)
+  // 3) unitRaw (unit_price fields)
+  // 4) variantRaw
+  // 5) productRaw (product-level price)
+  const tryOrder = [
+    candidates.derivedUnit,
+    candidates.presentment,
+    candidates.calculated,
+    candidates.unitRaw,
+    candidates.variantRaw,
+    candidates.productRaw,
+  ];
+
+  for (const cand of tryOrder) {
+    if (typeof cand === "number" && Number.isFinite(cand)) {
+      const maj = minorToMajorHeuristic(cand, currency);
+      if (typeof maj === "number" && Number.isFinite(maj) && maj > 0) {
+        return maj;
+      }
+      // If heuristic didn't decide, try toMajorUnits fallback (handles paise cases reliably)
+      try {
+        const fallback = toMajorUnits(cand, currency);
+        if (Number.isFinite(fallback) && fallback > 0) return fallback;
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // Last resort: return 0
+  return 0;
+}
+
+/**
+ * Map cart payload to UI items with robust heuristics.
+ */
+const mapCartPayloadToItems = (payload?: CartApiPayload): CartItemUI[] => {
+  const cart = extractCartObject(payload);
+
+  const region = (cart?.region as CartApiPayload | undefined) || undefined;
+  const cartCurrencyCode =
+    toStringOrUndefined(region?.currency_code) ||
+    toStringOrUndefined((region?.currency as CartApiPayload | undefined)?.code) ||
+    toStringOrUndefined(cart?.currency_code);
+
+  const rawItems =
+    (cart && ((cart.items as unknown) ?? (cart.line_items as unknown))) ?? [];
+
+  const itemsArr = Array.isArray(rawItems) ? rawItems : [];
+
+  return itemsArr.map((element) => {
+    if (typeof element !== "object" || element === null) {
+      return {
+        id: String(Math.random()),
+        name: "Item",
+        price: 0,
+        quantity: 1,
+      };
+    }
+    const it = element as CartApiPayload;
+    const name =
+      toStringOrUndefined(it.title) ||
+      toStringOrUndefined(it.product_title) ||
+      toStringOrUndefined((it.variant as CartApiPayload)?.title) ||
+      toStringOrUndefined(((it.variant as CartApiPayload)?.product as CartApiPayload)?.title) ||
+      "Item";
+    const image =
+      toStringOrUndefined(it.thumbnail) ||
+      toStringOrUndefined(it.image) ||
+      toStringOrUndefined(((it.variant as CartApiPayload)?.product as CartApiPayload)?.thumbnail);
+
+    const variant = (it.variant as CartApiPayload) || ({} as CartApiPayload);
+    const product = (variant.product as CartApiPayload) || ({} as CartApiPayload);
+    const productId =
+      toStringOrUndefined(product.id) ||
+      toStringOrUndefined(variant.product_id) ||
+      toStringOrUndefined((it as CartApiPayload).product_id);
+    const categoriesArr = Array.isArray((product as CartApiPayload)?.categories)
+      ? ((product as CartApiPayload).categories as CartApiPayload[])
+      : [];
+    const categories = categoriesArr
+      .map(
+        (c) =>
+          toStringOrUndefined((c as CartApiPayload).name) ||
+          toStringOrUndefined((c as CartApiPayload).title) ||
+          toStringOrUndefined((c as CartApiPayload).handle)
+      )
+      .filter(Boolean) as string[];
+    const categoryHandles = categoriesArr
+      .map((c) => toStringOrUndefined((c as CartApiPayload).handle))
+      .filter(Boolean) as string[];
+    const tagsArr = Array.isArray((product as CartApiPayload)?.tags)
+      ? ((product as CartApiPayload).tags as CartApiPayload[])
+      : [];
+    const tags = tagsArr
+      .map(
+        (t) =>
+          toStringOrUndefined((t as CartApiPayload).value) ||
+          toStringOrUndefined((t as CartApiPayload).handle)
+      )
+      .filter(Boolean) as string[];
+    const typeVal =
+      toStringOrUndefined(((product as CartApiPayload)?.type as CartApiPayload)?.value) ||
+      toStringOrUndefined(((product as CartApiPayload)?.type as CartApiPayload)?.handle) ||
+      toStringOrUndefined((it as CartApiPayload).product_type) ||
+      undefined;
+    const collectionId =
+      toStringOrUndefined((product as CartApiPayload)?.collection_id) ||
+      toStringOrUndefined(((product as CartApiPayload)?.collection as CartApiPayload)?.id) ||
+      undefined;
+
+    const qty = Math.max(1, toNumber(it.quantity, 1));
+    const currencyCode =
+      toStringOrUndefined(it.currency_code) ||
+      toStringOrUndefined(it.currency) ||
+      cartCurrencyCode ||
+      undefined;
+    const normalizedCurrency = currencyCode?.toUpperCase();
+
+    const priceSet = (it.price_set as CartApiPayload | undefined) || undefined;
+    const rawUnitPrice = (it.raw_unit_price as CartApiPayload | undefined) || undefined;
+
+    // unit/variant/product fields that may carry amounts
+    const unitMinorRaw =
+      extractFirstAmount(
+        rawUnitPrice?.calculated,
+        rawUnitPrice?.original,
+        rawUnitPrice,
+        it.unit_price,
+        it.unit_price_incl_tax,
+        it.unit_price_excl_tax,
+        it.price,
+        it.amount
+      ) ?? undefined;
+
+    // price_set presentment / calculated amounts (often final/presentment price after discounts)
+    const presentmentAmt = extractFirstAmount(
+      priceSet?.presentment_amount,
+      priceSet?.calculated_amount,
+      priceSet?.original_amount
+    );
+
+    const priceSetCalculated = extractFirstAmount(priceSet?.calculated_amount, priceSet?.original_amount);
+
+    const lineTotalMinorRaw = extractFirstAmount(
+      it.total,
+      it.original_total,
+      it.subtotal,
+      it.original_subtotal,
+      (it?.raw_total as CartApiPayload | undefined)?.calculated,
+      (it?.raw_total as CartApiPayload | undefined)?.original
+    );
+
+    // If line total present (post-discount) derive per-unit from it
+    const derivedUnitMinor =
+      typeof lineTotalMinorRaw === "number" && qty > 0 ? lineTotalMinorRaw / qty : undefined;
+
+    const variantPrices = Array.isArray(variant.prices)
+      ? (variant.prices as CartApiPayload[])
+      : [];
+    const matchedVariantPrice = variantPrices.find((priceEntry) => {
+      const priceCurrency = toStringOrUndefined(
+        priceEntry.currency_code || priceEntry.region_currency_code
+      );
+      return priceCurrency?.toUpperCase() === normalizedCurrency;
+    });
+    const variantMinor = extractFirstAmount(
+      matchedVariantPrice?.amount,
+      matchedVariantPrice?.raw_amount,
+      matchedVariantPrice?.price,
+      variant.calculated_price,
+      variant.original_price
+    );
+
+    // product-level price candidate (often used by product page)
+    const productPriceCandidate = extractFirstAmount(
+      product.price,
+      product["mrp"],
+      product["selling_price"],
+      product["display_price"]
+    );
+
+    // Resolve final major price — prefer discounted / derived values
+    const resolvedMajor = resolvePreferredMajor(
+      {
+        derivedUnit: derivedUnitMinor,
+        presentment: presentmentAmt,
+        calculated: priceSetCalculated,
+        unitRaw: unitMinorRaw,
+        variantRaw: variantMinor,
+        productRaw: productPriceCandidate,
+      },
+      normalizedCurrency
+    );
+
+    // As a final fallback, if resolvedMajor is 0 but we have a numeric unitMinorRaw, try to use toMajorUnits
+    let finalMajor = resolvedMajor;
+    if ((!finalMajor || finalMajor === 0) && typeof unitMinorRaw === "number") {
+      try {
+        const fallback = toMajorUnits(unitMinorRaw, normalizedCurrency);
+        if (Number.isFinite(fallback) && fallback > 0) finalMajor = fallback;
+      } catch {
+        // ignore
+      }
+    }
+
+    const finalPrice = Number.isFinite(finalMajor) ? finalMajor : 0;
+
+    return {
+      id: String(it.id ?? Math.random().toString(36).slice(2, 9)),
+      name: String(name),
+      image: image ? String(image) : undefined,
+      quantity: qty,
+      price: Number(finalPrice),
+      currency: normalizedCurrency,
+      meta: {
+        productId: productId,
+        categories,
+        categoryHandles,
+        tags,
+        type: typeVal,
+        collectionId,
+      },
+    };
+  });
+};
+
 const Cart: React.FC = () => {
+  const { syncFromCartPayload } = useCartSummary();
   const [cartItems, setCartItems] = useState<CartItemUI[]>([]);
   const [couponCode, setCouponCode] = useState<string>("");
   const [mounted, setMounted] = useState<boolean>(false);
   const [removingIds, setRemovingIds] = useState<Record<string, boolean>>({});
+  const [updatingIds, setUpdatingIds] = useState<Record<string, boolean>>({});
+
+  const deriveErrorMessage = useCallback((payload: unknown, fallback: string): string => {
+    if (payload && typeof payload === "object") {
+      const record = payload as Record<string, unknown>;
+      const msg = record.error || record.message;
+      if (typeof msg === "string" && msg.trim()) return msg;
+    }
+    if (typeof payload === "string" && payload.trim()) return payload;
+    return fallback;
+  }, []);
+
+  const applyCartPayload = useCallback(
+    (payload?: CartApiPayload, options?: { delayMs?: number }) => {
+      syncFromCartPayload(payload);
+      const mapped = mapCartPayloadToItems(payload);
+      const applyState = () => setCartItems(mapped);
+      if (options?.delayMs) {
+        window.setTimeout(applyState, options.delayMs);
+      } else {
+        applyState();
+      }
+    },
+    [syncFromCartPayload]
+  );
+
+  const rehydrateCart = useCallback(
+    async (options?: { delayMs?: number }) => {
+      try {
+        const res = await fetch("/api/medusa/cart", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as CartApiPayload;
+        applyCartPayload(data, options);
+      } catch (err) {
+        console.warn("Failed to refresh cart from server", err);
+      }
+    },
+    [applyCartPayload]
+  );
 
   useEffect(() => {
     setMounted(true);
-  }, []);
-
-  // Force rupee symbol/format regardless of backend locale
-  const formatCurrency = (value: number | null | undefined): string => {
-    const v = typeof value === "number" ? value : 0;
-    try {
-      // Use en-IN grouping but prefix explicit â‚¹ to avoid locale auto-selection
-      const formatted = new Intl.NumberFormat("en-IN", {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: Number.isInteger(v) ? 0 : 2,
-      }).format(v);
-      return `â‚¹${formatted}`;
-    } catch {
-      return `â‚¹${Math.round(Number(v))}`;
-    }
-  };
+  }, [applyCartPayload]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadCart(): Promise<void> {
       try {
-        const res = await fetch("/api/medusa/cart", { cache: "no-store" });
+        const res = await fetch("/api/medusa/cart", {
+          cache: "no-store",
+          credentials: "include",
+        });
         if (!res.ok) {
           // fallback demo items if API not available
           if (!cancelled) {
@@ -98,96 +497,9 @@ const Cart: React.FC = () => {
           return;
         }
 
-        const data = (await res.json()) as ApiCart;
-        const cart = (data?.cart ?? data) as ApiCart | undefined;
-
-        // Extract currency for cart items
-        const regionCurrency =
-          (cart && (cart.region as ApiCart)?.currency_code) ||
-          (cart && cart.currency_code);
-
-        const rawItems =
-          (cart && ((cart.items as unknown) ?? (cart.line_items as unknown))) ??
-          [];
-
-        const itemsArr = Array.isArray(rawItems) ? rawItems : [];
-
-        const mapped: CartItemUI[] = itemsArr.map((element) => {
-          if (typeof element !== "object" || element === null) {
-            // fallback empty item
-            return {
-              id: String(Math.random()),
-              name: "Item",
-              price: 0,
-              quantity: 1,
-            };
-          }
-          const it = element as ApiCart;
-          const name =
-            toStringOrUndefined(it.title) ||
-            toStringOrUndefined(it.product_title) ||
-            toStringOrUndefined((it.variant as ApiCart)?.title) ||
-            toStringOrUndefined(((it.variant as ApiCart)?.product as ApiCart)?.title) ||
-            "Item";
-          const image =
-            toStringOrUndefined(it.thumbnail) ||
-            toStringOrUndefined(it.image) ||
-            toStringOrUndefined(((it.variant as ApiCart)?.product as ApiCart)?.thumbnail);
-
-          const variant = (it.variant as ApiCart) || ({} as ApiCart);
-          const product = (variant.product as ApiCart) || ({} as ApiCart);
-          const productId = toStringOrUndefined(product.id) || toStringOrUndefined(variant.product_id) || toStringOrUndefined((it as ApiCart).product_id);
-          const categoriesArr = Array.isArray((product as ApiCart)?.categories) ? ((product as ApiCart).categories as ApiCart[]) : [];
-          const categories = categoriesArr
-            .map((c) => toStringOrUndefined((c as ApiCart).name) || toStringOrUndefined((c as ApiCart).title) || toStringOrUndefined((c as ApiCart).handle))
-            .filter(Boolean) as string[];
-          const categoryHandles = categoriesArr
-            .map((c) => toStringOrUndefined((c as ApiCart).handle))
-            .filter(Boolean) as string[];
-          const tagsArr = Array.isArray((product as ApiCart)?.tags) ? ((product as ApiCart).tags as ApiCart[]) : [];
-          const tags = tagsArr
-            .map((t) => toStringOrUndefined((t as ApiCart).value) || toStringOrUndefined((t as ApiCart).handle))
-            .filter(Boolean) as string[];
-          const typeVal =
-            toStringOrUndefined(((product as ApiCart)?.type as ApiCart)?.value) ||
-            toStringOrUndefined(((product as ApiCart)?.type as ApiCart)?.handle) ||
-            toStringOrUndefined((it as ApiCart).product_type) ||
-            undefined;
-          const collectionId =
-            toStringOrUndefined((product as ApiCart)?.collection_id) ||
-            toStringOrUndefined(((product as ApiCart)?.collection as ApiCart)?.id) ||
-            undefined;
-
-          const qty = Math.max(1, toNumber(it.quantity, 1));
-          // attempt to read price-like fields
-          const unitMinor = toNumber(
-            it.unit_price ?? it.price ?? it.amount ?? (it.total ? toNumber((it.total as unknown), 0) / Math.max(qty, 1) : 0),
-            0
-          );
-
-          // Heuristic: if provider returned minor units (paise/cents) convert if > 1000
-          const unitMajor = unitMinor > 1000 ? unitMinor / 100 : unitMinor;
-
-          return {
-            id: String(it.id ?? Math.random().toString(36).slice(2, 9)),
-            name: String(name),
-            image: image ? String(image) : undefined,
-            quantity: qty,
-            price: Number(unitMajor),
-            currency: typeof regionCurrency === "string" ? regionCurrency.toUpperCase() : undefined,
-            meta: {
-              productId: productId,
-              categories,
-              categoryHandles,
-              tags,
-              type: typeVal,
-              collectionId,
-            },
-          };
-        });
-
+        const data = (await res.json()) as CartApiPayload;
         if (!cancelled) {
-          setCartItems(mapped);
+          applyCartPayload(data);
         }
       } catch {
         // ignore and keep demo if set
@@ -201,29 +513,106 @@ const Cart: React.FC = () => {
     };
   }, []);
 
-  const updateQuantity = (id: string, newQuantity: number): void => {
-    if (newQuantity < 1) return;
-    setCartItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, quantity: newQuantity } : item))
-    );
-  };
-
-  const removeItem = (id: string): void => {
-    setRemovingIds((s) => ({ ...s, [id]: true }));
-    // delay to let animation run
-    window.setTimeout(() => {
-      setCartItems((prev) => prev.filter((it) => it.id !== id));
-      setRemovingIds((s) => {
-        const copy = { ...s };
+  const updateQuantity = async (
+    id: string,
+    newQuantity: number,
+    label = "Item"
+  ): Promise<void> => {
+    if (newQuantity < 1 || updatingIds[id]) return;
+    setUpdatingIds((state) => ({ ...state, [id]: true }));
+    try {
+      const res = await fetch(`/api/medusa/cart/line-items/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ quantity: newQuantity }),
+        credentials: "include",
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        const message = deriveErrorMessage(
+          payload,
+          "Could not update quantity. Please try again."
+        );
+        throw new Error(message);
+      }
+      notifyQuantityUpdated(label, newQuantity);
+      applyCartPayload((payload as CartApiPayload) ?? undefined);
+    } catch (err) {
+      console.warn("Failed to update quantity", err);
+      const message =
+        err instanceof Error ? err.message : "Could not update quantity. Please try again.";
+      notifyActionError("Unable to update quantity", message);
+    } finally {
+      setUpdatingIds((state) => {
+        const copy = { ...state };
         delete copy[id];
         return copy;
       });
-    }, 320);
+    }
+  };
+
+  const removeItem = async (item: CartItemUI): Promise<void> => {
+    if (removingIds[item.id]) return;
+    setRemovingIds((state) => ({ ...state, [item.id]: true }));
+    try {
+      const res = await fetch(`/api/medusa/cart/line-items/${encodeURIComponent(item.id)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        const message = deriveErrorMessage(
+          payload,
+          "Unable to remove this item right now. Please try again."
+        );
+        throw new Error(message);
+      }
+      notifyRemoveItem(item.name);
+      if (payload) {
+        applyCartPayload((payload as CartApiPayload) ?? undefined, { delayMs: REMOVE_ANIMATION_MS });
+      }
+      await rehydrateCart({ delayMs: REMOVE_ANIMATION_MS });
+      window.setTimeout(() => {
+        setRemovingIds((state) => {
+          const copy = { ...state };
+          delete copy[item.id];
+          return copy;
+        });
+      }, REMOVE_ANIMATION_MS);
+    } catch (err) {
+      console.warn("Failed to remove cart item", err);
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Unable to remove this item right now. Please try again.";
+      notifyActionError("Unable to remove item", message);
+      setRemovingIds((state) => {
+        const copy = { ...state };
+        delete copy[item.id];
+        return copy;
+      });
+    }
+  };
+
+  const handleApplyCoupon = (): void => {
+    const trimmed = couponCode.trim();
+    if (!trimmed) {
+      notifyCouponInvalid();
+      return;
+    }
+    const isDemoValid = trimmed.toUpperCase() === "OWEG10";
+    if (isDemoValid) {
+      notifyCouponApplied(trimmed);
+      setCouponCode("");
+    } else {
+      notifyCouponInvalid();
+    }
   };
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const shipping = 0;
   const total = subtotal + shipping;
+  const activeCurrency = cartItems[0]?.currency ?? DEFAULT_CURRENCY;
 
   // Recommended products from cart item relations (type/tag/category)
   type UIProduct = {
@@ -332,6 +721,8 @@ const Cart: React.FC = () => {
               )}
               {cartItems.map((item) => {
                 const isRemoving = !!removingIds[item.id];
+                const isUpdating = !!updatingIds[item.id];
+                const controlsDisabled = isRemoving || isUpdating;
                 return (
                   <div
                     key={item.id}
@@ -343,13 +734,16 @@ const Cart: React.FC = () => {
                     {/* Product */}
                     <div className="flex items-center gap-4 w-full md:w-3/5">
                       <button
-                        onClick={() => removeItem(item.id)}
+                        onClick={() => removeItem(item)}
                         title="Remove item"
-                        className="text-red-500 hover:bg-red-50 rounded-full p-1 transition"
+                        className={`text-red-500 hover:bg-red-50 rounded-full p-1 transition ${
+                          isRemoving ? "opacity-50 cursor-not-allowed" : ""
+                        }`}
                         aria-label={`Remove ${item.name}`}
                         type="button"
+                        disabled={isRemoving}
                       >
-                        <X className="w-5 h-5" />
+                        <Trash2 className="w-5 h-5" />
                       </button>
 
                       <div className="w-20 h-20 flex-shrink-0 rounded overflow-hidden bg-slate-100 flex items-center justify-center shadow-sm">
@@ -373,7 +767,7 @@ const Cart: React.FC = () => {
                     {/* Price */}
                     <div className="w-full md:w-1/6 flex items-center justify-between md:justify-start md:pl-4">
                       <div className="text-sm md:text-base font-medium">
-                        {formatCurrency(item.price)}
+                        {formatCurrency(item.price, item.currency || activeCurrency)}
                       </div>
                     </div>
 
@@ -381,19 +775,25 @@ const Cart: React.FC = () => {
                     <div className="w-full md:w-1/6 flex items-center justify-center">
                       <div className="flex items-center border rounded-md overflow-hidden">
                         <button
-                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                          onClick={() => updateQuantity(item.id, item.quantity - 1, item.name)}
                           aria-label="Decrease"
-                          className="px-3 py-2 hover:bg-slate-50 transition"
+                          className={`px-3 py-2 hover:bg-slate-50 transition ${
+                            controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                          }`}
                           type="button"
+                          disabled={controlsDisabled}
                         >
                           <Minus className="w-4 h-4" />
                         </button>
                         <div className="px-4 text-sm font-medium w-12 text-center">{String(item.quantity).padStart(2, "0")}</div>
                         <button
-                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                          onClick={() => updateQuantity(item.id, item.quantity + 1, item.name)}
                           aria-label="Increase"
-                          className="px-3 py-2 hover:bg-slate-50 transition"
+                          className={`px-3 py-2 hover:bg-slate-50 transition ${
+                            controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                          }`}
                           type="button"
+                          disabled={controlsDisabled}
                         >
                           <Plus className="w-4 h-4" />
                         </button>
@@ -402,7 +802,9 @@ const Cart: React.FC = () => {
 
                     {/* Subtotal */}
                     <div className="w-full md:w-1/6 flex items-center justify-end md:pr-4">
-                      <div className="text-sm md:text-base font-semibold">{formatCurrency(item.price * item.quantity)}</div>
+                      <div className="text-sm md:text-base font-semibold">
+                        {formatCurrency(item.price * item.quantity, item.currency || activeCurrency)}
+                      </div>
                     </div>
                   </div>
                 );
@@ -421,11 +823,7 @@ const Cart: React.FC = () => {
                 <Button
                   variant="outline"
                   className="px-6 py-3 border-slate-200 hover:border-green-400 hover:text-green-700 transition"
-                  onClick={() => {
-                    // demo update
-                    // In production, call your API to sync cart.
-                    alert("Cart updated (demo).");
-                  }}
+                  onClick={notifyCartUpdated}
                 >
                   Update Cart
                 </Button>
@@ -441,9 +839,7 @@ const Cart: React.FC = () => {
                 />
                 <Button
                   className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 transition"
-                  onClick={() => {
-                    alert(`Applying coupon: ${couponCode || "(empty)"}`);
-                  }}
+                  onClick={handleApplyCoupon}
                 >
                   Apply Coupon
                 </Button>
@@ -494,22 +890,22 @@ const Cart: React.FC = () => {
               <div className="space-y-4">
                 <div className="flex justify-between items-center border-b pb-3">
                   <span className="text-slate-600">Subtotal:</span>
-                  <span className="font-medium">{formatCurrency(subtotal)}</span>
+                  <span className="font-medium">{formatCurrency(subtotal, activeCurrency)}</span>
                 </div>
                 <div className="flex justify-between items-center border-b pb-3 pt-3">
                   <span className="text-slate-600">Shipping:</span>
-                  <span className="font-medium">{shipping === 0 ? "Free" : formatCurrency(shipping)}</span>
+                  <span className="font-medium">
+                    {shipping === 0 ? "Free" : formatCurrency(shipping, activeCurrency)}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center pt-3">
                   <span className="text-slate-700 font-medium">Total:</span>
-                  <span className="font-bold text-lg">{formatCurrency(total)}</span>
+                  <span className="font-bold text-lg">{formatCurrency(total, activeCurrency)}</span>
                 </div>
 
                 <Button
                   className="w-full bg-green-600 hover:bg-green-700 text-white py-4 mt-4 transition"
-                  onClick={() => {
-                    alert("Proceed to checkout (demo)");
-                  }}
+                  onClick={notifyCheckoutComingSoon}
                 >
                   Proceed to checkout
                 </Button>
@@ -523,8 +919,3 @@ const Cart: React.FC = () => {
 };
 
 export default Cart;
-
-
-
-
-

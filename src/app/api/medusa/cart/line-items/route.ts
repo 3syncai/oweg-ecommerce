@@ -17,17 +17,51 @@ async function backend(path: string, init?: RequestInit) {
 
 export const dynamic = "force-dynamic"
 
-async function ensureCartId() {
+type EnsureCartResult = {
+  cartId: string
+  shouldSetCookie: boolean
+}
+
+async function ensureCartId(): Promise<EnsureCartResult> {
   const c = await cookies()
-  let id = c.get(CART_COOKIE)?.value
-  if (!id) {
-    const res = await backend(`/store/carts`, { method: "POST" })
-    if (!res.ok) throw new Error("create cart failed")
-    const json = await res.json()
-    id = json.cart?.id || json.id
-    // cookie is set via /api/medusa/cart; this endpoint assumes cart was ensured by client first
+  const existing = c.get(CART_COOKIE)?.value
+  if (existing) {
+    return { cartId: existing, shouldSetCookie: false }
   }
-  return id!
+  const res = await backend(`/store/carts`, { method: "POST" })
+  if (!res.ok) throw new Error("create cart failed")
+  const json = await res.json()
+  const id = json.cart?.id || json.id
+  if (!id) throw new Error("cart id missing from backend")
+  return { cartId: id, shouldSetCookie: true }
+}
+
+async function createFreshCart(): Promise<string> {
+  const res = await backend(`/store/carts`, { method: "POST" })
+  if (!res.ok) throw new Error(`create cart failed: ${res.status}`)
+  const json = await res.json()
+  const cartId = json.cart?.id || json.id
+  if (!cartId) throw new Error("cart id missing from backend")
+  return cartId
+}
+
+async function addLineItemRequest(cartId: string, body: { variant_id: string; quantity: number }) {
+  return backend(`/store/carts/${encodeURIComponent(cartId)}/line-items`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+}
+
+async function readErrorPayload(res: Response) {
+  try {
+    return await res.json()
+  } catch {
+    try {
+      return await res.text()
+    } catch {
+      return null
+    }
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -36,14 +70,36 @@ export async function POST(req: NextRequest) {
     const variant_id: string = body.variant_id
     const quantity: number = Number(body.quantity || 1)
     if (!variant_id) return NextResponse.json({ error: "variant_id required" }, { status: 400 })
-    const cartId = await ensureCartId()
-    const res = await backend(`/store/carts/${cartId}/line-items`, {
-      method: "POST",
-      body: JSON.stringify({ variant_id, quantity }),
-    })
-    if (!res.ok) return NextResponse.json({ error: `add failed: ${res.status}` }, { status: 500 })
+    let { cartId, shouldSetCookie } = await ensureCartId()
+    let res = await addLineItemRequest(cartId, { variant_id, quantity })
+
+    // If cart was stale (deleted upstream), create a fresh one and retry once.
+    if (!res.ok && res.status === 404) {
+      try {
+        const freshId = await createFreshCart()
+        cartId = freshId
+        shouldSetCookie = true
+        res = await addLineItemRequest(cartId, { variant_id, quantity })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "failed to refresh cart"
+        return NextResponse.json({ error: msg }, { status: 500 })
+      }
+    }
+
+    if (!res.ok) {
+      const errorPayload = await readErrorPayload(res)
+      const message =
+        (errorPayload && (errorPayload.error || errorPayload.message)) ||
+        `add failed: ${res.status}`
+      return NextResponse.json({ error: message, details: errorPayload }, { status: res.status })
+    }
+
     const data = await res.json()
-    return NextResponse.json(data)
+    const response = NextResponse.json(data)
+    if (shouldSetCookie) {
+      response.cookies.set(CART_COOKIE, cartId, { httpOnly: false, sameSite: "lax", path: "/" })
+    }
+    return response
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "failed"
     return NextResponse.json({ error: msg }, { status: 500 })
