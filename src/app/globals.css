@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "sonner/dist/styles.css";
 
 /* Custom scrollbar styles */
 @layer utilities {
@@ -18,9 +20,9 @@
 
 /* OWEG Brand Colors */
 :root {
-  --oweg-green: #7AC943;
-  --oweg-green-dark: #6BB832;
-  --oweg-green-light: #8FD957;
+  --oweg-green: #7ac943;
+  --oweg-green-dark: #6bb832;
+  --oweg-green-light: #8fd957;
 }
 
 /* Custom animations */

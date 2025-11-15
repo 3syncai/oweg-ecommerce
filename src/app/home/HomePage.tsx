@@ -5,6 +5,14 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import React from 'react'
+import { useRouter } from 'next/navigation'
+import {
+  notifyCartAddError,
+  notifyCartAddSuccess,
+  notifyCartUnavailable,
+  notifyWishlistLogin,
+} from '@/lib/notifications'
+import { useCartSummary } from '@/contexts/CartProvider'
 
 
 // Data will be loaded from Medusa store API via Next.js API routes
@@ -28,6 +36,8 @@ const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' 
 // Product Card Component
 function ProductCard({ product }: { product: UIProduct }) {
   const [isHovered, setIsHovered] = useState(false)
+  const { syncFromCartPayload } = useCartSummary()
+  const router = useRouter()
   const idParam = encodeURIComponent(String(product.id))
   const slug = encodeURIComponent(String(product.handle || product.id))
   const productHref = `/productDetail/${slug}?id=${idParam}`
@@ -36,20 +46,30 @@ function ProductCard({ product }: { product: UIProduct }) {
     event.preventDefault()
     event.stopPropagation()
     if (!product.variant_id) {
-      alert('This product is not purchasable yet')
+      notifyCartUnavailable()
       return
     }
     try {
-      await fetch('/api/medusa/cart', { method: 'POST' })
+      await fetch('/api/medusa/cart', { method: 'POST', credentials: 'include' })
       const r = await fetch('/api/medusa/cart/line-items', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ variant_id: product.variant_id, quantity: 1 }),
+        credentials: 'include',
       })
-      if (!r.ok) throw new Error('add failed')
-      alert('Added to cart')
-    } catch {
-      alert('Could not add to cart')
+      const payload = await r.json().catch(() => null)
+      if (!r.ok) {
+        const message =
+          (payload && (payload.error || payload.message)) || 'Could not add to cart'
+        throw new Error(message)
+      }
+      if (payload) {
+        syncFromCartPayload(payload)
+      }
+      notifyCartAddSuccess(product.name, 1, () => router.push('/cart'))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not add to cart'
+      notifyCartAddError(message)
     }
   }
 
@@ -73,7 +93,12 @@ function ProductCard({ product }: { product: UIProduct }) {
             type="button"
             onClick={handleQuickAdd}
             title="Add to Cart"
-            className="w-9 h-9 rounded-full bg-green-500 text-white flex items-center justify-center shadow hover:bg-green-600"
+            disabled={!product.variant_id}
+            className={`w-9 h-9 rounded-full text-white flex items-center justify-center shadow ${
+              product.variant_id
+                ? 'bg-green-500 hover:bg-green-600'
+                : 'bg-slate-400 cursor-not-allowed opacity-70'
+            }`}
           >
             +
           </button>
@@ -82,7 +107,7 @@ function ProductCard({ product }: { product: UIProduct }) {
             onClick={(event) => {
               event.preventDefault()
               event.stopPropagation()
-              alert('Please login to add to wishlist')
+              notifyWishlistLogin(() => router.push('/login'))
             }}
             title="Add to Wishlist"
             className="w-9 h-9 rounded-full bg-white text-gray-700 flex items-center justify-center shadow border hover:text-red-500"

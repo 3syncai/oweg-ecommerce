@@ -3,9 +3,12 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegister from "./sw-register";
-import Footer from "./footer/Footer"; // <-- check path, change if needed
-import Header from "./header/Header"
+import Footer from "./footer/Footer";
+import Header from "./header/Header";
+
 import { Providers } from "./providers";
+import CartProvider from "@/contexts/CartProvider";
+import AppToaster from "@/components/ui/app-toaster";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,26 +43,26 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body 
+      <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
       >
         <Providers>
-          <ServiceWorkerRegister />
+          <CartProvider>
+            <ServiceWorkerRegister />
 
-          {/* Layout wrapper: makes page min-height = viewport and pushes footer down */}
-          <div className="min-h-screen flex flex-col">
-            {/* If you have a Header/Nav, render it here */}
-            <Header />
+            <div className="min-h-screen flex flex-col">
+              <Header />
 
-            {/* Main content grows to take remaining space */}
-            <main className="flex-1">
-              {children}
-            </main>
+              <main className="flex-1">
+                {children}
+              </main>
 
-            {/* Footer placed after main so it stays at bottom */}
-            <Footer />
-          </div>
+              <Footer />
+            </div>
+
+            <AppToaster />
+          </CartProvider>
         </Providers>
       </body>
     </html>

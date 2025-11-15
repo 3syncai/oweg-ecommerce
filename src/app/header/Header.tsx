@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import type { MedusaCategory } from "@/lib/medusa";
 import Link from "next/link";
 import Image from "next/image";
+import { useCartSummary } from "@/contexts/CartProvider";
 
 const MENU_COLLECTIONS = [
   { title: "Home Appliances", handle: "home-appliances" },
@@ -118,6 +119,7 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
 };
 
 const Header: React.FC = () => {
+  const { count: cartCount } = useCartSummary();
   const [collections, setCollections] = React.useState<
     { id?: string; title: string; handle?: string; created_at?: string }[]
   >([]);
@@ -651,7 +653,9 @@ const Header: React.FC = () => {
             <Link href="/cart" className="flex items-center gap-2 cursor-pointer group">
               <div className="relative" data-browse-root>
                 <ShoppingCart className="w-6 h-6 text-header-text group-hover:text-header-accent transition-colors" />
-                <span className="absolute -top-2 -right-2 bg-header-accent text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">0</span>
+                <span className="absolute -top-2 -right-2 bg-header-accent text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {cartCount > 99 ? "99+" : cartCount}
+                </span>
               </div>
               <span className="hidden lg:block text-sm font-medium text-header-text group-hover:text-header-accent transition-colors">Cart</span>
             </Link>
@@ -663,7 +667,10 @@ const Header: React.FC = () => {
       <nav className="bg-header-nav-bg">
         <div className="container mx-auto px-4">
           {/* make this container overflow-x but allow dropdowns via portal (portal prevents clipping) */}
-          <div className="flex items-center gap-4 md:gap-6 overflow-x-auto overflow-y-visible py-1 relative">
+          <div
+            className="flex items-center gap-4 md:gap-6 overflow-x-auto overflow-y-visible py-1 relative"
+            data-nav-scroll
+          >
             {/* All + overflow */}
             <div
               ref={moreMenuRef}
@@ -794,6 +801,13 @@ const Header: React.FC = () => {
         .logo-link:hover {
           transform: translateY(-2px);
           transition: transform 220ms ease;
+        }
+        [data-nav-scroll] {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        [data-nav-scroll]::-webkit-scrollbar {
+          display: none;
         }
         .location-block .text-header-text {
           color: var(--header-text);

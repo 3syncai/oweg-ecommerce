@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Mail, Eye, EyeOff, Phone, Loader2, ChevronDown, Lock, KeyRound } from "lucide-react";
 import { FcGoogle } from "react-icons/fc";
+import { toast } from "sonner";
 
 // OWEG Modern Login -- Simplified two-step flow with intelligent detection
 // File: app/login/page.tsx (Next.js App Router)
@@ -204,7 +205,9 @@ function LoginPageInner() {
   }
 
   function onGoogle() {
-    alert("Google sign-in placeholder");
+    toast.info("Google sign-in coming soon", {
+      description: "We’re working on a seamless one-tap login experience.",
+    });
   }
 
   function handleBack() {
