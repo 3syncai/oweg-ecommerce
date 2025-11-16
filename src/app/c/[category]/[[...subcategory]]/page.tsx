@@ -40,13 +40,14 @@ export default async function CategoryPage({ params }: PageProps) {
   // Get subcategories for the main category
   const subcategories = category.category_children || [];
 
-  // If a subcategory is selected, find it
+  // If a subcategory is selected, find it (allow nested categories via handle lookup)
   let selectedSubcategory = undefined;
   if (subcategoryParam && subcategoryParam.length > 0) {
     const subcatHandle = subcategoryParam[0];
-    selectedSubcategory = subcategories.find(
-      (sub) => sub.handle === subcatHandle || sub.id === subcatHandle
-    );
+    selectedSubcategory =
+      subcategories.find(
+        (sub) => sub.handle === subcatHandle || sub.id === subcatHandle
+      ) || (await findCategoryByTitleOrHandle(subcatHandle));
 
     if (!selectedSubcategory) {
       notFound();

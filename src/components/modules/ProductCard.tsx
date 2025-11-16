@@ -18,6 +18,9 @@ export type ProductCardProps = {
   limitedDeal?: boolean;
   variant_id?: string;
   handle?: string;
+  sourceTag?: string;
+  sourceCategoryId?: string;
+  sourceCategoryHandle?: string;
 };
 
 const inr = new Intl.NumberFormat("en-IN", {
@@ -36,11 +39,19 @@ export function ProductCard({
   limitedDeal,
   variant_id,
   handle,
+  sourceTag,
+  sourceCategoryId,
+  sourceCategoryHandle,
 }: ProductCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
 
-  const productHref = `/productDetail/${encodeURIComponent(handle || id)}?id=${encodeURIComponent(String(id))}`;
+  const params = new URLSearchParams();
+  params.set("id", String(id));
+  if (sourceTag) params.set("sourceTag", sourceTag);
+  if (sourceCategoryId) params.set("sourceCategoryId", sourceCategoryId);
+  if (sourceCategoryHandle) params.set("sourceCategoryHandle", sourceCategoryHandle);
+  const productHref = `/productDetail/${encodeURIComponent(handle || id)}?${params.toString()}`;
 
   const handleQuickAdd = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
