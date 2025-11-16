@@ -10,6 +10,7 @@ import {
   Menu,
   ChevronDown,
   ChevronRight,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -144,8 +145,13 @@ const Header: React.FC = () => {
   const [q, setQ] = React.useState("");
   const [suggestions, setSuggestions] = React.useState<{ id: string; name: string; image?: string; handle?: string }[]>([]);
   const [showSuggest, setShowSuggest] = React.useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [mobileExpandedCat, setMobileExpandedCat] = React.useState<string | null>(null);
+  const [mobileProfileOpen, setMobileProfileOpen] = React.useState(false);
   const moreMenuRef = React.useRef<HTMLDivElement | null>(null);
   const mountedRef = React.useRef(false);
+  const mobileCategories = React.useMemo(() => [...navCategories, ...overflowCategories], [navCategories, overflowCategories]);
+  const mobileProfileRef = React.useRef<HTMLDivElement | null>(null);
 
   // mapping from category id to trigger element
   const triggersRef = React.useRef<Record<string, HTMLElement | null>>({});
@@ -358,6 +364,9 @@ const Header: React.FC = () => {
       if (moreMenuRef.current && !moreMenuRef.current.contains(target)) {
         setAllOpen(false);
       }
+      if (mobileProfileRef.current && !mobileProfileRef.current.contains(target)) {
+        setMobileProfileOpen(false);
+      }
       if (!target.closest("[data-nav-category]")) {
         // start a short delay before closing active category to allow mouse to enter portal
         startHideTimer();
@@ -366,6 +375,15 @@ const Header: React.FC = () => {
     document.addEventListener("click", handleClickOutside);
     return () => document.removeEventListener("click", handleClickOutside);
   }, [startHideTimer]);
+
+  React.useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileMenuOpen]);
 
   // Dropdown portal for active category
   const CategoryPortal: React.FC = () => {
@@ -401,7 +419,7 @@ const Header: React.FC = () => {
             {active.children.map((sub) => (
               <Link
                 key={sub.id}
-                href={sub.handle ? `/c/${sub.handle}` : "#"}
+                href={getCategoryHref(sub.handle)}
                 className="rounded-md px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 transition block"
                 onClick={() => setActiveCategoryId(null)}
               >
@@ -450,7 +468,7 @@ const Header: React.FC = () => {
               overflowCategories.map((cat) => (
                 <Link
                   key={cat.id}
-                  href={cat.handle ? `/c/${cat.handle}` : "#"}
+                  href={getCategoryHref(cat.handle)}
                   className="flex items-center justify-between px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 transition"
                   onClick={() => setAllOpen(false)}
                 >
@@ -483,7 +501,7 @@ const Header: React.FC = () => {
       {/* Main Header */}
       <div className="bg-header-bg border-b">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between gap-4">
+          <div className="hidden md:flex items-center justify-between gap-4">
             {/* Logo */}
             <div className="flex items-center gap-2">
               <div className="text-3xl font-bold">
@@ -666,11 +684,143 @@ const Header: React.FC = () => {
               <span className="hidden lg:block text-sm font-medium text-header-text group-hover:text-header-accent transition-colors">Cart</span>
             </Link>
           </div>
+
+          <div className="flex flex-col gap-3 md:hidden">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 flex-1">
+                <button
+                  type="button"
+                  aria-label="Open menu"
+                  className="w-11 h-11 rounded-full border border-gray-200 text-header-text flex items-center justify-center shadow-sm"
+                  onClick={() => setMobileMenuOpen(true)}
+                >
+                  <Menu className="w-5 h-5" />
+                </button>
+                <Link href="/" className="flex items-center" aria-label="OWEG home">
+                  <Image src="/oweg_logo.png" alt="OWEG" width={120} height={32} className="h-8 w-auto" />
+                </Link>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative" ref={mobileProfileRef}>
+                  <button
+                    type="button"
+                    aria-label="Open account menu"
+                    className="w-11 h-11 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-header-text"
+                    onClick={() => setMobileProfileOpen((prev) => !prev)}
+                  >
+                    <User className="w-5 h-5" />
+                  </button>
+                  {mobileProfileOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-36 rounded-xl bg-white shadow-xl ring-1 ring-black/5 py-2 z-50">
+                      <Link
+                        href="/login"
+                        className="block px-4 py-2 text-sm text-header-text hover:bg-gray-50"
+                        onClick={() => setMobileProfileOpen(false)}
+                      >
+                        Login
+                      </Link>
+                      <Link
+                        href="/signup"
+                        className="block px-4 py-2 text-sm text-header-text hover:bg-gray-50"
+                        onClick={() => setMobileProfileOpen(false)}
+                      >
+                        Sign Up
+                      </Link>
+                    </div>
+                  )}
+                </div>
+                <Link href="/cart" className="relative w-11 h-11 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-header-text" aria-label="Cart">
+                  <ShoppingCart className="w-5 h-5" />
+                  <span className="absolute -top-1.5 -right-1.5 bg-header-accent text-white text-[11px] font-semibold rounded-full w-5 h-5 flex items-center justify-center">
+                    {cartCount > 99 ? "99+" : cartCount}
+                  </span>
+                </Link>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-header-muted">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-header-text" />
+                <div>
+                  <p className="uppercase tracking-[0.2em]">Deliver to</p>
+                  <p className="text-sm font-semibold text-header-text">Bangalore 560034</p>
+                </div>
+              </div>
+              <button type="button" className="text-header-accent font-semibold text-[13px]">
+                Change
+              </button>
+            </div>
+
+            <div className="relative">
+              <Input
+                value={q}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setShowSuggest(true);
+                }}
+                onFocus={() => setShowSuggest(true)}
+                placeholder="Search products, categories..."
+                className="h-12 rounded-full border-gray-200 bg-white shadow-sm"
+              />
+              <Button type="button" className="absolute right-1 top-1 bottom-1 rounded-full bg-header-accent text-white px-4">
+                <Search className="w-4 h-4" />
+              </Button>
+              {showSuggest && q.length >= 2 && suggestions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 max-h-[60vh] overflow-y-auto">
+                  {suggestions.map((s) => {
+                    const slug = encodeURIComponent(String(s.handle || s.id));
+                    const href = `/productDetail/${slug}?id=${encodeURIComponent(String(s.id))}`;
+                    return (
+                      <Link
+                        key={s.id}
+                        href={href}
+                        className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50"
+                        onClick={() => setShowSuggest(false)}
+                      >
+                        {s.image ? (
+                          <Image src={s.image} alt={s.name} width={40} height={40} className="rounded-md object-cover" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-md bg-gray-200" />
+                        )}
+                        <span className="text-sm text-header-text truncate">{s.name}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm font-semibold text-header-text">
+                <span>Browse categories</span>
+                <button type="button" className="text-header-accent text-xs" onClick={() => setMobileMenuOpen(true)}>
+                  View all
+                </button>
+              </div>
+              <div className="flex gap-2 overflow-x-auto scrollbar-hidden" data-nav-scroll>
+                {navCatsLoading ? (
+                  <div className="text-sm text-gray-500 py-2">Loading...</div>
+                ) : mobileCategories.length ? (
+                  mobileCategories.slice(0, 8).map((cat) => (
+                    <Link
+                      key={cat.id}
+                      href={getCategoryHref(cat.handle)}
+                      className="px-4 py-2 rounded-full border border-gray-200 text-sm text-header-text whitespace-nowrap hover:border-header-accent hover:text-header-accent transition"
+                    >
+                      {cat.title}
+                    </Link>
+                  ))
+                ) : (
+                  <div className="text-sm text-gray-500 py-2">No categories</div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Navigation Bar */}
-      <nav className="bg-header-nav-bg">
+      <nav className="bg-header-nav-bg hidden md:block">
         <div className="container mx-auto px-4">
           {/* make this container overflow-x but allow dropdowns via portal (portal prevents clipping) */}
           <div
@@ -704,7 +854,7 @@ const Header: React.FC = () => {
               <div className="py-3 text-sm text-gray-500">Loading categories…</div>
             ) : navCategories.length > 0 ? (
               navCategories.map((cat) => {
-                const categoryHref = cat.handle ? `/c/${cat.handle}` : "#";
+                const categoryHref = getCategoryHref(cat.handle);
                 return (
                   <div
                     key={cat.id}
@@ -747,6 +897,90 @@ const Header: React.FC = () => {
           </div>
         </div>
       </nav>
+
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-[140] md:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileMenuOpen(false)} />
+          <div className="absolute left-0 top-0 bottom-0 w-[85%] max-w-sm bg-white shadow-2xl p-5 flex flex-col overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.4em] text-gray-400">Browse</p>
+                <p className="text-lg font-semibold text-header-text">All categories</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close menu"
+                className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-header-text"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <Link href="/login" className="block px-3 py-2 rounded-lg border border-gray-200 text-sm text-header-text" onClick={() => setMobileMenuOpen(false)}>
+                Login / Signup
+              </Link>
+              <button type="button" className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-header-text text-left">
+                Help Center
+              </button>
+            </div>
+            <div className="mt-6">
+              <p className="text-xs uppercase tracking-[0.3em] text-gray-400 mb-3">Categories</p>
+              <div className="divide-y divide-gray-100">
+                {navCatsLoading ? (
+                  <div className="py-3 text-sm text-gray-500">Loading categories...</div>
+                ) : mobileCategories.length ? (
+                  mobileCategories.map((cat) => {
+                    const hasChildren = cat.children && cat.children.length > 0;
+                    const isOpen = mobileExpandedCat === cat.id;
+                    if (!hasChildren) {
+                      return (
+                        <Link
+                          key={cat.id}
+                          href={getCategoryHref(cat.handle)}
+                          className="flex items-center justify-between py-3 text-sm text-header-text"
+                          onClick={() => setMobileMenuOpen(false)}
+                        >
+                          <span>{cat.title}</span>
+                          <ChevronRight className="w-4 h-4 text-header-muted" />
+                        </Link>
+                      );
+                    }
+                    return (
+                      <div key={cat.id} className="py-1">
+                        <button
+                          type="button"
+                          className="w-full flex items-center justify-between py-3 text-sm font-semibold text-header-text"
+                          onClick={() => setMobileExpandedCat(isOpen ? null : cat.id)}
+                        >
+                          <span>{cat.title}</span>
+                          <ChevronDown className={`w-4 h-4 text-header-muted transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                        </button>
+                        <div className={`grid transition-all overflow-hidden ${isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+                          <div className="overflow-hidden flex flex-col gap-1 pb-3">
+                            {cat.children.map((child) => (
+                              <Link
+                                key={child.id}
+                                href={getCategoryHref(child.handle)}
+                                className="text-sm text-header-muted px-2 py-1 text-left"
+                                onClick={() => setMobileMenuOpen(false)}
+                              >
+                                {child.title}
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="py-3 text-sm text-gray-500">No categories available</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Render dropdown portals (so they're never clipped by nav overflow) */}
       <CategoryPortal />
@@ -865,3 +1099,5 @@ const Header: React.FC = () => {
 };
 
 export default Header;
+  const getCategoryHref = (handle?: string) =>
+    handle ? `/c/${encodeURIComponent(handle)}` : "#";

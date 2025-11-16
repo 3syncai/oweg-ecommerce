@@ -80,11 +80,11 @@ function ProductCard({ product, sourceTag }: { product: UIProduct; sourceTag?: s
   return (
     <Link
       href={productHref}
-      className="group relative flex-shrink-0 w-[300px] bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+      className="group relative flex-shrink-0 w-[220px] sm:w-[240px] md:w-[260px] lg:w-[300px] min-w-[220px] sm:min-w-[240px] md:min-w-[260px] lg:min-w-[300px] bg-white rounded-2xl md:rounded-lg overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="relative aspect-square bg-gray-100 overflow-hidden">
+      <div className="relative aspect-[4/5] md:aspect-square bg-gray-50 overflow-hidden">
         <Image
           src={product.image}
           alt={product.name}
@@ -120,24 +120,24 @@ function ProductCard({ product, sourceTag }: { product: UIProduct; sourceTag?: s
           </button>
         </div>
       </div>
-      <div className="p-3">
+      <div className="p-3 flex flex-col flex-1">
         <div className="flex items-start gap-2 mb-2">
-          <span className="bg-red-600 text-white text-xs font-semibold px-2 py-0.5 rounded animate-pulse">
+          <span className="bg-red-600 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full animate-pulse">
             {product.discount}% off
           </span>
           {product.limitedDeal && (
-            <span className="bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded">
-              Limited time deal
+            <span className="bg-red-100 text-red-700 text-[11px] font-medium px-2 py-0.5 rounded-full">
+              Limited
             </span>
           )}
         </div>
-        <div className="mb-2">
+        <p className="text-sm text-gray-700 line-clamp-2 flex-1">{product.name}</p>
+        <div className="mt-3">
           <div className="flex items-baseline gap-2">
             <span className="text-lg font-bold text-gray-900">{inr.format(product.price)}</span>
-            <span className="text-sm text-gray-500 line-through">M.R.P: {inr.format(product.mrp)}</span>
+            <span className="text-xs text-gray-500 line-through">M.R.P: {inr.format(product.mrp)}</span>
           </div>
         </div>
-        <p className="text-sm text-gray-700 line-clamp-2">{product.name}</p>
       </div>
     </Link>
   )
@@ -177,7 +177,7 @@ function ProductCarousel({ title, products, sourceTag }: { title: string; produc
           </button>
         </div>
       </div>
-      <div
+            <div
         ref={scrollRef}
         className="flex gap-4 overflow-x-auto scrollbar-hidden pb-4 scroll-smooth snap-x snap-mandatory"
       >
@@ -185,6 +185,7 @@ function ProductCarousel({ title, products, sourceTag }: { title: string; produc
           <ProductCard key={product.id} product={product} sourceTag={sourceTag} />
         ))}
       </div>
+     
     </div>
   );
 }
@@ -211,43 +212,71 @@ function HeroBanner() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchDelta, setTouchDelta] = useState(0);
 
   useEffect(() => {
     setIsLoaded(true);
   }, []);
 
   useEffect(() => {
-    if (isHovered) return; // pause while hovered
+    if (isHovered || touchStart !== null) return;
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % HERO_SLIDES.length);
-    }, 2000); // ~1s per image
+    }, 4000);
     return () => clearInterval(timer);
-  }, [isHovered]);
+  }, [isHovered, touchStart]);
 
   const prev = () =>
     setCurrentSlide((prev) => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length);
   const next = () =>
     setCurrentSlide((prev) => (prev + 1) % HERO_SLIDES.length);
 
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    setTouchStart(e.touches[0].clientX);
+    setTouchDelta(0);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (touchStart === null) return;
+    setTouchDelta(e.touches[0].clientX - touchStart);
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStart === null) return;
+    if (Math.abs(touchDelta) > 60) {
+      if (touchDelta > 0) {
+        prev();
+      } else {
+        next();
+      }
+    }
+    setTouchStart(null);
+    setTouchDelta(0);
+  };
+
   return (
     <div
-      className={`relative w-full h-[400px] rounded-lg overflow-hidden mb-8 transition-all duration-1000 ${
-        isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+      className={`relative w-full h-[320px] md:h-[400px] rounded-2xl overflow-hidden mb-8 transition-all duration-700 ${
+        isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'
       }`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
-      <div className="absolute inset-0 flex items-center justify-between px-4 sm:px-8 z-10">
+      <div className="absolute inset-0 flex items-center justify-between px-3 sm:px-6 z-10 pointer-events-none md:pointer-events-auto">
         <button
           onClick={prev}
-          className="w-10 h-10 sm:w-12 sm:h-12 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all duration-300"
+          className="w-9 h-9 sm:w-12 sm:h-12 bg-white/85 backdrop-blur-sm rounded-full hidden md:flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all duration-300"
           aria-label="Previous slide"
         >
           <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-gray-800" />
         </button>
         <button
           onClick={next}
-          className="w-10 h-10 sm:w-12 sm:h-12 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all duration-300"
+          className="w-9 h-9 sm:w-12 sm:h-12 bg-white/85 backdrop-blur-sm rounded-full hidden md:flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all duration-300"
           aria-label="Next slide"
         >
           <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 text-gray-800" />
@@ -255,17 +284,37 @@ function HeroBanner() {
       </div>
       <div className="relative w-full h-full">
         {HERO_SLIDES.map((src, idx) => (
-          <Image
+          <div
             key={src}
-            src={src}
-            alt={`Hero banner ${idx + 1}`}
-            fill
-            priority={idx === 0}
-            className={`object-cover absolute inset-0 transition-opacity duration-700 ${
+            className={`absolute inset-0 transition-opacity duration-700 ${
               idx === currentSlide ? 'opacity-100' : 'opacity-0'
             }`}
-          />
+            aria-hidden={idx !== currentSlide}
+          >
+            <Image
+              src={src}
+              alt={`Hero banner ${idx + 1}`}
+              fill
+              priority={idx === 0}
+              className="object-cover object-center"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent md:from-black/30 md:via-black/10 md:to-transparent" />
+          </div>
         ))}
+      </div>
+      <div className="absolute inset-0 pointer-events-none" />
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 md:hidden">
+        {HERO_SLIDES.map((_, idx) => {
+          const isActive = idx === currentSlide;
+          return (
+            <button
+              key={`dot-${idx}`}
+              type="button"
+              onClick={() => setCurrentSlide(idx)}
+              className={`h-2 rounded-full transition-all ${isActive ? 'w-6 bg-white' : 'w-2 bg-white/50'}`}
+            />
+          );
+        })}
       </div>
     </div>
   );

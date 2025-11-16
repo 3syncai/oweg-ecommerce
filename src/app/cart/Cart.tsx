@@ -861,15 +861,15 @@ const Cart: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Price */}
-                    <div className="w-full md:w-1/6 flex items-center justify-between md:justify-start md:pl-4">
+                    {/* Price (desktop) */}
+                    <div className="hidden md:flex md:w-1/6 items-center justify-between md:justify-start md:pl-4">
                       <div className="text-sm md:text-base font-medium">
                         {formatCurrency(item.price, item.currency || activeCurrency)}
                       </div>
                     </div>
 
-                    {/* Quantity */}
-                    <div className="w-full md:w-1/6 flex items-center justify-center">
+                    {/* Quantity (desktop) */}
+                    <div className="hidden md:flex md:w-1/6 items-center justify-center">
                       <div className="flex items-center border rounded-md overflow-hidden">
                         <button
                           onClick={() => updateQuantity(item.id, item.quantity - 1, item.name)}
@@ -882,7 +882,9 @@ const Cart: React.FC = () => {
                         >
                           <Minus className="w-4 h-4" />
                         </button>
-                        <div className="px-4 text-sm font-medium w-12 text-center">{String(item.quantity).padStart(2, "0")}</div>
+                        <div className="px-4 text-sm font-medium w-12 text-center">
+                          {String(item.quantity).padStart(2, "0")}
+                        </div>
                         <button
                           onClick={() => updateQuantity(item.id, item.quantity + 1, item.name)}
                           aria-label="Increase"
@@ -897,10 +899,56 @@ const Cart: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Subtotal */}
-                    <div className="w-full md:w-1/6 flex items-center justify-end md:pr-4">
+                    {/* Subtotal (desktop) */}
+                    <div className="hidden md:flex md:w-1/6 items-center justify-end md:pr-4">
                       <div className="text-sm md:text-base font-semibold">
                         {formatCurrency(item.price * item.quantity, item.currency || activeCurrency)}
+                      </div>
+                    </div>
+
+                    {/* Mobile price/quantity/subtotal */}
+                    <div className="w-full md:hidden border-t pt-3 space-y-3 text-sm text-slate-600">
+                      <div className="flex justify-between">
+                        <span>Price</span>
+                        <span className="font-semibold text-slate-900">
+                          {formatCurrency(item.price, item.currency || activeCurrency)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Quantity</span>
+                        <div className="flex items-center border rounded-md overflow-hidden">
+                          <button
+                            onClick={() => updateQuantity(item.id, item.quantity - 1, item.name)}
+                            aria-label="Decrease"
+                            className={`px-3 py-2 hover:bg-slate-50 transition ${
+                              controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                            type="button"
+                            disabled={controlsDisabled}
+                          >
+                            <Minus className="w-4 h-4" />
+                          </button>
+                          <div className="px-4 text-sm font-medium w-12 text-center">
+                            {String(item.quantity).padStart(2, "0")}
+                          </div>
+                          <button
+                            onClick={() => updateQuantity(item.id, item.quantity + 1, item.name)}
+                            aria-label="Increase"
+                            className={`px-3 py-2 hover:bg-slate-50 transition ${
+                              controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                            type="button"
+                            disabled={controlsDisabled}
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Subtotal</span>
+                        <span className="font-semibold text-slate-900">
+                          {formatCurrency(item.price * item.quantity, item.currency || activeCurrency)}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -909,10 +957,10 @@ const Cart: React.FC = () => {
             </div>
           </div>
 
-          {/* Actions and Cart Total */}
+          {/* Cart totals and actions */}
           <div className="grid md:grid-cols-2 gap-8 mb-12 items-start">
-            {/* Left: actions and coupon */}
-            <div className="space-y-6">
+            {/* Left: actions/coupon + recommended */}
+            <div className="space-y-6 order-2 md:order-none">
               <div className="flex flex-wrap gap-4">
                 <Button variant="outline" className="px-6 py-3 border-slate-200 hover:border-green-400 hover:text-green-700 transition">
                   <Link href="/">Return To Shop</Link>
@@ -942,47 +990,46 @@ const Cart: React.FC = () => {
                 </Button>
               </div>
 
-              {/* Recommended */}
-              <div>
-                <h2 className="text-lg font-semibold mb-4">Customers Who Brought Items in Your Recent History Also Bought</h2>
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold">Customers Who Brought Items in Your Recent History Also Bought</h2>
                 {loadingRecommended && (
-                  <div className="text-sm text-slate-500 mb-2">Finding related products…</div>
+                  <div className="text-sm text-slate-500">Finding related products…</div>
                 )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {recommended.map((p) => {
-                    const slug = encodeURIComponent(String(p.handle || p.id))
-                    const href = `/productDetail/${slug}?id=${encodeURIComponent(String(p.id))}`
+                    const slug = encodeURIComponent(String(p.handle || p.id));
+                    const href = `/productDetail/${slug}?id=${encodeURIComponent(String(p.id))}`;
                     return (
                       <Link
                         key={p.id}
                         href={href}
                         className="border rounded-lg overflow-hidden bg-white hover:shadow-lg transition transform hover:-translate-y-1"
                       >
-                        <div className="relative aspect-[4/3] bg-slate-50 flex items-center justify-center">
-                          <Image src={p.image} alt={p.name} width={300} height={225} className="w-full h-full object-cover" />
+                        <div className="relative aspect-[3/2] bg-slate-50">
+                          <Image src={p.image} alt={p.name} width={300} height={200} className="w-full h-full object-cover" />
                           <div className="absolute top-3 left-3 flex gap-2">
                             <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold">{p.discount}% off</span>
                           </div>
                         </div>
-                        <div className="p-3">
+                        <div className="p-3 space-y-1">
                           <p className="text-sm font-medium text-slate-800 line-clamp-2">{p.name}</p>
-                          <div className="flex items-baseline gap-3 mt-2">
-                            <div className="text-xl font-bold">{formatCurrency(p.price)}</div>
-                            <div className="text-sm text-slate-400 line-through">M.R.P: {formatCurrency(p.mrp)}</div>
+                          <div className="flex items-baseline gap-2">
+                            <div className="text-base font-bold">{formatCurrency(p.price)}</div>
+                            <div className="text-xs text-slate-400 line-through">M.R.P: {formatCurrency(p.mrp)}</div>
                           </div>
                         </div>
                       </Link>
-                    )
+                    );
                   })}
-                  {!loadingRecommended && recommended.length === 0 && (
-                    <div className="text-slate-500 text-sm">No related products yet.</div>
-                  )}
                 </div>
+                {!loadingRecommended && recommended.length === 0 && (
+                  <div className="text-slate-500 text-sm">No related products yet.</div>
+                )}
               </div>
             </div>
 
-            {/* Right: cart total */}
-            <div className="border rounded-xl p-6 bg-white shadow-sm sticky top-28">
+            {/* Right: cart total (sticky on desktop) */}
+            <div className="border rounded-xl p-6 bg-white shadow-sm order-1 md:order-none sticky md:top-28 top-4">
               <h3 className="text-xl font-semibold mb-6">Cart Total</h3>
               <div className="space-y-4">
                 <div className="flex justify-between items-center border-b pb-3">
