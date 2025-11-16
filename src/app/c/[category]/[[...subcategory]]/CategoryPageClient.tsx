@@ -140,6 +140,25 @@ export function CategoryPageClient({
     return filtered;
   }, [products, filters.brands]);
 
+  const activeSourceHandle =
+    selectedSubcategory?.handle ||
+    subcategoryHandle ||
+    category.handle ||
+    categoryHandle ||
+    undefined;
+
+  const normalizedHandle = activeSourceHandle
+    ? activeSourceHandle.replace(/^\/+/, "")
+    : undefined;
+
+  const enrichedProducts = useMemo(() => {
+    return filteredProducts.map((product) => ({
+      ...product,
+      sourceCategoryId: activeCategoryId,
+      sourceCategoryHandle: normalizedHandle,
+    }));
+  }, [filteredProducts, activeCategoryId, normalizedHandle]);
+
   const handleFilterChange = useCallback((partial: Partial<FilterState>) => {
     setFilters((prev) => ({
       ...prev,
@@ -276,7 +295,7 @@ export function CategoryPageClient({
 
             {/* Product Grid */}
             <ProductGrid
-              products={filteredProducts}
+              products={enrichedProducts}
               isLoading={isLoading}
               showEmpty={!isLoading && filteredProducts.length === 0}
             />

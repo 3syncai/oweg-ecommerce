@@ -28,19 +28,23 @@ type UIProduct = {
   limitedDeal?: boolean
   variant_id?: string
   handle?: string
+  sourceTag?: string
 }
 
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })
 
 
 // Product Card Component
-function ProductCard({ product }: { product: UIProduct }) {
+function ProductCard({ product, sourceTag }: { product: UIProduct; sourceTag?: string }) {
   const [isHovered, setIsHovered] = useState(false)
   const { syncFromCartPayload } = useCartSummary()
   const router = useRouter()
-  const idParam = encodeURIComponent(String(product.id))
+  const idParam = String(product.id)
   const slug = encodeURIComponent(String(product.handle || product.id))
-  const productHref = `/productDetail/${slug}?id=${idParam}`
+  const params = new URLSearchParams()
+  params.set('id', idParam)
+  if (sourceTag) params.set('sourceTag', sourceTag)
+  const productHref = `/productDetail/${slug}?${params.toString()}`
 
   const handleQuickAdd = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
@@ -139,7 +143,7 @@ function ProductCard({ product }: { product: UIProduct }) {
   )
 }
 // Product Carousel Component
-function ProductCarousel({ title, products }: { title: string; products: UIProduct[] }) {
+function ProductCarousel({ title, products, sourceTag }: { title: string; products: UIProduct[]; sourceTag?: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scroll = (direction: 'left' | 'right') => {
@@ -178,7 +182,7 @@ function ProductCarousel({ title, products }: { title: string; products: UIProdu
         className="flex gap-4 overflow-x-auto scrollbar-hidden pb-4 scroll-smooth snap-x snap-mandatory"
       >
         {products.map((product) => (
-          <ProductCard key={product.id} product={product} />
+          <ProductCard key={product.id} product={product} sourceTag={sourceTag} />
         ))}
       </div>
     </div>
@@ -347,13 +351,13 @@ export default function HomePage() {
     let cancelled = false
     async function load() {
       try {
-        const [a, b, c] = await Promise.all([
-          fetch(`/api/medusa/products?type=${encodeURIComponent('Non-Stick Cookwares')}&limit=20`).then(r => r.json()),
-          fetch(`/api/medusa/products?type=${encodeURIComponent('Fans')}&limit=20`).then(r => r.json()),
-          fetch(`/api/medusa/products?type=${encodeURIComponent('Mens Cloths')}&limit=20`).then(r => r.json()),
+        const [nonStickProducts, b, c] = await Promise.all([
+          fetch(`/api/medusa/products?tag=${encodeURIComponent('Non-Stick Cookwares')}&limit=40`).then(r => r.json()),
+          fetch(`/api/medusa/products?tag=${encodeURIComponent('Fans')}&limit=40`).then(r => r.json()),
+          fetch(`/api/medusa/products?tag=${encodeURIComponent('Mens Cloths')}&limit=20`).then(r => r.json()),
         ])
         if (!cancelled) {
-          setNonStick(a.products || [])
+          setNonStick(nonStickProducts.products || [])
           setFanProducts(b.products || [])
           setMensCloth(c.products || [])
         }
@@ -375,12 +379,12 @@ export default function HomePage() {
         <div className="px-4">
           <HeroBanner />
         </div>
-        <ProductCarousel title="Non-Stick Cookwares" products={nonStick} />
-        <ProductCarousel title="Fans" products={fanProducts} />
+        <ProductCarousel title="Non-Stick Cookwares" products={nonStick} sourceTag="Non-Stick Cookwares" />
+        <ProductCarousel title="Fans" products={fanProducts} sourceTag="Fans" />
         <div className="px-4">
           <PromoBanners />
         </div>
-        <ProductCarousel title="Mens Cloths" products={mensCloth} />
+        <ProductCarousel title="Mens Cloths" products={mensCloth} sourceTag="Mens Cloths"/>
         {loading && (
           <div className="px-4 text-sm text-gray-500">Loading products from storeâ€¦</div>
         )}
