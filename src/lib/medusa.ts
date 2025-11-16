@@ -253,17 +253,22 @@ export async function findCategoryByTitleOrHandle(
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)+/g, "")
 
-  const targetSlug = norm(q)
+  const raw = (q || "").trim()
+  const lowerRaw = raw.toLowerCase()
+  const targetSlug = norm(raw)
+  const handleCandidates = Array.from(new Set([raw, lowerRaw, targetSlug].filter(Boolean)))
 
   // Try direct handle query first (more reliable)
   try {
     const base = (process.env.MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "")
-    // Try array-style handle filter
-    for (const url of [
-      `${base}/store/product-categories?handle[]=${encodeURIComponent(targetSlug)}`,
-      `${base}/store/product-categories?handle=${encodeURIComponent(targetSlug)}`,
-      `${base}/store/product-categories?q=${encodeURIComponent(q)}`,
-    ]) {
+    // Try array-style handle filter for multiple candidate representations
+    const urls: string[] = []
+    handleCandidates.forEach((candidate) => {
+      urls.push(`${base}/store/product-categories?handle[]=${encodeURIComponent(candidate)}`)
+      urls.push(`${base}/store/product-categories?handle=${encodeURIComponent(candidate)}`)
+    })
+    urls.push(`${base}/store/product-categories?q=${encodeURIComponent(raw)}`)
+    for (const url of urls) {
       const pk = getPublishableKey()
       const res = await fetch(url, {
         cache: "no-store",
@@ -285,7 +290,10 @@ export async function findCategoryByTitleOrHandle(
   if (found) return found
 
   // Try by handle match
-  found = all.find((c) => c.handle?.toLowerCase() === targetSlug)
+  found = all.find((c) => {
+    const handle = c.handle?.toLowerCase()
+    return handle === lowerRaw || handle === targetSlug
+  })
   if (found) return found
 
   // Fuzzy by slugified title/name

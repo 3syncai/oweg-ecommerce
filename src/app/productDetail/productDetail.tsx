@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ChevronRight, Heart, Plus } from 'lucide-react'
+import { ChevronRight, Heart, Plus, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
@@ -1064,7 +1064,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                     We&apos;re curating recommendations for this product.
                   </div>
                 ) : (
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {related.map((item) => {
                       const slug = encodeURIComponent(String(item.handle || item.id))
                       const href = `/productDetail/${slug}?id=${encodeURIComponent(String(item.id))}`
@@ -1129,10 +1129,11 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
         ) : null}
       </main>
       {compareModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-3 py-6">
-          <div className="w-full max-w-4xl rounded-3xl bg-white p-6 shadow-2xl border border-slate-100">
-            <div className="flex items-start justify-between gap-6">
+        <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60 px-2 pt-20 pb-4 md:px-6 md:py-10">
+          <div className="relative w-full max-w-2xl max-h-[62vh] md:max-h-[58vh] bg-white shadow-2xl border border-slate-100 rounded-t-3xl md:rounded-3xl flex flex-col overflow-hidden">
+            <div className="flex items-start justify-between gap-4 px-4 py-4 border-b bg-white sticky top-0 z-10">
               <div>
+                <p className="text-xs uppercase tracking-[0.4em] text-slate-400 mb-1">Compare</p>
                 <h3 className="text-xl font-semibold text-slate-900">Compare similar products</h3>
                 <p className="text-sm text-slate-500">
                   Select items from the same category to see a quick spec comparison.
@@ -1141,44 +1142,48 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
               <button
                 type="button"
                 onClick={() => setCompareModalOpen(false)}
-                className="rounded-full border border-slate-200 px-3 py-1 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                className="flex items-center justify-center gap-2 rounded-full border border-slate-200 px-3 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                aria-label="Close compare modal"
               >
-                Close
+                <X className="w-4 h-4" />
+                <span className="hidden md:inline">Close</span>
               </button>
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <label className="text-sm font-medium text-slate-600">
-                Brand
-                <select
-                  value={compareFilters.brand}
-                  onChange={(e) => setCompareFilters((prev) => ({ ...prev, brand: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
-                >
-                  {availableBrands.map((brand) => (
-                    <option key={brand} value={brand}>
-                      {brand === 'All' ? 'All brands' : brand}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm font-medium text-slate-600">
-                Color
-                <select
-                  value={compareFilters.color}
-                  onChange={(e) => setCompareFilters((prev) => ({ ...prev, color: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
-                >
-                  {availableColors.map((color) => (
-                    <option key={color} value={color}>
-                      {color === 'All' ? 'All colors' : color}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div className="px-4 py-4 border-b bg-white sticky top-[92px] z-10">
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-xs sm:text-sm font-medium text-slate-600">
+                  Brand
+                  <select
+                    value={compareFilters.brand}
+                    onChange={(e) => setCompareFilters((prev) => ({ ...prev, brand: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+                  >
+                    {availableBrands.map((brand) => (
+                      <option key={brand} value={brand}>
+                        {brand === 'All' ? 'All brands' : brand}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-xs sm:text-sm font-medium text-slate-600">
+                  Color
+                  <select
+                    value={compareFilters.color}
+                    onChange={(e) => setCompareFilters((prev) => ({ ...prev, color: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+                  >
+                    {availableColors.map((color) => (
+                      <option key={color} value={color}>
+                        {color === 'All' ? 'All colors' : color}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             </div>
 
-            <div className="mt-4 max-h-72 overflow-y-auto pr-1">
+            <div className="flex-1 overflow-y-auto px-4 py-4">
               {filteredCompareOptions.length === 0 ? (
                 <p className="text-sm text-slate-500">No products match the selected filters.</p>
               ) : (
@@ -1229,7 +1234,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
               )}
             </div>
 
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="px-4 py-4 border-t bg-white flex flex-wrap items-center justify-between gap-3 sticky bottom-0">
               <button
                 type="button"
                 onClick={() => setCompareSelection([])}
