@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -630,6 +630,17 @@ const Cart: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
+    const slugifyHandle = (value: string | undefined | null): string | undefined => {
+      if (!value) return undefined;
+      const slug = value
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)+/g, "");
+      return slug || undefined;
+    };
+
     async function loadRelated() {
       if (!cartItems.length) {
         setRecommended([]);
@@ -637,21 +648,107 @@ const Cart: React.FC = () => {
       }
       setLoadingRecommended(true);
       try {
-        const typeSet = new Set<string>();
-        const tagSet = new Set<string>();
-        const catSet = new Set<string>();
+        // const typeSet = new Set<string>();
         const excludeIds = new Set<string | undefined>();
-        for (const it of cartItems) {
-          if (it.meta?.type) typeSet.add(it.meta.type);
-          for (const t of it.meta?.tags || []) tagSet.add(t);
-          for (const c of it.meta?.categories || []) catSet.add(c);
+        const perItemContexts: Array<Array<{ kind: "tag" | "category"; v: string }>> = cartItems.map(() => []);
+        const productIndexById = new Map<string, number>();
+        const fallbackDetailRequests: Array<{ productId: string; index: number }> = [];
+        cartItems.forEach((it, index) => {
+          const contexts = perItemContexts[index];
+          const productId = it.meta?.productId;
+          if (productId) productIndexById.set(productId, index);
+          let hasContext = false;
+          // if (it.meta?.type) typeSet.add(it.meta.type);
+          for (const t of it.meta?.tags || []) {
+            const cleanTag = t?.trim();
+            if (cleanTag) {
+              contexts.push({ kind: "tag", v: cleanTag });
+              hasContext = true;
+            }
+          }
+          const handles = Array.isArray(it.meta?.categoryHandles)
+            ? it.meta?.categoryHandles
+            : [];
+          const categories = Array.isArray(it.meta?.categories)
+            ? it.meta?.categories
+            : [];
+          handles.forEach((handle) => {
+            const slug = slugifyHandle(handle);
+            if (slug) {
+              contexts.push({ kind: "category", v: slug });
+              hasContext = true;
+            }
+          });
+          if (!handles.length && categories.length) {
+            categories.forEach((name) => {
+              const slug = slugifyHandle(name);
+              if (slug) {
+                contexts.push({ kind: "category", v: slug });
+                hasContext = true;
+              }
+            });
+          }
           excludeIds.add(it.meta?.productId);
+          if (!hasContext && productId) {
+            fallbackDetailRequests.push({ productId, index });
+          }
+        });
+
+        if (fallbackDetailRequests.length) {
+          const detailResults = await Promise.all(
+            fallbackDetailRequests.map(async ({ productId, index }) => {
+              try {
+                const res = await fetch(`/api/medusa/products/${encodeURIComponent(productId)}`, {
+                  cache: "no-store",
+                });
+                if (!res.ok) {
+                  return { product: null as { tags?: string[]; categories?: Array<{ handle?: string | null; title?: string | null; name?: string | null }> } | null, index };
+                }
+                const data = (await res.json()) as {
+                  product?: { tags?: string[]; categories?: Array<{ handle?: string | null; title?: string | null; name?: string | null }> };
+                };
+                return { product: data.product || null, index };
+              } catch {
+                return { product: null, index };
+              }
+            })
+          );
+          detailResults.forEach(({ product, index }) => {
+            if (!product) return;
+            const contexts = perItemContexts[index] || [];
+            (product.tags || []).forEach((tag: string | undefined) => {
+              const cleanTag = tag?.trim();
+              if (cleanTag) contexts.push({ kind: "tag", v: cleanTag });
+            });
+            (product.categories || []).forEach((cat: { handle?: string | null; title?: string | null; name?: string | null }) => {
+              const slug = slugifyHandle(cat.handle) || slugifyHandle(cat.title || cat.name);
+              if (slug) contexts.push({ kind: "category", v: slug });
+            });
+          });
         }
 
-        const picks: Array<{ kind: "type" | "tag" | "category"; v: string }> = [];
-        for (const v of Array.from(typeSet).slice(0, 2)) picks.push({ kind: "type", v });
-        for (const v of Array.from(tagSet).slice(0, 2)) picks.push({ kind: "tag", v });
-        for (const v of Array.from(catSet).slice(0, 2)) picks.push({ kind: "category", v });
+        const picks: Array<{ kind: "tag" | "category"; v: string }> = [];
+        const seenOrderedKeys = new Set<string>();
+        const perItemQueues = perItemContexts.map((ctxs) => [...ctxs]);
+        let madeProgress = true;
+        const PICK_LIMIT = 20;
+        while (madeProgress && picks.length < PICK_LIMIT) {
+          madeProgress = false;
+          for (const queue of perItemQueues) {
+            while (queue.length) {
+              const ctx = queue.shift()!;
+              const key = `${ctx.kind}:${ctx.v}`;
+              if (seenOrderedKeys.has(key)) {
+                continue;
+              }
+              seenOrderedKeys.add(key);
+              picks.push(ctx);
+              madeProgress = true;
+              break;
+            }
+          }
+        }
+
         if (!picks.length) {
           setRecommended([]);
           return;
