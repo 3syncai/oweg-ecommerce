@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 
 const CART_COOKIE = "cart_id"
+const SALES_CHANNEL_ID =
+  process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID || process.env.MEDUSA_SALES_CHANNEL_ID
+const REGION_ID =
+  process.env.NEXT_PUBLIC_MEDUSA_REGION_ID || process.env.MEDUSA_REGION_ID
 
 async function backend(path: string, init?: RequestInit) {
   const base = (process.env.MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "")
@@ -13,6 +17,14 @@ async function backend(path: string, init?: RequestInit) {
   if (pk) headers["x-publishable-api-key"] = pk
   if (sc) headers["x-sales-channel-id"] = sc
   return fetch(`${base}${path}`, { cache: "no-store", ...init, headers: { ...headers, ...(init?.headers as HeadersInit) } })
+}
+
+function buildCartCreateBody(): RequestInit["body"] {
+  const payload: Record<string, string> = {}
+  if (SALES_CHANNEL_ID) payload.sales_channel_id = SALES_CHANNEL_ID
+  if (REGION_ID) payload.region_id = REGION_ID
+  if (Object.keys(payload).length === 0) return undefined
+  return JSON.stringify(payload)
 }
 
 export const dynamic = "force-dynamic"
@@ -28,7 +40,11 @@ async function ensureCartId(): Promise<EnsureCartResult> {
   if (existing) {
     return { cartId: existing, shouldSetCookie: false }
   }
-  const res = await backend(`/store/carts`, { method: "POST" })
+  const body = buildCartCreateBody()
+  const res = await backend(`/store/carts`, {
+    method: "POST",
+    ...(body ? { body } : {}),
+  })
   if (!res.ok) throw new Error("create cart failed")
   const json = await res.json()
   const id = json.cart?.id || json.id
@@ -37,7 +53,11 @@ async function ensureCartId(): Promise<EnsureCartResult> {
 }
 
 async function createFreshCart(): Promise<string> {
-  const res = await backend(`/store/carts`, { method: "POST" })
+  const body = buildCartCreateBody()
+  const res = await backend(`/store/carts`, {
+    method: "POST",
+    ...(body ? { body } : {}),
+  })
   if (!res.ok) throw new Error(`create cart failed: ${res.status}`)
   const json = await res.json()
   const cartId = json.cart?.id || json.id
@@ -72,14 +92,16 @@ export async function POST(req: NextRequest) {
     if (!variant_id) return NextResponse.json({ error: "variant_id required" }, { status: 400 })
     let { cartId, shouldSetCookie } = await ensureCartId()
     let res = await addLineItemRequest(cartId, { variant_id, quantity })
+    let attempts = 0
 
     // If cart was stale (deleted upstream), create a fresh one and retry once.
-    if (!res.ok && res.status === 404) {
+    while (!res.ok && res.status === 404 && attempts < 1) {
       try {
         const freshId = await createFreshCart()
         cartId = freshId
         shouldSetCookie = true
         res = await addLineItemRequest(cartId, { variant_id, quantity })
+        attempts += 1
       } catch (err) {
         const msg = err instanceof Error ? err.message : "failed to refresh cart"
         return NextResponse.json({ error: msg }, { status: 500 })
