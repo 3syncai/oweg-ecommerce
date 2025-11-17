@@ -19,6 +19,7 @@ export type RelatedProduct = {
   color?: string
   highlights?: string[]
   category_ids?: string[]
+  category_labels?: Record<string, string>
   summary?: {
     bestFor?: string
     wattage?: string
@@ -62,4 +63,14 @@ export type DescriptionTab = 'description' | 'reviews' | 'compare'
 export type BreadcrumbItem = {
   label: string
   href?: string
+}
+
+export type SavingsCategoryOption = {
+  id: string
+  label: string
+  matchIds: string[]
+  count: number
+  minPrice?: number
+  categoryId?: string
+  categoryHandle?: string
 }

@@ -15,6 +15,7 @@ import DeliveryInfo from './components/DeliveryInfo'
 import DescriptionTabs from './components/DescriptionTabs'
 import ProductGallery from './components/ProductGallery'
 import ProductSummary from './components/ProductSummary'
+import ProductSavingsExplorer from './components/ProductSavingsExplorer'
 import type {
   BreadcrumbItem,
   CompareFilters,
@@ -23,6 +24,7 @@ import type {
   PinStatus,
   ProductDetailProps,
   RelatedProduct,
+  SavingsCategoryOption,
 } from './types'
 import {
   deriveColorName,
@@ -57,6 +59,14 @@ type CategoryMapEntry = {
 
 const FALLBACK_IMAGE = '/oweg_logo.png'
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })
+
+const humanizeCategoryLabel = (value: string) =>
+  value
+    .replace(/^(handle:|label:)/i, '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .trim()
 
 function deriveBrandName(name?: string) {
   if (!name) return 'Other'
@@ -287,6 +297,14 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
     return Array.from(set)
   }, [shouldUseSourceTag, sourceTagParam, product?.tags])
 
+  const savedAmount = useMemo(() => {
+    if (!product) return 0
+    const mrp = typeof product.mrp === 'number' ? product.mrp : 0
+    const price = typeof product.price === 'number' ? product.price : 0
+    const delta = mrp - price
+    return Number.isFinite(delta) && delta > 0 ? delta : 0
+  }, [product])
+
   const galleryImages = useMemo(() => {
     if (product?.images?.length) {
       return product.images
@@ -418,26 +436,92 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
     }
   }, [productId])
 
+  const primaryAwareCategoryKey = useMemo(() => primaryAwareCategoryIds.join('|'), [primaryAwareCategoryIds])
+  const categoryHandlesKey = useMemo(() => categoryHandlesForFetch.join('|'), [categoryHandlesForFetch])
+  const preferredTagKey = useMemo(() => preferredTagValues.join('|'), [preferredTagValues])
+  const productCategoriesKey = useMemo(
+    () =>
+      (product?.categories || [])
+        .map((cat) => `${cat?.id || ''}:${cat?.title || ''}:${cat?.handle || ''}`)
+        .join('|'),
+    [product?.categories]
+  )
+  const categoryMapSignature = useMemo(
+    () =>
+      Object.entries(categoryMap)
+        .map(([id, entry]) => `${id}:${entry?.title || ''}:${entry?.parentId || ''}:${entry?.handle || ''}`)
+        .join('|'),
+    [categoryMap]
+  )
+  const relatedFetchSignature = useMemo(
+    () =>
+      [
+        primaryAwareCategoryKey,
+        categoryHandlesKey,
+        preferredTagKey,
+        product?.type || '',
+        productCategoriesKey,
+        currentProductId || '',
+        categoryMapSignature,
+      ].join('||'),
+    [
+      primaryAwareCategoryKey,
+      categoryHandlesKey,
+      preferredTagKey,
+      product?.type,
+      productCategoriesKey,
+      currentProductId,
+      categoryMapSignature,
+    ]
+  )
+
   useEffect(() => {
     const typeQuery = product?.type || undefined
     const categoryLabel = product?.categories?.[0]?.title
     const tagValues = preferredTagValues
     const hasCategoryContext = primaryAwareCategoryIds.length || categoryHandlesForFetch.length
-
+    const categoryHandleLookup = new Map<string, string>()
+    Object.entries(categoryMap).forEach(([id, entry]) => {
+      if (entry?.handle) {
+        categoryHandleLookup.set(entry.handle, id)
+      }
+    })
     if (!hasCategoryContext && !typeQuery && !categoryLabel && !tagValues.length) {
       setRelated([])
       return
     }
 
     let cancelled = false
-    const fetchCandidates = async (path: string) => {
+    type PathMeta = {
+      url: string
+      hintId?: string
+      hintLabel?: string
+    }
+
+    const fetchCandidates = async (meta: PathMeta) => {
       try {
-        const res = await fetch(path, { cache: 'no-store' })
+        const res = await fetch(meta.url, { cache: 'no-store' })
         if (!res.ok) return []
         const data = await res.json()
-        const list: RelatedProduct[] = (data.products || [])
+        let list: RelatedProduct[] = (data.products || [])
           .filter((p: RelatedProduct) => p.id !== currentProductId)
           .map((p: RelatedProduct) => enrichRelatedProduct(p))
+        if (meta.hintId) {
+          const hintKey = String(meta.hintId)
+          list = list.map((item) => {
+            const categories = new Set((item.category_ids || []).map((id) => id && String(id)).filter(Boolean) as string[])
+            categories.add(hintKey)
+            const labels = { ...(item.category_labels || {}) }
+            if (meta.hintLabel) {
+              labels[hintKey] = meta.hintLabel
+            }
+            return {
+              ...item,
+              category_ids: Array.from(categories),
+              category_labels: Object.keys(labels).length ? labels : item.category_labels,
+            }
+          })
+        }
         return list
       } catch {
         return []
@@ -450,44 +534,86 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
         const desiredCount = 24
         const buildTagPath = (tag: string) =>
           `/api/medusa/products?tag=${encodeURIComponent(tag)}&limit=${desiredCount}`
-        const tagPaths: string[] =
+        const tagPaths: PathMeta[] =
           preferredTagValues.length > 0 && !sourceCategoryIdParam && !sourceCategoryHandleParam
-            ? preferredTagValues.map(buildTagPath)
+            ? preferredTagValues.map((tag) => ({ url: buildTagPath(tag) }))
             : []
-        const categoryPaths: string[] = [
-          ...primaryAwareCategoryIds.map((id) => `/api/medusa/products?categoryId=${encodeURIComponent(id)}&limit=${desiredCount}`),
-          ...categoryHandlesForFetch.map((handle) => `/api/medusa/products?category=${encodeURIComponent(handle)}&limit=${desiredCount}`),
+        const categoryPaths: PathMeta[] = [
+          ...primaryAwareCategoryIds.map((id) => ({
+            url: `/api/medusa/products?categoryId=${encodeURIComponent(id)}&limit=${desiredCount}`,
+            hintId: id,
+            hintLabel: categoryMap[id]?.title || categoryMap[id]?.handle || 'Category',
+          })),
+          ...categoryHandlesForFetch.map((handle) => {
+            const resolvedId = categoryHandleLookup.get(handle)
+            const label =
+              (resolvedId && (categoryMap[resolvedId]?.title || categoryMap[resolvedId]?.handle)) ||
+              humanizeCategoryLabel(handle)
+            return {
+              url: `/api/medusa/products?category=${encodeURIComponent(handle)}&limit=${desiredCount}`,
+              hintId: resolvedId || `handle:${handle}`,
+              hintLabel: label,
+            }
+          }),
         ]
-        const fallbackPaths: string[] = []
+        const fallbackPaths: PathMeta[] = []
         if (typeQuery) {
-          fallbackPaths.push(`/api/medusa/products?type=${encodeURIComponent(typeQuery)}&limit=${desiredCount}`)
+          fallbackPaths.push({ url: `/api/medusa/products?type=${encodeURIComponent(typeQuery)}&limit=${desiredCount}` })
         }
         if (categoryLabel) {
-          fallbackPaths.push(`/api/medusa/products?category=${encodeURIComponent(categoryLabel)}&limit=${desiredCount}`)
+          const normalizedLabel = humanizeCategoryLabel(categoryLabel)
+          fallbackPaths.push({
+            url: `/api/medusa/products?category=${encodeURIComponent(categoryLabel)}&limit=${desiredCount}`,
+            hintId: `label:${normalizedLabel}`,
+            hintLabel: normalizedLabel,
+          })
         }
 
         const seen = new Map<string | number, RelatedProduct>()
-        const runPaths = async (paths: string[], stopAfterFirstNewBatch: boolean) => {
-          for (const path of paths) {
-            const before = seen.size
-            const batch = await fetchCandidates(path)
-            batch.forEach((item) => {
-              if (!seen.has(item.id)) {
-                seen.set(item.id, item)
-              }
-            })
-            if (seen.size >= desiredCount) return true
-            if (stopAfterFirstNewBatch && seen.size > before) return true
+    const runPaths = async (paths: PathMeta[], stopAfterFirstNewBatch: boolean) => {
+      for (const meta of paths) {
+        const before = seen.size
+        const batch = await fetchCandidates(meta)
+        batch.forEach((item) => {
+          if (!seen.has(item.id)) {
+            seen.set(item.id, item)
+            return
           }
-          return false
+          const existing = seen.get(item.id)!
+          const mergedIds = Array.from(
+            new Set(
+              [...(existing.category_ids || []), ...(item.category_ids || [])]
+                .map((value) => (value == null ? '' : String(value)))
+                .filter((value) => value.trim().length > 0)
+            )
+          )
+          const mergedLabels = { ...(existing.category_labels || {}) }
+          Object.entries(item.category_labels || {}).forEach(([key, value]) => {
+            if (value && !mergedLabels[key]) {
+              mergedLabels[key] = value
+            }
+          })
+          seen.set(item.id, {
+            ...existing,
+            ...item,
+            category_ids: mergedIds.length ? mergedIds : existing.category_ids,
+            category_labels:
+              Object.keys(mergedLabels).length > 0 ? mergedLabels : existing.category_labels,
+          })
+        })
+        if (seen.size >= desiredCount) return true
+        if (stopAfterFirstNewBatch && seen.size > before) return true
+      }
+      return false
         }
 
         let satisfied = false
         if (tagPaths.length) {
           satisfied = await runPaths(tagPaths, true)
         }
-        if (!satisfied && categoryPaths.length) {
-          satisfied = await runPaths(categoryPaths, true)
+        if (categoryPaths.length) {
+          const categoryResult = await runPaths(categoryPaths, !satisfied)
+          satisfied = satisfied || categoryResult
         }
         if (!satisfied && fallbackPaths.length) {
           await runPaths(fallbackPaths, false)
@@ -512,7 +638,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
     return () => {
       cancelled = true
     }
-  }, [primaryAwareCategoryIds, categoryHandlesForFetch, preferredTagValues, product?.type, product?.categories, currentProductId])
+  }, [relatedFetchSignature])
 
   useEffect(() => {
     setActiveTab('description')
@@ -582,6 +708,142 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
   }, [getMetaNumber])
 
   const compareOptions = useMemo(() => related, [related])
+  const savingsCategoryOptions = useMemo(() => {
+    const countMap = new Map<string, number>()
+    const minPriceMap = new Map<string, number>()
+    const labelHintMap = new Map<string, string>()
+
+    const registerToken = (token?: string, labelHint?: string, price?: number) => {
+      if (!token) return
+      const normalized = token.trim()
+      if (!normalized) return
+      countMap.set(normalized, (countMap.get(normalized) || 0) + 1)
+      if (Number.isFinite(price) && price && price > 0) {
+        const existing = minPriceMap.get(normalized)
+        if (existing === undefined || price < existing) {
+          minPriceMap.set(normalized, price)
+        }
+      }
+      if (labelHint && !labelHintMap.has(normalized)) {
+        labelHintMap.set(normalized, labelHint.trim())
+      }
+    }
+
+    related.forEach((item) => {
+      const price = Number(item.price)
+      const labels = item.category_labels || {}
+      const tokens = new Set<string>()
+      ;(item.category_ids || [])
+        .map((id) => (id == null ? '' : String(id)))
+        .filter((id) => id.trim().length > 0)
+        .forEach((id) => tokens.add(id))
+      Object.entries(labels).forEach(([key, value]) => {
+        if (!key) return
+        tokens.add(String(key))
+        if (value) {
+          labelHintMap.set(String(key), value)
+        }
+      })
+      tokens.forEach((token) => registerToken(token, labels[token], price))
+    })
+
+    const entries = Object.entries(categoryMap)
+    const childrenMap = new Map<string, string[]>()
+    entries.forEach(([id]) => {
+      if (!childrenMap.has(id)) {
+        childrenMap.set(id, [])
+      }
+    })
+    entries.forEach(([id, entry]) => {
+      const parent = entry?.parentId
+      if (!parent) return
+      const existing = childrenMap.get(parent) || []
+      existing.push(id)
+      childrenMap.set(parent, existing)
+    })
+
+    const descendantCache = new Map<string, Set<string>>()
+    const getDescendants = (id: string): Set<string> => {
+      if (descendantCache.has(id)) {
+        return descendantCache.get(id)!
+      }
+      const acc = new Set<string>([id])
+      const children = childrenMap.get(id) || []
+      children.forEach((childId) => {
+        if (childId === id) return
+        getDescendants(childId).forEach((desc) => acc.add(desc))
+      })
+      descendantCache.set(id, acc)
+      return acc
+    }
+
+    const collectTokensForCategory = (id: string): Set<string> => {
+      const tokens = new Set<string>()
+      const descendants = getDescendants(id)
+      descendants.forEach((descId) => {
+        tokens.add(descId)
+        const handle = categoryMap[descId]?.handle
+        if (handle) {
+          tokens.add(handle)
+          tokens.add(`handle:${handle}`)
+        }
+        const title = categoryMap[descId]?.title
+        if (title) {
+          tokens.add(`label:${humanizeCategoryLabel(title)}`)
+        }
+      })
+      return tokens
+    }
+
+    const options: SavingsCategoryOption[] = []
+    const coveredTokens = new Set<string>()
+
+    entries.forEach(([id, entry]) => {
+      const tokenSet = collectTokensForCategory(id)
+      tokenSet.forEach((token) => coveredTokens.add(token))
+      const count = Array.from(tokenSet).reduce((sum, token) => sum + (countMap.get(token) || 0), 0)
+      const minPrice = Array.from(tokenSet).reduce<number | undefined>((min, token) => {
+        const price = minPriceMap.get(token)
+        if (price === undefined) return min
+        if (min === undefined || price < min) return price
+        return min
+      }, undefined)
+      const label =
+        entry?.title || (entry?.handle ? humanizeCategoryLabel(entry.handle) : humanizeCategoryLabel(id))
+      options.push({
+        id,
+        label,
+        matchIds: Array.from(tokenSet),
+        count,
+        minPrice,
+        categoryId: id,
+        categoryHandle: entry?.handle,
+      })
+    })
+
+    const extraTokens = Array.from(countMap.keys()).filter((token) => !coveredTokens.has(token))
+    extraTokens.forEach((token) => {
+      const normalizedHandle = token.startsWith('handle:') ? token.replace(/^handle:/i, '') : undefined
+      const matchTokens = normalizedHandle ? [token, normalizedHandle] : [token]
+      options.push({
+        id: token,
+        label: labelHintMap.get(token) || humanizeCategoryLabel(token),
+        matchIds: matchTokens,
+        count: countMap.get(token) || 0,
+        minPrice: minPriceMap.get(token),
+        categoryHandle: normalizedHandle,
+      })
+    })
+
+    options.sort((a, b) => {
+      const aIsReal = Boolean(categoryMap[a.id])
+      const bIsReal = Boolean(categoryMap[b.id])
+      if (aIsReal !== bIsReal) return aIsReal ? -1 : 1
+      return a.label.localeCompare(b.label)
+    })
+
+    return options
+  }, [related, categoryMap])
   const availableBrands = useMemo(() => {
     const set = new Set<string>()
     compareOptions.forEach((item) => {
@@ -803,7 +1065,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
     setQuantity((prev) => Math.max(1, prev + delta))
   }
 
-  const addVariantToCart = async (variantId?: string, qty = 1) => {
+  const addVariantToCart = async (variantId?: string, qty = 1, label?: string) => {
     if (!variantId) {
       notifyCartUnavailable()
       return
@@ -825,7 +1087,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
       if (payload) {
         syncFromCartPayload(payload)
       }
-      notifyCartAddSuccess(product?.title ?? 'Item', qty, goToCart)
+      notifyCartAddSuccess(label ?? product?.title ?? 'Item', qty, goToCart)
     } catch (err) {
       console.warn('addVariantToCart failed', err)
       const message = err instanceof Error ? err.message : undefined
@@ -834,7 +1096,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
   }
 
   const handleAddToCart = async () => {
-    await addVariantToCart(product?.variant_id, quantity)
+    await addVariantToCart(product?.variant_id, quantity, product?.title)
   }
 
   const handleBuyNow = () => {
@@ -969,6 +1231,51 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                   onPinCodeChange={handlePinInputChange}
                   onCheck={handlePinCheck}
                 />
+              </div>
+            </section>
+
+            <section className="mt-12">
+              <div className="relative overflow-hidden rounded-[36px] border border-emerald-100 bg-gradient-to-b from-emerald-50 via-white to-green-50 shadow-xl transition duration-700 hover:-translate-y-0.5 hover:shadow-2xl">
+                <div className="pointer-events-none absolute -left-10 top-0 h-48 w-48 rounded-full bg-emerald-300/20 blur-3xl animate-pulse" aria-hidden="true" />
+                <div className="pointer-events-none absolute -bottom-10 right-0 h-40 w-40 rounded-full bg-lime-300/20 blur-3xl animate-[pulse_5s_linear_infinite]" aria-hidden="true" />
+                <div className="relative z-10 space-y-8 p-6 sm:p-8 lg:p-12">
+                  <div className="space-y-6 text-center">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/40 px-5 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700 shadow-sm backdrop-blur">
+                      Smart savings
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+                    </div>
+                    <div className="space-y-4 max-w-4xl mx-auto">
+                      <h2 className="text-3xl font-bold text-slate-900 sm:text-[2.4rem] sm:leading-tight">
+                        {`Put your \u20B9${savedAmount.toLocaleString('en-IN')} savings back into something delightful`}
+                      </h2>
+                      
+                    </div>
+                    {/* <div className="flex flex-wrap justify-center gap-3 text-xs font-semibold text-slate-700">
+                      {['Lightning updates', 'Category smart-filter', 'Quick add-to-cart'].map((feature) => (
+                        <span
+                          key={feature}
+                          className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 shadow-sm ring-1 ring-white/40 transition hover:-translate-y-0.5 hover:bg-white"
+                        >
+                          {feature}
+                        </span>
+                      ))}
+                    </div> */}
+                  </div>
+                  <div className="relative rounded-[28px] border border-white/60 bg-white/90 p-4 sm:p-6 lg:p-8 shadow-lg">
+                    <ProductSavingsExplorer
+                      savedAmount={savedAmount}
+                      products={related}
+                      loading={loadingRelated}
+                      currentProductId={product.id}
+                      categoryOptions={savingsCategoryOptions}
+                      formatCurrency={(value) => inr.format(value)}
+                      onQuickAdd={async (item) => addVariantToCart(item.variant_id, 1, item.name)}
+                      onWishlist={() => {
+                        handleAddToWishlist()
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
             </section>
 
