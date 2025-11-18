@@ -45,42 +45,53 @@ const ProductSummary = ({
   onSaveForLater,
   onOpenCompare,
   formatPrice,
-}: ProductSummaryProps) => (
-  <div className="space-y-5 lg:pl-4">
-    <div className="flex flex-wrap items-center justify-between gap-3 text-xs uppercase tracking-wide text-green-700">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="bg-green-50 text-green-700 px-3 py-1 rounded-full">OWEG Exclusive</span>
-        <span className="text-slate-400">|</span>
-        <span>{brandName}</span>
+}: ProductSummaryProps) => {
+  const rawSavings =
+    typeof product.mrp === 'number' && typeof product.price === 'number' && product.mrp > product.price
+      ? product.mrp - product.price
+      : 0
+
+  return (
+    <div className="space-y-5 lg:pl-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 text-xs uppercase tracking-wide text-green-700">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="bg-green-50 text-green-700 px-3 py-1 rounded-full">OWEG Exclusive</span>
+          <span className="text-slate-400">|</span>
+          <span>{brandName}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onOpenCompare}
+            className="flex items-center gap-1 rounded-full border border-green-200 px-3 py-1 text-[11px] font-semibold text-green-700 hover:bg-green-50 transition"
+          >
+            <GitCompare className="w-4 h-4" />
+            Compare
+          </button>
+          <button
+            type="button"
+            onClick={onShare}
+            className="flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-green-600 transition"
+          >
+            <Share2 className="w-4 h-4" />
+            Share
+          </button>
+        </div>
       </div>
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onOpenCompare}
-          className="flex items-center gap-1 rounded-full border border-green-200 px-3 py-1 text-[11px] font-semibold text-green-700 hover:bg-green-50 transition"
-        >
-          <GitCompare className="w-4 h-4" />
-          Compare
-        </button>
-        <button
-          type="button"
-          onClick={onShare}
-          className="flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-green-600 transition"
-        >
-          <Share2 className="w-4 h-4" />
-          Share
-        </button>
-      </div>
-    </div>
-    <h1 className="text-2xl lg:text-3xl font-semibold text-slate-900">{product.title}</h1>
+      <h1 className="text-2xl lg:text-3xl font-semibold text-slate-900">{product.title}</h1>
+      {product.discount > 0 && (
+        <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
+          {product.discount}% OFF
+        </span>
+      )}
     {product.subtitle && <p className="text-slate-500">{product.subtitle}</p>}
 
     <div className="flex flex-wrap items-end gap-3">
       <div className="text-3xl font-bold text-slate-900">{formatPrice(product.price)}</div>
       <div className="text-lg text-slate-400 line-through">{formatPrice(product.mrp)}</div>
-      {product.discount > 0 && (
-        <span className="text-sm font-semibold text-green-600 bg-green-100/60 px-3 py-1 rounded-full">
-          {product.discount}% OFF
+      {rawSavings > 0 && (
+        <span className="inline-flex items-center rounded-full bg-emerald-100/80 px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm animate-[pulse_1.4s_ease-in-out_infinite]">
+          You are about to save {formatPrice(rawSavings)}
         </span>
       )}
     </div>
@@ -146,17 +157,18 @@ const ProductSummary = ({
       </div>
     </div>
 
-    <div className="flex flex-wrap gap-3">
-      <button
-        type="button"
-        onClick={onSaveForLater}
-        className="flex items-center gap-2 text-sm text-slate-600 hover:text-green-600 transition"
-      >
-        <Bookmark className="w-4 h-4" />
-        Save for later
-      </button>
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={onSaveForLater}
+          className="flex items-center gap-2 text-sm text-slate-600 hover:text-green-600 transition"
+        >
+          <Bookmark className="w-4 h-4" />
+          Save for later
+        </button>
+      </div>
     </div>
-  </div>
-)
+  )
+}
 
 export default ProductSummary

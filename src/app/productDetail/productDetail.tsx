@@ -58,7 +58,12 @@ type CategoryMapEntry = {
 }
 
 const FALLBACK_IMAGE = '/oweg_logo.png'
-const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })
+const inr = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+})
 
 const humanizeCategoryLabel = (value: string) =>
   value
@@ -1246,7 +1251,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                     </div>
                     <div className="space-y-4 max-w-4xl mx-auto">
                       <h2 className="text-3xl font-bold text-slate-900 sm:text-[2.4rem] sm:leading-tight">
-                        {`Put your \u20B9${savedAmount.toLocaleString('en-IN')} savings back into something delightful`}
+                        {`Put your \u20B9${Math.round(savedAmount).toLocaleString('en-IN')} savings back into something delightful`}
                       </h2>
                       
                     </div>

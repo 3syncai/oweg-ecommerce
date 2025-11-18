@@ -1,8 +1,8 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import Image from 'next/image'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Expand } from 'lucide-react'
 
 type ProductGalleryProps = {
   images: string[]
@@ -14,6 +14,7 @@ type ProductGalleryProps = {
 const ProductGallery = ({ images, selectedIndex, onSelect, fallback }: ProductGalleryProps) => {
   const activeImage = images[selectedIndex] || fallback
   const hasMultiple = images.length > 1
+  const [fullscreenOpen, setFullscreenOpen] = useState(false)
 
   const handleNavigate = (direction: 'prev' | 'next') => {
     if (!hasMultiple) return
@@ -25,6 +26,14 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback }: ProductGa
   return (
     <div className="space-y-4">
       <div className="relative aspect-square rounded-[32px] border border-[var(--detail-border)] bg-white shadow-sm overflow-hidden group">
+        <button
+          type="button"
+          onClick={() => setFullscreenOpen(true)}
+          className="absolute right-4 top-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-700 shadow hover:bg-white"
+          aria-label="Open fullscreen image viewer"
+        >
+          <Expand className="h-5 w-5" />
+        </button>
         <Image
           src={activeImage}
           alt="Selected product image"
@@ -68,6 +77,32 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback }: ProductGa
           </button>
         ))}
       </div>
+      {fullscreenOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-4 py-6"
+          onClick={() => setFullscreenOpen(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setFullscreenOpen(false)}
+            className="absolute right-6 top-6 rounded-full border border-white/40 bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20"
+          >
+            Close
+          </button>
+          <div
+            className="relative w-full max-w-4xl h-[70vh] sm:h-[75vh]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <Image
+              src={activeImage}
+              alt="Fullscreen product image"
+              fill
+              sizes="100vw"
+              className="object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

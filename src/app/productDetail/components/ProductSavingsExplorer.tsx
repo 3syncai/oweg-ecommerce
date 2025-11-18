@@ -330,6 +330,15 @@ const ProductSavingsExplorer = ({
             const href = `/productDetail/${slug}?id=${encodeURIComponent(String(item.id))}`
             const isAdding = addingProductId === item.id
             const canQuickAdd = Boolean(item.variant_id)
+            const priceValue = Number(item.price) || 0
+            const mrpValue = Number(item.mrp) || 0
+            const savingsValue = mrpValue > priceValue ? mrpValue - priceValue : 0
+            const discountValue =
+              item.discount && item.discount > 0
+                ? item.discount
+                : savingsValue > 0 && mrpValue > 0
+                  ? Math.round((savingsValue / mrpValue) * 100)
+                  : 0
             return (
               <div key={item.id} className="flex gap-3 rounded-2xl border border-white/70 bg-white/90 p-3 shadow-sm">
                 <Link href={href} className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl bg-slate-50">
@@ -340,20 +349,27 @@ const ProductSavingsExplorer = ({
                     sizes="80px"
                     className="object-contain p-2"
                   />
-                  {item.discount > 0 && (
-                    <span className="absolute left-1 top-1 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
-                      {item.discount}% OFF
-                    </span>
-                  )}
                 </Link>
                 <div className="flex flex-1 flex-col gap-2">
-                  <Link href={href} className="text-sm font-semibold text-slate-900 line-clamp-2 hover:text-green-700">
-                    {item.name}
-                  </Link>
+                  <div>
+                    <Link href={href} className="text-sm font-semibold text-slate-900 line-clamp-2 hover:text-green-700">
+                      {item.name}
+                    </Link>
+                    {discountValue > 0 && (
+                      <span className="mt-1 inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                        {discountValue}% OFF
+                      </span>
+                    )}
+                  </div>
                   <div className="flex flex-wrap items-baseline gap-2">
                     <span className="text-base font-semibold text-slate-900">{formatCurrency(item.price)}</span>
                     <span className="text-xs text-slate-400 line-through">{formatCurrency(item.mrp)}</span>
                   </div>
+                  {savingsValue > 0 && (
+                    <p className="text-xs font-semibold text-emerald-600 animate-pulse">
+                      You are about to save {formatCurrency(savingsValue)}
+                    </p>
+                  )}
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
