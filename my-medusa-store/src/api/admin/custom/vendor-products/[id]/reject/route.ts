@@ -1,7 +1,7 @@
-import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules, ProductStatus } from "@medusajs/framework/utils"
 
-export const POST = async (req: MedusaRequest<any>, res: MedusaResponse) => {
+export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
   try {
     const { id } = req.params
     const productModuleService = req.scope.resolve(Modules.PRODUCT)
