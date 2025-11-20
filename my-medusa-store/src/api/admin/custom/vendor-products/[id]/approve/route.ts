@@ -1,4 +1,4 @@
-import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules, ProductStatus } from "@medusajs/framework/utils"
 
 export const POST = async (req: MedusaRequest, res: MedusaResponse) => {

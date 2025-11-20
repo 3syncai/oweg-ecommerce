@@ -1,7 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import fs from "node:fs"
 import path from "node:path"
-import mime from "mime"
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const url = new URL(req.url)
@@ -12,7 +11,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   if (!fs.existsSync(full) || !fs.statSync(full).isFile()) {
     return res.status(404).send("Not found")
   }
-  const contentType = mime.getType(full) || "application/octet-stream"
+  const mime = await import("mime")
+  const contentType = mime.default.getType(full) || "application/octet-stream"
   res.setHeader("Content-Type", contentType)
   const stream = fs.createReadStream(full)
   // @ts-ignore piping supported
