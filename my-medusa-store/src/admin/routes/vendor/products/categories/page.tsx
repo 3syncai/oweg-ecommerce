@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import React, { useEffect, useState } from "react"
 import { Container, Heading, Text, Table, Badge, Input } from "@medusajs/ui"
 import VendorShell from "../../../../components/VendorShell"
 
@@ -111,10 +111,10 @@ const VendorCategoriesPage = () => {
   const renderCategoryRow = (
     category: Category & { children: Category[] },
     level: number = 0
-  ): JSX.Element[] => {
+  ): React.ReactElement[] => {
     const hasChildren = category.children && category.children.length > 0
     const isExpanded = expandedCategories.has(category.id)
-    const rows: JSX.Element[] = []
+    const rows: React.ReactElement[] = []
 
     rows.push(
       <Table.Row key={category.id}>
@@ -187,7 +187,7 @@ const VendorCategoriesPage = () => {
           <Input
             placeholder="Search"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
             style={{ maxWidth: 400 }}
           />
         </div>

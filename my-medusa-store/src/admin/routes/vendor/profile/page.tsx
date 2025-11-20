@@ -135,7 +135,7 @@ const VendorProfilePage = () => {
             </label>
             <Input
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, name: e.target.value })}
               required
             />
           </div>
@@ -146,7 +146,7 @@ const VendorProfilePage = () => {
             </label>
             <Input
               value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, phone: e.target.value })}
               type="tel"
             />
           </div>
@@ -157,7 +157,7 @@ const VendorProfilePage = () => {
             </label>
             <Input
               value={formData.store_name}
-              onChange={(e) => setFormData({ ...formData, store_name: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, store_name: e.target.value })}
             />
           </div>
 

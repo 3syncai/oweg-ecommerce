@@ -343,7 +343,7 @@ const VendorProductNewPage = () => {
           <Label>Title</Label>
           <Input
             value={formData.title}
-            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, title: e.target.value })}
             placeholder="Winter jacket"
             required
           />
@@ -355,7 +355,7 @@ const VendorProductNewPage = () => {
           </Label>
           <Input
             value={formData.subtitle}
-            onChange={(e) => setFormData({ ...formData, subtitle: e.target.value })}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, subtitle: e.target.value })}
             placeholder="Warm and cozy"
           />
         </div>
@@ -368,7 +368,7 @@ const VendorProductNewPage = () => {
             <span style={{ color: "var(--fg-muted)" }}>/</span>
           <Input
             value={formData.handle}
-            onChange={(e) => setFormData({ ...formData, handle: e.target.value })}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, handle: e.target.value })}
               placeholder="winter-jacket"
           />
           </div>
@@ -381,7 +381,7 @@ const VendorProductNewPage = () => {
         </Label>
           <Textarea
             value={formData.description}
-            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, description: e.target.value })}
           placeholder="A warm and cozy jacket"
           rows={4}
           />
@@ -429,7 +429,7 @@ const VendorProductNewPage = () => {
           <Button
             type="button"
             variant="secondary"
-            onClick={(e) => {
+            onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
               e.stopPropagation()
               const fileInput = document.getElementById("media-upload")
               if (fileInput) {
@@ -493,7 +493,7 @@ const VendorProductNewPage = () => {
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 16, background: "var(--bg-base)", borderRadius: 8, marginBottom: 24 }}>
         <Switch
           checked={formData.discountable}
-          onCheckedChange={(checked) => setFormData({ ...formData, discountable: checked })}
+          onCheckedChange={(checked: boolean) => setFormData({ ...formData, discountable: checked })}
         />
         <div>
           <Text weight="plus">
@@ -512,7 +512,7 @@ const VendorProductNewPage = () => {
           </Label>
           <Input
             value={formData.type}
-            onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, type: e.target.value })}
             placeholder="Select type"
           />
         </div>
@@ -523,7 +523,7 @@ const VendorProductNewPage = () => {
           </Label>
           <select
             value={formData.collection}
-            onChange={(e) => setFormData({ ...formData, collection: e.target.value })}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, collection: e.target.value })}
             style={{
               width: "100%",
               padding: "8px 12px",
@@ -550,7 +550,7 @@ const VendorProductNewPage = () => {
           </Label>
           <select
             value={formData.categories[0] || ""}
-            onChange={(e) => {
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
               setFormData({ ...formData, categories: e.target.value ? [e.target.value] : [] })
             }}
             style={{
@@ -578,7 +578,7 @@ const VendorProductNewPage = () => {
           </Label>
           <Input
             value={formData.tags.join(", ")}
-            onChange={(e) => setFormData({ ...formData, tags: e.target.value.split(",").map(t => t.trim()).filter(t => t) })}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, tags: e.target.value.split(",").map((t: string) => t.trim()).filter((t: string) => t) })}
             placeholder="winter, jacket, outdoor"
           />
         </div>
@@ -593,7 +593,7 @@ const VendorProductNewPage = () => {
         </Text>
         <Input
           value={formData.shippingProfile}
-          onChange={(e) => setFormData({ ...formData, shippingProfile: e.target.value })}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, shippingProfile: e.target.value })}
           placeholder="Select shipping profile"
         />
       </div>
@@ -715,7 +715,7 @@ const VendorProductNewPage = () => {
                 <td style={{ padding: "12px 16px" }}>
                   <Input
                     value={variant.title}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       const newVariants = [...formData.variants]
                       newVariants[idx].title = e.target.value
                       setFormData({ ...formData, variants: newVariants })
@@ -727,7 +727,7 @@ const VendorProductNewPage = () => {
                 <td style={{ padding: "12px 16px" }}>
                   <Input
                     value={variant.sku}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       const newVariants = [...formData.variants]
                       newVariants[idx].sku = e.target.value
                       setFormData({ ...formData, variants: newVariants })
@@ -739,7 +739,7 @@ const VendorProductNewPage = () => {
                   <input
                     type="checkbox"
                     checked={variant.managedInventory}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       const newVariants = [...formData.variants]
                       newVariants[idx].managedInventory = e.target.checked
                       setFormData({ ...formData, variants: newVariants })
@@ -750,7 +750,7 @@ const VendorProductNewPage = () => {
                   <input
                     type="checkbox"
                     checked={variant.allowBackorder}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       const newVariants = [...formData.variants]
                       newVariants[idx].allowBackorder = e.target.checked
                       setFormData({ ...formData, variants: newVariants })
@@ -761,7 +761,7 @@ const VendorProductNewPage = () => {
                   <input
                     type="checkbox"
                     checked={variant.hasInventoryKit}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       const newVariants = [...formData.variants]
                       newVariants[idx].hasInventoryKit = e.target.checked
                       setFormData({ ...formData, variants: newVariants })
@@ -773,7 +773,7 @@ const VendorProductNewPage = () => {
                     <span style={{ color: "var(--fg-muted)" }}>₹</span>
                     <Input
                       value={variant.price}
-                      onChange={(e) => {
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         const newVariants = [...formData.variants]
                         newVariants[idx].price = e.target.value
                         setFormData({ ...formData, variants: newVariants })

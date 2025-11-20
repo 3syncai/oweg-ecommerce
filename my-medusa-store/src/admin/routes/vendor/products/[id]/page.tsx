@@ -196,7 +196,7 @@ const VendorProductDetailPage = () => {
             </label>
             <Input
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, title: e.target.value })}
               required
             />
           </div>
@@ -207,7 +207,7 @@ const VendorProductDetailPage = () => {
             </label>
             <Input
               value={formData.handle}
-              onChange={(e) => setFormData({ ...formData, handle: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, handle: e.target.value })}
               placeholder="product-handle"
             />
             <Text className="text-ui-fg-subtle text-xs mt-1">URL-friendly identifier</Text>
@@ -219,7 +219,7 @@ const VendorProductDetailPage = () => {
             </label>
             <Textarea
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, description: e.target.value })}
               rows={6}
             />
           </div>
@@ -230,7 +230,7 @@ const VendorProductDetailPage = () => {
           </label>
           <select
             value={formData.category}
-            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, category: e.target.value })}
             className="bg-ui-bg-base border border-ui-border-base rounded-md px-3 py-2 w-full"
           >
             <option value="">Select category</option>

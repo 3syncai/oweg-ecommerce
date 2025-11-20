@@ -1,7 +1,7 @@
 import { Migration } from "@medusajs/framework/mikro-orm/migrations";
 
 export class Migration20251118211014 extends Migration {
-  override async up(): Promise<void> {
+  async up(): Promise<void> {
     this.addSql(`
       CREATE TABLE IF NOT EXISTS customer_login_logs (
         id SERIAL PRIMARY KEY,
@@ -112,7 +112,7 @@ export class Migration20251118211014 extends Migration {
     `);
   }
 
-  override async down(): Promise<void> {
+  async down(): Promise<void> {
     this.addSql(`DROP TABLE IF EXISTS customer_online_logs`);
     this.addSql(`DROP TABLE IF EXISTS customer_wishlist_logs`);
     this.addSql(`DROP TABLE IF EXISTS customer_reward_logs`);

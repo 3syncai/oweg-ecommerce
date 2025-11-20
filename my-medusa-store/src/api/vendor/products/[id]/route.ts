@@ -1,4 +1,4 @@
-import { MedusaRequest, MedusaResponse } from "@medusajs/framework"
+import type { MedusaRequest, MedusaResponse } from "@medusajs/framework"
 import { requireApprovedVendor } from "../../_lib/guards"
 import { Modules } from "@medusajs/framework/utils"
 

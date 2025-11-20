@@ -1,4 +1,4 @@
-import { MedusaRequest, MedusaResponse } from "@medusajs/framework"
+import type { MedusaRequest, MedusaResponse } from "@medusajs/framework"
 import { Client } from "pg"
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {

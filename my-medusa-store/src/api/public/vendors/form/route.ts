@@ -1,4 +1,4 @@
-import { MedusaRequest, MedusaResponse } from "@medusajs/framework"
+import type { MedusaRequest, MedusaResponse } from "@medusajs/framework"
 import { generateVendorSignupHTML } from "./vendorSignup"
 
 // Public (no publishable key required) HTML form that POSTs to store APIs with the key header

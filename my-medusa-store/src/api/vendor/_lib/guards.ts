@@ -1,4 +1,4 @@
-import { MedusaRequest, MedusaResponse } from "@medusajs/framework"
+import type { MedusaRequest, MedusaResponse } from "@medusajs/framework"
 import { verifyVendorToken } from "./token"
 import VendorModuleService from "../../../modules/vendor/service"
 import { VENDOR_MODULE } from "../../../modules/vendor"
