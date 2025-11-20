@@ -1,4 +1,4 @@
-import type { MedusaRequest, MedusaResponse } from "@medusajs/framework"
+import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import fs from "node:fs"
 import path from "node:path"
 import mime from "mime"
