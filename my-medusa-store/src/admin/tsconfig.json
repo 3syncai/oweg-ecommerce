@@ -20,5 +20,11 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["."]
+ "include": [
+  ".",
+  "components/**/*",
+  "widgets/**/*",
+  "**/*.tsx",
+  "**/*.ts"
+]
 }

@@ -22,17 +22,27 @@
     "test:unit": "TEST_TYPE=unit NODE_OPTIONS=--experimental-vm-modules jest --silent --runInBand --forceExit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.671.0",
+    "@aws-sdk/s3-request-presigner": "^3.671.0",
     "@medusajs/admin-sdk": "2.11.3",
     "@medusajs/cli": "2.11.3",
     "@medusajs/file": "^2.11.3",
     "@medusajs/file-s3": "^2.11.3",
     "@medusajs/framework": "2.11.3",
-    "@medusajs/medusa": "2.11.3"
+    "@medusajs/medusa": "2.11.3",
+    "@techlabi/medusa-marketplace-plugin": "^0.46.0",
+    "@types/pg": "^8.15.6",
+    "bcryptjs": "^3.0.3",
+    "busboy": "^1.6.0",
+    "lucide-react": "^0.554.0",
+    "mime": "^4.1.0",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
     "@medusajs/test-utils": "2.11.3",
     "@swc/core": "^1.15.0",
     "@swc/jest": "^0.2.36",
+    "@types/busboy": "^1.5.4",
     "@types/jest": "^29.5.13",
     "@types/node": "^20.0.0",
     "@types/react": "^18.3.2",
