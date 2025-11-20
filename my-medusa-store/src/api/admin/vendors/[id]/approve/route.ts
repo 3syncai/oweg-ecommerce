@@ -1,9 +1,9 @@
-import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import VendorModuleService from "../../../../../modules/vendor/service"
 import { VENDOR_MODULE } from "../../../../../modules/vendor"
 
 export async function POST(
-  req: MedusaRequest, 
+  req: MedusaRequest<any>, 
   res: MedusaResponse
 ) {
   try {
