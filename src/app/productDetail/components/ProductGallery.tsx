@@ -84,6 +84,18 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback }: ProductGa
 
   const { size: zoomSize, position: zoomPosition } = computedBackground()
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    if (lensActive) {
+      document.body.classList.add('lens-open')
+    } else {
+      document.body.classList.remove('lens-open')
+    }
+    return () => {
+      document.body.classList.remove('lens-open')
+    }
+  }, [lensActive])
+
   return (
     <div className="space-y-4">
       <div className="relative lg:flex lg:gap-2">
@@ -103,10 +115,10 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback }: ProductGa
             </button>
           ))}
         </div>
-        <div className="relative flex-1 w-full lg:max-w-[490px] lg:ml-8">
+        <div className="relative flex-1 w-full lg:max-w-[490px] lg:ml-8 mx-auto">
         <div
           ref={containerRef}
-          className="relative w-full aspect-[4/5] lg:h-[420px] rounded-[32px] border border-[var(--detail-border)] bg-white shadow-sm overflow-hidden group mx-auto"
+          className="relative w-full aspect-[4/5] max-h-[360px] sm:max-h-[420px] lg:h-[450px] rounded-[32px] border border-[var(--detail-border)] bg-white shadow-sm overflow-hidden group mx-auto"
           onMouseEnter={(event) => {
             setLensActive(true)
             setLensPosition(clampLens(event.clientX, event.clientY))
@@ -115,14 +127,7 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback }: ProductGa
           onMouseMove={handleMouseMove}
           onTouchStart={handleTouchStart}
         >
-          <button
-            type="button"
-            onClick={() => setFullscreenOpen(true)}
-            className="absolute right-4 top-4 z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-700 shadow hover:bg-white"
-            aria-label="Open fullscreen image viewer"
-          >
-            <Expand className="h-5 w-5" />
-          </button>
+          
           <Image
             src={activeImage}
             alt="Selected product image"
@@ -169,7 +174,7 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback }: ProductGa
         </div>
       {lensActive && (
         <div
-          className="hidden lg:block fixed top-[190px] right-[120px] h-[610px] w-[650px] rounded-[32px] border border-[var(--detail-border)] bg-white shadow-4xl overflow-hidden z-30"
+          className="hidden lg:block fixed top-[190px] right-[120px] h-[610px] w-[650px] rounded-[32px] border border-[var(--detail-border)] bg-white shadow-4xl overflow-hidden z-[120] pointer-events-none"
           style={{
             backgroundImage: `url("${activeImage}")`,
             backgroundRepeat: 'no-repeat',

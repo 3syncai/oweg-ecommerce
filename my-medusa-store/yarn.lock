@@ -1853,7 +1853,7 @@
   resolved "https://registry.npmjs.org/@medusajs/api-key/-/api-key-2.11.3.tgz"
   integrity sha512-N3X3QRip1kWxLibboRFt6gVnMypPuNpyquq9Q5ci4p5eR2oZgRIcak0n6B8I8Gi3OLFpFbRBU9juM051ulBoiA==
 
-"@medusajs/auth-emailpass@2.11.3":
+"@medusajs/auth-emailpass@^2.11.3", "@medusajs/auth-emailpass@2.11.3":
   version "2.11.3"
   resolved "https://registry.npmjs.org/@medusajs/auth-emailpass/-/auth-emailpass-2.11.3.tgz"
   integrity sha512-G1nyEhGeHYzgRD2QjVqq/yypulyqxpj0vVouLzebnC5BOUXLy6aZ4xWLaIZ4JcEcLXMBtPxdxtEJQzipV/hNCw==
@@ -1872,7 +1872,7 @@
   dependencies:
     jsonwebtoken "^9.0.2"
 
-"@medusajs/auth@2.11.3":
+"@medusajs/auth@^2.11.3", "@medusajs/auth@2.11.3":
   version "2.11.3"
   resolved "https://registry.npmjs.org/@medusajs/auth/-/auth-2.11.3.tgz"
   integrity sha512-PzanhKNVxkpzeBKthlLX0KwSi4KbediGbEFblD4hP8+/GFJwkYZ1q5Q+gZvysB1OD/XFqLzDAKwK5N+F+GtvEA==

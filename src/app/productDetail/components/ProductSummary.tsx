@@ -1,16 +1,7 @@
 'use client'
 
 import React from 'react'
-import {
-  Bookmark,
-  Eye,
-  GitCompare,
-  Minus,
-  Plus,
-  Share2,
-  ShoppingCart,
-  Star,
-} from 'lucide-react'
+import { Eye, GitCompare, Heart, Minus, Plus, Share2, ShoppingCart, Star } from 'lucide-react'
 import type { DetailedProduct as DetailedProductType } from '@/lib/medusa'
 
 type ProductSummaryProps = {
@@ -27,6 +18,7 @@ type ProductSummaryProps = {
   onShare: () => void
   onSaveForLater: () => void
   onOpenCompare: () => void
+  isWishlisted: boolean
   formatPrice: (value: number) => string
 }
 
@@ -44,6 +36,7 @@ const ProductSummary = ({
   onShare,
   onSaveForLater,
   onOpenCompare,
+  isWishlisted,
   formatPrice,
 }: ProductSummaryProps) => {
   const rawSavings =
@@ -80,9 +73,19 @@ const ProductSummary = ({
       </div>
       <h1 className="text-2xl lg:text-3xl font-semibold text-slate-900">{product.title}</h1>
       {product.discount > 0 && (
-        <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-          {product.discount}% OFF
-        </span>
+        <div className="inline-flex items-center gap-2">
+          <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
+            {product.discount}% OFF
+          </span>
+          <button
+            type="button"
+            onClick={onSaveForLater}
+            className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50/80 px-3 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-100 transition"
+          >
+            <Heart className="w-4 h-4" fill={isWishlisted ? 'currentColor' : 'none'} />
+            <span className="hidden sm:inline">Save to wishlist</span>
+          </button>
+        </div>
       )}
     {product.subtitle && <p className="text-slate-500">{product.subtitle}</p>}
 
@@ -90,13 +93,17 @@ const ProductSummary = ({
       <div className="text-3xl font-bold text-slate-900">{formatPrice(product.price)}</div>
       <div className="text-lg text-slate-400 line-through">{formatPrice(product.mrp)}</div>
       {rawSavings > 0 && (
-        <span className="inline-flex items-center rounded-full bg-emerald-100/80 px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm animate-[pulse_1.4s_ease-in-out_infinite]">
+        <span className="save-banner inline-flex items-center rounded-full bg-emerald-100/80 px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm animate-[pulse_1.4s_ease-in-out_infinite]">
           You are about to save {formatPrice(rawSavings)}
         </span>
       )}
     </div>
     <div className="text-sm text-slate-500">Inclusive of all taxes | Prices shown in {product.currency}</div>
-
+    <style jsx global>{`
+      body.lens-open .save-banner {
+        display: none !important;
+      }
+    `}</style>
     <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600">
       <div className="flex items-center gap-1">
         <Star className="w-4 h-4 text-yellow-500" />
@@ -157,16 +164,7 @@ const ProductSummary = ({
       </div>
     </div>
 
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={onSaveForLater}
-          className="flex items-center gap-2 text-sm text-slate-600 hover:text-green-600 transition"
-        >
-          <Bookmark className="w-4 h-4" />
-          Save for later
-        </button>
-      </div>
+      
     </div>
   )
 }

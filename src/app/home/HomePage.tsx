@@ -1,95 +1,154 @@
-﻿'use client';
+'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import React from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import {
   notifyCartAddError,
   notifyCartAddSuccess,
   notifyCartUnavailable,
   notifyWishlistLogin,
-} from '@/lib/notifications'
-import { useCartSummary } from '@/contexts/CartProvider'
-
-
-// Data will be loaded from Medusa store API via Next.js API routes
+  notifyWishlistSuccess,
+} from '@/lib/notifications';
+import { useCartSummary } from '@/contexts/CartProvider';
+import { useAuth } from '@/contexts/AuthProvider';
+import { Heart } from 'lucide-react';
 
 // UI product type (used by carousel/cards)
 type UIProduct = {
-  id: string | number
-  name: string
-  image: string
-  price: number
-  mrp: number
-  discount: number
-  limitedDeal?: boolean
-  variant_id?: string
-  handle?: string
-  sourceTag?: string
+  id: string | number;
+  name: string;
+  image: string;
+  price: number;
+  mrp: number;
+  discount: number;
+  limitedDeal?: boolean;
+  variant_id?: string;
+  handle?: string;
+  sourceTag?: string;
+};
+
+const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' });
+
+async function fetchProductsByTag(tag: string, limit: number): Promise<UIProduct[]> {
+  const url = `/api/medusa/products?tag=${encodeURIComponent(tag)}&limit=${limit}`;
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) {
+    throw new Error(`Unable to load products for ${tag}`);
+  }
+  const data = await res.json();
+  return (data?.products || []) as UIProduct[];
 }
-
-const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })
-
 
 // Product Card Component
 function ProductCard({ product, sourceTag }: { product: UIProduct; sourceTag?: string }) {
-  const [isHovered, setIsHovered] = useState(false)
-  const { syncFromCartPayload } = useCartSummary()
-  const router = useRouter()
-  const idParam = String(product.id)
-  const slug = encodeURIComponent(String(product.handle || product.id))
-  const params = new URLSearchParams()
-  params.set('id', idParam)
-  if (sourceTag) params.set('sourceTag', sourceTag)
-  const productHref = `/productDetail/${slug}?${params.toString()}`
+  const [isHovered, setIsHovered] = useState(false);
+  const { syncFromCartPayload } = useCartSummary();
+  const router = useRouter();
+  const { customer, setCustomer } = useAuth();
+  const [wishlistBusy, setWishlistBusy] = useState(false);
+  const idParam = String(product.id);
+  const slug = encodeURIComponent(String(product.handle || product.id));
+  const params = new URLSearchParams();
+  params.set('id', idParam);
+  if (sourceTag) params.set('sourceTag', sourceTag);
+  const productHref = `/productDetail/${slug}?${params.toString()}`;
+
+  const isWishlisted = (() => {
+    const list = (customer?.metadata as Record<string, unknown> | undefined)?.wishlist;
+    if (!Array.isArray(list)) return false;
+    return list.map((id) => id?.toString()).includes(product.id.toString());
+  })();
+
+  const handleWishlist = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!customer) {
+      notifyWishlistLogin(() => router.push('/login'));
+      return;
+    }
+    if (wishlistBusy) return;
+    try {
+      setWishlistBusy(true);
+      const res = await fetch('/api/medusa/wishlist', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ productId: product.id }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const message = (data && (data.error || data.message)) || 'Unable to save to wishlist.';
+        throw new Error(message);
+      }
+      if (data?.wishlist && Array.isArray(data.wishlist)) {
+        setCustomer({
+          ...(customer || {}),
+          metadata: {
+            ...(customer?.metadata || {}),
+            wishlist: data.wishlist,
+          },
+        });
+      }
+      notifyWishlistSuccess(product.name);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to save to wishlist.';
+      notifyCartAddError(message);
+    } finally {
+      setWishlistBusy(false);
+    }
+  };
 
   const handleQuickAdd = async (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
+    event.preventDefault();
+    event.stopPropagation();
     if (!product.variant_id) {
-      notifyCartUnavailable()
-      return
+      notifyCartUnavailable();
+      return;
     }
     try {
-      await fetch('/api/medusa/cart', { method: 'POST', credentials: 'include' })
+      // Ensure cart exists (session) - proxy handles cookies
+      await fetch('/api/medusa/cart', { method: 'POST', credentials: 'include' });
+
       const r = await fetch('/api/medusa/cart/line-items', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ variant_id: product.variant_id, quantity: 1 }),
         credentials: 'include',
-      })
-      const payload = await r.json().catch(() => null)
+      });
+
+      const payload = await r.json().catch(() => null);
+
       if (!r.ok) {
-        const message =
-          (payload && (payload.error || payload.message)) || 'Could not add to cart'
-        throw new Error(message)
+        const message = (payload && (payload.error || payload.message)) || 'Could not add to cart';
+        throw new Error(message);
       }
       if (payload) {
-        syncFromCartPayload(payload)
+        syncFromCartPayload(payload);
       }
-      notifyCartAddSuccess(product.name, 1, () => router.push('/cart'))
+      notifyCartAddSuccess(product.name, 1, () => router.push('/cart'));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not add to cart'
-      notifyCartAddError(message)
+      const message = err instanceof Error ? err.message : 'Could not add to cart';
+      notifyCartAddError(message);
     }
-  }
+  };
 
   return (
     <Link
       href={productHref}
-      className="group relative flex-shrink-0 w-[220px] sm:w-[240px] md:w-[260px] lg:w-[300px] min-w-[220px] sm:min-w-[240px] md:min-w-[260px] lg:min-w-[300px] bg-white rounded-2xl md:rounded-lg overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col"
+      className="group relative flex-shrink-0 w-[200px] sm:w-[220px] md:w-[260px] lg:w-[300px] min-w-[200px] sm:min-w-[220px] md:min-w-[260px] lg:min-w-[300px] bg-white rounded-2xl md:rounded-lg overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col max-h-[360px] sm:max-h-none"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="relative aspect-[4/5] md:aspect-square bg-gray-50 overflow-hidden">
+      <div className="relative h-48 sm:h-auto sm:aspect-[4/5] md:aspect-square bg-gray-50 overflow-hidden">
         <Image
           src={product.image}
           alt={product.name}
           fill
-          className={`object-cover transition-transform duration-500 ${isHovered ? 'scale-110' : 'scale-100'}`}
+          className={`object-contain p-3 transition-transform duration-500 ${isHovered ? 'scale-105' : 'scale-100'}`}
           sizes="200px"
         />
         <div className={`absolute inset-y-2 right-2 flex flex-col gap-2 transition-all duration-300 ${isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'}`}>
@@ -108,15 +167,13 @@ function ProductCard({ product, sourceTag }: { product: UIProduct; sourceTag?: s
           </button>
           <button
             type="button"
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              notifyWishlistLogin(() => router.push('/login'))
-            }}
+            onClick={handleWishlist}
             title="Add to Wishlist"
-            className="w-9 h-9 rounded-full bg-white text-gray-700 flex items-center justify-center shadow border hover:text-red-500"
+            className={`w-9 h-9 rounded-full bg-white flex items-center justify-center shadow border hover:text-red-500 transition ${
+              isWishlisted ? 'text-red-500 border-red-200' : 'text-gray-700'
+            } ${wishlistBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
           >
-            ❤
+            <Heart className="w-4 h-4" fill={isWishlisted ? 'currentColor' : 'none'} />
           </button>
         </div>
       </div>
@@ -140,8 +197,9 @@ function ProductCard({ product, sourceTag }: { product: UIProduct; sourceTag?: s
         </div>
       </div>
     </Link>
-  )
+  );
 }
+
 // Product Carousel Component
 function ProductCarousel({ title, products, sourceTag }: { title: string; products: UIProduct[]; sourceTag?: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -177,7 +235,7 @@ function ProductCarousel({ title, products, sourceTag }: { title: string; produc
           </button>
         </div>
       </div>
-            <div
+      <div
         ref={scrollRef}
         className="flex gap-4 overflow-x-auto scrollbar-hidden pb-4 scroll-smooth snap-x snap-mandatory"
       >
@@ -185,7 +243,6 @@ function ProductCarousel({ title, products, sourceTag }: { title: string; produc
           <ProductCard key={product.id} product={product} sourceTag={sourceTag} />
         ))}
       </div>
-     
     </div>
   );
 }
@@ -282,7 +339,7 @@ function HeroBanner() {
           <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 text-gray-800" />
         </button>
       </div>
-      <div className="relative w-full h-full">
+      <div className="relative w-full h-full min-h-[320px] sm:min-h-[360px]">
         {HERO_SLIDES.map((src, idx) => (
           <div
             key={src}
@@ -296,7 +353,7 @@ function HeroBanner() {
               alt={`Hero banner ${idx + 1}`}
               fill
               priority={idx === 0}
-              className="object-cover object-center"
+              className="object-container object-center"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent md:from-black/30 md:via-black/10 md:to-transparent" />
           </div>
@@ -387,40 +444,30 @@ function PromoBanners() {
   );
 }
 
-// Header Component
-
-
 export default function HomePage() {
-  const [nonStick, setNonStick] = useState<UIProduct[]>([])
-  const [fanProducts, setFanProducts] = useState<UIProduct[]>([])
-  const [mensCloth, setMensCloth] = useState<UIProduct[]>([])
-  const [loading, setLoading] = useState(true)
+  const nonStickQuery = useQuery({
+    queryKey: ['home-products', 'Non-Stick Cookwares'],
+    queryFn: () => fetchProductsByTag('Non-Stick Cookwares', 40),
+    staleTime: 1000 * 60 * 5,
+  });
+  const fanQuery = useQuery({
+    queryKey: ['home-products', 'Fans'],
+    queryFn: () => fetchProductsByTag('Fans', 40),
+    staleTime: 1000 * 60 * 5,
+  });
+  const mensQuery = useQuery({
+    queryKey: ['home-products', 'Mens Cloths'],
+    queryFn: () => fetchProductsByTag('Mens Cloths', 20),
+    staleTime: 1000 * 60 * 5,
+  });
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      try {
-        const [nonStickProducts, b, c] = await Promise.all([
-          fetch(`/api/medusa/products?tag=${encodeURIComponent('Non-Stick Cookwares')}&limit=40`).then(r => r.json()),
-          fetch(`/api/medusa/products?tag=${encodeURIComponent('Fans')}&limit=40`).then(r => r.json()),
-          fetch(`/api/medusa/products?tag=${encodeURIComponent('Mens Cloths')}&limit=20`).then(r => r.json()),
-        ])
-        if (!cancelled) {
-          setNonStick(nonStickProducts.products || [])
-          setFanProducts(b.products || [])
-          setMensCloth(c.products || [])
-        }
-      } catch (e) {
-        console.error('Failed loading products', e)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const nonStick = nonStickQuery.data ?? [];
+  const fanProducts = fanQuery.data ?? [];
+  const mensCloth = mensQuery.data ?? [];
+  const loading = nonStickQuery.isLoading || fanQuery.isLoading || mensQuery.isLoading;
+  const productsError = nonStickQuery.error || fanQuery.error || mensQuery.error;
+  const errorMessage =
+    productsError instanceof Error ? productsError.message : productsError ? 'Unable to load products' : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -433,18 +480,11 @@ export default function HomePage() {
         <div className="px-4">
           <PromoBanners />
         </div>
-        <ProductCarousel title="Mens Cloths" products={mensCloth} sourceTag="Mens Cloths"/>
-        {loading && (
-          <div className="px-4 text-sm text-gray-500">Loading products from storeâ€¦</div>
-        )}
+        <ProductCarousel title="Mens Cloths" products={mensCloth} sourceTag="Mens Cloths" />
+        {loading && <div className="px-4 text-sm text-gray-500">Loading products from store...</div>}
+        {!loading && errorMessage && <div className="px-4 text-sm text-red-500">{errorMessage}</div>}
       </main>
     </div>
   );
 }
-
-
-
-
-
-
 

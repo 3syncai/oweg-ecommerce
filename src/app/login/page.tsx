@@ -3,9 +3,11 @@
 import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { Mail, Eye, EyeOff, Phone, Loader2, ChevronDown, Lock, KeyRound } from "lucide-react";
 import { FcGoogle } from "react-icons/fc";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthProvider";
 
 // OWEG Modern Login -- Simplified two-step flow with intelligent detection
 // File: app/login/page.tsx (Next.js App Router)
@@ -70,6 +72,9 @@ function LoginPageInner() {
     };
   }, []);
 
+  const router = useRouter();
+  const { setCustomer, refresh } = useAuth();
+
   // INTELLIGENT INPUT DETECTION
   const detectInputType = (value: string): InputType => {
     // Remove spaces and special characters for detection
@@ -122,6 +127,7 @@ function LoginPageInner() {
       if (cleaned.length < 10) {
         return setError("Please enter a valid mobile number");
       }
+      return setError("Phone login is coming soon. Please continue with your email address.");
     } else if (inputType === "email") {
       if (!identifier.includes("@") || !identifier.includes(".")) {
         return setError("Please enter a valid email address");
@@ -135,12 +141,12 @@ function LoginPageInner() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    
-    if (authMethod === "password" && !password) {
-      return setError("Please enter your password");
+
+    if (authMethod === "otp") {
+      return setError("OTP login will be available soon. Please use your password.");
     }
-    if (authMethod === "otp" && !otp) {
-      return setError("Please enter the OTP");
+    if (!password) {
+      return setError("Please enter your password");
     }
     if (!navigator.onLine) {
       return setError("You are offline. Connect to the internet to sign in.");
@@ -148,26 +154,38 @@ function LoginPageInner() {
 
     try {
       setBusy(true);
-      // Example PWA-safe fetch (no caching of auth):
-      const fullIdentifier = inputType === "phone" 
-        ? `${countryCode}${identifier}` 
-        : identifier;
-      
-      // await fetch("/api/auth/login", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-      //   cache: "no-store",
-      //   credentials: "include",
-      //   body: JSON.stringify({ 
-      //     identifier: fullIdentifier, 
-      //     password: authMethod === "password" ? password : undefined,
-      //     otp: authMethod === "otp" ? otp : undefined 
-      //   })
-      // });
-      
-      await new Promise((r) => setTimeout(r, 800));
-      console.log("Login with:", fullIdentifier);
-      // router.push("/account")
+      const fullIdentifier =
+        inputType === "phone" ? `${countryCode}${identifier}` : identifier.trim();
+
+      const res = await fetch("/api/medusa/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          identifier: fullIdentifier,
+          password,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        const message = data?.error || "Login failed. Please try again.";
+        setError(message);
+        toast.error(message);
+        return;
+      }
+
+      const nextCustomer = data?.customer ?? null;
+      if (nextCustomer) {
+        setCustomer(nextCustomer);
+      } else {
+        await refresh();
+      }
+      toast.success("Welcome back!");
+      router.push("/");
     } catch {
       setError("Login failed. Please try again.");
     } finally {
@@ -175,33 +193,9 @@ function LoginPageInner() {
     }
   }
 
-  async function handleSendOtp() {
-    setError(null);
-    if (!navigator.onLine) {
-      return setError("You are offline. Connect to request an OTP.");
-    }
-    
-    try {
-      setBusy(true);
-      // const fullIdentifier = inputType === "phone" 
-      //   ? `${countryCode}${identifier}` 
-      //   : identifier;
-        
-      // await fetch("/api/auth/send-otp", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-      //   cache: "no-store",
-      //   body: JSON.stringify({ identifier: fullIdentifier })
-      // });
-      
-      await new Promise((r) => setTimeout(r, 700));
-      setOtpSent(true);
-      setCooldown(30);
-    } catch {
-      setError("Could not send OTP. Try again.");
-    } finally {
-      setBusy(false);
-    }
+  function handleSendOtp() {
+    setError("OTP login will be available soon. Please continue with your password.");
+    toast.info("Passwordless login is coming soon. Use your password for now.");
   }
 
   function onGoogle() {
