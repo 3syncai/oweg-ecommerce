@@ -233,8 +233,10 @@ const ProductSavingsExplorer = ({
   const effectiveLoading = loading || (selectedCategory !== 'all' && categoryLoading && !cachedCategoryProducts.length)
   const showEmptyState = !effectiveLoading && activeProducts.length === 0
 
+  // NOTE: removed the extra rounded/bordered background wrapper so this component
+  // sits directly inside the outer hero card (prevents double-layer card look)
   return (
-    <div className="rounded-3xl border border-green-100 bg-gradient-to-b from-white via-green-50 to-white p-4 sm:p-6 space-y-4 shadow-lg">
+    <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div className="text-center sm:text-left">
           <p className="text-[11px] uppercase tracking-[0.35em] text-green-600">You saved</p>
@@ -307,10 +309,6 @@ const ProductSavingsExplorer = ({
         </div>
       </div>
 
-     
-
-      
-      
       {effectiveLoading ? (
         <div className="text-sm text-slate-500">
           {selectedCategory === 'all'
@@ -340,14 +338,20 @@ const ProductSavingsExplorer = ({
                   ? Math.round((savingsValue / mrpValue) * 100)
                   : 0
             return (
-              <div key={item.id} className="flex gap-3 rounded-2xl border border-white/70 bg-white/90 p-3 shadow-sm">
-                <Link href={href} className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl bg-slate-50">
+              <div
+                key={item.id}
+                className="flex flex-col sm:flex-row gap-3 rounded-2xl border border-white/70 bg-white/90 p-3"
+              >
+                <Link
+                  href={href}
+                  className="relative h-32 w-full sm:h-20 sm:w-20 shrink-0 overflow-hidden rounded-xl bg-slate-50"
+                >
                   <Image
                     src={item.image || FALLBACK_IMAGE}
                     alt={item.name}
                     fill
-                    sizes="80px"
-                    className="object-contain p-2"
+                    sizes="160px"
+                    className="object-contain p-3"
                   />
                 </Link>
                 <div className="flex flex-1 flex-col gap-2">
@@ -375,7 +379,7 @@ const ProductSavingsExplorer = ({
                       type="button"
                       onClick={() => handleQuickAdd(item)}
                       disabled={isAdding || !canQuickAdd}
-                      className={`h-9 w-9 rounded-full border text-white transition ${
+                      className={`h-11 w-11 sm:h-9 sm:w-9 rounded-full border text-white transition ${
                         canQuickAdd
                           ? 'border-green-500 bg-green-600 hover:bg-green-700 disabled:border-green-200 disabled:bg-green-300'
                           : 'border-slate-200 bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -391,7 +395,7 @@ const ProductSavingsExplorer = ({
                     <button
                       type="button"
                       onClick={() => onWishlist(item)}
-                      className="flex h-9 w-9 items-center justify-center rounded-full border border-pink-200 bg-white text-pink-500 transition hover:border-pink-400 hover:text-pink-600"
+                      className="flex h-11 w-11 sm:h-9 sm:w-9 items-center justify-center rounded-full border border-pink-200 bg-white text-pink-500 transition hover:border-pink-400 hover:text-pink-600"
                       aria-label="Add this product to wishlist"
                     >
                       <Heart className="h-4 w-4" />

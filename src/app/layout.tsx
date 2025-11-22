@@ -8,6 +8,7 @@ import Header from "./header/Header";
 
 import { Providers } from "./providers";
 import CartProvider from "@/contexts/CartProvider";
+import AuthProvider from "@/contexts/AuthProvider";
 import AppToaster from "@/components/ui/app-toaster";
 
 const geistSans = Geist({
@@ -48,21 +49,21 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <Providers>
-          <CartProvider>
-            <ServiceWorkerRegister />
+          <AuthProvider>
+            <CartProvider>
+              <ServiceWorkerRegister />
 
-            <div className="min-h-screen flex flex-col">
-              <Header />
+              <div className="min-h-screen flex flex-col">
+                <Header />
 
-              <main className="flex-1">
-                {children}
-              </main>
+                <main className="flex-1">{children}</main>
 
-              <Footer />
-            </div>
+                <Footer />
+              </div>
 
-            <AppToaster />
-          </CartProvider>
+              <AppToaster />
+            </CartProvider>
+          </AuthProvider>
         </Providers>
       </body>
     </html>

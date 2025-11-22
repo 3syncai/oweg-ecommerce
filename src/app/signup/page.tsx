@@ -3,18 +3,25 @@
 import { useState } from "react";
 import type { ChangeEvent, FocusEvent } from "react";
 import Link from "next/link";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthProvider";
 
 const Signup = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [userType, setUserType] = useState("individual");
   const [newsletter, setNewsletter] = useState("yes");
+  const router = useRouter();
+  const { setCustomer, refresh } = useAuth();
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const FORM_KEYS = [
     "referral",
@@ -192,17 +199,64 @@ const Signup = () => {
     return true;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
     if (!validateAll()) {
-      // invalid -> inline errors shown
+      return;
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setSubmitError("You are offline. Please connect to the internet to continue.");
       return;
     }
 
-    // form valid -> proceed (send to API)
-    // show a console.log for now
-    console.log("Form submitted", form, { userType, newsletter });
-    // TODO: call API
+    const payload = {
+      referral: form.referral.trim() || undefined,
+      firstName: form.firstName.trim(),
+      lastName: form.lastName.trim(),
+      email: form.email.trim().toLowerCase(),
+      mobile: form.mobile.trim(),
+      password: form.password,
+      gst: userType === "business" ? form.gst.trim() : undefined,
+      company: userType === "business" ? form.company.trim() : undefined,
+      userType: userType as "individual" | "business",
+      newsletter: newsletter === "yes",
+    };
+
+    try {
+      setSubmitting(true);
+      const res = await fetch("/api/medusa/customers/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        const message = data?.error || "Unable to create your account.";
+        setSubmitError(message);
+        toast.error(message);
+        return;
+      }
+
+      const nextCustomer = data?.customer ?? null;
+      if (nextCustomer) {
+        setCustomer(nextCustomer);
+      } else {
+        await refresh();
+      }
+      toast.success("Welcome to OWEG! Your account is ready.");
+      router.push("/");
+    } catch (err) {
+      console.error("Registration failed", err);
+      setSubmitError("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -226,6 +280,12 @@ const Signup = () => {
               <h1 className="text-3xl font-bold text-center mb-8 text-foreground font-footer">
                 Register for free to start shopping
               </h1>
+
+              {submitError && (
+                <div className="mb-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {submitError}
+                </div>
+              )}
 
               <form className="space-y-6" onSubmit={handleSubmit} noValidate>
                 {/* User Type */}
@@ -312,11 +372,11 @@ const Signup = () => {
                 {/* Referral */}
                 <div className={`input-group ${form.referral ? "filled" : ""}`}>
                   <Label htmlFor="referral" className="form-label font-footer">
-                    Referral code
+                    Referral code <span className="text-xs text-muted-foreground">(optional)</span>
                   </Label>
                   <Input
                     id="referral"
-                    placeholder="Referral code"
+                    placeholder="Enter referral (if you have one)"
                     className="mt-2 font-footer form-input"
                     value={form.referral}
                     onChange={handleChange}
@@ -509,10 +569,19 @@ const Signup = () => {
                 {/* Submit Button */}
                 <Button
                   type="submit"
-                  className={`w-full h-12 text-base font-footer submit-btn ${isFormValid() ? "" : "disabled"}`}
-                  disabled={!isFormValid()}
+                  className={`w-full h-12 text-base font-footer submit-btn ${
+                    isFormValid() && !submitting ? "" : "disabled"
+                  }`}
+                  disabled={!isFormValid() || submitting}
                 >
-                  Submit
+                  {submitting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Creating your account...
+                    </span>
+                  ) : (
+                    "Submit"
+                  )}
                 </Button>
 
                 {/* Login Link */}

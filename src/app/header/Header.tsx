@@ -11,6 +11,8 @@ import {
   ChevronDown,
   ChevronRight,
   X,
+  Heart,
+  ShoppingBag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +20,8 @@ import type { MedusaCategory } from "@/lib/medusa";
 import Link from "next/link";
 import Image from "next/image";
 import { useCartSummary } from "@/contexts/CartProvider";
+import { useAuth } from "@/contexts/AuthProvider";
+import { toast } from "sonner";
 
 const MENU_COLLECTIONS = [
   { title: "Home Appliances", handle: "home-appliances" },
@@ -121,6 +125,23 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
 
 const Header: React.FC = () => {
   const { count: cartCount } = useCartSummary();
+  const { customer, logout } = useAuth();
+  const [cartPreviewOpen, setCartPreviewOpen] = React.useState(false);
+  const [cartPreviewLoading, setCartPreviewLoading] = React.useState(false);
+  const [cartPreviewItems, setCartPreviewItems] = React.useState<
+    Array<{ id: string; title: string; qty: number; price: number; image?: string }>
+  >([]);
+  const [cartPreviewError, setCartPreviewError] = React.useState<string | null>(null);
+  const cartPreviewTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const priceFormatter = React.useMemo(
+    () =>
+      new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency: "INR",
+        minimumFractionDigits: 0,
+      }),
+    []
+  );
   const [collections, setCollections] = React.useState<
     { id?: string; title: string; handle?: string; created_at?: string }[]
   >([]);
@@ -148,10 +169,96 @@ const Header: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [mobileExpandedCat, setMobileExpandedCat] = React.useState<string | null>(null);
   const [mobileProfileOpen, setMobileProfileOpen] = React.useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
   const moreMenuRef = React.useRef<HTMLDivElement | null>(null);
   const mountedRef = React.useRef(false);
   const mobileCategories = React.useMemo(() => [...navCategories, ...overflowCategories], [navCategories, overflowCategories]);
   const mobileProfileRef = React.useRef<HTMLDivElement | null>(null);
+  const profileMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const wishlistCount = React.useMemo(() => {
+    const list = (customer?.metadata as Record<string, unknown> | null | undefined)?.wishlist
+    if (Array.isArray(list)) return list.length
+    return 0
+  }, [customer?.metadata])
+
+  const handleLogout = React.useCallback(async () => {
+    try {
+      await logout();
+      toast.success("You have been signed out.");
+    } catch (err) {
+      console.error("logout failed", err);
+      toast.error("Could not sign out. Please try again.");
+    } finally {
+      setProfileMenuOpen(false);
+      setMobileProfileOpen(false);
+    }
+  }, [logout]);
+
+  const fetchCartPreview = React.useCallback(async () => {
+    try {
+      setCartPreviewLoading(true);
+      setCartPreviewError(null);
+      const res = await fetch("/api/medusa/cart", { cache: "no-store", credentials: "include" });
+      if (!res.ok) {
+        setCartPreviewError("Unable to load cart");
+        setCartPreviewItems([]);
+        return;
+      }
+      const data = await res.json();
+      type CartLine = {
+        id?: string | number;
+        title?: string;
+        quantity?: number;
+        total?: number;
+        subtotal?: number;
+        unit_price?: number;
+        variant_id?: string | number;
+        product_id?: string | number;
+        thumbnail?: string;
+        variant?: { title?: string; thumbnail?: string };
+        product?: { title?: string; name?: string; thumbnail?: string; images?: { url?: string }[] };
+      };
+      type CartPayload = { items?: CartLine[] };
+      const cart = (data?.cart as CartPayload) ?? (data as CartPayload);
+      const items = Array.isArray(cart?.items)
+        ? cart.items.map((item) => ({
+            id: String(item.id || item.variant_id || item.product_id || Math.random()),
+            title: item.title || item.variant?.title || item.product?.title || item.product?.name || "Product",
+            qty: Number(item.quantity) || 1,
+            price:
+              Number(item.total) ||
+              Number(item.subtotal) ||
+              Number(item.unit_price) * (Number(item.quantity) || 1) ||
+              0,
+            image:
+              item.thumbnail ||
+              item.variant?.thumbnail ||
+              item.product?.thumbnail ||
+              (Array.isArray(item.product?.images) ? item.product.images[0]?.url : undefined),
+          }))
+        : [];
+      setCartPreviewItems(items);
+    } catch (err) {
+      console.warn("cart preview failed", err);
+      setCartPreviewError("Unable to load cart");
+      setCartPreviewItems([]);
+    } finally {
+      setCartPreviewLoading(false);
+    }
+  }, []);
+
+  const customerName = React.useMemo(() => {
+    if (!customer) return "";
+    const first = typeof customer.first_name === "string" ? customer.first_name.trim() : "";
+    const last = typeof customer.last_name === "string" ? customer.last_name.trim() : "";
+    const full = `${first} ${last}`.trim();
+    if (full) return full;
+    if (customer.email) {
+      const [local] = customer.email.split("@");
+      return local || customer.email;
+    }
+    return "Account";
+  }, [customer]);
 
   // mapping from category id to trigger element
   const triggersRef = React.useRef<Record<string, HTMLElement | null>>({});
@@ -367,6 +474,9 @@ const Header: React.FC = () => {
       if (mobileProfileRef.current && !mobileProfileRef.current.contains(target)) {
         setMobileProfileOpen(false);
       }
+      if (profileMenuRef.current && !profileMenuRef.current.contains(target)) {
+        setProfileMenuOpen(false);
+      }
       if (!target.closest("[data-nav-category]")) {
         // start a short delay before closing active category to allow mouse to enter portal
         startHideTimer();
@@ -487,7 +597,7 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header className="w-full header-root sticky top-0 z-[120] bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+    <header className="w-full header-root  sticky top-0 z-[120] bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       {/* Top Bar */}
       <div className="bg-header-top-bg text-header-top-text py-2 text-center text-sm">
         <p>
@@ -499,14 +609,14 @@ const Header: React.FC = () => {
       </div>
 
       {/* Main Header */}
-      <div className="bg-header-bg border-b">
-        <div className="container mx-auto px-4 py-4">
-          <div className="hidden md:flex items-center justify-between gap-4">
+      <div className="bg-header-bg ">
+        <div className="container mx-auto px-6 py-4">
+          <div className="hidden md:flex items-center gap-10 w-full">
             {/* Logo */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center ">
               <div className="text-3xl font-bold">
                 <Link href="/" className="flex items-center logo-link">
-                  <Image src="/oweg_logo.png" alt="OWEG" width={100} height={32} className="h-8 w-auto" />
+                  <Image src="/oweg_logo.png" alt="OWEG" width={100} height={32} className="h-12 w-auto" />
                 </Link>
               </div>
             </div>
@@ -521,7 +631,7 @@ const Header: React.FC = () => {
             </div>
 
             {/* Search Bar */}
-            <div className="flex-1 max-w-2xl">
+            <div className="flex-1 max-w-4xl mx-auto">
               <div className="flex gap-2 relative">
                 {/* Browse dropdown with Collections -> Categories */}
                 <div className="relative" data-browse-root>
@@ -649,20 +759,67 @@ const Header: React.FC = () => {
               </div>
             </div>
 
-            {/* Login/Signup Buttons */}
-            <div className="hidden md:flex items-center gap-3">
-              <Link href="/login">
-                <Button
-                  variant="outline"
-                  className="border-header-accent text-header-text hover:bg-header-accent hover:text-white transition-all duration-300"
-                >
-                  <User className="w-4 h-4 mr-2" />
-                  Login
-                </Button>
-              </Link>
-              <Link href="/signup">
-                <Button className="bg-header-accent hover:bg-header-accent/90 text-white">Sign Up</Button>
-              </Link>
+            {/* Account Buttons */}
+            <div className="hidden md:flex items-center gap-4 ml-auto">
+              {customer ? (
+                <div className="relative" ref={profileMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setProfileMenuOpen((prev) => !prev)}
+                    className="flex items-center gap-2 px-1 py-1 text-left hover:text-header-accent transition-colors"
+                  >
+                    <User className="w-4 h-4 text-header-text" />
+                    <div>
+                      <p className="text-xs text-header-muted leading-tight">Hello,</p>
+                      <p className="text-sm font-semibold text-header-text leading-tight">{customerName}</p>
+                    </div>
+                    <ChevronDown
+                      className={`w-4 h-4 text-header-text transition-transform ${
+                        profileMenuOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                  {profileMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white shadow-2xl ring-1 ring-black/5 py-2 z-50">
+                      <div className="px-4 py-3 text-xs text-gray-500 border-b border-gray-100">
+                        Signed in as
+                        <div className="text-sm font-semibold text-gray-900 break-words">
+                          {customer?.email || "Customer"}
+                        </div>
+                      </div>
+                      <Link
+                        href="/"
+                        className="block px-4 py-2 text-sm text-header-text hover:bg-gray-50"
+                        onClick={() => setProfileMenuOpen(false)}
+                      >
+                        Account settings
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="w-full text-left px-4 py-2 text-sm text-rose-600 hover:bg-rose-50"
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <Link href="/login">
+                    <Button
+                      variant="outline"
+                      className="border-header-accent text-header-text hover:bg-header-accent hover:text-white transition-all duration-300"
+                    >
+                      <User className="w-4 h-4 mr-2" />
+                      Login
+                    </Button>
+                  </Link>
+                  <Link href="/signup">
+                    <Button className="bg-header-accent hover:bg-header-accent/90 text-white">Sign Up</Button>
+                  </Link>
+                </>
+              )}
             </div>
 
             {/* Orders */}
@@ -673,21 +830,102 @@ const Header: React.FC = () => {
               </div>
             </div>
 
-            {/* Cart */}
-            <Link href="/cart" className="flex items-center gap-2 cursor-pointer group">
+            {/* Wishlist */}
+            <Link href="/wishlist" className="flex items-center gap-2 cursor-pointer group">
               <div className="relative" data-browse-root>
-                <ShoppingCart className="w-6 h-6 text-header-text group-hover:text-header-accent transition-colors" />
-                <span className="absolute -top-2 -right-2 bg-header-accent text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  {cartCount > 99 ? "99+" : cartCount}
-                </span>
+                <Heart className="w-6 h-6 text-header-text group-hover:text-header-accent transition-colors" />
+                {wishlistCount > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-header-accent text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {wishlistCount > 99 ? "99+" : wishlistCount}
+                  </span>
+                )}
               </div>
-              <span className="hidden lg:block text-sm font-medium text-header-text group-hover:text-header-accent transition-colors">Cart</span>
+              <span className="hidden lg:block text-sm font-medium text-header-text group-hover:text-header-accent transition-colors">Wishlist</span>
             </Link>
+
+            {/* Cart */}
+            <div
+              className="relative flex items-center cursor-pointer group"
+              onMouseEnter={() => {
+                if (cartPreviewTimer.current) {
+                  clearTimeout(cartPreviewTimer.current);
+                  cartPreviewTimer.current = null;
+                }
+                setCartPreviewOpen(true);
+                void fetchCartPreview();
+              }}
+              onMouseLeave={() => {
+                if (cartPreviewTimer.current) clearTimeout(cartPreviewTimer.current);
+                cartPreviewTimer.current = setTimeout(() => setCartPreviewOpen(false), 160);
+              }}
+            >
+              <Link href="/cart" className="flex items-center gap-2">
+                <div className="relative" data-browse-root>
+                  <ShoppingCart className="w-6 h-6 text-header-text group-hover:text-header-accent transition-colors" />
+                  <span className="absolute -top-2 -right-2 bg-header-accent text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {cartCount > 99 ? "99+" : cartCount}
+                  </span>
+                </div>
+                <span className="hidden lg:block text-sm font-medium text-header-text group-hover:text-header-accent transition-colors">Cart</span>
+              </Link>
+              {cartPreviewOpen && (
+                <div
+                  className="absolute right-0 top-full mt-2 w-80 rounded-2xl border border-gray-200 bg-white shadow-2xl ring-1 ring-black/5 p-3 z-[200]"
+                  onMouseEnter={() => {
+                    if (cartPreviewTimer.current) clearTimeout(cartPreviewTimer.current);
+                  }}
+                  onMouseLeave={() => setCartPreviewOpen(false)}
+                >
+                  <div className="flex items-center gap-2 mb-2 text-sm font-semibold text-header-text">
+                    <ShoppingBag className="w-4 h-4" />
+                    <span>Cart preview</span>
+                  </div>
+                  {cartPreviewLoading ? (
+                    <p className="text-sm text-slate-500">Loading...</p>
+                  ) : cartPreviewError ? (
+                    <p className="text-sm text-rose-500">{cartPreviewError}</p>
+                  ) : cartPreviewItems.length === 0 ? (
+                    <p className="text-sm text-slate-600">Your cart is empty.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {cartPreviewItems.slice(0, 4).map((item) => (
+                        <div key={item.id} className="flex gap-3 items-center">
+                          <div className="h-12 w-12 rounded-lg bg-gray-50 overflow-hidden flex-shrink-0">
+                            {item.image ? (
+                              <Image src={item.image} alt={item.title} width={48} height={48} className="h-full w-full object-contain" />
+                            ) : (
+                              <div className="h-full w-full bg-gray-100" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-slate-900 truncate">{item.title}</p>
+                            <p className="text-xs text-slate-500">Qty {item.qty}</p>
+                          </div>
+                          <div className="text-sm font-semibold text-slate-900">{priceFormatter.format(item.price)}</div>
+                        </div>
+                      ))}
+                      {cartPreviewItems.length > 4 && (
+                        <p className="text-xs text-slate-500">+{cartPreviewItems.length - 4} more item(s)</p>
+                      )}
+                    </div>
+                  )}
+                  <div className="mt-3">
+                    <Link
+                      href="/cart"
+                      className="block text-center rounded-full bg-header-accent text-white text-sm font-semibold px-3 py-2 hover:bg-header-accent/90 transition"
+                      onClick={() => setCartPreviewOpen(false)}
+                    >
+                      View cart
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-col gap-3 md:hidden">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 flex-1">
+              <div className="flex items-center gap-4 flex-1">
                 <button
                   type="button"
                   aria-label="Open menu"
@@ -697,7 +935,7 @@ const Header: React.FC = () => {
                   <Menu className="w-5 h-5" />
                 </button>
                 <Link href="/" className="flex items-center" aria-label="OWEG home">
-                  <Image src="/oweg_logo.png" alt="OWEG" width={120} height={32} className="h-8 w-auto" />
+                  <Image src="/oweg_logo.png" alt="OWEG" width={100} height={28} className="h-7 w-auto" />
                 </Link>
               </div>
               <div className="flex items-center gap-2">
@@ -705,31 +943,59 @@ const Header: React.FC = () => {
                   <button
                     type="button"
                     aria-label="Open account menu"
-                    className="w-11 h-11 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-header-text"
+                    className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-header-text"
                     onClick={() => setMobileProfileOpen((prev) => !prev)}
                   >
                     <User className="w-5 h-5" />
                   </button>
                   {mobileProfileOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-36 rounded-xl bg-white shadow-xl ring-1 ring-black/5 py-2 z-50">
-                      <Link
-                        href="/login"
-                        className="block px-4 py-2 text-sm text-header-text hover:bg-gray-50"
-                        onClick={() => setMobileProfileOpen(false)}
-                      >
-                        Login
-                      </Link>
-                      <Link
-                        href="/signup"
-                        className="block px-4 py-2 text-sm text-header-text hover:bg-gray-50"
-                        onClick={() => setMobileProfileOpen(false)}
-                      >
-                        Sign Up
-                      </Link>
+                    <div className="absolute right-0 top-full mt-2 w-40 rounded-xl bg-white shadow-xl ring-1 ring-black/5 py-2 z-50">
+                      {customer ? (
+                        <>
+                          <div className="px-4 py-2 text-sm text-header-text border-b border-gray-100">
+                            Hi, <span className="font-semibold">{customerName}</span>
+                          </div>
+                          <div className="px-4 py-2 text-sm text-header-text border-b border-gray-100">
+                            Returns & Orders
+                          </div>
+                          <button
+                            type="button"
+                            className="block w-full px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                            onClick={handleLogout}
+                          >
+                            Sign out
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <Link
+                            href="/login"
+                            className="block px-4 py-2 text-sm text-header-text hover:bg-gray-50"
+                            onClick={() => setMobileProfileOpen(false)}
+                          >
+                            Login
+                          </Link>
+                          <Link
+                            href="/signup"
+                            className="block px-4 py-2 text-sm text-header-text hover:bg-gray-50"
+                            onClick={() => setMobileProfileOpen(false)}
+                          >
+                            Sign Up
+                          </Link>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
-                <Link href="/cart" className="relative w-11 h-11 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-header-text" aria-label="Cart">
+                <Link href="/wishlist" className="relative w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-header-text" aria-label="Wishlist">
+                  <Heart className="w-5 h-5" />
+                  {wishlistCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 bg-header-accent text-white text-[11px] font-semibold rounded-full w-5 h-5 flex items-center justify-center">
+                      {wishlistCount > 99 ? "99+" : wishlistCount}
+                    </span>
+                  )}
+                </Link>
+                <Link href="/cart" className="relative w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-header-text" aria-label="Cart">
                   <ShoppingCart className="w-5 h-5" />
                   <span className="absolute -top-1.5 -right-1.5 bg-header-accent text-white text-[11px] font-semibold rounded-full w-5 h-5 flex items-center justify-center">
                     {cartCount > 99 ? "99+" : cartCount}

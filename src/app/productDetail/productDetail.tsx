@@ -1,7 +1,7 @@
-﻿// productDetail.tsx
-'use client'
+﻿'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 import Image from 'next/image'
 import { ChevronRight, Heart, Plus, X } from 'lucide-react'
@@ -43,6 +43,7 @@ import {
   notifyWishlistLogin,
   notifyWishlistSuccess,
 } from '@/lib/notifications'
+import { useAuth } from '@/contexts/AuthProvider'
 import { useCartSummary } from '@/contexts/CartProvider'
 
 type CategoryNode = Pick<MedusaCategory, 'id' | 'title' | 'name' | 'handle'> & {
@@ -104,13 +105,8 @@ function buildSummaryFromDetail(detail?: DetailedProductType | null, item?: Rela
 export default function ProductDetailPage({ productId }: ProductDetailProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [product, setProduct] = useState<DetailedProductType | null>(null)
-  const [related, setRelated] = useState<RelatedProduct[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
-  const [loadingRelated, setLoadingRelated] = useState(false)
+  const [selectedImage, setSelectedImage] = useState(0)
   const [activeTab, setActiveTab] = useState<DescriptionTab>('description')
   const [pinCode, setPinCode] = useState('')
   const [pinStatus, setPinStatus] = useState<PinStatus>('idle')
@@ -120,16 +116,66 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
   const [compareSelection, setCompareSelection] = useState<RelatedProduct[]>([])
   const [compareDetails, setCompareDetails] = useState<Record<string, DetailedProductType | null>>({})
   const [compareDetailsLoading, setCompareDetailsLoading] = useState<Record<string, boolean>>({})
-  const [categoryMap, setCategoryMap] = useState<Record<string, CategoryMapEntry>>({})
   const { syncFromCartPayload } = useCartSummary()
+  const summaryScrollRef = useRef<HTMLDivElement | null>(null)
   const outOfStockToastRef = useRef<string | null>(null)
+  const [wishlistBusy, setWishlistBusy] = useState(false)
   const sourceTagParam = searchParams?.get('sourceTag')?.trim() || undefined
   const sourceCategoryIdParam = searchParams?.get('sourceCategoryId')?.trim() || undefined
   const sourceCategoryHandleParam = searchParams?.get('sourceCategoryHandle')?.trim() || undefined
+  const { customer, setCustomer } = useAuth()
 
   const goToCart = useCallback(() => {
     router.push('/cart')
   }, [router])
+
+  // Capture wheel scrolling to exhaust summary content before page scroll
+  useEffect(() => {
+    const el = summaryScrollRef.current
+    if (!el) return
+
+    const onWheel = (event: WheelEvent) => {
+      if (!el) return
+      const delta = event.deltaY
+      const atTop = el.scrollTop <= 0
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight
+
+      // If there is still room to scroll inside the summary, consume the wheel event
+      if ((delta > 0 && !atBottom) || (delta < 0 && !atTop)) {
+        event.preventDefault()
+        el.scrollBy({ top: delta, behavior: 'auto' })
+      }
+    }
+
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+    }
+  }, [])
+  const {
+    data: productResponse,
+    isLoading: productLoading,
+    error: productQueryError,
+  } = useQuery({
+    queryKey: ['product-detail', productId],
+    enabled: Boolean(productId),
+    queryFn: async () => {
+      if (!productId) throw new Error('Missing product id')
+      const res = await fetch(`/api/medusa/products/${encodeURIComponent(productId)}`, { cache: 'no-store' })
+      if (!res.ok) {
+        throw new Error(res.status === 404 ? 'Product not found' : 'Unable to load product')
+      }
+      return (await res.json()) as { product: DetailedProductType }
+    },
+  })
+  const product = productResponse?.product ?? null
+  const isWishlisted = useMemo(() => {
+    const list = (customer?.metadata as Record<string, unknown> | undefined)?.wishlist
+    if (!Array.isArray(list)) return false
+    return list.map((id) => id?.toString()).includes(product?.id?.toString() || '')
+  }, [customer?.metadata, product?.id])
+  const error =
+    productQueryError instanceof Error ? productQueryError.message : productQueryError ? 'Unable to load product' : null
   const currentProductId = product?.id
   const categoryIds = useMemo(
     () => Array.from(new Set((product?.categories || []).map((cat) => cat.id).filter((id): id is string => !!id))),
@@ -150,6 +196,72 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
   type TrailNode = { id?: string; label: string; href?: string }
 
   const placeholders = useMemo(() => new Set(['category', 'categories', 'uncategorized', 'default']), [])
+
+  const categoriesQuery = useQuery({
+    queryKey: ['medusa-categories'],
+    queryFn: async () => {
+      const res = await fetch('/api/medusa/categories', { cache: 'no-store' })
+      if (!res.ok) {
+        throw new Error('Unable to load categories')
+      }
+      return res.json()
+    },
+  })
+  const categoryMap = useMemo(() => {
+    const data = categoriesQuery.data
+    const raw: CategoryNode[] = Array.isArray(data?.categories)
+      ? (data?.categories as CategoryNode[])
+      : Array.isArray(data?.product_categories)
+        ? (data?.product_categories as CategoryNode[])
+        : []
+    if (!raw.length) return {}
+    const entries: Record<string, CategoryMapEntry> = {}
+
+    function traverse(node: CategoryNode | undefined, parentId: string | null): void {
+      if (!node || !node.id) return
+      const title = (node.title || node.name || 'Category').toString()
+      entries[node.id] = {
+        title,
+        handle: node.handle || undefined,
+        parentId: parentId ?? node.parent_category_id ?? node.parent_category?.id ?? null,
+      }
+      const children = node.category_children || []
+      children.forEach((child: CategoryNode | undefined) => traverse(child, node.id))
+    }
+
+    const hasNested = raw.some((r) => Array.isArray(r.category_children) && r.category_children.length > 0)
+
+    if (hasNested) {
+      raw.forEach((root: CategoryNode) => traverse(root, root.parent_category_id ?? root.parent_category?.id ?? null))
+    } else {
+      raw.forEach((cat: CategoryNode) => {
+        if (!cat?.id) return
+        const title = (cat.title || cat.name || 'Category').toString()
+        const parent = cat.parent_category_id ?? cat.parent_category?.id ?? null
+        entries[cat.id] = {
+          title,
+          handle: cat.handle || undefined,
+          parentId: parent,
+        }
+      })
+    }
+
+    raw.forEach((node: CategoryNode) => {
+      if (!node?.id) return
+      const children = node.category_children || []
+      children.forEach((child: CategoryNode | undefined) => {
+        if (!child?.id) return
+        entries[child.id] = entries[child.id] || {
+          title: (child.title || child.name || 'Category').toString(),
+          handle: child.handle || undefined,
+          parentId: node.id,
+        }
+        entries[child.id].parentId = node.id
+      })
+    })
+
+    return entries
+  }, [categoriesQuery.data])
 
   const fallbackCategoryTrail = useMemo<TrailNode[]>(() => {
     const seen = new Set<string>()
@@ -176,7 +288,6 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
     return nodes
   }, [product, placeholders])
 
-  // Build breadcrumb trails using categoryMap (child -> parent chain)
   const categoryTrailsFromMap = useMemo<TrailNode[][]>(() => {
     if (!product?.categories?.length || !Object.keys(categoryMap).length) return []
     const buildTrail = (startId: string): TrailNode[] => {
@@ -216,7 +327,6 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
 
   const breadcrumbTrail = useMemo<TrailNode[]>(() => {
     if (deepestCategoryTrails.length) {
-      // If there are multiple deepest trails, prefer the one where last item matches product.primaryCategoryId (if present)
       if (product?.primaryCategoryId) {
         const match = deepestCategoryTrails.find((t) => t[t.length - 1]?.id === product.primaryCategoryId)
         if (match) return match
@@ -322,6 +432,9 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
   useEffect(() => {
     setSelectedImage(0)
   }, [galleryKey])
+  useEffect(() => {
+    setQuantity(1)
+  }, [productId])
 
   const highlights = useMemo(() => {
     if (product?.highlights?.length) return product.highlights
@@ -329,117 +442,6 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
     if (product?.categories?.length) return product.categories.map((c) => c.title).filter(Boolean)
     return []
   }, [product, preferredTagValues])
-
-  useEffect(() => {
-    let ignore = false
-
-    async function loadCategories() {
-      try {
-        const res = await fetch('/api/medusa/categories', { cache: 'no-store' })
-        if (!res.ok) return
-        const data = await res.json()
-        const raw = Array.isArray(data.categories) ? (data.categories as CategoryNode[]) : (Array.isArray(data.product_categories) ? data.product_categories as CategoryNode[] : [])
-        const entries: Record<string, CategoryMapEntry> = {}
-
-        // Helper: traverse nested tree (if API returns hierarchical structure)
-        function traverse(node: CategoryNode | undefined, parentId: string | null): void {
-          if (!node || !node.id) return
-          const title = (node.title || node.name || 'Category').toString()
-          entries[node.id] = {
-            title,
-            handle: node.handle || undefined,
-            parentId: parentId ?? node.parent_category_id ?? node.parent_category?.id ?? null,
-          }
-          const children = node.category_children || []
-          children.forEach((child: CategoryNode | undefined) => traverse(child, node.id))
-        }
-
-        // If API returned nested objects (some nodes have category_children), use traversal
-        const hasNested = raw.some((r) => Array.isArray(r.category_children) && r.category_children.length > 0)
-
-        if (hasNested) {
-          raw.forEach((root: CategoryNode) =>
-            traverse(root, root.parent_category_id ?? root.parent_category?.id ?? null)
-          )
-        } else {
-          // Flat list case: create all entries from fields, using parent_category_id or parent_category.id when present
-          raw.forEach((cat: CategoryNode) => {
-            if (!cat?.id) return
-            const title = (cat.title || cat.name || 'Category').toString()
-            const parent = cat.parent_category_id ?? cat.parent_category?.id ?? null
-            entries[cat.id] = {
-              title,
-              handle: cat.handle || undefined,
-              parentId: parent,
-            }
-          })
-        }
-
-        // Second pass: ensure that where a node lists children via category_children, those children's parentId is exactly the parent id.
-        raw.forEach((node: CategoryNode) => {
-          if (!node?.id) return
-          const children = node.category_children || []
-          children.forEach((child: CategoryNode | undefined) => {
-            if (!child?.id) return
-            // override parent if inconsistent
-            entries[child.id] = entries[child.id] || {
-              title: (child.title || child.name || 'Category').toString(),
-              handle: child.handle || undefined,
-              parentId: node.id,
-            }
-            // ensure parent is set correctly
-            entries[child.id].parentId = node.id
-          })
-        })
-
-        // All good - set category map
-        if (!ignore) {
-          setCategoryMap(entries)
-        }
-      } catch {
-        // ignore fetch errors
-      }
-    }
-
-    loadCategories()
-    return () => {
-      ignore = true
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    async function loadProduct() {
-      if (!productId) return
-      setLoading(true)
-      setError(null)
-      setSelectedImage(0)
-      setQuantity(1)
-      try {
-        const res = await fetch(`/api/medusa/products/${encodeURIComponent(productId)}`, {
-          cache: 'no-store',
-        })
-        if (!res.ok) {
-          throw new Error(res.status === 404 ? 'Product not found' : 'Unable to load product')
-        }
-        const data = await res.json()
-        if (!cancelled) {
-          setProduct(data.product as DetailedProductType)
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setProduct(null)
-          setError(err instanceof Error ? err.message : 'Unable to load product')
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    loadProduct()
-    return () => {
-      cancelled = true
-    }
-  }, [productId])
 
   const primaryAwareCategoryKey = useMemo(() => primaryAwareCategoryIds.join('|'), [primaryAwareCategoryIds])
   const categoryHandlesKey = useMemo(() => categoryHandlesForFetch.join('|'), [categoryHandlesForFetch])
@@ -479,171 +481,155 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
       categoryMapSignature,
     ]
   )
-
-  useEffect(() => {
-    const typeQuery = product?.type || undefined
-    const categoryLabel = product?.categories?.[0]?.title
-    const tagValues = preferredTagValues
-    const hasCategoryContext = primaryAwareCategoryIds.length || categoryHandlesForFetch.length
-    const categoryHandleLookup = new Map<string, string>()
-    Object.entries(categoryMap).forEach(([id, entry]) => {
-      if (entry?.handle) {
-        categoryHandleLookup.set(entry.handle, id)
-      }
-    })
-    if (!hasCategoryContext && !typeQuery && !categoryLabel && !tagValues.length) {
-      setRelated([])
-      return
-    }
-
-    let cancelled = false
-    type PathMeta = {
-      url: string
-      hintId?: string
-      hintLabel?: string
-    }
-
-    const fetchCandidates = async (meta: PathMeta) => {
-      try {
-        const res = await fetch(meta.url, { cache: 'no-store' })
-        if (!res.ok) return []
-        const data = await res.json()
-        let list: RelatedProduct[] = (data.products || [])
-          .filter((p: RelatedProduct) => p.id !== currentProductId)
-          .map((p: RelatedProduct) => enrichRelatedProduct(p))
-        if (meta.hintId) {
-          const hintKey = String(meta.hintId)
-          list = list.map((item) => {
-            const categories = new Set((item.category_ids || []).map((id) => id && String(id)).filter(Boolean) as string[])
-            categories.add(hintKey)
-            const labels = { ...(item.category_labels || {}) }
-            if (meta.hintLabel) {
-              labels[hintKey] = meta.hintLabel
-            }
-            return {
-              ...item,
-              category_ids: Array.from(categories),
-              category_labels: Object.keys(labels).length ? labels : item.category_labels,
-            }
-          })
-        }
-        return list
-      } catch {
+  const relatedQuery = useQuery({
+    queryKey: ['related-products', relatedFetchSignature],
+    enabled: Boolean(currentProductId),
+    queryFn: async () => {
+      const typeQuery = product?.type || undefined
+      const categoryLabel = product?.categories?.[0]?.title
+      const tagValues = preferredTagValues
+      const hasCategoryContext = primaryAwareCategoryIds.length || categoryHandlesForFetch.length
+      if (!hasCategoryContext && !typeQuery && !categoryLabel && !tagValues.length) {
         return []
       }
-    }
+      const categoryHandleLookup = new Map<string, string>()
+      Object.entries(categoryMap).forEach(([id, entry]) => {
+        if (entry?.handle) categoryHandleLookup.set(entry.handle, id)
+      })
 
-    async function loadRelated() {
-      setLoadingRelated(true)
-      try {
-        const desiredCount = 24
-        const buildTagPath = (tag: string) =>
-          `/api/medusa/products?tag=${encodeURIComponent(tag)}&limit=${desiredCount}`
-        const tagPaths: PathMeta[] =
-          preferredTagValues.length > 0 && !sourceCategoryIdParam && !sourceCategoryHandleParam
-            ? preferredTagValues.map((tag) => ({ url: buildTagPath(tag) }))
-            : []
-        const categoryPaths: PathMeta[] = [
-          ...primaryAwareCategoryIds.map((id) => ({
-            url: `/api/medusa/products?categoryId=${encodeURIComponent(id)}&limit=${desiredCount}`,
-            hintId: id,
-            hintLabel: categoryMap[id]?.title || categoryMap[id]?.handle || 'Category',
-          })),
-          ...categoryHandlesForFetch.map((handle) => {
-            const resolvedId = categoryHandleLookup.get(handle)
-            const label =
-              (resolvedId && (categoryMap[resolvedId]?.title || categoryMap[resolvedId]?.handle)) ||
-              humanizeCategoryLabel(handle)
-            return {
-              url: `/api/medusa/products?category=${encodeURIComponent(handle)}&limit=${desiredCount}`,
-              hintId: resolvedId || `handle:${handle}`,
-              hintLabel: label,
-            }
-          }),
-        ]
-        const fallbackPaths: PathMeta[] = []
-        if (typeQuery) {
-          fallbackPaths.push({ url: `/api/medusa/products?type=${encodeURIComponent(typeQuery)}&limit=${desiredCount}` })
-        }
-        if (categoryLabel) {
-          const normalizedLabel = humanizeCategoryLabel(categoryLabel)
-          fallbackPaths.push({
-            url: `/api/medusa/products?category=${encodeURIComponent(categoryLabel)}&limit=${desiredCount}`,
-            hintId: `label:${normalizedLabel}`,
-            hintLabel: normalizedLabel,
-          })
-        }
-
-        const seen = new Map<string | number, RelatedProduct>()
-    const runPaths = async (paths: PathMeta[], stopAfterFirstNewBatch: boolean) => {
-      for (const meta of paths) {
-        const before = seen.size
-        const batch = await fetchCandidates(meta)
-        batch.forEach((item) => {
-          if (!seen.has(item.id)) {
-            seen.set(item.id, item)
-            return
+      const desiredCount = 24
+      const fetchCandidates = async (meta: { url: string; hintId?: string; hintLabel?: string }) => {
+        try {
+          const res = await fetch(meta.url, { cache: 'no-store' })
+          if (!res.ok) return []
+          const data = await res.json()
+          let list: RelatedProduct[] = (data.products || [])
+            .filter((p: RelatedProduct) => p.id !== currentProductId)
+            .map((p: RelatedProduct) => enrichRelatedProduct(p))
+          if (meta.hintId) {
+            const hintKey = String(meta.hintId)
+            list = list.map((item) => {
+              const categories = new Set((item.category_ids || []).map((id) => id && String(id)).filter(Boolean) as string[])
+              categories.add(hintKey)
+              const labels = { ...(item.category_labels || {}) }
+              if (meta.hintLabel) labels[hintKey] = meta.hintLabel
+              return {
+                ...item,
+                category_ids: Array.from(categories),
+                category_labels: Object.keys(labels).length ? labels : item.category_labels,
+              }
+            })
           }
-          const existing = seen.get(item.id)!
-          const mergedIds = Array.from(
-            new Set(
-              [...(existing.category_ids || []), ...(item.category_ids || [])]
-                .map((value) => (value == null ? '' : String(value)))
-                .filter((value) => value.trim().length > 0)
-            )
-          )
-          const mergedLabels = { ...(existing.category_labels || {}) }
-          Object.entries(item.category_labels || {}).forEach(([key, value]) => {
-            if (value && !mergedLabels[key]) {
-              mergedLabels[key] = value
-            }
-          })
-          seen.set(item.id, {
-            ...existing,
-            ...item,
-            category_ids: mergedIds.length ? mergedIds : existing.category_ids,
-            category_labels:
-              Object.keys(mergedLabels).length > 0 ? mergedLabels : existing.category_labels,
-          })
+          return list
+        } catch {
+          return []
+        }
+      }
+
+      const humanizeHandle = (value: string) =>
+        value
+          .replace(/[-_]+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .replace(/\b\w/g, (char) => char.toUpperCase())
+          .trim()
+
+      const buildTagPath = (tag: string) => `/api/medusa/products?tag=${encodeURIComponent(tag)}&limit=${desiredCount}`
+      const tagPaths =
+        tagValues.length > 0 && !sourceCategoryIdParam && !sourceCategoryHandleParam
+          ? tagValues.map((tag) => ({ url: buildTagPath(tag) }))
+          : []
+      const categoryPaths = [
+        ...primaryAwareCategoryIds.map((id) => ({
+          url: `/api/medusa/products?categoryId=${encodeURIComponent(id)}&limit=${desiredCount}`,
+          hintId: id,
+          hintLabel: categoryMap[id]?.title || categoryMap[id]?.handle || 'Category',
+        })),
+        ...categoryHandlesForFetch.map((handle) => {
+          const resolvedId = categoryHandleLookup.get(handle)
+          const label =
+            (resolvedId && (categoryMap[resolvedId]?.title || categoryMap[resolvedId]?.handle)) || humanizeHandle(handle)
+          return {
+            url: `/api/medusa/products?category=${encodeURIComponent(handle)}&limit=${desiredCount}`,
+            hintId: resolvedId || `handle:${handle}`,
+            hintLabel: label,
+          }
+        }),
+      ]
+      const fallbackPaths: { url: string; hintId?: string; hintLabel?: string }[] = []
+      if (typeQuery) {
+        fallbackPaths.push({ url: `/api/medusa/products?type=${encodeURIComponent(typeQuery)}&limit=${desiredCount}` })
+      }
+      if (categoryLabel) {
+        const normalizedLabel = humanizeHandle(categoryLabel)
+        fallbackPaths.push({
+          url: `/api/medusa/products?category=${encodeURIComponent(categoryLabel)}&limit=${desiredCount}`,
+          hintId: `label:${normalizedLabel}`,
+          hintLabel: normalizedLabel,
         })
-        if (seen.size >= desiredCount) return true
-        if (stopAfterFirstNewBatch && seen.size > before) return true
       }
-      return false
-        }
 
-        let satisfied = false
-        if (tagPaths.length) {
-          satisfied = await runPaths(tagPaths, true)
+      const seen = new Map<string | number, RelatedProduct>()
+      const runPaths = async (
+        paths: Array<{ url: string; hintId?: string; hintLabel?: string }>,
+        stopAfterFirstNewBatch: boolean
+      ) => {
+        for (const meta of paths) {
+          const before = seen.size
+          const batch = await fetchCandidates(meta)
+          batch.forEach((item) => {
+            if (!seen.has(item.id)) {
+              seen.set(item.id, item)
+              return
+            }
+            const existing = seen.get(item.id)!
+            const mergedIds = Array.from(
+              new Set(
+                [...(existing.category_ids || []), ...(item.category_ids || [])]
+                  .map((value) => (value == null ? '' : String(value)))
+                  .filter((value) => value.trim().length > 0)
+              )
+            )
+            const mergedLabels = { ...(existing.category_labels || {}) }
+            Object.entries(item.category_labels || {}).forEach(([key, value]) => {
+              if (value && !mergedLabels[key]) {
+                mergedLabels[key] = value
+              }
+            })
+            seen.set(item.id, {
+              ...existing,
+              ...item,
+              category_ids: mergedIds.length ? mergedIds : existing.category_ids,
+              category_labels: Object.keys(mergedLabels).length > 0 ? mergedLabels : existing.category_labels,
+            })
+          })
+          if (seen.size >= desiredCount) return true
+          if (stopAfterFirstNewBatch && seen.size > before) return true
         }
-        if (categoryPaths.length) {
-          const categoryResult = await runPaths(categoryPaths, !satisfied)
-          satisfied = satisfied || categoryResult
-        }
-        if (!satisfied && fallbackPaths.length) {
-          await runPaths(fallbackPaths, false)
-        }
-
-        if (!cancelled) {
-          const result = Array.from(seen.values())
-          const categorySet = new Set(primaryAwareCategoryIds)
-          const filtered =
-            categorySet.size > 0
-              ? result.filter((item) => item.category_ids?.some((id) => categorySet.has(id)))
-              : result
-          setRelated(filtered.length ? filtered : result)
-        }
-      } catch {
-        if (!cancelled) setRelated([])
-      } finally {
-        if (!cancelled) setLoadingRelated(false)
+        return false
       }
-    }
-    loadRelated()
-    return () => {
-      cancelled = true
-    }
-  }, [relatedFetchSignature])
+
+      let satisfied = false
+      if (tagPaths.length) {
+        satisfied = await runPaths(tagPaths, true)
+      }
+      if (categoryPaths.length) {
+        const categoryResult = await runPaths(categoryPaths, !satisfied)
+        satisfied = satisfied || categoryResult
+      }
+      if (!satisfied && fallbackPaths.length) {
+        await runPaths(fallbackPaths, false)
+      }
+
+      const result = Array.from(seen.values())
+      const categorySet = new Set(primaryAwareCategoryIds)
+      const filtered =
+        categorySet.size > 0 ? result.filter((item) => item.category_ids?.some((id) => categorySet.has(id))) : result
+      return filtered.length ? filtered : result
+    },
+  })
+  const related = relatedQuery.data || []
+  const loadingRelated = relatedQuery.isLoading
+
 
   useEffect(() => {
     setActiveTab('description')
@@ -1108,12 +1094,60 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
     notifyCheckoutComingSoon()
   }
 
-  const handleAddToWishlist = () => {
-    notifyWishlistLogin(() => router.push('/login'))
+  const handleAddToWishlist = async () => {
+    await addProductToWishlist(product?.id, product?.title)
   }
 
   const handleSaveForLater = () => {
-    notifyWishlistSuccess(product?.title ?? 'Item')
+    void addProductToWishlist(product?.id, product?.title)
+  }
+
+  const addProductToWishlist = async (id?: string, label?: string) => {
+    if (!id) {
+      toast.error('This product is unavailable.')
+      return
+    }
+    if (!customer) {
+      notifyWishlistLogin(() => router.push('/login'))
+      return
+    }
+    const existing = (customer.metadata as Record<string, unknown> | undefined)?.wishlist
+    if (Array.isArray(existing) && existing.map((v) => v?.toString()).includes(id)) {
+      toast.info('Already in your wishlist.')
+      return
+    }
+    if (wishlistBusy) return
+    try {
+      setWishlistBusy(true)
+      const res = await fetch('/api/medusa/wishlist', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ productId: id }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        const message =
+          (data && (data.error || data.message)) || 'Unable to save to wishlist.'
+        toast.error(message)
+        return
+      }
+      if (data?.wishlist && Array.isArray(data.wishlist)) {
+        setCustomer({
+          ...(customer || {}),
+          metadata: {
+            ...(customer?.metadata || {}),
+            wishlist: data.wishlist,
+          },
+        })
+      }
+      notifyWishlistSuccess(label ?? 'Item')
+    } catch (err) {
+      console.warn('addProductToWishlist failed', err)
+      toast.error('Unable to save to wishlist. Please try again.')
+    } finally {
+      setWishlistBusy(false)
+    }
   }
 
   const shareProduct = async () => {
@@ -1183,7 +1217,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
       <main className="w-full max-w-7xl mx-auto px-4 py-8 lg:py-12 flex-1">
         <Breadcrumbs items={breadcrumbItems} pillClassName={breadcrumbPillClass} />
 
-        {loading ? (
+        {productLoading ? (
           <div className="animate-pulse space-y-6">
             <div className="h-64 rounded-2xl bg-white/70" />
             <div className="grid lg:grid-cols-2 gap-8">
@@ -1205,14 +1239,33 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
           </div>
         ) : product ? (
           <>
-            <section className="grid lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)] gap-8 lg:gap-10 mb-10">
-              <ProductGallery
-                images={galleryImages}
-                selectedIndex={selectedImage}
-                onSelect={setSelectedImage}
-                fallback={FALLBACK_IMAGE}
-              />
-              <div className="space-y-5 lg:pl-4">
+            {/* ====== MAIN TWO-COLUMN: LEFT = STICKY GALLERY, RIGHT = SCROLLABLE SUMMARY ====== */}
+            <section className="grid lg:grid-cols-2 gap-6 lg:gap-8 mb-10 items-start">
+              {/* LEFT: Sticky Image/Gallery */}
+              <div className="relative lg:sticky lg:top-24 self-start">
+                <ProductGallery
+                  images={galleryImages}
+                  selectedIndex={selectedImage}
+                  onSelect={setSelectedImage}
+                  fallback={FALLBACK_IMAGE}
+                />
+
+                <button
+                  type="button"
+                  onClick={handleAddToWishlist}
+                  className="sm:hidden absolute top-3 right-3 inline-flex items-center justify-center rounded-full border border-rose-200 bg-white/90 text-rose-500 p-2 shadow"
+                  aria-label="Add to wishlist"
+                >
+                  <Heart className="w-6 h-6" fill={isWishlisted ? 'currentColor' : 'none'} />
+                </button>
+              </div>
+
+              {/* RIGHT: Scrollable Summary */}
+              <div
+                ref={summaryScrollRef}
+                className="space-y-5 lg:pl-4 lg:pr-2 lg:max-h-[calc(100vh-160px)] lg:overflow-y-auto lg:pr-3 lg:-mr-3 lg:scrollbar-thin lg:scrollbar-thumb-transparent lg:scrollbar-track-transparent"
+                style={{ scrollbarWidth: 'none' }}
+              >
                 <ProductSummary
                   product={product}
                   brandName={brandName}
@@ -1226,6 +1279,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                   onBuyNow={handleBuyNow}
                   onShare={shareProduct}
                   onSaveForLater={handleSaveForLater}
+                  isWishlisted={isWishlisted}
                   onOpenCompare={() => setCompareModalOpen(true)}
                   formatPrice={(value) => inr.format(value)}
                 />
@@ -1239,6 +1293,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
               </div>
             </section>
 
+            {/* ====== REST OF THE PAGE ====== */}
             <section className="mt-12">
               <div className="relative overflow-hidden rounded-[36px] border border-emerald-100 bg-gradient-to-b from-emerald-50 via-white to-green-50 shadow-xl transition duration-700 hover:-translate-y-0.5 hover:shadow-2xl">
                 <div className="pointer-events-none absolute -left-10 top-0 h-48 w-48 rounded-full bg-emerald-300/20 blur-3xl animate-pulse" aria-hidden="true" />
@@ -1253,18 +1308,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                       <h2 className="text-3xl font-bold text-slate-900 sm:text-[2.4rem] sm:leading-tight">
                         {`Put your \u20B9${Math.round(savedAmount).toLocaleString('en-IN')} savings back into something delightful`}
                       </h2>
-                      
                     </div>
-                    {/* <div className="flex flex-wrap justify-center gap-3 text-xs font-semibold text-slate-700">
-                      {['Lightning updates', 'Category smart-filter', 'Quick add-to-cart'].map((feature) => (
-                        <span
-                          key={feature}
-                          className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 shadow-sm ring-1 ring-white/40 transition hover:-translate-y-0.5 hover:bg-white"
-                        >
-                          {feature}
-                        </span>
-                      ))}
-                    </div> */}
                   </div>
                   <div className="relative rounded-[28px] border border-white/60 bg-white/90 p-4 sm:p-6 lg:p-8 shadow-lg">
                     <ProductSavingsExplorer
@@ -1275,8 +1319,8 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                       categoryOptions={savingsCategoryOptions}
                       formatCurrency={(value) => inr.format(value)}
                       onQuickAdd={async (item) => addVariantToCart(item.variant_id, 1, item.name)}
-                      onWishlist={() => {
-                        handleAddToWishlist()
+                      onWishlist={(item) => {
+                        void addProductToWishlist(item.id?.toString(), item.name)
                       }}
                     />
                   </div>
@@ -1416,7 +1460,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                                 onClick={(event) => {
                                   event.preventDefault()
                                   event.stopPropagation()
-                                  notifyWishlistLogin(() => router.push('/login'))
+                                  void addProductToWishlist(item.id?.toString(), item.name)
                                 }}
                                 className="w-9 h-9 rounded-full bg-white text-slate-600 flex items-center justify-center shadow border border-slate-200 hover:text-red-500"
                                 aria-label="Add to wishlist"
