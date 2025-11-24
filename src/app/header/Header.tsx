@@ -878,7 +878,7 @@ const Header: React.FC = () => {
             </div>
 
             {/* Right Section - Account, Orders, Cart */}
-            <div className="hidden md:flex items-center gap-4 lg:gap-5">
+            <div className="hidden md:flex items-center gap-4 lg:gap-5 ml-auto">
               {/* Account Section - Always visible (like Amazon) */}
               <div
                 className="relative group"
