@@ -2,7 +2,8 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
-import { ChevronLeft, ChevronRight, Expand, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { getImageUrlForNewTab } from '@/lib/image-utils'
 
 type ProductGalleryProps = {
   images: string[]
@@ -128,16 +129,33 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback }: ProductGa
           onTouchStart={handleTouchStart}
         >
           
-          <Image
-            src={activeImage}
-            alt="Selected product image"
-            fill
-            sizes="(max-width: 1024px) 100vw, 50vw"
-            className="object-contain p-4 lg:p-10 transition-transform duration-300 group-hover:scale-105"
-            priority
-          />
+          <a
+            href={getImageUrlForNewTab(activeImage)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute inset-0 z-10"
+            onClick={(e) => {
+              // Only open in new tab on middle-click or Ctrl/Cmd+click
+              // Regular click should not navigate
+              if (e.button === 1 || e.ctrlKey || e.metaKey) {
+                return; // Allow default behavior
+              }
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            aria-label="Open image in new tab"
+          >
+            <Image
+              src={activeImage}
+              alt="Selected product image"
+              fill
+              sizes="(max-width: 1024px) 100vw, 50vw"
+              className="object-contain p-4 lg:p-10 transition-transform duration-300 group-hover:scale-105 pointer-events-none"
+              priority
+            />
+          </a>
           {hasMultiple && (
-            <div className="absolute inset-x-0 bottom-4 flex justify-between px-4">
+            <div className="absolute inset-x-0 bottom-4 flex justify-between px-4 z-30">
               <button
                 type="button"
                 onClick={() => handleNavigate('prev')}
@@ -155,7 +173,7 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback }: ProductGa
             </div>
           )}
         <div
-          className="pointer-events-none absolute hidden lg:block"
+          className="pointer-events-none absolute hidden lg:block z-20"
           style={{
             width: LENS_SIZE * 1.3,
             height: LENS_SIZE,
@@ -223,7 +241,23 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback }: ProductGa
             onTouchStart={handleModalTouchStart}
             onTouchEnd={handleModalTouchEnd}
           >
-            <Image src={activeImage} alt="Fullscreen product image" fill sizes="100vw" className="object-contain" priority />
+            <a
+              href={getImageUrlForNewTab(activeImage)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="absolute inset-0 z-10"
+              onClick={(e) => {
+                // Only open in new tab on middle-click or Ctrl/Cmd+click
+                if (e.button === 1 || e.ctrlKey || e.metaKey) {
+                  return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              aria-label="Open image in new tab"
+            >
+              <Image src={activeImage} alt="Fullscreen product image" fill sizes="100vw" className="object-contain pointer-events-none" priority />
+            </a>
           </div>
           <div className="flex items-center justify-between px-6 pb-6 sm:px-10">
             <button

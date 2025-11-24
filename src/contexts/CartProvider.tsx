@@ -32,12 +32,22 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
 
   const refresh = useCallback(async () => {
     try {
+      const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
       const res = await fetch("/api/medusa/cart", {
         cache: "no-store",
         credentials: "include",
+        headers: {
+          ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
+        },
       });
       if (!res.ok) return;
       const data = (await res.json()) as CartApiPayload;
+      
+      // If guest cart ID is returned, store it in localStorage
+      if (data.guestCartId && typeof window !== "undefined") {
+        localStorage.setItem("guest_cart_id", data.guestCartId);
+      }
+      
       syncFromCartPayload(data);
     } catch (err) {
       console.error("Failed to refresh cart", err);
