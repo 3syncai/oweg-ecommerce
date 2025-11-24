@@ -72,7 +72,7 @@ export function useAddToCart() {
       const payload = (await response.json()) as AddToCartResponse;
       
       // If guest cart ID is returned, store it in localStorage
-      if (payload.guestCartId && !customer) {
+      if (payload.guestCartId && !customer && typeof payload.guestCartId === "string") {
         setGuestCartId(payload.guestCartId);
       }
 

@@ -44,7 +44,7 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       const data = (await res.json()) as CartApiPayload;
       
       // If guest cart ID is returned, store it in localStorage
-      if (data.guestCartId && typeof window !== "undefined") {
+      if (data.guestCartId && typeof window !== "undefined" && typeof data.guestCartId === "string") {
         localStorage.setItem("guest_cart_id", data.guestCartId);
       }
       

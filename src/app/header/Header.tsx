@@ -664,7 +664,7 @@ const Header: React.FC = () => {
   return (
     <header className="w-full header-root sticky top-0 z-[120] bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       {/* Top Bar */}
-      <div className="bg-header-top-bg text-header-top-text py-2 text-center text-sm">
+      <div className="bg-header-top-bg text-header-top-text py-2.5 text-center text-sm">
         <p>
           Get 10% Extra off! - Use Code <span className="font-semibold">OWEG10</span>{" "}
           <a href="#" className="underline hover:text-header-accent transition-colors">
@@ -675,7 +675,7 @@ const Header: React.FC = () => {
 
       {/* Main Header */}
       <div className="bg-header-bg">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-3">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
           <div className="hidden md:flex items-center gap-6 lg:gap-8 w-full">
             {/* Logo */}
             <div className="flex items-center flex-shrink-0">
@@ -687,7 +687,7 @@ const Header: React.FC = () => {
             {/* Delivery Location */}
             <button
               type="button"
-              className="hidden lg:flex items-center gap-2 text-sm location-block hover:opacity-80 transition-opacity"
+              className="hidden lg:flex items-center gap-2.5 text-sm location-block hover:opacity-80 transition-opacity px-2"
               onClick={() => {
                 // TODO: Open location modal
                 toast.info("Location selector coming soon");
@@ -701,7 +701,7 @@ const Header: React.FC = () => {
             </button>
 
             {/* Search Bar */}
-            <div className="flex-1 max-w-3xl">
+            <div className="flex-1 max-w-3xl mx-4">
               <div className="flex gap-0 relative items-stretch">
                 {/* Category Dropdown ("All") - Pixel Perfect */}
                 <div className="relative" data-browse-root>
@@ -878,7 +878,7 @@ const Header: React.FC = () => {
             </div>
 
             {/* Right Section - Account, Orders, Cart */}
-            <div className="hidden md:flex items-center gap-4 lg:gap-5 ml-auto">
+            <div className="hidden md:flex items-center gap-4 lg:gap-5 ml-auto flex-shrink-0">
               {/* Account Section - Always visible (like Amazon) */}
               <div
                 className="relative group"
@@ -888,7 +888,7 @@ const Header: React.FC = () => {
                   setProfileMenuOpen(true);
                 }}
                 onMouseLeave={() => {
-                  profileMenuTimerRef.current = window.setTimeout(() => setProfileMenuOpen(false), 300);
+                  profileMenuTimerRef.current = setTimeout(() => setProfileMenuOpen(false), 300) as ReturnType<typeof setTimeout>;
                 }}
               >
                 <button
@@ -921,7 +921,7 @@ const Header: React.FC = () => {
                       setProfileMenuOpen(true);
                     }}
                     onMouseLeave={() => {
-                      profileMenuTimerRef.current = window.setTimeout(() => setProfileMenuOpen(false), 300);
+                      profileMenuTimerRef.current = setTimeout(() => setProfileMenuOpen(false), 300) as ReturnType<typeof setTimeout>;
                     }}
                   >
                     {customer ? (
@@ -1156,7 +1156,7 @@ const Header: React.FC = () => {
                 ref={(el) => {
                   allTriggerRef.current = el;
                 }}
-                className="flex items-center gap-2 py-3 text-header-text hover:text-header-accent transition-colors whitespace-nowrap"
+                className="flex items-center gap-2 py-3 px-2 text-header-text hover:text-header-accent transition-colors whitespace-nowrap"
                 onClick={() => { setAllOpen((v) => !v); }}
                 aria-haspopup="menu"
                 aria-expanded={allOpen}
@@ -1184,7 +1184,7 @@ const Header: React.FC = () => {
                     <Link
                       href={categoryHref}
                       ref={(el: HTMLAnchorElement | null) => { triggersRef.current[cat.id] = el; }}
-                      className="nav-link relative py-3 pr-6 md:pr-0 text-sm text-header-text font-medium whitespace-nowrap transition-colors hover:text-header-accent flex items-center gap-1"
+                      className="nav-link relative py-3 px-2 pr-6 md:pr-2 text-sm text-header-text font-medium whitespace-nowrap transition-colors hover:text-header-accent flex items-center gap-1.5"
                       onClick={() => {
                         setSelectedFilter({ type: "category", title: cat.title, handle: cat.handle });
                       }}
