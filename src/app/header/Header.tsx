@@ -3,41 +3,29 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import {
-  MapPin,
   Search,
-  ShoppingCart,
-  User,
   Menu,
   ChevronDown,
   ChevronRight,
   X,
   Heart,
-  ShoppingBag,
+  User,
 } from "lucide-react";
+// import UserIcon from "@/components/ui/icons/UserIcon";
+import OrderIcon from "@/components/ui/icons/OrderIcon";
+import CartIcon from "@/components/ui/icons/CartIcon";
+import LocationIcon from "@/components/ui/icons/LocationIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { MedusaCategory } from "@/lib/medusa";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useCartSummary } from "@/contexts/CartProvider";
 import { useAuth } from "@/contexts/AuthProvider";
 import { toast } from "sonner";
-
-const MENU_COLLECTIONS = [
-  { title: "Home Appliances", handle: "home-appliances" },
-  { title: "Kitchen Appliances", handle: "kitchen-appliances" },
-  { title: "Computer & Mobile Accessories", handle: "computer-&-mobile-accessories" },
-  { title: "Surveillance & Security", handle: "surveillance-&-security" },
-  { title: "Clothing", handle: "clothing" },
-  { title: "Bags", handle: "bags" },
-  { title: "Hardware", handle: "hardware" },
-  { title: "Toys & Games", handle: "toys-&-games" },
-  { title: "Health Care", handle: "health-care" },
-  { title: "Stationery", handle: "stationery" },
-  { title: "Beauty & Personal Care", handle: "beauty-&-personal-care" },
-  { title: "Jewellery", handle: "jewellery" },
-  { title: "Umbrellas", handle: "umbrellas" },
-];
+import AccountDropdown from "@/components/modules/AccountDropdown";
+import GuestAccountDropdown from "@/components/modules/GuestAccountDropdown";
 
 type NavCategory = {
   id: string;
@@ -142,10 +130,6 @@ const Header: React.FC = () => {
       }),
     []
   );
-  const [collections, setCollections] = React.useState<
-    { id?: string; title: string; handle?: string; created_at?: string }[]
-  >([]);
-  const [catsByCollection, setCatsByCollection] = React.useState<Record<string, { title: string; handle?: string }[]>>({});
   const [browseOpen, setBrowseOpen] = React.useState(false);
   const [expandedCol, setExpandedCol] = React.useState<string | null>(null);
   const [navCategories, setNavCategories] = React.useState<NavCategory[]>([]);
@@ -166,6 +150,7 @@ const Header: React.FC = () => {
   const [q, setQ] = React.useState("");
   const [suggestions, setSuggestions] = React.useState<{ id: string; name: string; image?: string; handle?: string }[]>([]);
   const [showSuggest, setShowSuggest] = React.useState(false);
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [mobileExpandedCat, setMobileExpandedCat] = React.useState<string | null>(null);
   const [mobileProfileOpen, setMobileProfileOpen] = React.useState(false);
@@ -175,6 +160,7 @@ const Header: React.FC = () => {
   const mobileCategories = React.useMemo(() => [...navCategories, ...overflowCategories], [navCategories, overflowCategories]);
   const mobileProfileRef = React.useRef<HTMLDivElement | null>(null);
   const profileMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const profileMenuTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const wishlistCount = React.useMemo(() => {
     const list = (customer?.metadata as Record<string, unknown> | null | undefined)?.wishlist
     if (Array.isArray(list)) return list.length
@@ -263,6 +249,7 @@ const Header: React.FC = () => {
   // mapping from category id to trigger element
   const triggersRef = React.useRef<Record<string, HTMLElement | null>>({});
   const allTriggerRef = React.useRef<HTMLElement | null>(null);
+  const cartTriggerRef = React.useRef<HTMLElement | null>(null);
 
   // timers to control delayed hide (prevents disappearing while moving mouse)
   const hideTimerRef = React.useRef<number | null>(null);
@@ -282,35 +269,22 @@ const Header: React.FC = () => {
     };
   }, []);
 
+  // Cleanup profile menu timer on unmount
+  React.useEffect(() => {
+    return () => {
+      if (profileMenuTimerRef.current) {
+        clearTimeout(profileMenuTimerRef.current);
+      }
+    };
+  }, []);
+
   React.useEffect(() => {
     let cancelled = false;
     fetch("/api/medusa/collections")
       .then((r) => r.json())
-      .then((d) => {
+      .then(() => {
         if (cancelled) return;
-        type Col = { id?: string; title?: string; name?: string; handle?: string; created_at?: string };
-        type OutCol = { id?: string; title: string; handle?: string; created_at?: string };
-        const cols = ((d.collections as Col[]) || [])
-          .map<OutCol>((c) => ({ id: c.id, title: (c.title || c.name || "").toString(), handle: c.handle, created_at: c.created_at }))
-          .filter((c) => !!c.title)
-          .sort((a, b) => {
-            const ad = a.created_at ? new Date(a.created_at).getTime() : 0;
-            const bd = b.created_at ? new Date(b.created_at).getTime() : 0;
-            if (ad && bd) return ad - bd; // oldest first
-            if (ad && !bd) return -1;
-            if (!ad && bd) return 1;
-            return String(a.title).localeCompare(String(b.title));
-          });
-        const allowed = MENU_COLLECTIONS.map((menu) => {
-          const match = cols.find((c) => {
-            const menuHandle = (menu.handle || menu.title).toLowerCase();
-            const handleMatch = c.handle ? c.handle.toLowerCase() === menuHandle : false;
-            const titleMatch = c.title.toLowerCase() === menu.title.toLowerCase();
-            return handleMatch || titleMatch;
-          });
-          return match ? match : { title: menu.title, handle: menu.handle };
-        });
-        setCollections(allowed);
+        // Collections loading removed - not used in dropdown anymore, using navCategories instead
       })
       .catch(() => {})
       .finally(() => {});
@@ -346,21 +320,6 @@ const Header: React.FC = () => {
       cancelled = true;
     };
   }, []);
-
-  function ensureCatsForCollection(col: { id?: string; handle?: string }) {
-    const key = col.id || col.handle;
-    if (!key || catsByCollection[key]) return;
-    fetch(`/api/medusa/collections/${encodeURIComponent(key)}/categories`)
-      .then((r) => r.json())
-      .then((d) => {
-        type Cat = { title?: string; name?: string; handle?: string };
-        const arr = (d.categories as Cat[] || [])
-          .map((c) => ({ title: (c.title || c.name || "").toString(), handle: c.handle }))
-          .filter((c) => !!c.title);
-        setCatsByCollection((prev) => ({ ...prev, [key]: arr }));
-      })
-      .catch(() => {});
-  }
 
   // Debounced suggestions
   React.useEffect(() => {
@@ -596,10 +555,116 @@ const Header: React.FC = () => {
     );
   };
 
+  // Portal for Cart Preview
+  const CartPreviewPortal: React.FC = () => {
+    if (!cartPreviewOpen || !mountedRef.current) return null;
+    const trigger = cartTriggerRef.current ?? null;
+    if (!trigger) return null;
+    
+    const rect = trigger.getBoundingClientRect();
+    const gutter = 8;
+    const preferredTop = rect.bottom + gutter;
+    const width = 320;
+    const right = window.innerWidth - rect.right;
+    
+    // Create a bridge area to prevent gap between trigger and preview
+    const bridgeWidth = Math.min(rect.width, 100);
+    const bridgeStyle: React.CSSProperties = {
+      position: "fixed",
+      right: window.innerWidth - rect.right,
+      top: rect.bottom,
+      width: bridgeWidth,
+      height: gutter + 4,
+      pointerEvents: "auto",
+      zIndex: 9998,
+    };
+    
+    const style: React.CSSProperties = {
+      position: "fixed",
+      right: right,
+      top: preferredTop,
+      width,
+      zIndex: 9999,
+      visibility: "visible",
+    };
+
+    return createPortal(
+      <>
+        {/* Bridge area to prevent gap */}
+        <div
+          style={bridgeStyle}
+          onMouseEnter={() => {
+            if (cartPreviewTimer.current) clearTimeout(cartPreviewTimer.current);
+          }}
+        />
+        <div
+          style={{
+            ...style,
+            pointerEvents: "auto",
+            backgroundColor: "#ffffff",
+            opacity: 1,
+            isolation: "isolate",
+          }}
+          className="bg-white rounded-2xl border border-gray-200 shadow-2xl ring-1 ring-black/5 p-3"
+          onMouseEnter={() => {
+            if (cartPreviewTimer.current) clearTimeout(cartPreviewTimer.current);
+          }}
+          onMouseLeave={() => {
+            cartPreviewTimer.current = setTimeout(() => setCartPreviewOpen(false), 300);
+          }}
+        >
+          <div className="flex items-center gap-2 mb-2 text-sm font-semibold text-header-text">
+            <CartIcon className="w-4 h-4" />
+            <span>Cart preview</span>
+          </div>
+          {cartPreviewLoading ? (
+            <p className="text-sm text-slate-500">Loading...</p>
+          ) : cartPreviewError ? (
+            <p className="text-sm text-rose-500">{cartPreviewError}</p>
+          ) : cartPreviewItems.length === 0 ? (
+            <p className="text-sm text-slate-600">Your cart is empty.</p>
+          ) : (
+            <div className="space-y-3">
+              {cartPreviewItems.slice(0, 4).map((item) => (
+                <div key={item.id} className="flex gap-3 items-center">
+                  <div className="h-12 w-12 rounded-lg bg-gray-50 overflow-hidden flex-shrink-0">
+                    {item.image ? (
+                      <Image src={item.image} alt={item.title} width={48} height={48} className="h-full w-full object-contain" />
+                    ) : (
+                      <div className="h-full w-full bg-gray-100" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-900 truncate">{item.title}</p>
+                    <p className="text-xs text-slate-500">Qty {item.qty}</p>
+                  </div>
+                  <div className="text-sm font-semibold text-slate-900">{priceFormatter.format(item.price)}</div>
+                </div>
+              ))}
+              {cartPreviewItems.length > 4 && (
+                <p className="text-xs text-slate-500">+{cartPreviewItems.length - 4} more item(s)</p>
+              )}
+            </div>
+          )}
+          <div className="mt-3">
+            <Link
+              href="/cart"
+              className="block text-center rounded-full bg-header-accent text-white text-sm font-semibold px-3 py-2 hover:bg-header-accent/90 transition"
+              onClick={() => setCartPreviewOpen(false)}
+            >
+              View cart
+            </Link>
+          </div>
+        </div>
+      </>,
+      document.body
+    );
+  };
+
   return (
-    <header className="w-full header-root  sticky top-0 z-[120] bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+    <header className="w-full header-root sticky top-0 z-[120] bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       {/* Top Bar */}
-      <div className="bg-header-top-bg text-header-top-text py-2 text-center text-sm">
+      <div className="bg-header-top-bg text-header-top-text py-2.5 text-center text-sm">
         <p>
           Get 10% Extra off! - Use Code <span className="font-semibold">OWEG10</span>{" "}
           <a href="#" className="underline hover:text-header-accent transition-colors">
@@ -609,42 +674,50 @@ const Header: React.FC = () => {
       </div>
 
       {/* Main Header */}
-      <div className="bg-header-bg ">
-        <div className="container mx-auto px-6 py-4">
-          <div className="hidden md:flex items-center gap-10 w-full">
+      <div className="bg-header-bg">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
+          <div className="hidden md:flex items-center gap-6 lg:gap-8 w-full">
             {/* Logo */}
-            <div className="flex items-center ">
-              <div className="text-3xl font-bold">
-                <Link href="/" className="flex items-center logo-link">
-                  <Image src="/oweg_logo.png" alt="OWEG" width={100} height={32} className="h-12 w-auto" />
-                </Link>
-              </div>
+            <div className="flex items-center flex-shrink-0">
+              <Link href="/" className="flex items-center logo-link">
+                <Image src="/oweg_logo.png" alt="OWEG" width={100} height={32} className="h-10 w-auto" />
+              </Link>
             </div>
 
             {/* Delivery Location */}
-            <div className="hidden lg:flex items-center gap-2 text-sm location-block">
-              <MapPin className="w-5 h-5 text-header-text" />
-              <div>
-                <p className="text-header-text text-xs">Deliver to John</p>
-                <p className="text-header-text font-medium">Bangalore 560034</p>
+            <button
+              type="button"
+              className="hidden lg:flex items-center gap-2.5 text-sm location-block hover:opacity-80 transition-opacity px-2"
+              onClick={() => {
+                // TODO: Open location modal
+                toast.info("Location selector coming soon");
+              }}
+            >
+              <LocationIcon className="w-5 h-5 text-header-text flex-shrink-0" />
+              <div className="text-left">
+                <p className="text-header-text text-xs leading-tight">Deliver to</p>
+                <p className="text-header-text font-medium text-sm leading-tight">Bangalore 560034</p>
               </div>
-            </div>
+            </button>
 
             {/* Search Bar */}
-            <div className="flex-1 max-w-4xl mx-auto">
-              <div className="flex gap-2 relative">
-                {/* Browse dropdown with Collections -> Categories */}
+            <div className="flex-1 max-w-3xl mx-4">
+              <div className="flex gap-0 relative items-stretch">
+                {/* Category Dropdown ("All") - Pixel Perfect */}
                 <div className="relative" data-browse-root>
                   <button
                     onClick={() => setBrowseOpen((v) => !v)}
-                    className="w-48 bg-header-bg border border-header-text/20 rounded-md px-3 h-10 text-sm flex items-center justify-between"
+                    className="h-10 px-4 bg-white border border-gray-300 border-r-0 rounded-l-md text-sm font-normal text-gray-700 flex items-center justify-between gap-2 hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-header-accent focus:ring-offset-0 focus:z-10"
                     type="button"
+                    style={{
+                      minWidth: '120px',
+                    }}
                   >
-                    <span className="truncate">{selectedFilter ? selectedFilter.title : "Browse"}</span>
-                    <ChevronDown className={`w-4 h-4 transition-transform ${browseOpen ? "rotate-180" : ""}`} />
+                    <span className="truncate">{selectedFilter ? selectedFilter.title : "All"}</span>
+                    <ChevronDown className={`w-4 h-4 text-gray-600 shrink-0 transition-transform duration-200 ${browseOpen ? "rotate-180" : ""}`} />
                   </button>
                   {browseOpen && (
-                    <div className="absolute left-0 mt-2 z-50 bg-white rounded-md shadow-lg ring-1 ring-black/5 w-[320px] max-h-[70vh] overflow-auto p-1">
+                    <div className="absolute left-0 mt-1 z-[9999] bg-white rounded-md shadow-lg ring-1 ring-black/5 w-[320px] max-h-[70vh] overflow-auto p-1 scrollbar-hide">
                       <div className="mb-1 border-b border-gray-100 pb-1">
                         <button
                           onClick={() => {
@@ -658,80 +731,91 @@ const Header: React.FC = () => {
                           All
                         </button>
                       </div>
-                      {(collections.length ? collections : MENU_COLLECTIONS.map((m) => ({ id: undefined as undefined, title: m.title, handle: m.handle })) ).map((c) => {
-                        const key = c.id || c.handle || c.title;
-                        const isOpen = expandedCol === key;
-                        const cats = catsByCollection[key] || [];
-                        return (
-                          <div key={key} className="">
-                            <button
-                              onClick={() => {
-                                setExpandedCol(isOpen ? null : key);
-                                if (!isOpen) ensureCatsForCollection(c);
-                              }}
-                              className="w-full flex items-center justify-between px-2 py-2 text-sm hover:bg-gray-100 rounded"
-                              type="button"
-                            >
-                              <span className="truncate text-left">{c.title}</span>
-                              <ChevronRight className={`w-4 h-4 transition-transform ${isOpen ? "rotate-90" : ""}`} />
-                            </button>
-                            {isOpen && (
-                              <div className="pl-3 pb-2">
-                                {cats.length ? (
-                                  cats.map((cat) => (
+                      {navCatsLoading ? (
+                        <div className="px-2 py-2 text-sm text-gray-500">Loading categories...</div>
+                      ) : (
+                        <>
+                          {/* Show categories with children */}
+                          {navCategories.map((cat) => (
+                            <div key={cat.id} className="">
+                              <button
+                                onClick={() => {
+                                  const isOpen = expandedCol === cat.id;
+                                  setExpandedCol(isOpen ? null : cat.id);
+                                }}
+                                className="w-full flex items-center justify-between px-2 py-2 text-sm hover:bg-gray-100 rounded"
+                                type="button"
+                              >
+                                <span className="truncate text-left">{cat.title}</span>
+                                <ChevronRight className={`w-4 h-4 transition-transform ${expandedCol === cat.id ? "rotate-90" : ""}`} />
+                              </button>
+                              {expandedCol === cat.id && cat.children.length > 0 && (
+                                <div className="pl-3 pb-2">
+                                  {cat.children.map((child) => (
                                     <button
-                                      key={`${key}-${cat.title}`}
+                                      key={child.id}
                                       onClick={() => {
-                                        setSelectedFilter({ type: "category", title: cat.title, handle: cat.handle });
+                                        setSelectedFilter({ type: "category", title: child.title, handle: child.handle });
                                         setBrowseOpen(false);
                                         setExpandedCol(null);
                                       }}
                                       className="w-full text-left block px-2 py-1.5 text-sm text-gray-800 hover:bg-gray-100 rounded"
                                       type="button"
                                     >
-                                      {cat.title}
+                                      {child.title}
                                     </button>
-                                  ))
-                                ) : (
-                                  <div className="px-2 py-1.5 text-sm text-gray-500">No categories</div>
-                                )}
-                                <div className="mt-1">
-                                  <button
-                                    onClick={() => {
-                                      setSelectedFilter({ type: "collection", title: c.title, handle: c.handle, id: c.id });
-                                      setBrowseOpen(false);
-                                      setExpandedCol(null);
-                                    }}
-                                    className="px-2 py-1.5 text-xs text-header-accent hover:underline"
-                                    type="button"
-                                  >
-                                    Use entire collection
-                                  </button>
+                                  ))}
                                 </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                              )}
+                            </div>
+                          ))}
+                          {/* Show categories without children */}
+                          {overflowCategories.map((cat) => (
+                            <button
+                              key={cat.id}
+                              onClick={() => {
+                                setSelectedFilter({ type: "category", title: cat.title, handle: cat.handle });
+                                setBrowseOpen(false);
+                                setExpandedCol(null);
+                              }}
+                              className="w-full text-left px-2 py-2 text-sm hover:bg-gray-100 rounded"
+                              type="button"
+                            >
+                              {cat.title}
+                            </button>
+                          ))}
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
 
+                {/* Search Input - Pixel Perfect */}
                 <div className="flex-1 flex relative">
                   <Input
                     type="text"
-                    placeholder={selectedFilter ? `Search in ${selectedFilter.title}...` : "Search products..."}
-                    className="rounded-r-none border-header-text/20"
+                    placeholder={selectedFilter ? `Search in ${selectedFilter.title}...` : "Search in All..."}
+                    className="h-10 rounded-none border-y border-gray-300 border-x-0 px-4 text-sm focus:ring-2 focus:ring-header-accent focus:border-y-header-accent focus:z-10"
                     value={q}
                     onChange={(e) => {
                       setQ(e.target.value);
                       setShowSuggest(true);
                     }}
                     onFocus={() => setShowSuggest(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && q.trim()) {
+                        const params = new URLSearchParams({ q: q.trim() });
+                        if (selectedFilter?.type === "category" && selectedFilter.handle) {
+                          params.append("category", selectedFilter.handle);
+                        } else if (selectedFilter?.type === "collection") {
+                          if (selectedFilter.id) params.append("collectionId", selectedFilter.id);
+                          else if (selectedFilter.handle) params.append("collection", selectedFilter.handle);
+                        }
+                        router.push(`/search?${params.toString()}`);
+                        setShowSuggest(false);
+                      }
+                    }}
                   />
-                  <Button className="rounded-l-none bg-header-accent hover:bg-header-accent/90 text-white" type="button">
-                    <Search className="w-5 h-5" />
-                  </Button>
                   {showSuggest && q.length >= 2 && suggestions.length > 0 && (
                     <div className="absolute top-full left-0 mt-1 z-50 w-full bg-white rounded-md shadow-lg ring-1 ring-black/5 max-h-[60vh] overflow-auto">
                       {suggestions.map((s) => {
@@ -756,170 +840,138 @@ const Header: React.FC = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Search Button - Square Green Button with Black Icon - Pixel Perfect */}
+                <Button
+                  className="h-10 w-10 rounded-r-md bg-header-accent hover:bg-[#6bb832] active:bg-[#5aa028] text-black p-0 flex items-center justify-center transition-colors focus:outline-none focus:ring-2 focus:ring-header-accent focus:ring-offset-0 focus:z-10 border border-l-0 border-gray-300"
+                  type="button"
+                  onClick={() => {
+                    if (q.trim()) {
+                      const params = new URLSearchParams({ q: q.trim() });
+                      if (selectedFilter?.type === "category" && selectedFilter.handle) {
+                        params.append("category", selectedFilter.handle);
+                      } else if (selectedFilter?.type === "collection") {
+                        if (selectedFilter.id) params.append("collectionId", selectedFilter.id);
+                        else if (selectedFilter.handle) params.append("collection", selectedFilter.handle);
+                      }
+                      router.push(`/search?${params.toString()}`);
+                      setShowSuggest(false);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && q.trim()) {
+                      const params = new URLSearchParams({ q: q.trim() });
+                      if (selectedFilter?.type === "category" && selectedFilter.handle) {
+                        params.append("category", selectedFilter.handle);
+                      } else if (selectedFilter?.type === "collection") {
+                        if (selectedFilter.id) params.append("collectionId", selectedFilter.id);
+                        else if (selectedFilter.handle) params.append("collection", selectedFilter.handle);
+                      }
+                      router.push(`/search?${params.toString()}`);
+                      setShowSuggest(false);
+                    }
+                  }}
+                >
+                  <Search className="w-5 h-5 text-black" strokeWidth={2.5} />
+                </Button>
               </div>
             </div>
 
-            {/* Account Buttons */}
-            <div className="hidden md:flex items-center gap-4 ml-auto">
-              {customer ? (
-                <div className="relative" ref={profileMenuRef}>
-                  <button
-                    type="button"
-                    onClick={() => setProfileMenuOpen((prev) => !prev)}
-                    className="flex items-center gap-2 px-1 py-1 text-left hover:text-header-accent transition-colors"
+            {/* Right Section - Account, Orders, Cart */}
+            <div className="hidden md:flex items-center gap-4 lg:gap-5 ml-auto flex-shrink-0">
+              {/* Account Section - Always visible (like Amazon) */}
+              <div
+                className="relative group"
+                ref={profileMenuRef}
+                onMouseEnter={() => {
+                  clearTimeout(profileMenuTimerRef.current || undefined);
+                  setProfileMenuOpen(true);
+                }}
+                onMouseLeave={() => {
+                  profileMenuTimerRef.current = setTimeout(() => setProfileMenuOpen(false), 300) as ReturnType<typeof setTimeout>;
+                }}
+              >
+                <button
+                  type="button"
+                  className="flex items-start gap-2 px-2 py-1 text-left hover:opacity-80 transition-opacity"
+                  aria-label="Account menu"
+                  aria-expanded={profileMenuOpen}
+                  aria-haspopup="true"
+                >
+                  <User className="w-5 h-5 text-header-text mt-0.5 shrink-0" />
+                  <div className="text-left">
+                    <p className="text-xs text-header-text leading-tight">Hello,</p>
+                    <p className="text-sm font-medium text-header-text leading-tight whitespace-nowrap">
+                      {customer ? customerName : "User"}
+                    </p>
+                    <p className="text-xs text-header-text leading-tight">Account & Lists</p>
+                  </div>
+                  <ChevronDown
+                    className={`w-4 h-4 text-header-text transition-transform mt-1 flex-shrink-0 ${
+                      profileMenuOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+                {profileMenuOpen && (
+                  <div
+                    className="absolute right-0 top-full mt-2 z-[9999]"
+                    style={{ backgroundColor: 'transparent' }}
+                    onMouseEnter={() => {
+                      clearTimeout(profileMenuTimerRef.current || undefined);
+                      setProfileMenuOpen(true);
+                    }}
+                    onMouseLeave={() => {
+                      profileMenuTimerRef.current = setTimeout(() => setProfileMenuOpen(false), 300) as ReturnType<typeof setTimeout>;
+                    }}
                   >
-                    <User className="w-4 h-4 text-header-text" />
-                    <div>
-                      <p className="text-xs text-header-muted leading-tight">Hello,</p>
-                      <p className="text-sm font-semibold text-header-text leading-tight">{customerName}</p>
-                    </div>
-                    <ChevronDown
-                      className={`w-4 h-4 text-header-text transition-transform ${
-                        profileMenuOpen ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
-                  {profileMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white shadow-2xl ring-1 ring-black/5 py-2 z-50">
-                      <div className="px-4 py-3 text-xs text-gray-500 border-b border-gray-100">
-                        Signed in as
-                        <div className="text-sm font-semibold text-gray-900 break-words">
-                          {customer?.email || "Customer"}
-                        </div>
-                      </div>
-                      <Link
-                        href="/"
-                        className="block px-4 py-2 text-sm text-header-text hover:bg-gray-50"
-                        onClick={() => setProfileMenuOpen(false)}
-                      >
-                        Account settings
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={handleLogout}
-                        className="w-full text-left px-4 py-2 text-sm text-rose-600 hover:bg-rose-50"
-                      >
-                        Sign out
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <Link href="/login">
-                    <Button
-                      variant="outline"
-                      className="border-header-accent text-header-text hover:bg-header-accent hover:text-white transition-all duration-300"
-                    >
-                      <User className="w-4 h-4 mr-2" />
-                      Login
-                    </Button>
-                  </Link>
-                  <Link href="/signup">
-                    <Button className="bg-header-accent hover:bg-header-accent/90 text-white">Sign Up</Button>
-                  </Link>
-                </>
-              )}
-            </div>
-
-            {/* Orders */}
-            <div className="hidden lg:flex items-center gap-2 cursor-pointer group">
-              <div className="text-right">
-                <p className="text-xs text-header-text">Returns</p>
-                <p className="text-sm font-medium text-header-text group-hover:text-header-accent transition-colors">& Orders</p>
-              </div>
-            </div>
-
-            {/* Wishlist */}
-            <Link href="/wishlist" className="flex items-center gap-2 cursor-pointer group">
-              <div className="relative" data-browse-root>
-                <Heart className="w-6 h-6 text-header-text group-hover:text-header-accent transition-colors" />
-                {wishlistCount > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-header-accent text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                    {wishlistCount > 99 ? "99+" : wishlistCount}
-                  </span>
+                    {customer ? (
+                      <AccountDropdown
+                        onLogout={handleLogout}
+                      />
+                    ) : (
+                      <GuestAccountDropdown />
+                    )}
+                  </div>
                 )}
               </div>
-              <span className="hidden lg:block text-sm font-medium text-header-text group-hover:text-header-accent transition-colors">Wishlist</span>
-            </Link>
 
-            {/* Cart */}
-            <div
-              className="relative flex items-center cursor-pointer group"
-              onMouseEnter={() => {
-                if (cartPreviewTimer.current) {
-                  clearTimeout(cartPreviewTimer.current);
-                  cartPreviewTimer.current = null;
-                }
-                setCartPreviewOpen(true);
-                void fetchCartPreview();
-              }}
-              onMouseLeave={() => {
-                if (cartPreviewTimer.current) clearTimeout(cartPreviewTimer.current);
-                cartPreviewTimer.current = setTimeout(() => setCartPreviewOpen(false), 160);
-              }}
-            >
-              <Link href="/cart" className="flex items-center gap-2">
-                <div className="relative" data-browse-root>
-                  <ShoppingCart className="w-6 h-6 text-header-text group-hover:text-header-accent transition-colors" />
-                  <span className="absolute -top-2 -right-2 bg-header-accent text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                    {cartCount > 99 ? "99+" : cartCount}
-                  </span>
-                </div>
-                <span className="hidden lg:block text-sm font-medium text-header-text group-hover:text-header-accent transition-colors">Cart</span>
+              {/* Orders */}
+              <Link href="/orders" className="hidden lg:flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
+                <OrderIcon className="w-5 h-5 text-header-text shrink-0" />
+                <span className="text-sm font-medium text-header-text">Orders</span>
               </Link>
-              {cartPreviewOpen && (
-                <div
-                  className="absolute right-0 top-full mt-2 w-80 rounded-2xl border border-gray-200 bg-white shadow-2xl ring-1 ring-black/5 p-3 z-[200]"
-                  onMouseEnter={() => {
-                    if (cartPreviewTimer.current) clearTimeout(cartPreviewTimer.current);
-                  }}
-                  onMouseLeave={() => setCartPreviewOpen(false)}
-                >
-                  <div className="flex items-center gap-2 mb-2 text-sm font-semibold text-header-text">
-                    <ShoppingBag className="w-4 h-4" />
-                    <span>Cart preview</span>
+
+              {/* Cart */}
+              <div
+                ref={(el) => { cartTriggerRef.current = el; }}
+                className="relative flex items-start gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                onMouseEnter={() => {
+                  if (cartPreviewTimer.current) {
+                    clearTimeout(cartPreviewTimer.current);
+                    cartPreviewTimer.current = null;
+                  }
+                  setCartPreviewOpen(true);
+                  void fetchCartPreview();
+                }}
+                onMouseLeave={() => {
+                  if (cartPreviewTimer.current) clearTimeout(cartPreviewTimer.current);
+                  cartPreviewTimer.current = setTimeout(() => setCartPreviewOpen(false), 300);
+                }}
+              >
+                <Link href="/cart" className="flex items-start gap-2">
+                  <div className="relative mt-0.5">
+                    <CartIcon className="w-6 h-6 text-header-text flex-shrink-0" />
+                    {cartCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 bg-header-accent text-white text-[10px] font-semibold rounded-full w-5 h-5 flex items-center justify-center">
+                        {cartCount > 99 ? "99+" : cartCount}
+                      </span>
+                    )}
                   </div>
-                  {cartPreviewLoading ? (
-                    <p className="text-sm text-slate-500">Loading...</p>
-                  ) : cartPreviewError ? (
-                    <p className="text-sm text-rose-500">{cartPreviewError}</p>
-                  ) : cartPreviewItems.length === 0 ? (
-                    <p className="text-sm text-slate-600">Your cart is empty.</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {cartPreviewItems.slice(0, 4).map((item) => (
-                        <div key={item.id} className="flex gap-3 items-center">
-                          <div className="h-12 w-12 rounded-lg bg-gray-50 overflow-hidden flex-shrink-0">
-                            {item.image ? (
-                              <Image src={item.image} alt={item.title} width={48} height={48} className="h-full w-full object-contain" />
-                            ) : (
-                              <div className="h-full w-full bg-gray-100" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-slate-900 truncate">{item.title}</p>
-                            <p className="text-xs text-slate-500">Qty {item.qty}</p>
-                          </div>
-                          <div className="text-sm font-semibold text-slate-900">{priceFormatter.format(item.price)}</div>
-                        </div>
-                      ))}
-                      {cartPreviewItems.length > 4 && (
-                        <p className="text-xs text-slate-500">+{cartPreviewItems.length - 4} more item(s)</p>
-                      )}
-                    </div>
-                  )}
-                  <div className="mt-3">
-                    <Link
-                      href="/cart"
-                      className="block text-center rounded-full bg-header-accent text-white text-sm font-semibold px-3 py-2 hover:bg-header-accent/90 transition"
-                      onClick={() => setCartPreviewOpen(false)}
-                    >
-                      View cart
-                    </Link>
-                  </div>
-                </div>
-              )}
+                  <span className="text-sm font-medium text-header-text leading-tight">
+                    Cart
+                  </span>
+                </Link>
+              </div>
             </div>
           </div>
 
@@ -996,7 +1048,7 @@ const Header: React.FC = () => {
                   )}
                 </Link>
                 <Link href="/cart" className="relative w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-header-text" aria-label="Cart">
-                  <ShoppingCart className="w-5 h-5" />
+                  <CartIcon className="w-5 h-5" />
                   <span className="absolute -top-1.5 -right-1.5 bg-header-accent text-white text-[11px] font-semibold rounded-full w-5 h-5 flex items-center justify-center">
                     {cartCount > 99 ? "99+" : cartCount}
                   </span>
@@ -1006,7 +1058,7 @@ const Header: React.FC = () => {
 
             <div className="flex items-center justify-between text-xs text-header-muted">
               <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-header-text" />
+                <LocationIcon className="w-4 h-4 text-header-text" />
                 <div>
                   <p className="uppercase tracking-[0.2em]">Deliver to</p>
                   <p className="text-sm font-semibold text-header-text">Bangalore 560034</p>
@@ -1087,7 +1139,7 @@ const Header: React.FC = () => {
 
       {/* Navigation Bar */}
       <nav className="bg-header-nav-bg hidden md:block">
-        <div className="container mx-auto px-4">
+        <div className="w-full px-4 sm:px-6 lg:px-8">
           {/* make this container overflow-x but allow dropdowns via portal (portal prevents clipping) */}
           <div
             className="flex items-center gap-4 md:gap-6 overflow-x-auto overflow-y-visible py-1 relative"
@@ -1104,7 +1156,7 @@ const Header: React.FC = () => {
                 ref={(el) => {
                   allTriggerRef.current = el;
                 }}
-                className="flex items-center gap-2 py-3 text-header-text hover:text-header-accent transition-colors whitespace-nowrap"
+                className="flex items-center gap-2 py-3 px-2 text-header-text hover:text-header-accent transition-colors whitespace-nowrap"
                 onClick={() => { setAllOpen((v) => !v); }}
                 aria-haspopup="menu"
                 aria-expanded={allOpen}
@@ -1132,7 +1184,7 @@ const Header: React.FC = () => {
                     <Link
                       href={categoryHref}
                       ref={(el: HTMLAnchorElement | null) => { triggersRef.current[cat.id] = el; }}
-                      className="nav-link relative py-3 pr-6 md:pr-0 text-sm text-header-text font-medium whitespace-nowrap transition-colors hover:text-header-accent flex items-center gap-1"
+                      className="nav-link relative py-3 px-2 pr-6 md:pr-2 text-sm text-header-text font-medium whitespace-nowrap transition-colors hover:text-header-accent flex items-center gap-1.5"
                       onClick={() => {
                         setSelectedFilter({ type: "category", title: cat.title, handle: cat.handle });
                       }}
@@ -1251,6 +1303,7 @@ const Header: React.FC = () => {
       {/* Render dropdown portals (so they're never clipped by nav overflow) */}
       <CategoryPortal />
       <AllPortal />
+      <CartPreviewPortal />
 
       {/* Internal styles (no external file) */}
       <style jsx global>{`
@@ -1314,6 +1367,24 @@ const Header: React.FC = () => {
         }
         [data-nav-scroll]::-webkit-scrollbar {
           display: none;
+        }
+        .scrollbar-hide {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        /* Ensure cart preview is fully opaque */
+        [data-cart-preview] {
+          background-color: #ffffff !important;
+          opacity: 1 !important;
+          isolation: isolate;
+        }
+        /* Force white background on cart preview portal */
+        body > div[style*="z-index: 9999"] {
+          background-color: #ffffff !important;
+          opacity: 1 !important;
         }
         .location-block .text-header-text {
           color: var(--header-text);

@@ -2,20 +2,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import {
-  notifyCartAddError,
-  notifyCartAddSuccess,
-  notifyCartUnavailable,
-  notifyWishlistLogin,
-  notifyWishlistSuccess,
-} from '@/lib/notifications';
-import { useCartSummary } from '@/contexts/CartProvider';
-import { useAuth } from '@/contexts/AuthProvider';
-import { Heart } from 'lucide-react';
+import { ProductCard } from '@/components/modules/ProductCard';
 
 // UI product type (used by carousel/cards)
 type UIProduct = {
@@ -31,7 +20,6 @@ type UIProduct = {
   sourceTag?: string;
 };
 
-const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' });
 
 async function fetchProductsByTag(tag: string, limit: number): Promise<UIProduct[]> {
   const url = `/api/medusa/products?tag=${encodeURIComponent(tag)}&limit=${limit}`;
@@ -43,162 +31,7 @@ async function fetchProductsByTag(tag: string, limit: number): Promise<UIProduct
   return (data?.products || []) as UIProduct[];
 }
 
-// Product Card Component
-function ProductCard({ product, sourceTag }: { product: UIProduct; sourceTag?: string }) {
-  const [isHovered, setIsHovered] = useState(false);
-  const { syncFromCartPayload } = useCartSummary();
-  const router = useRouter();
-  const { customer, setCustomer } = useAuth();
-  const [wishlistBusy, setWishlistBusy] = useState(false);
-  const idParam = String(product.id);
-  const slug = encodeURIComponent(String(product.handle || product.id));
-  const params = new URLSearchParams();
-  params.set('id', idParam);
-  if (sourceTag) params.set('sourceTag', sourceTag);
-  const productHref = `/productDetail/${slug}?${params.toString()}`;
-
-  const isWishlisted = (() => {
-    const list = (customer?.metadata as Record<string, unknown> | undefined)?.wishlist;
-    if (!Array.isArray(list)) return false;
-    return list.map((id) => id?.toString()).includes(product.id.toString());
-  })();
-
-  const handleWishlist = async (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!customer) {
-      notifyWishlistLogin(() => router.push('/login'));
-      return;
-    }
-    if (wishlistBusy) return;
-    try {
-      setWishlistBusy(true);
-      const res = await fetch('/api/medusa/wishlist', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ productId: product.id }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        const message = (data && (data.error || data.message)) || 'Unable to save to wishlist.';
-        throw new Error(message);
-      }
-      if (data?.wishlist && Array.isArray(data.wishlist)) {
-        setCustomer({
-          ...(customer || {}),
-          metadata: {
-            ...(customer?.metadata || {}),
-            wishlist: data.wishlist,
-          },
-        });
-      }
-      notifyWishlistSuccess(product.name);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to save to wishlist.';
-      notifyCartAddError(message);
-    } finally {
-      setWishlistBusy(false);
-    }
-  };
-
-  const handleQuickAdd = async (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!product.variant_id) {
-      notifyCartUnavailable();
-      return;
-    }
-    try {
-      // Ensure cart exists (session) - proxy handles cookies
-      await fetch('/api/medusa/cart', { method: 'POST', credentials: 'include' });
-
-      const r = await fetch('/api/medusa/cart/line-items', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ variant_id: product.variant_id, quantity: 1 }),
-        credentials: 'include',
-      });
-
-      const payload = await r.json().catch(() => null);
-
-      if (!r.ok) {
-        const message = (payload && (payload.error || payload.message)) || 'Could not add to cart';
-        throw new Error(message);
-      }
-      if (payload) {
-        syncFromCartPayload(payload);
-      }
-      notifyCartAddSuccess(product.name, 1, () => router.push('/cart'));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not add to cart';
-      notifyCartAddError(message);
-    }
-  };
-
-  return (
-    <Link
-      href={productHref}
-      className="group relative flex-shrink-0 w-[200px] sm:w-[220px] md:w-[260px] lg:w-[300px] min-w-[200px] sm:min-w-[220px] md:min-w-[260px] lg:min-w-[300px] bg-white rounded-2xl md:rounded-lg overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col max-h-[360px] sm:max-h-none"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      <div className="relative h-48 sm:h-auto sm:aspect-[4/5] md:aspect-square bg-gray-50 overflow-hidden">
-        <Image
-          src={product.image}
-          alt={product.name}
-          fill
-          className={`object-contain p-3 transition-transform duration-500 ${isHovered ? 'scale-105' : 'scale-100'}`}
-          sizes="200px"
-        />
-        <div className={`absolute inset-y-2 right-2 flex flex-col gap-2 transition-all duration-300 ${isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'}`}>
-          <button
-            type="button"
-            onClick={handleQuickAdd}
-            title="Add to Cart"
-            disabled={!product.variant_id}
-            className={`w-9 h-9 rounded-full text-white flex items-center justify-center shadow ${
-              product.variant_id
-                ? 'bg-green-500 hover:bg-green-600'
-                : 'bg-slate-400 cursor-not-allowed opacity-70'
-            }`}
-          >
-            +
-          </button>
-          <button
-            type="button"
-            onClick={handleWishlist}
-            title="Add to Wishlist"
-            className={`w-9 h-9 rounded-full bg-white flex items-center justify-center shadow border hover:text-red-500 transition ${
-              isWishlisted ? 'text-red-500 border-red-200' : 'text-gray-700'
-            } ${wishlistBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-          >
-            <Heart className="w-4 h-4" fill={isWishlisted ? 'currentColor' : 'none'} />
-          </button>
-        </div>
-      </div>
-      <div className="p-3 flex flex-col flex-1">
-        <div className="flex items-start gap-2 mb-2">
-          <span className="bg-red-600 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full animate-pulse">
-            {product.discount}% off
-          </span>
-          {product.limitedDeal && (
-            <span className="bg-red-100 text-red-700 text-[11px] font-medium px-2 py-0.5 rounded-full">
-              Limited
-            </span>
-          )}
-        </div>
-        <p className="text-sm text-gray-700 line-clamp-2 flex-1">{product.name}</p>
-        <div className="mt-3">
-          <div className="flex items-baseline gap-2">
-            <span className="text-lg font-bold text-gray-900">{inr.format(product.price)}</span>
-            <span className="text-xs text-gray-500 line-through">M.R.P: {inr.format(product.mrp)}</span>
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
+// ProductCard is now imported from shared component
 
 // Product Carousel Component
 function ProductCarousel({ title, products, sourceTag }: { title: string; products: UIProduct[]; sourceTag?: string }) {
@@ -240,7 +73,20 @@ function ProductCarousel({ title, products, sourceTag }: { title: string; produc
         className="flex gap-4 overflow-x-auto scrollbar-hidden pb-4 scroll-smooth snap-x snap-mandatory"
       >
         {products.map((product) => (
-          <ProductCard key={product.id} product={product} sourceTag={sourceTag} />
+          <div key={product.id} className="flex-shrink-0 w-[200px] sm:w-[220px] md:w-[260px] lg:w-[300px]">
+            <ProductCard
+              id={product.id}
+              name={product.name}
+              image={product.image}
+              price={product.price}
+              mrp={product.mrp}
+              discount={product.discount}
+              limitedDeal={product.limitedDeal}
+              variant_id={product.variant_id}
+              handle={product.handle}
+              sourceTag={sourceTag}
+            />
+          </div>
         ))}
       </div>
     </div>

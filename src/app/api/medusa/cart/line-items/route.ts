@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 
 const CART_COOKIE = "cart_id"
+const GUEST_CART_HEADER = "x-guest-cart-id"
 const SALES_CHANNEL_ID =
   process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID || process.env.MEDUSA_SALES_CHANNEL_ID
 const REGION_ID =
@@ -34,9 +35,15 @@ type EnsureCartResult = {
   shouldSetCookie: boolean
 }
 
-async function ensureCartId(): Promise<EnsureCartResult> {
+async function ensureCartId(req: NextRequest): Promise<EnsureCartResult> {
   const c = await cookies()
-  const existing = c.get(CART_COOKIE)?.value
+  let existing = c.get(CART_COOKIE)?.value
+  
+  // Check for guest cart in request header (from localStorage)
+  if (!existing) {
+    existing = req.headers.get(GUEST_CART_HEADER) || undefined
+  }
+  
   if (existing) {
     return { cartId: existing, shouldSetCookie: false }
   }
@@ -90,7 +97,7 @@ export async function POST(req: NextRequest) {
     const variant_id: string = body.variant_id
     const quantity: number = Number(body.quantity || 1)
     if (!variant_id) return NextResponse.json({ error: "variant_id required" }, { status: 400 })
-    let { cartId, shouldSetCookie } = await ensureCartId()
+    let { cartId, shouldSetCookie } = await ensureCartId(req)
     let res = await addLineItemRequest(cartId, { variant_id, quantity })
     let attempts = 0
 
@@ -118,8 +125,15 @@ export async function POST(req: NextRequest) {
 
     const data = await res.json()
     const response = NextResponse.json(data)
-    if (shouldSetCookie) {
+    const c = await cookies()
+    const hasCookie = c.get(CART_COOKIE)?.value
+    
+    if (shouldSetCookie && hasCookie) {
+      // Only set cookie if user is authenticated (has existing cookie)
       response.cookies.set(CART_COOKIE, cartId, { httpOnly: false, sameSite: "lax", path: "/" })
+    } else if (shouldSetCookie && !hasCookie) {
+      // Guest cart - return cart ID for localStorage
+      return NextResponse.json({ ...data, guestCartId: cartId })
     }
     return response
   } catch (e: unknown) {

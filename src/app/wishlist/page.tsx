@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Heart, HeartOff, Loader2, ShoppingCart, Tag } from "lucide-react"
+import { Heart, HeartOff, Loader2, ShoppingCart } from "lucide-react"
 import { useAuth } from "@/contexts/AuthProvider"
 import { toast } from "sonner"
 
@@ -37,7 +37,7 @@ export default function WishlistPage() {
     []
   )
 
-  const refillWishlist = async () => {
+  const refillWishlist = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -63,11 +63,11 @@ export default function WishlistPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [customer, setCustomer])
 
   useEffect(() => {
     void refillWishlist()
-  }, [])
+  }, [refillWishlist])
 
   const handleRemove = async (productId: string) => {
     try {
