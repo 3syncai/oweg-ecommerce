@@ -1,8 +1,0 @@
-import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-
-// Redirect to unified login page
-export async function GET(_req: MedusaRequest, res: MedusaResponse) {
-  res.redirect("/app/unified-login")
-}
-
-

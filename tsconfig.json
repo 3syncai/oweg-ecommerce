@@ -39,6 +39,7 @@
     "node_modules",
     "src/app/example",
     ".next",
-    "my-medusa-store"
+    "my-medusa-store",
+    "vendor-portal"
   ]
 }

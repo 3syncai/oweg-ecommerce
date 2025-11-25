@@ -1,7 +1,21 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireVendorAuth } from "../_lib/guards"
 
+// CORS headers helper
+function setCorsHeaders(res: MedusaResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
+  res.setHeader('Access-Control-Allow-Credentials', 'true')
+}
+
+export const OPTIONS = async (req: MedusaRequest, res: MedusaResponse) => {
+  setCorsHeaders(res)
+  return res.status(200).end()
+}
+
 export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
+  setCorsHeaders(res)
   try {
     // Verify vendor authentication
     const vendorId = await requireVendorAuth(req)

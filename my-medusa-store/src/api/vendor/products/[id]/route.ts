@@ -2,7 +2,21 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../../_lib/guards"
 import { Modules } from "@medusajs/framework/utils"
 
+// CORS headers helper
+function setCorsHeaders(res: MedusaResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
+  res.setHeader('Access-Control-Allow-Credentials', 'true')
+}
+
+export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
+  setCorsHeaders(res)
+  return res.status(200).end()
+}
+
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
+  setCorsHeaders(res)
   const auth = await requireApprovedVendor(req, res)
   if (!auth) return
 
@@ -29,6 +43,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 }
 
 export async function PUT(req: MedusaRequest, res: MedusaResponse) {
+  setCorsHeaders(res)
   const auth = await requireApprovedVendor(req, res)
   if (!auth) return
 
@@ -84,6 +99,7 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
 }
 
 export async function DELETE(req: MedusaRequest, res: MedusaResponse) {
+  setCorsHeaders(res)
   const auth = await requireApprovedVendor(req, res)
   if (!auth) return
 

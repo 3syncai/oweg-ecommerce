@@ -6,10 +6,15 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     const { id } = req.params
     const productModuleService = req.scope.resolve(Modules.PRODUCT)
 
-    // Update product to rejected status
+    // Get existing product to preserve metadata
+    const existingProduct = await productModuleService.retrieveProduct(id)
+    const existingMetadata = (existingProduct as any).metadata || {}
+
+    // Update product to rejected status, merging with existing metadata
     const updatedProduct = await productModuleService.updateProducts(id, {
       status: ProductStatus.REJECTED,
       metadata: {
+        ...existingMetadata,
         approval_status: "rejected",
         rejected_at: new Date().toISOString(),
         rejected_by: "admin", // You can get actual admin ID from session

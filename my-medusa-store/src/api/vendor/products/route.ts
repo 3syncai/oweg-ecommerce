@@ -1,9 +1,23 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
-import { Modules, ProductStatus } from "@medusajs/framework/utils"
+import { Modules, ProductStatus, ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { createProductsWorkflow } from "@medusajs/core-flows"
 
+// CORS headers helper
+function setCorsHeaders(res: MedusaResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
+  res.setHeader('Access-Control-Allow-Credentials', 'true')
+}
+
+export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
+  setCorsHeaders(res)
+  return res.status(200).end()
+}
+
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
+  setCorsHeaders(res)
   const auth = await requireApprovedVendor(req, res)
   if (!auth) return
 
@@ -28,6 +42,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 }
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
+  setCorsHeaders(res)
   const auth = await requireApprovedVendor(req, res)
   if (!auth) return
 
@@ -42,11 +57,16 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       collection_id,
       tags,
       images,
+      thumbnail,
       options,
       variants,
       weight,
+      height,
+      width,
+      length,
       shipping_profile_id,
       discountable,
+      metadata,
     } = body
 
     if (!title) {
@@ -205,12 +225,25 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         .filter((img): img is { url: string } => img !== null)
     }
 
+    // Prepare metadata - merge vendor metadata with user-provided metadata
+    const baseMetadata: Record<string, any> = {
+      vendor_id: auth.vendor_id,
+      approval_status: "pending", // Custom status for admin approval
+      submitted_at: new Date().toISOString(),
+    }
+    
+    // Merge user-provided metadata (MID code, HS code, country of origin, etc.)
+    if (metadata && typeof metadata === "object") {
+      Object.assign(baseMetadata, metadata)
+    }
+
     // Prepare product data
     const productData = {
             title,
       subtitle: subtitle || null,
             description: description || null,
             handle: handle || null,
+      thumbnail: thumbnail || (normalizedImages.length > 0 ? normalizedImages[0].url : null),
       is_giftcard: false,
       discountable: discountable !== false,
       category_ids: normalizedCategoryIds,
@@ -219,14 +252,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       images: normalizedImages,
       options: finalOptions,
       variants: finalVariants,
-            weight: weight || null,
+      // Physical attributes
+      weight: weight || null,
+      height: height || null,
+      width: width || null,
+      length: length || null,
       status: ProductStatus.DRAFT, // Set to DRAFT, pending admin approval
             shipping_profile_id: finalShippingProfileId,
-            metadata: {
-              vendor_id: auth.vendor_id,
-        approval_status: "pending", // Custom status for admin approval
-        submitted_at: new Date().toISOString(),
-          },
+            metadata: baseMetadata,
     }
 
     console.log("Creating product with data:", JSON.stringify({
@@ -245,6 +278,38 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     })
 
     const product = result[0]
+    
+    // Link product to default sales channel
+    try {
+      const salesChannelModuleService = req.scope.resolve(Modules.SALES_CHANNEL)
+      const defaultSalesChannels = await salesChannelModuleService.listSalesChannels({
+        name: "Default Sales Channel",
+      })
+      
+      if (defaultSalesChannels && defaultSalesChannels.length > 0) {
+        const defaultSalesChannel = defaultSalesChannels[0]
+        const linkModule = req.scope.resolve(ContainerRegistrationKeys.LINK) as any
+        
+        // Link product to sales channel using Medusa v2 link module
+        // Format: { [module1]: { id_field: id }, [module2]: { id_field: id } }
+        await linkModule.create({
+          [Modules.PRODUCT]: {
+            product_id: product.id,
+          },
+          [Modules.SALES_CHANNEL]: {
+            sales_channel_id: defaultSalesChannel.id,
+          },
+        })
+        
+        console.log(`✅ Linked product ${product.id} to default sales channel ${defaultSalesChannel.id}`)
+      } else {
+        console.warn("⚠️ Default Sales Channel not found - product may not be available in any sales channel")
+      }
+    } catch (linkError: any) {
+      console.error("❌ Failed to link product to sales channel:", linkError?.message)
+      // Don't fail product creation if sales channel linking fails, but log the error
+    }
+
     return res.json({ product })
   } catch (error: any) {
     console.error("Vendor product create error:", error)

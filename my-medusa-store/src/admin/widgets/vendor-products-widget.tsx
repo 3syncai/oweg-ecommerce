@@ -13,10 +13,24 @@ type VendorProduct = {
   status: string
   thumbnail?: string
   created_at: string
+  height?: number | null
+  width?: number | null
+  length?: number | null
+  weight?: number | null
+  vendor?: {
+    id: string
+    name: string
+    store_name?: string | null
+    email: string
+  } | null
   metadata?: {
     vendor_id?: string
     approval_status?: string
     submitted_at?: string
+    mid_code?: string
+    hs_code?: string
+    country_of_origin?: string
+    [key: string]: any
   }
 }
 
@@ -141,6 +155,118 @@ const VendorProductsWidget = () => {
           </div>
         )}
 
+        {/* Attributes Section */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <Heading level="h3" style={{ marginBottom: 0 }}>
+              Attributes
+            </Heading>
+            <button
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--fg-muted)",
+                padding: "4px 8px",
+              }}
+              title="Options"
+            >
+              ⋮
+            </button>
+          </div>
+          
+          <div style={{
+            background: "var(--bg-base)",
+            border: "1px solid var(--border-base)",
+            borderRadius: 8,
+          }}>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 1,
+              background: "var(--border-base)",
+            }}>
+              <div style={{
+                padding: "12px 16px",
+                background: "var(--bg-base)",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+              }}>
+                <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>Height</Text>
+                <Text size="small">{selectedProduct.height ?? "-"}</Text>
+              </div>
+              
+              <div style={{
+                padding: "12px 16px",
+                background: "var(--bg-base)",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+              }}>
+                <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>Width</Text>
+                <Text size="small">{selectedProduct.width ?? "-"}</Text>
+              </div>
+              
+              <div style={{
+                padding: "12px 16px",
+                background: "var(--bg-base)",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+              }}>
+                <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>Length</Text>
+                <Text size="small">{selectedProduct.length ?? "-"}</Text>
+              </div>
+              
+              <div style={{
+                padding: "12px 16px",
+                background: "var(--bg-base)",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+              }}>
+                <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>Weight</Text>
+                <Text size="small">{selectedProduct.weight ?? "-"}</Text>
+              </div>
+              
+              <div style={{
+                padding: "12px 16px",
+                background: "var(--bg-base)",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+              }}>
+                <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>MID code</Text>
+                <Text size="small">{selectedProduct.metadata?.mid_code ?? "-"}</Text>
+              </div>
+              
+              <div style={{
+                padding: "12px 16px",
+                background: "var(--bg-base)",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+              }}>
+                <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>HS code</Text>
+                <Text size="small">{selectedProduct.metadata?.hs_code ?? "-"}</Text>
+              </div>
+              
+              <div style={{
+                padding: "12px 16px",
+                background: "var(--bg-base)",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                gridColumn: "1 / -1",
+              }}>
+                <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>Country of origin</Text>
+                <Text size="small">{selectedProduct.metadata?.country_of_origin ?? "-"}</Text>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div style={{ marginBottom: 24 }}>
           <Heading level="h3" style={{ marginBottom: 8 }}>
             Details
@@ -152,8 +278,29 @@ const VendorProductsWidget = () => {
             <Text weight="plus">Submitted:</Text>
             <Text>{new Date(selectedProduct.metadata?.submitted_at || selectedProduct.created_at).toLocaleString()}</Text>
 
-            <Text weight="plus">Vendor ID:</Text>
-            <Text>{selectedProduct.metadata?.vendor_id}</Text>
+            <Text weight="plus">Vendor:</Text>
+            <div>
+              {selectedProduct.vendor ? (
+                <>
+                  <Text>{selectedProduct.vendor.store_name || selectedProduct.vendor.name}</Text>
+                  {selectedProduct.vendor.store_name && (
+                    <Text size="small" style={{ color: "var(--fg-muted)" }}>
+                      {selectedProduct.vendor.name}
+                    </Text>
+                  )}
+                  <Text size="small" style={{ color: "var(--fg-muted)" }}>
+                    {selectedProduct.vendor.email}
+                  </Text>
+                </>
+              ) : (
+                <Text style={{ color: "var(--fg-muted)" }}>
+                  {selectedProduct.metadata?.vendor_id || "Unknown Vendor"}
+                </Text>
+              )}
+            </div>
+
+            <Text weight="plus">Sales Channel:</Text>
+            <Text>{(selectedProduct as any).sales_channels?.map((sc: any) => sc.name).join(", ") || "Default Sales Channel"}</Text>
           </div>
         </div>
 
@@ -193,6 +340,7 @@ const VendorProductsWidget = () => {
             <Table.Header>
               <Table.Row>
                 <Table.HeaderCell>Product</Table.HeaderCell>
+                <Table.HeaderCell>Vendor</Table.HeaderCell>
                 <Table.HeaderCell>Status</Table.HeaderCell>
                 <Table.HeaderCell>Submitted</Table.HeaderCell>
                 <Table.HeaderCell>Actions</Table.HeaderCell>
@@ -219,6 +367,27 @@ const VendorProductsWidget = () => {
                         )}
                       </div>
                     </div>
+                  </Table.Cell>
+                  <Table.Cell>
+                    {product.vendor ? (
+                      <div>
+                        <Text weight="plus" size="small">
+                          {product.vendor.store_name || product.vendor.name}
+                        </Text>
+                        {product.vendor.store_name && (
+                          <Text size="xsmall" style={{ color: "var(--fg-muted)" }}>
+                            {product.vendor.name}
+                          </Text>
+                        )}
+                        <Text size="xsmall" style={{ color: "var(--fg-muted)" }}>
+                          {product.vendor.email}
+                        </Text>
+                      </div>
+                    ) : (
+                      <Text size="small" style={{ color: "var(--fg-muted)" }}>
+                        Unknown Vendor
+                      </Text>
+                    )}
                   </Table.Cell>
                   <Table.Cell>
                     <Badge color="orange">Pending</Badge>
