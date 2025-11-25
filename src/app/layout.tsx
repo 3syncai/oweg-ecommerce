@@ -5,6 +5,7 @@ import "./globals.css";
 import ServiceWorkerRegister from "./sw-register";
 import Footer from "./footer/Footer";
 import Header from "./header/Header";
+import MobileBottomNav from "@/components/mobile/MobileBottomNav";
 
 import { Providers } from "./providers";
 import CartProvider from "@/contexts/CartProvider";
@@ -56,9 +57,10 @@ export default function RootLayout({
               <div className="min-h-screen flex flex-col">
                 <Header />
 
-                <main className="flex-1">{children}</main>
+                <main className="flex-1 pb-24 md:pb-0">{children}</main>
 
                 <Footer />
+                <MobileBottomNav />
               </div>
 
               <AppToaster />

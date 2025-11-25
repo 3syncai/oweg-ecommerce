@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 
 const Footer = () => {
   return (
-    <footer className="footer-root">
+    <footer className="footer-root hidden md:block">
       <div className="container mx-auto px-6 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12">
           {/* My Account Section */}
@@ -261,6 +261,9 @@ const Footer = () => {
 
         @media (max-width: 768px) {
           .footer-root .link-underline { bottom: -4px; }
+          .footer-root {
+            padding-bottom: 96px; /* leave room for mobile bottom nav */
+          }
         }
       `}</style>
     </footer>
