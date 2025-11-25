@@ -20,7 +20,6 @@ type UIProduct = {
   sourceTag?: string;
 };
 
-
 async function fetchProductsByTag(tag: string, limit: number): Promise<UIProduct[]> {
   const url = `/api/medusa/products?tag=${encodeURIComponent(tag)}&limit=${limit}`;
   const res = await fetch(url, { cache: 'no-store' });
@@ -30,8 +29,6 @@ async function fetchProductsByTag(tag: string, limit: number): Promise<UIProduct
   const data = await res.json();
   return (data?.products || []) as UIProduct[];
 }
-
-// ProductCard is now imported from shared component
 
 // Product Carousel Component
 function ProductCarousel({ title, products, sourceTag }: { title: string; products: UIProduct[]; sourceTag?: string }) {
@@ -70,7 +67,10 @@ function ProductCarousel({ title, products, sourceTag }: { title: string; produc
       </div>
       <div
         ref={scrollRef}
+        // make sure scrollbar-hidden class is present (utility defined in this file's global styles)
         className="flex gap-4 overflow-x-auto scrollbar-hidden pb-4 scroll-smooth snap-x snap-mandatory"
+        role="region"
+        aria-label={`${title} product carousel`}
       >
         {products.map((product) => (
           <div key={product.id} className="flex-shrink-0 w-[200px] sm:w-[220px] md:w-[260px] lg:w-[300px]">
@@ -317,6 +317,26 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Global CSS injected here to ensure .scrollbar-hidden actually hides scrollbars across browsers.
+          You can move this to src/app/globals.css if you prefer a central stylesheet. */}
+      <style jsx global>{`
+        /* hide scrollbar for elements with .scrollbar-hidden */
+        .scrollbar-hidden {
+          -ms-overflow-style: none; /* IE and Edge */
+          scrollbar-width: none; /* Firefox */
+        }
+        .scrollbar-hidden::-webkit-scrollbar {
+          display: none; /* Chrome, Safari, Opera */
+          width: 0;
+          height: 0;
+        }
+
+        /* optional: ensure horizontal scroll area uses touch scrolling smoothly on iOS */
+        .scrollbar-hidden {
+          -webkit-overflow-scrolling: touch;
+        }
+      `}</style>
+
       <main className="max-w-8xl mx-auto py-6">
         <div className="px-4">
           <HeroBanner />
@@ -333,4 +353,3 @@ export default function HomePage() {
     </div>
   );
 }
-

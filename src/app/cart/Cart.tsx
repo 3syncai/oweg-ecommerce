@@ -1006,7 +1006,13 @@ const Cart: React.FC = () => {
                         className="border rounded-lg overflow-hidden bg-white hover:shadow-lg transition transform hover:-translate-y-1"
                       >
                         <div className="relative aspect-[3/2] bg-slate-50">
-                          <Image src={p.image} alt={p.name} width={300} height={200} className="w-full h-full object-cover" />
+                          <Image
+                            src={p.image}
+                            alt={p.name}
+                            width={300}
+                            height={200}
+                            className="w-full h-full object-contain p-2"
+                          />
                           <div className="absolute top-3 left-3 flex gap-2">
                             <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold">{p.discount}% off</span>
                           </div>
