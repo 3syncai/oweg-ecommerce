@@ -145,11 +145,6 @@ const ProductSavingsExplorer = ({
         ? cachedCategoryProducts
         : tokenFilteredProducts
 
-  const filteredTotal = useMemo(
-    () => activeProducts.reduce((sum, item) => sum + (Number.isFinite(item.price) ? item.price : 0), 0),
-    [activeProducts]
-  )
-
   useEffect(() => {
     if (selectedCategory === 'all') return
     if (!selectedOption) return

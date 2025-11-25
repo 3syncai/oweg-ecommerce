@@ -8,6 +8,7 @@ import Link from "next/link";
 import { ShoppingCart, Heart, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DetailedProduct } from "@/lib/medusa";
+import { getImageUrlForNewTab } from "@/lib/image-utils";
 
 type ProductDetailClientProps = {
   product: DetailedProduct;
@@ -80,13 +81,29 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
           <div>
             {/* Main Image */}
             <div className="relative aspect-square w-full bg-gray-50 rounded-lg overflow-hidden mb-4">
-              <Image
-                src={product.images[selectedImage] || product.thumbnail || "/oweg_logo.png"}
-                alt={product.title}
-                fill
-                className="object-contain p-8"
-                priority
-              />
+              <a
+                href={getImageUrlForNewTab(product.images[selectedImage] || product.thumbnail || "/oweg_logo.png")}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="absolute inset-0 z-10"
+                onClick={(e) => {
+                  // Only open in new tab on middle-click or Ctrl/Cmd+click
+                  if (e.button === 1 || e.ctrlKey || e.metaKey) {
+                    return;
+                  }
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                aria-label="Open image in new tab"
+              >
+                <Image
+                  src={product.images[selectedImage] || product.thumbnail || "/oweg_logo.png"}
+                  alt={product.title}
+                  fill
+                  className="object-contain p-8 pointer-events-none"
+                  priority
+                />
+              </a>
             </div>
 
             {/* Thumbnail Gallery */}

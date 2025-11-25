@@ -627,7 +627,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
       return filtered.length ? filtered : result
     },
   })
-  const related = relatedQuery.data || []
+  const related = useMemo(() => relatedQuery.data || [], [relatedQuery.data])
   const loadingRelated = relatedQuery.isLoading
 
 

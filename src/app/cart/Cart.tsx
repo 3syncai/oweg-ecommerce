@@ -883,7 +883,7 @@ const Cart: React.FC = () => {
                           <Minus className="w-4 h-4" />
                         </button>
                         <div className="px-4 text-sm font-medium w-12 text-center">
-                          {String(item.quantity).padStart(2, "0")}
+                          {item.quantity}
                         </div>
                         <button
                           onClick={() => updateQuantity(item.id, item.quantity + 1, item.name)}
@@ -929,7 +929,7 @@ const Cart: React.FC = () => {
                             <Minus className="w-4 h-4" />
                           </button>
                           <div className="px-4 text-sm font-medium w-12 text-center">
-                            {String(item.quantity).padStart(2, "0")}
+                            {item.quantity}
                           </div>
                           <button
                             onClick={() => updateQuantity(item.id, item.quantity + 1, item.name)}

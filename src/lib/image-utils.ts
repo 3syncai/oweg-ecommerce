@@ -65,3 +65,4 @@ export function getImageUrlForNewTab(imageUrl: string): string {
   // Server-side fallback
   return imageUrl;
 }
+

@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 
 const CART_COOKIE = "cart_id"
+const GUEST_CART_HEADER = "x-guest-cart-id"
 const SALES_CHANNEL_ID =
   process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID || process.env.MEDUSA_SALES_CHANNEL_ID
 const REGION_ID =
@@ -29,9 +30,15 @@ function buildCartCreateBody(): RequestInit["body"] {
 
 export const dynamic = "force-dynamic"
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const c = await cookies()
-  const cartId = c.get(CART_COOKIE)?.value
+  let cartId = c.get(CART_COOKIE)?.value
+  
+  // Check for guest cart in request header (from localStorage)
+  if (!cartId) {
+    cartId = req.headers.get(GUEST_CART_HEADER) || undefined
+  }
+  
   if (cartId) {
     const res = await backend(`/store/carts/${cartId}`)
     if (res.ok) {
@@ -49,11 +56,19 @@ export async function GET() {
   const json = await created.json()
   const resp = NextResponse.json(json)
   const newId = json.cart?.id || json.id
-  if (newId) resp.cookies.set(CART_COOKIE, newId, { httpOnly: false, sameSite: "lax", path: "/" })
+  if (newId) {
+    // If no cookie exists, this is a guest cart - don't set cookie, client will store in localStorage
+    const hasCookie = c.get(CART_COOKIE)?.value
+    if (!hasCookie) {
+      // Return cart ID in response for client to store in localStorage
+      return NextResponse.json({ ...json, guestCartId: newId })
+    }
+    resp.cookies.set(CART_COOKIE, newId, { httpOnly: false, sameSite: "lax", path: "/" })
+  }
   return resp
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   // alias to create/ensure
-  return GET()
+  return GET(req)
 }
