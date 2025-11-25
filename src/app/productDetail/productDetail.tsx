@@ -1302,7 +1302,6 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                   <div className="space-y-6 text-center">
                     <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/40 px-5 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700 shadow-sm backdrop-blur">
                       Smart savings
-                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
                     </div>
                     <div className="space-y-4 max-w-4xl mx-auto">
                       <h2 className="text-3xl font-bold text-slate-900 sm:text-[2.4rem] sm:leading-tight">

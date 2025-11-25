@@ -2,7 +2,9 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
-import { ChevronLeft, ChevronRight, Expand, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { getImageUrlForNewTab } from '@/lib/image-utils'
 
 type ProductGalleryProps = {
   images: string[]
@@ -22,6 +24,7 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback }: ProductGa
   const [lensPosition, setLensPosition] = useState({ x: LENS_SIZE / 2, y: LENS_SIZE / 2 })
   const [fullscreenOpen, setFullscreenOpen] = useState(false)
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
+  const [mounted, setMounted] = useState(false)
   useEffect(() => {
     if (!fullscreenOpen) return
     const originalOverflow = document.body.style.overflow
@@ -30,6 +33,10 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback }: ProductGa
       document.body.style.overflow = originalOverflow
     }
   }, [fullscreenOpen])
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const clampLens = (clientX: number, clientY: number) => {
     const bounds = containerRef.current?.getBoundingClientRect()
@@ -128,14 +135,32 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback }: ProductGa
           onTouchStart={handleTouchStart}
         >
           
-          <Image
-            src={activeImage}
-            alt="Selected product image"
-            fill
-            sizes="(max-width: 1024px) 100vw, 50vw"
-            className="object-contain p-4 lg:p-10 transition-transform duration-300 group-hover:scale-105"
-            priority
-          />
+          <a
+            href={getImageUrlForNewTab(activeImage)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute inset-0 z-10"
+            onClick={(e) => {
+              // Only open in new tab on middle-click or Ctrl/Cmd+click
+              // Regular click should not navigate
+              if (e.button === 1 || e.ctrlKey || e.metaKey) {
+                return; // Allow default behavior
+              }
+              e.preventDefault()
+              e.stopPropagation()
+              setFullscreenOpen(true)
+            }}
+            aria-label="Open image in new tab"
+          >
+            <Image
+              src={activeImage}
+              alt="Selected product image"
+              fill
+              sizes="(max-width: 1024px) 100vw, 50vw"
+              className="object-contain p-4 lg:p-10 transition-transform duration-300 group-hover:scale-105 pointer-events-none"
+              priority
+            />
+          </a>
           {hasMultiple && (
             <div className="absolute inset-x-0 bottom-4 flex justify-between px-4">
               <button
@@ -206,45 +231,65 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback }: ProductGa
         ))}
       </div>
 
-      {fullscreenOpen && (
-        <div className="fixed inset-0 z-[9999] flex flex-col bg-black/90 text-white">
-          <div className="flex items-center justify-end px-4 py-3">
-            <button
-              type="button"
-              onClick={() => setFullscreenOpen(false)}
-              className="rounded-full border border-white/30 bg-white/10 p-2 hover:bg-white/20"
-              aria-label="Close fullscreen"
+      {fullscreenOpen && mounted
+        ? createPortal(
+          <div className="fixed inset-0 z-[12000] flex flex-col bg-black/90 text-white">
+            <div className="flex items-center justify-end px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setFullscreenOpen(false)}
+                className="rounded-full border border-white/30 bg-white/10 p-2 hover:bg-white/20"
+                aria-label="Close fullscreen"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div
+              className="relative mx-auto flex w-full max-w-md flex-1 items-center justify-center px-4 pb-6 sm:max-w-3xl"
+              onTouchStart={handleModalTouchStart}
+              onTouchEnd={handleModalTouchEnd}
             >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <div
-            className="relative mx-auto flex w-full max-w-md flex-1 items-center justify-center px-4 pb-6 sm:max-w-3xl"
-            onTouchStart={handleModalTouchStart}
-            onTouchEnd={handleModalTouchEnd}
-          >
-            <Image src={activeImage} alt="Fullscreen product image" fill sizes="100vw" className="object-contain" priority />
-          </div>
-          <div className="flex items-center justify-between px-6 pb-6 sm:px-10">
-            <button
-              type="button"
-              onClick={() => handleNavigate('prev')}
-              className="rounded-full border border-white/30 bg-white/10 p-2 hover:bg-white/20"
-              aria-label="Previous image"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleNavigate('next')}
-              className="rounded-full border border-white/30 bg-white/10 p-2 hover:bg-white/20"
-              aria-label="Next image"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-      )}
+              <a
+                href={getImageUrlForNewTab(activeImage)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="absolute inset-0 z-10"
+                onClick={(e) => {
+                  // Only open in new tab on middle-click or Ctrl/Cmd+click
+                  if (e.button === 1 || e.ctrlKey || e.metaKey) {
+                    return;
+                  }
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setFullscreenOpen(true)
+                }}
+                aria-label="Open image in new tab"
+              >
+                <Image src={activeImage} alt="Fullscreen product image" fill sizes="100vw" className="object-contain pointer-events-none" priority />
+              </a>
+            </div>
+            <div className="flex items-center justify-between px-6 pb-6 sm:px-10">
+              <button
+                type="button"
+                onClick={() => handleNavigate('prev')}
+                className="rounded-full border border-white/30 bg-white/10 p-2 hover:bg-white/20"
+                aria-label="Previous image"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNavigate('next')}
+                className="rounded-full border border-white/30 bg-white/10 p-2 hover:bg-white/20"
+                aria-label="Next image"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+          </div>,
+          document.body
+        )
+        : null}
     </div>
   )
 }

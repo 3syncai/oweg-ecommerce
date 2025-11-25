@@ -293,7 +293,7 @@ const ProductSavingsExplorer = ({
             aria-disabled={!hasCategoryFilters}
           >
             <option value="all">
-              All categories{products.length ? ` (${products.length})` : ''}
+              Choose Category
             </option>
             {categoryOptions.map((option) => (
               <option key={option.id} value={option.id}>

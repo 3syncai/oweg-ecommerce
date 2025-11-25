@@ -5071,6 +5071,11 @@
   resolved "https://registry.npmjs.org/@rollup/rollup-linux-s390x-gnu/-/rollup-linux-s390x-gnu-4.53.1.tgz"
   integrity sha512-HvEixy2s/rWNgpwyKpXJcHmE7om1M89hxBTBi9Fs6zVuLU4gOrEMQNbNsN/tBVIMbLyysz/iwNiGtMOpLAOlvA==
 
+"@rollup/rollup-linux-x64-gnu@4.39.0":
+  version "4.39.0"
+  resolved "https://registry.npmjs.org/@rollup/rollup-linux-x64-gnu/-/rollup-linux-x64-gnu-4.39.0.tgz"
+  integrity sha512-t9jqYw27R6Lx0XKfEFe5vUeEJ5pF3SGIM6gTfONSMb7DuG6z6wfj2yjcoZxHg129veTqU7+wOhY6GX8wmf90dA==
+
 "@rollup/rollup-linux-x64-gnu@4.53.1":
   version "4.53.1"
   resolved "https://registry.npmjs.org/@rollup/rollup-linux-x64-gnu/-/rollup-linux-x64-gnu-4.53.1.tgz"
