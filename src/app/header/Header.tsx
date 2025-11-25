@@ -9,6 +9,7 @@ import {
   ChevronRight,
   X,
   Heart,
+  Bell,
   User,
 } from "lucide-react";
 // import UserIcon from "@/components/ui/icons/UserIcon";
@@ -662,7 +663,7 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header className="w-full header-root sticky top-0 z-[120] bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+    <header className="w-full header-root md:sticky md:top-0 md:z-[120] bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       {/* Top Bar */}
       <div className="bg-header-top-bg text-header-top-text py-2.5 text-center text-sm">
         <p>
@@ -975,164 +976,82 @@ const Header: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 md:hidden">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-4 flex-1">
+            <div className="flex flex-col gap-0 md:hidden">
+              <div className="fixed top-0 left-0 right-0 z-[1400] bg-white/95 backdrop-blur border-b border-gray-100">
+              <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-2">
+                <div className="flex items-center gap-4 flex-1">
                 <button
                   type="button"
                   aria-label="Open menu"
-                  className="w-11 h-11 rounded-full border border-gray-200 text-header-text flex items-center justify-center shadow-sm"
+                  className="w-11 h-11 rounded-full border border-gray-200 text-[#7AC943] flex items-center justify-center shadow-sm"
                   onClick={() => setMobileMenuOpen(true)}
                 >
                   <Menu className="w-5 h-5" />
                 </button>
                 <Link href="/" className="flex items-center" aria-label="OWEG home">
-                  <Image src="/oweg_logo.png" alt="OWEG" width={100} height={28} className="h-7 w-auto" />
+                  <Image src="/oweg_logo.png" alt="OWEG" width={100} height={28} className="h-7 w-auto" priority />
                 </Link>
               </div>
               <div className="flex items-center gap-2">
-                <div className="relative" ref={mobileProfileRef}>
-                  <button
-                    type="button"
-                    aria-label="Open account menu"
-                    className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-header-text"
-                    onClick={() => setMobileProfileOpen((prev) => !prev)}
-                  >
-                    <User className="w-5 h-5" />
-                  </button>
-                  {mobileProfileOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-40 rounded-xl bg-white shadow-xl ring-1 ring-black/5 py-2 z-50">
-                      {customer ? (
-                        <>
-                          <div className="px-4 py-2 text-sm text-header-text border-b border-gray-100">
-                            Hi, <span className="font-semibold">{customerName}</span>
-                          </div>
-                          <div className="px-4 py-2 text-sm text-header-text border-b border-gray-100">
-                            Returns & Orders
-                          </div>
-                          <button
-                            type="button"
-                            className="block w-full px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-                            onClick={handleLogout}
-                          >
-                            Sign out
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <Link
-                            href="/login"
-                            className="block px-4 py-2 text-sm text-header-text hover:bg-gray-50"
-                            onClick={() => setMobileProfileOpen(false)}
-                          >
-                            Login
-                          </Link>
-                          <Link
-                            href="/signup"
-                            className="block px-4 py-2 text-sm text-header-text hover:bg-gray-50"
-                            onClick={() => setMobileProfileOpen(false)}
-                          >
-                            Sign Up
-                          </Link>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <Link href="/wishlist" className="relative w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-header-text" aria-label="Wishlist">
-                  <Heart className="w-5 h-5" />
-                  {wishlistCount > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 bg-header-accent text-white text-[11px] font-semibold rounded-full w-5 h-5 flex items-center justify-center">
-                      {wishlistCount > 99 ? "99+" : wishlistCount}
-                    </span>
-                  )}
+                <Link
+                  href="/notifications"
+                  className="relative w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-[#7AC943]"
+                  aria-label="Notifications"
+                >
+                  <Bell className="w-5 h-5" />
                 </Link>
-                <Link href="/cart" className="relative w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-header-text" aria-label="Cart">
+                <Link href="/cart" className="relative w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-[#7AC943]" aria-label="Cart">
                   <CartIcon className="w-5 h-5" />
                   <span className="absolute -top-1.5 -right-1.5 bg-header-accent text-white text-[11px] font-semibold rounded-full w-5 h-5 flex items-center justify-center">
                     {cartCount > 99 ? "99+" : cartCount}
                   </span>
                 </Link>
               </div>
-            </div>
-
-            <div className="flex items-center justify-between text-xs text-header-muted">
-              <div className="flex items-center gap-2">
-                <LocationIcon className="w-4 h-4 text-header-text" />
-                <div>
-                  <p className="uppercase tracking-[0.2em]">Deliver to</p>
-                  <p className="text-sm font-semibold text-header-text">Bangalore 560034</p>
-                </div>
               </div>
-              <button type="button" className="text-header-accent font-semibold text-[13px]">
-                Change
-              </button>
-            </div>
 
-            <div className="relative">
-              <Input
-                value={q}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  setShowSuggest(true);
-                }}
-                onFocus={() => setShowSuggest(true)}
-                placeholder="Search products, categories..."
-                className="h-12 rounded-full border-gray-200 bg-white shadow-sm"
-              />
-              <Button type="button" className="absolute right-1 top-1 bottom-1 rounded-full bg-header-accent text-white px-4">
-                <Search className="w-4 h-4" />
-              </Button>
-              {showSuggest && q.length >= 2 && suggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 max-h-[60vh] overflow-y-auto">
-                  {suggestions.map((s) => {
-                    const slug = encodeURIComponent(String(s.handle || s.id));
-                    const href = `/productDetail/${slug}?id=${encodeURIComponent(String(s.id))}`;
-                    return (
-                      <Link
-                        key={s.id}
-                        href={href}
-                        className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50"
-                        onClick={() => setShowSuggest(false)}
-                      >
-                        {s.image ? (
-                          <Image src={s.image} alt={s.name} width={40} height={40} className="rounded-md object-cover" />
-                        ) : (
-                          <div className="w-10 h-10 rounded-md bg-gray-200" />
-                        )}
-                        <span className="text-sm text-header-text truncate">{s.name}</span>
-                      </Link>
-                    );
-                  })}
+              <div className="px-4 mt-1 relative">
+                <Input
+                  value={q}
+                  onChange={(e) => {
+                    setQ(e.target.value);
+                    setShowSuggest(true);
+                  }}
+                  onFocus={() => setShowSuggest(true)}
+                  placeholder="Search products, categories..."
+                  className="h-12 rounded-full border-gray-200 bg-white shadow-sm pr-14"
+                />
+                <div className="absolute inset-y-1 right-5 flex items-center">
+                  <div className="w-10 h-10 rounded-full bg-header-accent text-white flex items-center justify-center shadow">
+                    <Search className="w-5 h-5" />
+                  </div>
                 </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm font-semibold text-header-text">
-                <span>Browse categories</span>
-                <button type="button" className="text-header-accent text-xs" onClick={() => setMobileMenuOpen(true)}>
-                  View all
-                </button>
-              </div>
-              <div className="flex gap-2 overflow-x-auto scrollbar-hidden" data-nav-scroll>
-                {navCatsLoading ? (
-                  <div className="text-sm text-gray-500 py-2">Loading...</div>
-                ) : mobileCategories.length ? (
-                  mobileCategories.slice(0, 8).map((cat) => (
-                    <Link
-                      key={cat.id}
-                      href={getCategoryHref(cat.handle)}
-                      className="px-4 py-2 rounded-full border border-gray-200 text-sm text-header-text whitespace-nowrap hover:border-header-accent hover:text-header-accent transition"
-                    >
-                      {cat.title}
-                    </Link>
-                  ))
-                ) : (
-                  <div className="text-sm text-gray-500 py-2">No categories</div>
+                {showSuggest && q.length >= 2 && suggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 max-h-[60vh] overflow-y-auto">
+                    {suggestions.map((s) => {
+                      const slug = encodeURIComponent(String(s.handle || s.id));
+                      const href = `/productDetail/${slug}?id=${encodeURIComponent(String(s.id))}`;
+                      return (
+                        <Link
+                          key={s.id}
+                          href={href}
+                          className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50"
+                          onClick={() => setShowSuggest(false)}
+                        >
+                          {s.image ? (
+                            <Image src={s.image} alt={s.name} width={40} height={40} className="rounded-md object-cover" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-md bg-gray-200" />
+                          )}
+                          <span className="text-sm text-header-text truncate">{s.name}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             </div>
+
+            <div className="md:hidden" style={{ height: '82px' }} aria-hidden="true" />
           </div>
         </div>
       </div>
