@@ -54,5 +54,8 @@ export default defineConfig({
         ],
       },
     },
+    {
+      resolve: "./src/modules/vendor",
+    },
   ],
 })
