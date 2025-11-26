@@ -47,6 +47,11 @@ type ProductLike = {
   images?: Array<{ url?: string | null } | string | null> | null;
   variants?: Array<{ thumbnail?: string | null } | null> | null;
   metadata?: Record<string, unknown> | null;
+  price?: number;
+  mrp?: number;
+  discount?: number;
+  tags?: Array<{ value?: string; handle?: string } | string>;
+  collection?: { title?: string | null; handle?: string | null };
 };
 
 const normalizeCategoryKey = (title?: string) =>
@@ -215,7 +220,48 @@ const getCategoryDisplayImage = (cat: MobileCategory): string => {
   return '/oweg_logo.png';
 };
 
-const Overlay = ({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) => (
+const getProductBrand = (p: ProductLike): string => {
+  const meta = (p.metadata || {}) as Record<string, unknown>;
+  const brand =
+    (meta.brand as string | undefined) ||
+    (meta.Brand as string | undefined) ||
+    (meta.brand_name as string | undefined) ||
+    (meta.BrandName as string | undefined) ||
+    (meta.manufacturer as string | undefined) ||
+    (meta.maker as string | undefined) ||
+    (p.collection?.title as string | undefined) ||
+    (p.collection?.handle as string | undefined);
+  if (typeof brand === 'string' && brand.trim()) return brand.trim();
+  const tagBrand = Array.isArray(p.tags)
+    ? p.tags
+        .map((t) => (typeof t === 'string' ? t : t?.value || t?.handle || ''))
+        .map((s) => s.trim())
+        .find((s) => s.length > 0)
+    : '';
+  if (tagBrand) return tagBrand;
+  return '';
+};
+
+const formatCurrency = (value?: number) => {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '';
+  try {
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
+  } catch {
+    return `₹${Math.round(value)}`;
+  }
+};
+
+const Overlay = ({
+  open,
+  onClose,
+  children,
+  scrollable = true,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+  scrollable?: boolean;
+}) => (
   <div
     className={`fixed inset-0 z-[110] md:hidden transition-opacity duration-200 ${
       open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
@@ -228,7 +274,9 @@ const Overlay = ({ open, onClose, children }: { open: boolean; onClose: () => vo
       } shadow-[0_-6px_30px_-20px_rgba(0,0,0,0.35)] rounded-t-2xl border-t border-gray-100 overflow-hidden`}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="h-full overflow-hidden px-4 pt-20 pb-[calc(72px+env(safe-area-inset-bottom,0px))]">
+      <div
+        className={`h-full ${scrollable ? 'overflow-y-auto' : 'overflow-hidden'} px-4 pt-20 pb-[calc(72px+env(safe-area-inset-bottom,0px))]`}
+      >
         {children}
       </div>
     </div>
@@ -268,9 +316,17 @@ export default function MobileBottomNav() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState<MobileCategory | null>(null);
-  const [subProducts, setSubProducts] = useState<Array<{ id: string; name: string; image?: string }>>([]);
+  const [subProducts, setSubProducts] = useState<
+    Array<{ id: string; name: string; image?: string; price?: number; mrp?: number; discount?: number; brand?: string }>
+  >([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState<MobileCategory | null>(null);
+  const [priceSort, setPriceSort] = useState<'none' | 'asc' | 'desc'>('none');
+  const [priceMin, setPriceMin] = useState('');
+  const [priceMax, setPriceMax] = useState('');
+  const [brandFilter, setBrandFilter] = useState('');
+  const [availableBrands, setAvailableBrands] = useState<string[]>([]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const closeCategory = () => {
     setCategoryOpen(false);
     setActiveCategory(null);
@@ -333,7 +389,7 @@ export default function MobileBottomNav() {
     const target = preferred || fallback;
     if (target) {
       setSelectedCategoryId(target.id);
-      setSelectedSubcategory(target.children?.[0] || null);
+      setSelectedSubcategory(null);
     }
   }, [categoryOpen, categoriesWithChildren, selectedCategoryId]);
 
@@ -359,18 +415,15 @@ export default function MobileBottomNav() {
   useEffect(() => {
     if (!displayedCategory) return;
     setActiveCategory(displayedCategory);
-    // default subcategory selection reset when category changes
-    if (displayedCategory.children && displayedCategory.children.length) {
-      setSelectedSubcategory(displayedCategory.children[0]);
-    } else {
-      setSelectedSubcategory(null);
-    }
+    // keep subcategory unselected by default; user must tap one
+    setSelectedSubcategory(null);
   }, [displayedCategory]);
 
   useEffect(() => {
-    const target = selectedSubcategory || activeCategory;
+    const target = selectedSubcategory;
     if (!target) {
       setSubProducts([]);
+      setProductsLoading(false);
       return;
     }
     const fetchProducts = async () => {
@@ -393,11 +446,18 @@ export default function MobileBottomNav() {
         } else {
           const data = await res.json();
           const productArray: ProductLike[] = Array.isArray(data?.products) ? (data.products as ProductLike[]) : [];
-          const products = productArray.map((p) => ({
-            id: String(p.id || p.handle || Math.random()),
-            name: p.title || p.name || 'Product',
-            image: resolveProductImage(p),
-          }));
+          const products = productArray.map((p) => {
+            const brand = getProductBrand(p);
+            return {
+              id: String(p.id || p.handle || Math.random()),
+              name: p.title || p.name || 'Product',
+              image: resolveProductImage(p),
+              price: typeof p.price === 'number' ? p.price : undefined,
+              mrp: typeof p.mrp === 'number' ? p.mrp : undefined,
+              discount: typeof p.discount === 'number' ? p.discount : undefined,
+              brand,
+            };
+          });
           setSubProducts(products);
         }
       } catch {
@@ -408,6 +468,48 @@ export default function MobileBottomNav() {
     };
     void fetchProducts();
   }, [selectedSubcategory, activeCategory]);
+
+  useEffect(() => {
+    setFiltersOpen(false);
+  }, [selectedSubcategory, selectedCategoryId, categoryOpen]);
+
+  const filteredProducts = useMemo(() => {
+    let list = subProducts;
+    const min = priceMin.trim() ? Number(priceMin) : undefined;
+    const max = priceMax.trim() ? Number(priceMax) : undefined;
+    if (brandFilter) {
+      list = list.filter((p) => (p.brand || '').toLowerCase() === brandFilter.toLowerCase());
+    }
+    if (Number.isFinite(min)) {
+      list = list.filter((p) => typeof p.price === 'number' && (p.price as number) >= (min as number));
+    }
+    if (Number.isFinite(max)) {
+      list = list.filter((p) => typeof p.price === 'number' && (p.price as number) <= (max as number));
+    }
+    if (priceSort === 'asc') {
+      list = [...list].sort((a, b) => (a.price || 0) - (b.price || 0));
+    } else if (priceSort === 'desc') {
+      list = [...list].sort((a, b) => (b.price || 0) - (a.price || 0));
+    }
+    return list;
+  }, [subProducts, brandFilter, priceMin, priceMax, priceSort]);
+
+  useEffect(() => {
+    const brands = Array.from(
+      new Set(
+        subProducts
+          .map((p) => p.brand || '')
+          .map((b) => b.trim())
+          .filter((b) => b.length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+    setAvailableBrands(brands);
+    if (brands.length === 0) {
+      setBrandFilter('');
+    } else if (brandFilter && !brands.includes(brandFilter)) {
+      setBrandFilter('');
+    }
+  }, [subProducts, brandFilter]);
 
   const navItems = [
     {
@@ -538,7 +640,7 @@ export default function MobileBottomNav() {
       </div>
 
       {/* Category sheet */}
-      <Overlay open={categoryOpen} onClose={closeCategory}>
+      <Overlay open={categoryOpen} onClose={closeCategory} scrollable={false}>
         <div className="space-y-4">
           <div className="flex items-start justify-between">
             <div>
@@ -572,7 +674,7 @@ export default function MobileBottomNav() {
                       type="button"
                       onClick={() => {
                         setSelectedCategoryId(cat.id);
-                        setSelectedSubcategory(cat.children?.[0] || null);
+                        setSelectedSubcategory(null);
                       }}
                       className={`w-full rounded-xl border transition ${
                         active ? 'border-emerald-400 bg-emerald-50 shadow-sm' : 'border-gray-200 bg-white'
@@ -598,74 +700,168 @@ export default function MobileBottomNav() {
 
             <div className="flex-1 min-w-0 h-full min-h-0 overflow-y-auto pr-1">
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-gray-500">
-                    {activeCategory ? (
-                      <span className="font-semibold text-gray-800">{activeCategory.title}</span>
-                    ) : (
-                      'Select a category'
-                    )}
-                    {selectedSubcategory ? (
-                      <span className="text-gray-400">
-                        {' '}
-                        &gt; <span className="text-gray-800 font-semibold">{selectedSubcategory.title}</span>
-                      </span>
-                    ) : null}
-                  </div>
+                <div className="flex items-center text-sm text-gray-700 gap-1 min-w-0">
+                  {activeCategory ? (
+                    <span className="font-semibold text-gray-900 truncate">{activeCategory.title}</span>
+                  ) : (
+                    <span className="text-gray-500">Select a category</span>
+                  )}
+                  {selectedSubcategory ? (
+                    <>
+                      <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                      <span className="text-gray-900 font-semibold truncate">{selectedSubcategory.title}</span>
+                    </>
+                  ) : null}
                 </div>
 
-                {activeCategory && (activeCategory.children || []).length > 0 && (
-                  <div className="flex flex-wrap gap-2 overflow-x-auto scrollbar-hidden pb-1">
-                    {activeCategory.children!.map((child) => {
-                      const activeSub = selectedSubcategory?.id === child.id;
-                      return (
-                        <button
-                          key={child.id}
-                          type="button"
-                          onClick={() => setSelectedSubcategory(child)}
-                          className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold border transition ${
-                            activeSub ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-emerald-700 border-emerald-200'
-                          }`}
-                        >
-                          {child.title}
-                        </button>
-                      );
-                    })}
+                {activeCategory && (activeCategory.children || []).length > 0 && !selectedSubcategory && (
+                  <div className="grid grid-cols-2 gap-3 pb-2">
+                    {activeCategory.children!.map((child) => (
+                      <button
+                        key={child.id}
+                        type="button"
+                        onClick={() => setSelectedSubcategory(child)}
+                        className="flex flex-col items-center justify-center rounded-2xl border px-3 py-3 text-center transition border-emerald-100 bg-white hover:border-emerald-400 hover:shadow"
+                      >
+                        <div className="flex items-center justify-center w-20 h-20 rounded-full border text-[12px] font-semibold leading-tight border-emerald-200 text-emerald-700 bg-emerald-50/60">
+                          <span className="px-2 line-clamp-3">{child.title}</span>
+                        </div>
+                        <span className="mt-2 text-[12px] font-semibold text-gray-800 line-clamp-2">{child.title}</span>
+                      </button>
+                    ))}
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-3 pb-3">
-                  {productsLoading ? (
-                    <div className="col-span-2 text-sm text-gray-500">Loading products...</div>
-                  ) : subProducts.length === 0 ? (
-                    <div className="col-span-2 text-sm text-gray-500">No products found.</div>
-                  ) : (
-                    subProducts.map((p) => (
-                      <Link
-                        key={p.id}
-                        href={`/productDetail/${encodeURIComponent(p.id)}?id=${encodeURIComponent(p.id)}`}
-                        className="rounded-xl border border-gray-100 bg-white p-2 shadow-sm flex flex-col items-center gap-2"
-                        onClick={closeCategory}
+                {selectedSubcategory && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-xs text-gray-600 flex-wrap">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700"
+                        onClick={() => setSelectedSubcategory(null)}
                       >
-                        <div className="relative w-full aspect-[3/4] rounded-lg bg-white border border-gray-100 overflow-hidden shadow-sm">
-                          {p.image ? (
-                            <Image
-                              src={p.image}
-                              alt={p.name}
-                              fill
-                              sizes="(max-width: 768px) 50vw, 200px"
-                              className="object-contain p-1.5"
-                              unoptimized
-                            />
-                          ) : (
-                            <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400">No image</div>
-                          )}
+                        <ChevronRight className="w-3 h-3 rotate-180" />
+                        All subcategories
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-700"
+                        onClick={() => setFiltersOpen((v) => !v)}
+                      >
+                        Filters
+                        <ChevronRight className={`w-3 h-3 text-gray-400 transition-transform ${filtersOpen ? 'rotate-90' : ''}`} />
+                      </button>
+                    </div>
+                    {filtersOpen && (
+                      <div className="flex flex-wrap gap-2 items-center text-xs text-gray-600 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-700 font-semibold">Sort:</span>
+                          <select
+                            value={priceSort}
+                            onChange={(e) => setPriceSort(e.target.value as 'none' | 'asc' | 'desc')}
+                            className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs"
+                          >
+                            <option value="none">Default</option>
+                            <option value="asc">Price: Low to High</option>
+                            <option value="desc">Price: High to Low</option>
+                          </select>
                         </div>
-                        <p className="text-xs text-center text-gray-800 line-clamp-2">{p.name}</p>
-                      </Link>
-                    ))
-                  )}
-                </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-700 font-semibold">Brand:</span>
+                          <select
+                            value={brandFilter}
+                            onChange={(e) => setBrandFilter(e.target.value)}
+                            className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs min-w-[120px]"
+                          >
+                            <option value="">All</option>
+                            {availableBrands.map((b) => (
+                              <option key={b} value={b}>
+                                {b}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-700 font-semibold">Price:</span>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            placeholder="Min"
+                            value={priceMin}
+                            onChange={(e) => setPriceMin(e.target.value)}
+                            className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-xs"
+                          />
+                          <span>–</span>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            placeholder="Max"
+                            value={priceMax}
+                            onChange={(e) => setPriceMax(e.target.value)}
+                            className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-xs"
+                          />
+                        </div>
+                        {(priceSort !== 'none' || brandFilter || priceMin || priceMax) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPriceSort('none');
+                              setBrandFilter('');
+                              setPriceMin('');
+                              setPriceMax('');
+                            }}
+                            className="text-emerald-700 font-semibold"
+                          >
+                            Clear filters
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {selectedSubcategory ? (
+                  <div className="grid grid-cols-2 gap-3 pb-3">
+                    {productsLoading ? (
+                      <div className="col-span-2 text-sm text-gray-500">Loading products...</div>
+                    ) : filteredProducts.length === 0 ? (
+                      <div className="col-span-2 text-sm text-gray-500">No products found.</div>
+                    ) : (
+                      filteredProducts.map((p) => (
+                        <Link
+                          key={p.id}
+                          href={`/productDetail/${encodeURIComponent(p.id)}?id=${encodeURIComponent(p.id)}`}
+                          className="rounded-xl border border-gray-100 bg-white p-2 shadow-sm flex flex-col items-center gap-2"
+                          onClick={closeCategory}
+                        >
+                          <div className="relative w-full aspect-[3/4] rounded-lg bg-white border border-gray-100 overflow-hidden shadow-sm">
+                            {p.image ? (
+                              <Image
+                                src={p.image}
+                                alt={p.name}
+                                fill
+                                sizes="(max-width: 768px) 50vw, 200px"
+                                className="object-contain p-1.5"
+                                unoptimized
+                              />
+                            ) : (
+                              <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400">No image</div>
+                            )}
+                          </div>
+                          <p className="text-xs text-center text-gray-800 line-clamp-2">{p.name}</p>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-emerald-700 font-semibold">{formatCurrency(p.price)}</span>
+                            {p.mrp && p.mrp > (p.price || 0) ? (
+                              <span className="text-gray-400 line-through">{formatCurrency(p.mrp)}</span>
+                            ) : null}
+                          </div>
+                        </Link>
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500">Tap a subcategory to view its products.</div>
+                )}
               </div>
             </div>
           </div>
