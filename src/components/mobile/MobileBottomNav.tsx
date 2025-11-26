@@ -12,12 +12,14 @@ import {
   Home,
   Mail,
   LogIn,
+  Facebook, Twitter, Instagram, Linkedin, Send,
   LogOut,
   MapPin,
   Phone,
   Shield,
   ShoppingBag,
   Sparkles,
+  Search,
   Store,
   User,
   UserPlus,
@@ -25,6 +27,7 @@ import {
 } from 'lucide-react';
 import type { MedusaCategory } from '@/lib/medusa';
 import { useAuth } from '@/contexts/AuthProvider';
+import { getOriginalImageUrl } from '@/lib/image-utils';
 
 type MobileCategory = {
   id: string;
@@ -34,26 +37,182 @@ type MobileCategory = {
   children?: MobileCategory[];
 };
 
+type ProductLike = {
+  id?: string | number;
+  handle?: string | number;
+  title?: string;
+  name?: string;
+  image?: string;
+  thumbnail?: string;
+  images?: Array<{ url?: string | null } | string | null> | null;
+  variants?: Array<{ thumbnail?: string | null } | null> | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+const normalizeCategoryKey = (title?: string) =>
+  (title || '')
+    .toString()
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, '-');
+
+const categoryImageMap: Record<string, string> = {
+  'home-appliances': '/Home Appliances.png',
+  'kitchen-appliances': '/Kitchen Appliances.png',
+  'beauty-personal-care': '/beauty-personal-care.png',
+  'computer-mobile': '/Computer & Mobile v1.png',
+  'computer-mobile-accessories': '/Computer & Mobile v1.png',
+  'mobile-accessories': '/Computer & Mobile v1.png',
+  hardware: '/Hardwear-01.png',
+  'hard-wear': '/Hardwear-01.png',
+  bags: '/Bags-01.png',
+  clothing: '/Clothing-01.png',
+  'security-surveillance': '/security & surveillance.png',
+  'surveillance-security': '/security & surveillance.png',
+  'toys-and-games': '/Toysandgames.png',
+  jewellery: '/Jewellery.png',
+  umbrella: '/Umbrella.png',
+  'health-care': '/Sassiest-Health-Care.png',
+  health: '/Sassiest-Health-Care.png',
+  stationery: '/Stationery.png',
+  stationary: '/Stationery.png',
+};
+
+const categoryImageKeywords: Array<{ image: string; includes: string[] }> = [
+  { image: '/Home Appliances.png', includes: ['home', 'appliance'] },
+  { image: '/Kitchen Appliances.png', includes: ['kitchen', 'appliance'] },
+  { image: '/beauty-personal-care.png', includes: ['beauty'] },
+  { image: '/beauty-personal-care.png', includes: ['personal', 'care'] },
+  { image: '/Computer & Mobile v1.png', includes: ['computer'] },
+  { image: '/Computer & Mobile v1.png', includes: ['mobile'] },
+  { image: '/Hardwear-01.png', includes: ['hardware'] },
+  { image: '/Hardwear-01.png', includes: ['hard', 'wear'] },
+  { image: '/Bags-01.png', includes: ['bag'] },
+  { image: '/Clothing-01.png', includes: ['cloth'] },
+  { image: '/security & surveillance.png', includes: ['security'] },
+  { image: '/security & surveillance.png', includes: ['surveillance'] },
+  { image: '/security & surveillance.png', includes: ['surveillance', 'security'] },
+  { image: '/Toysandgames.png', includes: ['toy'] },
+  { image: '/Toysandgames.png', includes: ['game'] },
+  { image: '/Jewellery.png', includes: ['jewel'] },
+  { image: '/Umbrella.png', includes: ['umbrella'] },
+  { image: '/Sassiest-Health-Care.png', includes: ['health'] },
+  { image: '/Stationery.png', includes: ['stationery'] },
+  { image: '/Stationery.png', includes: ['stationary'] },
+  { image: '/Computer & Mobile v1.png', includes: ['mobile', 'accessor'] },
+  { image: '/Computer & Mobile v1.png', includes: ['computer', 'accessor'] },
+];
+
 const buildCategoryList = (data?: unknown): MobileCategory[] => {
   const raw: MedusaCategory[] = Array.isArray((data as { categories?: MedusaCategory[] })?.categories)
     ? ((data as { categories?: MedusaCategory[] }).categories as MedusaCategory[])
     : [];
-  return raw.slice(0, 12).map((cat) => ({
-    id: cat.id || cat.handle || cat.title || Math.random().toString(),
-    title: (cat.title || cat.name || 'Category').toString(),
-    handle: cat.handle || undefined,
-    image:
-      (cat as MedusaCategory & { metadata?: { thumbnail?: string; image?: string } }).metadata?.thumbnail ||
-      (cat as MedusaCategory & { metadata?: { thumbnail?: string; image?: string } }).metadata?.image ||
-      undefined,
-    children: Array.isArray(cat.category_children)
-      ? cat.category_children.map((child) => ({
-          id: child.id || child.handle || child.title || Math.random().toString(),
-          title: (child.title || child.name || 'Category').toString(),
-          handle: child.handle || undefined,
-        }))
-      : [],
-  }));
+  return raw.map((cat, idx) => {
+    const baseId = cat.id || cat.handle || cat.title || `cat-${idx}`;
+    return {
+      id: baseId,
+      title: (cat.title || cat.name || 'Category').toString(),
+      handle: cat.handle || undefined,
+      image:
+        (cat as MedusaCategory & { metadata?: { thumbnail?: string; image?: string } }).metadata?.thumbnail ||
+        (cat as MedusaCategory & { metadata?: { thumbnail?: string; image?: string } }).metadata?.image ||
+        undefined,
+      children: Array.isArray(cat.category_children)
+        ? cat.category_children.map((child, cIdx) => ({
+            id: child.id || child.handle || child.title || `${baseId}-child-${cIdx}`,
+            title: (child.title || child.name || 'Category').toString(),
+            handle: child.handle || undefined,
+          }))
+        : [],
+    };
+  });
+};
+
+const resolveProductImage = (p: ProductLike): string => {
+  const candidates: Array<string | undefined | null> = [];
+  candidates.push(p?.image);
+  candidates.push(p?.thumbnail);
+  if (Array.isArray(p?.images)) {
+    p.images.forEach((img) => {
+      if (!img) return;
+      if (typeof img === 'string') {
+        candidates.push(img);
+        return;
+      }
+      candidates.push((img as { url?: string | null; original_url?: string | null }).original_url);
+      candidates.push((img as { url?: string | null }).url);
+    });
+  }
+  if (Array.isArray(p?.variants)) {
+    p.variants.forEach((v) => {
+      if (!v) return;
+      candidates.push((v as { thumbnail?: string | null }).thumbnail);
+      if (Array.isArray((v as { images?: Array<{ url?: string | null; original_url?: string | null } | null> | null }).images)) {
+        (v as { images?: Array<{ url?: string | null; original_url?: string | null } | null> | null }).images!.forEach((img) => {
+          if (!img) return;
+          candidates.push(img.original_url);
+          candidates.push(img.url);
+        });
+      }
+    });
+  }
+  const meta = (p?.metadata || {}) as Record<string, unknown>;
+  ['image', 'thumbnail', 'img', 'picture', 'photo', 'image_url', 'url'].forEach((key) => {
+    const val = meta[key] as string | undefined;
+    if (typeof val === 'string') candidates.push(val);
+  });
+  const metaImages = meta.images;
+  if (Array.isArray(metaImages)) {
+    metaImages.forEach((item) => {
+      if (typeof item === 'string') candidates.push(item);
+      if (item && typeof item === 'object' && 'url' in item) {
+        candidates.push((item as { url?: string }).url);
+      }
+    });
+  }
+
+  const pick = candidates.find((c) => typeof c === 'string' && c.trim().length > 0) || '';
+  if (!pick) return '/oweg_logo.png';
+  const normalized = getOriginalImageUrl(pick.trim());
+  if (normalized.startsWith('http://') || normalized.startsWith('https://')) return normalized;
+  if (normalized.startsWith('/')) {
+    if (typeof window !== 'undefined') {
+      return new URL(normalized, window.location.origin).href;
+    }
+  }
+  return normalized || '/oweg_logo.png';
+};
+
+const resolveCategoryImage = (src?: string): string => {
+  if (!src) return '/oweg_logo.png';
+  const normalized = getOriginalImageUrl(src);
+  if (normalized.startsWith('http://') || normalized.startsWith('https://')) return normalized;
+  if (normalized.startsWith('/')) {
+    if (typeof window !== 'undefined') {
+      return new URL(normalized, window.location.origin).href;
+    }
+  }
+  return normalized || '/oweg_logo.png';
+};
+
+const getCategoryDisplayImage = (cat: MobileCategory): string => {
+  const key = normalizeCategoryKey(cat.title);
+  const mapped = categoryImageMap[key] || categoryImageMap[cat.handle || ''];
+  if (mapped) return resolveCategoryImage(mapped);
+
+  const normalizedTitle = key;
+  const normalizedHandle = normalizeCategoryKey(cat.handle);
+  const tokens = `${normalizedTitle} ${normalizedHandle}`.split('-').filter(Boolean);
+
+  const keywordHit = categoryImageKeywords.find(({ includes }) =>
+    includes.every((kw) => tokens.some((t) => t.includes(kw)))
+  );
+  if (keywordHit) return resolveCategoryImage(keywordHit.image);
+
+  if (cat.image) return resolveCategoryImage(cat.image);
+  return '/oweg_logo.png';
 };
 
 const Overlay = ({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) => (
@@ -64,12 +223,12 @@ const Overlay = ({ open, onClose, children }: { open: boolean; onClose: () => vo
     onClick={onClose}
   >
     <div
-      className={`absolute inset-x-0 top-0 bottom-[calc(env(safe-area-inset-bottom,0px)+96px)] bg-white transition-transform duration-200 ${
+      className={`absolute inset-x-0 top-0 bottom-0 bg-white transition-transform duration-200 ${
         open ? 'translate-y-0' : 'translate-y-full'
       } shadow-[0_-6px_30px_-20px_rgba(0,0,0,0.35)] rounded-t-2xl border-t border-gray-100 overflow-hidden`}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="h-full overflow-y-auto px-4 pt-[132px] pb-[calc(170px+env(safe-area-inset-bottom,0px))]">
+      <div className="h-full overflow-hidden px-4 pt-20 pb-[calc(72px+env(safe-area-inset-bottom,0px))]">
         {children}
       </div>
     </div>
@@ -107,6 +266,10 @@ export default function MobileBottomNav() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [selectedSubcategory, setSelectedSubcategory] = useState<MobileCategory | null>(null);
+  const [subProducts, setSubProducts] = useState<Array<{ id: string; name: string; image?: string }>>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState<MobileCategory | null>(null);
   const closeCategory = () => {
     setCategoryOpen(false);
@@ -115,12 +278,6 @@ export default function MobileBottomNav() {
   };
   const closeProfile = () => setProfileOpen(false);
   const closeJoin = () => setJoinOpen(false);
-  const setFirstCategory = useCallback(() => {
-    if (categories.length && !activeCategory) {
-      setActiveCategory(categories[0]);
-    }
-  }, [categories, activeCategory]);
-
   const overlayOpen = categoryOpen || profileOpen || joinOpen;
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -131,11 +288,27 @@ export default function MobileBottomNav() {
     };
   }, [overlayOpen]);
 
+  // stop auto-selecting first category so products show only after user taps
   useEffect(() => {
-    if (categoryOpen) {
-      setFirstCategory();
+    if (!categoryOpen) {
+      setSelectedCategoryId(null);
+      setSelectedSubcategory(null);
+      setActiveCategory(null);
     }
-  }, [categoryOpen, setFirstCategory, categories.length]);
+  }, [categoryOpen]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const cls = 'category-overlay-open';
+    if (categoryOpen) {
+      document.body.classList.add(cls);
+    } else {
+      document.body.classList.remove(cls);
+    }
+    return () => {
+      document.body.classList.remove(cls);
+    };
+  }, [categoryOpen]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -147,11 +320,94 @@ export default function MobileBottomNav() {
     resetPanels();
   }, [pathname, resetPanels]);
 
+  const categoriesWithChildren = useMemo(
+    () => categories.filter((cat) => Array.isArray(cat.children) && cat.children.length > 0),
+    [categories]
+  );
+
+  useEffect(() => {
+    if (!categoryOpen) return;
+    if (selectedCategoryId) return;
+    const preferred = categoriesWithChildren.find((c) => normalizeCategoryKey(c.title) === 'home-appliances');
+    const fallback = categoriesWithChildren[0];
+    const target = preferred || fallback;
+    if (target) {
+      setSelectedCategoryId(target.id);
+      setSelectedSubcategory(target.children?.[0] || null);
+    }
+  }, [categoryOpen, categoriesWithChildren, selectedCategoryId]);
+
   const filteredCategories = useMemo(() => {
-    if (!searchTerm.trim()) return categories;
+    if (!searchTerm.trim()) return categoriesWithChildren;
     const term = searchTerm.toLowerCase();
-    return categories.filter((cat) => cat.title.toLowerCase().includes(term));
-  }, [categories, searchTerm]);
+    return categoriesWithChildren.filter((cat) => cat.title.toLowerCase().includes(term));
+  }, [categoriesWithChildren, searchTerm]);
+
+  const displayedCategory = useMemo(() => {
+    if (!selectedCategoryId) return null;
+    return filteredCategories.find((c) => c.id === selectedCategoryId) || null;
+  }, [filteredCategories, selectedCategoryId]);
+
+  useEffect(() => {
+    if (selectedCategoryId && !displayedCategory) {
+      setSelectedCategoryId(null);
+      setSelectedSubcategory(null);
+      setActiveCategory(null);
+    }
+  }, [displayedCategory, selectedCategoryId]);
+
+  useEffect(() => {
+    if (!displayedCategory) return;
+    setActiveCategory(displayedCategory);
+    // default subcategory selection reset when category changes
+    if (displayedCategory.children && displayedCategory.children.length) {
+      setSelectedSubcategory(displayedCategory.children[0]);
+    } else {
+      setSelectedSubcategory(null);
+    }
+  }, [displayedCategory]);
+
+  useEffect(() => {
+    const target = selectedSubcategory || activeCategory;
+    if (!target) {
+      setSubProducts([]);
+      return;
+    }
+    const fetchProducts = async () => {
+      setProductsLoading(true);
+      try {
+        const query =
+          target.handle && target.handle.length > 0
+            ? `category=${encodeURIComponent(target.handle)}`
+            : target.id
+              ? `categoryId=${encodeURIComponent(target.id)}`
+              : '';
+        if (!query) {
+          setSubProducts([]);
+          setProductsLoading(false);
+          return;
+        }
+        const res = await fetch(`/api/medusa/products?${query}&limit=24`, { cache: 'no-store' });
+        if (!res.ok) {
+          setSubProducts([]);
+        } else {
+          const data = await res.json();
+          const productArray: ProductLike[] = Array.isArray(data?.products) ? (data.products as ProductLike[]) : [];
+          const products = productArray.map((p) => ({
+            id: String(p.id || p.handle || Math.random()),
+            name: p.title || p.name || 'Product',
+            image: resolveProductImage(p),
+          }));
+          setSubProducts(products);
+        }
+      } catch {
+        setSubProducts([]);
+      } finally {
+        setProductsLoading(false);
+      }
+    };
+    void fetchProducts();
+  }, [selectedSubcategory, activeCategory]);
 
   const navItems = [
     {
@@ -220,7 +476,7 @@ export default function MobileBottomNav() {
 
   return (
     <>
-      <div className="fixed inset-x-0 bottom-0 z-[1400] md:hidden bg-white/98 backdrop-blur border-t border-gray-200 shadow-[0_-10px_30px_-18px_rgba(0,0,0,0.45)] rounded-t-3xl">
+      <div className="fixed inset-x-0 bottom-0 z-400 md:hidden bg-white/98 backdrop-blur border-t border-gray-200 shadow-[0_-10px_30px_-18px_rgba(0,0,0,0.45)] rounded-t-3xl">
         <div className="px-3 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] pt-2 flex items-center justify-between">
           {navItems.map((item) => {
             const active = item.active;
@@ -283,12 +539,11 @@ export default function MobileBottomNav() {
 
       {/* Category sheet */}
       <Overlay open={categoryOpen} onClose={closeCategory}>
-        <div className="p-4 space-y-4">
+        <div className="space-y-4">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.3em] text-gray-400">Browse</p>
-              <h3 className="text-lg font-semibold text-gray-900">Categories</h3>
-              <p className="text-xs text-gray-500">Tap a category to view its sub-categories.</p>
+              <h3 className="text-lg font-semibold text-gray-900 pt-2">Categories</h3>
+              
             </div>
           </div>
 
@@ -299,96 +554,131 @@ export default function MobileBottomNav() {
               placeholder="Search categories"
               className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
             />
-            <Sparkles className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500" />
+            <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500" />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            {categoriesLoading ? (
-              <div className="col-span-3 text-sm text-gray-500">Loading categories…</div>
-            ) : (
-              filteredCategories.map((cat) => (
-                <div
-                  key={cat.id}
-                  className={`group rounded-2xl border ${
-                    activeCategory?.id === cat.id ? 'border-emerald-300 bg-emerald-50' : 'border-gray-100 bg-white'
-                  } shadow-sm overflow-hidden text-left flex flex-col`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setActiveCategory(cat)}
-                    className="text-left flex-1"
-                  >
-                    <div className="relative aspect-square w-full">
-                      {cat.image ? (
-                        <Image src={cat.image} alt={cat.title} fill sizes="33vw" className="object-cover" />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-emerald-50 to-lime-50 text-emerald-600 font-semibold text-xs">
-                          {cat.title.slice(0, 10)}
-                        </div>
-                      )}
-                    </div>
-                    <div className="px-3 pt-2">
-                      <p className="text-sm font-semibold text-gray-900 line-clamp-2">{cat.title}</p>
-                    </div>
-                  </button>
-                  <Link
-                    href={cat.handle ? `/c/${encodeURIComponent(cat.handle)}` : '#'}
-                    className="px-3 pb-3 text-[11px] text-emerald-700 inline-flex items-center gap-1 font-semibold"
-                    onClick={closeCategory}
-                  >
-                    Open category
-                    <ChevronRight className="w-3 h-3" />
-                  </Link>
-                </div>
-              ))
-            )}
-          </div>
-
-          {activeCategory && (
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-3 py-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.3em] text-emerald-600">Sub-categories</p>
-                  <p className="text-sm font-semibold text-emerald-800">{activeCategory.title}</p>
-                </div>
-                <Link
-                  href={
-                    activeCategory.handle ? `/c/${encodeURIComponent(activeCategory.handle)}` : '#'
-                  }
-                  className="text-xs font-semibold text-white bg-emerald-600 px-3 py-2 rounded-lg shadow hover:bg-emerald-700"
-                  onClick={closeCategory}
-                >
-                  View all
-                </Link>
-              </div>
-              <div className="flex gap-2 overflow-x-auto scrollbar-hidden pb-1">
-                {(activeCategory.children || []).length ? (
-                  (activeCategory.children || []).map((child) => (
-                    <Link
-                      key={child.id}
-                      href={child.handle ? `/c/${encodeURIComponent(child.handle)}` : '#'}
-                      className="whitespace-nowrap rounded-full bg-white text-emerald-700 border border-emerald-200 px-3 py-1.5 text-xs font-semibold shadow-sm"
-                      onClick={closeCategory}
+          <div className="flex gap-3 h-[65vh] min-h-0">
+            <div className="w-28 flex-shrink-0 space-y-2 overflow-y-auto h-full pr-1 min-h-0">
+              {categoriesLoading ? (
+                <div className="text-sm text-gray-500">Loading categories…</div>
+              ) : filteredCategories.length === 0 ? (
+                <div className="text-sm text-gray-500">No categories found.</div>
+              ) : (
+                filteredCategories.map((cat) => {
+                  const active = displayedCategory?.id === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategoryId(cat.id);
+                        setSelectedSubcategory(cat.children?.[0] || null);
+                      }}
+                      className={`w-full rounded-xl border transition ${
+                        active ? 'border-emerald-400 bg-emerald-50 shadow-sm' : 'border-gray-200 bg-white'
+                      }`}
                     >
-                      {child.title}
-                    </Link>
-                  ))
-                ) : (
-                  <span className="text-xs text-emerald-700">No sub-categories listed</span>
+                      <div className="px-2.5 py-2">
+                        <div className="relative w-full h-24 rounded-xl overflow-hidden bg-white">
+                          <Image
+                            src={getCategoryDisplayImage(cat)}
+                            alt={cat.title}
+                            fill
+                            className="object-contain"
+                            sizes="40vw"
+                            unoptimized
+                          />
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="flex-1 min-w-0 h-full min-h-0 overflow-y-auto pr-1">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-gray-500">
+                    {activeCategory ? (
+                      <span className="font-semibold text-gray-800">{activeCategory.title}</span>
+                    ) : (
+                      'Select a category'
+                    )}
+                    {selectedSubcategory ? (
+                      <span className="text-gray-400">
+                        {' '}
+                        &gt; <span className="text-gray-800 font-semibold">{selectedSubcategory.title}</span>
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                {activeCategory && (activeCategory.children || []).length > 0 && (
+                  <div className="flex flex-wrap gap-2 overflow-x-auto scrollbar-hidden pb-1">
+                    {activeCategory.children!.map((child) => {
+                      const activeSub = selectedSubcategory?.id === child.id;
+                      return (
+                        <button
+                          key={child.id}
+                          type="button"
+                          onClick={() => setSelectedSubcategory(child)}
+                          className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold border transition ${
+                            activeSub ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-emerald-700 border-emerald-200'
+                          }`}
+                        >
+                          {child.title}
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
+
+                <div className="grid grid-cols-2 gap-3 pb-3">
+                  {productsLoading ? (
+                    <div className="col-span-2 text-sm text-gray-500">Loading products...</div>
+                  ) : subProducts.length === 0 ? (
+                    <div className="col-span-2 text-sm text-gray-500">No products found.</div>
+                  ) : (
+                    subProducts.map((p) => (
+                      <Link
+                        key={p.id}
+                        href={`/productDetail/${encodeURIComponent(p.id)}?id=${encodeURIComponent(p.id)}`}
+                        className="rounded-xl border border-gray-100 bg-white p-2 shadow-sm flex flex-col items-center gap-2"
+                        onClick={closeCategory}
+                      >
+                        <div className="relative w-full aspect-[3/4] rounded-lg bg-white border border-gray-100 overflow-hidden shadow-sm">
+                          {p.image ? (
+                            <Image
+                              src={p.image}
+                              alt={p.name}
+                              fill
+                              sizes="(max-width: 768px) 50vw, 200px"
+                              className="object-contain p-1.5"
+                              unoptimized
+                            />
+                          ) : (
+                            <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400">No image</div>
+                          )}
+                        </div>
+                        <p className="text-xs text-center text-gray-800 line-clamp-2">{p.name}</p>
+                      </Link>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
-          )}
+          </div>
         </div>
       </Overlay>
 
       {/* Profile sheet */}
       <Overlay open={profileOpen} onClose={closeProfile}>
-        <div className="p-4 space-y-4">
+        <div className="p-4 pt-12 pb-16 space-y-4">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.3em] text-gray-400">Profile</p>
-              <h3 className="text-lg font-semibold text-gray-900">{customer ? `Hi, ${customerName}` : 'Welcome back'}</h3>
+              {/* <p className="text-[11px] uppercase tracking-[0.3em] text-gray-400">Profile</p> */}
+              <h1 className="text-2xl font-semibold text-gray-900">{customer ? `Hi, ${customerName}` : 'Welcome back'}</h1>
               <p className="text-xs text-gray-500">
                 {customer ? 'Manage your account quickly.' : ''}
               </p>
@@ -533,12 +823,19 @@ export default function MobileBottomNav() {
                 <Mail className="w-4 h-4" />
                 owegonline@oweg.in
               </a>
-              <div className="flex gap-3 pt-1">
-                {['Facebook', 'Twitter', 'Instagram', 'LinkedIn'].map((label) => (
-                  <span key={label} className="w-8 h-8 rounded-full border border-gray-200 bg-gray-50 flex items-center justify-center text-[11px] text-gray-600">
-                    {label[0]}
-                  </span>
-                ))}
+              <div className="flex gap-6">
+                <a href="#" className="icon-link" aria-label="Facebook">
+                  <Facebook className="h-5 w-5" />
+                </a>
+                <a href="#" className="icon-link" aria-label="Twitter">
+                  <Twitter className="h-5 w-5" />
+                </a>
+                <a href="#" className="icon-link" aria-label="Instagram">
+                  <Instagram className="h-5 w-5" />
+                </a>
+                <a href="#" className="icon-link" aria-label="LinkedIn">
+                  <Linkedin className="h-5 w-5" />
+                </a>
               </div>
             </div>
           </div>
@@ -562,10 +859,10 @@ export default function MobileBottomNav() {
 
       {/* Join sheet */}
       <Overlay open={joinOpen} onClose={closeJoin}>
-        <div className="p-4 space-y-4">
+        <div className="p-4 pt-12 space-y-4">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.3em] text-emerald-600">Grow with us</p>
+              {/* <p className="text-[11px] uppercase tracking-[0.3em] text-emerald-600">Grow with us</p> */}
               <h3 className="text-lg font-semibold text-gray-900">Join OWEG</h3>
               <p className="text-xs text-gray-500">Pick how you want to partner - vendor store or agent/partner track.</p>
             </div>

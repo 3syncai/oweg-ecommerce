@@ -1009,7 +1009,7 @@ const Header: React.FC = () => {
               </div>
               </div>
 
-              <div className="px-4 mt-1 relative">
+              <div className="px-4 mt-1 relative mobile-search-bar">
                 <Input
                   value={q}
                   onChange={(e) => {
@@ -1051,7 +1051,7 @@ const Header: React.FC = () => {
               </div>
             </div>
 
-            <div className="md:hidden" style={{ height: '82px' }} aria-hidden="true" />
+            <div className="md:hidden mobile-header-spacer" style={{ height: '82px' }} aria-hidden="true" />
           </div>
         </div>
       </div>
@@ -1347,6 +1347,12 @@ const Header: React.FC = () => {
         @media (max-width: 768px) {
           .nav-link::after {
             bottom: 4px;
+          }
+          body.category-overlay-open .mobile-search-bar {
+            display: none;
+          }
+          body.category-overlay-open .mobile-header-spacer {
+            height: 20px !important;
           }
         }
       `}</style>

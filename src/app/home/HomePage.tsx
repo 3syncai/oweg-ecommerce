@@ -612,7 +612,7 @@ export default function HomePage() {
             </div>
             <div className="flex-1">
               <p className="text-base font-semibold text-emerald-800 leading-tight">You are missing out</p>
-              <p className="text-sm text-[#7AC943]">Sign in for the best offers</p>
+              <p className="text-sm text-[#7AC943]">Sign in for the best experience</p>
             </div>
             <Link
               href="/login"
