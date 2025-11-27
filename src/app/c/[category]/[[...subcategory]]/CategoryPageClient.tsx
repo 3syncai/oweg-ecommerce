@@ -247,10 +247,10 @@ export function CategoryPageClient({
       cancelled = true;
     };
   }, [activeCategoryId]);
-
   const headingDescription = isLoading
-    ? "Loading products…"
+    ? "Loading products..."
     : `${filteredProducts.length} products available`;
+
 
   return (
     <div className="bg-gray-50 min-h-screen">

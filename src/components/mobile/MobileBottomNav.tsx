@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { useEffect, useMemo, useState, useCallback, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef, type ReactNode } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
@@ -24,6 +24,7 @@ import {
   User,
   UserPlus,
   X,
+  ChevronsLeft,
 } from 'lucide-react';
 import type { MedusaCategory } from '@/lib/medusa';
 import { useAuth } from '@/contexts/AuthProvider';
@@ -83,6 +84,33 @@ const categoryImageMap: Record<string, string> = {
   health: '/Sassiest-Health-Care.png',
   stationery: '/Stationery.png',
   stationary: '/Stationery.png',
+};
+
+const customSubcategoryImages: Record<string, string> = {
+  'home-decor': '/Home_Decor.jpg',
+  mop: '/Mop.jpg',
+  'lunch-box': '/Lunch_Box.jpg',
+  'led-bulbs': '/Led_Bulbs.jpg',
+  'led-lamps-torches': '/Led_Lamps_&_Torches.jpg',
+  'led-lamps-and-torches': '/Led_Lamps_&_Torches.jpg',
+  'bottles-flasks': '/Bottles_&_Flasks.jpg',
+  'bottles-and-flasks': '/Bottles_&_Flasks.jpg',
+  'water-pumps': '/Water_Pumps.png',
+  'air-coolers': '/Air_Coolers.jpg',
+  'ceiling-fans': '/Ceiling_Fans.jpg',
+  choppers: '/Choppers.png',
+  'cutlery-sets': '/Cutlery_Sets.jpg',
+  'electric-plug': '/Electric_Plug.jpg',
+  'hose-pipes': '/Hose_Pipes.jpg',
+  'immersion-rods': '/Immersion_Rods.jpg',
+  'inverter-and-battery': '/Inverter_&_Battery.jpg',
+  iron: '/Iron.jpg',
+  'room-heater': '/Room_Heater.jpg',
+  'table-fans': '/Table_Fans.jpg',
+  tape: '/Tape.jpg',
+  tubelights: '/Tubelights.jpg',
+  'water-heaters-and-geysers': '/Water_Heaters_&_Geysers.jpg',
+  kettles: '/Kettles.jpg',
 };
 
 const categoryImageKeywords: Array<{ image: string; includes: string[] }> = [
@@ -204,6 +232,11 @@ const resolveCategoryImage = (src?: string): string => {
 
 const getCategoryDisplayImage = (cat: MobileCategory): string => {
   const key = normalizeCategoryKey(cat.title);
+  const handleKey = normalizeCategoryKey(cat.handle);
+
+  const custom = customSubcategoryImages[handleKey] || customSubcategoryImages[key];
+  if (custom) return resolveCategoryImage(custom);
+
   const mapped = categoryImageMap[key] || categoryImageMap[cat.handle || ''];
   if (mapped) return resolveCategoryImage(mapped);
 
@@ -275,7 +308,7 @@ const Overlay = ({
       onClick={(e) => e.stopPropagation()}
     >
       <div
-        className={`h-full ${scrollable ? 'overflow-y-auto' : 'overflow-hidden'} px-4 pt-20 pb-[calc(72px+env(safe-area-inset-bottom,0px))]`}
+        className={`h-full ${scrollable ? 'overflow-y-auto' : 'overflow-hidden'} px-4 pt-20 pb-[env(safe-area-inset-bottom,0px)]`}
       >
         {children}
       </div>
@@ -299,7 +332,7 @@ export default function MobileBottomNav() {
     return 0;
   }, [customer?.metadata]);
   const { data: categoryData, isLoading: categoriesLoading } = useQuery({
-    queryKey: ['mobile-bottom-nav-categories'],
+    queryKey: ['categories'],
     queryFn: async () => {
       const res = await fetch('/api/medusa/categories', { cache: 'no-store' });
       if (!res.ok) {
@@ -327,6 +360,38 @@ export default function MobileBottomNav() {
   const [brandFilter, setBrandFilter] = useState('');
   const [availableBrands, setAvailableBrands] = useState<string[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [sidebarOverlayOpen, setSidebarOverlayOpen] = useState(false);
+  const [expandedCatId, setExpandedCatId] = useState<string | null>(null);
+  const lastCategoryIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (selectedSubcategory) {
+      setIsOpen(false);
+      setSidebarOverlayOpen(false);
+    }
+  }, [selectedSubcategory]);
+  useEffect(() => {
+    if (!categoryOpen) return;
+    setIsOpen(false);
+    setSidebarOverlayOpen(false);
+    setExpandedCatId(null);
+  }, [categoryOpen]);
+  useEffect(() => {
+    if (!sidebarOverlayOpen) return;
+    if (!selectedCategoryId) return;
+    if (expandedCatId !== selectedCategoryId) {
+      setExpandedCatId(selectedCategoryId);
+    }
+  }, [sidebarOverlayOpen, selectedCategoryId, expandedCatId]);
+  useEffect(() => {
+    if (!sidebarOverlayOpen) return;
+    if (!selectedCategoryId) return;
+    if (selectedCategoryId !== lastCategoryIdRef.current) {
+      setIsOpen(false);
+      setSidebarOverlayOpen(false);
+      lastCategoryIdRef.current = selectedCategoryId;
+    }
+  }, [selectedCategoryId, sidebarOverlayOpen]);
   const closeCategory = () => {
     setCategoryOpen(false);
     setActiveCategory(null);
@@ -394,6 +459,7 @@ export default function MobileBottomNav() {
   }, [categoryOpen, categoriesWithChildren, selectedCategoryId]);
 
   const filteredCategories = useMemo(() => {
+    if (selectedSubcategory) return categoriesWithChildren;
     if (!searchTerm.trim()) return categoriesWithChildren;
     const term = searchTerm.toLowerCase();
     return categoriesWithChildren.filter((cat) => cat.title.toLowerCase().includes(term));
@@ -475,6 +541,10 @@ export default function MobileBottomNav() {
 
   const filteredProducts = useMemo(() => {
     let list = subProducts;
+    if (selectedSubcategory && searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      list = list.filter((p) => p.name.toLowerCase().includes(term));
+    }
     const min = priceMin.trim() ? Number(priceMin) : undefined;
     const max = priceMax.trim() ? Number(priceMax) : undefined;
     if (brandFilter) {
@@ -641,26 +711,140 @@ export default function MobileBottomNav() {
 
       {/* Category sheet */}
       <Overlay open={categoryOpen} onClose={closeCategory} scrollable={false}>
-        <div className="space-y-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 pt-2">Categories</h3>
-              
+        <div className="space-y-4 relative">
+          {!selectedSubcategory && (
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-label={isOpen ? 'Collapse categories' : 'Expand categories'}
+                  aria-pressed={isOpen}
+                  onClick={() => {
+                    const next = !isOpen;
+                    setIsOpen(next);
+                    setSidebarOverlayOpen(next);
+                    if (next) {
+                      lastCategoryIdRef.current = selectedCategoryId;
+                    }
+                  }}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition active:scale-[0.97]"
+                >
+                  <ChevronsLeft className={`w-5 h-5 transition-transform duration-200 ${isOpen ? 'rotate-0' : 'rotate-180'}`} />
+                </button>
+                <h3 className="text-lg font-semibold text-gray-900 pt-1">Categories</h3>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="relative">
+          {/* <div className="relative">
             <input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search categories"
+              placeholder={selectedSubcategory ? 'Search products' : 'Search categories'}
               className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
             />
             <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500" />
-          </div>
+          </div> */}
 
-          <div className="flex gap-3 h-[65vh] min-h-0">
-            <div className="w-28 flex-shrink-0 space-y-2 overflow-y-auto h-full pr-1 min-h-0">
+          {selectedSubcategory && sidebarOverlayOpen && (
+            <div
+              className="absolute inset-0 z-30 bg-black/20"
+              onClick={() => setSidebarOverlayOpen(false)}
+            >
+              <div
+                className="absolute top-0 left-0 h-full w-64 bg-white shadow-2xl border-r border-gray-100 overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between px-3 py-3 border-b border-gray-100">
+                  <h4 className="text-sm font-semibold text-gray-900">Categories</h4>
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOverlayOpen(false)}
+                    className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 text-gray-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="space-y-2 px-3 py-3">
+                  {filteredCategories.map((cat) => {
+                    const active = displayedCategory?.id === cat.id;
+                    const isExpanded = expandedCatId === cat.id;
+                    const hasChildren = Array.isArray(cat.children) && cat.children.length > 0;
+                    return (
+                      <div key={cat.id} className={`rounded-2xl border ${active ? 'border-emerald-400 bg-emerald-50 shadow-sm' : 'border-gray-200 bg-white'}`}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCategoryId(cat.id);
+                            setSelectedSubcategory(null);
+                            setActiveCategory(cat);
+                            if (hasChildren) {
+                              setExpandedCatId(cat.id);
+                              setIsOpen(true);
+                              setSidebarOverlayOpen(true);
+                            } else {
+                              setExpandedCatId(null);
+                              setIsOpen(false);
+                              setSidebarOverlayOpen(false);
+                            }
+                          }}
+                          className="w-full px-2.5 py-2 flex items-center justify-between gap-2"
+                          title={cat.title}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-white border border-gray-100 flex items-center justify-center">
+                              <Image
+                                src={getCategoryDisplayImage(cat)}
+                                alt={cat.title}
+                                fill
+                                className="object-contain"
+                                sizes="48px"
+                                unoptimized
+                              />
+                            </div>
+                            <span className="text-sm font-semibold text-gray-800 line-clamp-2">{cat.title}</span>
+                          </div>
+                            {hasChildren ? (
+                              <ChevronRight className={`w-4 h-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                            ) : null}
+                          </button>
+                          {hasChildren && isExpanded ? (
+                            <div className="pb-2 px-3 space-y-2">
+                              {cat.children!.map((child) => (
+                                <button
+                                  key={child.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedCategoryId(cat.id);
+                                    setSelectedSubcategory(child);
+                                    setActiveCategory(cat);
+                                    setIsOpen(false);
+                                    setSidebarOverlayOpen(false);
+                                  }}
+                                  className="w-full rounded-xl border border-emerald-100 bg-white px-3 py-2 text-left text-sm font-semibold text-gray-800 hover:border-emerald-300"
+                                >
+                                  {child.title}
+                                </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div
+            className={`relative min-h-0 transition-all duration-300 ease-in-out ${selectedSubcategory ? '' : 'flex gap-3'}`}
+            style={{ height: 'calc(100vh - 150px)' }}
+          >
+            {!selectedSubcategory && (
+            <div
+              className="flex-shrink-0 space-y-2 overflow-y-auto h-full pr-1 min-h-0 transition-all duration-300 ease-in-out"
+              style={{ width: isOpen ? 240 : 90 }}
+            >
               {categoriesLoading ? (
                 <div className="text-sm text-gray-500">Loading categories…</div>
               ) : filteredCategories.length === 0 ? (
@@ -676,81 +860,129 @@ export default function MobileBottomNav() {
                         setSelectedCategoryId(cat.id);
                         setSelectedSubcategory(null);
                       }}
-                      className={`w-full rounded-xl border transition ${
+                      className={`group w-full rounded-2xl border transition-all duration-300 text-left ${
                         active ? 'border-emerald-400 bg-emerald-50 shadow-sm' : 'border-gray-200 bg-white'
-                      }`}
+                      } ${isOpen ? 'px-2.5 py-2' : 'px-1.5 py-1.5'}`}
+                      title={cat.title}
                     >
-                      <div className="px-2.5 py-2">
-                        <div className="relative w-full h-24 rounded-xl overflow-hidden bg-white">
+                      <div className="flex flex-col items-center">
+                        <div
+                          className="relative w-full rounded-xl overflow-hidden bg-white flex items-center justify-center"
+                          style={{ height: isOpen ? 96 : 80 }}
+                        >
                           <Image
                             src={getCategoryDisplayImage(cat)}
                             alt={cat.title}
                             fill
                             className="object-contain"
-                            sizes="40vw"
+                            sizes={isOpen ? '140px' : '120px'}
                             unoptimized
                           />
                         </div>
+                        {isOpen ? (
+                          <span className="mt-2 text-[12px] font-semibold text-gray-800 text-center leading-tight transition-opacity duration-200">
+                            {cat.title}
+                          </span>
+                        ) : null}
                       </div>
                     </button>
                   );
                 })
               )}
             </div>
+            )}
 
-            <div className="flex-1 min-w-0 h-full min-h-0 overflow-y-auto pr-1">
+            <div className={`${selectedSubcategory ? 'w-full' : 'flex-1 min-w-0'} h-full min-h-0 overflow-y-auto pr-1 pb-2 transition-all duration-300 ease-in-out`}>
               <div className="space-y-3">
-                <div className="flex items-center text-sm text-gray-700 gap-1 min-w-0">
-                  {activeCategory ? (
-                    <span className="font-semibold text-gray-900 truncate">{activeCategory.title}</span>
-                  ) : (
-                    <span className="text-gray-500">Select a category</span>
-                  )}
-                  {selectedSubcategory ? (
-                    <>
-                      <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                      <span className="text-gray-900 font-semibold truncate">{selectedSubcategory.title}</span>
-                    </>
-                  ) : null}
-                </div>
-
                 {activeCategory && (activeCategory.children || []).length > 0 && !selectedSubcategory && (
                   <div className="grid grid-cols-2 gap-3 pb-2">
+                    <div className="col-span-2 text-base font-semibold text-gray-900">
+                      {activeCategory.title}
+                    </div>
                     {activeCategory.children!.map((child) => (
-                      <button
-                        key={child.id}
-                        type="button"
-                        onClick={() => setSelectedSubcategory(child)}
-                        className="flex flex-col items-center justify-center rounded-2xl border px-3 py-3 text-center transition border-emerald-100 bg-white hover:border-emerald-400 hover:shadow"
+                    <button
+                      key={child.id}
+                      type="button"
+                      onClick={() => setSelectedSubcategory(child)}
+                        className="flex flex-col items-center justify-center border px-3 py-3 text-center transition border-emerald-100 bg-white hover:border-emerald-400 hover:shadow"
                       >
-                        <div className="flex items-center justify-center w-20 h-20 rounded-full border text-[12px] font-semibold leading-tight border-emerald-200 text-emerald-700 bg-emerald-50/60">
-                          <span className="px-2 line-clamp-3">{child.title}</span>
+                        <div className="relative w-full h-32 border border-emerald-100 bg-white overflow-hidden flex items-center justify-center">
+                          <Image
+                            src={getCategoryDisplayImage(child)}
+                            alt={child.title}
+                            fill
+                            className={`object-contain ${
+                              (() => {
+                                const key = normalizeCategoryKey(child.title);
+                                if (key === 'kettles') return 'scale-200';
+                                if (key === 'table-fans') return "scale-150";
+                                if (key === 'lunch-box') return "scale-130";
+                                if (key === 'room-heater') return "scale-130";
+                                if (key === 'choppers' || key === 'immersion-rods') return 'scale-200';
+                                return 'scale-110';
+                              })()
+                            } p-2`}
+                            sizes="240px"
+                            unoptimized
+                          />
                         </div>
-                        <span className="mt-2 text-[12px] font-semibold text-gray-800 line-clamp-2">{child.title}</span>
+                        <span className="mt-2 text-[13px] font-semibold text-gray-800 line-clamp-2">{child.title}</span>
                       </button>
                     ))}
                   </div>
                 )}
 
                 {selectedSubcategory && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-xs text-gray-600 flex-wrap">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700"
-                        onClick={() => setSelectedSubcategory(null)}
+                        aria-label="Show categories"
+                        onClick={() => {
+                          setIsOpen(true);
+                          setSidebarOverlayOpen(true);
+                          lastCategoryIdRef.current = selectedCategoryId;
+                        }}
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-800 shadow-sm text-base font-bold"
+                      >
+                        <ChevronsLeft className="w-5 h-5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedSubcategory(null);
+                          setIsOpen(false);
+                          setSidebarOverlayOpen(false);
+                        }}
+                        className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700"
                       >
                         <ChevronRight className="w-3 h-3 rotate-180" />
                         All subcategories
                       </button>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-700"
-                        onClick={() => setFiltersOpen((v) => !v)}
-                      >
-                        Filters
-                        <ChevronRight className={`w-3 h-3 text-gray-400 transition-transform ${filtersOpen ? 'rotate-90' : ''}`} />
-                      </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700"
+                          onClick={() => setFiltersOpen((v) => !v)}
+                        >
+                          Filters
+                          <ChevronRight className={`w-3 h-3 text-gray-400 transition-transform ${filtersOpen ? 'rotate-90' : ''}`} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-sm text-gray-700">
+                      <div className="flex items-center gap-2">
+                        {activeCategory ? (
+                          <span className="font-semibold text-gray-900">{activeCategory.title}</span>
+                        ) : null}
+                        <ChevronRight className="w-3 h-3 text-gray-400" />
+                        <span className="font-semibold text-gray-900">{selectedSubcategory.title}</span>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {filteredProducts.length} products available
+                      </span>
                     </div>
                     {filtersOpen && (
                       <div className="flex flex-wrap gap-2 items-center text-xs text-gray-600 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
@@ -821,7 +1053,7 @@ export default function MobileBottomNav() {
                 )}
 
                 {selectedSubcategory ? (
-                  <div className="grid grid-cols-2 gap-3 pb-3">
+                  <div className="grid grid-cols-2 gap-4 pb-3">
                     {productsLoading ? (
                       <div className="col-span-2 text-sm text-gray-500">Loading products...</div>
                     ) : filteredProducts.length === 0 ? (
@@ -831,25 +1063,25 @@ export default function MobileBottomNav() {
                         <Link
                           key={p.id}
                           href={`/productDetail/${encodeURIComponent(p.id)}?id=${encodeURIComponent(p.id)}`}
-                          className="rounded-xl border border-gray-100 bg-white p-2 shadow-sm flex flex-col items-center gap-2"
+                          className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm flex flex-col items-center gap-3"
                           onClick={closeCategory}
                         >
-                          <div className="relative w-full aspect-[3/4] rounded-lg bg-white border border-gray-100 overflow-hidden shadow-sm">
+                          <div className="relative w-full h-44 rounded-xl bg-white border border-gray-100 overflow-hidden shadow-sm">
                             {p.image ? (
                               <Image
                                 src={p.image}
                                 alt={p.name}
                                 fill
-                                sizes="(max-width: 768px) 50vw, 200px"
-                                className="object-contain p-1.5"
+                                sizes="(max-width: 768px) 60vw, 240px"
+                                className="object-contain p-3"
                                 unoptimized
                               />
                             ) : (
                               <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400">No image</div>
                             )}
                           </div>
-                          <p className="text-xs text-center text-gray-800 line-clamp-2">{p.name}</p>
-                          <div className="flex items-center gap-2 text-xs">
+                          <p className="text-sm text-center text-gray-800 line-clamp-2">{p.name}</p>
+                          <div className="flex items-center gap-2 text-sm">
                             <span className="text-emerald-700 font-semibold">{formatCurrency(p.price)}</span>
                             {p.mrp && p.mrp > (p.price || 0) ? (
                               <span className="text-gray-400 line-through">{formatCurrency(p.mrp)}</span>
@@ -870,7 +1102,7 @@ export default function MobileBottomNav() {
 
       {/* Profile sheet */}
       <Overlay open={profileOpen} onClose={closeProfile}>
-        <div className="p-4 pt-12 pb-16 space-y-4">
+        <div className="p-4 pt-12 pb-36 space-y-4">
           <div className="flex items-start justify-between">
             <div>
               {/* <p className="text-[11px] uppercase tracking-[0.3em] text-gray-400">Profile</p> */}
