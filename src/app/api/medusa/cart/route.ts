@@ -1,7 +1,12 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 
 const CART_COOKIE = "cart_id"
+const GUEST_CART_HEADER = "x-guest-cart-id"
+const SALES_CHANNEL_ID =
+  process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID || process.env.MEDUSA_SALES_CHANNEL_ID
+const REGION_ID =
+  process.env.NEXT_PUBLIC_MEDUSA_REGION_ID || process.env.MEDUSA_REGION_ID
 
 async function backend(path: string, init?: RequestInit) {
   const base = (process.env.MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "")
@@ -15,11 +20,25 @@ async function backend(path: string, init?: RequestInit) {
   return fetch(`${base}${path}`, { cache: "no-store", ...init, headers: { ...headers, ...(init?.headers as HeadersInit) } })
 }
 
+function buildCartCreateBody(): RequestInit["body"] {
+  const payload: Record<string, string> = {}
+  if (SALES_CHANNEL_ID) payload.sales_channel_id = SALES_CHANNEL_ID
+  if (REGION_ID) payload.region_id = REGION_ID
+  if (Object.keys(payload).length === 0) return undefined
+  return JSON.stringify(payload)
+}
+
 export const dynamic = "force-dynamic"
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const c = await cookies()
-  const cartId = c.get(CART_COOKIE)?.value
+  let cartId = c.get(CART_COOKIE)?.value
+  
+  // Check for guest cart in request header (from localStorage)
+  if (!cartId) {
+    cartId = req.headers.get(GUEST_CART_HEADER) || undefined
+  }
+  
   if (cartId) {
     const res = await backend(`/store/carts/${cartId}`)
     if (res.ok) {
@@ -28,16 +47,28 @@ export async function GET() {
     }
   }
   // create
-  const created = await backend(`/store/carts`, { method: "POST" })
+  const body = buildCartCreateBody()
+  const created = await backend(`/store/carts`, {
+    method: "POST",
+    ...(body ? { body } : {}),
+  })
   if (!created.ok) return NextResponse.json({ error: "failed to create cart" }, { status: 500 })
   const json = await created.json()
   const resp = NextResponse.json(json)
   const newId = json.cart?.id || json.id
-  if (newId) resp.cookies.set(CART_COOKIE, newId, { httpOnly: false, sameSite: "lax", path: "/" })
+  if (newId) {
+    // If no cookie exists, this is a guest cart - don't set cookie, client will store in localStorage
+    const hasCookie = c.get(CART_COOKIE)?.value
+    if (!hasCookie) {
+      // Return cart ID in response for client to store in localStorage
+      return NextResponse.json({ ...json, guestCartId: newId })
+    }
+    resp.cookies.set(CART_COOKIE, newId, { httpOnly: false, sameSite: "lax", path: "/" })
+  }
   return resp
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   // alias to create/ensure
-  return GET()
+  return GET(req)
 }

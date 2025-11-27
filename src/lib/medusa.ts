@@ -22,12 +22,21 @@ export type MedusaProduct = {
   tags?: Array<{ id: string; value?: string; handle?: string }>
   type?: { id: string; value?: string; handle?: string }
   collection?: { id?: string; title?: string; handle?: string }
+  weight?: number | null
+  length?: number | null
+  height?: number | null
+  width?: number | null
   variants?: Array<{
     id: string
     title?: string
     inventory_quantity?: number
     options?: Array<{ id: string; value?: string; option_id?: string }>
     prices?: Array<{ amount: number; currency_code: string }>
+    weight?: number | null
+    length?: number | null
+    height?: number | null
+    width?: number | null
+    metadata?: Record<string, unknown> | null
   }>
   price?: {
     calculated_price?: number
@@ -49,7 +58,16 @@ export type DetailedProduct = {
   images: string[]
   thumbnail?: string
   variant_id?: string
-  variants: Array<{ id: string; title?: string; inventory_quantity?: number }>
+  variants: Array<{
+    id: string
+    title?: string
+    inventory_quantity?: number
+    weight?: number | null
+    length?: number | null
+    height?: number | null
+    width?: number | null
+    metadata?: Record<string, unknown> | null
+  }>
   categories: Array<{ id: string; title: string; handle?: string }>
   tags: string[]
   type?: string
@@ -62,6 +80,8 @@ export type DetailedProduct = {
 type PriceOverride = {
   price?: number
   mrp?: number
+  isDeal?: boolean
+  opencartId?: string | number
 }
 
 export type MedusaCollection = {
@@ -233,17 +253,22 @@ export async function findCategoryByTitleOrHandle(
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)+/g, "")
 
-  const targetSlug = norm(q)
+  const raw = (q || "").trim()
+  const lowerRaw = raw.toLowerCase()
+  const targetSlug = norm(raw)
+  const handleCandidates = Array.from(new Set([raw, lowerRaw, targetSlug].filter(Boolean)))
 
   // Try direct handle query first (more reliable)
   try {
     const base = (process.env.MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "")
-    // Try array-style handle filter
-    for (const url of [
-      `${base}/store/product-categories?handle[]=${encodeURIComponent(targetSlug)}`,
-      `${base}/store/product-categories?handle=${encodeURIComponent(targetSlug)}`,
-      `${base}/store/product-categories?q=${encodeURIComponent(q)}`,
-    ]) {
+    // Try array-style handle filter for multiple candidate representations
+    const urls: string[] = []
+    handleCandidates.forEach((candidate) => {
+      urls.push(`${base}/store/product-categories?handle[]=${encodeURIComponent(candidate)}`)
+      urls.push(`${base}/store/product-categories?handle=${encodeURIComponent(candidate)}`)
+    })
+    urls.push(`${base}/store/product-categories?q=${encodeURIComponent(raw)}`)
+    for (const url of urls) {
       const pk = getPublishableKey()
       const res = await fetch(url, {
         cache: "no-store",
@@ -265,7 +290,10 @@ export async function findCategoryByTitleOrHandle(
   if (found) return found
 
   // Try by handle match
-  found = all.find((c) => c.handle?.toLowerCase() === targetSlug)
+  found = all.find((c) => {
+    const handle = c.handle?.toLowerCase()
+    return handle === lowerRaw || handle === targetSlug
+  })
   if (found) return found
 
   // Fuzzy by slugified title/name
@@ -523,6 +551,61 @@ export function toDetailedProduct(
     ? tags
     : categories.map((c) => c.title).filter(Boolean)
 
+  const primaryVariant = p.variants?.[0]
+  const normalizedMetadata: Record<string, unknown> = { ...(p.metadata || {}) }
+
+  const mergeMetadata = (source?: Record<string, unknown> | null) => {
+    if (!source) return
+    Object.entries(source).forEach(([key, value]) => {
+      if (
+        value !== undefined &&
+        value !== null &&
+        normalizedMetadata[key] === undefined
+      ) {
+        normalizedMetadata[key] = value
+      }
+    })
+  }
+
+  const measurementValue = (
+    ...values: Array<number | null | undefined>
+  ): number | undefined => {
+    for (const val of values) {
+      if (val !== undefined && val !== null && Number.isFinite(val)) {
+        return val
+      }
+    }
+    return undefined
+  }
+
+  const registerMeasurement = (keys: string[], value?: number) => {
+    if (value === undefined) return
+    keys.forEach((key) => {
+      if (normalizedMetadata[key] === undefined) {
+        normalizedMetadata[key] = value
+      }
+    })
+  }
+
+  registerMeasurement(
+    ["weight_kg", "weight"],
+    measurementValue(p.weight, primaryVariant?.weight)
+  )
+  registerMeasurement(
+    ["height_cm", "height"],
+    measurementValue(p.height, primaryVariant?.height)
+  )
+  registerMeasurement(
+    ["width_cm", "width"],
+    measurementValue(p.width, primaryVariant?.width)
+  )
+  registerMeasurement(
+    ["length_cm", "length"],
+    measurementValue(p.length, primaryVariant?.length)
+  )
+
+  mergeMetadata(primaryVariant?.metadata || null)
+
   return {
     id: p.id,
     title: p.title,
@@ -541,6 +624,11 @@ export function toDetailedProduct(
         id: v.id,
         title: v.title,
         inventory_quantity: v.inventory_quantity,
+        weight: v.weight ?? null,
+        length: v.length ?? null,
+        height: v.height ?? null,
+        width: v.width ?? null,
+        metadata: v.metadata || null,
       })) || [],
     categories,
     tags,
@@ -554,7 +642,8 @@ export function toDetailedProduct(
       : null,
     primaryCategoryId: categories[0]?.id,
     highlights,
-    metadata: p.metadata || null,
+    metadata:
+      Object.keys(normalizedMetadata).length > 0 ? normalizedMetadata : null,
   }
 }
 
@@ -589,6 +678,7 @@ export function toUiProduct(p: MedusaProduct, override?: PriceOverride) {
 
   const { amountMajor, originalMajor, discount } = computeUiPrice(p, override)
   const image = collectProductImages(p)[0] || "/oweg_logo.png"
+  const metadata = (p.metadata || {}) as Record<string, unknown>
 
   return {
     id: p?.id || "unknown",
@@ -597,9 +687,13 @@ export function toUiProduct(p: MedusaProduct, override?: PriceOverride) {
     price: amountMajor ?? 0,
     mrp: originalMajor ?? amountMajor ?? 0,
     discount,
-    limitedDeal: discount >= 20,
+    limitedDeal: override?.isDeal ?? discount >= 20,
+    opencartId:
+      override?.opencartId ??
+      (metadata["opencart_id"] as string | number | undefined),
     variant_id: p?.variants?.[0]?.id,
     handle: p?.handle,
+    category_ids: p?.categories?.map((c) => c.id).filter((id): id is string => !!id) || [],
   }
 }
 

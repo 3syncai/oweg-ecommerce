@@ -1,19 +1,35 @@
-import { loadEnv, defineConfig } from '@medusajs/framework/utils'
+import { loadEnv, defineConfig, Modules, ContainerRegistrationKeys } from "@medusajs/framework/utils"
 
-loadEnv(process.env.NODE_ENV || 'development', process.cwd())
+loadEnv(process.env.NODE_ENV || "development", process.cwd())
 
-module.exports = defineConfig({
+export default defineConfig({
   projectConfig: {
     databaseUrl: process.env.DATABASE_URL,
     http: {
-      storeCors: process.env.STORE_CORS!,
-      adminCors: process.env.ADMIN_CORS!,
-      authCors: process.env.AUTH_CORS!,
+      storeCors: process.env.STORE_CORS || "http://localhost:3000",
+      adminCors: process.env.ADMIN_CORS || "http://localhost:7001",
+      authCors: process.env.AUTH_CORS || "http://localhost:3000",
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     },
   },
   modules: [
+    {
+      resolve: "@medusajs/medusa/auth",
+      dependencies: [Modules.CACHE, ContainerRegistrationKeys.LOGGER],
+      options: {
+        providers: [
+          {
+            resolve: "@medusajs/medusa/auth-emailpass",
+            id: "emailpass",
+            options: {
+              // optional provider-specific options
+            },
+          },
+        ],
+        // optional additional auth module options here
+      },
+    },
     {
       resolve: "@medusajs/file",
       options: {
@@ -27,13 +43,9 @@ module.exports = defineConfig({
               region: process.env.S3_REGION,
               access_key_id: process.env.S3_ACCESS_KEY_ID,
               secret_access_key: process.env.S3_SECRET_ACCESS_KEY,
-
-              // ✅ This URL is correct for public viewing
               file_url:
                 process.env.S3_FILE_URL ??
                 `https://${process.env.S3_BUCKET}.s3.${process.env.S3_REGION}.amazonaws.com`,
-
-              // ✅ Explicitly disable ACLs
               additionalOptions: {
                 ACL: undefined,
               },
@@ -41,6 +53,9 @@ module.exports = defineConfig({
           },
         ],
       },
+    },
+    {
+      resolve: "./src/modules/vendor",
     },
   ],
 })
