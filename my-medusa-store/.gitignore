@@ -1,0 +1,57 @@
+# Medusa backend ignores
+
+# Node dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+.cache/
+.turbo/
+.swc/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS/Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Env and secrets (keep only examples)
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.template
+.env.test
+*.env
+!.env.example
+!.env.local.example
+!*example*
+
+# Database/cache/temp
+tmp/
+temp/
+.tmp/
+*.sqlite
+*.db
+*.sql
+dump.rdb
+uploads/
+storage/
+.medusa/
+
+# Misc
+coverage/
+.nyc_output/
+.vercel/
+yarn.lock
+my-medusa-store/yarn.lock

@@ -1,0 +1,77 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (keep examples, ignore real secrets)
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+*.env
+!.env.example
+!.env.local.example
+!*example*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# tooling caches
+.eslintcache
+.stylelintcache
+.turbo
+.swc/
+.cache/
+.parcel-cache/
+
+# editors/OS
+.vscode/
+.idea/
+Thumbs.db
+CON
+
+# Local scripts and sensitive folders (do not commit)
+oc-api/
+oc-api/**
+
+# Ensure nested node_modules are ignored
+node_modules/
+**/node_modules/
+
+# my-medusa-store local secrets and deps
+my-medusa-store/.env
+my-medusa-store/node_modules/
+my-medusa-store/yarn.lock

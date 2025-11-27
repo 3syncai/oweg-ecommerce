@@ -1,0 +1,40 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "sonner/dist/styles.css";
+
+/* Custom scrollbar styles */
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Smooth scrolling for category carousel */
+.scroll-smooth {
+  scroll-behavior: smooth;
+}
+
+/* OWEG Brand Colors */
+:root {
+  --oweg-green: #7ac943;
+  --oweg-green-dark: #6bb832;
+  --oweg-green-light: #8fd957;
+}
+
+/* Custom animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
