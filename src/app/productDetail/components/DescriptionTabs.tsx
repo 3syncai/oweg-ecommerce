@@ -2,9 +2,12 @@
 
 import React from 'react'
 import { Check } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { DetailedProduct as DetailedProductType } from '@/lib/medusa'
 import type { DescriptionLine, DescriptionTab } from '../types'
 import { formatPlainDescription, formatHtmlDescription } from '../utils/description'
+import ReviewForm from './ReviewForm'
+import ReviewsList from './ReviewsList'
 
 type DescriptionTabsProps = {
   activeTab: DescriptionTab
@@ -24,6 +27,7 @@ const DescriptionTabs = ({
   detailPairs,
 }: DescriptionTabsProps) => {
   const descriptionLines: DescriptionLine[] = product?.description ? formatPlainDescription(product.description) : []
+  const queryClient = useQueryClient()
 
   return (
     <div className="space-y-8 lg:pl-4">
@@ -108,8 +112,25 @@ const DescriptionTabs = ({
         </div>
       )}
       {activeTab === 'reviews' && (
-        <div className="text-sm text-slate-600">
-          Reviews will appear here once shoppers share their experience. Check back soon!
+        <div className="space-y-8">
+          {/* Write Review Section */}
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 mb-6">Write a Review</h2>
+            <ReviewForm
+              productId={product?.id || ''}
+              productName={product?.title || 'Product'}
+              productImage={product?.thumbnail || product?.images?.[0]}
+              onSubmitSuccess={() => {
+                // Invalidate and refetch reviews
+                queryClient.invalidateQueries({ queryKey: ['reviews', product?.id] })
+              }}
+            />
+          </div>
+
+          {/* Reviews List Section */}
+          <div className="mt-12">
+            <ReviewsList productId={product?.id || ''} />
+          </div>
         </div>
       )}
     </div>
