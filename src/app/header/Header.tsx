@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import type { MedusaCategory } from "@/lib/medusa";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useCartSummary } from "@/contexts/CartProvider";
 import { useAuth } from "@/contexts/AuthProvider";
 import { toast } from "sonner";
@@ -173,6 +173,21 @@ const Header: React.FC = () => {
   const [suggestions, setSuggestions] = React.useState<{ id: string; name: string; image?: string; handle?: string }[]>([]);
   const [showSuggest, setShowSuggest] = React.useState(false);
   const router = useRouter();
+  const pathname = usePathname();
+  const [isCategoryOverlayOpen, setIsCategoryOverlayOpen] = React.useState(false);
+  
+  // Check if category overlay is open via body class
+  React.useEffect(() => {
+    const checkCategoryOverlay = () => {
+      setIsCategoryOverlayOpen(document.body.classList.contains('category-overlay-open'));
+    };
+    checkCategoryOverlay();
+    const observer = new MutationObserver(checkCategoryOverlay);
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+  
+  const isCategoryPage = pathname?.startsWith('/c/') || pathname === '/c' || isCategoryOverlayOpen;
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [mobileExpandedCat, setMobileExpandedCat] = React.useState<string | null>(null);
   const [mobileProfileOpen, setMobileProfileOpen] = React.useState(false);
@@ -774,7 +789,7 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header className="w-full header-root md:sticky md:top-0 md:z-[120] bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+    <header className="w-full header-root bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)] sticky top-0 z-[120]">
       {/* Top Bar */}
       <div className="bg-header-top-bg text-header-top-text py-2.5 text-center text-sm">
         <p>
@@ -796,21 +811,23 @@ const Header: React.FC = () => {
                 <Image src="/oweg_logo.png" alt="OWEG" width={100} height={32} className="h-10 w-auto" />
               </Link>
 
-              {/* Delivery Location */}
-              <button
-                type="button"
-                className="hidden lg:flex items-center gap-2 text-sm location-block hover:opacity-80 transition-opacity"
-                onClick={() => {
-                  // TODO: Open location modal
-                  toast.info("Location selector coming soon");
-                }}
-              >
-                <LocationIcon className="w-5 h-5 text-header-text flex-shrink-0" />
-                <div className="text-left">
-                  <p className="text-header-text text-xs leading-tight">Deliver to</p>
-                  <p className="text-header-text font-medium text-sm leading-tight">Bangalore 560034</p>
-                </div>
-              </button>
+              {/* Delivery Location - Hidden on category pages */}
+              {!isCategoryPage && (
+                <button
+                  type="button"
+                  className="hidden lg:flex items-center gap-2 text-sm location-block hover:opacity-80 transition-opacity"
+                  onClick={() => {
+                    // TODO: Open location modal
+                    toast.info("Location selector coming soon");
+                  }}
+                >
+                  <LocationIcon className="w-5 h-5 text-header-text flex-shrink-0" />
+                  <div className="text-left">
+                    <p className="text-header-text text-xs leading-tight">Deliver to</p>
+                    <p className="text-header-text font-medium text-sm leading-tight">Bangalore 560034</p>
+                  </div>
+                </button>
+              )}
             </div>
 
             {/* Search Bar - Center (flex: 1) */}
@@ -1084,8 +1101,8 @@ const Header: React.FC = () => {
             </div>
           </div>
 
-            <div className="flex flex-col gap-0 md:hidden">
-              <div className="fixed top-0 left-0 right-0 z-[1400] bg-white/95 backdrop-blur border-b border-gray-100">
+            <div className="flex flex-col gap-0 md:hidden relative z-10">
+              <div className="bg-white/95 backdrop-blur border-b border-gray-100">
               <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-2">
                 <div className="flex items-center gap-4 flex-1">
                 <button
@@ -1154,29 +1171,33 @@ const Header: React.FC = () => {
                   </div>
                 )}
               </div>
-
-              {/* Mobile Delivery Location */}
-              <div className="px-4 mt-2 pb-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    toast.info("Location selector coming soon");
-                  }}
-                  className="flex items-center gap-2 text-sm hover:opacity-80 transition-opacity w-full"
-                >
-                  <LocationIcon className="w-4 h-4 text-[#7AC943] flex-shrink-0" />
-                  <div className="text-left flex-1">
-                    <span className="text-xs text-gray-600">Deliver to </span>
-                    <span className="text-sm font-medium text-gray-900">Bangalore 560034</span>
-                  </div>
-                </button>
               </div>
-            </div>
 
-            <div className="md:hidden mobile-header-spacer" style={{ height: '112px' }} aria-hidden="true" />
+              {/* Mobile Delivery Location / Category Label */}
+              {isCategoryPage ? (
+                <div className="px-4 py-3 border-b border-gray-200 bg-white">
+                  <h2 className="text-lg font-semibold text-gray-900">Category</h2>
+                </div>
+              ) : (
+                <div className="px-4 mt-2 pb-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toast.info("Location selector coming soon");
+                    }}
+                    className="flex items-center gap-2 text-sm hover:opacity-80 transition-opacity w-full"
+                  >
+                    <LocationIcon className="w-4 h-4 text-[#7AC943] flex-shrink-0" />
+                    <div className="text-left flex-1">
+                      <span className="text-xs text-gray-600">Deliver to </span>
+                      <span className="text-sm font-medium text-gray-900">Bangalore 560034</span>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
       {/* Navigation Bar */}
       <nav className="bg-header-nav-bg hidden md:block">

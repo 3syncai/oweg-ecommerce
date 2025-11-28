@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react"
 
@@ -48,42 +49,51 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [customer, setCustomer] = useState<StoreCustomer>(null)
   const [initializing, setInitializing] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const customerRef = useRef<StoreCustomer>(null)
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    customerRef.current = customer
+  }, [customer])
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      const prevCustomer = customer
+      const prevCustomer = customerRef.current
       const next = await fetchSession()
       setCustomer(next)
       
       // If user just logged in (was null, now has customer), merge guest cart
       if (!prevCustomer && next) {
-        try {
-          const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null
-          if (guestCartId) {
-            const mergeRes = await fetch("/api/medusa/cart/merge", {
-              method: "POST",
-              headers: {
-                "content-type": "application/json",
-                "x-guest-cart-id": guestCartId,
-              },
-              credentials: "include",
-            })
-            
-            if (mergeRes.ok) {
-              const mergeData = await mergeRes.json()
-              if (mergeData.merged && mergeData.cart) {
-                // Clear guest cart from localStorage
-                if (typeof window !== "undefined") {
-                  localStorage.removeItem("guest_cart_id")
+        // Trigger merge asynchronously without blocking
+        void (async () => {
+          try {
+            const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null
+            if (guestCartId) {
+              const mergeRes = await fetch("/api/medusa/cart/merge", {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  "x-guest-cart-id": guestCartId,
+                },
+                credentials: "include",
+              })
+              
+              if (mergeRes.ok) {
+                const mergeData = await mergeRes.json()
+                if (mergeData.merged && mergeData.cart) {
+                  // Clear guest cart from localStorage
+                  if (typeof window !== "undefined") {
+                    localStorage.removeItem("guest_cart_id")
+                  }
                 }
               }
             }
+          } catch (mergeErr) {
+            console.warn("Failed to merge guest cart", mergeErr)
+            // Don't fail the login if merge fails
           }
-        } catch (mergeErr) {
-          console.warn("Failed to merge guest cart", mergeErr)
-          // Don't fail the login if merge fails
-        }
+        })()
       }
     } catch (err) {
       console.warn("Failed to refresh session", err)
@@ -92,11 +102,13 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       setRefreshing(false)
       setInitializing(false)
     }
-  }, [customer])
+  }, [])
 
   useEffect(() => {
     void refresh()
-  }, [refresh])
+    // Only run once on mount to prevent infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const logout = useCallback(async () => {
     try {

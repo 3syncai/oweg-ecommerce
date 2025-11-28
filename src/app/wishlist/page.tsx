@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { Heart, HeartOff, Loader2, ShoppingCart } from "lucide-react"
@@ -25,6 +25,7 @@ export default function WishlistPage() {
   const [loading, setLoading] = useState(true)
   const [products, setProducts] = useState<WishlistProduct[]>([])
   const [error, setError] = useState<string | null>(null)
+  const hasLoadedRef = useRef(false)
 
   const currency = useMemo(
     () =>
@@ -37,37 +38,38 @@ export default function WishlistPage() {
     []
   )
 
-  const refillWishlist = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch("/api/medusa/wishlist", { credentials: "include", cache: "no-store" })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data?.error || "Unable to load your wishlist.")
-        return
-      }
-      const items = Array.isArray(data?.products) ? (data.products as WishlistProduct[]) : []
-      setProducts(items)
-      if (data?.wishlist && Array.isArray(data.wishlist) && customer) {
-        setCustomer({
-          ...customer,
-          metadata: {
-            ...(customer.metadata || {}),
-            wishlist: data.wishlist,
-          },
-        })
-      }
-    } catch {
-      setError("Unable to load your wishlist.")
-    } finally {
-      setLoading(false)
-    }
-  }, [customer, setCustomer])
-
   useEffect(() => {
-    void refillWishlist()
-  }, [refillWishlist])
+    // Prevent multiple simultaneous fetches
+    if (hasLoadedRef.current) return
+    hasLoadedRef.current = true
+
+    const fetchWishlist = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch("/api/medusa/wishlist", { credentials: "include", cache: "no-store" })
+        const data = await res.json()
+        if (!res.ok) {
+          setError(data?.error || "Unable to load your wishlist.")
+          hasLoadedRef.current = false
+          return
+        }
+        const items = Array.isArray(data?.products) ? (data.products as WishlistProduct[]) : []
+        setProducts(items)
+        // Don't update customer metadata here to prevent infinite loops
+        // Customer metadata is updated when items are added/removed via handleRemove
+      } catch {
+        setError("Unable to load your wishlist.")
+        hasLoadedRef.current = false
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    void fetchWishlist()
+    // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleRemove = async (productId: string) => {
     try {
