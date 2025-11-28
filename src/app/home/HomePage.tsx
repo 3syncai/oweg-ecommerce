@@ -680,7 +680,7 @@ export default function HomePage() {
         }
       `}</style>
 
-      <main className="container mx-auto pb-6 md:pt-6 md:pb-6">
+      <main className="w-full pb-6 md:pt-6 md:pb-6">
         <MobileCategoryGrid
           categories={mobileCategories}
           loading={categoriesQuery.isLoading}

@@ -17,8 +17,8 @@ export default function CartIcon({ className, count = 0 }: { className?: string;
       {count > 0 && (
         <text
           x="12"
-          y="11"
-          fontSize="10"
+          y="9"
+          fontSize="12"
           fontWeight="bold"
           fill="#7AC943"
           textAnchor="middle"
