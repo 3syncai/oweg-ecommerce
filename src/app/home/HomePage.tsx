@@ -3,11 +3,14 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ChevronLeft, ChevronRight, MapPin, User } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useQuery, useQueries } from '@tanstack/react-query';
 import { ProductCard } from '@/components/modules/ProductCard';
 import type { MedusaCategory } from '@/lib/medusa';
 import { useAuth } from '@/contexts/AuthProvider';
+import PreferenceModal from '@/components/modules/PreferenceModal';
+import { usePreferences } from '@/hooks/usePreferences';
+import { buildPreferenceSlug } from '@/lib/personalization';
 
 // UI product type (used by carousel/cards)
 type UIProduct = {
@@ -23,11 +26,23 @@ type UIProduct = {
   sourceTag?: string;
 };
 
-async function fetchProductsByTag(tag: string, limit: number): Promise<UIProduct[]> {
-  const url = `/api/medusa/products?tag=${encodeURIComponent(tag)}&limit=${limit}`;
+type ProductQuery = {
+  tag?: string;
+  type?: string;
+  category?: string;
+  limit?: number;
+};
+
+async function fetchProducts(query: ProductQuery, limitFallback = 20): Promise<UIProduct[]> {
+  const params = new URLSearchParams();
+  if (query.tag) params.set('tag', query.tag);
+  if (query.type) params.set('type', query.type);
+  if (query.category) params.set('category', query.category);
+  params.set('limit', String(query.limit ?? limitFallback));
+  const url = `/api/medusa/products?${params.toString()}`;
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) {
-    throw new Error(`Unable to load products for ${tag}`);
+    throw new Error('Unable to load products');
   }
   const data = await res.json();
   return (data?.products || []) as UIProduct[];
@@ -420,25 +435,94 @@ function MobileJoinCard() {
 
 export default function HomePage() {
   const { customer } = useAuth();
+  const { preferences, hasPreferences, loading: prefLoading, saving: prefSaving, shouldPrompt, savePreferences } = usePreferences();
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
+
+  useEffect(() => {
+    if (shouldPrompt) {
+      setPreferencesOpen(true);
+    }
+  }, [shouldPrompt]);
+
+  const showDefaultSections = !customer || !hasPreferences;
+
   const nonStickQuery = useQuery({
     queryKey: ['home-products', 'Non-Stick Cookwares'],
-    queryFn: () => fetchProductsByTag('Non-Stick Cookwares', 40),
+    queryFn: () => fetchProducts({ tag: 'Non-Stick Cookwares', limit: 40 }),
     staleTime: 1000 * 60 * 5,
+    enabled: showDefaultSections,
   });
   const fanQuery = useQuery({
     queryKey: ['home-products', 'Fans'],
-    queryFn: () => fetchProductsByTag('Fans', 40),
+    queryFn: () => fetchProducts({ tag: 'Fans', limit: 40 }),
     staleTime: 1000 * 60 * 5,
+    enabled: showDefaultSections,
   });
   const mensQuery = useQuery({
     queryKey: ['home-products', 'Mens Cloths'],
-    queryFn: () => fetchProductsByTag('Mens Cloths', 20),
+    queryFn: () => fetchProducts({ tag: 'Mens Cloths', limit: 20 }),
     staleTime: 1000 * 60 * 5,
+    enabled: showDefaultSections,
   });
 
-  const nonStick = nonStickQuery.data ?? [];
-  const fanProducts = fanQuery.data ?? [];
-  const mensCloth = mensQuery.data ?? [];
+  const personalizedSections = useMemo(() => {
+    if (!customer || !hasPreferences || !preferences) return [];
+    const seen = new Set<string>();
+    const items: Array<{ key: string; title: string; query: ProductQuery; sourceTag?: string }> = [];
+
+    const push = (title: string, query: ProductQuery, sourceTag?: string) => {
+      const key = buildPreferenceSlug(title || sourceTag || JSON.stringify(query));
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      items.push({ key, title, query, sourceTag });
+    };
+
+    preferences.categories.forEach((cat) => push(cat, { category: cat, limit: 32 }, `category:${cat}`));
+    preferences.productTypes.forEach((type) => push(type, { type, limit: 32 }, `type:${type}`));
+    preferences.brands.forEach((brand) => push(`${brand} picks`, { tag: brand, limit: 32 }, `brand:${brand}`));
+
+    return items.slice(0, 6);
+  }, [customer, hasPreferences, preferences]);
+
+  const personalizedQueries = useQueries({
+    queries: personalizedSections.map((section) => ({
+      queryKey: ['personalized-home', section.key, section.query],
+      queryFn: () => fetchProducts(section.query, 32),
+      enabled: Boolean(customer) && hasPreferences && personalizedSections.length > 0 && !prefLoading,
+      staleTime: 1000 * 60 * 5,
+    })),
+  });
+  const defaultSections = [
+    {
+      title: 'Non-Stick Cookwares',
+      products: nonStickQuery.data ?? [],
+      loading: nonStickQuery.isLoading,
+      sourceTag: 'Non-Stick Cookwares',
+    },
+    {
+      title: 'Fans',
+      products: fanQuery.data ?? [],
+      loading: fanQuery.isLoading,
+      sourceTag: 'Fans',
+    },
+    {
+      title: 'Mens Cloths',
+      products: mensQuery.data ?? [],
+      loading: mensQuery.isLoading,
+      sourceTag: 'Mens Cloths',
+    },
+  ];
+
+  const personalizedSectionsData = personalizedSections.map((section, idx) => ({
+    title: section.title,
+    products: personalizedQueries[idx]?.data ?? [],
+    loading: personalizedQueries[idx]?.isLoading ?? false,
+    sourceTag: section.sourceTag,
+  }));
+
+  const sectionsToRender =
+    showDefaultSections || personalizedSectionsData.length === 0 ? defaultSections : personalizedSectionsData;
+
   const categoriesQuery = useQuery({
     queryKey: ['home-categories'],
     queryFn: async () => {
@@ -479,6 +563,11 @@ export default function HomePage() {
     categoriesData.forEach((cat) => addNode(cat));
     return result.sort((a, b) => a.title.localeCompare(b.title));
   }, [categoriesData]);
+
+  const categorySuggestions = useMemo(
+    () => mobileCategories.slice(0, 12).map((cat) => cat.title),
+    [mobileCategories]
+  );
 
   const [categoryImages, setCategoryImages] = useState<Record<string, string>>({});
   const categoryImagesRef = useRef<Record<string, string>>({});
@@ -536,10 +625,20 @@ export default function HomePage() {
       cancelled = true;
     };
   }, [mobileCategories]);
-  const loading = nonStickQuery.isLoading || fanQuery.isLoading || mensQuery.isLoading;
-  const productsError = nonStickQuery.error || fanQuery.error || mensQuery.error;
-  const errorMessage =
-    productsError instanceof Error ? productsError.message : productsError ? 'Unable to load products' : null;
+  const loading = sectionsToRender.some((section) => section.loading);
+  const defaultProductsError = nonStickQuery.error || fanQuery.error || mensQuery.error;
+  const personalizedError = personalizedQueries.find((q) => q?.error)?.error;
+  const errorMessage = showDefaultSections
+    ? defaultProductsError instanceof Error
+      ? defaultProductsError.message
+      : defaultProductsError
+        ? 'Unable to load products'
+        : null
+    : personalizedError instanceof Error
+      ? personalizedError.message
+      : personalizedError
+        ? 'Unable to load your picks'
+        : null;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -608,16 +707,81 @@ export default function HomePage() {
             <HeroBanner />
           </div>
         </div>
-        <ProductCarousel title="Non-Stick Cookwares" products={nonStick} sourceTag="Non-Stick Cookwares" />
-        <ProductCarousel title="Fans" products={fanProducts} sourceTag="Fans" />
-        <div className="px-4">
-          <PromoBanners />
-        </div>
-        <ProductCarousel title="Mens Cloths" products={mensCloth} sourceTag="Mens Cloths" />
+
+        {customer ? (
+          <div className="px-4 mt-4">
+            {hasPreferences ? (
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  
+                  <div>
+                    <p className="text-xs text-emerald-700">Showing your favourite categories, types, and brands first.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPreferencesOpen(true)}
+                  className="px-4 py-2 rounded-xl border border-emerald-200 bg-white text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
+                >
+                  Edit preferences
+                </button>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">Get a better home feed</p>
+                    <p className="text-xs text-amber-700">Tell us what you shop often to surface those first.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPreferencesOpen(true)}
+                  className="px-4 py-2 rounded-xl border border-amber-200 bg-white text-sm font-semibold text-amber-800 hover:bg-amber-100"
+                >
+                  Set preferences
+                </button>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {sectionsToRender.map((section, idx) => (
+          <div key={`${section.title}-${idx}`}>
+            <ProductCarousel title={section.title} products={section.products} sourceTag={section.sourceTag} />
+            {idx === 1 && (
+              <div className="px-4">
+                <PromoBanners />
+              </div>
+            )}
+          </div>
+        ))}
+        {sectionsToRender.length <= 1 && (
+          <div className="px-4">
+            <PromoBanners />
+          </div>
+        )}
         <MobileJoinCard />
         {loading && <div className="px-4 text-sm text-gray-500">Loading products from store...</div>}
         {!loading && errorMessage && <div className="px-4 text-sm text-red-500">{errorMessage}</div>}
       </main>
+
+      <PreferenceModal
+        open={preferencesOpen}
+        onClose={() => setPreferencesOpen(false)}
+        onSave={async (prefs) => {
+          try {
+            await savePreferences(prefs);
+            setPreferencesOpen(false);
+          } catch (err) {
+            console.error('Failed to save preferences', err);
+          }
+        }}
+        saving={prefSaving}
+        initial={preferences ?? undefined}
+        suggestedCategories={categorySuggestions}
+      />
     </div>
   );
 }
