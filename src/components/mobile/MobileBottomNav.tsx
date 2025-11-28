@@ -12,13 +12,12 @@ import {
   Home,
   Mail,
   LogIn,
-  Facebook, Twitter, Instagram, Linkedin, Send,
+  Facebook, Twitter, Instagram, Linkedin,
   LogOut,
   MapPin,
   Phone,
   Shield,
   ShoppingBag,
-  Sparkles,
   Search,
   Store,
   User,
@@ -589,6 +588,16 @@ export default function MobileBottomNav() {
       icon: <Home className="w-5 h-5" />,
       active: pathname === '/',
     },
+    ...(customer
+      ? [
+          {
+            key: 'for-you',
+            label: 'For You',
+            href: '/for-you',
+            active: pathname?.startsWith('/for-you'),
+          },
+        ]
+      : []),
     {
       key: 'category',
       label: 'Category',
@@ -1345,7 +1354,7 @@ export default function MobileBottomNav() {
               </div>
             </div>
             <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 flex items-center gap-3">
-              <Sparkles className="w-4 h-4 text-emerald-600" />
+              
               <div>
                 <p className="text-sm font-semibold text-gray-900">App-like UX</p>
                 <p className="text-[11px] text-gray-600">Keep shopping without switching tabs.</p>

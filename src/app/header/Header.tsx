@@ -11,6 +11,7 @@ import {
   Heart,
   Bell,
   User,
+  Sparkles,
 } from "lucide-react";
 // import UserIcon from "@/components/ui/icons/UserIcon";
 import OrderIcon from "@/components/ui/icons/OrderIcon";
@@ -27,6 +28,8 @@ import { useAuth } from "@/contexts/AuthProvider";
 import { toast } from "sonner";
 import AccountDropdown from "@/components/modules/AccountDropdown";
 import GuestAccountDropdown from "@/components/modules/GuestAccountDropdown";
+import { usePreferences } from "@/hooks/usePreferences";
+import { reorderByPreferences } from "@/lib/personalization";
 
 type NavCategory = {
   id: string;
@@ -115,6 +118,7 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
 const Header: React.FC = () => {
   const { count: cartCount, refresh: refreshCart } = useCartSummary();
   const { customer, logout } = useAuth();
+  const { preferences } = usePreferences();
   const [cartPreviewOpen, setCartPreviewOpen] = React.useState(false);
   const [cartPreviewLoading, setCartPreviewLoading] = React.useState(false);
   const [cartPreviewItems, setCartPreviewItems] = React.useState<
@@ -145,6 +149,14 @@ const Header: React.FC = () => {
   const [navCategories, setNavCategories] = React.useState<NavCategory[]>([]);
   const [overflowCategories, setOverflowCategories] = React.useState<NavCategory[]>([]);
   const [navCatsLoading, setNavCatsLoading] = React.useState(true);
+  const preferredCategoryOrder = React.useMemo(
+    () => preferences?.categories ?? [],
+    [preferences?.categories]
+  );
+  const reorderNav = React.useCallback(
+    (items: NavCategory[]) => reorderByPreferences(items, (item) => item.title || item.handle, preferredCategoryOrder),
+    [preferredCategoryOrder]
+  );
 
   // dropdown states for portal:
   const [activeCategoryId, setActiveCategoryId] = React.useState<string | null>(null);
@@ -176,6 +188,12 @@ const Header: React.FC = () => {
     if (Array.isArray(list)) return list.length
     return 0
   }, [customer?.metadata])
+
+  React.useEffect(() => {
+    if (!preferredCategoryOrder.length) return;
+    setNavCategories((prev) => reorderNav(prev));
+    setOverflowCategories((prev) => reorderNav(prev));
+  }, [preferredCategoryOrder, reorderNav]);
 
   const handleLogout = React.useCallback(async () => {
     try {
@@ -1190,6 +1208,16 @@ const Header: React.FC = () => {
               </button>
             </div>
 
+            {customer ? (
+              <Link
+                href="/for-you"
+                className="flex items-center gap-1.5 py-3 px-2 text-sm font-medium text-header-text whitespace-nowrap hover:text-header-accent transition-colors"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>For You</span>
+              </Link>
+            ) : null}
+
             {/* Primary categories with dropdown triggers */}
             {navCatsLoading ? (
               <div className="py-3 text-sm text-gray-500">Loading categories…</div>
@@ -1261,6 +1289,15 @@ const Header: React.FC = () => {
               <Link href="/login" className="block px-3 py-2 rounded-lg border border-gray-200 text-sm text-header-text" onClick={() => setMobileMenuOpen(false)}>
                 Login / Signup
               </Link>
+              {customer ? (
+                <Link
+                  href="/for-you"
+                  className="block px-3 py-2 rounded-lg border border-gray-200 text-sm text-header-text"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  For You
+                </Link>
+              ) : null}
               <button type="button" className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-header-text text-left">
                 Help Center
               </button>
