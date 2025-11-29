@@ -27,10 +27,10 @@
    - **Branch**: `master` (or your main branch)
    - **Root Directory**: `my-medusa-store` ⚠️ **IMPORTANT!**
    - **Environment**: `Node`
-   - **Build Command**: `npm install && npm run build:backend-only` ⚠️ **Uses custom build script**
+   - **Build Command**: `NODE_OPTIONS=--max-old-space-size=460 npm run build` ⚠️ **Try with memory limit**
    - **Start Command**: `npm start`
    
-   **Important:** The custom build script builds only the backend and creates minimal admin files to avoid memory issues on free tier.
+   **Important:** Medusa requires admin dashboard build. If this fails due to memory, try the workaround below.
    - **Plan**: **Free** (512 MB RAM, 0.1 CPU)
 4. Click **"Create Web Service"**
 
@@ -133,11 +133,11 @@ After first deployment:
 
 ### Build Fails (Memory Issues) or "Could not find index.html"
 - **Problem:** Medusa requires admin dashboard build, but free tier has only 512 MB RAM
-- **Solution:** Use the custom build script: `npm run build:backend-only`
-  - This script skips the memory-intensive admin build
-  - Creates minimal admin files to satisfy Medusa's check
-  - Backend compiles TypeScript on startup (no performance impact)
-- **Alternative:** Upgrade to paid plan ($7/month) for more RAM
+- **Solution 1:** Try building with memory limit: `NODE_OPTIONS=--max-old-space-size=460 npm run build`
+- **Solution 2:** If Solution 1 fails, create minimal admin build manually:
+  1. Add Pre-Deploy Command: `mkdir -p .medusa/admin && echo '<!DOCTYPE html><html><head><title>Admin</title></head><body><h1>Admin</h1></body></html>' > .medusa/admin/index.html`
+  2. This creates a minimal index.html to satisfy Medusa's check
+- **Solution 3:** Upgrade to paid plan ($7/month) for more RAM
 - **Check:** Root directory is set to `my-medusa-store`
 - **Check:** Node version (Medusa needs Node 18+)
 
