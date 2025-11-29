@@ -47,7 +47,6 @@ temp/
 dump.rdb
 uploads/
 storage/
-.medusa/
 
 # Misc
 coverage/
