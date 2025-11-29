@@ -1,25 +1,23 @@
-"use client"
-
 import { useEffect } from "react"
-import { useRouter, usePathname } from "next/navigation"
+import { useNavigate, useLocation } from "react-router-dom"
 
 const AdminRouteGuard = () => {
-  const router = useRouter()
-  const pathname = usePathname()
+  const navigate = useNavigate()
+  const location = useLocation()
   
   useEffect(() => {
-    const isLoginPage = pathname === "/app/login"
+    const isLoginPage = location.pathname === "/app/login"
     
     if (!isLoginPage) {
       const adminToken = localStorage.getItem("admin_token")
       
       // If admin route but no token, redirect to login
       if (!adminToken) {
-        router.push("/app/login")
+        navigate("/app/login")
         return
       }
     }
-  }, [pathname, router])
+  }, [location.pathname, navigate])
 
   return null
 }
