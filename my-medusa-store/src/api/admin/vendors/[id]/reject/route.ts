@@ -23,7 +23,8 @@ export async function POST(
     }
 
     // Extract rejection reason from request body
-    const { rejection_reason } = req.body || {}
+    const body = req.body as { rejection_reason?: string } || {}
+    const { rejection_reason } = body
     
     if (!rejection_reason || !rejection_reason.trim()) {
       return res.status(400).json({ 

@@ -31,21 +31,32 @@
 
 ---
 
-## 🔧 Backend (Railway) - 10 Minutes
+## 🔧 Backend (Render) - 10 Minutes ⭐ **FREE TIER WORKS!**
 
-1. **Sign up at [railway.app](https://railway.app)**
+**Note:** Railway's free tier only allows databases. Use Render instead - it allows web services on free tier!
 
-2. **Create Project**
-   - New Project → Deploy from GitHub
-   - Select your repo
-   - **Set Root Directory**: `my-medusa-store`
+1. **Sign up at [render.com](https://render.com)** (free with GitHub)
 
-3. **Add PostgreSQL**
-   - Click "+ New" → Database → PostgreSQL
-   - Railway auto-sets `DATABASE_URL`
+2. **Create PostgreSQL Database**
+   - Click "New +" → "PostgreSQL"
+   - Name: `oweg-medusa-db`
+   - Plan: **Free**
+   - Copy the **"Internal Database URL"**
+
+3. **Create Web Service**
+   - Click "New +" → "Web Service"
+   - Connect GitHub repo: `3syncal/oweg-ecommerce`
+   - **Settings:**
+     - Name: `oweg-medusa-backend`
+     - Root Directory: `my-medusa-store` ⚠️ **IMPORTANT!**
+     - Build Command: `npm install && npm run build`
+     - Start Command: `npm start`
+     - Plan: **Free**
 
 4. **Set Environment Variables**
+   - Go to "Environment" tab
    ```env
+   DATABASE_URL=<paste-internal-database-url-from-step-2>
    STORE_CORS=https://your-frontend.vercel.app
    AUTH_CORS=https://your-frontend.vercel.app
    ADMIN_CORS=https://your-frontend.vercel.app
@@ -54,15 +65,15 @@
    NODE_ENV=production
    ```
 
-5. **Run Migrations**
-   ```bash
-   railway run npm run migrate
-   ```
-   (Install Railway CLI: `npm i -g @railway/cli`)
+5. **Run Migrations** (After deployment)
+   - Go to your service → "Shell" tab
+   - Run: `npm run migrate`
 
 6. **Get Backend URL**
-   - Copy the URL from Railway dashboard
+   - Copy URL from Render (e.g., `https://oweg-medusa-backend.onrender.com`)
    - Update frontend's `MEDUSA_BACKEND_URL`
+
+**See [RENDER_SETUP.md](./RENDER_SETUP.md) for detailed instructions.**
 
 ---
 
@@ -105,7 +116,14 @@ After backend is deployed:
 
 ---
 
+## ⚠️ Railway Free Tier Limitation
+
+If you tried Railway and saw "Limited Access - can only deploy databases":
+- **Use Render instead** - free tier allows web services!
+- See **[RENDER_SETUP.md](./RENDER_SETUP.md)** for step-by-step guide
+
 ## 🆘 Need Help?
 
-See `DEPLOYMENT.md` for detailed instructions and troubleshooting.
+- **Render Setup**: See `RENDER_SETUP.md` for detailed Render instructions
+- **General**: See `DEPLOYMENT.md` for all deployment options and troubleshooting
 

@@ -20,7 +20,6 @@ export const OPTIONS = async (req: MedusaRequest, res: MedusaResponse) => {
 }
 
 // Get S3 config helper (similar to vendor uploads route)
-import * as fs from "fs"
 
 /**
  * Read environment variable from .env file directly (bypasses system env vars)

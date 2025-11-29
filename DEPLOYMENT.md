@@ -54,9 +54,12 @@ This guide covers deploying both the frontend (Next.js) and backend (Medusa) of 
 
 ## Backend Deployment (Medusa)
 
-For Medusa backend, you have several options. **Railway** and **Render** are recommended for ease of use.
+For Medusa backend, you have several options. **Render** is recommended for free tier users.
 
-### Option 1: Railway (Recommended)
+### ⚠️ Railway Free Tier Limitation
+Railway's free tier **only allows databases**, not web services. If you see "Limited Access" message, use **Render** instead (free tier allows web services).
+
+### Option 1: Render (Recommended for Free Tier) ⭐
 
 Railway is excellent for Medusa deployments with easy PostgreSQL setup.
 
