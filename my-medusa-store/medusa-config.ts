@@ -6,9 +6,11 @@ export default defineConfig({
   projectConfig: {
     databaseUrl: process.env.DATABASE_URL,
     http: {
-      storeCors: process.env.STORE_CORS || "http://localhost:3000",
+      // CORS configuration - supports comma-separated URLs or single URL
+      // Frontend URL: https://oweg-ecommerce.vercel.app/
+      storeCors: process.env.STORE_CORS || "http://localhost:3000,https://oweg-ecommerce.vercel.app",
       adminCors: process.env.ADMIN_CORS || "http://localhost:7001",
-      authCors: process.env.AUTH_CORS || "http://localhost:3000",
+      authCors: process.env.AUTH_CORS || "http://localhost:3000,https://oweg-ecommerce.vercel.app",
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     },
