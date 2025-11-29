@@ -29,8 +29,37 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+## Deployment
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+This project consists of:
+- **Frontend**: Next.js app (this directory)
+- **Backend**: Medusa ecommerce backend (in `my-medusa-store/`)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Quick Start
+
+See **[QUICK_DEPLOY.md](./QUICK_DEPLOY.md)** for a 5-minute deployment guide.
+
+### Detailed Guides
+
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Complete deployment guide for both frontend and backend
+- **[my-medusa-store/DEPLOYMENT.md](./my-medusa-store/DEPLOYMENT.md)** - Backend-specific deployment guide
+
+### Deployment Options
+
+**Frontend:**
+- ✅ **Vercel** (Recommended) - Free, automatic HTTPS, perfect for Next.js
+
+**Backend:**
+- ✅ **Railway** (Recommended) - Easy PostgreSQL setup, great for Medusa
+- ✅ **Render** - Free tier available, good alternative
+- ✅ **DigitalOcean** - Production-ready, better performance
+- ✅ **AWS/GCP/Azure** - Enterprise scale
+
+### PWA Support
+
+This app is configured as a Progressive Web App (PWA):
+- Service worker for offline support
+- Install prompt for mobile devices
+- Manifest for app-like experience
+
+PWA works automatically on Vercel with HTTPS. See `DEPLOYMENT.md` for PWA configuration details.

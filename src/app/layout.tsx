@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   },
   description: "Shop home appliances, kitchen utensils, and electronics at OWEG.",
   applicationName: "OWEG",
-  manifest: "/manifest.webmanifest",
+  manifest: "/manifest",
   other: { display: "standalone" },
 };
 
