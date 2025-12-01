@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MapPin, UserRound } from 'lucide-react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { ProductCard } from '@/components/modules/ProductCard';
 import type { MedusaCategory } from '@/lib/medusa';
@@ -437,12 +437,34 @@ export default function HomePage() {
   const { customer } = useAuth();
   const { preferences, hasPreferences, loading: prefLoading, saving: prefSaving, shouldPrompt, savePreferences } = usePreferences();
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [placeName, setPlaceName] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem('oweg_pincode_place') || null;
+  });
+  const [placeLoading, setPlaceLoading] = useState(false);
+  const [pincode, setPincode] = useState('');
+  const [pinInput, setPinInput] = useState('');
 
   useEffect(() => {
     if (shouldPrompt) {
       setPreferencesOpen(true);
     }
   }, [shouldPrompt]);
+
+  useEffect(() => {
+    const hydratePlace = async () => {
+      if (pincode && !placeName) {
+        const place = await fetchPlaceName(pincode);
+        if (place) {
+          setPlaceName(place);
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem('oweg_pincode_place', place);
+          }
+        }
+      }
+    };
+    void hydratePlace();
+  }, [pincode, placeName]);
 
   const showDefaultSections = !customer || !hasPreferences;
 
@@ -571,9 +593,6 @@ export default function HomePage() {
 
   const [categoryImages, setCategoryImages] = useState<Record<string, string>>({});
   const categoryImagesRef = useRef<Record<string, string>>({});
-  const [pinInput, setPinInput] = useState('');
-  const [pincode, setPincode] = useState('');
-
   useEffect(() => {
     categoryImagesRef.current = categoryImages;
   }, [categoryImages]);
@@ -647,14 +666,44 @@ export default function HomePage() {
       setPincode(stored);
       setPinInput(stored);
     }
+    const storedPlace = window.localStorage.getItem('oweg_pincode_place');
+    if (storedPlace) {
+      setPlaceName(storedPlace);
+    }
   }, []);
 
-  const handlePinSubmit = () => {
+  const fetchPlaceName = async (pin: string) => {
+    try {
+      setPlaceLoading(true);
+      const res = await fetch(`https://api.postalpincode.in/pincode/${encodeURIComponent(pin)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const office = Array.isArray(data) ? data[0]?.PostOffice?.[0] : null;
+      const name = office?.Name;
+      const district = office?.District;
+      const state = office?.State;
+      const place = [name, district, state].filter(Boolean).join(', ');
+      return place || null;
+    } catch {
+      return null;
+    } finally {
+      setPlaceLoading(false);
+    }
+  };
+
+  const handlePinSubmit = async () => {
     const trimmed = pinInput.trim();
     if (!trimmed) return;
     setPincode(trimmed);
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('oweg_pincode', trimmed);
+    }
+    const place = await fetchPlaceName(trimmed);
+    if (place) {
+      setPlaceName(place);
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('oweg_pincode_place', place);
+      }
     }
   };
 
@@ -681,6 +730,55 @@ export default function HomePage() {
       `}</style>
 
       <main className="w-full pb-6 md:pt-6 md:pb-6">
+        <div className="md:hidden px-4 pt-3 space-y-3">
+          <div className="space-y-2">
+            {!pincode ? (
+              <>
+                <p className="text-sm font-semibold text-gray-900">Share pincode for faster delivery by local sellers</p>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <MapPin className="w-4 h-4 text-[#7AC943] absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={pinInput}
+                      onChange={(e) => setPinInput(e.target.value)}
+                      className="w-full rounded-xl border border-gray-200 pl-9 pr-3 py-2 text-sm"
+                      placeholder="Enter pincode"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handlePinSubmit}
+                    className="px-3 py-2 rounded-xl bg-[#7AC943] text-white text-sm font-semibold shadow hover:brightness-95 whitespace-nowrap"
+                  >
+                    Submit
+                  </button>
+                </div>
+                {placeLoading ? <p className="text-xs text-gray-500">Checking serviceability...</p> : null}
+              </>
+            ) : null}
+          </div>
+
+          {!customer && (
+            <div className="flex items-center gap-3 px-2 py-2 rounded-2xl bg-emerald-50/70">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#7AC943] text-white shrink-0">
+                <UserRound className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <p className="text-base font-semibold text-emerald-800 leading-snug">You are missing out</p>
+                <p className="text-sm text-emerald-700 leading-snug line-clamp-2">Sign in for the best offers.</p>
+              </div>
+              <Link
+                href="/login"
+                className="px-4 py-2.5 rounded-xl bg-[#7AC943] text-white text-sm font-semibold shadow hover:brightness-95 whitespace-nowrap"
+              >
+                Sign in
+              </Link>
+            </div>
+          )}
+        </div>
+
         <MobileCategoryGrid
           categories={mobileCategories}
           loading={categoriesQuery.isLoading}

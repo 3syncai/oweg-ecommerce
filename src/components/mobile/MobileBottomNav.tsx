@@ -307,7 +307,7 @@ const Overlay = ({
       onClick={(e) => e.stopPropagation()}
     >
       <div
-        className={`h-full ${scrollable ? 'overflow-y-auto' : 'overflow-hidden'} px-4 pt-20 pb-[env(safe-area-inset-bottom,0px)]`}
+        className={`h-full ${scrollable ? 'overflow-y-auto' : 'overflow-hidden'} px-4 pt-20 pb-[calc(env(safe-area-inset-bottom,0px)+160px)]`}
       >
         {children}
       </div>
@@ -419,16 +419,17 @@ export default function MobileBottomNav() {
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const cls = 'category-overlay-open';
-    if (categoryOpen) {
-      document.body.classList.add(cls);
-    } else {
-      document.body.classList.remove(cls);
-    }
-    return () => {
-      document.body.classList.remove(cls);
+    const setClass = (cond: boolean, cls: string) => {
+      if (cond) document.body.classList.add(cls);
+      else document.body.classList.remove(cls);
     };
-  }, [categoryOpen]);
+    setClass(categoryOpen, 'category-overlay-open');
+    setClass(joinOpen, 'join-overlay-open');
+    setClass(profileOpen, 'profile-overlay-open');
+    return () => {
+      document.body.classList.remove('category-overlay-open', 'join-overlay-open', 'profile-overlay-open');
+    };
+  }, [categoryOpen, joinOpen, profileOpen]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -445,6 +446,20 @@ export default function MobileBottomNav() {
     [categories]
   );
 
+  const forYouCategory = useMemo<MobileCategory | null>(
+    () =>
+      customer
+        ? {
+            id: 'for-you',
+            title: 'For You',
+            handle: 'for-you',
+            image: '/oweg_logo.png',
+            children: [],
+          }
+        : null,
+    [customer]
+  );
+
   useEffect(() => {
     if (!categoryOpen) return;
     if (selectedCategoryId) return;
@@ -458,11 +473,12 @@ export default function MobileBottomNav() {
   }, [categoryOpen, categoriesWithChildren, selectedCategoryId]);
 
   const filteredCategories = useMemo(() => {
-    if (selectedSubcategory) return categoriesWithChildren;
-    if (!searchTerm.trim()) return categoriesWithChildren;
+    const base = forYouCategory ? [forYouCategory, ...categoriesWithChildren] : categoriesWithChildren;
+    if (selectedSubcategory) return base;
+    if (!searchTerm.trim()) return base;
     const term = searchTerm.toLowerCase();
-    return categoriesWithChildren.filter((cat) => cat.title.toLowerCase().includes(term));
-  }, [categoriesWithChildren, searchTerm]);
+    return base.filter((cat) => cat.title.toLowerCase().includes(term));
+  }, [categoriesWithChildren, forYouCategory, searchTerm, selectedSubcategory]);
 
   const displayedCategory = useMemo(() => {
     if (!selectedCategoryId) return null;
@@ -588,16 +604,6 @@ export default function MobileBottomNav() {
       icon: <Home className="w-5 h-5" />,
       active: pathname === '/',
     },
-    ...(customer
-      ? [
-          {
-            key: 'for-you',
-            label: 'For You',
-            href: '/for-you',
-            active: pathname?.startsWith('/for-you'),
-          },
-        ]
-      : []),
     {
       key: 'category',
       label: 'Category',
@@ -720,7 +726,7 @@ export default function MobileBottomNav() {
 
       {/* Category sheet */}
       <Overlay open={categoryOpen} onClose={closeCategory} scrollable={false}>
-        <div className="space-y-4 relative">
+        <div className="pt-8 pb-8 space-y-4 relative">
           {!selectedSubcategory && (
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -779,6 +785,30 @@ export default function MobileBottomNav() {
                     const active = displayedCategory?.id === cat.id;
                     const isExpanded = expandedCatId === cat.id;
                     const hasChildren = Array.isArray(cat.children) && cat.children.length > 0;
+                    if (cat.id === 'for-you') {
+                      return (
+                        <div key={cat.id} className="rounded-2xl border border-gray-200 bg-white">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCategoryOpen(false);
+                              setSidebarOverlayOpen(false);
+                              resetPanels();
+                              router.push('/for-you');
+                            }}
+                            className="w-full px-2.5 py-2 flex items-center justify-between gap-2"
+                            title="For You"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-white border border-gray-100 flex items-center justify-center">
+                                <span className="text-sm font-semibold text-emerald-700">For You</span>
+                              </div>
+                              <span className="text-sm font-semibold text-gray-800 line-clamp-2">For You</span>
+                            </div>
+                          </button>
+                        </div>
+                      );
+                    }
                     return (
                       <div key={cat.id} className={`rounded-2xl border ${active ? 'border-emerald-400 bg-emerald-50 shadow-sm' : 'border-gray-200 bg-white'}`}>
                         <button
@@ -860,6 +890,37 @@ export default function MobileBottomNav() {
                 <div className="text-sm text-gray-500">No categories found.</div>
               ) : (
                 filteredCategories.map((cat) => {
+                  if (cat.id === 'for-you') {
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => {
+                          resetPanels();
+                          setCategoryOpen(false);
+                          router.push('/for-you');
+                        }}
+                        className={`group w-full rounded-2xl border transition-all duration-300 text-left ${
+                          pathname?.startsWith('/for-you')
+                            ? 'border-emerald-400 bg-emerald-50 shadow-sm'
+                            : 'border-gray-200 bg-white'
+                        } ${isOpen ? 'px-2.5 py-2' : 'px-1.5 py-1.5'}`}
+                        title="For You"
+                      >
+                        <div className="flex flex-col items-center">
+                          <div
+                            className="relative w-full rounded-xl overflow-hidden bg-emerald-50 flex items-center justify-center border border-emerald-100"
+                            style={{ height: isOpen ? 96 : 80 }}
+                          >
+                            <span className="text-sm font-semibold text-emerald-700">For You</span>
+                          </div>
+                          {isOpen ? (
+                            <span className="mt-1 text-sm font-semibold text-emerald-800 text-center">For You</span>
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  }
                   const active = displayedCategory?.id === cat.id;
                   return (
                     <button
@@ -901,7 +962,7 @@ export default function MobileBottomNav() {
             </div>
             )}
 
-            <div className={`${selectedSubcategory ? 'w-full' : 'flex-1 min-w-0'} h-full min-h-0 overflow-y-auto pr-1 pb-2 transition-all duration-300 ease-in-out`}>
+            <div className={`${selectedSubcategory ? 'w-full' : 'flex-1 min-w-0'} h-full min-h-0 overflow-y-auto pr-1 pb-35 transition-all duration-300 ease-in-out`}>
               <div className="space-y-3">
                 {activeCategory && (activeCategory.children || []).length > 0 && !selectedSubcategory && (
                   <div className="grid grid-cols-2 gap-3 pb-2">
