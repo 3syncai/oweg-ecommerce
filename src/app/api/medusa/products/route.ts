@@ -11,15 +11,58 @@ import { executeReadQuery } from "@/lib/mysql"
 
 export const dynamic = "force-dynamic"
 
+const LIST_CACHE_TTL_MS = 1000 * 60 // 1 minute cache for list responses
+const MAX_CACHE_ENTRIES = 200
+type CachedList = { expires: number; payload: unknown }
+const listCache = new Map<string, CachedList>()
+
+function buildCacheKey(searchParams: URLSearchParams) {
+  const normalized = new URLSearchParams()
+  ;["category", "categoryId", "tag", "type", "limit", "priceMin", "priceMax", "dealsOnly"].forEach((key) => {
+    const value = searchParams.get(key)
+    if (value !== null && value !== undefined && value !== "") {
+      normalized.set(key, value)
+    }
+  })
+  return normalized.toString()
+}
+
+function getCachedList(key: string) {
+  const cached = listCache.get(key)
+  if (cached && cached.expires > Date.now()) {
+    return cached.payload
+  }
+  listCache.delete(key)
+  return null
+}
+
+function setCachedList(key: string, payload: unknown) {
+  // Simple pruning to avoid unbounded growth
+  if (listCache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = listCache.keys().next().value
+    if (oldestKey) listCache.delete(oldestKey)
+  }
+  listCache.set(key, { expires: Date.now() + LIST_CACHE_TTL_MS, payload })
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
+    const cacheKey = buildCacheKey(searchParams)
+    const cached = cacheKey ? getCachedList(cacheKey) : null
+    if (cached) {
+      const res = NextResponse.json(cached)
+      res.headers.set("x-cache", "hit")
+      res.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300")
+      return res
+    }
+
     const category = searchParams.get("category")
     const categoryId = searchParams.get("categoryId")
     const tag = searchParams.get("tag")
     const type = searchParams.get("type")
-    const limit = Number(searchParams.get("limit") || 20)
-    const normalizedLimit = Number.isFinite(limit) && limit > 0 ? limit : 20
+    const limit = Number(searchParams.get("limit") || 24)
+    const normalizedLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 60) : 24
     const priceMinParam = searchParams.get("priceMin")
     const priceMaxParam = searchParams.get("priceMax")
     const priceMin = priceMinParam !== null ? Number(priceMinParam) : undefined
@@ -38,8 +81,8 @@ export async function GET(req: NextRequest) {
         const cat = await findCategoryByTitleOrHandle(type)
         if (cat?.id) {
           try {
-            products = await fetchProductsByCategoryId(cat.id, limit)
-          } catch {}
+            products = await fetchProductsByCategoryId(cat.id, normalizedLimit)
+          } catch { }
         }
       }
     } else if (tag) {
@@ -49,8 +92,8 @@ export async function GET(req: NextRequest) {
         const cat = await findCategoryByTitleOrHandle(tag)
         if (cat?.id) {
           try {
-            products = await fetchProductsByCategoryId(cat.id, limit)
-          } catch {}
+            products = await fetchProductsByCategoryId(cat.id, normalizedLimit)
+          } catch { }
         }
       }
     } else {
@@ -91,7 +134,14 @@ export async function GET(req: NextRequest) {
       ui = ui.filter((product) => product.limitedDeal)
     }
 
-    return NextResponse.json({ products: ui })
+    const payload = { products: ui }
+    if (cacheKey) {
+      setCachedList(cacheKey, payload)
+    }
+    const res = NextResponse.json(payload)
+    res.headers.set("x-cache", "miss")
+    res.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300")
+    return res
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "failed"
     return NextResponse.json({ error: msg }, { status: 500 })
@@ -105,11 +155,48 @@ type PriceOverride = {
   opencartId?: string
 }
 
+const PRICE_OVERRIDES_CACHE = new Map<
+  string,
+  { expires: number; entries: Array<[string, PriceOverride]> }
+>()
+const PRICE_CACHE_TTL_MS = 1000 * 60 * 5 // cache price lookups for 5 minutes
+
 function normalizeProductName(name?: string | null) {
   return (name || "").trim().toLowerCase()
 }
 
+function getOverrideCacheKey(products: MedusaProduct[]) {
+  const ids = products
+    .map((p) => p.id)
+    .filter(Boolean)
+    .sort()
+  return ids.join("|")
+}
+
+function getCachedOverrides(key: string) {
+  const cached = PRICE_OVERRIDES_CACHE.get(key)
+  if (cached && cached.expires > Date.now()) {
+    return new Map(cached.entries)
+  }
+  PRICE_OVERRIDES_CACHE.delete(key)
+  return null
+}
+
+function setCachedOverrides(key: string, map: Map<string, PriceOverride>) {
+  if (!key) return
+  PRICE_OVERRIDES_CACHE.set(key, {
+    expires: Date.now() + PRICE_CACHE_TTL_MS,
+    entries: Array.from(map.entries()),
+  })
+}
+
 async function buildPriceOverrides(products: MedusaProduct[]) {
+  const cacheKey = getOverrideCacheKey(products)
+  if (cacheKey) {
+    const cached = getCachedOverrides(cacheKey)
+    if (cached) return cached
+  }
+
   const map = new Map<string, PriceOverride>()
   const productIdToOcId = new Map<string, string>()
   const ocIdToMedusaIds = new Map<string, string[]>()
@@ -180,36 +267,38 @@ async function buildPriceOverrides(products: MedusaProduct[]) {
     }
   }
 
-  if (fallbackProducts.length === 0) {
-    return map
-  }
+  if (fallbackProducts.length > 0) {
+    const nameMap = new Map<
+      string,
+      { originalName: string; medusaIds: string[] }
+    >()
 
-  const nameMap = new Map<
-    string,
-    { originalName: string; medusaIds: string[] }
-  >()
-
-  for (const product of fallbackProducts) {
-    const key = normalizeProductName(product.title || product.subtitle)
-    if (!key) continue
-    const originalName = product.title || product.subtitle || product.handle || ""
-    if (!originalName) continue
-    const entry = nameMap.get(key)
-    if (entry) {
-      entry.medusaIds.push(product.id)
-    } else {
-      nameMap.set(key, { originalName, medusaIds: [product.id] })
+    for (const product of fallbackProducts) {
+      const key = normalizeProductName(product.title || product.subtitle)
+      if (!key) continue
+      const originalName = product.title || product.subtitle || product.handle || ""
+      if (!originalName) continue
+      const entry = nameMap.get(key)
+      if (entry) {
+        entry.medusaIds.push(product.id)
+      } else {
+        nameMap.set(key, { originalName, medusaIds: [product.id] })
+      }
     }
-  }
 
-  await Promise.all(
-    Array.from(nameMap.values()).map(async ({ originalName, medusaIds }) => {
+    const uniqueNames = Array.from(
+      new Set(Array.from(nameMap.values()).map((entry) => entry.originalName))
+    )
+
+    if (uniqueNames.length > 0) {
+      const placeholders = uniqueNames.map(() => "?").join(",")
       try {
         const rows = await executeReadQuery<
-          Array<{ price: string | null; special_price: string | null }>
+          Array<{ name: string; price: string | null; special_price: string | null }>
         >(
           `
             SELECT 
+              pd.name as name,
               p.price,
               (
                 SELECT ps.price
@@ -223,32 +312,38 @@ async function buildPriceOverrides(products: MedusaProduct[]) {
             FROM oc_product p
             INNER JOIN oc_product_description pd 
               ON p.product_id = pd.product_id AND pd.language_id = 1
-            WHERE pd.name = ?
-            LIMIT 1
+            WHERE pd.name IN (${placeholders})
           `,
-          [originalName]
+          uniqueNames
         )
 
-        const row = rows[0]
-        if (!row) return
-        const basePrice = parseFloat(row.price || "")
-        const specialPrice = row.special_price ? parseFloat(row.special_price) : undefined
-        const hasBase = Number.isFinite(basePrice)
-        const hasSpecial = Number.isFinite(specialPrice)
-        if (!hasBase && !hasSpecial) return
+        for (const row of rows) {
+          const key = normalizeProductName(row.name)
+          const entry = nameMap.get(key)
+          if (!entry) continue
 
-        for (const medusaId of medusaIds) {
-          map.set(medusaId, {
-            price: hasSpecial ? (specialPrice as number) : (basePrice as number),
-            mrp: hasBase ? (basePrice as number) : hasSpecial ? (specialPrice as number) : undefined,
-            isDeal: hasSpecial,
-          })
+          const basePrice = parseFloat(row.price || "")
+          const specialPrice = row.special_price ? parseFloat(row.special_price) : undefined
+          const hasBase = Number.isFinite(basePrice)
+          const hasSpecial = Number.isFinite(specialPrice)
+          if (!hasBase && !hasSpecial) continue
+
+          for (const medusaId of entry.medusaIds) {
+            map.set(medusaId, {
+              price: hasSpecial ? (specialPrice as number) : (basePrice as number),
+              mrp: hasBase ? (basePrice as number) : hasSpecial ? (specialPrice as number) : undefined,
+              isDeal: hasSpecial,
+            })
+          }
         }
       } catch (err) {
-        console.warn("Failed to hydrate price for", originalName, err)
+        console.warn("Failed to hydrate price via fallback names", err)
       }
-    })
-  )
+    }
+  }
 
+  if (cacheKey) {
+    setCachedOverrides(cacheKey, map)
+  }
   return map
 }

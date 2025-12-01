@@ -9,7 +9,8 @@ import {
 
 export function useCategoryProducts(
   categoryId: string | undefined,
-  query: CategoryProductQueryParams = {}
+  query: CategoryProductQueryParams = {},
+  initialData?: UIProduct[]
 ) {
   return useQuery<UIProduct[], Error>({
     queryKey: ["category-products", categoryId, query],
@@ -18,6 +19,8 @@ export function useCategoryProducts(
       return getProductsByCategoryService(categoryId, query);
     },
     enabled: !!categoryId,
+    initialData,
+    placeholderData: initialData,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }

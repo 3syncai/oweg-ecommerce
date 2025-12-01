@@ -4,6 +4,7 @@ import type { DetailedProduct as DetailedProductType } from '@/lib/medusa'
 
 export type ProductDetailProps = {
   productId: string
+  initialProduct?: DetailedProductType | null
 }
 
 export type RelatedProduct = {
