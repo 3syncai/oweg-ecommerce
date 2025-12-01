@@ -102,7 +102,7 @@ function buildSummaryFromDetail(detail?: DetailedProductType | null, item?: Rela
   )
 }
 
-export default function ProductDetailPage({ productId }: ProductDetailProps) {
+export default function ProductDetailPage({ productId, initialProduct }: ProductDetailProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [quantity, setQuantity] = useState(1)
@@ -167,6 +167,9 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
       }
       return (await res.json()) as { product: DetailedProductType }
     },
+    initialData: initialProduct ? { product: initialProduct } : undefined,
+    placeholderData: initialProduct ? { product: initialProduct } : undefined,
+    staleTime: 1000 * 60 * 3,
   })
   const product = productResponse?.product ?? null
   const isWishlisted = useMemo(() => {
