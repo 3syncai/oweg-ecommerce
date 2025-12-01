@@ -12,6 +12,7 @@ import {
   Bell,
   User,
   Sparkles,
+  Pencil,
 } from "lucide-react";
 // import UserIcon from "@/components/ui/icons/UserIcon";
 import OrderIcon from "@/components/ui/icons/OrderIcon";
@@ -105,15 +106,18 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
   const roots = Array.from(nodes.values()).filter((node) => !node.parentId);
   roots.sort((a, b) => a.title.localeCompare(b.title));
 
-  const withChildren = roots
-    .filter((node) => node.children.length > 0)
-    .map((node) => stripParent(node));
-  const withoutChildren = roots
-    .filter((node) => node.children.length === 0)
-    .map((node) => stripParent(node));
+const withChildren = roots
+  .filter((node) => node.children.length > 0)
+  .map((node) => stripParent(node));
+const withoutChildren = roots
+  .filter((node) => node.children.length === 0)
+  .map((node) => stripParent(node));
 
-  return { withChildren, withoutChildren };
+return { withChildren, withoutChildren };
 };
+
+const getCategoryHref = (handle?: string) =>
+  handle ? `/c/${encodeURIComponent(handle)}` : "#";
 
 const Header: React.FC = () => {
   const { count: cartCount, refresh: refreshCart } = useCartSummary();
@@ -149,6 +153,14 @@ const Header: React.FC = () => {
   const [navCategories, setNavCategories] = React.useState<NavCategory[]>([]);
   const [overflowCategories, setOverflowCategories] = React.useState<NavCategory[]>([]);
   const [navCatsLoading, setNavCatsLoading] = React.useState(true);
+  const [isMobile, setIsMobile] = React.useState(false);
+  const [showTopBarMobile, setShowTopBarMobile] = React.useState(true);
+  const [mobilePincode, setMobilePincode] = React.useState("");
+  const [mobilePlace, setMobilePlace] = React.useState<string | null>(null);
+  const [pinModalOpen, setPinModalOpen] = React.useState(false);
+  const [pinInput, setPinInput] = React.useState("");
+  const [pinSaving, setPinSaving] = React.useState(false);
+  const [pinError, setPinError] = React.useState<string | null>(null);
   const preferredCategoryOrder = React.useMemo(
     () => preferences?.categories ?? [],
     [preferences?.categories]
@@ -175,19 +187,30 @@ const Header: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname();
   const [isCategoryOverlayOpen, setIsCategoryOverlayOpen] = React.useState(false);
+  const [isJoinOverlayOpen, setIsJoinOverlayOpen] = React.useState(false);
+  const [isProfileOverlayOpen, setIsProfileOverlayOpen] = React.useState(false);
   
-  // Check if category overlay is open via body class
+  // Check if overlays are open via body class
   React.useEffect(() => {
-    const checkCategoryOverlay = () => {
-      setIsCategoryOverlayOpen(document.body.classList.contains('category-overlay-open'));
+    const checkOverlays = () => {
+      const body = document.body.classList;
+      setIsCategoryOverlayOpen(body.contains('category-overlay-open'));
+      setIsJoinOverlayOpen(body.contains('join-overlay-open'));
+      setIsProfileOverlayOpen(body.contains('profile-overlay-open'));
     };
-    checkCategoryOverlay();
-    const observer = new MutationObserver(checkCategoryOverlay);
+    checkOverlays();
+    const observer = new MutationObserver(checkOverlays);
     observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
     return () => observer.disconnect();
   }, []);
   
   const isCategoryPage = pathname?.startsWith('/c/') || pathname === '/c' || isCategoryOverlayOpen;
+  const isMobileSimplifiedHeader =
+    isMobile &&
+    (isCategoryOverlayOpen ||
+      isJoinOverlayOpen ||
+      isProfileOverlayOpen ||
+      pathname?.startsWith('/wishlist'));
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [mobileExpandedCat, setMobileExpandedCat] = React.useState<string | null>(null);
   const [mobileProfileOpen, setMobileProfileOpen] = React.useState(false);
@@ -448,6 +471,101 @@ const Header: React.FC = () => {
     };
   }, []);
 
+  React.useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  React.useEffect(() => {
+    if (!isMobile) {
+      setShowTopBarMobile(true);
+      return;
+    }
+    const handleScroll = () => {
+      setShowTopBarMobile(window.scrollY < 10);
+    };
+    handleScroll();
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [isMobile]);
+
+  const fetchPlaceForPin = React.useCallback(async (pin: string) => {
+    try {
+      const res = await fetch(`https://api.postalpincode.in/pincode/${encodeURIComponent(pin)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const office = Array.isArray(data) ? data[0]?.PostOffice?.[0] : null;
+      const name = office?.Name;
+      const district = office?.District;
+      const state = office?.State;
+      const place = [name, district, state].filter(Boolean).join(", ");
+      return place || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const pin = window.localStorage.getItem("oweg_pincode") || "";
+    const place = window.localStorage.getItem("oweg_pincode_place") || "";
+    setMobilePincode(pin);
+    setMobilePlace(place || null);
+  }, []);
+
+  React.useEffect(() => {
+    const hydratePlace = async () => {
+      if (mobilePincode && !mobilePlace) {
+        const place = await fetchPlaceForPin(mobilePincode);
+        if (place) {
+          setMobilePlace(place);
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem("oweg_pincode_place", place);
+          }
+        }
+      }
+    };
+    void hydratePlace();
+  }, [fetchPlaceForPin, mobilePincode, mobilePlace]);
+
+  React.useEffect(() => {
+    if (pinModalOpen) {
+      setPinInput(mobilePincode || "");
+      setPinError(null);
+    }
+  }, [pinModalOpen, mobilePincode]);
+
+  const handleSavePincode = React.useCallback(async () => {
+    const pin = pinInput.trim();
+    if (!pin || pin.length < 4) {
+      setPinError("Please enter a valid pincode.");
+      return;
+    }
+
+    setPinSaving(true);
+    setPinError(null);
+    try {
+      const place = await fetchPlaceForPin(pin);
+      if (!place) {
+        setPinError("Could not find that pincode. Please try again.");
+        return;
+      }
+      setMobilePincode(pin);
+      setMobilePlace(place);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("oweg_pincode", pin);
+        window.localStorage.setItem("oweg_pincode_place", place);
+      }
+      toast.success(`Delivering to ${place}`);
+      setPinModalOpen(false);
+    } finally {
+      setPinSaving(false);
+    }
+  }, [fetchPlaceForPin, pinInput]);
+
   // Debounced suggestions
   React.useEffect(() => {
     const id = setTimeout(() => {
@@ -573,13 +691,14 @@ const Header: React.FC = () => {
   }, [startHideTimer]);
 
   React.useEffect(() => {
-    if (!mobileMenuOpen) return;
+    const shouldLock = mobileMenuOpen || pinModalOpen;
+    if (!shouldLock) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [mobileMenuOpen]);
+  }, [mobileMenuOpen, pinModalOpen]);
 
   // Dropdown portal for active category
   const CategoryPortal: React.FC = () => {
@@ -789,20 +908,23 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header className="w-full header-root bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)] sticky top-0 z-[120]">
-      {/* Top Bar */}
-      <div className="bg-header-top-bg text-header-top-text py-2.5 text-center text-sm">
-        <p>
-          Get 10% Extra off! - Use Code <span className="font-semibold">OWEG10</span>{" "}
-          <a href="#" className="underline hover:text-header-accent transition-colors">
-            ShopNow
-          </a>
-        </p>
-      </div>
+    <header className="sticky top-0 z-[120] w-full header-root bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+      <div className="bg-header-bg">
+        {/* Top Bar */}
+        {(!isMobile || showTopBarMobile) && (
+          <div className="bg-header-top-bg text-header-top-text py-2 text-center text-sm">
+            <p>
+              Get 10% Extra off! - Use Code <span className="font-semibold">OWEG10</span>{" "}
+              <a href="#" className="underline hover:text-header-accent transition-colors">
+                ShopNow
+              </a>
+            </p>
+          </div>
+        )}
 
       {/* Main Header */}
       <div className="bg-header-bg">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-3">
+          <div className="w-full px-4 sm:px-6 lg:px-8 py-2">
           <div className="hidden md:flex items-center justify-between gap-2 w-full">
             {/* Left Section: Logo + Location */}
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -816,10 +938,7 @@ const Header: React.FC = () => {
                 <button
                   type="button"
                   className="hidden lg:flex items-center gap-2 text-sm location-block hover:opacity-80 transition-opacity"
-                  onClick={() => {
-                    // TODO: Open location modal
-                    toast.info("Location selector coming soon");
-                  }}
+                  onClick={() => setPinModalOpen(true)}
                 >
                   <LocationIcon className="w-5 h-5 text-header-text flex-shrink-0" />
                   <div className="text-left">
@@ -1101,9 +1220,9 @@ const Header: React.FC = () => {
             </div>
           </div>
 
-            <div className="flex flex-col gap-0 md:hidden relative z-10">
+            <div className="flex flex-col gap-0 md:hidden bg-white">
               <div className="bg-white/95 backdrop-blur border-b border-gray-100">
-              <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-2">
+              <div className="flex items-center justify-between gap-3 pb-2 px-2">
                 <div className="flex items-center gap-4 flex-1">
                 <button
                   type="button"
@@ -1131,69 +1250,74 @@ const Header: React.FC = () => {
               </div>
               </div>
 
-              <div className="px-4 mt-1 relative mobile-search-bar">
-                <Input
-                  value={q}
-                  onChange={(e) => {
-                    setQ(e.target.value);
-                    setShowSuggest(true);
-                  }}
-                  onFocus={() => setShowSuggest(true)}
-                  placeholder="Search products, categories..."
-                  className="h-12 rounded-full border-gray-200 bg-white shadow-sm pr-14"
-                />
-                <div className="absolute inset-y-1 right-5 flex items-center">
-                  <div className="w-10 h-10 rounded-full bg-header-accent text-white flex items-center justify-center shadow">
-                    <Search className="w-5 h-5" />
-                  </div>
-                </div>
-                {showSuggest && q.length >= 2 && suggestions.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 max-h-[60vh] overflow-y-auto">
-                    {suggestions.map((s) => {
-                      const slug = encodeURIComponent(String(s.handle || s.id));
-                      const href = `/productDetail/${slug}?id=${encodeURIComponent(String(s.id))}`;
-                      return (
-                        <Link
-                          key={s.id}
-                          href={href}
-                          className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50"
-                          onClick={() => setShowSuggest(false)}
-                        >
-                          {s.image ? (
-                            <Image src={s.image} alt={s.name} width={40} height={40} className="rounded-md object-cover" />
-                          ) : (
-                            <div className="w-10 h-10 rounded-md bg-gray-200" />
-                          )}
-                          <span className="text-sm text-header-text truncate">{s.name}</span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              </div>
-
-              {/* Mobile Delivery Location / Category Label */}
-              {isCategoryPage ? (
-                <div className="px-4 py-3 border-b border-gray-200 bg-white">
-                  <h2 className="text-lg font-semibold text-gray-900">Category</h2>
-                </div>
-              ) : (
-                <div className="px-4 mt-2 pb-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      toast.info("Location selector coming soon");
-                    }}
-                    className="flex items-center gap-2 text-sm hover:opacity-80 transition-opacity w-full"
-                  >
-                    <LocationIcon className="w-4 h-4 text-[#7AC943] flex-shrink-0" />
-                    <div className="text-left flex-1">
-                      <span className="text-xs text-gray-600">Deliver to </span>
-                      <span className="text-sm font-medium text-gray-900">Bangalore 560034</span>
+              {!isMobileSimplifiedHeader && (
+                <>
+                  <div className="mt-1 relative mobile-search-bar">
+                    <Input
+                      value={q}
+                      onChange={(e) => {
+                        setQ(e.target.value);
+                        setShowSuggest(true);
+                      }}
+                      onFocus={() => setShowSuggest(true)}
+                      placeholder="Search products, categories..."
+                      className="h-12 rounded-full border-gray-200 bg-white shadow-sm pr-14"
+                    />
+                    <div className="absolute inset-y-1 right-3 flex items-center">
+                      <div className="w-10 h-10 rounded-full bg-header-accent text-white flex items-center justify-center shadow">
+                        <Search className="w-5 h-5" />
+                      </div>
                     </div>
-                  </button>
-                </div>
+                    {showSuggest && q.length >= 2 && suggestions.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 max-h-[60vh] overflow-y-auto">
+                        {suggestions.map((s) => {
+                          const slug = encodeURIComponent(String(s.handle || s.id));
+                          const href = `/productDetail/${slug}?id=${encodeURIComponent(String(s.id))}`;
+                          return (
+                            <Link
+                              key={s.id}
+                              href={href}
+                              className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50"
+                              onClick={() => setShowSuggest(false)}
+                            >
+                              {s.image ? (
+                                <Image src={s.image} alt={s.name} width={40} height={40} className="rounded-md object-cover" />
+                              ) : (
+                                <div className="w-10 h-10 rounded-md bg-gray-200" />
+                              )}
+                              <span className="text-sm text-header-text truncate">{s.name}</span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Mobile Delivery Location / Category Label */}
+                  {isCategoryPage ? (
+                    <div className="px-4 py-3 border-b border-gray-200 bg-white">
+                      <h2 className="text-lg font-semibold text-gray-900">Category</h2>
+                    </div>
+                  ) : mobilePincode ? (
+                    <div className="px-1">
+                      <div className="flex items-center gap-2 text-sm w-full">
+                        <LocationIcon className="w-4 h-4 text-[#7AC943] flex-shrink-0" />
+                        <span className="text-xs text-gray-600">Deliver to</span>
+                        <span className="text-sm font-semibold text-gray-900 truncate flex-1">
+                          {mobilePlace || mobilePincode}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPinModalOpen(true)}
+                          className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-700"
+                          aria-label="Edit pincode"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </>
               )}
             </div>
           </div>
@@ -1381,10 +1505,79 @@ const Header: React.FC = () => {
         </div>
       )}
 
+      </div>
+      {/* Close header wrappers */}
+      </div>
+
       {/* Render dropdown portals (so they're never clipped by nav overflow) */}
       <CategoryPortal />
       <AllPortal />
       <CartPreviewPortal />
+
+      {pinModalOpen && mountedRef.current &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[160] bg-black/40 flex items-center justify-center px-4"
+            onClick={() => {
+              if (!pinSaving) setPinModalOpen(false);
+            }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Update delivery pincode</h3>
+                  <p className="text-sm text-gray-600 mt-1">Enter your area pincode to personalize delivery.</p>
+                </div>
+                <button
+                  type="button"
+                  className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-700"
+                  onClick={() => setPinModalOpen(false)}
+                  disabled={pinSaving}
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <label className="text-sm font-medium text-gray-800">Pincode</label>
+                <Input
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  placeholder="Enter pincode"
+                  inputMode="numeric"
+                  maxLength={10}
+                />
+                {pinError ? <p className="text-sm text-rose-600">{pinError}</p> : null}
+              </div>
+
+              <div className="mt-4 flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setPinModalOpen(false)}
+                  disabled={pinSaving}
+                  className="min-w-[96px]"
+                  type="button"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => { void handleSavePincode(); }}
+                  disabled={pinSaving}
+                  className="min-w-[96px]"
+                  type="button"
+                >
+                  {pinSaving ? "Saving..." : "Save"}
+                </Button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      }
 
       {/* Internal styles (no external file) */}
       <style jsx global>{`
@@ -1523,5 +1716,3 @@ const Header: React.FC = () => {
 };
 
 export default Header;
-  const getCategoryHref = (handle?: string) =>
-    handle ? `/c/${encodeURIComponent(handle)}` : "#";
