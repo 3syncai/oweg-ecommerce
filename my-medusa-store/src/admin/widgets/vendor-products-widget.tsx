@@ -30,6 +30,11 @@ type VendorProduct = {
     mid_code?: string
     hs_code?: string
     country_of_origin?: string
+    videos?: Array<{
+      url: string
+      key: string
+      filename: string
+    }>
     [key: string]: any
   }
 }
@@ -143,6 +148,60 @@ const VendorProductsWidget = () => {
               alt={selectedProduct.title}
               style={{ maxWidth: 400, borderRadius: 8 }}
             />
+          </div>
+        )}
+
+        {/* Videos Section */}
+        {selectedProduct.metadata?.videos && Array.isArray(selectedProduct.metadata.videos) && selectedProduct.metadata.videos.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <Heading level="h3" style={{ marginBottom: 16 }}>
+              Videos
+            </Heading>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {selectedProduct.metadata.videos.map((video: any, index: number) => (
+                <div
+                  key={index}
+                  style={{
+                    border: "1px solid var(--border-base)",
+                    borderRadius: 8,
+                    padding: 16,
+                    background: "var(--bg-base)",
+                  }}
+                >
+                  <div style={{ marginBottom: 8 }}>
+                    <Text weight="plus" size="small">
+                      {video.filename || `Video ${index + 1}`}
+                    </Text>
+                  </div>
+                  <video
+                    controls
+                    style={{
+                      width: "100%",
+                      maxWidth: 600,
+                      borderRadius: 8,
+                      background: "var(--bg-subtle)",
+                    }}
+                    src={video.url}
+                  >
+                    Your browser does not support the video tag.
+                  </video>
+                  <div style={{ marginTop: 8 }}>
+                    <a
+                      href={video.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        color: "var(--fg-accent)",
+                        textDecoration: "none",
+                        fontSize: 12,
+                      }}
+                    >
+                      Open video in new tab →
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

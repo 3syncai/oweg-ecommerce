@@ -519,8 +519,11 @@ export async function fetchCategoriesForCollection(collectionId: string): Promis
 }
 
 function resolveMajorFromMinor(amount?: number | null) {
-  if (typeof amount !== "number") return undefined
-  return amount > 1000 ? amount / 100 : amount
+  if (typeof amount !== "number" || amount === null || amount === undefined) return undefined
+  // Medusa stores prices in minor units (paise for INR)
+  // Always divide by 100 to convert paise to rupees
+  // For INR: 1 rupee = 100 paise
+  return amount / 100
 }
 
 function collectProductImages(p: MedusaProduct) {
@@ -651,22 +654,50 @@ function computeUiPrice(p: MedusaProduct, override?: PriceOverride) {
   const calculated = p.price?.calculated_price
   const original = p.price?.original_price
   const firstAmountMinor = p.variants?.[0]?.prices?.[0]?.amount
+  
+  // Convert calculated_price if it's in minor units (paise)
+  // Medusa v2 typically returns prices in minor units, but sometimes in major units
+  // If calculated_price > 10000, it's likely in paise (e.g., 6700000 paise = ₹67,000)
+  const calculatedMajor = typeof calculated === "number" 
+    ? (calculated > 10000 ? calculated / 100 : calculated)
+    : undefined
+  
+  // Convert original_price if it's in minor units
+  const originalMajorConverted = typeof original === "number" && original > 0
+    ? (original > 10000 ? original / 100 : original)
+    : undefined
+  
   const amountMajor =
     override?.price ??
-    (typeof calculated === "number"
-      ? calculated
-      : resolveMajorFromMinor(firstAmountMinor))
+    calculatedMajor ??
+    resolveMajorFromMinor(firstAmountMinor) ??
+    0
 
   const originalMajor =
     override?.mrp ??
-    (typeof original === "number" && original > 0
-      ? original
-      : amountMajor)
+    originalMajorConverted ??
+    amountMajor
 
   const discount =
     amountMajor && originalMajor && originalMajor > amountMajor
       ? Math.round(((originalMajor - amountMajor) / originalMajor) * 100)
       : 0
+
+  // Debug logging in development
+  if (process.env.NODE_ENV === 'development' && (amountMajor === 0 || !amountMajor)) {
+    console.log('⚠️ Price calculation warning:', {
+      productId: p.id,
+      productTitle: p.title,
+      calculated,
+      original,
+      firstAmountMinor,
+      calculatedMajor,
+      originalMajorConverted,
+      amountMajor,
+      originalMajor,
+      variantPrices: p.variants?.[0]?.prices
+    })
+  }
 
   return { amountMajor, originalMajor, discount }
 }

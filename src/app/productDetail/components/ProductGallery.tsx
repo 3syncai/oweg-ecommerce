@@ -2,12 +2,17 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
-import { ChevronLeft, ChevronRight, X, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X, Play, Pause } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { getImageUrlForNewTab } from '@/lib/image-utils'
 
+type MediaItem = {
+  url: string
+  type: 'image' | 'video'
+}
+
 type ProductGalleryProps = {
-  images: string[]
+  media: MediaItem[]
   selectedIndex: number
   onSelect: (index: number) => void
   fallback: string
@@ -19,10 +24,104 @@ type ProductGalleryProps = {
 const LENS_SIZE = 160
 const ZOOM_SCALE = 2.2
 
-const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitle, productPrice, productHighlights }: ProductGalleryProps) => {
-  const activeImage = images[selectedIndex] || fallback
-  const hasMultiple = images.length > 1
+// Video Player Component with Play/Pause Button
+const VideoPlayer = ({ src, videoRefForZoom }: { src: string; videoRefForZoom: React.RefObject<HTMLVideoElement | null> }) => {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [showControls, setShowControls] = useState(false)
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    const handlePlay = () => setIsPlaying(true)
+    const handlePause = () => setIsPlaying(false)
+    
+    video.addEventListener('play', handlePlay)
+    video.addEventListener('pause', handlePause)
+
+    return () => {
+      video.removeEventListener('play', handlePlay)
+      video.removeEventListener('pause', handlePause)
+    }
+  }, [])
+
+  const togglePlayPause = () => {
+    const video = videoRef.current
+    if (!video) return
+    
+    if (video.paused) {
+      video.play()
+    } else {
+      video.pause()
+    }
+  }
+
+  return (
+    <div 
+      className="absolute inset-0 flex items-center justify-center bg-black group/video"
+      onMouseEnter={() => setShowControls(true)}
+      onMouseLeave={() => setShowControls(false)}
+    >
+      <video
+        ref={videoRef}
+        src={src}
+        className="w-full h-full object-contain"
+        preload="metadata"
+        onClick={togglePlayPause}
+        onPlay={() => {
+          // Sync hidden video for frame capture
+          if (videoRefForZoom.current && videoRefForZoom.current.paused) {
+            videoRefForZoom.current.currentTime = videoRef.current?.currentTime || 0
+            videoRefForZoom.current.play().catch(() => {})
+          }
+        }}
+        onPause={() => {
+          // Sync hidden video pause
+          if (videoRefForZoom.current && !videoRefForZoom.current.paused) {
+            videoRefForZoom.current.pause()
+          }
+        }}
+        onTimeUpdate={() => {
+          // Sync time for frame capture
+          if (videoRefForZoom.current && videoRef.current) {
+            videoRefForZoom.current.currentTime = videoRef.current.currentTime
+          }
+        }}
+      />
+      {/* Custom play/pause button overlay - only show when not playing or on hover */}
+      {(!isPlaying || showControls) && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            togglePlayPause()
+          }}
+          className={`absolute inset-0 flex items-center justify-center bg-black/30 transition-opacity z-10 ${
+            showControls ? 'opacity-100' : 'opacity-0 group-hover/video:opacity-100'
+          }`}
+          aria-label={isPlaying ? "Pause video" : "Play video"}
+        >
+          <div className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-lg hover:bg-white transition-colors">
+            {isPlaying ? (
+              <Pause className="w-8 h-8 text-slate-700" fill="currentColor" />
+            ) : (
+              <Play className="w-8 h-8 text-slate-700 ml-1" fill="currentColor" />
+            )}
+          </div>
+        </button>
+      )}
+    </div>
+  )
+}
+
+const ProductGallery = ({ media, selectedIndex, onSelect, fallback, productTitle, productPrice, productHighlights }: ProductGalleryProps) => {
+  const activeMedia = media[selectedIndex] || { url: fallback, type: 'image' as const }
+  const hasMultiple = media.length > 1
+  const isVideo = activeMedia.type === 'video'
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const videoRefForZoom = useRef<HTMLVideoElement | null>(null)
   const [lensActive, setLensActive] = useState(false)
   const [lensPosition, setLensPosition] = useState({ x: LENS_SIZE / 2, y: LENS_SIZE / 2 })
   const [fullscreenOpen, setFullscreenOpen] = useState(false)
@@ -31,6 +130,7 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
   const [touchStartTime, setTouchStartTime] = useState<number>(0)
   const [touchHandled, setTouchHandled] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [videoFrameUrl, setVideoFrameUrl] = useState<string | null>(null)
   const [zoomLevel, setZoomLevel] = useState(1)
   useEffect(() => {
     if (!fullscreenOpen) return
@@ -44,6 +144,61 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Capture video frame for magnifying view (works like image zoom)
+  useEffect(() => {
+    if (!isVideo || !videoRefForZoom.current) {
+      setVideoFrameUrl(null)
+      return
+    }
+
+    const video = videoRefForZoom.current
+    const captureFrame = () => {
+      try {
+        // Only capture if video has valid dimensions
+        if (video.videoWidth === 0 || video.videoHeight === 0) {
+          return
+        }
+        
+        const canvas = document.createElement('canvas')
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.9)
+          setVideoFrameUrl(dataUrl)
+        }
+      } catch (error) {
+        console.warn('Failed to capture video frame:', error)
+      }
+    }
+
+    // Capture frame when video metadata is loaded
+    const handleLoadedData = () => {
+      captureFrame()
+    }
+    
+    const handleTimeUpdate = () => {
+      // Update frame periodically to show current video frame in magnifying view
+      if (lensActive) {
+        captureFrame()
+      }
+    }
+
+    if (video.readyState >= 2) {
+      captureFrame()
+    } else {
+      video.addEventListener('loadeddata', handleLoadedData, { once: true })
+    }
+    
+    video.addEventListener('timeupdate', handleTimeUpdate)
+
+    return () => {
+      video.removeEventListener('loadeddata', handleLoadedData)
+      video.removeEventListener('timeupdate', handleTimeUpdate)
+    }
+  }, [isVideo, activeMedia.url, selectedIndex, lensActive])
 
   // Handle ESC key to close modal
   useEffect(() => {
@@ -68,7 +223,7 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
   const handleNavigate = (direction: 'prev' | 'next') => {
     if (!hasMultiple) return
     const delta = direction === 'prev' ? -1 : 1
-    const next = (selectedIndex + delta + images.length) % images.length
+    const next = (selectedIndex + delta + media.length) % media.length
     onSelect(next)
   }
 
@@ -184,12 +339,12 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
   }, [lensActive])
 
   return (
-    <div className="space-y-3">
-      <div className="relative lg:flex lg:gap-1.5">
-        <div className="hidden lg:flex flex-col gap-1.5 overflow-y-auto max-h-[450px] pr-1 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent hover:scrollbar-thumb-gray-400">
-          {images.map((img, idx) => (
+    <div className="space-y-4">
+      <div className="relative lg:flex lg:gap-2">
+        <div className="hidden lg:flex flex-col gap-3">
+          {media.map((item, idx) => (
             <button
-              key={`vertical-${img}-${idx}`}
+              key={`vertical-${item.url}-${idx}`}
               type="button"
               onClick={(e) => {
                 e.stopPropagation()
@@ -197,11 +352,29 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
               }}
               onMouseEnter={() => onSelect(idx)}
               onFocus={() => onSelect(idx)}
-              className={`aspect-square w-12 flex-shrink-0 rounded-md border overflow-hidden bg-white transition-all ${
-                selectedIndex === idx ? 'border-2 border-green-500 ring-1 ring-green-100' : 'border border-slate-300 hover:border-slate-400'
-              }`}
+              className={`aspect-square w-24 rounded-2xl border ${
+                selectedIndex === idx ? 'border-green-500 ring-2 ring-green-100' : 'border-slate-200'
+              } overflow-hidden bg-white`}
             >
-              <Image src={img} alt={`${idx + 1}`} width={48} height={48} className="h-full w-full object-contain p-0.5" />
+              {item.type === 'video' ? (
+                <>
+                  <video
+                    src={item.url}
+                    className="h-full w-full object-cover"
+                    muted
+                    preload="metadata"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                    <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-slate-700 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <Image src={item.url} alt={`Gallery thumbnail ${idx + 1}`} width={120} height={120} className="h-full w-full object-contain p-2" />
+              )}
             </button>
           ))}
         </div>
@@ -210,6 +383,7 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
           ref={containerRef}
           className="relative w-full aspect-[4/5] max-h-[360px] sm:max-h-[420px] lg:h-[450px] rounded-[32px] border border-[var(--detail-border)] bg-white shadow-sm overflow-hidden group mx-auto"
           onMouseEnter={(event) => {
+            // Activate lens for both images and videos
             setLensActive(true)
             setLensPosition(clampLens(event.clientX, event.clientY))
           }}
@@ -219,28 +393,50 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
           onTouchEnd={handleMainImageTouchEnd}
         >
           
-          <div
-            className="absolute inset-0 z-10 cursor-pointer lg:cursor-zoom-in"
-            onClick={(e) => {
-              // Prevent if touch was just handled
-              if (touchHandled) {
+          {isVideo ? (
+            <>
+              <VideoPlayer 
+                src={activeMedia.url}
+                videoRefForZoom={videoRefForZoom}
+              />
+              {/* Hidden video element to capture frames for magnifying view */}
+              <video
+                ref={videoRefForZoom}
+                src={activeMedia.url}
+                className="hidden"
+                preload="metadata"
+                muted
+                playsInline
+              />
+            </>
+          ) : (
+            <a
+              href={getImageUrlForNewTab(activeMedia.url)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="absolute inset-0 z-10"
+              onClick={(e) => {
+                // Prevent if touch was just handled
+                if (touchHandled) {
+                  e.preventDefault()
+                  return
+                }
+                // Handle desktop mouse clicks only (touch is handled by touch handlers)
                 e.preventDefault()
-                return
-              }
-              // Handle desktop mouse clicks only (touch is handled by touch handlers)
-              e.preventDefault()
-              e.stopPropagation()
-              handleOpenFullscreen()
-            }}
-          >
-            <Image
-              src={activeImage}
-              alt="Selected product image"
-              fill
-              sizes="(max-width: 1024px) 100vw, 50vw"
-              className="object-contain p-4 lg:p-10 transition-transform duration-300 group-hover:scale-105 pointer-events-none"
-              priority
-            />
+                e.stopPropagation()
+                handleOpenFullscreen()
+              }}
+            >
+              <Image
+                src={activeMedia.url}
+                alt="Selected product image"
+                fill
+                sizes="(max-width: 1024px) 100vw, 50vw"
+                className="object-contain p-4 lg:p-10 transition-transform duration-300 group-hover:scale-105 pointer-events-none"
+                priority
+              />
+            </a>
+          )}
           </div>
           {hasMultiple && (
             <div className="absolute inset-x-0 bottom-4 flex justify-between px-4 z-20">
@@ -283,27 +479,28 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
         >
           <div className="absolute inset-3 rounded-2xl border border-white/60" />
         </div>
-        </div>
-      {lensActive && containerRef.current && (
-        <div
-          className="hidden lg:block fixed h-[500px] w-[500px] rounded-[32px] border-2 border-green-500/30 bg-white shadow-2xl overflow-hidden z-[120] pointer-events-none"
-          style={{
-            top: `${containerRef.current.getBoundingClientRect().top}px`,
-            left: `${containerRef.current.getBoundingClientRect().right + 24}px`,
-            backgroundImage: `url("${activeImage}")`,
-            backgroundRepeat: 'no-repeat',
-            backgroundSize: zoomSize,
-            backgroundPosition: zoomPosition,
-          }}
-        />
-      )}
+        {lensActive && containerRef.current && (
+          <div
+            className="hidden lg:block fixed h-[500px] w-[500px] rounded-[32px] border-2 border-green-500/30 bg-white shadow-2xl overflow-hidden z-[120] pointer-events-none"
+            style={{
+              backgroundImage: isVideo && videoFrameUrl 
+                ? `url("${videoFrameUrl}")` 
+                : `url("${activeMedia.url}")`,
+              top: `${containerRef.current.getBoundingClientRect().top}px`,
+              left: `${containerRef.current.getBoundingClientRect().right + 24}px`,
+              backgroundRepeat: 'no-repeat',
+              backgroundSize: zoomSize,
+              backgroundPosition: zoomPosition,
+            }}
+          />
+        )}
         </div>
       </div>
 
-      <div className="flex gap-1.5 overflow-x-auto lg:hidden scrollbar-hide">
-        {images.map((img, idx) => (
+      <div className="grid grid-cols-4 gap-3 lg:hidden">
+        {media.map((item, idx) => (
           <button
-            key={`${img}-${idx}`}
+            key={`${item.url}-${idx}`}
             type="button"
             onClick={(e) => {
               e.stopPropagation()
@@ -311,11 +508,29 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
             }}
             onMouseEnter={() => onSelect(idx)}
             onFocus={() => onSelect(idx)}
-            className={`flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-md border overflow-hidden bg-white transition-all ${
-              selectedIndex === idx ? 'border-2 border-green-500 ring-1 ring-green-100' : 'border border-slate-300'
-            }`}
+            className={`aspect-square rounded-2xl border ${
+              selectedIndex === idx ? 'border-green-500 ring-2 ring-green-100' : 'border-slate-200'
+            } overflow-hidden bg-white`}
           >
-            <Image src={img} alt={`${idx + 1}`} width={56} height={56} className="object-contain w-full h-full p-0.5 sm:p-1" />
+            {item.type === 'video' ? (
+              <>
+                <video
+                  src={item.url}
+                  className="h-full w-full object-cover"
+                  muted
+                  preload="metadata"
+                />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                  <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-slate-700 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <Image src={item.url} alt={`Gallery thumbnail ${idx + 1}`} width={200} height={200} className="object-contain w-full h-full p-2" />
+            )}
           </button>
         ))}
       </div>
@@ -343,57 +558,85 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
 
               {/* Left Side - Main Image Preview */}
               <div className="flex-1 flex flex-col bg-gray-50 overflow-y-auto">
-                {/* Zoom Controls - Desktop Only */}
-                <div className="hidden md:flex items-center justify-center gap-2 sm:gap-3 py-2 sm:py-3 bg-white border-b border-gray-200 relative z-50">
-                  <button
-                    type="button"
-                    onClick={handleZoomOut}
-                    disabled={zoomLevel <= 1}
-                    className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition"
-                    aria-label="Zoom out"
-                    title="Zoom out"
-                  >
-                    <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <circle cx="11" cy="11" r="8" strokeWidth="2"/>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M8 11h6"/>
-                    </svg>
-                  </button>
-                  <span className="text-xs sm:text-sm font-medium text-gray-600 min-w-[50px] sm:min-w-[60px] text-center">
-                    {Math.round(zoomLevel * 100)}%
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleZoomIn}
-                    disabled={zoomLevel >= 4}
-                    className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition"
-                    aria-label="Zoom in"
-                    title="Zoom in"
-                  >
-                    <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <circle cx="11" cy="11" r="8" strokeWidth="2"/>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M11 8v6M8 11h6"/>
-                    </svg>
-                  </button>
-                </div>
+                {/* Zoom Controls - Desktop Only (for images) */}
+                {!isVideo && (
+                  <div className="hidden md:flex items-center justify-center gap-2 sm:gap-3 py-2 sm:py-3 bg-white border-b border-gray-200 relative z-50">
+                    <button
+                      type="button"
+                      onClick={handleZoomOut}
+                      disabled={zoomLevel <= 1}
+                      className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition"
+                      aria-label="Zoom out"
+                      title="Zoom out"
+                    >
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="8" strokeWidth="2"/>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M8 11h6"/>
+                      </svg>
+                    </button>
+                    <span className="text-xs sm:text-sm font-medium text-gray-600 min-w-[50px] sm:min-w-[60px] text-center">
+                      {Math.round(zoomLevel * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleZoomIn}
+                      disabled={zoomLevel >= 4}
+                      className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition"
+                      aria-label="Zoom in"
+                      title="Zoom in"
+                    >
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="8" strokeWidth="2"/>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M11 8v6M8 11h6"/>
+                      </svg>
+                    </button>
+                  </div>
+                )}
 
-                {/* Main Image Container - Full Width on Mobile */}
+                {/* Main Media Container */}
                 <div className="md:flex-1 relative bg-white overflow-hidden">
                   <div
                     className="relative md:absolute md:inset-0 w-full aspect-square md:aspect-auto md:h-full transition-transform duration-200 ease-out origin-center"
-                    style={{
-                      transform: `scale(${zoomLevel})`,
-                    }}
+                    style={!isVideo ? { transform: `scale(${zoomLevel})` } : {}}
                     onTouchStart={handleModalTouchStart}
                     onTouchEnd={handleModalTouchEnd}
                   >
-                    <Image
-                      src={activeImage}
-                      alt="Product preview"
-                      fill
-                      sizes="(max-width: 768px) 100vw, 65vw"
-                      className="object-contain p-4 md:p-8 lg:p-12 pointer-events-none"
-                      priority
-                    />
+                    {isVideo ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black">
+                        <video
+                          src={activeMedia.url}
+                          controls
+                          className="w-full h-full object-contain"
+                          preload="metadata"
+                          autoPlay
+                        />
+                      </div>
+                    ) : (
+                      <a
+                        href={getImageUrlForNewTab(activeMedia.url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="absolute inset-0 z-10"
+                        onClick={(e) => {
+                          // Only open in new tab on middle-click or Ctrl/Cmd+click
+                          if (e.button === 1 || e.ctrlKey || e.metaKey) {
+                            return;
+                          }
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        aria-label="Open image in new tab"
+                      >
+                        <Image
+                          src={activeMedia.url}
+                          alt="Product preview"
+                          fill
+                          sizes="(max-width: 768px) 100vw, 65vw"
+                          className="object-contain p-4 md:p-8 lg:p-12 pointer-events-none"
+                          priority
+                        />
+                      </a>
+                    )}
                   </div>
 
                   {/* Navigation Arrows - Desktop Only */}
@@ -404,8 +647,9 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
                         onClick={(e) => {
                           e.stopPropagation()
                           handleNavigate('prev')
+                          resetZoom()
                         }}
-                        className="hidden md:flex absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white hover:bg-gray-50 shadow-lg border border-gray-200 items-center justify-center transition-all hover:scale-110"
+                        className="hidden md:flex absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white hover:bg-gray-50 shadow-lg border border-gray-200 items-center justify-center transition-all hover:scale-110 z-20"
                         aria-label="Previous image"
                       >
                         <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700" />
@@ -415,8 +659,9 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
                         onClick={(e) => {
                           e.stopPropagation()
                           handleNavigate('next')
+                          resetZoom()
                         }}
-                        className="hidden md:flex absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white hover:bg-gray-50 shadow-lg border border-gray-200 items-center justify-center transition-all hover:scale-110"
+                        className="hidden md:flex absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white hover:bg-gray-50 shadow-lg border border-gray-200 items-center justify-center transition-all hover:scale-110 z-20"
                         aria-label="Next image"
                       >
                         <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700" />
@@ -428,7 +673,7 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
                 {/* Mobile Thumbnail Grid - 2 Columns */}
                 <div className="md:hidden bg-white p-3">
                   <div className="grid grid-cols-2 gap-2">
-                    {images.map((img, idx) => (
+                    {media.map((item, idx) => (
                       <button
                         key={`mobile-thumb-${idx}`}
                         type="button"
@@ -443,13 +688,31 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
                             : 'border border-gray-300'
                         }`}
                       >
-                        <Image
-                          src={img}
-                          alt={`${idx + 1}`}
-                          width={200}
-                          height={200}
-                          className="w-full h-full object-contain p-2 bg-white"
-                        />
+                        {item.type === 'video' ? (
+                          <>
+                            <video
+                              src={item.url}
+                              className="h-full w-full object-cover"
+                              muted
+                              preload="metadata"
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                              <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
+                                <svg className="w-5 h-5 text-slate-700 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M8 5v14l11-7z" />
+                                </svg>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <Image
+                            src={item.url}
+                            alt={`${idx + 1}`}
+                            width={200}
+                            height={200}
+                            className="w-full h-full object-contain p-2 bg-white"
+                          />
+                        )}
                       </button>
                     ))}
                   </div>
@@ -485,7 +748,7 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
                 {/* Vertical Thumbnail Gallery */}
                 <div className="flex-1 overflow-y-auto p-2 md:p-3">
                   <div className="grid grid-cols-3 gap-1 md:gap-1.5">
-                    {images.map((img, idx) => (
+                    {media.map((item, idx) => (
                       <button
                         key={`sidebar-thumb-${idx}`}
                         type="button"
@@ -500,13 +763,31 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
                             : 'border border-gray-300 hover:border-gray-400'
                         }`}
                       >
-                        <Image
-                          src={img}
-                          alt={`${idx + 1}`}
-                          width={80}
-                          height={80}
-                          className="w-full h-full object-contain p-0.5 md:p-1 bg-white"
-                        />
+                        {item.type === 'video' ? (
+                          <>
+                            <video
+                              src={item.url}
+                              className="h-full w-full object-cover"
+                              muted
+                              preload="metadata"
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                              <div className="w-6 h-6 rounded-full bg-white/90 flex items-center justify-center">
+                                <svg className="w-4 h-4 text-slate-700 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M8 5v14l11-7z" />
+                                </svg>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <Image
+                            src={item.url}
+                            alt={`${idx + 1}`}
+                            width={80}
+                            height={80}
+                            className="w-full h-full object-contain p-0.5 md:p-1 bg-white"
+                          />
+                        )}
                       </button>
                     ))}
                   </div>
