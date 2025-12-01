@@ -75,3 +75,5 @@ node_modules/
 my-medusa-store/.env
 my-medusa-store/node_modules/
 my-medusa-store/yarn.lock
+# generated medusa artifacts
+my-medusa-store/.medusa/
