@@ -8,10 +8,14 @@
  *   npx medusa exec ./src/scripts/create-vendor-tables.ts
  */
 
-import { ExecArgs } from "@medusajs/framework/types"
 import { Client } from "pg"
 
-export default async function createVendorTables({ container }: ExecArgs) {
+type ScriptArgs = {
+  container: unknown
+}
+
+export default async function createVendorTables({ container }: ScriptArgs) {
+  void container
   console.log('🔨 Creating vendor tables...\n')
   
   let client: Client | null = null
