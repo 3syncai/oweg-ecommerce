@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthProvider';
 import PreferenceModal from '@/components/modules/PreferenceModal';
 import { usePreferences } from '@/hooks/usePreferences';
 import { buildPreferenceSlug } from '@/lib/personalization';
+import FlashSaleSection from '@/components/flash-sale/FlashSaleSection';
 
 // UI product type (used by carousel/cards)
 type UIProduct = {
@@ -805,6 +806,8 @@ export default function HomePage() {
             <HeroBanner />
           </div>
         </div>
+
+        <FlashSaleSection />
 
         {customer ? (
           <div className="px-4 mt-4">

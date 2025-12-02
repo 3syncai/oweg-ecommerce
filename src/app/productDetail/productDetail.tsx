@@ -16,6 +16,7 @@ import DescriptionTabs from './components/DescriptionTabs'
 import ProductGallery from './components/ProductGallery'
 import ProductSummary from './components/ProductSummary'
 import ProductSavingsExplorer from './components/ProductSavingsExplorer'
+import { useFlashSale } from '@/hooks/useFlashSale'
 import type {
   BreadcrumbItem,
   CompareFilters,
@@ -169,6 +170,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
     },
   })
   const product = productResponse?.product ?? null
+  const { flashSaleInfo } = useFlashSale(product?.id)
   const isWishlisted = useMemo(() => {
     const list = (customer?.metadata as Record<string, unknown> | undefined)?.wishlist
     if (!Array.isArray(list)) return false
@@ -414,11 +416,19 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
 
   const savedAmount = useMemo(() => {
     if (!product) return 0
-    const mrp = typeof product.mrp === 'number' ? product.mrp : 0
-    const price = typeof product.price === 'number' ? product.price : 0
+    
+    // Use flash sale prices if available
+    const price = flashSaleInfo?.active && flashSaleInfo.flash_sale_price !== undefined
+      ? flashSaleInfo.flash_sale_price
+      : (typeof product.price === 'number' ? product.price : 0)
+    
+    const mrp = flashSaleInfo?.active && flashSaleInfo.original_price !== undefined
+      ? flashSaleInfo.original_price
+      : (typeof product.mrp === 'number' ? product.mrp : price)
+    
     const delta = mrp - price
     return Number.isFinite(delta) && delta > 0 ? delta : 0
-  }, [product])
+  }, [product, flashSaleInfo])
 
   // Combine images and videos into a single gallery
   // Videos are stored in the images array (same as images) and also in metadata.videos
@@ -1381,6 +1391,7 @@ export default function ProductDetailPage({ productId }: ProductDetailProps) {
                   isWishlisted={isWishlisted}
                   onOpenCompare={() => setCompareModalOpen(true)}
                   formatPrice={(value) => inr.format(value)}
+                  flashSaleInfo={flashSaleInfo}
                 />
                 <DeliveryInfo
                   pinCode={pinCode}

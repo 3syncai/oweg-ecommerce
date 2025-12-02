@@ -59,5 +59,8 @@ export default defineConfig({
     {
       resolve: "./src/modules/vendor",
     },
+    {
+      resolve: "./src/modules/flash-sale",
+    },
   ],
 })
