@@ -1,11 +1,7 @@
-// CategoryPageClient: Client-side category page with filters and product grid
-
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import Image from "next/image";
-import Link from "next/link";
 import { CategoryHeader } from "@/components/modules/CategoryHeader";
 import {
   DealPreview,
@@ -14,7 +10,7 @@ import {
 } from "@/components/modules/FilterSidebar";
 import { ProductGrid } from "@/components/modules/ProductGrid";
 import { useCategoryProducts } from "@/hooks/useCategoryProducts";
-import type { MedusaCategory, UIProduct } from "@/services/medusa";
+import type { MedusaCategory } from "@/services/medusa";
 import { SectionHeading } from "@/components/ui/section-heading";
 
 function extractBrandFromName(name: string) {
@@ -53,10 +49,6 @@ type CategoryPageClientProps = {
   selectedSubcategory?: MedusaCategory;
   categoryHandle: string;
   subcategoryHandle?: string;
-  initialProducts: UIProduct[];
-  initialFilters?: Partial<FilterState>;
-  initialDealPreview?: DealPreview[];
-  initialDealCount?: number;
 };
 
 export function CategoryPageClient({
@@ -65,10 +57,6 @@ export function CategoryPageClient({
   selectedSubcategory,
   categoryHandle,
   subcategoryHandle,
-  initialProducts,
-  initialFilters,
-  initialDealPreview,
-  initialDealCount,
 }: CategoryPageClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -84,20 +72,12 @@ export function CategoryPageClient({
     subcategories: [],
     ratings: [],
     brands: [],
-    priceMin:
-      initialFilters?.priceMin ??
-      parseNumberParam(searchParams?.get("price_min")),
-    priceMax:
-      initialFilters?.priceMax ??
-      parseNumberParam(searchParams?.get("price_max")),
-    dealsOnly:
-      initialFilters?.dealsOnly ??
-      searchParams?.get("deals") === "1",
+    priceMin: parseNumberParam(searchParams?.get("price_min")),
+    priceMax: parseNumberParam(searchParams?.get("price_max")),
+    dealsOnly: searchParams?.get("deals") === "1",
   }));
-  const [dealPreview, setDealPreview] = useState<DealPreview[]>(
-    initialDealPreview ?? []
-  );
-  const [dealCount, setDealCount] = useState(initialDealCount ?? 0);
+  const [dealPreview, setDealPreview] = useState<DealPreview[]>([]);
+  const [dealCount, setDealCount] = useState(0);
 
   // Determine which category ID to use for fetching products
   const activeCategoryId = selectedSubcategory?.id || category.id;
@@ -120,8 +100,7 @@ export function CategoryPageClient({
 
   const { data: products = [], isLoading } = useCategoryProducts(
     activeCategoryId,
-    queryFilters,
-    initialProducts
+    queryFilters
   );
 
   // Apply client-side filters
@@ -266,159 +245,47 @@ export function CategoryPageClient({
       cancelled = true;
     };
   }, [activeCategoryId]);
+
   const headingDescription = isLoading
-    ? "Loading products..."
+    ? "Loading products…"
     : `${filteredProducts.length} products available`;
 
-
   return (
-    <div className="bg-white min-h-screen">
-      {/* Desktop Layout */}
-      <div className="hidden lg:block bg-gray-50 min-h-screen">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex gap-6">
-            {/* Left Sidebar - Filters */}
-            <aside className="flex-shrink-0">
-              <FilterSidebar
-                categoryHandle={categoryHandle}
-                subcategories={subcategories}
-                filters={filters}
-                onFilterChange={handleFilterChange}
-                selectedSubcategory={subcategoryHandle}
-                dealPreview={dealPreview}
-                dealCount={dealCount}
-                brandOptions={brandOptions}
-              />
-            </aside>
+    <div className="bg-gray-50 min-h-screen">
+      {/* Main Content Area */}
+      <div className="container mx-auto px-4 py-6">
+        <div className="flex gap-6">
+          {/* Left Sidebar - Filters */}
+          <aside className="hidden lg:block flex-shrink-0">
+            <FilterSidebar
+              categoryHandle={categoryHandle}
+              subcategories={subcategories}
+              filters={filters}
+              onFilterChange={handleFilterChange}
+              selectedSubcategory={subcategoryHandle}
+              dealPreview={dealPreview}
+              dealCount={dealCount}
+              brandOptions={brandOptions}
+            />
+          </aside>
 
-            {/* Main Product Area */}
-            <main className="flex-1 min-w-0">
-              {/* Category Header with Subcategories (only show if no subcategory selected) */}
-              {!selectedSubcategory && subcategories.length > 0 && (
-                <div className="mb-6 w-full">
-                  <SectionHeading title="Categories" className="mb-4" />
-                  <CategoryHeader
-                    categoryHandle={categoryHandle}
-                    subcategories={subcategories}
-                  />
-                </div>
-              )}
-
-              {/* Page Title */}
-              <div className="mb-6">
-                <h1 className="sr-only">{categoryTitle}</h1>
-                <SectionHeading title={categoryTitle} className="mb-2" />
-                <p className="text-gray-600 mt-1 text-sm">
-                  {headingDescription}
-                </p>
+          {/* Main Product Area */}
+          <main className="flex-1 min-w-0">
+            {/* Category Header with Subcategories (only show if no subcategory selected) */}
+            {!selectedSubcategory && subcategories.length > 0 && (
+              <div className="mb-6 w-full">
+                <SectionHeading title="Categories" className="mb-4" />
+                <CategoryHeader
+                  categoryHandle={categoryHandle}
+                  subcategories={subcategories}
+                />
               </div>
+            )}
 
-              {/* Product Grid */}
-              <ProductGrid
-                products={enrichedProducts}
-                isLoading={isLoading}
-                showEmpty={!isLoading && filteredProducts.length === 0}
-              />
-            </main>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile Layout - Sidebar + Grid */}
-      <div className="lg:hidden">
-        {!selectedSubcategory && subcategories.length > 0 ? (
-          <div className="flex h-[calc(100vh-180px)]">
-            {/* Left Sidebar - Category Icons */}
-            <aside className="w-20 flex-shrink-0 bg-[#7AC943] overflow-y-auto border-r border-[#66b735]">
-              <div className="py-2 space-y-2">
-                {subcategories.map((subcat) => {
-                  const subcatHandle = subcat.handle || subcat.id;
-                  const subcatHref = `/c/${categoryHandle}/${subcatHandle}`;
-                  const metadata = (subcat.metadata || {}) as Record<string, unknown>;
-                  const imageUrl =
-                    (metadata?.image as string) ||
-                    (metadata?.icon as string) ||
-                    "/oweg_logo.png";
-
-                  return (
-                    <Link
-                      key={subcat.id}
-                      href={subcatHref}
-                      className="flex flex-col items-center gap-1.5 px-2 py-3 group"
-                    >
-                      <div className="relative w-14 h-14 rounded-full bg-white shadow-[inset_0_2px_6px_rgba(0,0,0,0.18)] ring-1 ring-[#66b735]/40 border border-white overflow-hidden transition-all duration-300 flex items-center justify-center group-hover:shadow-[inset_0_3px_8px_rgba(0,0,0,0.22)]">
-                        <div
-                          className="relative w-10 h-10 rounded-full overflow-hidden bg-transparent shadow-[inset_0_0_12px_rgba(0,0,0,0.15)]"
-                          style={{
-                            WebkitMaskImage:
-                              "radial-gradient(circle at center, #000 72%, transparent 100%)",
-                            maskImage:
-                              "radial-gradient(circle at center, #000 72%, transparent 100%)",
-                          }}
-                        >
-                          <Image
-                            src={imageUrl}
-                            alt={subcat.title || subcat.name || "Category"}
-                            fill
-                            className="object-contain mix-blend-multiply"
-                            sizes="40px"
-                          />
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-medium text-white text-center leading-tight line-clamp-2 px-1">
-                        {subcat.title || subcat.name || "Category"}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </aside>
-
-            {/* Right Main Area - Category Cards Grid */}
-            <main className="flex-1 overflow-y-auto bg-white">
-              <div className="p-3">
-                <div className="grid grid-cols-2 gap-3">
-                  {subcategories.map((subcat) => {
-                    const subcatHandle = subcat.handle || subcat.id;
-                    const subcatHref = `/c/${categoryHandle}/${subcatHandle}`;
-                    const metadata = (subcat.metadata || {}) as Record<string, unknown>;
-                    const imageUrl =
-                      (metadata?.image as string) ||
-                      (metadata?.icon as string) ||
-                      "/oweg_logo.png";
-
-                    return (
-                      <Link
-                        key={subcat.id}
-                        href={subcatHref}
-                        className="group bg-white border border-[#7AC943] rounded-lg overflow-hidden hover:shadow-md transition-all"
-                      >
-                        <div className="relative aspect-square bg-gray-50 overflow-hidden">
-                          <Image
-                            src={imageUrl}
-                            alt={subcat.title || subcat.name || "Category"}
-                            fill
-                            className="object-contain p-3"
-                            sizes="(max-width: 768px) 50vw, 33vw"
-                          />
-                        </div>
-                        <div className="p-2">
-                          <p className="text-xs font-semibold text-gray-800 text-center line-clamp-2 group-hover:text-[#7AC943] transition-colors">
-                            {subcat.title || subcat.name || "Category"}
-                          </p>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            </main>
-          </div>
-        ) : (
-          <div className="px-4 py-4">
             {/* Page Title */}
-            <div className="mb-4">
-              <h1 className="text-lg font-semibold text-gray-900">{categoryTitle}</h1>
+            <div className="mb-6">
+              <h1 className="sr-only">{categoryTitle}</h1>
+              <SectionHeading title={categoryTitle} className="mb-2" />
               <p className="text-gray-600 mt-1 text-sm">
                 {headingDescription}
               </p>
@@ -430,10 +297,9 @@ export function CategoryPageClient({
               isLoading={isLoading}
               showEmpty={!isLoading && filteredProducts.length === 0}
             />
-          </div>
-        )}
+          </main>
+        </div>
       </div>
     </div>
   );
 }
-

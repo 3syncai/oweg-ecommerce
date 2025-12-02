@@ -623,18 +623,21 @@ export default function HomePage() {
       products: nonStickQuery.data ?? [],
       loading: nonStickQuery.isLoading,
       sourceTag: 'Non-Stick Cookwares',
+      isPersonalized: false,
     },
     {
       title: 'Fans',
       products: fanQuery.data ?? [],
       loading: fanQuery.isLoading,
       sourceTag: 'Fans',
+      isPersonalized: false,
     },
     {
       title: 'Mens Cloths',
       products: mensQuery.data ?? [],
       loading: mensQuery.isLoading,
       sourceTag: 'Mens Cloths',
+      isPersonalized: false,
     },
   ];
 
@@ -646,6 +649,7 @@ export default function HomePage() {
       (!personalizedQueries[idx]?.data && personalizedQueries[idx]?.isFetching) ||
       false,
     sourceTag: section.sourceTag,
+    isPersonalized: true,
   }));
 
   const personalizedLoading =
@@ -964,7 +968,7 @@ export default function HomePage() {
               title={section.title}
               products={section.products}
               sourceTag={section.sourceTag}
-              loading={section.loading || personalizedLoading}
+              loading={section.loading || (personalizedLoading && section.isPersonalized)}
             />
             {idx === 1 && (
               <div className="px-4">

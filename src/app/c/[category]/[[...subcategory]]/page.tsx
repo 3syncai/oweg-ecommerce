@@ -1,23 +1,12 @@
-// Category Page: Main category listing with filters and subcategory navigation
-
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CategoryPageClient } from "./CategoryPageClient";
 import { findCategoryByTitleOrHandle } from "@/lib/medusa";
-import type { FilterState } from "@/components/modules/FilterSidebar";
-import type { UIProduct } from "@/services/medusa";
-
-export const revalidate = 120;
 
 type PageProps = {
   params: Promise<{
     category: string;
     subcategory?: string[];
-  }>;
-  searchParams?: Promise<{
-    price_min?: string;
-    price_max?: string;
-    deals?: string;
   }>;
 };
 
@@ -47,64 +36,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-function parseInitialFilters(input?: Awaited<PageProps["searchParams"]>): Partial<FilterState> {
-  const priceMin = input?.price_min ? Number(input.price_min) : undefined;
-  const priceMax = input?.price_max ? Number(input.price_max) : undefined;
-  return {
-    priceMin: Number.isFinite(priceMin) ? priceMin : undefined,
-    priceMax: Number.isFinite(priceMax) ? priceMax : undefined,
-    dealsOnly: input?.deals === "1",
-  };
-}
-
-function resolveAppUrl() {
-  const explicit = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL;
-  if (explicit) return explicit.replace(/\/$/, "");
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
-}
-
-async function fetchInitialProducts(categoryId: string, filters: Partial<FilterState>): Promise<UIProduct[]> {
-  if (!categoryId) return [];
-  const params = new URLSearchParams({ categoryId, limit: "48" });
-  if (filters.priceMin !== undefined) params.set("priceMin", String(filters.priceMin));
-  if (filters.priceMax !== undefined) params.set("priceMax", String(filters.priceMax));
-  if (filters.dealsOnly) params.set("dealsOnly", "1");
-
-  const res = await fetch(`${resolveAppUrl()}/api/medusa/products?${params.toString()}`, {
-    // cache on the server and revalidate every 2 minutes
-    next: { revalidate },
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return Array.isArray(data?.products) ? (data.products as UIProduct[]) : [];
-}
-
-async function fetchInitialDeals(categoryId: string | undefined) {
-  if (!categoryId) {
-    return { deals: [], total: 0 };
-  }
-  try {
-    const params = new URLSearchParams({ categoryId, limit: "6" });
-    const res = await fetch(`${resolveAppUrl()}/api/medusa/deal-of-the-day?${params.toString()}`, {
-      next: { revalidate },
-    });
-    if (!res.ok) return { deals: [], total: 0 };
-    const data = await res.json();
-    return {
-      deals: Array.isArray(data?.products) ? data.products : [],
-      total: typeof data?.total === "number" ? data.total : 0,
-    };
-  } catch {
-    return { deals: [], total: 0 };
-  }
-}
-
-export default async function CategoryPage({ params, searchParams }: PageProps) {
-  const [{ category: categoryParam, subcategory: subcategoryParam }, initialSearch] = await Promise.all([
-    params,
-    searchParams,
-  ]);
+export default async function CategoryPage({ params }: PageProps) {
+  const { category: categoryParam, subcategory: subcategoryParam } = await params;
   const decodedCategoryParam = safeDecode(categoryParam) || categoryParam;
 
   // Find the main category (server-side)
@@ -131,12 +64,6 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
     }
   }
 
-  const initialFilters = parseInitialFilters(initialSearch);
-  const [initialProducts, initialDealData] = await Promise.all([
-    fetchInitialProducts(selectedSubcategory?.id || category.id, initialFilters),
-    fetchInitialDeals(selectedSubcategory?.id || category.id),
-  ]);
-
   return (
     <CategoryPageClient
       category={category}
@@ -144,11 +71,6 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
       selectedSubcategory={selectedSubcategory}
       categoryHandle={categoryParam}
       subcategoryHandle={subcategoryParam?.[0]}
-      initialProducts={initialProducts}
-      initialFilters={initialFilters}
-      initialDealPreview={initialDealData.deals}
-      initialDealCount={initialDealData.total}
     />
   );
 }
-
