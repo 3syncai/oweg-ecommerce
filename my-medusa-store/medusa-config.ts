@@ -1,4 +1,5 @@
 import { loadEnv, defineConfig, Modules, ContainerRegistrationKeys } from "@medusajs/framework/utils"
+
 loadEnv(process.env.NODE_ENV || "development", process.cwd())
 
 export default defineConfig({
@@ -55,7 +56,7 @@ export default defineConfig({
               secret_access_key: process.env.S3_SECRET_ACCESS_KEY,
               file_url:
                 process.env.S3_FILE_URL ??
-                https://${process.env.S3_BUCKET}.s3.${process.env.S3_REGION}.amazonaws.com,
+                `https://${process.env.S3_BUCKET}.s3.${process.env.S3_REGION}.amazonaws.com`,
               additionalOptions: {
                 ACL: undefined,
               },
