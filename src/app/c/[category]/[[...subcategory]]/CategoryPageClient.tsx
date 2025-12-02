@@ -14,7 +14,7 @@ import {
 } from "@/components/modules/FilterSidebar";
 import { ProductGrid } from "@/components/modules/ProductGrid";
 import { useCategoryProducts } from "@/hooks/useCategoryProducts";
-import type { MedusaCategory } from "@/services/medusa";
+import type { MedusaCategory, UIProduct } from "@/services/medusa";
 import { SectionHeading } from "@/components/ui/section-heading";
 
 function extractBrandFromName(name: string) {
@@ -53,6 +53,10 @@ type CategoryPageClientProps = {
   selectedSubcategory?: MedusaCategory;
   categoryHandle: string;
   subcategoryHandle?: string;
+  initialProducts: UIProduct[];
+  initialFilters?: Partial<FilterState>;
+  initialDealPreview?: DealPreview[];
+  initialDealCount?: number;
 };
 
 export function CategoryPageClient({
@@ -61,6 +65,10 @@ export function CategoryPageClient({
   selectedSubcategory,
   categoryHandle,
   subcategoryHandle,
+  initialProducts,
+  initialFilters,
+  initialDealPreview,
+  initialDealCount,
 }: CategoryPageClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -76,12 +84,20 @@ export function CategoryPageClient({
     subcategories: [],
     ratings: [],
     brands: [],
-    priceMin: parseNumberParam(searchParams?.get("price_min")),
-    priceMax: parseNumberParam(searchParams?.get("price_max")),
-    dealsOnly: searchParams?.get("deals") === "1",
+    priceMin:
+      initialFilters?.priceMin ??
+      parseNumberParam(searchParams?.get("price_min")),
+    priceMax:
+      initialFilters?.priceMax ??
+      parseNumberParam(searchParams?.get("price_max")),
+    dealsOnly:
+      initialFilters?.dealsOnly ??
+      searchParams?.get("deals") === "1",
   }));
-  const [dealPreview, setDealPreview] = useState<DealPreview[]>([]);
-  const [dealCount, setDealCount] = useState(0);
+  const [dealPreview, setDealPreview] = useState<DealPreview[]>(
+    initialDealPreview ?? []
+  );
+  const [dealCount, setDealCount] = useState(initialDealCount ?? 0);
 
   // Determine which category ID to use for fetching products
   const activeCategoryId = selectedSubcategory?.id || category.id;
@@ -104,7 +120,8 @@ export function CategoryPageClient({
 
   const { data: products = [], isLoading } = useCategoryProducts(
     activeCategoryId,
-    queryFilters
+    queryFilters,
+    initialProducts
   );
 
   // Apply client-side filters

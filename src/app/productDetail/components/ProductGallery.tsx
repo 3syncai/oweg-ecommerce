@@ -352,7 +352,7 @@ const ProductGallery = ({ media, selectedIndex, onSelect, fallback, productTitle
               }}
               onMouseEnter={() => onSelect(idx)}
               onFocus={() => onSelect(idx)}
-              className={`aspect-square w-24 rounded-2xl border ${
+              className={`relative aspect-square w-24 rounded-2xl border ${
                 selectedIndex === idx ? 'border-green-500 ring-2 ring-green-100' : 'border-slate-200'
               } overflow-hidden bg-white`}
             >
@@ -508,7 +508,7 @@ const ProductGallery = ({ media, selectedIndex, onSelect, fallback, productTitle
             }}
             onMouseEnter={() => onSelect(idx)}
             onFocus={() => onSelect(idx)}
-            className={`aspect-square rounded-2xl border ${
+            className={`relative aspect-square rounded-2xl border ${
               selectedIndex === idx ? 'border-green-500 ring-2 ring-green-100' : 'border-slate-200'
             } overflow-hidden bg-white`}
           >

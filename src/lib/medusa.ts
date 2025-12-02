@@ -84,6 +84,9 @@ type PriceOverride = {
   opencartId?: string | number
 }
 
+const PRODUCT_DETAIL_CACHE = new Map<string, { expires: number; value: DetailedProduct | null }>()
+const DETAIL_CACHE_TTL_MS = 1000 * 60 * 5
+
 export type MedusaCollection = {
   id: string
   title?: string
@@ -124,6 +127,27 @@ const DEFAULT_CURRENCY_CODE =
     .trim()
 
 const COMMON_EXPAND = "variants,variants.prices,price"
+const PRODUCT_LIST_FIELDS = [
+  "id",
+  "title",
+  "subtitle",
+  "handle",
+  "thumbnail",
+  "images.url",
+  "collection.id",
+  "collection.title",
+  "categories.id",
+  "categories.title",
+  "tags.id",
+  "tags.value",
+  "type.id",
+  "type.value",
+  "variants.id",
+  "variants.prices.amount",
+  "variants.inventory_quantity",
+  "metadata",
+  "price",
+].join(",")
 
 type ProductFetchOptions = {
   includeType?: boolean
@@ -133,8 +157,10 @@ function createBaseSearchParams(
   limit: number,
   extras: Array<[string, string | undefined]> = []
 ) {
+  const normalizedLimit = Math.max(1, Math.min(limit, 60))
   const params = new URLSearchParams()
-  params.set("limit", String(limit))
+  params.set("limit", String(normalizedLimit))
+  params.set("fields", PRODUCT_LIST_FIELDS)
   for (const [key, value] of extras) {
     if (value !== undefined && value !== "") {
       params.append(key, value)
@@ -155,6 +181,9 @@ async function fetchStoreProducts(
 
   // Attempt 1: include expand + currency (if supported by backend)
   const advanced = cloneParams(baseParams)
+  if (!advanced.has("fields")) {
+    advanced.set("fields", PRODUCT_LIST_FIELDS)
+  }
   advanced.set(
     "expand",
     options?.includeType ? `${COMMON_EXPAND},type` : COMMON_EXPAND
@@ -166,6 +195,9 @@ async function fetchStoreProducts(
 
   // Attempt 2: drop currency_code (some setups support expand but not currency)
   const expandOnly = cloneParams(baseParams)
+  if (!expandOnly.has("fields")) {
+    expandOnly.set("fields", PRODUCT_LIST_FIELDS)
+  }
   expandOnly.set(
     "expand",
     options?.includeType ? `${COMMON_EXPAND},type` : COMMON_EXPAND
@@ -734,6 +766,12 @@ export async function fetchProductDetail(
   const target = idOrHandle?.trim()
   if (!target) return null
 
+  const cacheKey = target.toLowerCase()
+  const cached = PRODUCT_DETAIL_CACHE.get(cacheKey)
+  if (cached && cached.expires > Date.now()) {
+    return cached.value
+  }
+
   const detailExpand = `${COMMON_EXPAND},images,tags,categories,type,collection`
   const paramVariants: URLSearchParams[] = []
   if (DEFAULT_CURRENCY_CODE) {
@@ -801,12 +839,21 @@ export async function fetchProductDetail(
         const override = await fetchPriceOverrideForName(
           product.title || product.subtitle || product.handle
         )
-        return toDetailedProduct(product, override)
+        const detailed = toDetailedProduct(product, override)
+        PRODUCT_DETAIL_CACHE.set(cacheKey, {
+          expires: Date.now() + DETAIL_CACHE_TTL_MS,
+          value: detailed,
+        })
+        return detailed
       }
     } catch {
       // try next path
     }
   }
+  PRODUCT_DETAIL_CACHE.set(cacheKey, {
+    expires: Date.now() + DETAIL_CACHE_TTL_MS,
+    value: null,
+  })
   return null
 }
 
