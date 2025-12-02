@@ -911,7 +911,7 @@ const Header: React.FC = () => {
     <header className="sticky top-0 z-[120] w-full header-root bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       <div className="bg-header-bg">
         {/* Top Bar */}
-        {(!isMobile || showTopBarMobile) && (
+        {!isMobile && (
           <div className="bg-header-top-bg text-header-top-text py-2 text-center text-sm">
             <p>
               Get 10% Extra off! - Use Code <span className="font-semibold">OWEG10</span>{" "}

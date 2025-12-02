@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
-import { ChevronLeft, ChevronRight, X, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X, ExternalLink } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { getImageUrlForNewTab } from '@/lib/image-utils'
 
@@ -89,9 +89,15 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
     setLensPosition(clampLens(event.clientX, event.clientY))
   }
 
-  const handleOpenFullscreen = () => {
+const handleOpenFullscreen = () => {
     resetZoom()
     setFullscreenOpen(true)
+  }
+
+  const openImageInNewTab = () => {
+    const url = getImageUrlForNewTab(activeImage || fallback)
+    if (!url) return
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   // Touch handlers for main image swipe
@@ -184,8 +190,8 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
   }, [lensActive])
 
   return (
-    <div className="space-y-3">
-      <div className="relative lg:flex lg:gap-1.5">
+    <div className="space-y-3 w-full max-w-full overflow-hidden">
+      <div className="relative lg:flex lg:gap-1.5 w-full max-w-full">
         <div className="hidden lg:flex flex-col gap-1.5 overflow-y-auto max-h-[450px] pr-1 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent hover:scrollbar-thumb-gray-400">
           {images.map((img, idx) => (
             <button
@@ -205,10 +211,10 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
             </button>
           ))}
         </div>
-        <div className="relative flex-1 w-full lg:max-w-[490px] lg:ml-3 mx-auto">
+        <div className="relative flex-1 w-full max-w-full lg:max-w-[490px] lg:ml-3 mx-auto min-w-0">
         <div
           ref={containerRef}
-          className="relative w-full aspect-[4/5] max-h-[360px] sm:max-h-[420px] lg:h-[450px] rounded-[32px] border border-[var(--detail-border)] bg-white shadow-sm overflow-hidden group mx-auto"
+          className="relative w-full max-w-full aspect-[4/5] max-h-[360px] sm:max-h-[420px] lg:h-[450px] rounded-[32px] border border-[var(--detail-border)] bg-white shadow-sm overflow-hidden group mx-auto"
           onMouseEnter={(event) => {
             setLensActive(true)
             setLensPosition(clampLens(event.clientX, event.clientY))
@@ -218,6 +224,19 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
           onTouchStart={handleMainImageTouchStart}
           onTouchEnd={handleMainImageTouchEnd}
         >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              openImageInNewTab()
+            }}
+            className="absolute top-3 right-3 z-30 hidden sm:inline-flex items-center gap-1 rounded-full bg-white/90 border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm hover:bg-white"
+            aria-label="Open image in new tab"
+          >
+            <ExternalLink className="w-4 h-4" />
+            <span>Open</span>
+          </button>
           
           <div
             className="absolute inset-0 z-10 cursor-pointer lg:cursor-zoom-in"
@@ -300,7 +319,7 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
         </div>
       </div>
 
-      <div className="flex gap-1.5 overflow-x-auto lg:hidden scrollbar-hide">
+      <div className="flex gap-1.5 overflow-x-auto lg:hidden scrollbar-hide overscroll-x-contain -mx-1 px-1">
         {images.map((img, idx) => (
           <button
             key={`${img}-${idx}`}
