@@ -236,7 +236,7 @@ const getCategoryDisplayImage = (cat: MobileCategory): string => {
   const custom = customSubcategoryImages[handleKey] || customSubcategoryImages[key];
   if (custom) return resolveCategoryImage(custom);
 
-  const mapped = categoryImageMap[key] || categoryImageMap[cat.handle || ''];
+  const mapped = categoryImageMap[handleKey] || categoryImageMap[key] || categoryImageMap[cat.handle || ''];
   if (mapped) return resolveCategoryImage(mapped);
 
   const normalizedTitle = key;

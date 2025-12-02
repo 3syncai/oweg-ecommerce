@@ -1235,7 +1235,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const descriptionHasHtml = Boolean(product?.description && /<\/?[a-z][\s\S]*>/i.test(product.description))
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#f3f8f3] font-sans overflow-x-hidden">
+    <div className="flex min-h-screen flex-col bg-[#f3f8f3] font-sans overflow-x-hidden touch-pan-y">
       <style>{`
         :root {
           --detail-accent: #7bc24f;
@@ -1243,7 +1243,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           --detail-border: #dfe9df;
         }
       `}</style>
-      <main className="w-full max-w-7xl mx-auto px-4 py-8 lg:py-12 flex-1">
+      <main className="w-full max-w-7xl mx-auto px-4 py-8 lg:py-12 flex-1 scroll-smooth">
         <Breadcrumbs items={breadcrumbItems} pillClassName={breadcrumbPillClass} />
 
         {productLoading ? (
@@ -1269,9 +1269,9 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
         ) : product ? (
           <>
             {/* ====== MAIN TWO-COLUMN: LEFT = STICKY GALLERY, RIGHT = SCROLLABLE SUMMARY ====== */}
-            <section className="grid lg:grid-cols-2 gap-6 lg:gap-8 mb-10 items-start">
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 mb-10 items-start max-w-full overflow-hidden">
               {/* LEFT: Sticky Image/Gallery */}
-              <div className="relative lg:sticky lg:top-24 self-start">
+              <div className="relative lg:sticky lg:top-10 self-start w-full max-w-full overflow-hidden">
                 <ProductGallery
                   images={galleryImages}
                   selectedIndex={selectedImage}
@@ -1295,7 +1295,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
               {/* RIGHT: Scrollable Summary */}
               <div
                 ref={summaryScrollRef}
-                className="space-y-5 lg:pl-4 lg:pr-2 lg:max-h-[calc(100vh-160px)] lg:overflow-y-auto lg:pr-3 lg:-mr-3 lg:scrollbar-thin lg:scrollbar-thumb-transparent lg:scrollbar-track-transparent"
+                className="w-full min-w-0 space-y-5 lg:pl-4 lg:pr-2 lg:max-h-[calc(100vh-160px)] lg:overflow-y-auto lg:pr-3 lg:-mr-3 lg:scrollbar-thin lg:scrollbar-thumb-transparent lg:scrollbar-track-transparent"
                 style={{ scrollbarWidth: 'none' }}
               >
                 <ProductSummary
