@@ -90,6 +90,20 @@ function sanitizeForPath(str: string): string {
     .substring(0, 50) || 'product'
 }
 
+// Validate video MIME type
+function isValidVideoMimeType(mimeType: string): boolean {
+  const validVideoTypes = [
+    'video/mp4',
+    'video/mpeg',
+    'video/quicktime',
+    'video/x-msvideo',
+    'video/webm',
+    'video/ogg',
+    'video/x-matroska',
+  ]
+  return validVideoTypes.includes(mimeType.toLowerCase())
+}
+
 export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
   setCorsHeaders(res)
   
@@ -99,7 +113,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
   }
   
   try {
-    console.log("📤 Image upload request received")
+    console.log("📤 Video upload request received")
     console.log("Request method:", (req as any).method)
     console.log("Request URL:", (req as any).url)
     console.log("Request headers:", Object.keys((req as any).headers || {}))
@@ -141,8 +155,6 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     let busboyFinished = false
     
     // Get product name and collection from form fields
-    // These might not be available when files are processed (Busboy processes async)
-    // We'll use fallback path if not available
     let productName = ''
     let collectionName = ''
 
@@ -151,9 +163,9 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
       const timeout = setTimeout(() => {
         if (!resolved) {
           resolved = true
-          reject(new Error("Upload timeout - no files received within 30 seconds"))
+          reject(new Error("Upload timeout - no files received within 60 seconds"))
         }
-      }, 30000)
+      }, 60000) // Longer timeout for videos
 
       const checkComplete = () => {
         // Only resolve when both Busboy is finished AND all uploads are complete
@@ -167,30 +179,37 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
 
       bb.on("file", (name: string, file: NodeJS.ReadableStream, info: { filename: string; encoding: string; mimeType: string }) => {
         console.log("File received:", name, info.filename, info.mimeType)
+        
+        // Validate video MIME type
+        if (!isValidVideoMimeType(info.mimeType)) {
+          console.error(`❌ Invalid video MIME type: ${info.mimeType}`)
+          file.resume() // Drain the stream
+          return
+        }
+        
         fileCount++
         pendingUploads++
         
         const filename = (info.filename || "file").replace(/[^a-zA-Z0-9._-]/g, "_")
-        const extension = path.extname(filename) || '.png'
+        const extension = path.extname(filename) || '.mp4'
         const uniqueId = randomUUID().substring(0, 8)
-        const imageFilename = `${uniqueId}${extension}`
+        const videoFilename = `${uniqueId}${extension}`
         
         // Build S3 path based on collection and product name
-        // Note: Fields might not be available yet (Busboy processes async)
-        // We'll use current values or fallback path
+        // Store videos in a separate video/ folder
         let s3Key = ''
         const currentProductName = productName || ''
         const currentCollectionName = collectionName || ''
         
         if (currentCollectionName && currentProductName) {
-          // product/collection_name/product_name/img/filename
-          s3Key = `product/${sanitizeForPath(currentCollectionName)}/${sanitizeForPath(currentProductName)}/img/${imageFilename}`
+          // product/collection_name/product_name/video/filename
+          s3Key = `product/${sanitizeForPath(currentCollectionName)}/${sanitizeForPath(currentProductName)}/video/${videoFilename}`
         } else if (currentProductName) {
-          // product/product_name/img/filename
-          s3Key = `product/${sanitizeForPath(currentProductName)}/img/${imageFilename}`
+          // product/product_name/video/filename
+          s3Key = `product/${sanitizeForPath(currentProductName)}/video/${videoFilename}`
         } else {
-          // Fallback: product/temp/img/filename (will be used if fields come after files)
-          s3Key = `product/temp/img/${imageFilename}`
+          // Fallback: product/temp/video/filename
+          s3Key = `product/temp/video/${videoFilename}`
         }
         
         // Read file into buffer
@@ -209,7 +228,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
               Bucket: s3Bucket,
               Key: s3Key,
               Body: fileBuffer,
-              ContentType: info.mimeType || "image/png",
+              ContentType: info.mimeType || "video/mp4",
             })
             
             await s3Client.send(command)
@@ -218,11 +237,11 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
             results.push({
               url: fileUrl,
               key: s3Key,
-              filename: imageFilename,
+              filename: videoFilename,
               originalName: filename,
             })
             
-            console.log(`✅ Uploaded to S3: ${s3Key}`)
+            console.log(`✅ Uploaded video to S3: ${s3Key}`)
             pendingUploads--
             checkComplete()
           } catch (uploadError: any) {
@@ -273,7 +292,6 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     })
 
     // Try to access raw request stream
-    // In Medusa v2, the request might be wrapped, so we need to access the underlying stream
     let rawReq: any = null
     
     console.log("🔍 Checking request stream access...")
@@ -347,7 +365,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
 
     return res.json({ files: results })
   } catch (error: any) {
-    console.error("Error in image upload:", error)
+    console.error("Error in video upload:", error)
     console.error("Error stack:", error?.stack)
     console.error("Error details:", {
       message: error?.message,
@@ -355,7 +373,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
       code: error?.code,
     })
     return res.status(500).json({
-      message: "Failed to upload images",
+      message: "Failed to upload videos",
       error: error.message || "Unknown error",
     })
   }

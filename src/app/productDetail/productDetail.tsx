@@ -16,6 +16,7 @@ import DescriptionTabs from './components/DescriptionTabs'
 import ProductGallery from './components/ProductGallery'
 import ProductSummary from './components/ProductSummary'
 import ProductSavingsExplorer from './components/ProductSavingsExplorer'
+import { useFlashSale } from '@/hooks/useFlashSale'
 import type {
   BreadcrumbItem,
   CompareFilters,
@@ -172,6 +173,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     staleTime: 1000 * 60 * 3,
   })
   const product = productResponse?.product ?? null
+  const { flashSaleInfo } = useFlashSale(product?.id)
   const isWishlisted = useMemo(() => {
     const list = (customer?.metadata as Record<string, unknown> | undefined)?.wishlist
     if (!Array.isArray(list)) return false
@@ -417,20 +419,98 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
   const savedAmount = useMemo(() => {
     if (!product) return 0
-    const mrp = typeof product.mrp === 'number' ? product.mrp : 0
-    const price = typeof product.price === 'number' ? product.price : 0
+    
+    // Use flash sale prices if available
+    const price = flashSaleInfo?.active && flashSaleInfo.flash_sale_price !== undefined
+      ? flashSaleInfo.flash_sale_price
+      : (typeof product.price === 'number' ? product.price : 0)
+    
+    const mrp = flashSaleInfo?.active && flashSaleInfo.original_price !== undefined
+      ? flashSaleInfo.original_price
+      : (typeof product.mrp === 'number' ? product.mrp : price)
+    
     const delta = mrp - price
     return Number.isFinite(delta) && delta > 0 ? delta : 0
-  }, [product])
+  }, [product, flashSaleInfo])
 
+  // Combine images and videos into a single gallery
+  // Videos are stored in the images array (same as images) and also in metadata.videos
   const galleryImages = useMemo(() => {
-    if (product?.images?.length) {
-      return product.images
+    const allMedia = product?.images || []
+    
+    // Get video URLs from metadata to identify which items in images array are videos
+    let videoUrlsFromMetadata: string[] = []
+    const metadata = product?.metadata as MetaRecord
+    if (metadata) {
+      type VideoItem = string | { url?: string } | unknown
+      const extractVideoUrl = (v: VideoItem): string => {
+        if (typeof v === 'object' && v !== null && 'url' in v && typeof v.url === 'string') {
+          return v.url
+        }
+        if (typeof v === 'string') {
+          return v
+        }
+        return ''
+      }
+      // If metadata.videos is a string (JSON), parse it
+      if (typeof metadata.videos === 'string') {
+        try {
+          const parsed = JSON.parse(metadata.videos) as unknown
+          if (Array.isArray(parsed)) {
+            videoUrlsFromMetadata = (parsed as VideoItem[])
+              .map(extractVideoUrl)
+              .filter((url): url is string => Boolean(url))
+          }
+        } catch (e) {
+          console.warn('Failed to parse videos from metadata:', e)
+        }
+      } else if (Array.isArray(metadata.videos)) {
+        videoUrlsFromMetadata = (metadata.videos as VideoItem[])
+          .map(extractVideoUrl)
+          .filter((url): url is string => Boolean(url))
+      }
     }
-    return [FALLBACK_IMAGE]
+    
+    // Create a Set for quick lookup
+    const videoUrlSet = new Set(videoUrlsFromMetadata)
+    
+    // Also check for video file extensions as fallback
+    const isVideoUrl = (url: string): boolean => {
+      if (videoUrlSet.has(url)) return true
+      // Check file extension
+      const videoExtensions = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.ogg', '.wmv', '.flv']
+      return videoExtensions.some(ext => url.toLowerCase().endsWith(ext))
+    }
+    
+    // Debug logging (remove in production)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Product images array:', allMedia)
+      console.log('Video URLs from metadata:', videoUrlsFromMetadata)
+    }
+    
+    // Map all media items (images + videos) and identify type
+    const mediaItems = allMedia.map((url: string) => {
+      const isVideo = isVideoUrl(url)
+      return {
+        url: url,
+        type: isVideo ? ('video' as const) : ('image' as const)
+      }
+    })
+    
+    // Separate images and videos for proper ordering (images first, then videos)
+    const imageItems = mediaItems.filter(item => item.type === 'image')
+    const videoItems = mediaItems.filter(item => item.type === 'video')
+    
+    // Combine images first, then videos
+    const combined = [...imageItems, ...videoItems]
+    
+    if (combined.length > 0) {
+      return combined
+    }
+    return [{ url: FALLBACK_IMAGE, type: 'image' as const }]
   }, [product])
 
-  const galleryKey = useMemo(() => galleryImages.join('|'), [galleryImages])
+  const galleryKey = useMemo(() => galleryImages.map(m => m.url).join('|'), [galleryImages])
 
   useEffect(() => {
     setSelectedImage(0)
@@ -1273,7 +1353,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
               {/* LEFT: Sticky Image/Gallery */}
               <div className="relative lg:sticky lg:top-24 self-start">
                 <ProductGallery
-                  images={galleryImages}
+                  media={galleryImages}
                   selectedIndex={selectedImage}
                   onSelect={setSelectedImage}
                   fallback={FALLBACK_IMAGE}
@@ -1314,6 +1394,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   isWishlisted={isWishlisted}
                   onOpenCompare={() => setCompareModalOpen(true)}
                   formatPrice={(value) => inr.format(value)}
+                  flashSaleInfo={flashSaleInfo}
                 />
                 <DeliveryInfo
                   pinCode={pinCode}

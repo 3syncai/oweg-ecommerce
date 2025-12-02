@@ -3,6 +3,8 @@
 import React from 'react'
 import { Eye, GitCompare, Heart, Minus, Plus, Share2, ShoppingCart, Star } from 'lucide-react'
 import type { DetailedProduct as DetailedProductType } from '@/lib/medusa'
+import { FlashSaleBadge } from '@/components/flash-sale/FlashSaleBadge'
+import type { FlashSaleInfo } from '@/hooks/useFlashSale'
 
 type ProductSummaryProps = {
   product: DetailedProductType
@@ -20,6 +22,7 @@ type ProductSummaryProps = {
   onOpenCompare: () => void
   isWishlisted: boolean
   formatPrice: (value: number) => string
+  flashSaleInfo?: FlashSaleInfo
 }
 
 const ProductSummary = ({
@@ -38,11 +41,19 @@ const ProductSummary = ({
   onOpenCompare,
   isWishlisted,
   formatPrice,
+  flashSaleInfo,
 }: ProductSummaryProps) => {
-  const rawSavings =
-    typeof product.mrp === 'number' && typeof product.price === 'number' && product.mrp > product.price
-      ? product.mrp - product.price
-      : 0
+  // Use flash sale price if available, otherwise use product price
+  const displayPrice = flashSaleInfo?.active && flashSaleInfo.flash_sale_price !== undefined
+    ? flashSaleInfo.flash_sale_price
+    : (typeof product.price === 'number' ? product.price : 0)
+  
+  // Use flash sale original price as MRP if available, otherwise use product MRP
+  const displayMRP = flashSaleInfo?.active && flashSaleInfo.original_price !== undefined
+    ? flashSaleInfo.original_price
+    : (typeof product.mrp === 'number' ? product.mrp : displayPrice)
+  
+  const rawSavings = displayMRP > displayPrice ? displayMRP - displayPrice : 0
 
   return (
     <div className="space-y-5 lg:pl-4">
@@ -72,11 +83,26 @@ const ProductSummary = ({
         </div>
       </div>
       <h1 className="text-2xl lg:text-3xl font-semibold text-slate-900">{product.title}</h1>
-      {product.discount > 0 && (
-        <div className="inline-flex items-center gap-2">
-          <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-            {product.discount}% OFF
-          </span>
+      {(product.discount > 0 || flashSaleInfo?.active) && (
+        <div className="inline-flex items-center gap-2 flex-wrap">
+          {flashSaleInfo?.active && (
+            <>
+              <span className="inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
+                FLASH SALE
+              </span>
+              {flashSaleInfo.expires_at && (
+                <FlashSaleBadge 
+                  expiresAt={flashSaleInfo.expires_at}
+                  timeRemainingMs={flashSaleInfo.time_remaining_ms}
+                />
+              )}
+            </>
+          )}
+          {product.discount > 0 && !flashSaleInfo?.active && (
+            <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
+              {product.discount}% OFF
+            </span>
+          )}
           <button
             type="button"
             onClick={onSaveForLater}
@@ -90,8 +116,10 @@ const ProductSummary = ({
     {product.subtitle && <p className="text-slate-500">{product.subtitle}</p>}
 
     <div className="flex flex-wrap items-end gap-3">
-      <div className="text-3xl font-bold text-slate-900">{formatPrice(product.price)}</div>
-      <div className="text-lg text-slate-400 line-through">{formatPrice(product.mrp)}</div>
+      <div className="text-3xl font-bold text-slate-900">{formatPrice(displayPrice)}</div>
+      {displayMRP > displayPrice && (
+        <div className="text-lg text-slate-400 line-through">{formatPrice(displayMRP)}</div>
+      )}
       {rawSavings > 0 && (
         <span className="save-banner inline-flex items-center rounded-full bg-emerald-100/80 px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm animate-[pulse_1.4s_ease-in-out_infinite]">
           You are about to save {formatPrice(rawSavings)}

@@ -16,6 +16,13 @@ type UploadedImage = {
   isThumbnail?: boolean
 }
 
+type UploadedVideo = {
+  url: string
+  key: string
+  filename: string
+  originalName: string
+}
+
 type ProductFormData = {
   // Details
   title: string
@@ -24,6 +31,7 @@ type ProductFormData = {
   description: string
   media: File[]
   uploadedImages: UploadedImage[]
+  uploadedVideos: UploadedVideo[]
   thumbnailUrl: string | null
   hasVariants: boolean
   
@@ -72,6 +80,7 @@ const VendorProductNewPage = () => {
     description: "",
     media: [],
     uploadedImages: [],
+    uploadedVideos: [],
     thumbnailUrl: null,
     hasVariants: false,
     height: "",
@@ -99,6 +108,8 @@ const VendorProductNewPage = () => {
   })
   
   const [uploadingImages, setUploadingImages] = useState(false)
+  const [uploadingVideos, setUploadingVideos] = useState(false)
+  const [uploadingMedia, setUploadingMedia] = useState(false)
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null)
   const menuRefs = React.useRef<{ [key: number]: HTMLDivElement | null }>({})
 
@@ -126,7 +137,53 @@ const VendorProductNewPage = () => {
   const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const files = Array.from(e.target.files)
-      await uploadImagesToS3(files)
+      await uploadMediaToS3(files)
+    }
+  }
+
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // This is now handled by handleMediaUpload, but keeping for backward compatibility
+    if (e.target.files && e.target.files.length > 0) {
+      const files = Array.from(e.target.files)
+      await uploadMediaToS3(files)
+    }
+  }
+
+  // Unified media upload handler that detects file type and routes appropriately
+  const uploadMediaToS3 = async (files: File[]) => {
+    if (files.length === 0) return
+    
+    setUploadingMedia(true)
+    
+    try {
+      // Separate images and videos
+      const imageFiles: File[] = []
+      const videoFiles: File[] = []
+      
+      files.forEach((file) => {
+        if (file.type.startsWith('image/')) {
+          imageFiles.push(file)
+        } else if (file.type.startsWith('video/')) {
+          videoFiles.push(file)
+        } else {
+          toast.error("Error", { description: `Unsupported file type: ${file.name}` })
+        }
+      })
+      
+      // Upload images and videos in parallel
+      const uploadPromises: Promise<void>[] = []
+      
+      if (imageFiles.length > 0) {
+        uploadPromises.push(uploadImagesToS3(imageFiles))
+      }
+      
+      if (videoFiles.length > 0) {
+        uploadPromises.push(uploadVideosToS3(videoFiles))
+      }
+      
+      await Promise.all(uploadPromises)
+    } finally {
+      setUploadingMedia(false)
     }
   }
   
@@ -192,6 +249,64 @@ const VendorProductNewPage = () => {
       setUploadingImages(false)
     }
   }
+
+  const uploadVideosToS3 = async (files: File[]) => {
+    if (files.length === 0) return
+    
+    setUploadingVideos(true)
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
+      if (!token) {
+        toast.error("Error", { description: "Not authenticated" })
+        return
+      }
+      
+      const API_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
+      
+      // Get collection name if available
+      const collectionName = formData.collection && collections.length > 0
+        ? collections.find(c => c.id === formData.collection)?.title || ''
+        : ''
+      
+      // Create FormData with metadata first (so fields are processed before files)
+      const formDataToSend = new FormData()
+      // Add fields first so Busboy processes them before files
+      formDataToSend.append("productName", formData.title || "temp")
+      if (collectionName) {
+        formDataToSend.append("collectionName", collectionName)
+      }
+      // Then add files
+      files.forEach((file) => {
+        formDataToSend.append("files", file)
+      })
+      
+      const uploadRes = await axios.post(`${API_URL}/vendor/products/upload-video`, formDataToSend, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      
+      const uploadData = uploadRes.data
+      const newVideos: UploadedVideo[] = uploadData.files?.map((f: any) => ({
+        url: f.url,
+        key: f.key,
+        filename: f.filename,
+        originalName: f.originalName,
+      })) || []
+      
+      setFormData({
+        ...formData,
+        uploadedVideos: [...formData.uploadedVideos, ...newVideos],
+      })
+      
+      toast.success("Success", { description: `${newVideos.length} video(s) uploaded` })
+    } catch (error: any) {
+      console.error("Upload error:", error)
+      toast.error("Error", { description: error?.message || "Failed to upload videos" })
+    } finally {
+      setUploadingVideos(false)
+    }
+  }
   
   const handleMakeThumbnail = (index: number) => {
     const image = formData.uploadedImages[index]
@@ -222,6 +337,15 @@ const VendorProductNewPage = () => {
     setOpenMenuIndex(null)
     toast.success("Success", { description: "Image removed" })
   }
+
+  const handleDeleteVideo = (index: number) => {
+    const newVideos = formData.uploadedVideos.filter((_, idx) => idx !== index)
+    setFormData({
+      ...formData,
+      uploadedVideos: newVideos,
+    })
+    toast.success("Success", { description: "Video removed" })
+  }
   
   // Close menu when clicking outside
   useEffect(() => {
@@ -244,7 +368,16 @@ const VendorProductNewPage = () => {
     e.preventDefault()
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files)
-      await uploadImagesToS3(files)
+      await uploadMediaToS3(files)
+    }
+  }
+
+  const handleVideoDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    // This is now handled by handleDrop, but keeping for backward compatibility
+    e.preventDefault()
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files)
+      await uploadMediaToS3(files)
     }
   }
 
@@ -343,6 +476,10 @@ const VendorProductNewPage = () => {
           mid_code: formData.midCode || null,
           hs_code: formData.hsCode || null,
           country_of_origin: formData.countryOfOrigin || null,
+          // Videos
+          videos: formData.uploadedVideos.length > 0 
+            ? formData.uploadedVideos.map(v => ({ url: v.url, key: v.key, filename: v.filename }))
+            : null,
         },
       })
 
@@ -502,7 +639,7 @@ const VendorProductNewPage = () => {
         <input
           type="file"
           multiple
-          accept="image/*"
+          accept="image/*,video/*"
           onChange={handleMediaUpload}
           style={{ display: "none" }}
           id="media-upload"
@@ -530,9 +667,9 @@ const VendorProductNewPage = () => {
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
-          <Text weight="plus" style={{ marginBottom: 4 }}>Upload images</Text>
+          <Text weight="plus" style={{ marginBottom: 4 }}>Upload images and videos</Text>
           <Text size="small" style={{ color: "var(--fg-muted)", marginBottom: 16 }}>
-            Drag and drop images here or click to upload.
+            Drag and drop images or videos here or click to upload. Supported formats: Images (JPG, PNG, etc.) and Videos (MP4, WebM, MOV, AVI)
           </Text>
           <Button
             type="button"
@@ -548,12 +685,14 @@ const VendorProductNewPage = () => {
             Choose files
           </Button>
         </div>
-        {uploadingImages && (
+        {(uploadingMedia || uploadingImages || uploadingVideos) && (
           <div style={{ marginTop: 16, padding: 12, background: "var(--bg-subtle)", borderRadius: 6 }}>
-            <Text size="small" style={{ color: "var(--fg-muted)" }}>Uploading images...</Text>
+            <Text size="small" style={{ color: "var(--fg-muted)" }}>
+              {uploadingMedia ? "Uploading media..." : uploadingImages ? "Uploading images..." : "Uploading videos..."}
+            </Text>
           </div>
         )}
-        {formData.uploadedImages.length > 0 && (
+        {(formData.uploadedImages.length > 0 || formData.uploadedVideos.length > 0) && (
           <div style={{ marginTop: 16 }}>
             <div style={{ 
               display: "flex", 
@@ -564,6 +703,7 @@ const VendorProductNewPage = () => {
               borderRadius: 8,
               padding: 12,
             }}>
+              {/* Display Images */}
               {formData.uploadedImages.map((image, idx) => (
                 <div
                   key={idx}
@@ -736,6 +876,94 @@ const VendorProductNewPage = () => {
                   {/* Delete button */}
                   <button
                     onClick={() => handleDeleteImage(idx)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: "4px 8px",
+                      color: "var(--fg-muted)",
+                      fontSize: 18,
+                      lineHeight: 1,
+                    }}
+                    title="Delete"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+
+              {/* Display Videos */}
+              {formData.uploadedVideos.map((video, idx) => (
+                <div
+                  key={`video-${idx}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: 12,
+                    background: "transparent",
+                    border: "1px solid transparent",
+                    borderRadius: 6,
+                    position: "relative",
+                  }}
+                >
+                  {/* Video icon/thumbnail */}
+                  <div
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: 4,
+                      overflow: "hidden",
+                      background: "var(--bg-subtle)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ color: "var(--fg-muted)" }}>
+                      <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  
+                  {/* File info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Text size="small" weight="plus" style={{ display: "block", marginBottom: 4 }}>
+                      {video.originalName}
+                    </Text>
+                    <Text size="xsmall" style={{ color: "var(--fg-muted)" }}>
+                      {video.filename}
+                    </Text>
+                    <div style={{ marginTop: 4 }}>
+                      <Text size="xsmall" style={{ 
+                        color: "var(--fg-accent)",
+                        background: "var(--bg-accent)",
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        display: "inline-block",
+                        marginRight: 8,
+                      }}>
+                        Video
+                      </Text>
+                      <a
+                        href={video.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          color: "var(--fg-accent)",
+                          textDecoration: "none",
+                          fontSize: 11,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        View video →
+                      </a>
+                    </div>
+                  </div>
+                  
+                  {/* Delete button */}
+                  <button
+                    onClick={() => handleDeleteVideo(idx)}
                     style={{
                       background: "none",
                       border: "none",
