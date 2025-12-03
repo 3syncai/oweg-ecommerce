@@ -13,9 +13,9 @@ import Breadcrumbs from './components/Breadcrumbs'
 import CompareTable from './components/CompareTable'
 import DeliveryInfo from './components/DeliveryInfo'
 import DescriptionTabs from './components/DescriptionTabs'
+import dynamic from 'next/dynamic'
 import ProductGallery from './components/ProductGallery'
 import ProductSummary from './components/ProductSummary'
-import ProductSavingsExplorer from './components/ProductSavingsExplorer'
 import type {
   BreadcrumbItem,
   CompareFilters,
@@ -45,6 +45,13 @@ import {
 } from '@/lib/notifications'
 import { useAuth } from '@/contexts/AuthProvider'
 import { useCartSummary } from '@/contexts/CartProvider'
+
+const ProductSavingsExplorer = dynamic(() => import('./components/ProductSavingsExplorer'), {
+  ssr: false,
+  loading: () => (
+    <div className="rounded-2xl border border-emerald-100 bg-white p-6 shadow-sm animate-pulse h-48" />
+  ),
+})
 
 type CategoryNode = Pick<MedusaCategory, 'id' | 'title' | 'name' | 'handle'> & {
   category_children?: CategoryNode[]

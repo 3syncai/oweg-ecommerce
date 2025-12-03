@@ -2,10 +2,12 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Heart } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useAddToCartWithNotification } from "@/hooks/useCartMutations";
 import { useAddToWishlistWithNotification } from "@/hooks/useWishlistMutations";
@@ -45,9 +47,13 @@ export function ProductCard({
   sourceCategoryHandle,
 }: ProductCardProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const [prefetched, setPrefetched] = useState(false);
   const { customer } = useAuth();
   const { addToCart, isLoading: isAddingToCart } = useAddToCartWithNotification(name);
   const { addToWishlist, isLoading: isAddingToWishlist } = useAddToWishlistWithNotification(name);
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  const cardRef = useRef<HTMLAnchorElement | null>(null);
 
   const params = new URLSearchParams();
   params.set("id", String(id));
@@ -75,8 +81,41 @@ export function ProductCard({
     await addToWishlist(id);
   };
 
+  useEffect(() => {
+    if (!cardRef.current || prefetched) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !prefetched) {
+            // Prefetch page route
+            router.prefetch(productHref);
+            // Prefetch product detail into React Query cache
+            void queryClient.prefetchQuery({
+              queryKey: ["product-detail", String(id)],
+              queryFn: async () => {
+                const res = await fetch(`/api/medusa/products/${encodeURIComponent(String(id))}`, {
+                  cache: "no-store",
+                });
+                if (!res.ok) throw new Error("Failed to prefetch product");
+                const data = await res.json();
+                return data as { product: unknown };
+              },
+              staleTime: 1000 * 60 * 3,
+            });
+            setPrefetched(true);
+            observer.disconnect();
+          }
+        });
+      },
+      { rootMargin: "120px" }
+    );
+    observer.observe(cardRef.current);
+    return () => observer.disconnect();
+  }, [cardRef, id, prefetched, productHref, queryClient, router]);
+
   return (
     <Link
+      ref={cardRef}
       href={productHref}
       className="group relative w-full bg-white rounded-lg overflow-visible shadow-sm hover:shadow-xl transition-all duration-300 hover:border-[#7AC943] border border-gray-200 flex flex-col h-full"
       onMouseEnter={() => setIsHovered(true)}
