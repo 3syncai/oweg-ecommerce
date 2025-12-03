@@ -687,16 +687,15 @@ function computeUiPrice(p: MedusaProduct, override?: PriceOverride) {
   const original = p.price?.original_price
   const firstAmountMinor = p.variants?.[0]?.prices?.[0]?.amount
   
-  // Convert calculated_price if it's in minor units (paise)
-  // Medusa v2 typically returns prices in minor units, but sometimes in major units
-  // If calculated_price > 10000, it's likely in paise (e.g., 6700000 paise = ₹67,000)
+  // Medusa v2 stores prices in minor units (paise for INR)
+  // Always convert from minor to major units for consistency
   const calculatedMajor = typeof calculated === "number" 
-    ? (calculated > 10000 ? calculated / 100 : calculated)
+    ? calculated / 100
     : undefined
   
-  // Convert original_price if it's in minor units
+  // Convert original_price from minor units
   const originalMajorConverted = typeof original === "number" && original > 0
-    ? (original > 10000 ? original / 100 : original)
+    ? original / 100
     : undefined
   
   const amountMajor =

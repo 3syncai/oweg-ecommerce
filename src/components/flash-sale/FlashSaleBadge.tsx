@@ -11,6 +11,7 @@ type FlashSaleBadgeProps = {
 
 export function FlashSaleBadge({ expiresAt, timeRemainingMs: initialTimeRemaining }: FlashSaleBadgeProps) {
   const [timeRemaining, setTimeRemaining] = useState(initialTimeRemaining || 0)
+  const [startTime] = useState(() => Date.now())
 
   useEffect(() => {
     if (!expiresAt && !initialTimeRemaining) return
@@ -22,7 +23,8 @@ export function FlashSaleBadge({ expiresAt, timeRemainingMs: initialTimeRemainin
         const remaining = Math.max(0, endTime - now)
         setTimeRemaining(remaining)
       } else if (initialTimeRemaining !== undefined) {
-        setTimeRemaining(Math.max(0, initialTimeRemaining))
+        const elapsed = Date.now() - startTime
+        setTimeRemaining(Math.max(0, initialTimeRemaining - elapsed))
       }
     }
 

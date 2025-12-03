@@ -5,17 +5,22 @@ import * as path from "path"
 import * as fs from "fs"
 import { randomUUID } from "node:crypto"
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
+import { Upload } from "@aws-sdk/lib-storage"
 
 // CORS headers helper
-function setCorsHeaders(res: MedusaResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
+function setCorsHeaders(res: MedusaResponse, req?: MedusaRequest) {
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000']
+  const origin = (req as any)?.headers?.origin || (req as any)?.req?.headers?.origin
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
   res.setHeader('Access-Control-Allow-Credentials', 'true')
 }
 
 export const OPTIONS = async (req: MedusaRequest, res: MedusaResponse) => {
-  setCorsHeaders(res)
+  setCorsHeaders(res, req)
   return res.status(200).end()
 }
 
@@ -105,7 +110,7 @@ function isValidVideoMimeType(mimeType: string): boolean {
 }
 
 export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
-  setCorsHeaders(res)
+  setCorsHeaders(res, req)
   
   // Early return for OPTIONS preflight
   if ((req as any).method === 'OPTIONS') {
@@ -157,6 +162,14 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     // Get product name and collection from form fields
     let productName = ''
     let collectionName = ''
+    
+    // Store file data temporarily until all fields are parsed
+    interface PendingFile {
+      buffer: Buffer
+      info: { filename: string; encoding: string; mimeType: string }
+      name: string
+    }
+    const pendingFiles: PendingFile[] = []
 
     const finished = new Promise<void>((resolve, reject) => {
       let resolved = false
@@ -187,82 +200,24 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
           return
         }
         
-        fileCount++
-        pendingUploads++
-        
-        const filename = (info.filename || "file").replace(/[^a-zA-Z0-9._-]/g, "_")
-        const extension = path.extname(filename) || '.mp4'
-        const uniqueId = randomUUID().substring(0, 8)
-        const videoFilename = `${uniqueId}${extension}`
-        
-        // Build S3 path based on collection and product name
-        // Store videos in a separate video/ folder
-        let s3Key = ''
-        const currentProductName = productName || ''
-        const currentCollectionName = collectionName || ''
-        
-        if (currentCollectionName && currentProductName) {
-          // product/collection_name/product_name/video/filename
-          s3Key = `product/${sanitizeForPath(currentCollectionName)}/${sanitizeForPath(currentProductName)}/video/${videoFilename}`
-        } else if (currentProductName) {
-          // product/product_name/video/filename
-          s3Key = `product/${sanitizeForPath(currentProductName)}/video/${videoFilename}`
-        } else {
-          // Fallback: product/temp/video/filename
-          s3Key = `product/temp/video/${videoFilename}`
-        }
-        
-        // Read file into buffer
+        // Buffer file chunks as they arrive
         const fileChunks: Buffer[] = []
-        
         file.on("data", (chunk: Buffer) => {
           fileChunks.push(chunk)
         })
         
-        file.on("end", async () => {
-          try {
-            const fileBuffer = Buffer.concat(fileChunks)
-            
-            // Upload to S3
-            const command = new PutObjectCommand({
-              Bucket: s3Bucket,
-              Key: s3Key,
-              Body: fileBuffer,
-              ContentType: info.mimeType || "video/mp4",
-            })
-            
-            await s3Client.send(command)
-            
-            const fileUrl = `${s3FileUrl}/${s3Key}`
-            results.push({
-              url: fileUrl,
-              key: s3Key,
-              filename: videoFilename,
-              originalName: filename,
-            })
-            
-            console.log(`✅ Uploaded video to S3: ${s3Key}`)
-            pendingUploads--
-            checkComplete()
-          } catch (uploadError: any) {
-            console.error("S3 upload error:", uploadError)
-            pendingUploads--
-            if (!resolved) {
-              resolved = true
-              clearTimeout(timeout)
-              reject(uploadError)
-            }
-          }
+        file.on("end", () => {
+          // Store buffered file data until all fields are parsed
+          pendingFiles.push({
+            buffer: Buffer.concat(fileChunks),
+            info,
+            name,
+          })
         })
         
         file.on("error", (err: any) => {
           console.error("File stream error:", err)
-          pendingUploads--
-          if (!resolved) {
-            resolved = true
-            clearTimeout(timeout)
-            reject(err)
-          }
+          // Don't add to pendingFiles if there's an error
         })
       })
 
@@ -284,9 +239,74 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
         }
       })
 
-      bb.on("finish", () => {
-        console.log("Busboy finished parsing. Files received:", fileCount, "Pending uploads:", pendingUploads)
+      bb.on("finish", async () => {
+        console.log("Busboy finished parsing. Processing files:", pendingFiles.length)
         busboyFinished = true
+        
+        // Now that all fields are parsed, process files with correct S3 keys
+        for (const pendingFile of pendingFiles) {
+          fileCount++
+          pendingUploads++
+          
+          const filename = (pendingFile.info.filename || "file").replace(/[^a-zA-Z0-9._-]/g, "_")
+          const extension = path.extname(filename) || '.mp4'
+          const uniqueId = randomUUID().substring(0, 8)
+          const videoFilename = `${uniqueId}${extension}`
+          
+          // Build S3 path based on collection and product name (now we have the fields)
+          let s3Key = ''
+          const currentProductName = productName || ''
+          const currentCollectionName = collectionName || ''
+          
+          if (currentCollectionName && currentProductName) {
+            // product/collection_name/product_name/video/filename
+            s3Key = `product/${sanitizeForPath(currentCollectionName)}/${sanitizeForPath(currentProductName)}/video/${videoFilename}`
+          } else if (currentProductName) {
+            // product/product_name/video/filename
+            s3Key = `product/${sanitizeForPath(currentProductName)}/video/${videoFilename}`
+          } else {
+            // Fallback: product/temp/video/filename
+            s3Key = `product/temp/video/${videoFilename}`
+          }
+          
+          // Upload to S3 using multipart upload (handles large files efficiently)
+          // Note: We buffer the file because we need to wait for fields to be parsed
+          // For very large files, consider using temporary file storage instead
+          try {
+            const upload = new Upload({
+              client: s3Client,
+              params: {
+                Bucket: s3Bucket,
+                Key: s3Key,
+                Body: pendingFile.buffer,
+                ContentType: pendingFile.info.mimeType || "video/mp4",
+              },
+            })
+            
+            await upload.done()
+            
+            const fileUrl = `${s3FileUrl}/${s3Key}`
+            results.push({
+              url: fileUrl,
+              key: s3Key,
+              filename: videoFilename,
+              originalName: filename,
+            })
+            
+            console.log(`✅ Uploaded video to S3: ${s3Key}`)
+            pendingUploads--
+            checkComplete()
+          } catch (uploadError: any) {
+            console.error("S3 upload error:", uploadError)
+            pendingUploads--
+            if (!resolved) {
+              resolved = true
+              clearTimeout(timeout)
+              reject(uploadError)
+            }
+          }
+        }
+        
         checkComplete()
       })
     })

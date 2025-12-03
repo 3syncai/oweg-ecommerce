@@ -185,11 +185,11 @@ export async function POST(req: NextRequest) {
               // flash_sale_price is already in rupees (major units), not paise
               const flashSalePrice = priceMap.get(variantId)!
               
-              // Check existing price format to match it
-              // If existing price is large (> 1000), it's likely in minor units (paise)
-              // If existing price is small (< 1000), it's likely in major units (rupees)
+              // Determine unit format by comparing magnitude
+              // If existing price / flash_sale_price ≈ 100, existing is in minor units
               const existingPrice = item.unit_price || item.price_set?.original_amount || 0
-              const isMinorUnits = existingPrice > 1000
+              const ratio = flashSalePrice > 0 ? existingPrice / flashSalePrice : 1
+              const isMinorUnits = ratio > 50 // If ratio is ~100, it's minor units
               
               // Use the same format as existing prices
               const priceToUse = isMinorUnits ? Math.round(flashSalePrice * 100) : flashSalePrice

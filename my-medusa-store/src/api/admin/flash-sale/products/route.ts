@@ -206,6 +206,7 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
     } finally {
       if (dbClient) {
         await dbClient.end()
+        dbClient = null
       }
     }
     
@@ -243,8 +244,7 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
       error: error.message 
     })
   } finally {
-    if (dbClient) {
-      await dbClient.end()
-    }
+    // Connection already closed in inner finally block
+    // No need to close again
   }
 }

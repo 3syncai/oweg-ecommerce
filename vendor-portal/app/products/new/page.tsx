@@ -232,14 +232,11 @@ const VendorProductNewPage = () => {
         isThumbnail: false,
       })) || []
       
-      // If this is the first image, set it as thumbnail
-      const shouldSetThumbnail = formData.uploadedImages.length === 0 && newImages.length > 0
-      
-      setFormData({
-        ...formData,
-        uploadedImages: [...formData.uploadedImages, ...newImages],
-        thumbnailUrl: shouldSetThumbnail ? newImages[0].url : formData.thumbnailUrl,
-      })
+      setFormData(prev => ({
+        ...prev,
+        uploadedImages: [...prev.uploadedImages, ...newImages],
+        thumbnailUrl: prev.uploadedImages.length === 0 && newImages.length > 0 ? newImages[0].url : prev.thumbnailUrl,
+      }))
       
       toast.success("Success", { description: `${newImages.length} image(s) uploaded` })
     } catch (error: any) {
@@ -294,10 +291,10 @@ const VendorProductNewPage = () => {
         originalName: f.originalName,
       })) || []
       
-      setFormData({
-        ...formData,
-        uploadedVideos: [...formData.uploadedVideos, ...newVideos],
-      })
+      setFormData(prev => ({
+        ...prev,
+        uploadedVideos: [...prev.uploadedVideos, ...newVideos],
+      }))
       
       toast.success("Success", { description: `${newVideos.length} video(s) uploaded` })
     } catch (error: any) {

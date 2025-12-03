@@ -7,11 +7,15 @@ export const PUT = async (req: MedusaRequest, res: MedusaResponse) => {
     const { id } = req.params
     const flashSaleService: FlashSaleModuleService = req.scope.resolve(FLASH_SALE_MODULE)
     
-    const { product_id, price_id, expires_at } = req.body
+    const { product_id, variant_id, price_id, flash_sale_price, original_price, original_price_id, expires_at } = req.body
     
     const updatedItem = await flashSaleService.updateFlashSaleItem(id, {
       product_id,
+      variant_id,
       price_id,
+      flash_sale_price,
+      original_price,
+      original_price_id,
       expires_at,
     })
     
