@@ -49,7 +49,6 @@ export default function WishlistPage() {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retry: 1,
-    keepPreviousData: true,
     queryFn: async () => {
       const res = await fetch("/api/medusa/wishlist", { credentials: "include", cache: "no-store" })
       const data = await res.json()
@@ -61,10 +60,10 @@ export default function WishlistPage() {
     },
   })
 
-  const products = wishlistQuery.data ?? []
+  const products: WishlistProduct[] = wishlistQuery.data ?? []
   const loading = Boolean(customer) && hasWishlist && wishlistQuery.isLoading && !wishlistQuery.data
   const refreshing =
-    Boolean(customer) && hasWishlist && wishlistQuery.isFetching && Boolean(wishlistQuery.data?.length)
+    Boolean(customer) && hasWishlist && wishlistQuery.isFetching && products.length > 0
   const errorMessage =
     wishlistQuery.error instanceof Error
       ? wishlistQuery.error.message
