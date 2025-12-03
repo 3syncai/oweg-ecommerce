@@ -161,7 +161,7 @@ const Header: React.FC = () => {
   const [pinInput, setPinInput] = React.useState("");
   const [pinSaving, setPinSaving] = React.useState(false);
   const [pinError, setPinError] = React.useState<string | null>(null);
-  const locationLabel = mobilePlace || mobilePincode || "Bangalore 560034";
+  const locationLabel = mobilePlace || mobilePincode || "Select location";
   const hasSavedLocation = Boolean(mobilePincode || mobilePlace);
   const preferredCategoryOrder = React.useMemo(
     () => preferences?.categories ?? [],
@@ -1234,25 +1234,25 @@ const Header: React.FC = () => {
                 <button
                   type="button"
                   aria-label="Open menu"
-                  className="w-11 h-11 rounded-full border border-gray-200 text-[#7AC943] flex items-center justify-center shadow-sm"
+                  className=" border-grey-200 text-[#7AC943] flex items-center justify-center"
                   onClick={() => setMobileMenuOpen(true)}
                 >
-                  <Menu className="w-5 h-5" />
+                  <Menu className="w-6 h-6" />
                 </button>
                 <Link href="/" className="flex items-center" aria-label="OWEG home">
                   <Image src="/oweg_logo.png" alt="OWEG" width={100} height={28} className="h-7 w-auto" priority />
                 </Link>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-4">
                 <Link
                   href="/notifications"
-                  className="relative w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-[#7AC943]"
+                  className="relative border-gray-200 flex items-center justify-center  text-[#7AC943]"
                   aria-label="Notifications"
                 >
-                  <Bell className="w-5 h-5" />
+                  <Bell className="w-7 h-7" />
                 </Link>
-                <Link href="/cart" className="relative w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-[#7AC943]" aria-label="Cart">
-                  <CartIcon className="w-5 h-5" count={cartCount} />
+                <Link href="/cart" className="relative  border-gray-200 flex items-center justify-center text-[#7AC943]" aria-label="Cart">
+                  <CartIcon className="w-8 h-8" count={cartCount} />
                 </Link>
               </div>
               </div>
@@ -1271,7 +1271,7 @@ const Header: React.FC = () => {
                       className="h-12 rounded-full border-gray-200 bg-white shadow-sm pr-14"
                     />
                     <div className="absolute inset-y-1 right-3 flex items-center">
-                      <div className="w-10 h-10 rounded-full bg-header-accent text-white flex items-center justify-center shadow">
+                      <div className="w-10 h-10 rounded-full bg-header-accent text-white flex items-center justify-center">
                         <Search className="w-5 h-5" />
                       </div>
                     </div>
@@ -1316,7 +1316,7 @@ const Header: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setPinModalOpen(true)}
-                          className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-700"
+                          className="border-gray-200 flex items-center justify-center text-gray-700"
                           aria-label="Edit pincode"
                         >
                           <Pencil className="w-4 h-4" />
@@ -1429,7 +1429,6 @@ const Header: React.FC = () => {
           <div className="absolute left-0 top-0 bottom-0 w-[85%] max-w-sm bg-white shadow-2xl p-5 flex flex-col overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.4em] text-gray-400">Browse</p>
                 <p className="text-lg font-semibold text-header-text">All categories</p>
               </div>
               <button
@@ -1447,8 +1446,10 @@ const Header: React.FC = () => {
                   <LocationIcon className="w-5 h-5" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">Deliver to</p>
-                  <p className="text-sm font-semibold text-gray-900 truncate">{locationLabel}</p>
+                  <p className="text-sm font-semibold text-gray-900 truncate">
+                    {customer ? customerName : "Deliver to"}
+                  </p>
+                  <p className="text-xs text-gray-600 truncate">{locationLabel}</p>
                 </div>
                 <button
                   type="button"
@@ -1463,7 +1464,6 @@ const Header: React.FC = () => {
               </div>
             </div>
             <div className="mt-6">
-              <p className="text-xs uppercase tracking-[0.3em] text-gray-400 mb-3">Categories</p>
               <div className="divide-y divide-gray-100 rounded-xl border border-gray-100 bg-gray-50/60 overflow-hidden">
                 {navCatsLoading ? (
                   <div className="py-3 text-sm text-gray-500">Loading categories...</div>

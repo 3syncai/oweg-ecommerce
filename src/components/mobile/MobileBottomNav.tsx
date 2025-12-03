@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useCallback, useRef, type ReactNode } fro
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight,
   Grid,
@@ -318,6 +318,7 @@ const Overlay = ({
 export default function MobileBottomNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { customer, logout } = useAuth();
   const [storedPincode, setStoredPincode] = useState('');
   const resetPanels = useCallback(() => {
@@ -440,6 +441,15 @@ export default function MobileBottomNav() {
   useEffect(() => {
     resetPanels();
   }, [pathname, resetPanels]);
+
+  // Prefetch key routes/data so bottom nav taps feel instant
+  useEffect(() => {
+    router.prefetch('/wishlist');
+    router.prefetch('/');
+    router.prefetch('/vendor-portal');
+    router.prefetch('/login');
+    router.prefetch('/signup');
+  }, [router]);
 
   const categoriesWithChildren = useMemo(
     () => categories.filter((cat) => Array.isArray(cat.children) && cat.children.length > 0),
@@ -596,12 +606,13 @@ export default function MobileBottomNav() {
     }
   }, [subProducts, brandFilter]);
 
+  const iconSize = 'w-[22px] h-[22px]';
   const navItems = [
     {
       key: 'home',
       label: 'Home',
       href: '/',
-      icon: <Home className="w-5 h-5" />,
+      icon: <Home className={iconSize} />,
       active: pathname === '/',
     },
     {
@@ -632,8 +643,9 @@ export default function MobileBottomNav() {
       label: 'Wishlist',
       href: '/wishlist',
       badge: wishlistCount,
-      icon: <Heart className="w-5 h-5" />,
+      icon: <Heart className={iconSize} />,
       active: pathname?.startsWith('/wishlist'),
+      prefetchKey: 'wishlist',
     },
     {
       key: 'profile',
@@ -663,31 +675,32 @@ export default function MobileBottomNav() {
 
   return (
     <>
-      <div className="fixed inset-x-0 bottom-0 z-400 md:hidden bg-white/98 backdrop-blur border-t border-gray-200 shadow-[0_-10px_30px_-18px_rgba(0,0,0,0.45)] rounded-t-3xl">
-        <div className="px-3 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] pt-2 flex items-center justify-between">
+      <div className="fixed inset-x-0 bottom-0 z-400 md:hidden bg-white backdrop-blur-xl border border-white/70 shadow-[0_-12px_30px_-18px_rgba(0,0,0,0.5)] ring-1 ring-black/5 rounded-t-2xl">
+        <div className="px-3 pb-[calc(env(safe-area-inset-bottom,0px)+8px)] pt-1.5 flex items-center justify-between">
           {navItems.map((item) => {
             const active = item.active;
             const shared =
-              'flex flex-col items-center gap-1 px-3 py-1 rounded-2xl text-[11px] font-semibold transition-colors duration-200 flex-1';
+              'flex flex-col items-center gap-1.5 px-2.5 py-1.5 rounded-2xl text-[10.5px] font-medium tracking-[0.02em] transition-colors duration-200 flex-1';
+            const iconState = item.accent
+              ? 'bg-gradient-to-br from-emerald-500 via-emerald-500 to-lime-400 text-white shadow-[0_10px_28px_-16px_rgba(16,185,129,0.7)]'
+              : active
+                ? 'bg-gradient-to-br from-emerald-500 to-lime-400 text-white shadow-[0_10px_28px_-16px_rgba(16,185,129,0.7)] border border-white/70'
+                : 'bg-white/75 text-gray-700/70 border border-white/80 shadow-[0_8px_20px_-16px_rgba(0,0,0,0.35)]';
             const content = (
               <>
                 <div
-                  className={`relative w-11 h-11 rounded-2xl flex items-center justify-center ${
-                    item.accent
-                      ? 'bg-gradient-to-br from-emerald-500 to-lime-500 text-white shadow-lg'
-                      : active
-                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                        : 'bg-gray-50 text-gray-700 border border-transparent'
-                  } transition-transform duration-150`}
+                  className={`relative w-10 h-10 rounded-2xl flex items-center justify-center transition-transform duration-200 ${iconState}`}
                 >
                   {item.icon}
                   {item.badge ? (
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-4 rounded-full bg-emerald-600 text-white text-[10px] font-bold px-1 flex items-center justify-center">
+                    <span className="absolute -top-1 -right-1 min-w-[20px] h-5 rounded-full bg-emerald-500 text-white text-[10px] font-semibold px-1.5 flex items-center justify-center border border-white shadow-[0_6px_12px_rgba(16,185,129,0.45)]">
                       {item.badge > 99 ? '99+' : item.badge}
                     </span>
                   ) : null}
                 </div>
-                <span className={active || item.accent ? 'text-emerald-700' : 'text-gray-700'}>{item.label}</span>
+                <span className={active || item.accent ? 'text-emerald-700' : 'text-gray-700/80'}>
+                  {item.label}
+                </span>
               </>
             );
             if (item.href) {
@@ -697,6 +710,25 @@ export default function MobileBottomNav() {
                   key={item.key}
                   type="button"
                   className={shared}
+                  onMouseEnter={() => {
+                    if (item.prefetchKey === 'wishlist') {
+                      void queryClient.prefetchQuery({
+                        queryKey: ['wishlist'],
+                        queryFn: async () => {
+                          const res = await fetch('/api/medusa/wishlist', { credentials: 'include', cache: 'no-store' });
+                          if (!res.ok) throw new Error('Unable to load wishlist');
+                          const data = await res.json();
+                          return Array.isArray(data?.products) ? data.products : [];
+                        },
+                        staleTime: 1000 * 60 * 2,
+                      });
+                    }
+                  }}
+                  onFocus={() => {
+                    if (item.prefetchKey === 'wishlist') {
+                      void router.prefetch('/wishlist');
+                    }
+                  }}
                   onClick={(e) => {
                     e.preventDefault();
                     resetPanels();
@@ -726,7 +758,7 @@ export default function MobileBottomNav() {
 
       {/* Category sheet */}
       <Overlay open={categoryOpen} onClose={closeCategory} scrollable={false}>
-        <div className="pt-8 pb-8 space-y-4 relative">
+        <div className="pb-8 space-y-4 relative">
           {!selectedSubcategory && (
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -748,6 +780,21 @@ export default function MobileBottomNav() {
                 </button>
                 <h3 className="text-lg font-semibold text-gray-900 pt-1">Categories</h3>
               </div>
+            </div>
+          )}
+
+          {categoriesLoading && (
+            <div className="grid grid-cols-2 gap-3 pt-2 animate-pulse">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div
+                  key={`cat-skeleton-${idx}`}
+                  className="rounded-2xl border border-gray-100 bg-gray-50 p-3 space-y-3 shadow-sm"
+                >
+                  <div className="h-16 w-full rounded-xl bg-white" />
+                  <div className="h-4 w-3/4 rounded bg-white/80" />
+                  <div className="h-3 w-1/2 rounded bg-white/60" />
+                </div>
+              ))}
             </div>
           )}
 
@@ -1172,7 +1219,7 @@ export default function MobileBottomNav() {
 
       {/* Profile sheet */}
       <Overlay open={profileOpen} onClose={closeProfile}>
-        <div className="p-4 pt-12 pb-36 space-y-4">
+        <div className="p-4 pb-36 space-y-4">
           <div className="flex items-start justify-between">
             <div>
               {/* <p className="text-[11px] uppercase tracking-[0.3em] text-gray-400">Profile</p> */}
@@ -1357,7 +1404,7 @@ export default function MobileBottomNav() {
 
       {/* Join sheet */}
       <Overlay open={joinOpen} onClose={closeJoin}>
-        <div className="p-4 pt-12 space-y-4">
+        <div className="p-4 space-y-4">
           <div className="flex items-start justify-between">
             <div>
               {/* <p className="text-[11px] uppercase tracking-[0.3em] text-emerald-600">Grow with us</p> */}

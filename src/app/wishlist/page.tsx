@@ -48,7 +48,9 @@ export default function WishlistPage() {
     gcTime: 1000 * 60 * 10,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
+    refetchOnMount: false,
     retry: 1,
+    placeholderData: () => queryClient.getQueryData<WishlistProduct[]>(["wishlist"]) || [],
     queryFn: async () => {
       const res = await fetch("/api/medusa/wishlist", { credentials: "include", cache: "no-store" })
       const data = await res.json()
