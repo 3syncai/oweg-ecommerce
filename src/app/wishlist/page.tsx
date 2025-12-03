@@ -133,7 +133,7 @@ export default function WishlistPage() {
     }
   }
 
-  const emptyState = !showSkeleton && (!hasWishlist || !products.length) && !errorMessage && Boolean(customer)
+  const emptyState = !showSkeleton && !products.length && !errorMessage && Boolean(customer)
   const showLoginPrompt = !customer
 
   const renderSkeletons = () => (
