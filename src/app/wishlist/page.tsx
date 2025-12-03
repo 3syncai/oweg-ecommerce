@@ -24,6 +24,11 @@ type WishlistProduct = {
 export default function WishlistPage() {
   const { customer, setCustomer } = useAuth()
   const queryClient = useQueryClient()
+  const wishlistIds = useMemo(() => {
+    const raw = (customer?.metadata as Record<string, unknown> | undefined)?.wishlist
+    return Array.isArray(raw) ? raw.map((id) => String(id)).filter(Boolean) : []
+  }, [customer?.metadata])
+  const hasWishlist = wishlistIds.length > 0
 
   const currency = useMemo(
     () =>
@@ -38,9 +43,12 @@ export default function WishlistPage() {
 
   const wishlistQuery = useQuery<WishlistProduct[]>({
     queryKey: ["wishlist"],
-    enabled: Boolean(customer),
+    enabled: Boolean(customer) && hasWishlist,
     staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 10,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
     queryFn: async () => {
       const res = await fetch("/api/medusa/wishlist", { credentials: "include", cache: "no-store" })
       const data = await res.json()
@@ -52,9 +60,10 @@ export default function WishlistPage() {
     },
   })
 
-  const products = wishlistQuery.data ?? []
-  const loading = Boolean(customer) && wishlistQuery.isLoading && !wishlistQuery.data
-  const refreshing = Boolean(customer) && wishlistQuery.isFetching && Boolean(wishlistQuery.data?.length)
+  const products: WishlistProduct[] = wishlistQuery.data ?? []
+  const loading = Boolean(customer) && hasWishlist && wishlistQuery.isLoading && !wishlistQuery.data
+  const refreshing =
+    Boolean(customer) && hasWishlist && wishlistQuery.isFetching && products.length > 0
   const errorMessage =
     wishlistQuery.error instanceof Error
       ? wishlistQuery.error.message
@@ -120,7 +129,7 @@ export default function WishlistPage() {
     }
   }
 
-  const emptyState = !loading && !products.length && !errorMessage && Boolean(customer)
+  const emptyState = !loading && (!hasWishlist || !products.length) && !errorMessage && Boolean(customer)
   const showLoginPrompt = !customer
 
   const renderSkeletons = () => (
@@ -216,7 +225,14 @@ export default function WishlistPage() {
             return (
               <div key={p.id} className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden flex flex-col hover:shadow-lg transition min-h-[390px]">
                 <Link href={href} className="relative aspect-[4/5] bg-gray-50 overflow-hidden block max-h-64">
-                  <Image src={image} alt={p.title || "Product"} fill className="object-cover" />
+                  <Image
+                    src={image}
+                    alt={p.title || "Product"}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                    priority={products.length < 4}
+                  />
                 </Link>
                 <div className="p-4 flex flex-col gap-2 flex-1">
                   <div className="flex items-start gap-2">
