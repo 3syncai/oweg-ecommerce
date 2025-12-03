@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import axios from 'axios'
+import { applyFlashSalePricesToCart } from '@/lib/flash-sale-cart-mapper'
 
 const CART_COOKIE = "cart_id"
 const GUEST_CART_HEADER = "x-guest-cart-id"
@@ -76,80 +77,12 @@ export async function GET(req: NextRequest) {
       const data = await res.json()
       
       // Map cart prices using flash_sale_item table
-      // Fetch flash sale data to get original prices
       try {
         const flashSaleRes = await backend('/store/flash-sale/products')
         if (flashSaleRes.ok) {
           const flashSaleData = await flashSaleRes.json()
-          
-          if (flashSaleData.active && flashSaleData.products && Array.isArray(flashSaleData.products)) {
-            // Create map: variant_id -> flash_sale_price (discounted price)
-            const priceMap = new Map<string, number>()
-            flashSaleData.products.forEach((product: { variant_id?: string; flash_sale_price?: number }) => {
-              if (product.variant_id && product.flash_sale_price !== undefined) {
-                priceMap.set(product.variant_id, product.flash_sale_price)
-              }
-            })
-            
-            // Map cart items to use flash_sale_price
-            if (data.cart && data.cart.items && Array.isArray(data.cart.items)) {
-              data.cart.items = data.cart.items.map((item: { variant?: { id?: string }; variant_id?: string; unit_price?: number; price_set?: { original_amount?: number; calculated_amount?: number; presentment_amount?: number; [key: string]: unknown }; quantity?: number; total?: number; subtotal?: number }) => {
-                const variantId = item.variant?.id || item.variant_id
-                
-                if (!variantId || !priceMap.has(variantId)) {
-                  return item
-                }
-                
-                // Product is in flash sale - use flash_sale_price (discounted price) for cart display
-                // flash_sale_price is already in rupees (major units), not paise
-                const flashSalePrice = priceMap.get(variantId)!
-                
-                // Determine unit format by comparing magnitude
-                // If existing price / flash_sale_price ≈ 100, existing is in minor units
-                const existingPrice = item.unit_price || item.price_set?.original_amount || 0
-                const ratio = flashSalePrice > 0 ? existingPrice / flashSalePrice : 1
-                const isMinorUnits = ratio > 50 // If ratio is ~100, it's minor units
-                
-                // Use the same format as existing prices
-                const priceToUse = isMinorUnits ? Math.round(flashSalePrice * 100) : flashSalePrice
-                
-                // Override unit_price
-                if (item.unit_price !== undefined) {
-                  item.unit_price = priceToUse
-                }
-                
-                // Override price_set if it exists
-                if (item.price_set) {
-                  item.price_set = {
-                    ...item.price_set,
-                    original_amount: priceToUse,
-                    calculated_amount: priceToUse,
-                    presentment_amount: priceToUse,
-                  }
-                }
-                
-                // Recalculate line total
-                const quantity = item.quantity || 1
-                const lineTotal = priceToUse * quantity
-                
-                if (item.total !== undefined) {
-                  item.total = lineTotal
-                }
-                if (item.subtotal !== undefined) {
-                  item.subtotal = lineTotal
-                }
-                
-                return item
-              })
-              
-              // Recalculate cart totals
-              const newSubtotal = data.cart.items.reduce((sum: number, item: { total?: number; subtotal?: number }) => {
-                return sum + (item.total || item.subtotal || 0)
-              }, 0)
-              
-              data.cart.subtotal = newSubtotal
-              data.cart.total = newSubtotal + (data.cart.tax_total || 0) + (data.cart.shipping_total || 0) - (data.cart.discount_total || 0)
-            }
+          if (data.cart) {
+            data.cart = applyFlashSalePricesToCart(data.cart, flashSaleData)
           }
         }
       } catch (error) {

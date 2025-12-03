@@ -132,12 +132,14 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
         console.log(`[Flash Sale Products] No prices found. Checking data structure...`)
         
         // Check if variants exist
+        const debugProductIds = productIds.slice(0, 5)
+        const debugPlaceholders = debugProductIds.map((_, i) => `$${i + 1}`).join(",")
         const variantCheck = await dbClient.query(`
           SELECT pv.id, pv.product_id
           FROM product_variant pv
-          WHERE pv.product_id IN (${placeholders})
+          WHERE pv.product_id IN (${debugPlaceholders})
           LIMIT 5
-        `, productIds.slice(0, 5))
+        `, debugProductIds)
         
         console.log(`[Flash Sale Products] Sample variants (${variantCheck.rows.length}):`, variantCheck.rows)
         
