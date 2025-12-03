@@ -43,7 +43,7 @@ export default function WishlistPage() {
 
   const wishlistQuery = useQuery<WishlistProduct[]>({
     queryKey: ["wishlist"],
-    enabled: Boolean(customer) && hasWishlist,
+    enabled: Boolean(customer),
     staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 10,
     refetchOnWindowFocus: false,
@@ -63,9 +63,11 @@ export default function WishlistPage() {
   })
 
   const products: WishlistProduct[] = wishlistQuery.data ?? []
-  const loading = Boolean(customer) && hasWishlist && wishlistQuery.isLoading && !wishlistQuery.data
+  const showSkeleton =
+    Boolean(customer) &&
+    (wishlistQuery.isLoading || (wishlistQuery.isFetching && (!wishlistQuery.data || wishlistQuery.data.length === 0)))
   const refreshing =
-    Boolean(customer) && hasWishlist && wishlistQuery.isFetching && products.length > 0
+    Boolean(customer) && wishlistQuery.isFetching && products.length > 0
   const errorMessage =
     wishlistQuery.error instanceof Error
       ? wishlistQuery.error.message
@@ -131,7 +133,7 @@ export default function WishlistPage() {
     }
   }
 
-  const emptyState = !loading && (!hasWishlist || !products.length) && !errorMessage && Boolean(customer)
+  const emptyState = !showSkeleton && (!hasWishlist || !products.length) && !errorMessage && Boolean(customer)
   const showLoginPrompt = !customer
 
   const renderSkeletons = () => (
@@ -176,7 +178,7 @@ export default function WishlistPage() {
         )}
       </div>
 
-      {loading ? (
+      {showSkeleton ? (
         renderSkeletons()
       ) : errorMessage ? (
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700 text-sm">
