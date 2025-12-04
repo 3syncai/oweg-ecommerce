@@ -257,7 +257,7 @@ const ProductSavingsExplorer = ({
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-green-200 bg-white px-3 py-1.5 text-sm text-slate-600">
+        <div className="flex items-center gap-2  border-green-200 bg-white px-3 py-1.5 text-sm text-slate-600">
           <span className="text-xs uppercase tracking-wide text-slate-400">+{RUPEE_SYMBOL}</span>
           <input
             type="number"
@@ -335,18 +335,18 @@ const ProductSavingsExplorer = ({
             return (
               <div
                 key={item.id}
-                className="flex flex-col sm:flex-row gap-3 rounded-2xl border border-white/70 bg-white/90 p-3"
+                className="flex flex-col sm:flex-row gap-3 p-3"
               >
                 <Link
                   href={href}
-                  className="relative h-32 w-full sm:h-20 sm:w-20 shrink-0 overflow-hidden rounded-xl bg-slate-50"
+                  className="relative h-52 w-52 sm:h-20 sm:w-20 shrink-0 overflow-hidden"
                 >
                   <Image
                     src={item.image || FALLBACK_IMAGE}
                     alt={item.name}
                     fill
-                    sizes="160px"
-                    className="object-contain p-3"
+                    sizes="260px"
+                    className="object-contain"
                   />
                 </Link>
                 <div className="flex flex-1 flex-col gap-2">

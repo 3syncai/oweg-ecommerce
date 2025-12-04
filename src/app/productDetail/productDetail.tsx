@@ -1334,12 +1334,12 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
             {/* ====== REST OF THE PAGE ====== */}
             <section className="mt-12">
-              <div className="relative overflow-hidden rounded-[36px] border border-emerald-100 bg-gradient-to-b from-emerald-50 via-white to-green-50 shadow-xl transition duration-700 hover:-translate-y-0.5 hover:shadow-2xl">
+              <div className="relative overflow-hidden border border-emerald-100 bg-gradient-to-b from-emerald-50 via-white to-green-50 shadow-xl transition duration-700 hover:-translate-y-0.5 hover:shadow-2xl">
                 <div className="pointer-events-none absolute -left-10 top-0 h-48 w-48 rounded-full bg-emerald-300/20 blur-3xl animate-pulse" aria-hidden="true" />
                 <div className="pointer-events-none absolute -bottom-10 right-0 h-40 w-40 rounded-full bg-lime-300/20 blur-3xl animate-[pulse_5s_linear_infinite]" aria-hidden="true" />
                 <div className="relative z-10 space-y-8 p-6 sm:p-8 lg:p-12">
                   <div className="space-y-6 text-center">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/40 px-5 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700 shadow-sm backdrop-blur">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/40 px-5 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700 backdrop-blur">
                       Smart savings
                     </div>
                     <div className="space-y-4 max-w-4xl mx-auto">
@@ -1348,7 +1348,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                       </h2>
                     </div>
                   </div>
-                  <div className="relative rounded-[28px] border border-white/60 bg-white/90 p-4 sm:p-6 lg:p-8 shadow-lg">
+                  <div className="relative   p-4 sm:p-6 lg:p-8">
                     <ProductSavingsExplorer
                       savedAmount={savedAmount}
                       products={related}
