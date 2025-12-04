@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Heart, HeartOff, Loader2, ShoppingCart } from "lucide-react"
 import { useAuth } from "@/contexts/AuthProvider"
 import { toast } from "sonner"
@@ -22,10 +23,12 @@ type WishlistProduct = {
 
 export default function WishlistPage() {
   const { customer, setCustomer } = useAuth()
-  const [loading, setLoading] = useState(true)
-  const [products, setProducts] = useState<WishlistProduct[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const hasLoadedRef = useRef(false)
+  const queryClient = useQueryClient()
+  const wishlistIds = useMemo(() => {
+    const raw = (customer?.metadata as Record<string, unknown> | undefined)?.wishlist
+    return Array.isArray(raw) ? raw.map((id) => String(id)).filter(Boolean) : []
+  }, [customer?.metadata])
+  const hasWishlist = wishlistIds.length > 0
 
   const currency = useMemo(
     () =>
@@ -38,38 +41,39 @@ export default function WishlistPage() {
     []
   )
 
-  useEffect(() => {
-    // Prevent multiple simultaneous fetches
-    if (hasLoadedRef.current) return
-    hasLoadedRef.current = true
-
-    const fetchWishlist = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await fetch("/api/medusa/wishlist", { credentials: "include", cache: "no-store" })
-        const data = await res.json()
-        if (!res.ok) {
-          setError(data?.error || "Unable to load your wishlist.")
-          hasLoadedRef.current = false
-          return
-        }
-        const items = Array.isArray(data?.products) ? (data.products as WishlistProduct[]) : []
-        setProducts(items)
-        // Don't update customer metadata here to prevent infinite loops
-        // Customer metadata is updated when items are added/removed via handleRemove
-      } catch {
-        setError("Unable to load your wishlist.")
-        hasLoadedRef.current = false
-      } finally {
-        setLoading(false)
+  const wishlistQuery = useQuery<WishlistProduct[]>({
+    queryKey: ["wishlist"],
+    enabled: Boolean(customer),
+    staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 10,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
+    retry: 1,
+    placeholderData: () => queryClient.getQueryData<WishlistProduct[]>(["wishlist"]) || [],
+    queryFn: async () => {
+      const res = await fetch("/api/medusa/wishlist", { credentials: "include", cache: "no-store" })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || "Unable to load your wishlist.")
       }
-    }
+      const items = Array.isArray(data?.products) ? (data.products as WishlistProduct[]) : []
+      return items
+    },
+  })
 
-    void fetchWishlist()
-    // Only run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const products: WishlistProduct[] = wishlistQuery.data ?? []
+  const showSkeleton =
+    Boolean(customer) &&
+    (wishlistQuery.isLoading || (wishlistQuery.isFetching && (!wishlistQuery.data || wishlistQuery.data.length === 0)))
+  const refreshing =
+    Boolean(customer) && wishlistQuery.isFetching && products.length > 0
+  const errorMessage =
+    wishlistQuery.error instanceof Error
+      ? wishlistQuery.error.message
+      : wishlistQuery.error
+        ? "Unable to load your wishlist."
+        : null
 
   const handleRemove = async (productId: string) => {
     try {
@@ -84,7 +88,9 @@ export default function WishlistPage() {
         const message = (data && (data.error || data.message)) || "Unable to remove item."
         throw new Error(message)
       }
-      setProducts((prev) => prev.filter((p) => p.id !== productId))
+      queryClient.setQueryData<WishlistProduct[]>(["wishlist"], (prev) =>
+        (prev || []).filter((p) => p.id !== productId)
+      )
       if (data?.wishlist && Array.isArray(data.wishlist) && customer) {
         setCustomer({
           ...customer,
@@ -127,8 +133,30 @@ export default function WishlistPage() {
     }
   }
 
-  const emptyState = !loading && !products.length
-  const showLoginPrompt = !loading && !customer
+  const emptyState = !showSkeleton && !products.length && !errorMessage && Boolean(customer)
+  const showLoginPrompt = !customer
+
+  const renderSkeletons = () => (
+    <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-5">
+      {Array.from({ length: 6 }).map((_, idx) => (
+        <div
+          key={`wishlist-skeleton-${idx}`}
+          className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden flex flex-col animate-pulse min-h-[340px]"
+        >
+          <div className="relative aspect-[4/5] bg-gray-100" />
+          <div className="p-4 space-y-3 flex-1 flex flex-col">
+            <div className="h-4 w-24 rounded bg-gray-100" />
+            <div className="h-4 w-full rounded bg-gray-100" />
+            <div className="h-3 w-1/2 rounded bg-gray-100" />
+            <div className="mt-auto flex gap-2">
+              <div className="h-10 rounded-full bg-gray-100 flex-1" />
+              <div className="h-10 w-10 rounded-full bg-gray-100" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 
   return (
     <div className="container max-w-6xl mx-auto px-4 py-10">
@@ -139,24 +167,27 @@ export default function WishlistPage() {
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Wishlist</h1>
           <p className="text-sm text-slate-600">
-            Save products to view later and add to cart when you?re ready.
+            Save products to view later and add to cart when you&apos;re ready.
           </p>
         </div>
+        {refreshing && (
+          <div className="ml-auto flex items-center gap-2 text-xs text-slate-500">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Updating...
+          </div>
+        )}
       </div>
 
-      {loading ? (
-        <div className="flex items-center gap-3 text-slate-600">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span>Loading your wishlist...</span>
-        </div>
-      ) : error ? (
+      {showSkeleton ? (
+        renderSkeletons()
+      ) : errorMessage ? (
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700 text-sm">
-          {error}
+          {errorMessage}
         </div>
       ) : showLoginPrompt ? (
         <div className="rounded-xl border border-dashed border-slate-200 bg-white px-6 py-8 text-center">
           <p className="text-lg font-semibold text-slate-800 mb-2">Sign in to view your wishlist</p>
-          <p className="text-sm text-slate-500 mb-4">Login to see items you?ve saved for later.</p>
+          <p className="text-sm text-slate-500 mb-4">Login to see items you&apos;ve saved for later.</p>
           <div className="flex items-center justify-center gap-3">
             <Link href="/login" className="px-4 py-2 rounded-full bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition">
               Login
@@ -198,7 +229,14 @@ export default function WishlistPage() {
             return (
               <div key={p.id} className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden flex flex-col hover:shadow-lg transition min-h-[390px]">
                 <Link href={href} className="relative aspect-[4/5] bg-gray-50 overflow-hidden block max-h-64">
-                  <Image src={image} alt={p.title || "Product"} fill className="object-cover" />
+                  <Image
+                    src={image}
+                    alt={p.title || "Product"}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                    priority={products.length < 4}
+                  />
                 </Link>
                 <div className="p-4 flex flex-col gap-2 flex-1">
                   <div className="flex items-start gap-2">

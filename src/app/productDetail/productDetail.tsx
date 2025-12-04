@@ -13,10 +13,9 @@ import Breadcrumbs from './components/Breadcrumbs'
 import CompareTable from './components/CompareTable'
 import DeliveryInfo from './components/DeliveryInfo'
 import DescriptionTabs from './components/DescriptionTabs'
+import dynamic from 'next/dynamic'
 import ProductGallery from './components/ProductGallery'
 import ProductSummary from './components/ProductSummary'
-import ProductSavingsExplorer from './components/ProductSavingsExplorer'
-import { useFlashSale } from '@/hooks/useFlashSale'
 import type {
   BreadcrumbItem,
   CompareFilters,
@@ -46,6 +45,13 @@ import {
 } from '@/lib/notifications'
 import { useAuth } from '@/contexts/AuthProvider'
 import { useCartSummary } from '@/contexts/CartProvider'
+
+const ProductSavingsExplorer = dynamic(() => import('./components/ProductSavingsExplorer'), {
+  ssr: false,
+  loading: () => (
+    <div className="rounded-2xl border border-emerald-100 bg-white p-6 shadow-sm animate-pulse h-48" />
+  ),
+})
 
 type CategoryNode = Pick<MedusaCategory, 'id' | 'title' | 'name' | 'handle'> & {
   category_children?: CategoryNode[]
@@ -173,7 +179,6 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     staleTime: 1000 * 60 * 3,
   })
   const product = productResponse?.product ?? null
-  const { flashSaleInfo } = useFlashSale(product?.id)
   const isWishlisted = useMemo(() => {
     const list = (customer?.metadata as Record<string, unknown> | undefined)?.wishlist
     if (!Array.isArray(list)) return false
@@ -419,98 +424,20 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
   const savedAmount = useMemo(() => {
     if (!product) return 0
-    
-    // Use flash sale prices if available
-    const price = flashSaleInfo?.active && flashSaleInfo.flash_sale_price !== undefined
-      ? flashSaleInfo.flash_sale_price
-      : (typeof product.price === 'number' ? product.price : 0)
-    
-    const mrp = flashSaleInfo?.active && flashSaleInfo.original_price !== undefined
-      ? flashSaleInfo.original_price
-      : (typeof product.mrp === 'number' ? product.mrp : price)
-    
+    const mrp = typeof product.mrp === 'number' ? product.mrp : 0
+    const price = typeof product.price === 'number' ? product.price : 0
     const delta = mrp - price
     return Number.isFinite(delta) && delta > 0 ? delta : 0
-  }, [product, flashSaleInfo])
-
-  // Combine images and videos into a single gallery
-  // Videos are stored in the images array (same as images) and also in metadata.videos
-  const galleryImages = useMemo(() => {
-    const allMedia = product?.images || []
-    
-    // Get video URLs from metadata to identify which items in images array are videos
-    let videoUrlsFromMetadata: string[] = []
-    const metadata = product?.metadata as MetaRecord
-    if (metadata) {
-      type VideoItem = string | { url?: string } | unknown
-      const extractVideoUrl = (v: VideoItem): string => {
-        if (typeof v === 'object' && v !== null && 'url' in v && typeof v.url === 'string') {
-          return v.url
-        }
-        if (typeof v === 'string') {
-          return v
-        }
-        return ''
-      }
-      // If metadata.videos is a string (JSON), parse it
-      if (typeof metadata.videos === 'string') {
-        try {
-          const parsed = JSON.parse(metadata.videos) as unknown
-          if (Array.isArray(parsed)) {
-            videoUrlsFromMetadata = (parsed as VideoItem[])
-              .map(extractVideoUrl)
-              .filter((url): url is string => Boolean(url))
-          }
-        } catch (e) {
-          console.warn('Failed to parse videos from metadata:', e)
-        }
-      } else if (Array.isArray(metadata.videos)) {
-        videoUrlsFromMetadata = (metadata.videos as VideoItem[])
-          .map(extractVideoUrl)
-          .filter((url): url is string => Boolean(url))
-      }
-    }
-    
-    // Create a Set for quick lookup
-    const videoUrlSet = new Set(videoUrlsFromMetadata)
-    
-    // Also check for video file extensions as fallback
-    const isVideoUrl = (url: string): boolean => {
-      if (videoUrlSet.has(url)) return true
-      // Check file extension
-      const videoExtensions = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.ogg', '.wmv', '.flv']
-      return videoExtensions.some(ext => url.toLowerCase().endsWith(ext))
-    }
-    
-    // Debug logging (remove in production)
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Product images array:', allMedia)
-      console.log('Video URLs from metadata:', videoUrlsFromMetadata)
-    }
-    
-    // Map all media items (images + videos) and identify type
-    const mediaItems = allMedia.map((url: string) => {
-      const isVideo = isVideoUrl(url)
-      return {
-        url: url,
-        type: isVideo ? ('video' as const) : ('image' as const)
-      }
-    })
-    
-    // Separate images and videos for proper ordering (images first, then videos)
-    const imageItems = mediaItems.filter(item => item.type === 'image')
-    const videoItems = mediaItems.filter(item => item.type === 'video')
-    
-    // Combine images first, then videos
-    const combined = [...imageItems, ...videoItems]
-    
-    if (combined.length > 0) {
-      return combined
-    }
-    return [{ url: FALLBACK_IMAGE, type: 'image' as const }]
   }, [product])
 
-  const galleryKey = useMemo(() => galleryImages.map(m => m.url).join('|'), [galleryImages])
+  const galleryImages = useMemo(() => {
+    if (product?.images?.length) {
+      return product.images
+    }
+    return [FALLBACK_IMAGE]
+  }, [product])
+
+  const galleryKey = useMemo(() => galleryImages.join('|'), [galleryImages])
 
   useEffect(() => {
     setSelectedImage(0)
@@ -1315,7 +1242,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const descriptionHasHtml = Boolean(product?.description && /<\/?[a-z][\s\S]*>/i.test(product.description))
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#f3f8f3] font-sans overflow-x-hidden">
+    <div className="flex min-h-screen flex-col bg-[#f3f8f3] font-sans overflow-x-hidden touch-pan-y">
       <style>{`
         :root {
           --detail-accent: #7bc24f;
@@ -1323,7 +1250,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           --detail-border: #dfe9df;
         }
       `}</style>
-      <main className="w-full max-w-7xl mx-auto px-4 py-8 lg:py-12 flex-1">
+      <main className="w-full max-w-7xl mx-auto px-4 py-8 lg:py-12 flex-1 scroll-smooth">
         <Breadcrumbs items={breadcrumbItems} pillClassName={breadcrumbPillClass} />
 
         {productLoading ? (
@@ -1349,11 +1276,11 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
         ) : product ? (
           <>
             {/* ====== MAIN TWO-COLUMN: LEFT = STICKY GALLERY, RIGHT = SCROLLABLE SUMMARY ====== */}
-            <section className="grid lg:grid-cols-2 gap-6 lg:gap-8 mb-10 items-start">
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 mb-10 items-start max-w-full overflow-hidden">
               {/* LEFT: Sticky Image/Gallery */}
-              <div className="relative lg:sticky lg:top-24 self-start">
+              <div className="relative lg:sticky lg:top-10 self-start w-full max-w-full overflow-hidden">
                 <ProductGallery
-                  media={galleryImages}
+                  images={galleryImages}
                   selectedIndex={selectedImage}
                   onSelect={setSelectedImage}
                   fallback={FALLBACK_IMAGE}
@@ -1375,7 +1302,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
               {/* RIGHT: Scrollable Summary */}
               <div
                 ref={summaryScrollRef}
-                className="space-y-5 lg:pl-4 lg:pr-2 lg:max-h-[calc(100vh-160px)] lg:overflow-y-auto lg:pr-3 lg:-mr-3 lg:scrollbar-thin lg:scrollbar-thumb-transparent lg:scrollbar-track-transparent"
+                className="w-full min-w-0 space-y-5 lg:pl-4 lg:pr-2 lg:max-h-[calc(100vh-160px)] lg:overflow-y-auto lg:pr-3 lg:-mr-3 lg:scrollbar-thin lg:scrollbar-thumb-transparent lg:scrollbar-track-transparent"
                 style={{ scrollbarWidth: 'none' }}
               >
                 <ProductSummary
@@ -1394,7 +1321,6 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   isWishlisted={isWishlisted}
                   onOpenCompare={() => setCompareModalOpen(true)}
                   formatPrice={(value) => inr.format(value)}
-                  flashSaleInfo={flashSaleInfo}
                 />
                 <DeliveryInfo
                   pinCode={pinCode}
@@ -1408,12 +1334,12 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
             {/* ====== REST OF THE PAGE ====== */}
             <section className="mt-12">
-              <div className="relative overflow-hidden rounded-[36px] border border-emerald-100 bg-gradient-to-b from-emerald-50 via-white to-green-50 shadow-xl transition duration-700 hover:-translate-y-0.5 hover:shadow-2xl">
+              <div className="relative overflow-hidden border border-emerald-100 bg-gradient-to-b from-emerald-50 via-white to-green-50 shadow-xl transition duration-700 hover:-translate-y-0.5 hover:shadow-2xl">
                 <div className="pointer-events-none absolute -left-10 top-0 h-48 w-48 rounded-full bg-emerald-300/20 blur-3xl animate-pulse" aria-hidden="true" />
                 <div className="pointer-events-none absolute -bottom-10 right-0 h-40 w-40 rounded-full bg-lime-300/20 blur-3xl animate-[pulse_5s_linear_infinite]" aria-hidden="true" />
                 <div className="relative z-10 space-y-8 p-6 sm:p-8 lg:p-12">
                   <div className="space-y-6 text-center">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/40 px-5 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700 shadow-sm backdrop-blur">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/40 px-5 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700 backdrop-blur">
                       Smart savings
                     </div>
                     <div className="space-y-4 max-w-4xl mx-auto">
@@ -1422,7 +1348,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                       </h2>
                     </div>
                   </div>
-                  <div className="relative rounded-[28px] border border-white/60 bg-white/90 p-4 sm:p-6 lg:p-8 shadow-lg">
+                  <div className="relative   p-4 sm:p-6 lg:p-8">
                     <ProductSavingsExplorer
                       savedAmount={savedAmount}
                       products={related}

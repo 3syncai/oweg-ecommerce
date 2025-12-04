@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthProvider';
 import { usePreferences } from '@/hooks/usePreferences';
@@ -14,6 +14,7 @@ const PAGE_SIZE = 20;
 
 export default function ForYouPage() {
   const { customer } = useAuth();
+  const queryClient = useQueryClient();
   const { preferences, hasPreferences, shouldPrompt, loading: prefLoading, saving: prefSaving, savePreferences } = usePreferences();
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
@@ -24,13 +25,10 @@ export default function ForYouPage() {
     }
   }, [shouldPrompt]);
 
-  const productsQuery = useQuery({
-    queryKey: ['personalized-products', page, preferences],
-    enabled: Boolean(customer) && hasPreferences,
-    placeholderData: (prev) => prev,
-    queryFn: async () => {
+  const fetchPersonalizedPage = useCallback(
+    async (pageToFetch: number) => {
       const params = new URLSearchParams({
-        page: String(page),
+        page: String(pageToFetch),
         pageSize: String(PAGE_SIZE),
       });
       const res = await fetch(`/api/personalized/products?${params.toString()}`, { cache: 'no-store' });
@@ -42,6 +40,16 @@ export default function ForYouPage() {
         total: Number(data.total) || 0,
       };
     },
+    []
+  );
+
+  const productsQuery = useQuery<{ products: ProductCardProps[]; total: number }>({
+    queryKey: ['personalized-products', page, preferences],
+    enabled: Boolean(customer) && hasPreferences,
+    placeholderData: (prev) => prev,
+    staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 10,
+    queryFn: () => fetchPersonalizedPage(page),
   });
 
   const totalPages = useMemo(
@@ -51,6 +59,27 @@ export default function ForYouPage() {
 
   const canPageBack = page > 1;
   const canPageForward = page < totalPages;
+  const initialLoading = productsQuery.isLoading && !productsQuery.data;
+  const queryError =
+    productsQuery.error instanceof Error
+      ? productsQuery.error.message
+      : productsQuery.error
+        ? 'Unable to load personalized products.'
+        : null;
+  const hasProducts = (productsQuery.data?.products?.length || 0) > 0;
+  const backgroundRefreshing = productsQuery.isFetching && hasProducts;
+
+  useEffect(() => {
+    if (!customer || !hasPreferences || !productsQuery.data?.products?.length) return;
+    const nextPage = page + 1;
+    if (nextPage > totalPages) return;
+    void queryClient.prefetchQuery({
+      queryKey: ['personalized-products', nextPage, preferences],
+      queryFn: () => fetchPersonalizedPage(nextPage),
+      staleTime: 1000 * 60 * 2,
+      gcTime: 1000 * 60 * 10,
+    });
+  }, [customer, fetchPersonalizedPage, hasPreferences, page, preferences, productsQuery.data?.products?.length, queryClient, totalPages]);
 
   if (!customer) {
     return (
@@ -116,9 +145,16 @@ export default function ForYouPage() {
             type="button"
             onClick={() => productsQuery.refetch()}
             className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold shadow hover:bg-emerald-700"
-            disabled={productsQuery.isLoading}
+            disabled={productsQuery.isFetching}
           >
-            Refresh
+            {productsQuery.isFetching ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Refreshing
+              </span>
+            ) : (
+              'Refresh'
+            )}
           </button>
         </div>
       </div>
@@ -144,17 +180,20 @@ export default function ForYouPage() {
 
       {hasPreferences ? (
         <div className="space-y-4">
-          {productsQuery.isLoading ? (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading your personalized feed...
+          {queryError && !productsQuery.data ? (
+            <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {queryError}
             </div>
-          ) : productsQuery.data?.products?.length ? (
+          ) : hasProducts || initialLoading ? (
             <>
-              <ProductGrid products={productsQuery.data.products} />
+              <ProductGrid
+                products={hasProducts ? productsQuery.data!.products : []}
+                isLoading={initialLoading}
+              />
               <div className="flex items-center justify-between text-sm text-gray-700">
-                <span>
+                <span className="flex items-center gap-2">
                   Page {page} of {totalPages}
+                  {backgroundRefreshing && <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />}
                 </span>
                 <div className="flex gap-2">
                   <button

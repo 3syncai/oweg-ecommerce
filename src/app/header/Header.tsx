@@ -161,6 +161,8 @@ const Header: React.FC = () => {
   const [pinInput, setPinInput] = React.useState("");
   const [pinSaving, setPinSaving] = React.useState(false);
   const [pinError, setPinError] = React.useState<string | null>(null);
+  const locationLabel = mobilePlace || mobilePincode || "Select location";
+  const hasSavedLocation = Boolean(mobilePincode || mobilePlace);
   const preferredCategoryOrder = React.useMemo(
     () => preferences?.categories ?? [],
     [preferences?.categories]
@@ -367,6 +369,7 @@ const Header: React.FC = () => {
     }
     return "Account";
   }, [customer]);
+  const deliverTitle = customer ? `Deliver to ${customerName}` : "Deliver to";
 
   // mapping from category id to trigger element
   const triggersRef = React.useRef<Record<string, HTMLElement | null>>({});
@@ -756,9 +759,8 @@ const Header: React.FC = () => {
 
     return createPortal(
       <div
-        style={{ position: "fixed", left: 0, top: 0, right: 0, bottom: 0, pointerEvents: "auto", zIndex: 1250 }}
-        onMouseEnter={() => clearAllHideTimer()}
-        onMouseLeave={() => startAllHideTimer()}
+        style={{ position: "fixed", left: 0, top: 0, right: 0, bottom: 0, pointerEvents: "none", zIndex: 1250 }}
+        aria-hidden={!allOpen}
       >
         <div
           onMouseEnter={() => clearAllHideTimer()}
@@ -769,6 +771,7 @@ const Header: React.FC = () => {
             overflowY: "auto",
             overscrollBehavior: "contain",
             WebkitOverflowScrolling: "touch",
+            pointerEvents: "auto",
           }}
           className="rounded-xl bg-white shadow-2xl ring-1 ring-black/5 p-3 border border-gray-100 transition-transform duration-160"
           role="menu"
@@ -911,7 +914,7 @@ const Header: React.FC = () => {
     <header className="sticky top-0 z-[120] w-full header-root bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       <div className="bg-header-bg">
         {/* Top Bar */}
-        {(!isMobile || showTopBarMobile) && (
+        {!isMobile && (
           <div className="bg-header-top-bg text-header-top-text py-2 text-center text-sm">
             <p>
               Get 10% Extra off! - Use Code <span className="font-semibold">OWEG10</span>{" "}
@@ -942,8 +945,12 @@ const Header: React.FC = () => {
                 >
                   <LocationIcon className="w-5 h-5 text-header-text flex-shrink-0" />
                   <div className="text-left">
-                    <p className="text-header-text text-xs leading-tight">Deliver to</p>
-                    <p className="text-header-text font-medium text-sm leading-tight">Bangalore 560034</p>
+                    <p className="text-header-text text-xs leading-tight whitespace-nowrap">
+                      {deliverTitle}
+                    </p>
+                    <p className="text-header-text font-medium text-sm leading-tight whitespace-nowrap">
+                      {locationLabel}
+                    </p>
                   </div>
                 </button>
               )}
@@ -1227,25 +1234,25 @@ const Header: React.FC = () => {
                 <button
                   type="button"
                   aria-label="Open menu"
-                  className="w-11 h-11 rounded-full border border-gray-200 text-[#7AC943] flex items-center justify-center shadow-sm"
+                  className=" border-grey-200 text-[#7AC943] flex items-center justify-center"
                   onClick={() => setMobileMenuOpen(true)}
                 >
-                  <Menu className="w-5 h-5" />
+                  <Menu className="w-6 h-6" />
                 </button>
                 <Link href="/" className="flex items-center" aria-label="OWEG home">
                   <Image src="/oweg_logo.png" alt="OWEG" width={100} height={28} className="h-7 w-auto" priority />
                 </Link>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-4">
                 <Link
                   href="/notifications"
-                  className="relative w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-[#7AC943]"
+                  className="relative border-gray-200 flex items-center justify-center  text-[#7AC943]"
                   aria-label="Notifications"
                 >
-                  <Bell className="w-5 h-5" />
+                  <Bell className="w-7 h-7" />
                 </Link>
-                <Link href="/cart" className="relative w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center shadow-sm text-[#7AC943]" aria-label="Cart">
-                  <CartIcon className="w-5 h-5" count={cartCount} />
+                <Link href="/cart" className="relative  border-gray-200 flex items-center justify-center text-[#7AC943]" aria-label="Cart">
+                  <CartIcon className="w-8 h-8" count={cartCount} />
                 </Link>
               </div>
               </div>
@@ -1264,7 +1271,7 @@ const Header: React.FC = () => {
                       className="h-12 rounded-full border-gray-200 bg-white shadow-sm pr-14"
                     />
                     <div className="absolute inset-y-1 right-3 flex items-center">
-                      <div className="w-10 h-10 rounded-full bg-header-accent text-white flex items-center justify-center shadow">
+                      <div className="w-10 h-10 rounded-full bg-header-accent text-white flex items-center justify-center">
                         <Search className="w-5 h-5" />
                       </div>
                     </div>
@@ -1309,7 +1316,7 @@ const Header: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setPinModalOpen(true)}
-                          className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-700"
+                          className="border-gray-200 flex items-center justify-center text-gray-700"
                           aria-label="Edit pincode"
                         >
                           <Pencil className="w-4 h-4" />
@@ -1374,7 +1381,11 @@ const Header: React.FC = () => {
                     key={cat.id}
                     data-nav-category
                     className="relative flex-shrink-0 group"
-                    onMouseEnter={() => { clearHideTimer(); setActiveCategoryId(cat.id); }}
+                    onMouseEnter={() => {
+                      clearHideTimer();
+                      setAllOpen(false);
+                      setActiveCategoryId(cat.id);
+                    }}
                     onMouseLeave={() => startHideTimer()}
                   >
                     <Link
@@ -1418,7 +1429,6 @@ const Header: React.FC = () => {
           <div className="absolute left-0 top-0 bottom-0 w-[85%] max-w-sm bg-white shadow-2xl p-5 flex flex-col overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.4em] text-gray-400">Browse</p>
                 <p className="text-lg font-semibold text-header-text">All categories</p>
               </div>
               <button
@@ -1430,26 +1440,31 @@ const Header: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="space-y-3">
-              <Link href="/login" className="block px-3 py-2 rounded-lg border border-gray-200 text-sm text-header-text" onClick={() => setMobileMenuOpen(false)}>
-                Login / Signup
-              </Link>
-              {customer ? (
-                <Link
-                  href="/for-you"
-                  className="block px-3 py-2 rounded-lg border border-gray-200 text-sm text-header-text"
-                  onClick={() => setMobileMenuOpen(false)}
+            <div className="space-y-4">
+              <div className="rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-3 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center text-[#7AC943] shadow-sm">
+                  <LocationIcon className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">
+                    {customer ? customerName : "Deliver to"}
+                  </p>
+                  <p className="text-xs text-gray-600 truncate">{locationLabel}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPinModalOpen(true);
+                    setMobileMenuOpen(false);
+                  }}
+                  className="text-sm font-semibold text-[#7AC943]"
                 >
-                  For You
-                </Link>
-              ) : null}
-              <button type="button" className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-header-text text-left">
-                Help Center
-              </button>
+                  {hasSavedLocation ? "Change" : "Add"}
+                </button>
+              </div>
             </div>
             <div className="mt-6">
-              <p className="text-xs uppercase tracking-[0.3em] text-gray-400 mb-3">Categories</p>
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-gray-100 rounded-xl border border-gray-100 bg-gray-50/60 overflow-hidden">
                 {navCatsLoading ? (
                   <div className="py-3 text-sm text-gray-500">Loading categories...</div>
                 ) : mobileCategories.length ? (
@@ -1461,7 +1476,7 @@ const Header: React.FC = () => {
                         <Link
                           key={cat.id}
                           href={getCategoryHref(cat.handle)}
-                          className="flex items-center justify-between py-3 text-sm text-header-text"
+                          className="flex items-center justify-between py-3 px-3 text-sm text-header-text hover:bg-white"
                           onClick={() => setMobileMenuOpen(false)}
                         >
                           <span>{cat.title}</span>
@@ -1470,7 +1485,7 @@ const Header: React.FC = () => {
                       );
                     }
                     return (
-                      <div key={cat.id} className="py-1">
+                      <div key={cat.id} className="py-1 px-2">
                         <button
                           type="button"
                           className="w-full flex items-center justify-between py-3 text-sm font-semibold text-header-text"
@@ -1479,13 +1494,15 @@ const Header: React.FC = () => {
                           <span>{cat.title}</span>
                           <ChevronDown className={`w-4 h-4 text-header-muted transition-transform ${isOpen ? "rotate-180" : ""}`} />
                         </button>
-                        <div className={`grid transition-all overflow-hidden ${isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
-                          <div className="overflow-hidden flex flex-col gap-1 pb-3">
+                        <div
+                          className={`overflow-hidden transition-[max-height,opacity] duration-200 ${isOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}`}
+                        >
+                          <div className="flex flex-col gap-1 pb-3 pl-1 pr-1 max-h-64 overflow-y-auto">
                             {cat.children.map((child) => (
                               <Link
                                 key={child.id}
                                 href={getCategoryHref(child.handle)}
-                                className="text-sm text-header-muted px-2 py-1 text-left"
+                                className="text-sm text-header-muted px-3 py-2 text-left bg-white rounded-lg shadow-sm whitespace-normal break-words leading-snug"
                                 onClick={() => setMobileMenuOpen(false)}
                               >
                                 {child.title}

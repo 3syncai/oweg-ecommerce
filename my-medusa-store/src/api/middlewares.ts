@@ -11,8 +11,8 @@ async function corsMiddleware(
   next: MedusaNextFunction
 ) {
   // Get allowed origins from environment or use default
-  // Supports comma-separated URLs: "http://localhost:3000,https://oweg-ecommerce.vercel.app"
-  const allowedOrigins = process.env.STORE_CORS || process.env.AUTH_CORS || "http://localhost:3000,https://oweg-ecommerce.vercel.app"
+  // Supports comma-separated URLs: "http://localhost:3000,http://localhost:5000,https://oweg-ecommerce.vercel.app"
+  const allowedOrigins = process.env.STORE_CORS || process.env.AUTH_CORS || "http://localhost:3000,http://localhost:5000,https://oweg-ecommerce.vercel.app"
   const originList = allowedOrigins.split(',').map(o => o.trim())
   
   // Get the origin from the request

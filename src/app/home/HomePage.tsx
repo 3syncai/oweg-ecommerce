@@ -50,7 +50,17 @@ async function fetchProducts(query: ProductQuery, limitFallback = 20): Promise<U
 }
 
 // Product Carousel Component
-function ProductCarousel({ title, products, sourceTag }: { title: string; products: UIProduct[]; sourceTag?: string }) {
+function ProductCarousel({
+  title,
+  products,
+  sourceTag,
+  loading,
+}: {
+  title: string;
+  products: UIProduct[];
+  sourceTag?: string;
+  loading?: boolean;
+}) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scroll = (direction: 'left' | 'right') => {
@@ -62,6 +72,20 @@ function ProductCarousel({ title, products, sourceTag }: { title: string; produc
       });
     }
   };
+
+  const skeletonCards = Array.from({ length: 8 }).map((_, idx) => (
+    <div
+      key={`loader-${idx}`}
+      className="flex-shrink-0 w-[200px] sm:w-[220px] md:w-[260px] lg:w-[300px] rounded-2xl bg-white border border-gray-100 shadow-sm overflow-hidden animate-pulse"
+    >
+      <div className="h-40 sm:h-48 bg-gray-100" />
+      <div className="p-4 space-y-3">
+        <div className="h-4 w-2/3 bg-gray-200 rounded" />
+        <div className="h-3 w-1/2 bg-gray-200 rounded" />
+        <div className="h-5 w-full bg-gray-200 rounded" />
+      </div>
+    </div>
+  ));
 
   return (
     <div className="mb-8 px-4">
@@ -91,22 +115,24 @@ function ProductCarousel({ title, products, sourceTag }: { title: string; produc
         role="region"
         aria-label={`${title} product carousel`}
       >
-        {products.map((product) => (
-          <div key={product.id} className="flex-shrink-0 w-[200px] sm:w-[220px] md:w-[260px] lg:w-[300px]">
-            <ProductCard
-              id={product.id}
-              name={product.name}
-              image={product.image}
-              price={product.price}
-              mrp={product.mrp}
-              discount={product.discount}
-              limitedDeal={product.limitedDeal}
-              variant_id={product.variant_id}
-              handle={product.handle}
-              sourceTag={sourceTag}
-            />
-          </div>
-        ))}
+        {loading
+          ? skeletonCards
+          : products.map((product) => (
+              <div key={product.id} className="flex-shrink-0 w-[200px] sm:w-[220px] md:w-[260px] lg:w-[300px]">
+                <ProductCard
+                  id={product.id}
+                  name={product.name}
+                  image={product.image}
+                  price={product.price}
+                  mrp={product.mrp}
+                  discount={product.discount}
+                  limitedDeal={product.limitedDeal}
+                  variant_id={product.variant_id}
+                  handle={product.handle}
+                  sourceTag={sourceTag}
+                />
+              </div>
+            ))}
       </div>
     </div>
   );
@@ -133,6 +159,7 @@ const HERO_SLIDES = [
 function HeroBanner() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [heroReady, setHeroReady] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchDelta, setTouchDelta] = useState(0);
@@ -178,16 +205,16 @@ function HeroBanner() {
   };
 
   return (
-    <div
-      className={`relative w-full h-[320px] md:h-[400px] rounded-2xl overflow-hidden mb-8 transition-all duration-700 ${
-        isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'
-      }`}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-    >
+    <div className="relative w-full h-[320px] md:h-[400px] rounded-2xl overflow-hidden mb-8 transition-all duration-700">
+      {!heroReady && <div className="absolute inset-0 z-10 bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 animate-pulse" />}
+      <div
+        className={`absolute inset-0 transition-all duration-700 ${heroReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
       <div className="absolute inset-0 flex items-center justify-between px-3 sm:px-6 z-10 pointer-events-none md:pointer-events-auto">
         <button
           onClick={prev}
@@ -218,6 +245,7 @@ function HeroBanner() {
               alt={`Hero banner ${idx + 1}`}
               fill
               priority={idx === 0}
+              onLoad={() => setHeroReady(true)}
               className="object-container object-center"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent md:from-black/30 md:via-black/10 md:to-transparent" />
@@ -237,6 +265,7 @@ function HeroBanner() {
             />
           );
         })}
+      </div>
       </div>
     </div>
   );
@@ -317,6 +346,41 @@ type MobileCategory = {
   children?: MobileCategory[];
 };
 
+const categoryImageMap: Record<string, string> = {
+  'home-appliances': '/Home Appliances.png',
+  'kitchen-appliances': '/Kitchen Appliances.png',
+  'beauty-personal-care': '/beauty-personal-care.png',
+  'beauty-and-personal-care': '/beauty-personal-care.png',
+  'computer-mobile': '/Computer & Mobile v1.png',
+  'computer-mobile-accessories': '/Computer & Mobile v1.png',
+  'computer-and-mobile-accessories': '/Computer & Mobile v1.png',
+  'computer-mobile-acc': '/Computer & Mobile v1.png',
+  'mobile-accessories': '/Computer & Mobile v1.png',
+  hardware: '/Hardwear-01.png',
+  'hard-wear': '/Hardwear-01.png',
+  bags: '/Bags-01.png',
+  clothing: '/Clothing-01.png',
+  'security-surveillance': '/security & surveillance.png',
+  'surveillance-security': '/security & surveillance.png',
+  'surveillance-and-security': '/security & surveillance.png',
+  'security-and-surveillance': '/security & surveillance.png',
+  'toys-and-games': '/Toysandgames.png',
+  jewellery: '/Jewellery.png',
+  umbrella: '/Umbrella.png',
+  'health-care': '/Sassiest-Health-Care.png',
+  health: '/Sassiest-Health-Care.png',
+  stationery: '/Stationery.png',
+  stationary: '/Stationery.png',
+};
+
+const categoryImageKeywords: Array<{ image: string; includes: string[] }> = [
+  { image: '/Computer & Mobile v1.png', includes: ['computer', 'mobile'] },
+  { image: '/Computer & Mobile v1.png', includes: ['mobile', 'accessor'] },
+  { image: '/Computer & Mobile v1.png', includes: ['computer', 'accessor'] },
+  { image: '/security & surveillance.png', includes: ['security'] },
+  { image: '/security & surveillance.png', includes: ['surveillance'] },
+];
+
 function MobileCategoryGrid({
   categories,
   loading,
@@ -327,6 +391,13 @@ function MobileCategoryGrid({
   categoryImages?: Record<string, string>;
 }) {
   const images = categoryImages || {};
+  const [imageLoaded, setImageLoaded] = useState<Record<string, boolean>>({});
+  const normalize = (value?: string) =>
+    (value || '')
+      .toLowerCase()
+      .replace(/&/g, 'and')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const scrollLeft = () => {
     if (scrollRef.current) {
@@ -364,8 +435,18 @@ function MobileCategoryGrid({
           </button>
         </div>
       </div>
-      {loading ? (
-        <div className="text-sm text-gray-500 py-2">Loading categories…</div>
+            {loading ? (
+        <div className="flex gap-3 overflow-x-auto scrollbar-hidden pb-1" ref={scrollRef} aria-label="Loading categories">
+          {Array.from({ length: 6 }).map((_, idx) => (
+            <div
+              key={`cat-skeleton-${idx}`}
+              className="group flex flex-col items-center min-w-[104px] max-w-[104px] text-center gap-2 animate-pulse"
+            >
+              <div className="relative w-24 h-24 rounded-full bg-emerald-50 border border-emerald-100 shadow-inner" />
+              <div className="h-3 w-20 rounded bg-gray-200" />
+            </div>
+          ))}
+        </div>
       ) : categories.length === 0 ? (
         <div className="text-sm text-gray-500 py-2">Categories will appear here soon.</div>
       ) : (
@@ -374,25 +455,46 @@ function MobileCategoryGrid({
             <Link
               key={cat.id}
               href={cat.handle ? `/c/${encodeURIComponent(cat.handle)}` : '#'}
-              className="group flex flex-col items-center min-w-[104px] max-w-[104px] text-center gap-2"
+              className="group flex flex-col items-center min-w-[118px] max-w-[118px] text-center"
             >
-              <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-emerald-50 via-white to-lime-50 border border-emerald-200 shadow-sm flex items-center justify-center overflow-hidden transition-transform duration-200 group-hover:-translate-y-1"
-                style={{ boxShadow: '0 0 0 2px rgba(122,201,67,0.16), 0 8px 20px -10px rgba(0,0,0,0.2)' }}>
-                {images[cat.id] || cat.image ? (
-                  <Image
-                    src={images[cat.id] || cat.image || '/oweg_logo.png'}
-                    alt={cat.title}
-                    fill
-                    className="object-contain p-2"
-                    sizes="96px"
-                  />
-                ) : (
-                  <span className="text-[11px] font-semibold text-emerald-700 px-2 leading-tight line-clamp-2">
-                    {cat.title.slice(0, 12)}
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-gray-800 leading-tight line-clamp-2">{cat.title}</p>
+              {(() => {
+                const slug = normalize(cat.handle) || normalize(cat.title);
+                const mappedImage = categoryImageMap[slug] || categoryImageMap[cat.handle || ''];
+                const tokens = slug.split('-').filter(Boolean);
+                const keywordHit = categoryImageKeywords.find(({ includes }) =>
+                  includes.every((kw) => tokens.some((t) => t.includes(kw)))
+                );
+                const displayImage =
+                  mappedImage ||
+                  (keywordHit ? keywordHit.image : undefined) ||
+                  images[cat.id] ||
+                  cat.image ||
+                  '/oweg_logo.png';
+                const loaded = imageLoaded[cat.id];
+                return (
+                  <div className="relative w-28 h-28 flex items-center justify-center overflow-hidden transition-transform duration-200 group-hover:-translate-y-1">
+                    {!loaded && (
+                      <div className="absolute inset-2 rounded-full bg-gradient-to-br from-gray-100 via-white to-gray-100 animate-pulse" />
+                    )}
+                    {displayImage ? (
+                      <Image
+                        src={displayImage}
+                        alt={cat.title}
+                        fill
+                        className="object-contain"
+                        sizes="196px"
+                        priority
+                        onLoadingComplete={() =>
+                          setImageLoaded((prev) => ({ ...prev, [cat.id]: true }))
+                        }
+                        onLoad={() => setImageLoaded((prev) => ({ ...prev, [cat.id]: true }))}
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gray-100 rounded-xl" />
+                    )}
+                  </div>
+                );
+              })()}
             </Link>
           ))}
         </div>
@@ -513,6 +615,7 @@ export default function HomePage() {
       queryFn: () => fetchProducts(section.query, 32),
       enabled: Boolean(customer) && hasPreferences && personalizedSections.length > 0 && !prefLoading,
       staleTime: 1000 * 60 * 5,
+      placeholderData: (prev: UIProduct[] | undefined) => prev,
     })),
   });
   const defaultSections = [
@@ -521,27 +624,39 @@ export default function HomePage() {
       products: nonStickQuery.data ?? [],
       loading: nonStickQuery.isLoading,
       sourceTag: 'Non-Stick Cookwares',
+      isPersonalized: false,
     },
     {
       title: 'Fans',
       products: fanQuery.data ?? [],
       loading: fanQuery.isLoading,
       sourceTag: 'Fans',
+      isPersonalized: false,
     },
     {
       title: 'Mens Cloths',
       products: mensQuery.data ?? [],
       loading: mensQuery.isLoading,
       sourceTag: 'Mens Cloths',
+      isPersonalized: false,
     },
   ];
 
   const personalizedSectionsData = personalizedSections.map((section, idx) => ({
     title: section.title,
     products: personalizedQueries[idx]?.data ?? [],
-    loading: personalizedQueries[idx]?.isLoading ?? false,
+    loading:
+      personalizedQueries[idx]?.isLoading ||
+      (!personalizedQueries[idx]?.data && personalizedQueries[idx]?.isFetching) ||
+      false,
     sourceTag: section.sourceTag,
+    isPersonalized: true,
   }));
+
+  const personalizedLoading =
+    hasPreferences &&
+    personalizedSections.length > 0 &&
+    personalizedSectionsData.some((section) => section.loading);
 
   const sectionsToRender =
     showDefaultSections || personalizedSectionsData.length === 0 ? defaultSections : personalizedSectionsData;
@@ -563,9 +678,15 @@ export default function HomePage() {
 
   const mobileCategories: MobileCategory[] = useMemo(() => {
     const seen = new Set<string>();
-    const result: MobileCategory[] = [];
+    const roots = categoriesData.filter((cat) => {
+      const parentId =
+        (cat as MedusaCategory & { parent_category_id?: string | null }).parent_category_id ??
+        (cat as MedusaCategory & { parent_category?: { id?: string | null } }).parent_category?.id;
+      return !parentId;
+    });
 
-    const addNode = (node: MedusaCategory | undefined) => {
+    const result: MobileCategory[] = [];
+    roots.forEach((node) => {
       if (!node) return;
       const id = (node.id || node.handle || node.title || node.name || Math.random().toString()).toString();
       if (seen.has(id)) return;
@@ -579,11 +700,7 @@ export default function HomePage() {
           (node as MedusaCategory & { metadata?: { thumbnail?: string; image?: string } }).metadata?.image ||
           undefined,
       });
-      const children = Array.isArray(node.category_children) ? node.category_children : [];
-      children.forEach((child) => addNode(child));
-    };
-
-    categoriesData.forEach((cat) => addNode(cat));
+    });
     return result.sort((a, b) => a.title.localeCompare(b.title));
   }, [categoriesData]);
 
@@ -602,7 +719,7 @@ export default function HomePage() {
     let cancelled = false;
     const targets = mobileCategories
       .filter((cat) => cat?.id && !categoryImagesRef.current[cat.id])
-      .slice(0, 32);
+      .slice(0, Math.min(16, mobileCategories.length));
     const fetchThumbs = async () => {
       const entries = await Promise.all(
         targets.map(async (cat) => {
@@ -850,7 +967,12 @@ export default function HomePage() {
 
         {sectionsToRender.map((section, idx) => (
           <div key={`${section.title}-${idx}`}>
-            <ProductCarousel title={section.title} products={section.products} sourceTag={section.sourceTag} />
+            <ProductCarousel
+              title={section.title}
+              products={section.products}
+              sourceTag={section.sourceTag}
+              loading={section.loading || (personalizedLoading && section.isPersonalized)}
+            />
             {idx === 1 && (
               <div className="px-4">
                 <PromoBanners />
@@ -864,7 +986,11 @@ export default function HomePage() {
           </div>
         )}
         <MobileJoinCard />
-        {loading && <div className="px-4 text-sm text-gray-500">Loading products from store...</div>}
+        {loading && (
+          <div className="px-4 py-3">
+            <div className="w-full rounded-2xl bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 animate-pulse h-14" />
+          </div>
+        )}
         {!loading && errorMessage && <div className="px-4 text-sm text-red-500">{errorMessage}</div>}
       </main>
 
@@ -886,3 +1012,4 @@ export default function HomePage() {
     </div>
   );
 }
+

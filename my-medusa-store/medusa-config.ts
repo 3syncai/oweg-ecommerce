@@ -8,12 +8,25 @@ export default defineConfig({
     http: {
       // CORS configuration - supports comma-separated URLs or single URL
       // Frontend URL: https://oweg-ecommerce.vercel.app/
-      storeCors: process.env.STORE_CORS || "http://localhost:3000,https://oweg-ecommerce.vercel.app",
+      // Affiliate Portal: http://localhost:5000
+      storeCors: process.env.STORE_CORS || "http://localhost:3000,http://localhost:5000,https://oweg-ecommerce.vercel.app",
       adminCors: process.env.ADMIN_CORS || "http://localhost:7001",
-      authCors: process.env.AUTH_CORS || "http://localhost:3000,https://oweg-ecommerce.vercel.app",
+      authCors: process.env.AUTH_CORS || "http://localhost:3000,http://localhost:5000,https://oweg-ecommerce.vercel.app",
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     },
+  },
+  // Add this admin configuration
+  admin: {
+    vite: () => ({
+      server: {
+        allowedHosts: [
+          "localhost",
+          "127.0.0.1",
+          ".trycloudflare.com"
+        ],
+      },
+    }),
   },
   modules: [
     {
@@ -29,7 +42,6 @@ export default defineConfig({
             },
           },
         ],
-        // optional additional auth module options here
       },
     },
     {
