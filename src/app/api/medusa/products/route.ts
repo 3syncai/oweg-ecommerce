@@ -82,7 +82,9 @@ export async function GET(req: NextRequest) {
         if (cat?.id) {
           try {
             products = await fetchProductsByCategoryId(cat.id, normalizedLimit)
-          } catch { }
+          } catch (err) {
+            console.warn("fallback fetchProductsByCategoryId failed (type)", err)
+          }
         }
       }
     } else if (tag) {
@@ -93,7 +95,9 @@ export async function GET(req: NextRequest) {
         if (cat?.id) {
           try {
             products = await fetchProductsByCategoryId(cat.id, normalizedLimit)
-          } catch { }
+          } catch (err) {
+            console.warn("fallback fetchProductsByCategoryId failed (tag)", err)
+          }
         }
       }
     } else {
