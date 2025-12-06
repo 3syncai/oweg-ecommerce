@@ -129,21 +129,11 @@ function OrderSuccessPageInner() {
   // If you know your Medusa returns paise always, remove heuristic and do `order.total / 100`.
   function formatAmount(rawTotal?: number | undefined) {
     if (rawTotal === undefined || rawTotal === null) return "N/A";
-    // If number is large (>=1000) we assume it's rupees (common in some setups).
-    // If it's small (<1000), assume paise and convert to rupees.
-    if (rawTotal >= 1000) {
-      // treat as rupees
-      return INR.format(rawTotal);
-    } else {
-      // treat as paise fallback
-      return INR.format(rawTotal / 100);
-    }
+    return INR.format(rawTotal / 100);
   }
 
-  // Item amount formatting (same heuristic)
   function formatItemAmount(raw?: number) {
     if (raw === undefined || raw === null) return "N/A";
-    if (raw >= 1000) return INR.format(raw);
     return INR.format(raw / 100);
   }
 
@@ -162,10 +152,10 @@ function OrderSuccessPageInner() {
             <h1 className="text-2xl font-semibold text-slate-900">Thanks for ordering!</h1>
             <p className="text-sm text-slate-600">
               {isPaid
-                ? "Your payment is confirmed. We\\'ll share updates on your order."
+                ? "Your payment is confirmed. We'll share updates on your order."
                 : rawPaymentStatus
-                ? "Payment received (pending confirmation). We\\'re waiting for Razorpay/Medusa to confirm."
-                : "Payment received. We\\'re waiting for Razorpay to confirm."}
+                ? "Payment received (pending confirmation). We're waiting for Razorpay/Medusa to confirm."
+                : "Payment received. We're waiting for Razorpay to confirm."}
             </p>
             {orderId && (
               <p className="text-xs text-slate-500 mt-2">

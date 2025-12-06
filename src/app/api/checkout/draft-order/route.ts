@@ -210,34 +210,36 @@ export async function POST(req: Request) {
     }
 
     const items = Array.isArray(cart.items)
-      ? cart.items.map((item: unknown) => {
-          const record = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
-          const variantObj = record.variant as Record<string, unknown> | undefined;
-          const variantId =
-            (typeof record.variant_id === "string" && record.variant_id) ||
-            (variantObj && typeof variantObj.id === "string" && variantObj.id) ||
-            (typeof record.id === "string" && record.id) ||
-            undefined;
-          const quantityRaw =
-            typeof record.quantity === "number"
-              ? record.quantity
-              : Number.isFinite(Number(record.quantity))
-                ? Number(record.quantity)
-                : 1;
-          const quantity = Math.max(1, quantityRaw);
-          return {
-            variant_id: variantId,
-            quantity,
-          };
-        })
+      ? cart.items
+          .map((item: unknown) => {
+            const record = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
+            const variantObj = record.variant as Record<string, unknown> | undefined;
+            const variantId =
+              (typeof record.variant_id === "string" && record.variant_id) ||
+              (variantObj && typeof variantObj.id === "string" && variantObj.id) ||
+              (typeof record.id === "string" && record.id) ||
+              undefined;
+            if (typeof variantId !== "string") return null;
+            const quantityRaw =
+              typeof record.quantity === "number"
+                ? record.quantity
+                : Number.isFinite(Number(record.quantity))
+                  ? Number(record.quantity)
+                  : 1;
+            const quantity = Math.max(1, quantityRaw);
+            return {
+              variant_id: variantId,
+              quantity,
+            };
+          })
+          .filter((item): item is { variant_id: string; quantity: number } => Boolean(item))
       : [];
 
     if (!items.length) {
       return badRequest("Cart has no items");
     }
 
-    const billing =
-      body.billingSameAsShipping || !body.billing ? mapAddress(shipping) : mapAddress(body.billing);
+    const billing = body.billingSameAsShipping || !body.billing ? shipping : body.billing;
 
     const paymentMethod = body.paymentMethod || "razorpay";
 
@@ -248,7 +250,7 @@ export async function POST(req: Request) {
       region_id: regionId,
       email: shipping.email,
       currency_code: cartCurrency,
-      billing_address: billing,
+      billing_address: mapAddress(billing),
       shipping_address: mapAddress(shipping),
       items,
       metadata: {
@@ -279,16 +281,27 @@ export async function POST(req: Request) {
     let medusaTotal = draftOrder.total;
     let converted = false;
 
+    let conversionError: string | null = null;
+
     if (paymentMethod === "razorpay") {
-      const convertedRes = await convertDraftOrder(draftOrder.id);
-      if (convertedRes.ok) {
-        const convertedOrder = convertedRes.data ? extractOrder(convertedRes.data) : null;
-        if (convertedOrder?.id) {
-          medusaOrderId = convertedOrder.id;
-          medusaCurrency = convertedOrder.currency_code || medusaCurrency;
-          medusaTotal = convertedOrder.total ?? medusaTotal;
-          converted = true;
+      try {
+        const convertedRes = await convertDraftOrder(draftOrder.id);
+        if (convertedRes.ok) {
+          const convertedOrder = convertedRes.data ? extractOrder(convertedRes.data) : null;
+          if (convertedOrder?.id) {
+            medusaOrderId = convertedOrder.id;
+            medusaCurrency = convertedOrder.currency_code || medusaCurrency;
+            medusaTotal = convertedOrder.total ?? medusaTotal;
+            converted = true;
+          } else {
+            conversionError = "convertDraftOrder returned no order id";
+          }
+        } else {
+          conversionError = extractMessage(convertedRes.data) || `convertDraftOrder failed (${convertedRes.status})`;
         }
+      } catch (err) {
+        conversionError = `convertDraftOrder threw for ${draftOrder.id} (${paymentMethod})`;
+        console.error(conversionError, err);
       }
     }
 
@@ -298,6 +311,7 @@ export async function POST(req: Request) {
       currency_code: medusaCurrency,
       cartId,
       draft: !converted,
+      conversionWarning: conversionError || undefined,
     });
   } catch (err) {
     console.error("draft-order error", err);

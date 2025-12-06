@@ -47,6 +47,9 @@ const shippingOptions = [
   { id: "express", label: "Express Shipping (1-3 days)", amount: 19900 },
 ];
 
+const isRazorpayTest =
+  process.env.NEXT_PUBLIC_RAZORPAY_TESTMODE === "true" || process.env.NODE_ENV !== "production";
+
 declare global {
   interface Window {
     Razorpay?: new (options: Record<string, unknown>) => { open: () => void; close?: () => void };
@@ -657,9 +660,11 @@ function CheckoutPageInner() {
               >
                 {processing ? "Processing Payment…" : `Pay securely (${formatInr(totals.total)})`}
               </Button>
-              <p className="text-xs text-slate-500 text-center">
-                Payment is processed in Razorpay TEST MODE. Do not use real credentials.
-              </p>
+              {isRazorpayTest && (
+                <p className="text-xs text-slate-500 text-center">
+                  Payment is processed in Razorpay TEST MODE. Do not use real credentials.
+                </p>
+              )}
             </section>
           </div>
         </form>

@@ -246,12 +246,6 @@ export async function POST(req: Request) {
   const rawBodyBuffer = Buffer.from(rawArrayBuffer);
   const rawBody = rawBodyBuffer.toString("utf8");
   const signature = req.headers.get("x-razorpay-signature") || "";
-  // Debug only: helps identify proxy/body changes causing signature failures. Remove in production.
-  console.info("razorpay webhook debug lengths", {
-    rawLength: rawBodyBuffer.byteLength,
-    signatureLength: signature.length,
-  });
-
   // verify signature
   const valid = verifyRazorpaySignature(rawBodyBuffer, signature);
   if (!valid) {
@@ -435,7 +429,13 @@ export async function POST(req: Request) {
           await setOrderPaidTotal(medusaOrderId, canonicalMinor);
           await setOrderPaymentStatus(medusaOrderId, "captured");
         } catch (err) {
-          console.error("failed to update order payment status after capture", err);
+          console.error("failed to update order payment status after capture", {
+            medusaOrderId,
+            transactionId,
+            canonicalMinor,
+            err,
+          });
+          return NextResponse.json({ error: "payment_state_sync_failed" }, { status: 502 });
         }
       }
 
