@@ -567,12 +567,12 @@ function CheckoutPageInner() {
                       <p className="text-sm font-semibold text-slate-900 flex items-center gap-2">
                         <span className="sr-only">Razorpay</span>
                         <Image
-                          src="/razorpay_logo.png?v=2"
-                          alt="Razorpay"
-                          width={110}
-                          height={30}
-                          priority
-                        />
+  src="/razorpay_logo.png"
+  alt="Razorpay"
+  width={110}
+  height={30}
+  priority
+/>
                       </p>
                       <p className="text-xs text-slate-500">UPI, Cards, Netbanking</p>
                     </div>
