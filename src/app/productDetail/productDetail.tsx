@@ -38,7 +38,6 @@ import {
   notifyCartAddError,
   notifyCartAddSuccess,
   notifyCartUnavailable,
-  notifyCheckoutComingSoon,
   notifyOutOfStock,
   notifyWishlistLogin,
   notifyWishlistSuccess,
@@ -1126,8 +1125,64 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     await addVariantToCart(product?.variant_id, quantity, product?.title)
   }
 
+  const resolveVariantInventory = useCallback(
+    (prod: unknown, variantId?: string): number | undefined => {
+      if (!prod || typeof prod !== 'object') return undefined
+      const record = prod as Record<string, unknown>
+      const variants = Array.isArray(record.variants) ? (record.variants as Record<string, unknown>[]) : []
+      const variant =
+        variants.find((v) => (v.id as string | undefined) === variantId) ||
+        variants.find((v) => (v.variant_id as string | undefined) === variantId) ||
+        variants[0]
+      const candidates = [
+        record.inventory_quantity,
+        record.available_quantity,
+        record.variant_inventory_quantity,
+        variant?.inventory_quantity,
+        variant?.available_quantity,
+        variant?.quantity,
+      ]
+      for (const cand of candidates) {
+        if (typeof cand === 'number' && !Number.isNaN(cand)) return cand
+      }
+      return undefined
+    },
+    []
+  )
+
   const handleBuyNow = () => {
-    notifyCheckoutComingSoon()
+    if (!product?.variant_id) {
+      notifyCartUnavailable()
+      return
+    }
+    const available = resolveVariantInventory(product, product.variant_id)
+    if (typeof available === 'number' && quantity > available) {
+      notifyOutOfStock()
+      return
+    }
+    try {
+      if (typeof window !== "undefined") {
+        const payload = {
+          variantId: product.variant_id,
+          quantity: Math.max(1, quantity),
+          title: product.title,
+          thumbnail: product.images?.[0] || product.thumbnail,
+          priceMinor: typeof product.price === "number" ? Math.round(product.price * 100) : undefined,
+        }
+        localStorage.setItem("buy_now_item", JSON.stringify(payload))
+      }
+    } catch {
+      // ignore storage errors
+    }
+    const params = new URLSearchParams({
+      buyNow: "1",
+      variant_id: product.variant_id,
+      qty: String(Math.max(1, quantity)),
+    })
+    if (typeof product.price === "number") {
+      params.set("price", String(Math.round(product.price * 100)))
+    }
+    router.push(`/checkout?${params.toString()}`)
   }
 
   const handleAddToWishlist = async () => {

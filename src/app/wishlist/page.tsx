@@ -28,7 +28,6 @@ export default function WishlistPage() {
     const raw = (customer?.metadata as Record<string, unknown> | undefined)?.wishlist
     return Array.isArray(raw) ? raw.map((id) => String(id)).filter(Boolean) : []
   }, [customer?.metadata])
-  const hasWishlist = wishlistIds.length > 0
 
   const currency = useMemo(
     () =>

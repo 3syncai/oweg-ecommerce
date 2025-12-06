@@ -11,7 +11,6 @@ import {
   Heart,
   Home,
   Mail,
-  LogIn,
   Facebook, Twitter, Instagram, Linkedin,
   LogOut,
   MapPin,
@@ -21,7 +20,6 @@ import {
   Search,
   Store,
   User,
-  UserPlus,
   X,
   ChevronsLeft,
 } from 'lucide-react';
@@ -587,7 +585,7 @@ export default function MobileBottomNav() {
       list = [...list].sort((a, b) => (b.price || 0) - (a.price || 0));
     }
     return list;
-  }, [subProducts, brandFilter, priceMin, priceMax, priceSort]);
+  }, [subProducts, brandFilter, priceMin, priceMax, priceSort, searchTerm, selectedSubcategory]);
 
   useEffect(() => {
     const brands = Array.from(

@@ -8,7 +8,6 @@ import {
   ChevronDown,
   ChevronRight,
   X,
-  Heart,
   Bell,
   User,
   Sparkles,
@@ -154,7 +153,7 @@ const Header: React.FC = () => {
   const [overflowCategories, setOverflowCategories] = React.useState<NavCategory[]>([]);
   const [navCatsLoading, setNavCatsLoading] = React.useState(true);
   const [isMobile, setIsMobile] = React.useState(false);
-  const [showTopBarMobile, setShowTopBarMobile] = React.useState(true);
+  const [, setShowTopBarMobile] = React.useState(true);
   const [mobilePincode, setMobilePincode] = React.useState("");
   const [mobilePlace, setMobilePlace] = React.useState<string | null>(null);
   const [pinModalOpen, setPinModalOpen] = React.useState(false);
@@ -215,7 +214,7 @@ const Header: React.FC = () => {
       pathname?.startsWith('/wishlist'));
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [mobileExpandedCat, setMobileExpandedCat] = React.useState<string | null>(null);
-  const [mobileProfileOpen, setMobileProfileOpen] = React.useState(false);
+  const [, setMobileProfileOpen] = React.useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
   const moreMenuRef = React.useRef<HTMLDivElement | null>(null);
   const mountedRef = React.useRef(false);
@@ -223,11 +222,6 @@ const Header: React.FC = () => {
   const mobileProfileRef = React.useRef<HTMLDivElement | null>(null);
   const profileMenuRef = React.useRef<HTMLDivElement | null>(null);
   const profileMenuTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const wishlistCount = React.useMemo(() => {
-    const list = (customer?.metadata as Record<string, unknown> | null | undefined)?.wishlist
-    if (Array.isArray(list)) return list.length
-    return 0
-  }, [customer?.metadata])
 
   React.useEffect(() => {
     if (!preferredCategoryOrder.length) return;

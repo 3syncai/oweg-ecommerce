@@ -17,7 +17,6 @@ import {
 import {
   notifyActionError,
   notifyCartUpdated,
-  notifyCheckoutComingSoon,
   notifyCouponApplied,
   notifyCouponInvalid,
   notifyQuantityUpdated,
@@ -1123,12 +1122,13 @@ const Cart: React.FC = () => {
 
               {/* Proceed button - always visible */}
               <div className="px-4 md:px-6 pb-4 md:pb-6 pt-0 md:pt-0">
-                <Button
-                  className="w-full bg-green-600 hover:bg-green-700 text-white py-3 md:py-4 text-sm md:text-base transition shadow-md hover:shadow-lg"
-                  onClick={notifyCheckoutComingSoon}
-                >
-                  Proceed to checkout
-                </Button>
+                <Link href="/checkout" className="block">
+                  <Button
+                    className="w-full bg-green-600 hover:bg-green-700 text-white py-3 md:py-4 text-sm md:text-base transition shadow-md hover:shadow-lg"
+                  >
+                    Proceed to checkout
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>
