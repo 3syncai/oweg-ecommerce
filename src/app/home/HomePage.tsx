@@ -157,15 +157,10 @@ const HERO_SLIDES = [
 
 function HeroBanner() {
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [isLoaded, setIsLoaded] = useState(false);
   const [heroReady, setHeroReady] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchDelta, setTouchDelta] = useState(0);
-
-  useEffect(() => {
-    setIsLoaded(true);
-  }, []);
 
   useEffect(() => {
     if (isHovered || touchStart !== null) return;
@@ -671,9 +666,13 @@ export default function HomePage() {
     },
     staleTime: 1000 * 60 * 10,
   });
-  const categoriesData: MedusaCategory[] = Array.isArray(categoriesQuery.data?.categories)
-    ? (categoriesQuery.data?.categories as MedusaCategory[])
-    : [];
+  const categoriesData: MedusaCategory[] = useMemo(
+    () =>
+      Array.isArray(categoriesQuery.data?.categories)
+        ? (categoriesQuery.data?.categories as MedusaCategory[])
+        : [],
+    [categoriesQuery.data?.categories]
+  );
 
   const mobileCategories: MobileCategory[] = useMemo(() => {
     const seen = new Set<string>();

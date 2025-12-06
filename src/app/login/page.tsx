@@ -78,7 +78,7 @@ function LoginPageInner() {
   // INTELLIGENT INPUT DETECTION
   const detectInputType = (value: string): InputType => {
     // Remove spaces and special characters for detection
-    const cleaned = value.replace(/[\s\-\(\)]/g, "");
+    const cleaned = value.replace(/[\s-()]/g, "");
     
     // Check if it's all digits (phone number)
     if (/^\d+$/.test(cleaned)) {
@@ -123,7 +123,7 @@ function LoginPageInner() {
     
     // Validate based on detected type
     if (inputType === "phone") {
-      const cleaned = identifier.replace(/[\s\-\(\)]/g, "");
+      const cleaned = identifier.replace(/[\s-()]/g, "");
       if (cleaned.length < 10) {
         return setError("Please enter a valid mobile number");
       }
