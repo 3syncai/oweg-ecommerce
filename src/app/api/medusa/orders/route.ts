@@ -1,29 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const BASE_URL =
-  process.env.MEDUSA_BACKEND_URL ||
-  process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL ||
-  "http://localhost:9000";
-
-const PUBLISHABLE_KEY =
-  process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY ||
-  process.env.MEDUSA_PUBLISHABLE_KEY ||
-  process.env.MEDUSA_PUBLISHABLE_API_KEY ||
-  "";
-
-const SALES_CHANNEL_ID =
-  process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID ||
-  process.env.MEDUSA_SALES_CHANNEL_ID ||
-  "";
+import { MEDUSA_CONFIG } from "@/lib/medusa-config";
+import { medusaStoreFetch } from "@/lib/medusa-auth";
 
 export async function GET(req: NextRequest) {
   try {
-    const res = await fetch(`${BASE_URL.replace(/\/$/, "")}/store/orders`, {
-      cache: "no-store",
+    const cookie = req.headers.get("cookie") || undefined;
+    if (!cookie) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Validate session before proxying
+    const meRes = await medusaStoreFetch("/store/customers/me", {
+      headers: { Cookie: cookie },
+      forwardedCookie: cookie,
+    });
+    if (!meRes.ok) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const url = new URL(req.url);
+    const limitParam = Number(url.searchParams.get("limit") || 20);
+    const offsetParam = Number(url.searchParams.get("offset") || 0);
+    const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 20;
+    const offset = Number.isFinite(offsetParam) && offsetParam >= 0 ? offsetParam : 0;
+
+    const target = new URL(`${MEDUSA_CONFIG.BASE_URL.replace(/\/$/, "")}/store/orders`);
+    target.searchParams.set("limit", String(limit));
+    target.searchParams.set("offset", String(offset));
+
+    const res = await medusaStoreFetch(target.toString(), {
+      method: "GET",
+      forwardedCookie: cookie,
       headers: {
-        ...(PUBLISHABLE_KEY ? { "x-publishable-api-key": PUBLISHABLE_KEY } : {}),
-        ...(SALES_CHANNEL_ID ? { "x-sales-channel-id": SALES_CHANNEL_ID } : {}),
-        Cookie: req.headers.get("cookie") || "",
+        ...(MEDUSA_CONFIG.PUBLISHABLE_KEY ? { "x-publishable-api-key": MEDUSA_CONFIG.PUBLISHABLE_KEY } : {}),
+        ...(MEDUSA_CONFIG.SALES_CHANNEL_ID ? { "x-sales-channel-id": MEDUSA_CONFIG.SALES_CHANNEL_ID } : {}),
+        Cookie: cookie,
       },
     });
 
@@ -31,7 +42,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unable to load orders" }, { status: res.status });
     }
     const data = await res.json();
-    return NextResponse.json({ orders: (data as { orders?: unknown[] }).orders || data });
+    const orders = (data as { orders?: unknown[] }).orders || data;
+    const count = (data as { count?: number }).count ?? (Array.isArray(orders) ? orders.length : 0);
+    const rawLimit = (data as { limit?: number }).limit ?? limit;
+    const rawOffset = (data as { offset?: number }).offset ?? offset;
+    return NextResponse.json({ orders, count, limit: rawLimit, offset: rawOffset });
   } catch {
     return NextResponse.json({ error: "Unexpected error loading orders" }, { status: 500 });
   }

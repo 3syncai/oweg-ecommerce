@@ -1070,20 +1070,22 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   )
 
   const hasStock = useMemo(() => {
+    // Conservative default: missing inventory data => treat as out of stock
     if (typeof resolvedInventory === 'number') {
       return resolvedInventory > 0
     }
-    if (!product?.variants?.length) return true
+    if (!product?.variants?.length) return false
     return product.variants.some((variant) => {
+      const record = variant as unknown as Record<string, unknown>
       const candidates = [
-        (variant as unknown as Record<string, unknown>).inventory_quantity,
-        (variant as unknown as Record<string, unknown>).available_quantity,
-        (variant as unknown as Record<string, unknown>).quantity,
+        record.inventory_quantity,
+        record.available_quantity,
+        record.quantity,
       ]
       for (const cand of candidates) {
-        if (typeof cand === 'number') return cand > 0
+        if (typeof cand === 'number' && !Number.isNaN(cand)) return cand > 0
       }
-      return true
+      return false
     })
   }, [product, resolvedInventory])
 
