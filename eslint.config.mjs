@@ -1,47 +1,80 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+// eslint.config.mjs
+import js from "@eslint/js";
+import tsPlugin from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
+import reactPlugin from "eslint-plugin-react";
+import nextConfig from "eslint-config-next";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+const config = [
+  // Ignore heavy / generated / workspace subfolders (adjust if needed)
   {
     ignores: [
       "node_modules/**",
       ".next/**",
-      "out/**",
-      "build/**",
-      "my-medusa-store/.medusa/**",
-      "**/.medusa/**",
-      "**/public/admin/assets/**",
-      "next-env.d.ts",
+      "dist/**",
+      "my-medusa-store/**",
+      "vendor-portal/**",
+      "public/**",
+      ".turbo/**",
       "src/app/example/**",
-      // Ignore all JavaScript/CommonJS files in my-medusa-store (Node.js scripts)
-      "my-medusa-store/**/*.js",
-      "my-medusa-store/**/*.cjs",
-      "my-medusa-store/check-*.js",
-      "my-medusa-store/diagnose-*.js",
     ],
   },
-  // Disable all strict rules for my-medusa-store TypeScript files (ETL/backend code)
+
+  // Base JS recommended rules
+  js.configs.recommended,
+
+  // TypeScript + React language options and plugin rules
   {
-    files: ["my-medusa-store/**/*.ts", "my-medusa-store/**/*.tsx"],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: "latest",
+        sourceType: "module",
+        ecmaFeatures: { jsx: true },
+        // If you have a tsconfig.json at repo root, this enables type-aware rules.
+        // If it causes performance issues, remove `project` or point to a smaller tsconfig.
+        project: "./tsconfig.json",
+      },
+      globals: {
+        // if some global names are used across project (e.g., fetch in service workers),
+        // add them here. Keep empty for now.
+      },
+    },
+
+    plugins: {
+      "@typescript-eslint": tsPlugin,
+      react: reactPlugin,
+    },
+
+    settings: {
+      react: { version: "detect" },
+    },
+
     rules: {
-      "@typescript-eslint/no-explicit-any": "off", // Allow 'any' in ETL/backend code
-      "@typescript-eslint/no-unused-vars": "off", // Turn off completely to avoid CI failures
-      "@typescript-eslint/no-require-imports": "off", // Allow require in ETL code
-      "no-console": "off", // Allow console in scripts
-      // Disable warnings for unused eslint-disable comments
-      "eslint-comments/no-unused-disable": "off",
-      "eslint-comments/no-unlimited-disable": "off",
+      // prefer TS version of no-unused-vars
+      "no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+
+      // turn off rules that conflict with TS or new React runtime
+      "react/react-in-jsx-scope": "off",
+      "no-undef": "off", // TypeScript handles defs (turn off noisy no-undef)
+      "@typescript-eslint/no-require-imports": "off", // disable if old code uses require()
+
+      "no-case-declarations": "off",
+
+      // you can add more rule overrides here if needed
+    },
+  },
+
+  // Include Next.js recommended flat config last so it can add its rules
+  ...nextConfig,
+
+  // Final overrides
+  {
+    rules: {
+      "react-hooks/set-state-in-effect": "off",
     },
   },
 ];
 
-export default eslintConfig;
+export default config;

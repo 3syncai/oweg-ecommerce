@@ -30,6 +30,7 @@ Thumbs.db
 .env.*.local
 .env.development
 .env.production
+.env.template
 .env.test
 *.env
 !.env.example
@@ -46,7 +47,6 @@ temp/
 dump.rdb
 uploads/
 storage/
-.medusa/
 
 # Misc
 coverage/

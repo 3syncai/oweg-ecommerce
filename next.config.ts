@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    optimizePackageImports: [
+      'lucide-react',
+      '@radix-ui/react-select',
+      '@radix-ui/react-label',
+      '@radix-ui/react-radio-group',
+    ],
+  },
   images: {
     remotePatterns: [
       {
@@ -40,6 +48,10 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'oweg-media-mumbai-krj-2025.s3.ap-south-1.amazonaws.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'via.placeholder.com',
       },
     ],
   },

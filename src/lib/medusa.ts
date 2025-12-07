@@ -22,12 +22,21 @@ export type MedusaProduct = {
   tags?: Array<{ id: string; value?: string; handle?: string }>
   type?: { id: string; value?: string; handle?: string }
   collection?: { id?: string; title?: string; handle?: string }
+  weight?: number | null
+  length?: number | null
+  height?: number | null
+  width?: number | null
   variants?: Array<{
     id: string
     title?: string
     inventory_quantity?: number
     options?: Array<{ id: string; value?: string; option_id?: string }>
     prices?: Array<{ amount: number; currency_code: string }>
+    weight?: number | null
+    length?: number | null
+    height?: number | null
+    width?: number | null
+    metadata?: Record<string, unknown> | null
   }>
   price?: {
     calculated_price?: number
@@ -49,7 +58,16 @@ export type DetailedProduct = {
   images: string[]
   thumbnail?: string
   variant_id?: string
-  variants: Array<{ id: string; title?: string; inventory_quantity?: number }>
+  variants: Array<{
+    id: string
+    title?: string
+    inventory_quantity?: number
+    weight?: number | null
+    length?: number | null
+    height?: number | null
+    width?: number | null
+    metadata?: Record<string, unknown> | null
+  }>
   categories: Array<{ id: string; title: string; handle?: string }>
   tags: string[]
   type?: string
@@ -62,7 +80,19 @@ export type DetailedProduct = {
 type PriceOverride = {
   price?: number
   mrp?: number
+  isDeal?: boolean
+  opencartId?: string | number
 }
+
+const PRODUCT_DETAIL_CACHE = new Map<string, { expires: number; value: DetailedProduct | null }>()
+const DETAIL_CACHE_TTL_MS = 1000 * 60 * 5
+
+const ADMIN_TOKEN =
+  process.env.MEDUSA_ADMIN_API_KEY ||
+  process.env.MEDUSA_ADMIN_TOKEN ||
+  process.env.MEDUSA_ADMIN_BASIC ||
+  ""
+const ADMIN_AUTH_SCHEME = (process.env.MEDUSA_ADMIN_AUTH_SCHEME || "bearer").toLowerCase()
 
 export type MedusaCollection = {
   id: string
@@ -104,6 +134,27 @@ const DEFAULT_CURRENCY_CODE =
     .trim()
 
 const COMMON_EXPAND = "variants,variants.prices,price"
+const PRODUCT_LIST_FIELDS = [
+  "id",
+  "title",
+  "subtitle",
+  "handle",
+  "thumbnail",
+  "images.url",
+  "collection.id",
+  "collection.title",
+  "categories.id",
+  "categories.title",
+  "tags.id",
+  "tags.value",
+  "type.id",
+  "type.value",
+  "variants.id",
+  "variants.prices.amount",
+  "variants.inventory_quantity",
+  "metadata",
+  "price",
+].join(",")
 
 type ProductFetchOptions = {
   includeType?: boolean
@@ -113,8 +164,10 @@ function createBaseSearchParams(
   limit: number,
   extras: Array<[string, string | undefined]> = []
 ) {
+  const normalizedLimit = Math.max(1, Math.min(limit, 60))
   const params = new URLSearchParams()
-  params.set("limit", String(limit))
+  params.set("limit", String(normalizedLimit))
+  params.set("fields", PRODUCT_LIST_FIELDS)
   for (const [key, value] of extras) {
     if (value !== undefined && value !== "") {
       params.append(key, value)
@@ -135,6 +188,9 @@ async function fetchStoreProducts(
 
   // Attempt 1: include expand + currency (if supported by backend)
   const advanced = cloneParams(baseParams)
+  if (!advanced.has("fields")) {
+    advanced.set("fields", PRODUCT_LIST_FIELDS)
+  }
   advanced.set(
     "expand",
     options?.includeType ? `${COMMON_EXPAND},type` : COMMON_EXPAND
@@ -146,6 +202,9 @@ async function fetchStoreProducts(
 
   // Attempt 2: drop currency_code (some setups support expand but not currency)
   const expandOnly = cloneParams(baseParams)
+  if (!expandOnly.has("fields")) {
+    expandOnly.set("fields", PRODUCT_LIST_FIELDS)
+  }
   expandOnly.set(
     "expand",
     options?.includeType ? `${COMMON_EXPAND},type` : COMMON_EXPAND
@@ -233,17 +292,22 @@ export async function findCategoryByTitleOrHandle(
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)+/g, "")
 
-  const targetSlug = norm(q)
+  const raw = (q || "").trim()
+  const lowerRaw = raw.toLowerCase()
+  const targetSlug = norm(raw)
+  const handleCandidates = Array.from(new Set([raw, lowerRaw, targetSlug].filter(Boolean)))
 
   // Try direct handle query first (more reliable)
   try {
     const base = (process.env.MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "")
-    // Try array-style handle filter
-    for (const url of [
-      `${base}/store/product-categories?handle[]=${encodeURIComponent(targetSlug)}`,
-      `${base}/store/product-categories?handle=${encodeURIComponent(targetSlug)}`,
-      `${base}/store/product-categories?q=${encodeURIComponent(q)}`,
-    ]) {
+    // Try array-style handle filter for multiple candidate representations
+    const urls: string[] = []
+    handleCandidates.forEach((candidate) => {
+      urls.push(`${base}/store/product-categories?handle[]=${encodeURIComponent(candidate)}`)
+      urls.push(`${base}/store/product-categories?handle=${encodeURIComponent(candidate)}`)
+    })
+    urls.push(`${base}/store/product-categories?q=${encodeURIComponent(raw)}`)
+    for (const url of urls) {
       const pk = getPublishableKey()
       const res = await fetch(url, {
         cache: "no-store",
@@ -254,7 +318,9 @@ export async function findCategoryByTitleOrHandle(
       const arr = (data.product_categories || data.categories || []) as MedusaCategory[]
       if (Array.isArray(arr) && arr.length) return arr[0]
     }
-  } catch {}
+  } catch (err) {
+    console.warn("findCategoryByTitleOrHandle direct lookup failed", err)
+  }
 
   const all = await fetchCategories()
 
@@ -265,7 +331,10 @@ export async function findCategoryByTitleOrHandle(
   if (found) return found
 
   // Try by handle match
-  found = all.find((c) => c.handle?.toLowerCase() === targetSlug)
+  found = all.find((c) => {
+    const handle = c.handle?.toLowerCase()
+    return handle === lowerRaw || handle === targetSlug
+  })
   if (found) return found
 
   // Fuzzy by slugified title/name
@@ -305,7 +374,9 @@ export async function findCollectionByTitleOrHandle(
       const arr = (data.collections || data || []) as MedusaCollection[]
       if (Array.isArray(arr) && arr.length) return arr[0]
     }
-  } catch {}
+  } catch (err) {
+    console.warn("findCollectionByTitleOrHandle direct lookup failed", err)
+  }
 
   const all = await fetchCollections()
   let found = all.find((c) => (c.title || "").toLowerCase() === q.toLowerCase())
@@ -347,6 +418,24 @@ export async function fetchProductsByCategoryId(categoryId: string, limit = 20) 
   throw lastError ?? new Error("Failed products")
 }
 
+export async function fetchProductsByCollectionId(collectionId: string, limit = 20) {
+  const candidates = [
+    createBaseSearchParams(limit, [["collection_id[]", collectionId]]),
+    createBaseSearchParams(limit, [["collection_id", collectionId]]),
+  ]
+
+  let lastError: Error | undefined
+  for (const params of candidates) {
+    try {
+      const items = await fetchStoreProducts(params)
+      if (Array.isArray(items)) return items
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+    }
+  }
+  throw lastError ?? new Error("Failed products by collection")
+}
+
 export async function fetchProductsByTag(tagValue: string, limit = 20) {
   const norm = (s: string) =>
     s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, "")
@@ -386,7 +475,9 @@ export async function fetchProductsByTag(tagValue: string, limit = 20) {
         }
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn("fetchProductsByTag tag lookup failed", err)
+  }
 
   // 3) Fallback: fetch without expand and return first page (UI will still show products)
   return await fetchStoreProducts(createBaseSearchParams(limit))
@@ -435,7 +526,9 @@ export async function fetchProductsByType(typeValue: string, limit = 20) {
         }
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn("fetchProductsByType type lookup failed", err)
+  }
 
   // 2) Fallback: expand type and filter client-side (best effort)
   try {
@@ -445,7 +538,9 @@ export async function fetchProductsByType(typeValue: string, limit = 20) {
     )
     const filtered = items.filter((p) => matches(p.type?.value || p.type?.handle || ""))
     if (filtered.length) return filtered.slice(0, limit)
-  } catch {}
+  } catch (err) {
+    console.warn("fetchProductsByType expand fallback failed", err)
+  }
 
   // 3) Last fallback: return empty to avoid 500s; route can try category fallback
   return []
@@ -485,7 +580,9 @@ export async function fetchCategoriesForCollection(collectionId: string): Promis
       if (!c?.id) continue
       const ok = await hasProductsForCollectionCategory(collectionId, c.id)
       if (ok) matches.push(c)
-    } catch {}
+    } catch (err) {
+      console.warn("fetchCategoriesForCollection check failed", { collectionId, categoryId: c.id, err })
+    }
   }
   return matches
 }
@@ -523,6 +620,61 @@ export function toDetailedProduct(
     ? tags
     : categories.map((c) => c.title).filter(Boolean)
 
+  const primaryVariant = p.variants?.[0]
+  const normalizedMetadata: Record<string, unknown> = { ...(p.metadata || {}) }
+
+  const mergeMetadata = (source?: Record<string, unknown> | null) => {
+    if (!source) return
+    Object.entries(source).forEach(([key, value]) => {
+      if (
+        value !== undefined &&
+        value !== null &&
+        normalizedMetadata[key] === undefined
+      ) {
+        normalizedMetadata[key] = value
+      }
+    })
+  }
+
+  const measurementValue = (
+    ...values: Array<number | null | undefined>
+  ): number | undefined => {
+    for (const val of values) {
+      if (val !== undefined && val !== null && Number.isFinite(val)) {
+        return val
+      }
+    }
+    return undefined
+  }
+
+  const registerMeasurement = (keys: string[], value?: number) => {
+    if (value === undefined) return
+    keys.forEach((key) => {
+      if (normalizedMetadata[key] === undefined) {
+        normalizedMetadata[key] = value
+      }
+    })
+  }
+
+  registerMeasurement(
+    ["weight_kg", "weight"],
+    measurementValue(p.weight, primaryVariant?.weight)
+  )
+  registerMeasurement(
+    ["height_cm", "height"],
+    measurementValue(p.height, primaryVariant?.height)
+  )
+  registerMeasurement(
+    ["width_cm", "width"],
+    measurementValue(p.width, primaryVariant?.width)
+  )
+  registerMeasurement(
+    ["length_cm", "length"],
+    measurementValue(p.length, primaryVariant?.length)
+  )
+
+  mergeMetadata(primaryVariant?.metadata || null)
+
   return {
     id: p.id,
     title: p.title,
@@ -541,6 +693,11 @@ export function toDetailedProduct(
         id: v.id,
         title: v.title,
         inventory_quantity: v.inventory_quantity,
+        weight: v.weight ?? null,
+        length: v.length ?? null,
+        height: v.height ?? null,
+        width: v.width ?? null,
+        metadata: v.metadata || null,
       })) || [],
     categories,
     tags,
@@ -554,7 +711,8 @@ export function toDetailedProduct(
       : null,
     primaryCategoryId: categories[0]?.id,
     highlights,
-    metadata: p.metadata || null,
+    metadata:
+      Object.keys(normalizedMetadata).length > 0 ? normalizedMetadata : null,
   }
 }
 
@@ -589,6 +747,7 @@ export function toUiProduct(p: MedusaProduct, override?: PriceOverride) {
 
   const { amountMajor, originalMajor, discount } = computeUiPrice(p, override)
   const image = collectProductImages(p)[0] || "/oweg_logo.png"
+  const metadata = (p.metadata || {}) as Record<string, unknown>
 
   return {
     id: p?.id || "unknown",
@@ -597,9 +756,13 @@ export function toUiProduct(p: MedusaProduct, override?: PriceOverride) {
     price: amountMajor ?? 0,
     mrp: originalMajor ?? amountMajor ?? 0,
     discount,
-    limitedDeal: discount >= 20,
+    limitedDeal: override?.isDeal ?? discount >= 20,
+    opencartId:
+      override?.opencartId ??
+      (metadata["opencart_id"] as string | number | undefined),
     variant_id: p?.variants?.[0]?.id,
     handle: p?.handle,
+    category_ids: p?.categories?.map((c) => c.id).filter((id): id is string => !!id) || [],
   }
 }
 
@@ -608,6 +771,12 @@ export async function fetchProductDetail(
 ): Promise<DetailedProduct | null> {
   const target = idOrHandle?.trim()
   if (!target) return null
+
+  const cacheKey = target.toLowerCase()
+  const cached = PRODUCT_DETAIL_CACHE.get(cacheKey)
+  if (cached && cached.expires > Date.now()) {
+    return cached.value
+  }
 
   const detailExpand = `${COMMON_EXPAND},images,tags,categories,type,collection`
   const paramVariants: URLSearchParams[] = []
@@ -676,13 +845,57 @@ export async function fetchProductDetail(
         const override = await fetchPriceOverrideForName(
           product.title || product.subtitle || product.handle
         )
-        return toDetailedProduct(product, override)
+
+        let adminPrice: number | undefined
+        if (!product?.price?.calculated_price && !product?.variants?.[0]?.prices?.length) {
+          adminPrice = await fetchAdminProductPrice(product.id)
+        }
+
+        const fallbackOverride =
+          adminPrice !== undefined
+            ? { price: adminPrice, mrp: adminPrice }
+            : undefined
+
+        const detailed = toDetailedProduct(product, override ?? fallbackOverride)
+        PRODUCT_DETAIL_CACHE.set(cacheKey, {
+          expires: Date.now() + DETAIL_CACHE_TTL_MS,
+          value: detailed,
+        })
+        return detailed
       }
     } catch {
       // try next path
     }
   }
+  PRODUCT_DETAIL_CACHE.set(cacheKey, {
+    expires: Date.now() + DETAIL_CACHE_TTL_MS,
+    value: null,
+  })
   return null
+}
+
+async function fetchAdminProductPrice(productId: string): Promise<number | undefined> {
+  if (!ADMIN_TOKEN) return undefined
+  try {
+    const base = MEDUSA_URL!.replace(/\/$/, "")
+    const res = await fetch(`${base}/admin/products/${encodeURIComponent(productId)}`, {
+      cache: "no-store",
+      headers: {
+        Authorization:
+          ADMIN_AUTH_SCHEME === "basic" ? `Basic ${ADMIN_TOKEN}` : `Bearer ${ADMIN_TOKEN}`,
+      },
+    })
+    if (!res.ok) return undefined
+    const data = await res.json()
+    const variants = data?.product?.variants
+    const prices = Array.isArray(variants?.[0]?.prices) ? variants[0].prices : []
+    const amount = prices?.[0]?.amount
+    if (typeof amount === "number" && Number.isFinite(amount)) return amount
+    return undefined
+  } catch (err) {
+    console.warn("fetchAdminProductPrice failed", err)
+    return undefined
+  }
 }
 
 async function fetchPriceOverrideForName(

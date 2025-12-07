@@ -1,24 +1,49 @@
 "use client";
 
+import Link from "next/link";
 import { Facebook, Twitter, Instagram, Linkedin, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+const accountLinks = [
+  { label: "Brands", href: "/brands" },
+  { label: "Gift Card", href: "/gift-card" },
+  { label: "Affiliates", href: "/affiliates" },
+  { label: "Specials", href: "/specials" },
+  { label: "My Reward", href: "/my-reward" },
+];
+
+const policyLinks = [
+  { label: "Terms & Conditions", href: "/terms" },
+  { label: "Returns Policy", href: "/returns-policy" },
+  { label: "Shipping Policy", href: "/shipping-policy" },
+  { label: "Coupon Code Policy", href: "/coupon-policy" },
+  { label: "Privacy Policy", href: "/privacy-policy" },
+];
+
+const quickLinks = [
+  { label: "About Us", href: "/about" },
+  { label: "FAQ", href: "/faq" },
+  { label: "Contact", href: "/contact" },
+  { label: "Seller Registration", href: "/seller-registration" },
+  { label: "Agent Registration", href: "/agent-registration" },
+];
+
 const Footer = () => {
   return (
-    <footer className="footer-root">
+    <footer className="footer-root hidden md:block">
       <div className="container mx-auto px-6 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12">
           {/* My Account Section */}
           <div>
             <h3 className="text-xl font-normal mb-6 section-title">My Account</h3>
             <ul className="space-y-4">
-              {["Brands", "Gift Card", "Affiliates", "Specials", "My Reward"].map((item) => (
-                <li key={item}>
-                  <a href="#" className="link-item group">
-                    <span className="link-text">{item}</span>
+              {accountLinks.map((item) => (
+                <li key={item.href}>
+                  <Link href={item.href} className="link-item group">
+                    <span className="link-text">{item.label}</span>
                     <span className="link-underline" />
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -28,18 +53,12 @@ const Footer = () => {
           <div>
             <h3 className="text-xl font-normal mb-6 section-title">Policy</h3>
             <ul className="space-y-4">
-              {[
-                "Terms & Conditions",
-                "Returns Policy",
-                "Shipping Policy",
-                "Coupon Code Policy",
-                "Privacy Policy",
-              ].map((item) => (
-                <li key={item}>
-                  <a href="#" className="link-item group">
-                    <span className="link-text">{item}</span>
+              {policyLinks.map((item) => (
+                <li key={item.href}>
+                  <Link href={item.href} className="link-item group">
+                    <span className="link-text">{item.label}</span>
                     <span className="link-underline" />
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -49,18 +68,12 @@ const Footer = () => {
           <div>
             <h3 className="text-xl font-normal mb-6 section-title">Quick Link</h3>
             <ul className="space-y-4">
-              {[
-                "About Us",
-                "FAQ",
-                "Contact",
-                "Seller Registration",
-                "Agent Registration",
-              ].map((item) => (
-                <li key={item}>
-                  <a href="#" className="link-item group">
-                    <span className="link-text">{item}</span>
+              {quickLinks.map((item) => (
+                <li key={item.href}>
+                  <Link href={item.href} className="link-item group">
+                    <span className="link-text">{item.label}</span>
                     <span className="link-underline" />
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -261,6 +274,9 @@ const Footer = () => {
 
         @media (max-width: 768px) {
           .footer-root .link-underline { bottom: -4px; }
+          .footer-root {
+            padding-bottom: 96px; /* leave room for mobile bottom nav */
+          }
         }
       `}</style>
     </footer>
