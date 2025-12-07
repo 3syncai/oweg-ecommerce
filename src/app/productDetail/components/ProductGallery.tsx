@@ -32,6 +32,8 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
   const [touchHandled, setTouchHandled] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [zoomLevel, setZoomLevel] = useState(1)
+  const [zoomPreview, setZoomPreview] = useState<{ size: string; position: string }>({ size: '150%', position: '80% 80%' })
+  const [zoomFrame, setZoomFrame] = useState<{ top: number; left: number } | null>(null)
   useEffect(() => {
     if (!fullscreenOpen) return
     const originalOverflow = document.body.style.overflow
@@ -65,6 +67,23 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
     return { x, y }
   }
 
+  const updateLensFromPoint = (clientX: number, clientY: number) => {
+    const bounds = containerRef.current?.getBoundingClientRect()
+    if (!bounds) return
+    const nextPos = clampLens(clientX, clientY)
+    setLensPosition(nextPos)
+    const relativeX = ((nextPos.x - LENS_SIZE / 2) / (bounds.width - LENS_SIZE)) * 100
+    const relativeY = ((nextPos.y - LENS_SIZE / 2) / (bounds.height - LENS_SIZE)) * 100
+    setZoomPreview({
+      size: `${ZOOM_SCALE * 100}%`,
+      position: `${Number.isFinite(relativeX) ? relativeX : 50}% ${Number.isFinite(relativeY) ? relativeY : 50}%`,
+    })
+    setZoomFrame({
+      top: bounds.top,
+      left: bounds.right + 24,
+    })
+  }
+
   const handleNavigate = (direction: 'prev' | 'next') => {
     if (!hasMultiple) return
     const delta = direction === 'prev' ? -1 : 1
@@ -86,7 +105,7 @@ const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitl
 
   const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!lensActive) return
-    setLensPosition(clampLens(event.clientX, event.clientY))
+    updateLensFromPoint(event.clientX, event.clientY)
   }
 
 const handleOpenFullscreen = () => {
@@ -164,19 +183,6 @@ const handleOpenFullscreen = () => {
     setTouchStartX(null)
   }
 
-  const computedBackground = () => {
-    const bounds = containerRef.current?.getBoundingClientRect()
-    if (!bounds) return { size: '150%', position: '80% 80%' }
-    const relativeX = ((lensPosition.x - LENS_SIZE / 2) / (bounds.width - LENS_SIZE)) * 100
-    const relativeY = ((lensPosition.y - LENS_SIZE / 2) / (bounds.height - LENS_SIZE)) * 100
-    return {
-      size: `${ZOOM_SCALE * 100}%`,
-      position: `${Number.isFinite(relativeX) ? relativeX : 50}% ${Number.isFinite(relativeY) ? relativeY : 50}%`,
-    }
-  }
-
-  const { size: zoomSize, position: zoomPosition } = computedBackground()
-
   useEffect(() => {
     if (typeof document === 'undefined') return
     if (lensActive) {
@@ -217,7 +223,7 @@ const handleOpenFullscreen = () => {
           className="relative w-full max-w-full aspect-[4/5] max-h-[360px] sm:max-h-[420px] lg:h-[450px] rounded-[32px] border border-[var(--detail-border)] bg-white shadow-sm overflow-hidden group mx-auto"
           onMouseEnter={(event) => {
             setLensActive(true)
-            setLensPosition(clampLens(event.clientX, event.clientY))
+            updateLensFromPoint(event.clientX, event.clientY)
           }}
           onMouseLeave={() => setLensActive(false)}
           onMouseMove={handleMouseMove}
@@ -303,16 +309,16 @@ const handleOpenFullscreen = () => {
           <div className="absolute inset-3 rounded-2xl border border-white/60" />
         </div>
         </div>
-      {lensActive && containerRef.current && (
+      {lensActive && zoomFrame && (
         <div
           className="hidden lg:block fixed h-[500px] w-[500px] rounded-[32px] border-2 border-green-500/30 bg-white shadow-2xl overflow-hidden z-[120] pointer-events-none"
           style={{
-            top: `${containerRef.current.getBoundingClientRect().top}px`,
-            left: `${containerRef.current.getBoundingClientRect().right + 24}px`,
+            top: `${zoomFrame.top}px`,
+            left: `${zoomFrame.left}px`,
             backgroundImage: `url("${activeImage}")`,
             backgroundRepeat: 'no-repeat',
-            backgroundSize: zoomSize,
-            backgroundPosition: zoomPosition,
+            backgroundSize: zoomPreview.size,
+            backgroundPosition: zoomPreview.position,
           }}
         />
       )}

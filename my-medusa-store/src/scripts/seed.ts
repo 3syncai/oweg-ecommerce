@@ -115,7 +115,7 @@ export default async function seedDemoData({ container }: SeedExecArgs) {
     Modules.STORE
   ) as StoreModuleServiceLike;
   // Core workflows expect a Medusa container; cast locally for calls
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const medusaC = container as unknown as any;
 
   const countries = ["gb", "de", "dk", "se", "fr", "es", "it"];

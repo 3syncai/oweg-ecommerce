@@ -311,7 +311,9 @@ export async function findCategoryByTitleOrHandle(
       const arr = (data.product_categories || data.categories || []) as MedusaCategory[]
       if (Array.isArray(arr) && arr.length) return arr[0]
     }
-  } catch {}
+  } catch (err) {
+    console.warn("findCategoryByTitleOrHandle direct lookup failed", err)
+  }
 
   const all = await fetchCategories()
 
@@ -365,7 +367,9 @@ export async function findCollectionByTitleOrHandle(
       const arr = (data.collections || data || []) as MedusaCollection[]
       if (Array.isArray(arr) && arr.length) return arr[0]
     }
-  } catch {}
+  } catch (err) {
+    console.warn("findCollectionByTitleOrHandle direct lookup failed", err)
+  }
 
   const all = await fetchCollections()
   let found = all.find((c) => (c.title || "").toLowerCase() === q.toLowerCase())
@@ -446,7 +450,9 @@ export async function fetchProductsByTag(tagValue: string, limit = 20) {
         }
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn("fetchProductsByTag tag lookup failed", err)
+  }
 
   // 3) Fallback: fetch without expand and return first page (UI will still show products)
   return await fetchStoreProducts(createBaseSearchParams(limit))
@@ -495,7 +501,9 @@ export async function fetchProductsByType(typeValue: string, limit = 20) {
         }
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn("fetchProductsByType type lookup failed", err)
+  }
 
   // 2) Fallback: expand type and filter client-side (best effort)
   try {
@@ -505,7 +513,9 @@ export async function fetchProductsByType(typeValue: string, limit = 20) {
     )
     const filtered = items.filter((p) => matches(p.type?.value || p.type?.handle || ""))
     if (filtered.length) return filtered.slice(0, limit)
-  } catch {}
+  } catch (err) {
+    console.warn("fetchProductsByType expand fallback failed", err)
+  }
 
   // 3) Last fallback: return empty to avoid 500s; route can try category fallback
   return []
@@ -545,7 +555,9 @@ export async function fetchCategoriesForCollection(collectionId: string): Promis
       if (!c?.id) continue
       const ok = await hasProductsForCollectionCategory(collectionId, c.id)
       if (ok) matches.push(c)
-    } catch {}
+    } catch (err) {
+      console.warn("fetchCategoriesForCollection check failed", { collectionId, categoryId: c.id, err })
+    }
   }
   return matches
 }

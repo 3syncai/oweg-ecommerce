@@ -62,7 +62,7 @@ const extractMetaNumber = (meta: MetaRecord, key: string) => {
   const value = resolveMetaValue(meta, key)
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
-    const parsed = parseFloat(value.replace(/[^0-9.\-]+/g, ''))
+    const parsed = parseFloat(value.replace(/[^0-9.-]+/g, ''))
     return Number.isFinite(parsed) ? parsed : undefined
   }
   return undefined
@@ -105,7 +105,7 @@ const formatWeightFromMeta = (meta: MetaRecord) => {
   }
   const generic = extractMetaString(meta, 'weight')
   if (generic) {
-    const parsed = parseFloat(generic.replace(/[^0-9.\-]+/g, ''))
+    const parsed = parseFloat(generic.replace(/[^0-9.-]+/g, ''))
     if (Number.isFinite(parsed)) {
       if (/kg/i.test(generic)) {
         return `${formatNumberCompact(parsed)} kg`
@@ -153,7 +153,7 @@ const readMeasurement = (meta: MetaRecord, type: DimensionType) => {
     }
     const raw = extractMetaString(meta, candidate.key)
     if (raw) {
-      const parsed = parseFloat(raw.replace(/[^0-9.\-]+/g, ''))
+      const parsed = parseFloat(raw.replace(/[^0-9.-]+/g, ''))
       if (Number.isFinite(parsed)) {
         const detected = candidate.unit || (raw.match(/cm|mm|in|inch|ft/i)?.[0] ?? '')
         return { value: parsed, unit: detected.trim() }

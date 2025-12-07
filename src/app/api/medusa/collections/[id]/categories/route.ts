@@ -16,7 +16,9 @@ export async function GET(
         const cols = await fetchCollections()
         const found = cols.find((c) => c.handle === id || (c.title || "").toLowerCase() === id.toLowerCase())
         if (found?.id) collectionId = found.id
-      } catch {}
+      } catch (err) {
+        console.warn("failed to resolve collection handle", err)
+      }
     }
     const categories = await fetchCategoriesForCollection(collectionId)
     return NextResponse.json({ categories })

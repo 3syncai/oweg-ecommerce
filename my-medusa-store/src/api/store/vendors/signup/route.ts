@@ -91,7 +91,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     } catch (e) {
       // If user already exists, ignore; admin can manage credentials
       // Do not fail the vendor creation because of a user creation issue
-      // eslint-disable-next-line no-console
+       
       console.warn("Create vendor user skipped:", (e as any)?.message || e)
     }
   }

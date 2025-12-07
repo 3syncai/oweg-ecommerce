@@ -24,12 +24,6 @@ type WishlistProduct = {
 export default function WishlistPage() {
   const { customer, setCustomer } = useAuth()
   const queryClient = useQueryClient()
-  const wishlistIds = useMemo(() => {
-    const raw = (customer?.metadata as Record<string, unknown> | undefined)?.wishlist
-    return Array.isArray(raw) ? raw.map((id) => String(id)).filter(Boolean) : []
-  }, [customer?.metadata])
-  const hasWishlist = wishlistIds.length > 0
-
   const currency = useMemo(
     () =>
       new Intl.NumberFormat("en-IN", {
