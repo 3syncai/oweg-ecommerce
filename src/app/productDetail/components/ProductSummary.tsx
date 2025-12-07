@@ -157,7 +157,13 @@ const ProductSummary = ({
         <button
           type="button"
           onClick={onBuyNow}
-          className="inline-flex items-center gap-2 rounded-full border border-green-600 px-6 py-3 text-green-700 font-semibold hover:bg-green-50 transition"
+          disabled={!hasStock}
+          aria-disabled={!hasStock}
+          className={`inline-flex items-center gap-2 rounded-full border px-6 py-3 font-semibold transition ${
+            hasStock
+              ? 'border-green-600 text-green-700 hover:bg-green-50'
+              : 'border-slate-300 text-slate-400 cursor-not-allowed opacity-70'
+          }`}
         >
           Buy now
         </button>

@@ -87,6 +87,13 @@ type PriceOverride = {
 const PRODUCT_DETAIL_CACHE = new Map<string, { expires: number; value: DetailedProduct | null }>()
 const DETAIL_CACHE_TTL_MS = 1000 * 60 * 5
 
+const ADMIN_TOKEN =
+  process.env.MEDUSA_ADMIN_API_KEY ||
+  process.env.MEDUSA_ADMIN_TOKEN ||
+  process.env.MEDUSA_ADMIN_BASIC ||
+  ""
+const ADMIN_AUTH_SCHEME = (process.env.MEDUSA_ADMIN_AUTH_SCHEME || "bearer").toLowerCase()
+
 export type MedusaCollection = {
   id: string
   title?: string
@@ -409,6 +416,24 @@ export async function fetchProductsByCategoryId(categoryId: string, limit = 20) 
     }
   }
   throw lastError ?? new Error("Failed products")
+}
+
+export async function fetchProductsByCollectionId(collectionId: string, limit = 20) {
+  const candidates = [
+    createBaseSearchParams(limit, [["collection_id[]", collectionId]]),
+    createBaseSearchParams(limit, [["collection_id", collectionId]]),
+  ]
+
+  let lastError: Error | undefined
+  for (const params of candidates) {
+    try {
+      const items = await fetchStoreProducts(params)
+      if (Array.isArray(items)) return items
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+    }
+  }
+  throw lastError ?? new Error("Failed products by collection")
 }
 
 export async function fetchProductsByTag(tagValue: string, limit = 20) {
@@ -820,7 +845,18 @@ export async function fetchProductDetail(
         const override = await fetchPriceOverrideForName(
           product.title || product.subtitle || product.handle
         )
-        const detailed = toDetailedProduct(product, override)
+
+        let adminPrice: number | undefined
+        if (!product?.price?.calculated_price && !product?.variants?.[0]?.prices?.length) {
+          adminPrice = await fetchAdminProductPrice(product.id)
+        }
+
+        const fallbackOverride =
+          adminPrice !== undefined
+            ? { price: adminPrice, mrp: adminPrice }
+            : undefined
+
+        const detailed = toDetailedProduct(product, override ?? fallbackOverride)
         PRODUCT_DETAIL_CACHE.set(cacheKey, {
           expires: Date.now() + DETAIL_CACHE_TTL_MS,
           value: detailed,
@@ -836,6 +872,30 @@ export async function fetchProductDetail(
     value: null,
   })
   return null
+}
+
+async function fetchAdminProductPrice(productId: string): Promise<number | undefined> {
+  if (!ADMIN_TOKEN) return undefined
+  try {
+    const base = MEDUSA_URL!.replace(/\/$/, "")
+    const res = await fetch(`${base}/admin/products/${encodeURIComponent(productId)}`, {
+      cache: "no-store",
+      headers: {
+        Authorization:
+          ADMIN_AUTH_SCHEME === "basic" ? `Basic ${ADMIN_TOKEN}` : `Bearer ${ADMIN_TOKEN}`,
+      },
+    })
+    if (!res.ok) return undefined
+    const data = await res.json()
+    const variants = data?.product?.variants
+    const prices = Array.isArray(variants?.[0]?.prices) ? variants[0].prices : []
+    const amount = prices?.[0]?.amount
+    if (typeof amount === "number" && Number.isFinite(amount)) return amount
+    return undefined
+  } catch (err) {
+    console.warn("fetchAdminProductPrice failed", err)
+    return undefined
+  }
 }
 
 async function fetchPriceOverrideForName(

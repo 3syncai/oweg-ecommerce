@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import {
   findCategoryByTitleOrHandle,
+  findCollectionByTitleOrHandle,
   fetchProductsByCategoryId,
+  fetchProductsByCollectionId,
   fetchProductsByTag,
   fetchProductsByType,
   MedusaProduct,
@@ -18,7 +20,7 @@ const listCache = new Map<string, CachedList>()
 
 function buildCacheKey(searchParams: URLSearchParams) {
   const normalized = new URLSearchParams()
-  ;["category", "categoryId", "tag", "type", "limit", "priceMin", "priceMax", "dealsOnly"].forEach((key) => {
+  ;["category", "categoryId", "collection", "collectionId", "tag", "type", "limit", "priceMin", "priceMax", "dealsOnly"].forEach((key) => {
     const value = searchParams.get(key)
     if (value !== null && value !== undefined && value !== "") {
       normalized.set(key, value)
@@ -59,6 +61,8 @@ export async function GET(req: NextRequest) {
 
     const category = searchParams.get("category")
     const categoryId = searchParams.get("categoryId")
+    const collection = searchParams.get("collection")
+    const collectionId = searchParams.get("collectionId")
     const tag = searchParams.get("tag")
     const type = searchParams.get("type")
     const limit = Number(searchParams.get("limit") || 24)
@@ -71,7 +75,7 @@ export async function GET(req: NextRequest) {
     const debugRaw =
       process.env.NODE_ENV !== "production" &&
       searchParams.get("debug") === "1"
-    if (!category && !categoryId && !tag && !type) return NextResponse.json({ products: [] })
+    if (!category && !categoryId && !collection && !collectionId && !tag && !type) return NextResponse.json({ products: [] })
 
     let products
     if (type) {
@@ -100,12 +104,24 @@ export async function GET(req: NextRequest) {
           }
         }
       }
+    } else if (collection || collectionId) {
+      const colId =
+        collectionId ||
+        (await (async () => {
+          if (!collection) return undefined
+          const col = await findCollectionByTitleOrHandle(collection)
+          return col?.id
+        })())
+      if (!colId) return NextResponse.json({ products: [] })
+      products = await fetchProductsByCollectionId(colId, normalizedLimit)
     } else {
-      const catId = categoryId || (await (async () => {
-        if (!category) return undefined
-        const cat = await findCategoryByTitleOrHandle(category)
-        return cat?.id
-      })())
+      const catId =
+        categoryId ||
+        (await (async () => {
+          if (!category) return undefined
+          const cat = await findCategoryByTitleOrHandle(category)
+          return cat?.id
+        })())
       if (!catId) return NextResponse.json({ products: [] })
       products = await fetchProductsByCategoryId(catId, normalizedLimit)
     }

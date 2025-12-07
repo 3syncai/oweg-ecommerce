@@ -140,6 +140,22 @@ export async function registerOrderPayment(
   });
 }
 
+// Medusa v2 register-payment helper
+export async function registerOrderPaymentV2(
+  orderId: string,
+  payload: {
+    amount?: number;
+    currency_code?: string;
+    payment_id?: string;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  return adminFetch(`/admin/orders/${encodeURIComponent(orderId)}/register-payment`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 type PaymentCapturePayload = {
   amount?: number;
   currency_code?: string;

@@ -211,6 +211,9 @@ function OrderSuccessPageInner() {
           <Button variant="outline" onClick={() => router.push("/cart")}>
             View cart
           </Button>
+          <Button variant="ghost" onClick={() => router.push("/orders")}>
+            View my orders
+          </Button>
 
           <div className="ml-auto flex items-center gap-2">
             <Button

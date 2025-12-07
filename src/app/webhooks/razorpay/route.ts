@@ -11,6 +11,7 @@ import {
   setOrderPaidTotal,
   setOrderPaymentStatus,
   updateOrderMetadata,
+  registerOrderPaymentV2,
 } from "@/lib/medusa-admin";
 
 type RazorpayPaymentEntity = {
@@ -451,8 +452,41 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, transaction_id: transactionId });
       }
 
-      // If the transaction endpoint is unavailable (404) or the backend rejects, persist metadata and return 200 to avoid Razorpay retries.
+      // If the transaction endpoint is unavailable (404) or the backend rejects, try alternative payment registration paths then persist metadata.
       if (txRes?.status === 404) {
+        try {
+          // Attempt Medusa v2 register-payment endpoint
+          const regV2 = await registerOrderPaymentV2(medusaOrderId, {
+            amount: canonicalMinor,
+            currency_code: currency.toLowerCase?.() || currency,
+            payment_id: paymentId,
+            metadata: {
+              razorpay_payment_id: paymentId,
+              razorpay_order_id: razorpayOrderId,
+              razorpay_signature: signature || metadata.razorpay_signature,
+              razorpay_event: event,
+            },
+          });
+          if (!regV2?.ok) {
+            console.error("razorpay webhook: register-payment v2 failed", { status: regV2?.status, data: regV2?.data });
+          } else {
+            try {
+              const paidRes = await setOrderPaidTotal(medusaOrderId, canonicalMinor);
+              if (!paidRes.ok) {
+                console.error("razorpay webhook: set paid total failed", { status: paidRes.status, data: paidRes.data });
+              }
+              const statusRes = await setOrderPaymentStatus(medusaOrderId, "captured");
+              if (!statusRes.ok) {
+                console.error("razorpay webhook: set payment status failed", { status: statusRes.status, data: statusRes.data });
+              }
+            } catch (err) {
+              console.error("razorpay webhook: failed syncing paid totals after v2 register", err);
+            }
+          }
+        } catch (err) {
+          console.error("razorpay webhook: register-payment v2 threw", err);
+        }
+
         await updateOrderMetadata(medusaOrderId, {
           ...metaWithCapture,
           razorpay_capture_status: "not_supported",
