@@ -853,7 +853,10 @@ export async function fetchProductDetail(
 
         const fallbackOverride =
           adminPrice !== undefined
-            ? { price: adminPrice, mrp: adminPrice }
+            ? {
+                price: resolveMajorFromMinor(adminPrice),
+                mrp: resolveMajorFromMinor(adminPrice),
+              }
             : undefined
 
         const detailed = toDetailedProduct(product, override ?? fallbackOverride)
@@ -890,7 +893,7 @@ async function fetchAdminProductPrice(productId: string): Promise<number | undef
     const variants = data?.product?.variants
     const prices = Array.isArray(variants?.[0]?.prices) ? variants[0].prices : []
     const amount = prices?.[0]?.amount
-    if (typeof amount === "number" && Number.isFinite(amount)) return amount
+    if (typeof amount === "number" && Number.isFinite(amount)) return resolveMajorFromMinor(amount)
     return undefined
   } catch (err) {
     console.warn("fetchAdminProductPrice failed", err)

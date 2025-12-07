@@ -33,7 +33,7 @@ export const metadata: Metadata = {
   icons: {
     icon: "/oweg_O.png",
     shortcut: "/oweg_O.png",
-    apple: "/oweg_O.png",
+    apple: "/oweg_O.pn g",
   },
   other: { display: "standalone" },
 };

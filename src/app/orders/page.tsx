@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Loader2, Package, ReceiptIndianRupee } from "lucide-react";
 import { useAuth } from "@/contexts/AuthProvider";
 
@@ -46,19 +47,32 @@ const statusLabel = (payment?: string, fulfillment?: string) => {
 
 export default function OrdersPage() {
   const { customer } = useAuth();
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [count, setCount] = useState<number | null>(null);
+  const [page, setPage] = useState(0);
+  const [sort, setSort] = useState<"latest" | "oldest" | "amount-high" | "amount-low">("latest");
+  const [scope, setScope] = useState<"page" | "all">("page");
+  const limit = 20;
 
   useEffect(() => {
     if (!customer) return;
+    if (!customer?.id) {
+      router.push("/login?redirect=/orders");
+      return;
+    }
     const loadOrders = async () => {
       try {
         setLoading(true);
-        const res = await fetch("/api/medusa/orders", { cache: "no-store" });
+        const fetchLimit = scope === "all" && count ? count : limit;
+        const offset = scope === "all" ? 0 : page * limit;
+        const res = await fetch(`/api/medusa/orders?limit=${fetchLimit}&offset=${offset}`, { cache: "no-store" });
         if (!res.ok) throw new Error("Unable to load orders");
         const data = await res.json();
         setOrders((data.orders || []) as Order[]);
+        if (typeof data.count === "number") setCount(data.count);
       } catch {
         setError("Could not load orders right now.");
       } finally {
@@ -66,12 +80,41 @@ export default function OrdersPage() {
       }
     };
     void loadOrders();
-  }, [customer]);
+  }, [customer, page, scope, count]);
 
   const emptyState = useMemo(
     () => !loading && (!orders || orders.length === 0),
     [loading, orders]
   );
+
+  const sortedOrders = useMemo(() => {
+    const list = [...orders];
+    switch (sort) {
+      case "latest":
+        return list.sort(
+          (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+        );
+      case "oldest":
+        return list.sort(
+          (a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+        );
+      case "amount-high":
+        return list.sort((a, b) => (b.total || 0) - (a.total || 0));
+      case "amount-low":
+        return list.sort((a, b) => (a.total || 0) - (b.total || 0));
+      default:
+        return list;
+    }
+  }, [orders, sort]);
+
+  const totalPages = count !== null ? Math.max(1, Math.ceil(count / limit)) : null;
+  const hasNext =
+    scope === "all"
+      ? false
+      : count !== null
+        ? (page + 1) * limit < count
+        : orders.length === limit;
+  const hasPrev = scope === "all" ? false : page > 0;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 space-y-6">
@@ -110,15 +153,48 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {!emptyState && (
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+            <span>Sort by</span>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as typeof sort)}
+              className="min-w-[150px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-800"
+            >
+              <option value="latest">Latest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="amount-high">Amount: high to low</option>
+              <option value="amount-low">Amount: low to high</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+            <span>Apply to</span>
+            <select
+              value={scope}
+              onChange={(e) => {
+                const nextScope = e.target.value as typeof scope;
+                setScope(nextScope);
+                setPage(0);
+              }}
+              className="min-w-[150px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-800"
+            >
+              <option value="page">Current page</option>
+              <option value="all">All orders</option>
+            </select>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3">
-        {orders.map((order) => {
+        {sortedOrders.map((order) => {
           const label = statusLabel(order.payment_status, order.fulfillment_status);
           const firstItem = order.items?.[0];
           return (
             <Link
               key={order.id}
               href={`/orders/${encodeURIComponent(order.id)}`}
-              className="block rounded-2xl border border-gray-100 bg-white p-4 hover:-translate-y-0.5 transition hover:shadow-[0_16px_36px_-24px_rgba(0,0,0,0.35)]"
+              className="block p-4 hover:-translate-y-0.5 transition hover:shadow-[0_16px_36px_-24px_rgba(0,0,0,0.35)]"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="space-y-1">
@@ -140,6 +216,34 @@ export default function OrdersPage() {
           );
         })}
       </div>
+
+      {!emptyState && (
+        <div className="flex items-center justify-between gap-3 pt-4">
+          <div className="text-xs text-gray-600">
+            {count !== null
+              ? `Page ${page + 1} of ${totalPages}`
+              : `Showing ${orders.length} orders`}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={!hasPrev || loading}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              className="px-3 py-1.5 rounded-lg border text-sm font-semibold disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={!hasNext || loading}
+              onClick={() => setPage((p) => p + 1)}
+              className="px-3 py-1.5 rounded-lg border text-sm font-semibold disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
