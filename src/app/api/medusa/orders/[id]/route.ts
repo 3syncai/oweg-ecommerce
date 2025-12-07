@@ -37,9 +37,8 @@ export async function GET(req: NextRequest, ctx: { params: { id: string } | Prom
     }
     const data = await res.json();
     const order = (data as { order?: Record<string, unknown> }).order || data;
-    const orderCustomerId =
-      (order as Record<string, unknown>)?.customer_id ||
-      (order as Record<string, unknown>)?.customer?.id;
+    const orderRecord = order as { customer_id?: string; customer?: { id?: string } };
+    const orderCustomerId = orderRecord?.customer_id || orderRecord?.customer?.id;
 
     if (customerId && orderCustomerId && customerId !== orderCustomerId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
