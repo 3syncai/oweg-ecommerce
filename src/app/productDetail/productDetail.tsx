@@ -1039,15 +1039,53 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     return entries
   }, [product])
 
+  const resolveVariantInventory = useCallback(
+    (prod: unknown, variantId?: string): number | undefined => {
+      if (!prod || typeof prod !== 'object') return undefined
+      const record = prod as Record<string, unknown>
+      const variants = Array.isArray(record.variants) ? (record.variants as Record<string, unknown>[]) : []
+      const variant =
+        variants.find((v) => (v.id as string | undefined) === variantId) ||
+        variants.find((v) => (v.variant_id as string | undefined) === variantId) ||
+        variants[0]
+      const candidates = [
+        record.inventory_quantity,
+        record.available_quantity,
+        record.variant_inventory_quantity,
+        variant?.inventory_quantity,
+        variant?.available_quantity,
+        variant?.quantity,
+      ]
+      for (const cand of candidates) {
+        if (typeof cand === 'number' && !Number.isNaN(cand)) return cand
+      }
+      return undefined
+    },
+    []
+  )
+
+  const resolvedInventory = useMemo(
+    () => resolveVariantInventory(product, product?.variant_id),
+    [product, resolveVariantInventory]
+  )
+
   const hasStock = useMemo(() => {
+    if (typeof resolvedInventory === 'number') {
+      return resolvedInventory > 0
+    }
     if (!product?.variants?.length) return true
     return product.variants.some((variant) => {
-      if (typeof variant.inventory_quantity === 'number') {
-        return variant.inventory_quantity > 0
+      const candidates = [
+        (variant as unknown as Record<string, unknown>).inventory_quantity,
+        (variant as unknown as Record<string, unknown>).available_quantity,
+        (variant as unknown as Record<string, unknown>).quantity,
+      ]
+      for (const cand of candidates) {
+        if (typeof cand === 'number') return cand > 0
       }
       return true
     })
-  }, [product?.variants])
+  }, [product, resolvedInventory])
 
   useEffect(() => {
     if (!product?.id) return
@@ -1122,41 +1160,31 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   }
 
   const handleAddToCart = async () => {
+    if (!hasStock) {
+      notifyOutOfStock()
+      return
+    }
+    if (typeof resolvedInventory === 'number' && quantity > resolvedInventory) {
+      notifyOutOfStock()
+      return
+    }
     await addVariantToCart(product?.variant_id, quantity, product?.title)
   }
-
-  const resolveVariantInventory = useCallback(
-    (prod: unknown, variantId?: string): number | undefined => {
-      if (!prod || typeof prod !== 'object') return undefined
-      const record = prod as Record<string, unknown>
-      const variants = Array.isArray(record.variants) ? (record.variants as Record<string, unknown>[]) : []
-      const variant =
-        variants.find((v) => (v.id as string | undefined) === variantId) ||
-        variants.find((v) => (v.variant_id as string | undefined) === variantId) ||
-        variants[0]
-      const candidates = [
-        record.inventory_quantity,
-        record.available_quantity,
-        record.variant_inventory_quantity,
-        variant?.inventory_quantity,
-        variant?.available_quantity,
-        variant?.quantity,
-      ]
-      for (const cand of candidates) {
-        if (typeof cand === 'number' && !Number.isNaN(cand)) return cand
-      }
-      return undefined
-    },
-    []
-  )
 
   const handleBuyNow = () => {
     if (!product?.variant_id) {
       notifyCartUnavailable()
       return
     }
-    const available = resolveVariantInventory(product, product.variant_id)
-    if (typeof available === 'number' && quantity > available) {
+    if (!hasStock) {
+      notifyOutOfStock()
+      return
+    }
+    if (typeof resolvedInventory === 'number' && resolvedInventory <= 0) {
+      notifyOutOfStock()
+      return
+    }
+    if (typeof resolvedInventory === 'number' && quantity > resolvedInventory) {
       notifyOutOfStock()
       return
     }
@@ -1344,14 +1372,16 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   productHighlights={highlights}
                 />
 
-                <button
-                  type="button"
-                  onClick={handleAddToWishlist}
-                  className="sm:hidden absolute top-3 right-3 inline-flex items-center justify-center rounded-full border border-rose-200 bg-white/90 text-rose-500 p-2 shadow"
-                  aria-label="Add to wishlist"
-                >
-                  <Heart className="w-6 h-6" fill={isWishlisted ? 'currentColor' : 'none'} />
-                </button>
+                <div className="pointer-events-none absolute inset-0 flex items-start justify-end z-30">
+                  <button
+                    type="button"
+                    onClick={handleAddToWishlist}
+                    className="pointer-events-auto sm:hidden m-3 inline-flex items-center justify-center rounded-full border border-rose-200 bg-white/95 text-rose-500 p-2 shadow-lg z-30"
+                    aria-label="Add to wishlist"
+                  >
+                    <Heart className="w-6 h-6" fill={isWishlisted ? 'currentColor' : 'none'} />
+                  </button>
+                </div>
               </div>
 
               {/* RIGHT: Scrollable Summary */}

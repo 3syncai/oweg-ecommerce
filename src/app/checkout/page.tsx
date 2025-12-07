@@ -1,11 +1,13 @@
-"use client";
+﻿"use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/contexts/AuthProvider";
 
 type CartItem = {
   id: string;
@@ -48,7 +50,8 @@ const shippingOptions = [
 ];
 
 const isRazorpayTest =
-  process.env.NEXT_PUBLIC_RAZORPAY_TESTMODE === "true" || process.env.NODE_ENV !== "production";
+  process.env.NEXT_PUBLIC_RAZORPAY_TESTMODE === "true" ||
+  process.env.NEXT_PUBLIC_VERCEL_ENV !== "production";
 
 declare global {
   interface Window {
@@ -59,6 +62,7 @@ declare global {
 function CheckoutPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { customer, setCustomer, refresh } = useAuth();
   const isBuyNow = searchParams?.get("buyNow") === "1";
   const variantFromQuery =
     searchParams?.get("variant_id") ||
@@ -78,6 +82,11 @@ function CheckoutPageInner() {
   } | null>(null);
   const [loadingCart, setLoadingCart] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "cod">("razorpay");
   const [shippingMethod, setShippingMethod] = useState<string>("standard");
   const [referralCode, setReferralCode] = useState("");
@@ -181,7 +190,7 @@ function CheckoutPageInner() {
     void loadCart();
   }, [guestCartId, buyNowItem, isBuyNow, variantFromQuery, qtyFromQuery, priceFromQuery]);
 
-  const totals = useMemo(() => {
+  const clientTotals = useMemo(() => {
     const itemsTotal =
       cart?.items?.reduce((sum, item) => sum + (item.unit_price || 0) * (item.quantity || 1), 0) || 0;
     const shippingPrice = shippingOptions.find((s) => s.id === shippingMethod)?.amount || 0;
@@ -191,6 +200,96 @@ function CheckoutPageInner() {
       total: itemsTotal + shippingPrice,
     };
   }, [cart?.items, shippingMethod]);
+
+  const [serverTotals, setServerTotals] = useState<{
+    subtotal: number;
+    shipping: number;
+    total: number;
+  } | null>(null);
+  const [totalsLoading, setTotalsLoading] = useState(false);
+  const [totalWarning, setTotalWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    const hasCartItems = (cart?.items?.length || 0) > 0;
+    const hasBuyNowItem = isBuyNow && (buyNowItem || variantFromQuery);
+    if (!hasCartItems && !hasBuyNowItem) {
+      setServerTotals(null);
+      return;
+    }
+
+    const safeNumber = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+    const normalizeTotals = (data: unknown) => ({
+      subtotal: safeNumber((data as Record<string, unknown>)?.subtotal),
+      shipping: safeNumber((data as Record<string, unknown>)?.shipping),
+      total: safeNumber((data as Record<string, unknown>)?.total),
+    });
+
+    const fetchTotals = async () => {
+      const fallbackBuyNow =
+        buyNowItem ||
+        (isBuyNow && variantFromQuery
+          ? {
+              variantId: variantFromQuery,
+              quantity: Math.max(1, Number(qtyFromQuery) || 1),
+              priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
+            }
+          : null);
+
+      try {
+        setTotalsLoading(true);
+        setTotalWarning(null);
+        const res = await fetch("/api/checkout/order-summary", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
+          },
+          body: JSON.stringify({
+            mode: isBuyNow ? "buy_now" : "cart",
+            cartId: cart?.id,
+            guestCartId,
+            shippingMethod,
+            itemsOverride: fallbackBuyNow
+              ? [
+                  {
+                    variant_id: fallbackBuyNow.variantId,
+                    quantity: fallbackBuyNow.quantity,
+                    price_minor: fallbackBuyNow.priceMinor,
+                  },
+                ]
+              : undefined,
+          }),
+        });
+
+        if (!res.ok) throw new Error("order summary unavailable");
+        const data = await res.json();
+        const next = normalizeTotals(data);
+        setServerTotals(next);
+        const delta = Math.abs(next.total - clientTotals.total);
+        if (next.total > 0 && clientTotals.total > 0 && delta >= 100) {
+          setTotalWarning("Order total updated based on server pricing. Please review before paying.");
+        }
+      } catch (err) {
+        console.warn("order-summary fallback to client totals", err);
+        setServerTotals(null);
+      } finally {
+        setTotalsLoading(false);
+      }
+    };
+
+    void fetchTotals();
+  }, [
+    cart?.id,
+    cart?.items,
+    shippingMethod,
+    guestCartId,
+    isBuyNow,
+    buyNowItem,
+    variantFromQuery,
+    qtyFromQuery,
+    priceFromQuery,
+    clientTotals.total,
+  ]);
 
   const formatInr = (value: number) => INR.format(value / 100);
 
@@ -232,13 +331,24 @@ function CheckoutPageInner() {
         paymentMethod,
         mode: isBuyNow ? "buy_now" : "cart",
         itemsOverride: fallbackBuyNow
-          ? [{ variant_id: fallbackBuyNow.variantId, quantity: fallbackBuyNow.quantity }]
+          ? [
+              {
+                variant_id: fallbackBuyNow.variantId,
+                quantity: fallbackBuyNow.quantity,
+                price_minor: fallbackBuyNow.priceMinor,
+              },
+            ]
           : undefined,
       }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || "Failed to start checkout");
+      const message = typeof err.error === "string" ? err.error : null;
+      const normalized = message ? message.toLowerCase() : "";
+      if (normalized.includes("insufficient_inventory") || normalized.includes("does not have the required inventory")) {
+        throw new Error("One or more items are out of stock. Please update quantity or remove the item.");
+      }
+      throw new Error(message || "Failed to start checkout");
     }
     return (await res.json()) as DraftOrderResponse;
   };
@@ -321,7 +431,7 @@ function CheckoutPageInner() {
       }) {
         toast.info("Payment captured. Finalizing order...");
         try {
-          await fetch("/api/checkout/razorpay/confirm", {
+          const confirmRes = await fetch("/api/checkout/razorpay/confirm", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -333,8 +443,13 @@ function CheckoutPageInner() {
               currency: payload.currency,
             }),
           });
-        } catch {
-          // ignore; webhook may still finalize
+          if (!confirmRes.ok) {
+            console.error("razorpay confirm returned non-OK", { status: confirmRes.status });
+            toast.warning("Payment received. Order confirmation in progress...");
+          }
+        } catch (err) {
+          console.error("razorpay confirm failed", err);
+          toast.warning("Payment received. Order confirmation in progress...");
         }
         router.push(`${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}`);
       },
@@ -347,10 +462,8 @@ function CheckoutPageInner() {
     rzp.open();
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const performCheckout = async () => {
     if (processing) return;
-
     // Validate presence of items before hitting backend
     const hasCartItems = (cart?.items?.length || 0) > 0;
     const hasBuyNowItem = isBuyNow && (buyNowItem || variantFromQuery);
@@ -359,7 +472,6 @@ function CheckoutPageInner() {
       toast.error("Cart is empty. Please add an item before checkout.");
       return;
     }
-
     setProcessing(true);
     try {
       if (isBuyNow && !buyNowItem) {
@@ -380,7 +492,55 @@ function CheckoutPageInner() {
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customer) {
+      setLoginModalOpen(true);
+      return;
+    }
+    await performCheckout();
+  };
+
   const cartItems = cart?.items || [];
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    if (!loginEmail || !loginPassword) {
+      setLoginError("Enter email and password to continue.");
+      return;
+    }
+    try {
+      setLoginBusy(true);
+      const res = await fetch("/api/medusa/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", "Cache-Control": "no-store" },
+        credentials: "include",
+        body: JSON.stringify({ identifier: loginEmail.trim(), password: loginPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = data?.error || "Login failed. Check your details.";
+        setLoginError(msg);
+        toast.error(msg);
+        return;
+      }
+      if (data?.customer) {
+        setCustomer(data.customer);
+      } else {
+        await refresh();
+      }
+      toast.success("Logged in. Continue checkout.");
+      setLoginModalOpen(false);
+      setLoginPassword("");
+      await performCheckout();
+    } catch (err) {
+      console.error(err);
+      setLoginError("Login failed. Please try again.");
+    } finally {
+      setLoginBusy(false);
+    }
+  };
 
   return (
     <div className="bg-gray-50 min-h-screen">
@@ -571,7 +731,7 @@ function CheckoutPageInner() {
   alt="Razorpay"
   width={110}
   height={30}
-  priority
+  unoptimized
 />
                       </p>
                       <p className="text-xs text-slate-500">UPI, Cards, Netbanking</p>
@@ -609,7 +769,7 @@ function CheckoutPageInner() {
             <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4 sticky top-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-900">Order summary</h2>
-                {loadingCart && <span className="text-xs text-slate-500">Loading…</span>}
+                {loadingCart && <span className="text-xs text-slate-500">LoadingΓÇª</span>}
               </div>
               <div className="divide-y border rounded-lg">
                 {cartItems.map((item) => (
@@ -635,18 +795,24 @@ function CheckoutPageInner() {
               <div className="space-y-2 text-sm text-slate-700">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span className="font-semibold">{formatInr(totals.subtotal)}</span>
+                  <span className="font-semibold">{formatInr((serverTotals || clientTotals).subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Shipping</span>
                   <span className="font-semibold">
-                    {totals.shipping === 0 ? "Free" : formatInr(totals.shipping)}
+                    {(serverTotals || clientTotals).shipping === 0 ? "Free" : formatInr((serverTotals || clientTotals).shipping)}
                   </span>
                 </div>
                 <div className="flex justify-between text-base font-semibold text-slate-900 pt-2 border-t">
                   <span>Total</span>
-                  <span>{formatInr(totals.total)}</span>
+                  <span>{formatInr((serverTotals || clientTotals).total)}</span>
                 </div>
+                {totalsLoading && <div className="text-xs text-slate-500">Refreshing totals...</div>}
+                {totalWarning && (
+                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">
+                    {totalWarning}
+                  </div>
+                )}
               </div>
 
               <Button
@@ -658,7 +824,7 @@ function CheckoutPageInner() {
                   (isBuyNow && !buyNowItem && !variantFromQuery)
                 }
               >
-                {processing ? "Processing Payment…" : `Pay securely (${formatInr(totals.total)})`}
+                {processing ? "Processing PaymentΓÇª" : `Pay securely (${formatInr((serverTotals || clientTotals).total)})`}
               </Button>
               {isRazorpayTest && (
                 <p className="text-xs text-slate-500 text-center">
@@ -669,6 +835,61 @@ function CheckoutPageInner() {
           </div>
         </form>
       </div>
+      {loginModalOpen && (
+        <div className="fixed inset-0 z-[999] bg-black/30 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-100 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Sign in to continue</h2>
+                <p className="text-xs text-gray-600">Log in to place your order securely.</p>
+              </div>
+              <button
+                type="button"
+                className="text-sm text-gray-500 hover:text-gray-800"
+                onClick={() => {
+                  setLoginModalOpen(false);
+                }}
+              >
+                Close
+              </button>
+            </div>
+            <form onSubmit={handleLoginSubmit} className="space-y-3">
+              <Input
+                required
+                type="email"
+                placeholder="Email"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+              />
+              <Input
+                required
+                type="password"
+                placeholder="Password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+              />
+              {loginError && (
+                <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                  {loginError}
+                </div>
+              )}
+              <Button
+                type="submit"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                disabled={loginBusy}
+              >
+                {loginBusy ? "Signing in..." : "Login & continue"}
+              </Button>
+              <p className="text-xs text-gray-500">
+                New here?{" "}
+                <Link href="/signup" className="text-emerald-700 font-semibold">
+                  Create an account
+                </Link>
+              </p>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -678,7 +899,7 @@ export default function CheckoutPage() {
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center text-slate-600">
-          Loading checkout…
+          Loading checkoutΓÇª
         </div>
       }
     >
@@ -686,3 +907,10 @@ export default function CheckoutPage() {
     </Suspense>
   );
 }
+
+
+
+
+
+
+

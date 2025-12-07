@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ChevronLeft, ChevronRight, MapPin, UserRound } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, MapPin, UserRound } from 'lucide-react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { ProductCard } from '@/components/modules/ProductCard';
 import type { MedusaCategory } from '@/lib/medusa';
@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthProvider';
 import PreferenceModal from '@/components/modules/PreferenceModal';
 import { usePreferences } from '@/hooks/usePreferences';
 import { buildPreferenceSlug } from '@/lib/personalization';
+import { getBrandLogoPath, getBrandLogoScale, normalizeBrandKey } from '@/lib/brand-logos';
 
 // UI product type (used by carousel/cards)
 type UIProduct = {
@@ -674,6 +675,18 @@ export default function HomePage() {
     [categoriesQuery.data?.categories]
   );
 
+  const brandCollectionsQuery = useQuery({
+    queryKey: ['home-brand-collections'],
+    queryFn: async () => {
+      const res = await fetch('/api/medusa/collections', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Unable to load brands');
+      const data = await res.json();
+      return (data.collections || []) as Array<{ id: string; title?: string; handle?: string }>;
+    },
+    staleTime: 1000 * 60 * 10,
+  });
+  const brandCollections = brandCollectionsQuery.data ?? [];
+
   const mobileCategories: MobileCategory[] = useMemo(() => {
     const seen = new Set<string>();
     const roots = categoriesData.filter((cat) => {
@@ -981,6 +994,57 @@ export default function HomePage() {
             <PromoBanners />
           </div>
         )}
+        <div className="px-4 mt-10">
+          <div className="p-4 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Top brands we carry</h1>
+              </div>
+              {brandCollectionsQuery.isLoading && (
+                <div className="inline-flex items-center gap-2 text-sm text-emerald-700">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading
+                </div>
+              )}
+            </div>
+            <div className="flex gap-4 overflow-x-auto scrollbar-hidden pb-3">
+              {brandCollectionsQuery.isLoading
+                ? Array.from({ length: 8 }).map((_, idx) => (
+                    <div
+                      key={idx}
+                      className="min-w-[170px] h-24 rounded-2xl border border-gray-100 bg-gray-50 animate-pulse"
+                    />
+                  ))
+                : brandCollections.map((brand) => {
+                    const logo = getBrandLogoPath(brand.title, brand.handle);
+                    const scale = getBrandLogoScale(brand.title, brand.handle);
+                    const slug = brand.handle || normalizeBrandKey(brand.title) || brand.id;
+                    return (
+                      <Link
+                        key={brand.id}
+                        href={`/brands/${encodeURIComponent(slug)}?from=home`}
+                        className="group min-w-[170px] h-24 rounded-2xl border border-gray-100 bg-white shadow-sm flex items-center justify-center px-4 hover:-translate-y-1 transition hover:shadow-[0_15px_36px_-24px_rgba(0,0,0,0.35)]"
+                      >
+                        <Image
+                          src={logo}
+                          alt={brand.title || 'Brand logo'}
+                          width={160}
+                          height={80}
+                          className="object-contain"
+                          style={{ transform: `scale(${scale})` }}
+                          unoptimized
+                          onError={(e) => {
+                            const img = e.currentTarget;
+                            if (img.src.includes('oweg_logo')) return;
+                            img.src = '/oweg_logo.png';
+                          }}
+                        />
+                      </Link>
+                    );
+                  })}
+            </div>
+          </div>
+        </div>
         <MobileJoinCard />
         {loading && (
           <div className="px-4 py-3">

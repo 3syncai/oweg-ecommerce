@@ -33,6 +33,9 @@ function OrderFailedPageInner() {
           <Button variant="outline" onClick={() => router.push("/")}>
             Continue shopping
           </Button>
+          <Button variant="ghost" onClick={() => router.push("/orders")}>
+            View my orders
+          </Button>
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@ import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medu
 export const dynamic = "force-dynamic";
 
 const DEFAULT_CURRENCY = "INR";
+const MOCK_RAZORPAY = process.env.MOCK_RAZORPAY === "true";
 
 type RequestBody = {
   medusaOrderId?: string;
@@ -89,6 +90,22 @@ export async function POST(req: Request) {
       });
     }
 
+    if (MOCK_RAZORPAY) {
+      const mockId = `mock_rzp_${Date.now()}`;
+      await updateOrderMetadata(medusaOrderId, {
+        ...metadata,
+        razorpay_order_id: mockId,
+        razorpay_payment_status: "created",
+      });
+      return NextResponse.json({
+        orderId: mockId,
+        key: getPublicRazorpayKey(),
+        amount: expected,
+        currency,
+        mock: true,
+      });
+    }
+
     const rzpOrder = await createRazorpayOrder(
       {
         // Medusa totals are in smallest unit (paise); tell helper not to upscale again
@@ -117,7 +134,8 @@ export async function POST(req: Request) {
       currency: rzpOrder.currency,
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : "Unable to create Razorpay order";
     console.error("create-razorpay-order failed", err);
-    return NextResponse.json({ error: "Unable to create Razorpay order" }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 }

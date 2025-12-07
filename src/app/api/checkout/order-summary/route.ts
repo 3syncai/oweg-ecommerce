@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getOrderById } from "@/lib/medusa-admin";
+import { getOrderById, readStoreCart } from "@/lib/medusa-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -95,4 +95,61 @@ export async function GET(req: Request) {
       metadata,
     },
   });
+}
+
+const SHIPPING_OPTIONS: Record<string, number> = {
+  standard: 0,
+  express: 19900,
+};
+
+type SummaryBody = {
+  mode?: "buy_now" | "cart";
+  cartId?: string | null;
+  guestCartId?: string | null;
+  shippingMethod?: string;
+  itemsOverride?: Array<{ variant_id: string; quantity: number; price_minor?: number }>;
+};
+
+function normalizeTotalsFromCart(cart: Record<string, unknown> | null, shippingMethod?: string) {
+  const subtotal =
+    typeof cart?.subtotal === "number"
+      ? cart.subtotal
+      : typeof cart?.total === "number"
+        ? cart.total
+        : 0;
+  const shipping = SHIPPING_OPTIONS[shippingMethod || "standard"] ?? 0;
+  return { subtotal, shipping, total: subtotal + shipping };
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json().catch(() => ({}))) as SummaryBody;
+    const cartId = body.cartId || body.guestCartId || undefined;
+    const shippingMethod = body.shippingMethod || "standard";
+
+    // Try to read cart totals from Medusa Store API
+    const cartRes = await readStoreCart(cartId);
+    const cart = cartRes?.cart || null;
+    const totals = normalizeTotalsFromCart(cart, shippingMethod);
+
+    // If buy-now override with explicit prices exists, adjust subtotal
+    if (Array.isArray(body.itemsOverride) && body.itemsOverride.length) {
+      const overrideSubtotal = body.itemsOverride.reduce((sum, item) => {
+        const price = typeof item.price_minor === "number" ? item.price_minor : 0;
+        const qty = Math.max(1, Number(item.quantity) || 1);
+        return sum + price * qty;
+      }, 0);
+      totals.subtotal = overrideSubtotal;
+      totals.total = overrideSubtotal + totals.shipping;
+    }
+
+    return NextResponse.json({
+      subtotal: totals.subtotal,
+      shipping: totals.shipping,
+      total: totals.total,
+    });
+  } catch (err) {
+    console.error("order-summary POST failed", err);
+    return NextResponse.json({ error: "invalid request" }, { status: 400 });
+  }
 }

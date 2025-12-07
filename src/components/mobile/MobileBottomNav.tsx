@@ -134,6 +134,30 @@ const categoryImageKeywords: Array<{ image: string; includes: string[] }> = [
   { image: '/Computer & Mobile v1.png', includes: ['computer', 'accessor'] },
 ];
 
+const accountLinks = [
+  { label: 'Brands', href: '/brands' },
+  { label: 'Gift Card', href: '/gift-card' },
+  { label: 'Affiliates', href: '/affiliates' },
+  { label: 'Specials', href: '/specials' },
+  { label: 'My Reward', href: '/my-reward' },
+];
+
+const policyLinks = [
+  { label: 'Terms & Conditions', href: '/terms' },
+  { label: 'Returns Policy', href: '/returns-policy' },
+  { label: 'Shipping Policy', href: '/shipping-policy' },
+  { label: 'Coupon Code Policy', href: '/coupon-policy' },
+  { label: 'Privacy Policy', href: '/privacy-policy' },
+];
+
+const quickLinks = [
+  { label: 'About Us', href: '/about' },
+  { label: 'FAQ', href: '/faq' },
+  { label: 'Contact', href: '/contact' },
+  { label: 'Seller Registration', href: '/seller-registration' },
+  { label: 'Agent Registration', href: '/agent-registration' },
+];
+
 const buildCategoryList = (data?: unknown): MobileCategory[] => {
   const raw: MedusaCategory[] = Array.isArray((data as { categories?: MedusaCategory[] })?.categories)
     ? ((data as { categories?: MedusaCategory[] }).categories as MedusaCategory[])
@@ -1307,48 +1331,46 @@ export default function MobileBottomNav() {
             <div className="rounded-2xl border border-gray-100 bg-white px-3 py-3 shadow-sm">
               <p className="text-sm font-semibold text-gray-900 mb-2">My Account</p>
               <div className="flex flex-wrap gap-2">
-                {['Brands', 'Gift Card', 'Affiliates', 'Specials', 'My Reward'].map((label) => (
-                  <span key={label} className="px-3 py-1.5 rounded-full border border-emerald-100 text-emerald-700 text-[11px] font-semibold bg-emerald-50/60">
-                    {label}
-                  </span>
+                {accountLinks.map((link) => (
+                  <Link
+                    key={link.label}
+                    href={link.href}
+                    className="px-3 py-1.5 rounded-full border border-emerald-100 text-emerald-700 text-[11px] font-semibold bg-emerald-50/60"
+                    onClick={closeProfile}
+                  >
+                    {link.label}
+                  </Link>
                 ))}
               </div>
             </div>
             <div className="rounded-2xl border border-gray-100 bg-white px-3 py-3 shadow-sm">
               <p className="text-sm font-semibold text-gray-900 mb-2">Policy</p>
               <div className="flex flex-wrap gap-2">
-                {['Terms & Conditions', 'Returns Policy', 'Shipping Policy', 'Coupon Code Policy', 'Privacy Policy'].map((label) => (
-                  <span key={label} className="px-3 py-1.5 rounded-full border border-emerald-100 text-emerald-700 text-[11px] font-semibold bg-emerald-50/60">
-                    {label}
-                  </span>
+                {policyLinks.map((link) => (
+                  <Link
+                    key={link.label}
+                    href={link.href}
+                    className="px-3 py-1.5 rounded-full border border-emerald-100 text-emerald-700 text-[11px] font-semibold bg-emerald-50/60"
+                    onClick={closeProfile}
+                  >
+                    {link.label}
+                  </Link>
                 ))}
               </div>
             </div>
             <div className="rounded-2xl border border-gray-100 bg-white px-3 py-3 shadow-sm">
               <p className="text-sm font-semibold text-gray-900 mb-2">Quick Links</p>
               <div className="flex flex-wrap gap-2">
-                {[
-                  { label: 'About Us', href: '/about' },
-                  { label: 'FAQ', href: '/faq' },
-                  { label: 'Contact', href: 'mailto:owegonline@oweg.in' },
-                  { label: 'Seller Registration', href: '/vendor-portal' },
-                  { label: 'Agent Registration', href: '/vendor-portal' },
-                ].map((link) =>
-                  link.href ? (
-                    <Link
-                      key={link.label}
-                      href={link.href}
-                      className="px-3 py-1.5 rounded-full border border-emerald-100 text-emerald-700 text-[11px] font-semibold bg-emerald-50/60"
-                      onClick={closeProfile}
-                    >
-                      {link.label}
-                    </Link>
-                  ) : (
-                    <span key={link.label} className="px-3 py-1.5 rounded-full border border-gray-100 text-gray-700 text-[11px] font-semibold bg-gray-50">
-                      {link.label}
-                    </span>
-                  )
-                )}
+                {quickLinks.map((link) => (
+                  <Link
+                    key={link.label}
+                    href={link.href}
+                    className="px-3 py-1.5 rounded-full border border-emerald-100 text-emerald-700 text-[11px] font-semibold bg-emerald-50/60"
+                    onClick={closeProfile}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
               </div>
             </div>
             <div className="rounded-2xl border border-gray-100 bg-white px-3 py-3 shadow-sm space-y-2">
