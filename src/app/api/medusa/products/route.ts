@@ -6,7 +6,6 @@ import {
   fetchProductsByCollectionId,
   fetchProductsByTag,
   fetchProductsByType,
-  MedusaProduct,
   toUiProduct,
 } from "@/lib/medusa"
 import { getPriceListPrices } from "@/lib/price-lists"
