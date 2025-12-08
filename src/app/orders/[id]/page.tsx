@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CheckCircle2, ChevronRight, Clock, Loader2, MapPin, Package, Phone, ReceiptIndianRupee, User2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthProvider";
 
 type OrderItem = {
   id: string;
@@ -76,6 +77,7 @@ function trackerSteps(order?: OrderDetail) {
 export default function OrderDetailPage() {
   const params = useParams();
   const orderId = Array.isArray(params?.id) ? params.id[0] : (params?.id as string | undefined);
+  const { customer } = useAuth();
 
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -83,6 +85,7 @@ export default function OrderDetailPage() {
 
   useEffect(() => {
     if (!orderId) return;
+    if (!customer?.id) return;
     const loadOrder = async () => {
       try {
         setLoading(true);
@@ -97,9 +100,19 @@ export default function OrderDetailPage() {
       }
     };
     void loadOrder();
-  }, [orderId]);
+  }, [orderId, customer?.id]);
 
   const steps = useMemo(() => trackerSteps(order || undefined), [order]);
+
+  if (!customer?.id) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 py-10 space-y-4">
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-emerald-800 text-sm font-semibold">
+          Please log in to view your order.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 space-y-6">

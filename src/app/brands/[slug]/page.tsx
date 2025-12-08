@@ -65,8 +65,14 @@ export default function BrandDetailPage() {
       collections.find((c) => (c.handle || "") === slug) ||
       collections.find((c) => normalizeBrandKey(c.title) === normSlug) ||
       collections.find((c) => normalizeBrandKey(c.handle) === normSlug);
-    setCollection(found || null);
-    if (!found) setError("Brand not found.");
+    if (!found) {
+      setCollection(null);
+      setProducts([]);
+      setError("Brand not found.");
+      setLoadingProducts(false);
+      return;
+    }
+    setCollection(found);
   }, [collections, slug]);
 
   // Load products for the resolved collection
