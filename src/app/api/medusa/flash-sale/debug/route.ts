@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import axios from 'axios'
 
 /**
@@ -9,7 +9,7 @@ export async function GET() {
   try {
     const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
     const url = `${backendUrl}/store/flash-sale/debug`
-    
+
     const response = await axios.get(url, {
       headers: {
         'Content-Type': 'application/json',

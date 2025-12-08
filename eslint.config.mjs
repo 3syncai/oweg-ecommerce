@@ -17,6 +17,8 @@ const config = [
       "public/**",
       ".turbo/**",
       "src/app/example/**",
+      "affiliate-portal/**",  // Separate workspace with its own build
+      "oc-api/**",            // Legacy migration scripts
     ],
   },
 

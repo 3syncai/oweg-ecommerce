@@ -138,11 +138,11 @@ function CheckoutPageInner() {
           buyNowItem ||
           (isBuyNow && variantFromQuery
             ? {
-                variantId: variantFromQuery,
-                quantity: Math.max(1, Number(qtyFromQuery) || 1),
-                title: "Selected item",
-                priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
-              }
+              variantId: variantFromQuery,
+              quantity: Math.max(1, Number(qtyFromQuery) || 1),
+              title: "Selected item",
+              priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
+            }
             : null);
 
         if (isBuyNow && fallbackBuyNow) {
@@ -192,7 +192,7 @@ function CheckoutPageInner() {
     };
   }, [cart?.items, shippingMethod]);
 
-  const formatInr = (value: number) => INR.format(value / 100);
+  const formatInr = (value: number) => INR.format(value);
 
   const ensureRazorpay = () =>
     new Promise<void>((resolve, reject) => {
@@ -211,10 +211,10 @@ function CheckoutPageInner() {
       buyNowItem ||
       (isBuyNow && variantFromQuery
         ? {
-            variantId: variantFromQuery,
-            quantity: Math.max(1, Number(qtyFromQuery) || 1),
-            priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
-          }
+          variantId: variantFromQuery,
+          quantity: Math.max(1, Number(qtyFromQuery) || 1),
+          priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
+        }
         : null);
 
     const res = await fetch("/api/checkout/draft-order", {
@@ -567,12 +567,12 @@ function CheckoutPageInner() {
                       <p className="text-sm font-semibold text-slate-900 flex items-center gap-2">
                         <span className="sr-only">Razorpay</span>
                         <Image
-  src="/razorpay_logo.png"
-  alt="Razorpay"
-  width={110}
-  height={30}
-  priority
-/>
+                          src="/razorpay_logo.png"
+                          alt="Razorpay"
+                          width={110}
+                          height={30}
+                          priority
+                        />
                       </p>
                       <p className="text-xs text-slate-500">UPI, Cards, Netbanking</p>
                     </div>

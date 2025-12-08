@@ -1,32 +1,32 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import axios from 'axios'
 
 export async function GET() {
   try {
     const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
     const url = `${backendUrl}/store/flash-sale/products`
-    
+
     // Get publishable key and sales channel ID like other routes
-    const publishableKey = process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY || 
-                          process.env.MEDUSA_PUBLISHABLE_KEY || 
-                          process.env.MEDUSA_PUBLISHABLE_API_KEY
-    const salesChannelId = process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID || 
-                          process.env.MEDUSA_SALES_CHANNEL_ID
-    
+    const publishableKey = process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY ||
+      process.env.MEDUSA_PUBLISHABLE_KEY ||
+      process.env.MEDUSA_PUBLISHABLE_API_KEY
+    const salesChannelId = process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID ||
+      process.env.MEDUSA_SALES_CHANNEL_ID
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     }
-    
+
     if (publishableKey) {
       headers['x-publishable-api-key'] = publishableKey
     }
     if (salesChannelId) {
       headers['x-sales-channel-id'] = salesChannelId
     }
-    
+
     console.log('[Flash Sale API] Fetching from backend:', url)
     console.log('[Flash Sale API] Headers:', { hasPublishableKey: !!publishableKey, hasSalesChannel: !!salesChannelId })
-    
+
     const response = await axios.get(url, {
       headers,
       validateStatus: () => true, // Don't throw on any status
