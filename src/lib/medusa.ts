@@ -711,17 +711,26 @@ export function toDetailedProduct(
 function computeUiPrice(p: MedusaProduct) {
   const calculated = p.price?.calculated_price
   const original = p.price?.original_price
-  const firstAmountMinor = p.variants?.[0]?.prices?.[0]?.amount
+  
+  // Get price from first variant as fallback
+  const firstVariant = p.variants?.[0]
+  const variantAmount = firstVariant?.calculated_price?.calculated_amount ?? firstVariant?.prices?.[0]?.amount
   
   // Database stores prices in major units (Rupees)
   // Use values directly without conversion
   const amountMajor =
-    typeof calculated === "number"
+    typeof calculated === "number" && calculated > 0
       ? calculated
-      : resolveMajorFromMinor(firstAmountMinor) ?? 0
+      : typeof variantAmount === "number" && variantAmount > 0
+        ? variantAmount
+        : 0
 
+  // For originalMajor (MRP):
+  // 1. Use original_price if it's valid and greater than calculated price
+  // 2. Otherwise use calculated price itself (no discount scenario)
+  // This ensures MRP is never wildly different from the actual price
   const originalMajor =
-    typeof original === "number" && original > 0
+    typeof original === "number" && original > 0 && original >= amountMajor && original < (amountMajor * 10)
       ? original
       : amountMajor
 
