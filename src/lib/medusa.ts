@@ -815,7 +815,6 @@ export async function fetchProductDetail(
           adminPrice = await fetchAdminProductPrice(product.id)
         }
 
-<<<<<<< HEAD
         // Admin price is only used if Medusa has no price data at all
         // Prices are taken from Medusa Admin, not OpenCart
         const detailed = toDetailedProduct(product)
@@ -825,15 +824,6 @@ export async function fetchProductDetail(
           detailed.price = adminPrice
           detailed.mrp = adminPrice
         }
-=======
-        const fallbackOverride =
-          adminPrice !== undefined
-            ? {
-                price: resolveMajorFromMinor(adminPrice),
-                mrp: resolveMajorFromMinor(adminPrice),
-              }
-            : undefined
->>>>>>> master
 
         PRODUCT_DETAIL_CACHE.set(cacheKey, {
           expires: Date.now() + DETAIL_CACHE_TTL_MS,
