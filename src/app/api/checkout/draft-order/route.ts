@@ -163,6 +163,7 @@ export async function POST(req: Request) {
             .map((it) => ({
               variant_id: it.variant_id,
               quantity: Math.max(1, Number(it.quantity)),
+              unit_price: typeof (it as any).price_minor === 'number' ? (it as any).price_minor : undefined
             }))
         : null;
 
@@ -175,7 +176,8 @@ export async function POST(req: Request) {
         const temp = await createTempCart();
         cartId = temp.id;
         for (const item of itemsOverride) {
-          await addItemToCart(temp.id, item);
+          // addItemToCart only supports standard variant add. Prices are overriden later in createDraftOrder
+          await addItemToCart(temp.id, { variant_id: item.variant_id, quantity: item.quantity });
         }
         const refreshed = await backend(`/store/carts/${encodeURIComponent(temp.id)}`);
         if (refreshed.ok) {
@@ -227,12 +229,18 @@ export async function POST(req: Request) {
                   ? Number(record.quantity)
                   : 1;
             const quantity = Math.max(1, quantityRaw);
+            
+            // Apply price override if it matches an overridden item (for Buy Now)
+            const override = itemsOverride?.find(it => it.variant_id === variantId)
+            const unit_price = override?.unit_price
+
             return {
               variant_id: variantId,
               quantity,
+              unit_price
             };
           })
-          .filter((item): item is { variant_id: string; quantity: number } => Boolean(item))
+          .filter((item): item is NonNullable<typeof item> => Boolean(item)) as unknown as { variant_id: string; quantity: number; unit_price?: number }[]
       : [];
 
     if (!items.length) {

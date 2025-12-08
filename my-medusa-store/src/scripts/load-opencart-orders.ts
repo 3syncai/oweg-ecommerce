@@ -1,4 +1,4 @@
-import { ExecArgs } from "@medusajs/framework/types";
+// // import { ExecArgs } from "@medusajs/framework/types";
 import fs from "fs";
 import path from "path";
 import { Modules } from "@medusajs/framework/utils";
@@ -1091,7 +1091,7 @@ async function createOrder(
  * Main load function (called by medusa exec)
  * This is the default export that medusa exec expects
  */
-export default async function loadOpencartOrders({ container }: ExecArgs) {
+export default async function loadOpencartOrders({ container }: any) {
   console.log("🚀 Order ETL Load Script Started\n");
 
   if (!container) {

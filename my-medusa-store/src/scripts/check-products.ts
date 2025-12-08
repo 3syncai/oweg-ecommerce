@@ -5,7 +5,7 @@
 import { ExecArgs } from "@medusajs/framework/types"
 import { Client } from "pg"
 
-export default async function checkProducts({ container }: ExecArgs) {
+export default async function checkProducts({ container }: any) {
   console.log('🔍 Checking products in Medusa database...\n')
   
   const databaseUrl = process.env.DATABASE_URL

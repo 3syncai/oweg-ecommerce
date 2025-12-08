@@ -1,4 +1,4 @@
-import { ExecArgs } from "@medusajs/framework/types";
+// import { ExecArgs } from "@medusajs/framework/types";
 import { Modules } from "@medusajs/framework/utils";
 import { Client } from "pg";
 
@@ -7,7 +7,7 @@ import { Client } from "pg";
  */
 export default async function fixOrdersPaymentFulfillment({
   container,
-}: ExecArgs) {
+}: any) {
   console.log(
     "🔧 Fixing orders - creating payment_collection and fulfillment entries...\n"
   );

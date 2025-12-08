@@ -1,4 +1,4 @@
-import { ExecArgs } from "@medusajs/framework/types";
+// import { ExecArgs } from "@medusajs/framework/types";
 import { Client } from "pg";
 
 /**
@@ -7,7 +7,7 @@ import { Client } from "pg";
  * This caused prices to be 100,000x too large
  * Fix: Recalculate raw_unit_price from original price (unit_price / 100) * 1000
  */
-export default async function fixOrderPrices({ container }: ExecArgs) {
+export default async function fixOrderPrices({ container }: any) {
   console.log("🔧 Fixing order prices...\n");
 
   const databaseUrl = process.env.DATABASE_URL;

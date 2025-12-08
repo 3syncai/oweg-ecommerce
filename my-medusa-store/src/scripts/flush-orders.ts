@@ -1,4 +1,4 @@
-import { ExecArgs } from "@medusajs/framework/types";
+// import { ExecArgs } from "@medusajs/framework/types";
 import { Client } from "pg";
 
 /**
@@ -11,7 +11,7 @@ import { Client } from "pg";
  *
  * WARNING: This will delete ALL orders. Use with caution!
  */
-export default async function flushOrders({ container }: ExecArgs) {
+export default async function flushOrders({ container }: any) {
   console.log("🗑️  Starting order flush...");
 
   // Get database connection from environment

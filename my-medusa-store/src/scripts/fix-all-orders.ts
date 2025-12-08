@@ -1,4 +1,4 @@
-import { ExecArgs } from "@medusajs/framework/types";
+// import { ExecArgs } from "@medusajs/framework/types";
 import { Client } from "pg";
 
 /**
@@ -7,7 +7,7 @@ import { Client } from "pg";
  * 2. Creates fulfillment entries
  * 3. Ensures proper metadata format
  */
-export default async function fixAllOrders({ container }: ExecArgs) {
+export default async function fixAllOrders({ container }: any) {
   console.log("🔧 Fixing all orders...\n");
 
   const databaseUrl = process.env.DATABASE_URL;

@@ -1,4 +1,4 @@
-import { ExecArgs } from "@medusajs/framework/types";
+// import { ExecArgs } from "@medusajs/framework/types";
 import { Client } from "pg";
 
 /**
@@ -7,7 +7,7 @@ import { Client } from "pg";
  * 2. Create payment_collection entries
  * 3. Create fulfillment entries
  */
-export default async function fixAllIssues({ container }: ExecArgs) {
+export default async function fixAllIssues({ container }: any) {
   console.log("🔧 Fixing all order issues...\n");
 
   const databaseUrl = process.env.DATABASE_URL;

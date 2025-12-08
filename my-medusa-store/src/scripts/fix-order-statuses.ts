@@ -1,10 +1,10 @@
-import { ExecArgs } from "@medusajs/framework/types";
+// import { ExecArgs } from "@medusajs/framework/types";
 import { Client } from "pg";
 
 /**
  * Fix order payment and fulfillment statuses by creating payment_collection and fulfillment entries
  */
-export default async function fixOrderStatuses({ container }: ExecArgs) {
+export default async function fixOrderStatuses({ container }: any) {
   console.log("🔧 Fixing order payment and fulfillment statuses...");
 
   const databaseUrl = process.env.DATABASE_URL;

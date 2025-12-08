@@ -1,4 +1,4 @@
-import { ExecArgs } from "@medusajs/framework/types";
+// import { ExecArgs } from "@medusajs/framework/types";
 import { Client } from "pg";
 
 /**
@@ -7,7 +7,7 @@ import { Client } from "pg";
  * 2. Creates fulfillment entries if needed
  * 3. Updates metadata format
  */
-export default async function fixOrdersComplete({ container }: ExecArgs) {
+export default async function fixOrdersComplete({ container }: any) {
   console.log(
     "🔧 Fixing orders - creating payment_collection and fulfillment entries..."
   );

@@ -2,10 +2,10 @@
  * Inspect order table schema and foreign keys
  */
 
-import { ExecArgs } from "@medusajs/framework/types"
+// import { ExecArgs } from "@medusajs/framework/types"
 import { Client } from "pg"
 
-export default async function inspectOrderSchema({ container }: ExecArgs) {
+export default async function inspectOrderSchema({ container }: any) {
   const databaseUrl = process.env.DATABASE_URL
   if (!databaseUrl) {
     throw new Error('DATABASE_URL environment variable is not set')

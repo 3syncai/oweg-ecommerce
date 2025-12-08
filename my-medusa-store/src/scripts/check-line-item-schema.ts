@@ -2,10 +2,10 @@
  * Check order_line_item table schema
  */
 
-import { ExecArgs } from "@medusajs/framework/types";
+// import { ExecArgs } from "@medusajs/framework/types";
 import { Client } from "pg";
 
-export default async function checkLineItemSchema({ container }: ExecArgs) {
+export default async function checkLineItemSchema({ container }: any) {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DATABASE_URL environment variable is not set");

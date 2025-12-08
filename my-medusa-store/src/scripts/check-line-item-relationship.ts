@@ -2,12 +2,12 @@
  * Check how order_line_item is linked to order in Medusa v2
  */
 
-import { ExecArgs } from "@medusajs/framework/types";
+// import { ExecArgs } from "@medusajs/framework/types";
 import { Client } from "pg";
 
 export default async function checkLineItemRelationship({
   container,
-}: ExecArgs) {
+}: any) {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DATABASE_URL environment variable is not set");

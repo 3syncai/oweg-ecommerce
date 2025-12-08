@@ -1,10 +1,10 @@
-import { ExecArgs } from "@medusajs/framework/types";
+// import { ExecArgs } from "@medusajs/framework/types";
 import { Client } from "pg";
 
 /**
  * Fix order detail page error by ensuring all required relationships exist
  */
-export default async function fixOrderDetailError({ container }: ExecArgs) {
+export default async function fixOrderDetailError({ container }: any) {
   console.log("🔧 Fixing order detail errors...\n");
 
   const databaseUrl = process.env.DATABASE_URL;

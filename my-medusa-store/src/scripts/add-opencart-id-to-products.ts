@@ -13,7 +13,7 @@ import { ExecArgs } from "@medusajs/framework/types"
 import { Modules } from "@medusajs/framework/utils"
 import { Client } from "pg"
 
-export default async function addOpencartIdToProducts({ container }: ExecArgs) {
+export default async function addOpencartIdToProducts({ container }: any) {
   console.log('🚀 Adding opencart_id to existing products...\n')
   
   if (!container) {

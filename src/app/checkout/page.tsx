@@ -131,10 +131,11 @@ function CheckoutPageInner() {
 
     if (variantFromQuery) {
       // fallback when localStorage blocked or cleared
+      // priceFromQuery is likely in Major units (e.g. 186), convert to Minor (18600)
       setBuyNowItem({
         variantId: variantFromQuery,
         quantity: Math.max(1, Number(qtyFromQuery) || 1),
-        priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
+        priceMinor: priceFromQuery ? Number(priceFromQuery) * 100 : undefined,
       });
     }
   }, [variantFromQuery, qtyFromQuery, priceFromQuery]);
@@ -150,7 +151,7 @@ function CheckoutPageInner() {
                 variantId: variantFromQuery,
                 quantity: Math.max(1, Number(qtyFromQuery) || 1),
                 title: "Selected item",
-                priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
+                priceMinor: priceFromQuery ? Number(priceFromQuery) * 100 : undefined,
               }
             : null);
 
@@ -212,8 +213,11 @@ function CheckoutPageInner() {
   useEffect(() => {
     const hasCartItems = (cart?.items?.length || 0) > 0;
     const hasBuyNowItem = isBuyNow && (buyNowItem || variantFromQuery);
+    
+    // Explicitly reset server totals if we have no valid items to checkout
     if (!hasCartItems && !hasBuyNowItem) {
       setServerTotals(null);
+      setTotalWarning(null);
       return;
     }
 
@@ -231,7 +235,7 @@ function CheckoutPageInner() {
           ? {
               variantId: variantFromQuery,
               quantity: Math.max(1, Number(qtyFromQuery) || 1),
-              priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
+              priceMinor: priceFromQuery ? Number(priceFromQuery) * 100 : undefined,
             }
           : null);
 
@@ -249,7 +253,7 @@ function CheckoutPageInner() {
             cartId: cart?.id,
             guestCartId,
             shippingMethod,
-            itemsOverride: fallbackBuyNow
+            itemsOverride: isBuyNow && fallbackBuyNow
               ? [
                   {
                     variant_id: fallbackBuyNow.variantId,
@@ -312,7 +316,7 @@ function CheckoutPageInner() {
         ? {
             variantId: variantFromQuery,
             quantity: Math.max(1, Number(qtyFromQuery) || 1),
-            priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
+            priceMinor: priceFromQuery ? Number(priceFromQuery) * 100 : undefined,
           }
         : null);
 
@@ -330,7 +334,7 @@ function CheckoutPageInner() {
         referralCode,
         paymentMethod,
         mode: isBuyNow ? "buy_now" : "cart",
-        itemsOverride: fallbackBuyNow
+        itemsOverride: isBuyNow && fallbackBuyNow
           ? [
               {
                 variant_id: fallbackBuyNow.variantId,

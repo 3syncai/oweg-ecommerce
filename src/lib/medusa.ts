@@ -1,10 +1,13 @@
 // Removed OpenCart MySQL dependency - now using Medusa prices only
 
+import { getPriceListPrices } from "./price-lists"
+
 export type MedusaCategory = {
   id: string
   name?: string
   title?: string
   handle?: string
+  rank?: number
   parent_category_id?: string | null
   parent_category?: { id?: string | null } | null
   category_children?: MedusaCategory[]
@@ -30,6 +33,8 @@ export type MedusaProduct = {
     id: string
     title?: string
     inventory_quantity?: number
+    manage_inventory?: boolean
+    allow_backorder?: boolean
     options?: Array<{ id: string; value?: string; option_id?: string }>
     prices?: Array<{ amount: number; currency_code: string }>
     calculated_price?: {
@@ -67,6 +72,8 @@ export type DetailedProduct = {
     id: string
     title?: string
     inventory_quantity?: number
+    manage_inventory?: boolean
+    allow_backorder?: boolean
     weight?: number | null
     length?: number | null
     height?: number | null
@@ -152,6 +159,8 @@ const PRODUCT_LIST_FIELDS = [
   "variants.prices.amount",
   "variants.calculated_price",
   "variants.inventory_quantity",
+  "variants.manage_inventory",
+  "variants.allow_backorder",
   "metadata",
   "price",
 ].join(",")
@@ -245,6 +254,7 @@ export async function fetchCategories(): Promise<MedusaCategory[]> {
   const params = new URLSearchParams({
     limit: "100",
     include_descendants_tree: "true",
+    order: "rank",
   })
   const res = await api(`/store/product-categories?${params.toString()}`)
   if (!res.ok) throw new Error(`Failed categories: ${res.status}`)
@@ -568,9 +578,9 @@ export async function fetchCategoriesForCollection(collectionId: string): Promis
 
 function resolveMajorFromMinor(amount?: number | null) {
   if (typeof amount !== "number") return undefined
-  // Medusa v2 stores prices in major unit (rupees), not minor unit (paise)
-  // No conversion needed - return the amount as-is
-  return amount
+  // Medusa always stores prices in minor unit (paise)
+  // Convert to major (item.price / 100)
+  return amount / 100
 }
 
 function collectProductImages(p: MedusaProduct) {
@@ -673,6 +683,8 @@ export function toDetailedProduct(
         id: v.id,
         title: v.title,
         inventory_quantity: v.inventory_quantity,
+        manage_inventory: v.manage_inventory,
+        allow_backorder: v.allow_backorder,
         weight: v.weight ?? null,
         length: v.length ?? null,
         height: v.height ?? null,
@@ -755,8 +767,10 @@ export async function fetchProductDetail(
     return cached.value
   }
 
-  // Medusa v2: no expand or currency parameters
-  const paramVariants: URLSearchParams[] = [new URLSearchParams()]
+  // Medusa v2: no expand or currency parameters, but we need fields
+  const baseParams = new URLSearchParams()
+  baseParams.set("fields", PRODUCT_LIST_FIELDS)
+  const paramVariants: URLSearchParams[] = [baseParams]
 
   const attempts: string[] = []
   const seen = new Set<string>()
@@ -813,6 +827,18 @@ export async function fetchProductDetail(
         let adminPrice: number | undefined
         if (!product?.price?.calculated_price && !product?.variants?.[0]?.prices?.length) {
           adminPrice = await fetchAdminProductPrice(product.id)
+        }
+
+        // Apply "Special Prices" price list if applicable (similar to listing route)
+        const priceListPrices = await getPriceListPrices()
+        const variantId = product.variants?.[0]?.id
+        if (variantId && priceListPrices.has(variantId)) {
+          const discountedPrice = priceListPrices.get(variantId)!
+          const originalPrice = product.variants?.[0]?.prices?.[0]?.amount || discountedPrice
+          
+          if (!product.price) product.price = {}
+          product.price.calculated_price = discountedPrice
+          product.price.original_price = originalPrice
         }
 
         // Admin price is only used if Medusa has no price data at all

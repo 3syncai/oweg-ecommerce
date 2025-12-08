@@ -5,7 +5,7 @@
 import { ExecArgs } from "@medusajs/framework/types"
 import { Client } from "pg"
 
-export default async function checkOrderSchema({ container }: ExecArgs) {
+export default async function checkOrderSchema({ container }: any) {
   const databaseUrl = process.env.DATABASE_URL
   if (!databaseUrl) {
     throw new Error('DATABASE_URL environment variable is not set')

@@ -1,10 +1,10 @@
-import { ExecArgs } from "@medusajs/framework/types";
+// import { ExecArgs } from "@medusajs/framework/types";
 import { Client } from "pg";
 
 /**
  * Diagnose order issues - check what's missing or incorrect
  */
-export default async function diagnoseOrderIssue({ container }: ExecArgs) {
+export default async function diagnoseOrderIssue({ container }: any) {
   console.log("🔍 Diagnosing order issues...");
 
   const databaseUrl = process.env.DATABASE_URL;

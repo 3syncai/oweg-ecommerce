@@ -1039,15 +1039,17 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     return entries
   }, [product])
 
-  const resolveVariantInventory = useCallback(
-    (prod: unknown, variantId?: string): number | undefined => {
-      if (!prod || typeof prod !== 'object') return undefined
+  const resolveStockInfo = useCallback(
+    (prod: unknown, variantId?: string) => {
+      if (!prod || typeof prod !== 'object') return { quantity: undefined, manage: true, backorder: false }
       const record = prod as Record<string, unknown>
       const variants = Array.isArray(record.variants) ? (record.variants as Record<string, unknown>[]) : []
       const variant =
         variants.find((v) => (v.id as string | undefined) === variantId) ||
         variants.find((v) => (v.variant_id as string | undefined) === variantId) ||
         variants[0]
+
+      let quantity: number | undefined = undefined
       const candidates = [
         record.inventory_quantity,
         record.available_quantity,
@@ -1057,37 +1059,62 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
         variant?.quantity,
       ]
       for (const cand of candidates) {
-        if (typeof cand === 'number' && !Number.isNaN(cand)) return cand
+        if (typeof cand === 'number' && !Number.isNaN(cand)) {
+          quantity = cand
+          break
+        }
       }
-      return undefined
+
+      // Default manage to true if undefined (standard behavior), but check explicitly
+      const manage = (variant?.manage_inventory as boolean | undefined) ?? (record.manage_inventory as boolean | undefined) ?? true
+      const backorder = (variant?.allow_backorder as boolean | undefined) ?? (record.allow_backorder as boolean | undefined) ?? false
+
+      return { quantity, manage, backorder }
     },
     []
   )
 
-  const resolvedInventory = useMemo(
-    () => resolveVariantInventory(product, product?.variant_id),
-    [product, resolveVariantInventory]
+  const stockInfo = useMemo(
+    () => resolveStockInfo(product, product?.variant_id),
+    [product, resolveStockInfo]
   )
 
+  // expose quantity for other usages if needed, mapping back to old simple variable
+  const resolvedInventory = stockInfo.quantity
+
   const hasStock = useMemo(() => {
-    // Conservative default: missing inventory data => treat as out of stock
-    if (typeof resolvedInventory === 'number') {
-      return resolvedInventory > 0
+    // If we don't manage inventory, it's always in stock
+    if (!stockInfo.manage) return true
+    // If backorders are allowed, it's always in stock
+    if (stockInfo.backorder) return true
+    
+    // Otherwise check quantity > 0
+    if (typeof stockInfo.quantity === 'number') {
+      return stockInfo.quantity > 0
     }
+    
+    // Fallback if no quantity found: check variants array if we didn't resolve specific variant
     if (!product?.variants?.length) return false
+    
+    // Try to find ANY variant in stock (fallback logic)
     return product.variants.some((variant) => {
-      const record = variant as unknown as Record<string, unknown>
+      const vRec = variant as unknown as Record<string, unknown>
+      const vManage = (variant.manage_inventory as boolean | undefined) ?? (vRec.manage_inventory as boolean | undefined) ?? true
+      const vBack = (variant.allow_backorder as boolean | undefined) ?? (vRec.allow_backorder as boolean | undefined) ?? false
+      
+      if (!vManage || vBack) return true
+
       const candidates = [
-        record.inventory_quantity,
-        record.available_quantity,
-        record.quantity,
+        variant.inventory_quantity,
+        vRec.available_quantity,
+        vRec.quantity,
       ]
       for (const cand of candidates) {
-        if (typeof cand === 'number' && !Number.isNaN(cand)) return cand > 0
+        if (typeof cand === 'number' && !Number.isNaN(cand) && cand > 0) return true
       }
       return false
     })
-  }, [product, resolvedInventory])
+  }, [product, stockInfo])
 
   useEffect(() => {
     if (!product?.id) return
