@@ -714,17 +714,6 @@ function computeUiPrice(p: MedusaProduct) {
   const original = p.price?.original_price
   const firstAmountMinor = p.variants?.[0]?.prices?.[0]?.amount
   
-<<<<<<< HEAD
-  const amountMajor =
-    typeof calculated === "number"
-      ? calculated
-      : resolveMajorFromMinor(firstAmountMinor)
-
-  const originalMajor =
-    typeof original === "number" && original > 0
-      ? original
-      : amountMajor
-=======
   // Medusa v2 stores prices in minor units (paise for INR)
   // Always convert from minor to major units for consistency
   const calculatedMajor = typeof calculated === "number" 
@@ -737,16 +726,13 @@ function computeUiPrice(p: MedusaProduct) {
     : undefined
   
   const amountMajor =
-    override?.price ??
     calculatedMajor ??
     resolveMajorFromMinor(firstAmountMinor) ??
     0
 
   const originalMajor =
-    override?.mrp ??
     originalMajorConverted ??
     amountMajor
->>>>>>> origin/razorpay
 
   const discount =
     amountMajor && originalMajor && originalMajor > amountMajor

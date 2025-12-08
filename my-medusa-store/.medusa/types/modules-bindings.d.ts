@@ -24,6 +24,7 @@ import type { IWorkflowEngineService } from '@medusajs/framework/types'
 import type { ILockingModule } from '@medusajs/framework/types'
 import type { IFileModuleService } from '@medusajs/framework/types'
 import type Vendor from '../../src/modules/vendor'
+import type FlashSale from '../../src/modules/flash-sale'
 
 declare module '@medusajs/framework/types' {
   interface ModuleImplementations {
@@ -52,6 +53,7 @@ declare module '@medusajs/framework/types' {
     'workflows': IWorkflowEngineService,
     'locking': ILockingModule,
     'file': IFileModuleService,
-    'vendor': InstanceType<(typeof Vendor)['service']>
+    'vendor': InstanceType<(typeof Vendor)['service']>,
+    'flashSale': InstanceType<(typeof FlashSale)['service']>
   }
 }

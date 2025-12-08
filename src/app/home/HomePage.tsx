@@ -11,11 +11,8 @@ import { useAuth } from '@/contexts/AuthProvider';
 import PreferenceModal from '@/components/modules/PreferenceModal';
 import { usePreferences } from '@/hooks/usePreferences';
 import { buildPreferenceSlug } from '@/lib/personalization';
-<<<<<<< HEAD
 import { getBrandLogoPath, getBrandLogoScale, normalizeBrandKey } from '@/lib/brand-logos';
-=======
 import FlashSaleSection from '@/components/flash-sale/FlashSaleSection';
->>>>>>> origin/razorpay
 
 // UI product type (used by carousel/cards)
 type UIProduct = {
