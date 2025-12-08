@@ -1,7 +1,9 @@
 // src/etl/html-cleaner.ts
 // HTML description cleaning utilities for ETL
 
+// @ts-ignore
 import { decode } from "he";
+// @ts-ignore
 import sanitizeHtml from "sanitize-html";
 
 const allowedTags = ["p", "ul", "ol", "li", "br", "strong", "em", "b", "i", "h2", "h3"];

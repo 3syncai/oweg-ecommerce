@@ -5674,6 +5674,11 @@
   dependencies:
     "@types/node" "*"
 
+"@types/he@^1.2.3":
+  version "1.2.3"
+  resolved "https://registry.npmjs.org/@types/he/-/he-1.2.3.tgz"
+  integrity sha512-q67/qwlxblDzEDvzHhVkwc1gzVWxaNxeyHUBF4xElrvjL11O+Ytze+1fGpBHlr/H9myiBUaUXNnNPmBHxxfAcA==
+
 "@types/http-errors@*":
   version "2.0.5"
   resolved "https://registry.npmjs.org/@types/http-errors/-/http-errors-2.0.5.tgz"

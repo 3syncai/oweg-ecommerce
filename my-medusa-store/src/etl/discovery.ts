@@ -28,9 +28,10 @@ const WEIGHTED_KEYWORDS: Array<{ keyword: string; weight: number }> = [
 
 async function fetchRowCount(tableName: string): Promise<number | undefined> {
   try {
-    const [row]: Array<{ count: number }> = await runQuery(
+    const rows = await runQuery(
       `SELECT COUNT(*) AS count FROM \`${tableName}\` LIMIT 1`
-    );
+    ) as any[];
+    const row = rows[0];
     return row?.count ?? undefined;
   } catch (error) {
     return undefined;

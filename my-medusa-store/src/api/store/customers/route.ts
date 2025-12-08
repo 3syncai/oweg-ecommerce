@@ -12,7 +12,7 @@ import type { StoreCreateCustomerType } from "./validators"
 async function refetchCustomer(
   customerId: string,
   scope: MedusaRequest["scope"],
-  fields?: string
+  fields?: any
 ) {
   const remoteQuery = scope.resolve(
     ContainerRegistrationKeys.REMOTE_QUERY

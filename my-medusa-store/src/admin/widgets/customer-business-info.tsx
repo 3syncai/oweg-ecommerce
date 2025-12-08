@@ -57,7 +57,8 @@ const CustomerBusinessInfo = ({ data }: CustomerWidgetProps) => {
         </Heading>
         <Badge
           size="small"
-          variant={isBusiness ? "green" : "neutral"}
+          // @ts-ignore
+          variant={isBusiness ? "green" : "grey"}
           className="uppercase"
         >
           {isBusiness ? "Business" : "Individual"}

@@ -48,6 +48,7 @@
     "@swc/jest": "^0.2.36",
     "@types/bcryptjs": "^2.4.6",
     "@types/busboy": "^1.5.4",
+    "@types/he": "^1.2.3",
     "@types/jest": "^29.5.13",
     "@types/mime": "^3.0.4",
     "@types/node": "^20.0.0",
