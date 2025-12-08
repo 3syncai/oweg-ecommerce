@@ -145,14 +145,11 @@ export async function GET(req: NextRequest) {
       // Apply price list discount if available
       const variantId = product.variants?.[0]?.id
       if (variantId && priceListPrices.has(variantId) && product.variants?.[0]) {
-        // Price list returns amounts in PAISE (minor units)
-        // Store API returns prices in RUPEES (major units)
-        // Convert price list amounts to rupees by dividing by 100
-        const discountedPricePaise = priceListPrices.get(variantId)!
-        const originalPricePaise = product.variants[0].prices?.[0]?.amount || discountedPricePaise
+        // Both price list and variant prices are in Rupees (major units) usually
+        const discountedPrice = priceListPrices.get(variantId)!
         
-        const discountedPrice = discountedPricePaise / 100
-        const originalPrice = originalPricePaise / 100
+        // Prioritize Medusa's computed original_price, fallback to raw variant price
+        const originalPrice = product.price?.original_price || product.variants[0].prices?.[0]?.amount || discountedPrice
         
         // Create product with price override (in Rupees)
         const productWithDiscount: typeof product = {
@@ -163,13 +160,13 @@ export async function GET(req: NextRequest) {
           },
         }
         
+        // computeUiPrice (inside toUiProduct) now handles the "x100 MRP" correction globally
         const uiProduct = toUiProduct(productWithDiscount)
+        
         console.log('💰 [PRICE DEBUG]', {
           title: product.title?.substring(0, 35),
-          paise_discounted: discountedPricePaise,
-          paise_original: originalPricePaise,
-          rupees_discounted: discountedPrice,
-          rupees_original: originalPrice,
+          discountedPrice,
+          originalPrice,
           '→ UI_price': uiProduct.price,
           '→ UI_mrp': uiProduct.mrp,
           '→ UI_discount': uiProduct.discount + '%'

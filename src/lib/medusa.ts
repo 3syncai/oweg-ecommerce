@@ -728,10 +728,17 @@ function computeUiPrice(p: MedusaProduct) {
 
   // Use original_price from Medusa as MRP if valid
   // Fallback to selling price if no original_price set
-  const originalMajor =
+  let originalMajor =
     (typeof original === "number" && original > 0 && original >= amountMajor) 
       ? original 
       : amountMajor
+
+  // HEURISTIC: If MRP is wildly higher than selling price (>20x), it's likely correctly in Paise (minor units)
+  // while our selling price is in Rupees (major units). automatically fix it by dividing by 100.
+  // Example: MRP 84661 (Paise), Selling 592 (Rupees) -> Ratio 143 -> Divide MRP by 100 -> 846.61
+  if (amountMajor > 0 && originalMajor > amountMajor * 20) {
+      originalMajor = originalMajor / 100
+  }
 
   // Calculate discount percentage
   const discount =

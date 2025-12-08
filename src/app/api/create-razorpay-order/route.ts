@@ -5,7 +5,6 @@ import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medu
 export const dynamic = "force-dynamic";
 
 const DEFAULT_CURRENCY = "INR";
-const MOCK_RAZORPAY = process.env.MOCK_RAZORPAY === "true";
 
 type RequestBody = {
   medusaOrderId?: string;
@@ -81,36 +80,6 @@ export async function POST(req: Request) {
     }
 
     const metadata = (order.metadata || {}) as Record<string, unknown>;
-<<<<<<< HEAD
-  if (typeof metadata.razorpay_order_id === "string" && metadata.razorpay_order_id) {
-    return NextResponse.json({
-      orderId: metadata.razorpay_order_id,
-      key: getPublicRazorpayKey(),
-      amount: expected,
-      currency,
-    });
-  }
-
-  if (MOCK_RAZORPAY) {
-    const mockKey =
-      process.env.MOCK_RAZORPAY_PUBLIC_KEY ||
-      process.env.NEXT_PUBLIC_MOCK_RAZORPAY_PUBLIC_KEY ||
-      "rzp_test_mock_key";
-    const mockId = `mock_rzp_${Date.now()}`;
-    await updateOrderMetadata(medusaOrderId, {
-      ...metadata,
-      razorpay_order_id: mockId,
-      razorpay_payment_status: "created",
-    });
-    return NextResponse.json({
-      orderId: mockId,
-      key: mockKey,
-      amount: expected,
-      currency,
-      mock: true,
-    });
-  }
-=======
     if (typeof metadata.razorpay_order_id === "string" && metadata.razorpay_order_id) {
       return NextResponse.json({
         orderId: metadata.razorpay_order_id,
@@ -119,7 +88,6 @@ export async function POST(req: Request) {
         currency,
       });
     }
->>>>>>> origin/razorpay
 
     const rzpOrder = await createRazorpayOrder(
       {

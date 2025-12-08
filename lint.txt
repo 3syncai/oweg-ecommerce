@@ -1,0 +1,16 @@
+﻿
+> ecommerce-oweg@0.1.0 lint
+> eslint .
+
+
+C:\Users\jhakr\oweg_ecommerce\oweg-ecommerce\src\app\api\create-razorpay-order\route.ts
+  8:7  error  'MOCK_RAZORPAY' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\jhakr\oweg_ecommerce\oweg-ecommerce\src\app\orders\page.tsx
+  83:6  warning  React Hook useEffect has a missing dependency: 'router'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\Users\jhakr\oweg_ecommerce\oweg-ecommerce\src\components\flash-sale\FlashSaleBadge.tsx
+  37:6  warning  React Hook useEffect has a missing dependency: 'startTime'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Γ£û 3 problems (1 error, 2 warnings)
+

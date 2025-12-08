@@ -4,15 +4,6 @@ import {
   updateOrderMetadata,
   registerOrderTransaction,
   captureOrderPayment,
-<<<<<<< HEAD
-  getOrderById,
-  capturePayment,
-  registerOrderPayment,
-  registerOrderPaymentV2,
-  setOrderPaidTotal,
-  setOrderPaymentStatus,
-=======
->>>>>>> origin/razorpay
 } from "@/lib/medusa-admin";
 import { createMedusaPayment } from "@/lib/medusa-payment";
 
@@ -79,107 +70,6 @@ export async function POST(req: Request) {
       amount_reconcile_matched: true,
     };
 
-<<<<<<< HEAD
-    // Persist metadata and payment state
-    const currencyCode = (currency || "INR").toLowerCase();
-    const paidMinor = typeof amountMinor === "number" ? amountMinor : undefined;
-
-    // Try to discover an existing payment id for fallbacks
-    let paymentId: string | undefined;
-    try {
-      const orderRes = await getOrderById(medusaOrderId);
-      if (orderRes.ok && orderRes.data) {
-        const root = orderRes.data as Record<string, unknown>;
-        const order = (root.order as Record<string, unknown>) || root;
-        const payments: Array<Record<string, unknown>> | undefined =
-          (order.payments as Array<Record<string, unknown>>) ||
-          ((order as Record<string, unknown>).payments as Array<Record<string, unknown>>);
-        if (payments?.length && typeof payments[0]?.id === "string") {
-          paymentId = payments[0].id as string;
-        }
-      }
-    } catch (err) {
-      console.error("razorpay confirm: failed to fetch order for payment lookup", err);
-    }
-
-    const metaRes = await updateOrderMetadata(medusaOrderId, metadata);
-    if (!metaRes.ok) {
-      console.error("razorpay confirm: metadata update failed", { status: metaRes.status, data: metaRes.data });
-    }
-
-    // Capture / register payment using Medusa payment capture endpoints
-    let capturedOk = false;
-    if (paidMinor !== undefined) {
-      let captureRes = await captureOrderPayment(medusaOrderId, {
-        amount: paidMinor,
-        currency_code: currencyCode,
-        payment_id: razorpay_payment_id,
-        metadata: {
-          razorpay_payment_id,
-          razorpay_order_id,
-          razorpay_signature,
-        },
-      });
-      capturedOk = Boolean(captureRes?.ok);
-
-      // Fallback 1: capture the payment directly (Medusa v1 style)
-      if (!capturedOk && paymentId) {
-        const payCapture = await capturePayment(paymentId, { amount: paidMinor });
-        capturedOk = Boolean(payCapture?.ok);
-        if (!capturedOk && payCapture && payCapture.status !== 404) {
-          console.error("razorpay confirm: payment capture failed", {
-            status: payCapture.status,
-            data: payCapture.data,
-          });
-        }
-      }
-
-      // Fallback 2a: register a payment against the order (Medusa v2 register-payment)
-      if (!capturedOk) {
-        const regV2 = await registerOrderPaymentV2(medusaOrderId, {
-          amount: paidMinor,
-          currency_code: currencyCode,
-          payment_id: razorpay_payment_id,
-          metadata: {
-            razorpay_payment_id,
-            razorpay_order_id,
-            razorpay_signature,
-          },
-        });
-        capturedOk = Boolean(regV2?.ok);
-        if (!capturedOk && regV2 && regV2.status !== 404) {
-          console.error("razorpay confirm: register payment v2 failed", { status: regV2.status, data: regV2.data });
-        }
-      }
-
-      // Fallback 2b: register a payment against the order (Medusa v1 compat)
-      if (!capturedOk) {
-        const regRes = await registerOrderPayment(medusaOrderId, {
-          amount: paidMinor,
-          currency_code: currencyCode,
-          payment_id: razorpay_payment_id,
-          metadata: {
-            razorpay_payment_id,
-            razorpay_order_id,
-            razorpay_signature,
-          },
-        });
-        capturedOk = Boolean(regRes?.ok);
-        if (!capturedOk && regRes && regRes.status !== 404) {
-          console.error("razorpay confirm: register payment failed", { status: regRes.status, data: regRes.data });
-        }
-      }
-
-      if (!capturedOk && captureRes && captureRes.status !== 404) {
-        console.error("razorpay confirm: capture payment failed", { status: captureRes.status, data: captureRes.data });
-      }
-    }
-
-    // Best-effort transaction record; skip logging 404s
-    if (paidMinor !== undefined && capturedOk) {
-      const txRes = await registerOrderTransaction(medusaOrderId, {
-        amount: paidMinor,
-=======
     // Persist metadata
     const metaRes = await updateOrderMetadata(medusaOrderId, metadata);
     if (!metaRes.ok) {
@@ -192,7 +82,7 @@ export async function POST(req: Request) {
       console.log("razorpay confirm: creating Medusa payment record...");
       const paymentResult = await createMedusaPayment({
         order_id: medusaOrderId,
-        amount: amountMinor,
+        amount: amountMinor, // Already in paise from checkout
         currency_code: currencyCode,
         provider_id: "razorpay",
         data: {
@@ -236,7 +126,6 @@ export async function POST(req: Request) {
     if (typeof amountMinor === "number") {
       const txRes = await registerOrderTransaction(medusaOrderId, {
         amount: amountMinor,
->>>>>>> origin/razorpay
         currency_code: currencyCode,
         reference: razorpay_payment_id,
         provider: "razorpay",
@@ -248,25 +137,6 @@ export async function POST(req: Request) {
       if (!txRes.ok && txRes.status !== 404) {
         console.error("razorpay confirm: register transaction failed", { status: txRes.status, data: txRes.data });
       }
-<<<<<<< HEAD
-    }
-
-    // Ensure Medusa order reflects the paid amount even if transaction endpoint is absent
-    if (paidMinor !== undefined) {
-      try {
-        const paidRes = await setOrderPaidTotal(medusaOrderId, paidMinor);
-        if (!paidRes.ok) {
-          console.error("razorpay confirm: set paid total failed", { status: paidRes.status, data: paidRes.data });
-        }
-        const statusRes = await setOrderPaymentStatus(medusaOrderId, "captured");
-        if (!statusRes.ok) {
-          console.error("razorpay confirm: set payment status failed", { status: statusRes.status, data: statusRes.data });
-        }
-      } catch (err) {
-        console.error("razorpay confirm: failed to sync paid total/payment status", err);
-      }
-=======
->>>>>>> origin/razorpay
     }
 
     return NextResponse.json({ ok: true, paymentCreated });

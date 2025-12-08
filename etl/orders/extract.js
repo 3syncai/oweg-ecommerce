@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
+ 
 /**
  * OpenCart to Medusa Order Migration - Extract & Transform
  * 

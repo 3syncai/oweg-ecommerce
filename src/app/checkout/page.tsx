@@ -148,19 +148,11 @@ function CheckoutPageInner() {
           buyNowItem ||
           (isBuyNow && variantFromQuery
             ? {
-<<<<<<< HEAD
                 variantId: variantFromQuery,
                 quantity: Math.max(1, Number(qtyFromQuery) || 1),
                 title: "Selected item",
-                priceMinor: priceFromQuery ? Number(priceFromQuery) * 100 : undefined,
+                priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
               }
-=======
-              variantId: variantFromQuery,
-              quantity: Math.max(1, Number(qtyFromQuery) || 1),
-              title: "Selected item",
-              priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
-            }
->>>>>>> origin/razorpay
             : null);
 
         if (isBuyNow && fallbackBuyNow) {
@@ -210,7 +202,6 @@ function CheckoutPageInner() {
     };
   }, [cart?.items, shippingMethod]);
 
-<<<<<<< HEAD
   const [serverTotals, setServerTotals] = useState<{
     subtotal: number;
     shipping: number;
@@ -244,7 +235,7 @@ function CheckoutPageInner() {
           ? {
               variantId: variantFromQuery,
               quantity: Math.max(1, Number(qtyFromQuery) || 1),
-              priceMinor: priceFromQuery ? Number(priceFromQuery) * 100 : undefined,
+              priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
             }
           : null);
 
@@ -304,10 +295,7 @@ function CheckoutPageInner() {
     clientTotals.total,
   ]);
 
-  const formatInr = (value: number) => INR.format(value / 100);
-=======
   const formatInr = (value: number) => INR.format(value);
->>>>>>> origin/razorpay
 
   const ensureRazorpay = () =>
     new Promise<void>((resolve, reject) => {
@@ -326,17 +314,10 @@ function CheckoutPageInner() {
       buyNowItem ||
       (isBuyNow && variantFromQuery
         ? {
-<<<<<<< HEAD
             variantId: variantFromQuery,
             quantity: Math.max(1, Number(qtyFromQuery) || 1),
-            priceMinor: priceFromQuery ? Number(priceFromQuery) * 100 : undefined,
+            priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
           }
-=======
-          variantId: variantFromQuery,
-          quantity: Math.max(1, Number(qtyFromQuery) || 1),
-          priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
-        }
->>>>>>> origin/razorpay
         : null);
 
     const res = await fetch("/api/checkout/draft-order", {
@@ -750,21 +731,12 @@ function CheckoutPageInner() {
                       <p className="text-sm font-semibold text-slate-900 flex items-center gap-2">
                         <span className="sr-only">Razorpay</span>
                         <Image
-<<<<<<< HEAD
-  src="/razorpay_logo.png"
-  alt="Razorpay"
-  width={110}
-  height={30}
-  unoptimized
-/>
-=======
                           src="/razorpay_logo.png"
                           alt="Razorpay"
                           width={110}
                           height={30}
                           priority
                         />
->>>>>>> origin/razorpay
                       </p>
                       <p className="text-xs text-slate-500">UPI, Cards, Netbanking</p>
                     </div>
