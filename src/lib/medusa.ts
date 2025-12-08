@@ -578,10 +578,9 @@ export async function fetchCategoriesForCollection(collectionId: string): Promis
 
 function resolveMajorFromMinor(amount?: number | null) {
   if (typeof amount !== "number" || amount === null || amount === undefined) return undefined
-  // Medusa stores prices in minor units (paise for INR)
-  // Always divide by 100 to convert paise to rupees
-  // For INR: 1 rupee = 100 paise
-  return amount / 100
+  // Database stores prices in major units (Rupees) already
+  // No conversion needed - return as-is
+  return amount
 }
 
 function collectProductImages(p: MedusaProduct) {
@@ -714,46 +713,22 @@ function computeUiPrice(p: MedusaProduct) {
   const original = p.price?.original_price
   const firstAmountMinor = p.variants?.[0]?.prices?.[0]?.amount
   
-  // Medusa v2 stores prices in minor units (paise for INR)
-  // Always convert from minor to major units for consistency
-  const calculatedMajor = typeof calculated === "number" 
-    ? calculated / 100
-    : undefined
-  
-  // Convert original_price from minor units
-  const originalMajorConverted = typeof original === "number" && original > 0
-    ? original / 100
-    : undefined
-  
+  // Database stores prices in major units (Rupees)
+  // Use values directly without conversion
   const amountMajor =
-    calculatedMajor ??
-    resolveMajorFromMinor(firstAmountMinor) ??
-    0
+    typeof calculated === "number"
+      ? calculated
+      : resolveMajorFromMinor(firstAmountMinor) ?? 0
 
   const originalMajor =
-    originalMajorConverted ??
-    amountMajor
+    typeof original === "number" && original > 0
+      ? original
+      : amountMajor
 
   const discount =
     amountMajor && originalMajor && originalMajor > amountMajor
       ? Math.round(((originalMajor - amountMajor) / originalMajor) * 100)
       : 0
-
-  // Debug logging in development
-  if (process.env.NODE_ENV === 'development' && (amountMajor === 0 || !amountMajor)) {
-    console.log('⚠️ Price calculation warning:', {
-      productId: p.id,
-      productTitle: p.title,
-      calculated,
-      original,
-      firstAmountMinor,
-      calculatedMajor,
-      originalMajorConverted,
-      amountMajor,
-      originalMajor,
-      variantPrices: p.variants?.[0]?.prices
-    })
-  }
 
   return { amountMajor, originalMajor, discount }
 }
