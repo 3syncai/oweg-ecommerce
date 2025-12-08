@@ -70,17 +70,18 @@ export async function POST(req: Request) {
     }
 
     const currency = (order.currency_code || DEFAULT_CURRENCY).toString().toUpperCase();
-    const totalMinor = Number.isFinite(Number(order.total ?? 0)) ? Math.round(Number(order.total ?? 0)) : 0;
-    const expected = totalMinor;
-    if (expected <= 0) {
+    // order.total is in rupees - pass as-is to razorpay helper which will convert to paise
+    const totalRupees = Number.isFinite(Number(order.total ?? 0)) ? Number(order.total ?? 0) : 0;
+    if (totalRupees <= 0) {
       return badRequest("Order total is invalid");
     }
 
-    if (typeof body.amount === "number" && Math.abs(body.amount - expected) > 1) {
+    if (typeof body.amount === "number" && Math.abs(body.amount - totalRupees) > 1) {
       return badRequest("Amount mismatch");
     }
 
     const metadata = (order.metadata || {}) as Record<string, unknown>;
+<<<<<<< HEAD
   if (typeof metadata.razorpay_order_id === "string" && metadata.razorpay_order_id) {
     return NextResponse.json({
       orderId: metadata.razorpay_order_id,
@@ -109,18 +110,28 @@ export async function POST(req: Request) {
       mock: true,
     });
   }
+=======
+    if (typeof metadata.razorpay_order_id === "string" && metadata.razorpay_order_id) {
+      return NextResponse.json({
+        orderId: metadata.razorpay_order_id,
+        key: getPublicRazorpayKey(),
+        amount: totalRupees,
+        currency,
+      });
+    }
+>>>>>>> origin/razorpay
 
     const rzpOrder = await createRazorpayOrder(
       {
-        // Medusa totals are in smallest unit (paise); tell helper not to upscale again
-        amount: expected,
+        // Medusa totals are in major unit (rupees); let helper convert to paise
+        amount: totalRupees,
         currency,
         receipt: medusaOrderId,
         notes: {
           medusa_order_id: medusaOrderId,
         },
       },
-      { amountIsPaise: true }
+      { amountIsPaise: false }
     );
 
     const nextMetadata = {

@@ -12,7 +12,7 @@ import type { StoreCreateCustomerType } from "./validators"
 async function refetchCustomer(
   customerId: string,
   scope: MedusaRequest["scope"],
-  fields?: any
+  fields?: string[]
 ) {
   const remoteQuery = scope.resolve(
     ContainerRegistrationKeys.REMOTE_QUERY
@@ -22,7 +22,7 @@ async function refetchCustomer(
     variables: {
       filters: { id: customerId },
     },
-    fields,
+    fields: fields || [],
   })
   const customers = await remoteQuery(queryObject)
   return customers?.[0]
@@ -76,7 +76,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const customer = await refetchCustomer(
     result.id,
     req.scope,
-    (req.queryConfig as typeof req.queryConfig | undefined)?.fields
+    (req.queryConfig as typeof req.queryConfig | undefined)?.fields as string[] | undefined
   )
 
   res.status(200).json({ customer })

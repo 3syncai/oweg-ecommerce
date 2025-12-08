@@ -2,7 +2,7 @@
  * Inspect order table schema and foreign keys
  */
 
-// // import { ExecArgs } from "@medusajs/framework/types"
+// Removed deprecated ExecArgs import
 import { Client } from "pg"
 
 export default async function inspectOrderSchema({ container }: any) {

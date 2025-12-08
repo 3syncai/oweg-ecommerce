@@ -1,4 +1,4 @@
-// // import { ExecArgs } from "@medusajs/framework/types";
+// import { ExecArgs } from "@medusajs/framework/types";
 import { Client } from "pg";
 
 /**
@@ -48,28 +48,12 @@ export default async function fixOrdersComplete({ container }: any) {
       SELECT 
         id, display_id, status, metadata,
         (metadata->>'payment_status')::text as payment_status,
-        (metadata->>'fulfillment_status')::text as fulfillment_status,
-        currency_code, region_id
+        (metadata->>'fulfillment_status')::text as fulfillment_status
       FROM "order"
       ORDER BY created_at DESC
     `);
 
     console.log(`📦 Processing ${ordersResult.rows.length} orders...\n`);
-
-    // Fetch a fallback user (admin) for created_by if needed
-    let fallbackUserId: string | null = null;
-    try {
-      // Try to find a user, any user
-      const userRes = await client.query('SELECT id FROM "user" LIMIT 1');
-      if (userRes.rows.length > 0) {
-        fallbackUserId = userRes.rows[0].id;
-        console.log(`ℹ️  Will use user ID ${fallbackUserId} for created_by field`);
-      } else {
-         console.log(`⚠️  No users found in DB. created_by might fail if non-nullable.`);
-      }
-    } catch (e) {
-       console.log(`⚠️  Could not fetch users (table might be missing or different schema). Ignoring.`);
-    }
 
     let fixedCount = 0;
 
@@ -140,35 +124,6 @@ export default async function fixOrdersComplete({ container }: any) {
             paymentColNames.push("updated_at");
             paymentValues.push(now);
             paramIndex++;
-          }
-
-          // Add Missing Columns: amount, currency_code, region_id, type
-          if (paymentCols.rows.some((r: any) => r.column_name === "amount")) {
-             paymentColNames.push("amount");
-             // Default to 0 or try to parse from metadata totals if available, strictly 0 is safer than crashing
-             paymentValues.push(0); 
-             paramIndex++;
-          }
-           if (paymentCols.rows.some((r: any) => r.column_name === "currency_code")) {
-             paymentColNames.push("currency_code");
-             paymentValues.push(order.currency_code || "inr");
-             paramIndex++;
-          }
-           if (paymentCols.rows.some((r: any) => r.column_name === "region_id")) {
-             paymentColNames.push("region_id");
-             paymentValues.push(order.region_id);
-             paramIndex++;
-          }
-           if (paymentCols.rows.some((r: any) => r.column_name === "type")) {
-             paymentColNames.push("type");
-             paymentValues.push("order_edit"); // Default type
-             paramIndex++;
-          }
-           if (paymentCols.rows.some((r: any) => r.column_name === "created_by")) {
-             paymentColNames.push("created_by");
-             // Use fallback or null. If non-nullable and no user exists, it will fail, which is correct behavior (DB constraint).
-             paymentValues.push(fallbackUserId); 
-             paramIndex++;
           }
 
           if (paymentColNames.length > 0) {

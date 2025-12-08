@@ -30,9 +30,8 @@ async function fetchRowCount(tableName: string): Promise<number | undefined> {
   try {
     const rows = await runQuery(
       `SELECT COUNT(*) AS count FROM \`${tableName}\` LIMIT 1`
-    ) as any[];
-    const row = rows[0];
-    return row?.count ?? undefined;
+    ) as Array<{ count: number }>;
+    return rows[0]?.count ?? undefined;
   } catch (error) {
     return undefined;
   }

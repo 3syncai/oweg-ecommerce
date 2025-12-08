@@ -1,7 +1,7 @@
-// // // import { ExecArgs } from "@medusajs/framework/types";
+// Removed deprecated ExecArgs import
 import { Client } from "pg";
 
-export default async function verifyFix({ container }: any) {
+export default async function verifyFix({ container }: { container: any }) {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DATABASE_URL environment variable is required");

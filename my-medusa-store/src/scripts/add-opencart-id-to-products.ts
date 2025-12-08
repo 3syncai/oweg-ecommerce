@@ -156,7 +156,6 @@ export default async function addOpencartIdToProducts({ container }: any) {
         const currentMetadata = medusaProduct.metadata || {}
         const updatedMetadata = {
           ...currentMetadata,
-          // @ts-ignore
           opencart_id: matchedOcProduct.product_id.toString(),
         }
         
@@ -166,7 +165,6 @@ export default async function addOpencartIdToProducts({ container }: any) {
         )
         
         updated++
-        // @ts-ignore
         console.log(`   ✅ Matched (${matchMethod}): ${medusaProduct.title} → OpenCart ID ${matchedOcProduct.product_id}`)
       } else {
         unmatched.push({

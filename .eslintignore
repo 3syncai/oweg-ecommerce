@@ -1,0 +1,24 @@
+# Build outputs
+.next/
+out/
+build/
+dist/
+node_modules/
+
+# Medusa store build artifacts
+my-medusa-store/.medusa/
+my-medusa-store/dist/
+my-medusa-store/node_modules/
+
+# Affiliate portal build artifacts
+affiliate-portal/.next/
+affiliate-portal/node_modules/
+affiliate-portal/.turbo/
+
+# Legacy migration scripts (oc-api)
+oc-api/
+
+# Other generated files
+*.min.js
+*.bundle.js
+coverage/

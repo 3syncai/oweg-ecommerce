@@ -240,7 +240,7 @@ allowedAttributes: { a: ['href','title','target','rel'] }
 ✅ **Safe Display**: No XSS vulnerabilities
 ✅ **Better SEO**: Clean HTML is more readable by search engines
 ✅ **Automatic**: Future migrations clean descriptions automatically
-
+✅ **Reversible**: Original descriptions stored in metadata if needed
 
 ---
 
