@@ -709,35 +709,49 @@ export function toDetailedProduct(
 }
 
 function computeUiPrice(p: MedusaProduct) {
+  // Get price fields from Medusa
   const calculated = p.price?.calculated_price
   const original = p.price?.original_price
   
   // Get price from first variant as fallback
   const firstVariant = p.variants?.[0]
-  const variantAmount = firstVariant?.calculated_price?.calculated_amount ?? firstVariant?.prices?.[0]?.amount
+  const variantCalculated = firstVariant?.calculated_price?.calculated_amount
+  const variantPrice = firstVariant?.prices?.[0]?.amount
   
-  // Database stores prices in major units (Rupees)
-  // Use values directly without conversion
+  // Medusa Store API returns prices in Rupees (major units) already
+  // Use values directly - no conversion needed
   const amountMajor =
-    typeof calculated === "number" && calculated > 0
-      ? calculated
-      : typeof variantAmount === "number" && variantAmount > 0
-        ? variantAmount
-        : 0
+    (typeof calculated === "number" && calculated > 0) ? calculated :
+    (typeof variantCalculated === "number" && variantCalculated > 0) ? variantCalculated :
+    (typeof variantPrice === "number" && variantPrice > 0) ? variantPrice :
+    0
 
-  // For originalMajor (MRP):
-  // 1. Use original_price if it's valid and greater than calculated price
-  // 2. Otherwise use calculated price itself (no discount scenario)
-  // This ensures MRP is never wildly different from the actual price
+  // Use original_price from Medusa as MRP if valid
+  // Fallback to selling price if no original_price set
   const originalMajor =
-    typeof original === "number" && original > 0 && original >= amountMajor && original < (amountMajor * 10)
-      ? original
+    (typeof original === "number" && original > 0 && original >= amountMajor) 
+      ? original 
       : amountMajor
 
+  // Calculate discount percentage
   const discount =
-    amountMajor && originalMajor && originalMajor > amountMajor
+    (amountMajor > 0 && originalMajor > amountMajor)
       ? Math.round(((originalMajor - amountMajor) / originalMajor) * 100)
       : 0
+
+  // Debug logging - This appears in BROWSER console (F12)
+  if (typeof window !== 'undefined') {
+    console.warn('🔍 PRICE DEBUG:', p.title?.substring(0, 30))
+    console.table({
+      'Medusa calculated_price': calculated,
+      'Medusa original_price': original,
+      'Variant calculated': variantCalculated,
+      'Variant price': variantPrice,
+      '▶ Final Price': amountMajor,
+      '▶ Final MRP': originalMajor,
+      '▶ Discount %': discount
+    })
+  }
 
   return { amountMajor, originalMajor, discount }
 }

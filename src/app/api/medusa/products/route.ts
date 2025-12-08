@@ -145,10 +145,16 @@ export async function GET(req: NextRequest) {
       // Apply price list discount if available
       const variantId = product.variants?.[0]?.id
       if (variantId && priceListPrices.has(variantId) && product.variants?.[0]) {
-        const discountedPrice = priceListPrices.get(variantId)!
-        const originalPrice = product.variants[0].prices?.[0]?.amount || discountedPrice
+        // Price list returns amounts in PAISE (minor units)
+        // Store API returns prices in RUPEES (major units)
+        // Convert price list amounts to rupees by dividing by 100
+        const discountedPricePaise = priceListPrices.get(variantId)!
+        const originalPricePaise = product.variants[0].prices?.[0]?.amount || discountedPricePaise
         
-        // Create product with price override
+        const discountedPrice = discountedPricePaise / 100
+        const originalPrice = originalPricePaise / 100
+        
+        // Create product with price override (in Rupees)
         const productWithDiscount: typeof product = {
           ...product,
           price: {
@@ -157,9 +163,29 @@ export async function GET(req: NextRequest) {
           },
         }
         
-        return toUiProduct(productWithDiscount)
+        const uiProduct = toUiProduct(productWithDiscount)
+        console.log('💰 [PRICE DEBUG]', {
+          title: product.title?.substring(0, 35),
+          paise_discounted: discountedPricePaise,
+          paise_original: originalPricePaise,
+          rupees_discounted: discountedPrice,
+          rupees_original: originalPrice,
+          '→ UI_price': uiProduct.price,
+          '→ UI_mrp': uiProduct.mrp,
+          '→ UI_discount': uiProduct.discount + '%'
+        })
+        return uiProduct
       }
-      return toUiProduct(product)
+      const uiProduct = toUiProduct(product)
+      console.log('💰 [PRICE DEBUG]', {
+        title: product.title?.substring(0, 35),
+        medusa_calculated: product.price?.calculated_price,
+        medusa_original: product.price?.original_price,
+        '→ UI_price': uiProduct.price,
+        '→ UI_mrp': uiProduct.mrp,
+        '→ UI_discount': uiProduct.discount + '%'
+      })
+      return uiProduct
     })
 
     if (normalizedPriceMin !== undefined) {
