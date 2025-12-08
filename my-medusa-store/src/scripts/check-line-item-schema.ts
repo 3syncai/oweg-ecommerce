@@ -2,7 +2,7 @@
  * Check order_line_item table schema
  */
 
-// import { ExecArgs } from "@medusajs/framework/types";
+// // import { ExecArgs } from "@medusajs/framework/types";
 import { Client } from "pg";
 
 export default async function checkLineItemSchema({ container }: any) {

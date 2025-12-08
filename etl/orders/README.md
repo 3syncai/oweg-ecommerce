@@ -51,11 +51,11 @@ Required in `.env` or environment:
 
 ```bash
 # OpenCart MySQL
-OPENCART_DB_HOST=147.93.31.253
+OPENCART_DB_HOST=<your_host>
 OPENCART_DB_PORT=3306
-OPENCART_DB_USER=oweg_user2
-OPENCART_DB_PASSWORD=Oweg#@123
-OPENCART_DB_NAME=oweg_db
+OPENCART_DB_USER=<your_user>
+OPENCART_DB_PASSWORD=<your_password>
+OPENCART_DB_NAME=<your_db_name>
 
 # Medusa (for load script)
 DATABASE_URL=postgresql://...

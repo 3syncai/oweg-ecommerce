@@ -2,7 +2,7 @@
  * Directly check foreign key using SQL
  */
 
-import { ExecArgs } from "@medusajs/framework/types"
+// import { ExecArgs } from "@medusajs/framework/types"
 import { Client } from "pg"
 
 export default async function checkFkDirect({ container }: any) {

@@ -10,11 +10,11 @@ const MEDUSA_URL = process.env.MEDUSA_URL || 'http://localhost:9000'
 const ADMIN_TOKEN = process.env.MEDUSA_ADMIN_BASIC || process.env.MEDUSA_ADMIN_TOKEN
 
 const OPENCART = {
-  host: '147.93.31.253',
+  host: process.env.OPENCART_DB_HOST,
   port: 3306,
-  user: 'oweg_user2',
-  password: 'Oweg#@123',
-  database: 'oweg_db',
+  user: process.env.OPENCART_DB_USER,
+  password: process.env.OPENCART_DB_PASSWORD,
+  database: process.env.OPENCART_DB_NAME,
 }
 
 function adminHeaders() {

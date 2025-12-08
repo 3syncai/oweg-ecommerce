@@ -2,7 +2,7 @@
  * Check what address tables exist in database
  */
 
-import { ExecArgs } from "@medusajs/framework/types"
+// import { ExecArgs } from "@medusajs/framework/types"
 import { Client } from "pg"
 
 export default async function checkAddressTables({ container }: any) {

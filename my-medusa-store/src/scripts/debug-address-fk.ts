@@ -2,7 +2,7 @@
  * Debug address foreign key issue
  */
 
-import { ExecArgs } from "@medusajs/framework/types"
+// // import { ExecArgs } from "@medusajs/framework/types"
 import { Client } from "pg"
 
 export default async function debugAddressFk({ container }: any) {

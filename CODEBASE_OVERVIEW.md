@@ -71,7 +71,7 @@ src/
 - **Read-only** connection pool to OpenCart MySQL database
 - Used for price overrides and legacy data access
 - Security: Blocks all write operations (INSERT, UPDATE, DELETE, etc.)
-- Connection to: `147.93.31.253:3306/oweg_db`
+- Connection to: `<your_host>:3306/<your_db_name>`
 
 **`src/contexts/AuthProvider.tsx`**:
 - Manages customer authentication state
@@ -275,10 +275,10 @@ NEXT_PUBLIC_MEDUSA_BACKEND_URL=http://localhost:9000
 NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY=...
 NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID=...
 NEXT_PUBLIC_RAZORPAY_KEY_ID=...
-DB_HOST=147.93.31.253
-DB_USER=oweg_user2
-DB_PASSWORD=Oweg#@123
-DB_NAME=oweg_db
+DB_HOST=<your_host>
+DB_USER=<your_user>
+DB_PASSWORD=<your_password>
+DB_NAME=<your_db_name>
 ```
 
 ### Backend (Medusa)

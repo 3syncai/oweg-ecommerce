@@ -2,7 +2,7 @@
  * Diagnostic script to check products in Medusa database
  */
 
-import { ExecArgs } from "@medusajs/framework/types"
+// import { ExecArgs } from "@medusajs/framework/types"
 import { Client } from "pg"
 
 export default async function checkProducts({ container }: any) {

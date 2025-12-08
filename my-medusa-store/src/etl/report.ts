@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+// @ts-ignore
 import { Parser } from "@json2csv/plainjs";
 import { config } from "./config";
 import { readJson, writeJson, ensureDir } from "./utils";

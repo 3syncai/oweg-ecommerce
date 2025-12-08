@@ -2,7 +2,7 @@
  * Check order table foreign key constraints for addresses
  */
 
-import { ExecArgs } from "@medusajs/framework/types"
+// import { ExecArgs } from "@medusajs/framework/types"
 import { Client } from "pg"
 
 export default async function checkOrderAddressFk({ container }: any) {

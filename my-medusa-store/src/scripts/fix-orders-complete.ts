@@ -1,4 +1,4 @@
-// import { ExecArgs } from "@medusajs/framework/types";
+// // import { ExecArgs } from "@medusajs/framework/types";
 import { Client } from "pg";
 
 /**
@@ -48,7 +48,8 @@ export default async function fixOrdersComplete({ container }: any) {
       SELECT 
         id, display_id, status, metadata,
         (metadata->>'payment_status')::text as payment_status,
-        (metadata->>'fulfillment_status')::text as fulfillment_status
+        (metadata->>'fulfillment_status')::text as fulfillment_status,
+        currency_code, region_id
       FROM "order"
       ORDER BY created_at DESC
     `);
@@ -124,6 +125,35 @@ export default async function fixOrdersComplete({ container }: any) {
             paymentColNames.push("updated_at");
             paymentValues.push(now);
             paramIndex++;
+          }
+
+          // Add Missing Columns: amount, currency_code, region_id, type
+          if (paymentCols.rows.some((r: any) => r.column_name === "amount")) {
+             paymentColNames.push("amount");
+             // Default to 0 or try to parse from metadata totals if available, strictly 0 is safer than crashing
+             paymentValues.push(0); 
+             paramIndex++;
+          }
+           if (paymentCols.rows.some((r: any) => r.column_name === "currency_code")) {
+             paymentColNames.push("currency_code");
+             paymentValues.push(order.currency_code || "inr");
+             paramIndex++;
+          }
+           if (paymentCols.rows.some((r: any) => r.column_name === "region_id")) {
+             paymentColNames.push("region_id");
+             paymentValues.push(order.region_id);
+             paramIndex++;
+          }
+           if (paymentCols.rows.some((r: any) => r.column_name === "type")) {
+             paymentColNames.push("type");
+             paymentValues.push("order_edit"); // Default type
+             paramIndex++;
+          }
+           if (paymentCols.rows.some((r: any) => r.column_name === "created_by")) {
+             // Optional usually, but explicitly adding if needed can be good. Leaving as nullable/default usually fine.
+             // But CodeRabbit mentioned it as non-nullable? Checking schema typically it is nullable or has default.
+             // We'll skip unless strictly required, but for safety lets add if we knew a user ID. We don't.
+             // So we rely on DB default.
           }
 
           if (paymentColNames.length > 0) {

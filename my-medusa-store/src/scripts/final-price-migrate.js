@@ -10,11 +10,11 @@ const http = require('http');
  */
 
 const OPENCART = {
-  host: '147.93.31.253',
+  host: process.env.OPENCART_DB_HOST,
   port: 3306,
-  user: 'oweg_user2',
-  password: 'Oweg#@123',
-  database: 'oweg_db',
+  user: process.env.OPENCART_DB_USER,
+  password: process.env.OPENCART_DB_PASSWORD,
+  database: process.env.OPENCART_DB_NAME,
 };
 
 const MEDUSA_URL = 'http://localhost:9000';
