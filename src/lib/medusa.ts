@@ -281,25 +281,6 @@ export async function findCategoryByTitleOrHandle(
     const base = (process.env.MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "")
     // Try array-style handle filter for multiple candidate representations
     const urls: string[] = []
-    handleCandidates.forEach((candidate) => {
-      urls.push(`${base}/store/product-categories?handle[]=${encodeURIComponent(candidate)}`)
-      urls.push(`${base}/store/product-categories?handle=${encodeURIComponent(candidate)}`)
-    })
-    urls.push(`${base}/store/product-categories?q=${encodeURIComponent(raw)}`)
-    for (const url of urls) {
-      const pk = getPublishableKey()
-      const res = await fetch(url, {
-        cache: "no-store",
-        headers: { ...(pk ? { "x-publishable-api-key": pk } : {}) },
-      })
-      if (!res.ok) continue
-      const data = await res.json()
-      const arr = (data.product_categories || data.categories || []) as MedusaCategory[]
-      if (Array.isArray(arr) && arr.length) return arr[0]
-    }
-  } catch (err) {
-    console.warn("findCategoryByTitleOrHandle direct lookup failed", err)
-  }
 
   const all = await fetchCategories()
 
