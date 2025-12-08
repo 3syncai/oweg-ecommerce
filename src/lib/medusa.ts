@@ -1,4 +1,4 @@
-import { executeReadQuery } from "@/lib/mysql"
+// Removed OpenCart MySQL dependency - now using Medusa prices only
 
 export type MedusaCategory = {
   id: string
@@ -32,6 +32,11 @@ export type MedusaProduct = {
     inventory_quantity?: number
     options?: Array<{ id: string; value?: string; option_id?: string }>
     prices?: Array<{ amount: number; currency_code: string }>
+    calculated_price?: {
+      calculated_amount?: number
+      original_amount?: number
+      currency_code?: string
+    }
     weight?: number | null
     length?: number | null
     height?: number | null
@@ -77,12 +82,7 @@ export type DetailedProduct = {
   metadata?: Record<string, unknown> | null
 }
 
-type PriceOverride = {
-  price?: number
-  mrp?: number
-  isDeal?: boolean
-  opencartId?: string | number
-}
+// PriceOverride type removed - using Medusa prices only
 
 const PRODUCT_DETAIL_CACHE = new Map<string, { expires: number; value: DetailedProduct | null }>()
 const DETAIL_CACHE_TTL_MS = 1000 * 60 * 5
@@ -133,7 +133,6 @@ const DEFAULT_CURRENCY_CODE =
     .toLowerCase()
     .trim()
 
-const COMMON_EXPAND = "variants,variants.prices,price"
 const PRODUCT_LIST_FIELDS = [
   "id",
   "title",
@@ -151,6 +150,7 @@ const PRODUCT_LIST_FIELDS = [
   "type.value",
   "variants.id",
   "variants.prices.amount",
+  "variants.calculated_price",
   "variants.inventory_quantity",
   "metadata",
   "price",
@@ -186,33 +186,12 @@ async function fetchStoreProducts(
 ) {
   const attempts: URLSearchParams[] = []
 
-  // Attempt 1: include expand + currency (if supported by backend)
-  const advanced = cloneParams(baseParams)
-  if (!advanced.has("fields")) {
-    advanced.set("fields", PRODUCT_LIST_FIELDS)
+  // Medusa v2: Just use fields, no expand or currency_code parameters
+  const simple = cloneParams(baseParams)
+  if (!simple.has("fields")) {
+    simple.set("fields", PRODUCT_LIST_FIELDS)
   }
-  advanced.set(
-    "expand",
-    options?.includeType ? `${COMMON_EXPAND},type` : COMMON_EXPAND
-  )
-  if (DEFAULT_CURRENCY_CODE) {
-    advanced.set("currency_code", DEFAULT_CURRENCY_CODE)
-  }
-  attempts.push(advanced)
-
-  // Attempt 2: drop currency_code (some setups support expand but not currency)
-  const expandOnly = cloneParams(baseParams)
-  if (!expandOnly.has("fields")) {
-    expandOnly.set("fields", PRODUCT_LIST_FIELDS)
-  }
-  expandOnly.set(
-    "expand",
-    options?.includeType ? `${COMMON_EXPAND},type` : COMMON_EXPAND
-  )
-  attempts.push(expandOnly)
-
-  // Final attempt: bare minimum parameters
-  attempts.push(cloneParams(baseParams))
+  attempts.push(simple)
 
   let lastStatus: number | undefined
   let lastResponseBody: unknown
@@ -589,7 +568,9 @@ export async function fetchCategoriesForCollection(collectionId: string): Promis
 
 function resolveMajorFromMinor(amount?: number | null) {
   if (typeof amount !== "number") return undefined
-  return amount > 1000 ? amount / 100 : amount
+  // Medusa v2 stores prices in major unit (rupees), not minor unit (paise)
+  // No conversion needed - return the amount as-is
+  return amount
 }
 
 function collectProductImages(p: MedusaProduct) {
@@ -601,10 +582,9 @@ function collectProductImages(p: MedusaProduct) {
 }
 
 export function toDetailedProduct(
-  p: MedusaProduct,
-  override?: PriceOverride
+  p: MedusaProduct
 ): DetailedProduct {
-  const { amountMajor, originalMajor, discount } = computeUiPrice(p, override)
+  const { amountMajor, originalMajor, discount } = computeUiPrice(p)
   const categories =
     p.categories?.map((cat) => ({
       id: cat.id,
@@ -716,21 +696,20 @@ export function toDetailedProduct(
   }
 }
 
-function computeUiPrice(p: MedusaProduct, override?: PriceOverride) {
+function computeUiPrice(p: MedusaProduct) {
   const calculated = p.price?.calculated_price
   const original = p.price?.original_price
   const firstAmountMinor = p.variants?.[0]?.prices?.[0]?.amount
+  
   const amountMajor =
-    override?.price ??
-    (typeof calculated === "number"
+    typeof calculated === "number"
       ? calculated
-      : resolveMajorFromMinor(firstAmountMinor))
+      : resolveMajorFromMinor(firstAmountMinor)
 
   const originalMajor =
-    override?.mrp ??
-    (typeof original === "number" && original > 0
+    typeof original === "number" && original > 0
       ? original
-      : amountMajor)
+      : amountMajor
 
   const discount =
     amountMajor && originalMajor && originalMajor > amountMajor
@@ -740,12 +719,12 @@ function computeUiPrice(p: MedusaProduct, override?: PriceOverride) {
   return { amountMajor, originalMajor, discount }
 }
 
-export function toUiProduct(p: MedusaProduct, override?: PriceOverride) {
+export function toUiProduct(p: MedusaProduct) {
   if (!p?.id || !p?.title) {
     console.warn("Incomplete product data:", p)
   }
 
-  const { amountMajor, originalMajor, discount } = computeUiPrice(p, override)
+  const { amountMajor, originalMajor, discount } = computeUiPrice(p)
   const image = collectProductImages(p)[0] || "/oweg_logo.png"
   const metadata = (p.metadata || {}) as Record<string, unknown>
 
@@ -756,10 +735,8 @@ export function toUiProduct(p: MedusaProduct, override?: PriceOverride) {
     price: amountMajor ?? 0,
     mrp: originalMajor ?? amountMajor ?? 0,
     discount,
-    limitedDeal: override?.isDeal ?? discount >= 20,
-    opencartId:
-      override?.opencartId ??
-      (metadata["opencart_id"] as string | number | undefined),
+    limitedDeal: discount >= 20,
+    opencartId: metadata["opencart_id"] as string | number | undefined,
     variant_id: p?.variants?.[0]?.id,
     handle: p?.handle,
     category_ids: p?.categories?.map((c) => c.id).filter((id): id is string => !!id) || [],
@@ -778,18 +755,8 @@ export async function fetchProductDetail(
     return cached.value
   }
 
-  const detailExpand = `${COMMON_EXPAND},images,tags,categories,type,collection`
-  const paramVariants: URLSearchParams[] = []
-  if (DEFAULT_CURRENCY_CODE) {
-    const withCurrency = new URLSearchParams()
-    withCurrency.set("expand", detailExpand)
-    withCurrency.set("currency_code", DEFAULT_CURRENCY_CODE)
-    paramVariants.push(withCurrency)
-  }
-  const expandOnly = new URLSearchParams()
-  expandOnly.set("expand", detailExpand)
-  paramVariants.push(expandOnly)
-  paramVariants.push(new URLSearchParams())
+  // Medusa v2: no expand or currency parameters
+  const paramVariants: URLSearchParams[] = [new URLSearchParams()]
 
   const attempts: string[] = []
   const seen = new Set<string>()
@@ -842,21 +809,22 @@ export async function fetchProductDetail(
         | MedusaProduct
         | undefined
       if (product?.id) {
-        const override = await fetchPriceOverrideForName(
-          product.title || product.subtitle || product.handle
-        )
-
+        // Fetch admin price as fallback if no calculated price available
         let adminPrice: number | undefined
         if (!product?.price?.calculated_price && !product?.variants?.[0]?.prices?.length) {
           adminPrice = await fetchAdminProductPrice(product.id)
         }
 
-        const fallbackOverride =
-          adminPrice !== undefined
-            ? { price: adminPrice, mrp: adminPrice }
-            : undefined
+        // Admin price is only used if Medusa has no price data at all
+        // Prices are taken from Medusa Admin, not OpenCart
+        const detailed = toDetailedProduct(product)
+        
+        // If Medusa has no price and admin API returned a price, use it
+        if (adminPrice !== undefined && detailed.price === 0) {
+          detailed.price = adminPrice
+          detailed.mrp = adminPrice
+        }
 
-        const detailed = toDetailedProduct(product, override ?? fallbackOverride)
         PRODUCT_DETAIL_CACHE.set(cacheKey, {
           expires: Date.now() + DETAIL_CACHE_TTL_MS,
           value: detailed,
@@ -898,60 +866,4 @@ async function fetchAdminProductPrice(productId: string): Promise<number | undef
   }
 }
 
-async function fetchPriceOverrideForName(
-  originalName?: string | null
-): Promise<PriceOverride | undefined> {
-  if (!originalName) return undefined
-  try {
-    const rows = await executeReadQuery<
-      Array<{ price: string | null; special_price: string | null }>
-    >(
-      `
-        SELECT 
-          p.price,
-          (
-            SELECT ps.price
-            FROM oc_product_special ps
-            WHERE ps.product_id = p.product_id
-              AND (ps.date_start = '0000-00-00' OR ps.date_start <= NOW())
-              AND (ps.date_end = '0000-00-00' OR ps.date_end >= NOW())
-            ORDER BY ps.priority ASC, ps.price ASC
-            LIMIT 1
-          ) AS special_price
-        FROM oc_product p
-        INNER JOIN oc_product_description pd 
-          ON p.product_id = pd.product_id AND pd.language_id = 1
-        WHERE pd.name = ?
-        LIMIT 1
-      `,
-      [originalName]
-    )
-
-    const row = rows[0]
-    if (!row) return undefined
-
-    const basePrice = parseFloat(row.price || "")
-    const specialPrice = row.special_price
-      ? parseFloat(row.special_price)
-      : undefined
-
-    if (!Number.isFinite(basePrice) && !Number.isFinite(specialPrice)) {
-      return undefined
-    }
-
-    const effectiveSpecial = Number.isFinite(specialPrice)
-      ? (specialPrice as number)
-      : undefined
-    const effectiveBase = Number.isFinite(basePrice)
-      ? (basePrice as number)
-      : undefined
-
-    return {
-      price: effectiveSpecial ?? effectiveBase,
-      mrp: effectiveBase ?? effectiveSpecial,
-    }
-  } catch (err) {
-    console.warn("Failed to fetch price override for", originalName, err)
-    return undefined
-  }
-}
+// fetchPriceOverrideForName function removed - using Medusa prices only
