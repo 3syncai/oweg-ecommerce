@@ -56,6 +56,21 @@ export default async function fixOrdersComplete({ container }: any) {
 
     console.log(`📦 Processing ${ordersResult.rows.length} orders...\n`);
 
+    // Fetch a fallback user (admin) for created_by if needed
+    let fallbackUserId: string | null = null;
+    try {
+      // Try to find a user, any user
+      const userRes = await client.query('SELECT id FROM "user" LIMIT 1');
+      if (userRes.rows.length > 0) {
+        fallbackUserId = userRes.rows[0].id;
+        console.log(`ℹ️  Will use user ID ${fallbackUserId} for created_by field`);
+      } else {
+         console.log(`⚠️  No users found in DB. created_by might fail if non-nullable.`);
+      }
+    } catch (e) {
+       console.log(`⚠️  Could not fetch users (table might be missing or different schema). Ignoring.`);
+    }
+
     let fixedCount = 0;
 
     for (const order of ordersResult.rows) {
@@ -150,10 +165,10 @@ export default async function fixOrdersComplete({ container }: any) {
              paramIndex++;
           }
            if (paymentCols.rows.some((r: any) => r.column_name === "created_by")) {
-             // Optional usually, but explicitly adding if needed can be good. Leaving as nullable/default usually fine.
-             // But CodeRabbit mentioned it as non-nullable? Checking schema typically it is nullable or has default.
-             // We'll skip unless strictly required, but for safety lets add if we knew a user ID. We don't.
-             // So we rely on DB default.
+             paymentColNames.push("created_by");
+             // Use fallback or null. If non-nullable and no user exists, it will fail, which is correct behavior (DB constraint).
+             paymentValues.push(fallbackUserId); 
+             paramIndex++;
           }
 
           if (paymentColNames.length > 0) {
