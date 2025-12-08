@@ -182,7 +182,7 @@ function cloneParams(params: URLSearchParams) {
 
 async function fetchStoreProducts(
   baseParams: URLSearchParams,
-  options?: ProductFetchOptions
+  _options?: ProductFetchOptions
 ) {
   const attempts: URLSearchParams[] = []
 
