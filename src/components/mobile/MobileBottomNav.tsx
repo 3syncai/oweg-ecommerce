@@ -869,7 +869,14 @@ export default function MobileBottomNav() {
                           >
                             <div className="flex items-center gap-3">
                               <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-white border border-gray-100 flex items-center justify-center">
-                                <span className="text-sm font-semibold text-emerald-700">For You</span>
+                                <Image
+                                  src="/For_You.png"
+                                  alt="For You"
+                                  fill
+                                  className="object-contain"
+                                  sizes="48px"
+                                  unoptimized
+                                />
                               </div>
                               <span className="text-sm font-semibold text-gray-800 line-clamp-2">For You</span>
                             </div>
@@ -974,13 +981,20 @@ export default function MobileBottomNav() {
                             : 'border-gray-200 bg-white'
                         } ${isOpen ? 'px-2.5 py-2' : 'px-1.5 py-1.5'}`}
                         title="For You"
-                      >
-                        <div className="flex flex-col items-center">
-                          <div
-                            className="relative w-full rounded-xl overflow-hidden bg-emerald-50 flex items-center justify-center border border-emerald-100"
-                            style={{ height: isOpen ? 96 : 80 }}
                           >
-                            <span className="text-sm font-semibold text-emerald-700">For You</span>
+                            <div className="flex flex-col items-center">
+                              <div
+                                className="relative w-full rounded-xl overflow-hidden bg-emerald-50 flex items-center justify-center border border-emerald-100"
+                                style={{ height: isOpen ? 96 : 80 }}
+                              >
+                            <Image
+                              src="/For_You.png"
+                              alt="For You"
+                              fill
+                              className="object-contain"
+                              sizes={isOpen ? '140px' : '120px'}
+                              unoptimized
+                            />
                           </div>
                           {isOpen ? (
                             <span className="mt-1 text-sm font-semibold text-emerald-800 text-center">For You</span>
