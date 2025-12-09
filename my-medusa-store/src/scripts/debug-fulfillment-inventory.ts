@@ -12,7 +12,7 @@ async function main() {
 
     // 1. Get Order & Items
     const orderRes = await pool.query(`SELECT id, sales_channel_id FROM "order" WHERE display_id = $1`, [displayId]);
-    if (orderRes.rowCount === 0) { console.log('Order not found'); return; }
+    if ((orderRes.rowCount || 0) === 0) { console.log('Order not found'); return; }
     const order = orderRes.rows[0];
     const orderId = order.id;
 
@@ -33,7 +33,7 @@ async function main() {
         WHERE oi.order_id = $1
     `, [orderId]);
 
-    console.log(`\n📦 Order Items (${itemsRes.rowCount}):`);
+    console.log(`\n📦 Order Items (${(itemsRes.rowCount || 0)}):`);
     console.table(itemsRes.rows.map(r => ({
         title: r.title.substring(0, 30) + '...',
         variant: r.variant_id,
@@ -69,7 +69,7 @@ async function main() {
             WHERE variant_id = $1
         `, [variant.id]);
 
-        if (linkRes.rowCount === 0) {
+        if ((linkRes.rowCount || 0) === 0) {
             console.log('  ❌ No Inventory Item linked to this variant!');
             continue;
         }
@@ -84,7 +84,7 @@ async function main() {
             WHERE inventory_item_id = $1 AND line_item_id = $2
         `, [invItemId, item.line_item_id]);
         
-        if (resRes.rowCount > 0) {
+        if ((resRes.rowCount || 0) > 0) {
             console.log('     🔒 Found Reservations for this line item:');
             console.table(resRes.rows);
         } else {
@@ -98,7 +98,7 @@ async function main() {
             WHERE inventory_item_id = $1
         `, [invItemId]);
 
-        if (levelRes.rowCount === 0) {
+        if ((levelRes.rowCount || 0) === 0) {
             console.log('     ❌ No Inventory Levels found (not stocked at any location).');
         } else {
             console.log('     Inventory Levels:');

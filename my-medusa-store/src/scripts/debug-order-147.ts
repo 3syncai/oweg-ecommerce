@@ -12,7 +12,7 @@ async function main() {
     `SELECT id, display_id, status, is_draft_order, currency_code, created_at, metadata FROM "order" WHERE display_id = $1`,
     [displayId]
   );
-  if (orderRes.rowCount === 0) {
+  if ((orderRes.rowCount || 0) === 0) {
     console.error("Order not found");
     return;
   }
@@ -25,7 +25,7 @@ async function main() {
     `SELECT totals FROM order_summary WHERE order_id = $1`,
     [order.id]
   );
-  if (summaryRes.rowCount > 0) {
+  if ((summaryRes.rowCount || 0) > 0) {
     console.log("\n=== Order Summary (totals JSON) ===");
     console.log(JSON.stringify(summaryRes.rows[0].totals, null, 2));
   }
@@ -59,7 +59,7 @@ async function main() {
       `SELECT id, amount, created_at FROM refund WHERE payment_id = $1`,
       [payRes.rows[0]?.id]
     );
-    if (refundRes.rowCount > 0) {
+    if ((refundRes.rowCount || 0) > 0) {
       console.log("Refunds found:");
       console.table(refundRes.rows);
     } else {

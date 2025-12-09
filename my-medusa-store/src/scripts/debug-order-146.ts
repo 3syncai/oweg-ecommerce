@@ -20,7 +20,7 @@ async function main() {
     [displayId]
   );
   
-  if (orderRes.rowCount === 0) {
+  if ((orderRes.rowCount || 0) === 0) {
     console.log('Order not found');
     await pool.end();
     return;
@@ -70,7 +70,7 @@ async function main() {
         `SELECT id, amount, created_at FROM refund WHERE payment_id = $1`,
         [pay.id]
       );
-      if (refundRes.rowCount > 0) {
+      if ((refundRes.rowCount || 0) > 0) {
         console.log(`❌ ACTUAL REFUNDS FOUND for payment ${pay.id}:`);
         console.table(refundRes.rows);
       } else {
@@ -95,8 +95,8 @@ async function main() {
     `SELECT id, display_id FROM "order" WHERE display_id = $1`, 
     [displayId]
   );
-  if (duplicates.rowCount > 1) {
-    console.log(`\n❌ WARNING: ${duplicates.rowCount} orders found with display_id ${displayId}`);
+  if ((duplicates.rowCount || 0) > 1) {
+    console.log(`\n❌ WARNING: ${(duplicates.rowCount || 0)} orders found with display_id ${displayId}`);
     console.table(duplicates.rows);
   } else {
       console.log(`\n✅ No duplicate display_ids found`);
@@ -107,7 +107,7 @@ async function main() {
   
   try {
       const returnRes = await pool.query(`SELECT id, status, refund_amount FROM "return" WHERE order_id = $1`, [order.id]);
-      if (returnRes.rowCount > 0) {
+      if ((returnRes.rowCount || 0) > 0) {
           console.log('Returns found:');
           console.table(returnRes.rows);
       } else { console.log('✅ No returns'); }
@@ -118,7 +118,7 @@ async function main() {
   // 8. Order Changes (Safely)
   try {
       const changeRes = await pool.query(`SELECT id, change_type, status, created_at FROM order_change WHERE order_id = $1`, [order.id]);
-      if (changeRes.rowCount > 0) {
+      if ((changeRes.rowCount || 0) > 0) {
           console.log('Order Changes found:');
           console.table(changeRes.rows);
           

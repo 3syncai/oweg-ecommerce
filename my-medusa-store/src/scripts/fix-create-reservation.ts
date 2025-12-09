@@ -22,7 +22,7 @@ async function main() {
         WHERE line_item_id = $1
     `, [lineItemId]);
 
-    if (checkRes.rowCount > 0) {
+    if ((checkRes.rowCount || 0) > 0) {
         console.log('⚠️ Reservation already exists for this line item.');
         return;
     }
@@ -52,7 +52,7 @@ async function main() {
         WHERE inventory_item_id = $1 AND location_id = $2
     `, [inventoryItemId, locationId]);
     
-    if (levelRes.rowCount > 0) {
+    if ((levelRes.rowCount || 0) > 0) {
         const currentReserved = Number(levelRes.rows[0].reserved_quantity);
         console.log(`Current Reserved Quantity: ${currentReserved}`);
         

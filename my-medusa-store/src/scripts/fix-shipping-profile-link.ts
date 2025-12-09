@@ -21,7 +21,7 @@ async function main() {
         WHERE product_id = $1 AND shipping_profile_id = $2
     `, [productId, defaultProfileId]);
 
-    if (checkRes.rowCount > 0) {
+    if ((checkRes.rowCount || 0) > 0) {
         console.log('⚠️ Product is already linked to this profile.');
         return;
     }

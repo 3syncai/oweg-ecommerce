@@ -17,7 +17,7 @@ async function main() {
      WHERE display_id = $1`,
     [displayId]
   );
-  if (orderRes.rowCount === 0) {
+  if ((orderRes.rowCount || 0) === 0) {
     console.log('Order not found');
     await pool.end();
     return;
@@ -69,7 +69,7 @@ async function main() {
          WHERE payment_id = $1`,
         [pay.id]
       );
-      if (refundRes.rowCount > 0) {
+      if ((refundRes.rowCount || 0) > 0) {
         console.log(`Refunds for payment ${pay.id}:`);
         console.table(refundRes.rows);
       }
