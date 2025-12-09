@@ -148,6 +148,13 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as DraftRequestBody;
     const shipping = body.shipping;
 
+    console.log("🛒 [Checkout Debug] Incoming Request:", {
+      mode: body.mode,
+      hasItemsOverride: !!body.itemsOverride,
+      itemsOverrideCount: body.itemsOverride?.length,
+      shippingState: !!shipping
+    })
+
     // basic validation
     if (!shipping?.email || !shipping.firstName || !shipping.address1 || !shipping.postalCode) {
       return badRequest("Missing required shipping fields");
@@ -210,6 +217,15 @@ export async function POST(req: Request) {
     if (!cart) {
       return badRequest("Cart is empty or unavailable");
     }
+
+    // Debug: Log cart structure
+    console.log("🛒 [Draft Order] Cart Debug:", {
+      hasCart: !!cart,
+      hasItems: !!cart.items,
+      itemsIsArray: Array.isArray(cart.items),
+      itemsLength: Array.isArray(cart.items) ? cart.items.length : 0,
+      firstItem: Array.isArray(cart.items) && cart.items.length > 0 ? cart.items[0] : null,
+    });
 
     const items = Array.isArray(cart.items)
       ? cart.items

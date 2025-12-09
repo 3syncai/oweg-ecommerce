@@ -152,3 +152,81 @@ export async function createMedusaPayment(payment: {
         return { success: false, error: String(err) };
     }
 }
+
+/**
+ * Create an OrderTransaction record in Medusa's order_transaction table.
+ * This is CRITICAL for updating order_summary.paid_total correctly.
+ * 
+ * Without this record, Medusa Admin will show:
+ * - paid_total = 0
+ * - A misleading "Refund" bar
+ * 
+ * NOTE: Amount should be in MAJOR UNITS (Rupees) to match Medusa v2 conventions.
+ * If you receive amount from Razorpay (Paise), divide by 100 first!
+ * 
+ * Schema: id, order_id, version, amount, raw_amount, currency_code, 
+ *         reference, reference_id, created_at, updated_at
+ */
+export async function createOrderTransaction(transaction: {
+    order_id: string;
+    amount: number;  // Amount in RUPEES (major units)
+    currency_code: string;
+    reference?: string;      // e.g., payment_id or razorpay_payment_id
+    reference_id?: string;   // e.g., razorpay_order_id
+}) {
+    if (!process.env.DATABASE_URL) {
+        console.error('❌ DATABASE_URL not set!');
+        return { success: false, error: 'DATABASE_URL not configured' };
+    }
+
+    const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+    });
+
+    try {
+        console.log('💳 Creating OrderTransaction for order:', transaction.order_id);
+        console.log('   Amount:', transaction.amount, transaction.currency_code.toUpperCase());
+
+        // Build raw_amount JSON for Medusa v2
+        const rawAmount = JSON.stringify({ 
+            value: String(transaction.amount), 
+            precision: 20 
+        });
+
+        // order_transaction schema: id, order_id, version, amount, raw_amount, 
+        //                          currency_code, reference, reference_id, 
+        //                          created_at, updated_at
+        // NOTE: No metadata column, version is required
+        const query = `
+            INSERT INTO order_transaction (
+                id, order_id, version, amount, raw_amount, currency_code,
+                reference, reference_id,
+                created_at, updated_at
+            ) VALUES (
+                gen_random_uuid(), $1, 1, $2, $3, $4, $5, $6, now(), now()
+            )
+            RETURNING id, order_id, amount;
+        `;
+
+        const values = [
+            transaction.order_id,
+            transaction.amount,
+            rawAmount,
+            transaction.currency_code.toLowerCase(),
+            transaction.reference || null,
+            transaction.reference_id || null,
+        ];
+
+        const result = await pool.query(query, values);
+        
+        console.log('✅ OrderTransaction created:', result.rows[0].id);
+        console.log('   This will update paid_total in order_summary!');
+        
+        await pool.end();
+        return { success: true, data: result.rows[0] };
+    } catch (err) {
+        await pool.end();
+        console.error('❌ Failed to create OrderTransaction:', err);
+        return { success: false, error: String(err) };
+    }
+}

@@ -124,10 +124,10 @@ function OrderSuccessPageInner() {
   const paymentStatusLabel = isPaid ? "paid" : rawPaymentStatus || "pending";
 
   // Display amount helper:
-  // Amounts are in rupees (major units)
+  // Order totals are stored in Paise (minor units), divide by 100 for display
   function formatAmount(rawTotal?: number | undefined) {
     if (rawTotal === undefined || rawTotal === null) return "N/A";
-    return INR.format(rawTotal);
+    return INR.format(rawTotal / 100);
   }
 
   function formatItemAmount(raw?: number) {

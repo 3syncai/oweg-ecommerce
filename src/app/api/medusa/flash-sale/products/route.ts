@@ -1,7 +1,16 @@
 import { NextResponse } from 'next/server'
 import axios from 'axios'
 
+// In-memory cache: 30 minutes TTL
+let flashSaleCache: { data: unknown; expires: number } | null = null
+const CACHE_TTL_MS = 1000 * 60 * 30 // 30 minutes
+
 export async function GET() {
+  // Return cached data if still valid
+  if (flashSaleCache && flashSaleCache.expires > Date.now()) {
+    return NextResponse.json(flashSaleCache.data)
+  }
+
   try {
     const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
     const url = `${backendUrl}/store/flash-sale/products`
@@ -43,11 +52,20 @@ export async function GET() {
     }
 
     const data = response.data
-    console.log('[Flash Sale API] Backend data received:', {
-      active: data.active,
-      productsCount: data.products?.length || 0,
-      hasFlashSale: !!data.flash_sale,
-    })
+    
+    // Cache the result
+    flashSaleCache = {
+      data,
+      expires: Date.now() + CACHE_TTL_MS,
+    }
+    
+    // Reduced logging - only log if there are active flash sales
+    if (data.active) {
+      console.log('[Flash Sale API] Active flash sale found:', {
+        productsCount: data.products?.length || 0,
+      })
+    }
+    
     return NextResponse.json(data)
   } catch (error) {
     console.error('[Flash Sale API] Error fetching flash sale products:', error)

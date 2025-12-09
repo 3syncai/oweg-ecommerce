@@ -5,7 +5,7 @@ import {
   registerOrderTransaction,
   captureOrderPayment,
 } from "@/lib/medusa-admin";
-import { createMedusaPayment } from "@/lib/medusa-payment";
+import { createMedusaPayment, createOrderTransaction } from "@/lib/medusa-payment";
 
 type ConfirmBody = {
   medusaOrderId?: string;
@@ -122,20 +122,42 @@ export async function POST(req: Request) {
       }
     }
 
-    // Best-effort transaction record
+    // CRITICAL: Create OrderTransaction record for proper paid_total tracking
+    // This fixes the "Refund" bar issue in Medusa Admin
     if (typeof amountMinor === "number") {
-      const txRes = await registerOrderTransaction(medusaOrderId, {
-        amount: amountMinor,
+      // Convert Paise (minor units) to Rupees (major units) for Medusa v2
+      const amountRupees = amountMinor / 100;
+      
+      console.log("razorpay confirm: creating OrderTransaction...");
+      console.log(`  Amount: ₹${amountRupees} (from ${amountMinor} paise)`);
+      
+      const txResult = await createOrderTransaction({
+        order_id: medusaOrderId,
+        amount: amountRupees,  // RUPEES (major units)
         currency_code: currencyCode,
         reference: razorpay_payment_id,
-        provider: "razorpay",
-        metadata: {
-          razorpay_payment_id,
-          razorpay_order_id,
-        },
+        reference_id: razorpay_order_id,
+        // NOTE: order_transaction table does not have metadata column
       });
-      if (!txRes.ok && txRes.status !== 404) {
-        console.error("razorpay confirm: register transaction failed", { status: txRes.status, data: txRes.data });
+      
+      if (txResult.success) {
+        console.log("razorpay confirm: ✅ OrderTransaction created - paid_total will be updated");
+      } else {
+        console.error("razorpay confirm: ❌ Failed to create OrderTransaction:", txResult.error);
+        // Also try the old API method as fallback
+        const txRes = await registerOrderTransaction(medusaOrderId, {
+          amount: amountRupees,  // Use Rupees here too
+          currency_code: currencyCode,
+          reference: razorpay_payment_id,
+          provider: "razorpay",
+          metadata: {
+            razorpay_payment_id,
+            razorpay_order_id,
+          },
+        });
+        if (txRes.ok) {
+          console.log("razorpay confirm: ✅ OrderTransaction created via API fallback");
+        }
       }
     }
 

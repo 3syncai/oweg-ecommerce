@@ -1,0 +1,19 @@
+
+=== ANALYZE ORDER SUMMARY ===
+
+Step 1: Check order_transaction sum...
+  Transaction Total: 891.06
+
+Step 2: Check order_summary totals...
+  paid_total: 0
+  transaction_total: 0
+  current_order_total: 891.06
+  pending_difference: 891.06
+
+Step 3: Updating order_summary totals...
+  Setting paid_total = 891.06
+  Setting transaction_total = 891.06
+  Setting pending_difference = 0
+
+✅ Order summary totals updated!
+   Refresh Medusa Admin to verify the 'Refund' bar is gone.

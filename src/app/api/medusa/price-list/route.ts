@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-const PRICE_LIST_ID = 'plist_01KBXHWWX5X61GT1HYXKEP88SP'
+const PRICE_LIST_ID = 'pl_1765232034558'
 const MEDUSA_URL = process.env.MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
 
 // Simple in-memory cache

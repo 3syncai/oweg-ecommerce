@@ -1224,7 +1224,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           quantity: Math.max(1, quantity),
           title: product.title,
           thumbnail: product.images?.[0] || product.thumbnail,
-          priceMinor: typeof product.price === "number" ? Math.round(product.price * 100) : undefined,
+          priceMinor: typeof product.price === "number" ? product.price : undefined,
         }
         localStorage.setItem("buy_now_item", JSON.stringify(payload))
       }
@@ -1237,7 +1237,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       qty: String(Math.max(1, quantity)),
     })
     if (typeof product.price === "number") {
-      params.set("price", String(Math.round(product.price * 100)))
+      params.set("price", String(product.price))
     }
     router.push(`/checkout?${params.toString()}`)
   }

@@ -708,36 +708,44 @@ export function toDetailedProduct(
   }
 }
 
+
 function computeUiPrice(p: MedusaProduct) {
-  // Get price fields from Medusa
-  const calculated = p.price?.calculated_price
-  const original = p.price?.original_price
+  // LOGIC:
+  // User confirms the database stores MAJOR units (Rupees).
+  // Medusa API returns these values directly.
+  // We should NOT divide by 100. We just use the values as-is.
   
-  // Get price from first variant as fallback
+  const medusaCalculated = p.price?.calculated_price
+  const medusaOriginal = p.price?.original_price
+  
   const firstVariant = p.variants?.[0]
   const variantCalculated = firstVariant?.calculated_price?.calculated_amount
-  const variantPrice = firstVariant?.prices?.[0]?.amount
+  const variantOriginal = firstVariant?.calculated_price?.original_amount
+  const rawDbPrice = firstVariant?.prices?.[0]?.amount
+
+  // Determine final Selling Price (Major) - DB is now in Rupees, use directly
+  let amountMajor = 0
   
-  // Medusa Store API returns prices in Rupees (major units) already
-  // Use values directly - no conversion needed
-  const amountMajor =
-    (typeof calculated === "number" && calculated > 0) ? calculated :
-    (typeof variantCalculated === "number" && variantCalculated > 0) ? variantCalculated :
-    (typeof variantPrice === "number" && variantPrice > 0) ? variantPrice :
-    0
+  if (typeof medusaCalculated === 'number') {
+      amountMajor = medusaCalculated
+  } else if (typeof variantCalculated === 'number') {
+      amountMajor = variantCalculated
+  } else if (typeof rawDbPrice === 'number') {
+      amountMajor = rawDbPrice
+  }
 
-  // Use original_price from Medusa as MRP if valid
-  // Fallback to selling price if no original_price set
-  let originalMajor =
-    (typeof original === "number" && original > 0 && original >= amountMajor) 
-      ? original 
-      : amountMajor
+  // Determine final MRP (Major) - DB is now in Rupees, use directly
+  let originalMajor = amountMajor // Default to selling price
 
-  // HEURISTIC: If MRP is wildly higher than selling price (>20x), it's likely correctly in Paise (minor units)
-  // while our selling price is in Rupees (major units). automatically fix it by dividing by 100.
-  // Example: MRP 84661 (Paise), Selling 592 (Rupees) -> Ratio 143 -> Divide MRP by 100 -> 846.61
-  if (amountMajor > 0 && originalMajor > amountMajor * 20) {
-      originalMajor = originalMajor / 100
+  if (typeof medusaOriginal === 'number') {
+      originalMajor = medusaOriginal
+  } else if (typeof variantOriginal === 'number') {
+      originalMajor = variantOriginal
+  }
+
+  // Sanity fallback: if original < amount, reset original
+  if (originalMajor < amountMajor) {
+      originalMajor = amountMajor
   }
 
   // Calculate discount percentage
@@ -746,22 +754,14 @@ function computeUiPrice(p: MedusaProduct) {
       ? Math.round(((originalMajor - amountMajor) / originalMajor) * 100)
       : 0
 
-  // Debug logging - This appears in BROWSER console (F12)
-  if (typeof window !== 'undefined') {
-    console.warn('🔍 PRICE DEBUG:', p.title?.substring(0, 30))
-    console.table({
-      'Medusa calculated_price': calculated,
-      'Medusa original_price': original,
-      'Variant calculated': variantCalculated,
-      'Variant price': variantPrice,
-      '▶ Final Price': amountMajor,
-      '▶ Final MRP': originalMajor,
-      '▶ Discount %': discount
-    })
+  // Debug logging - Lightweight check
+  if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+      // console.log('Price Debug:', { amountMajor, originalMajor });
   }
 
   return { amountMajor, originalMajor, discount }
 }
+
 
 export function toUiProduct(p: MedusaProduct) {
   if (!p?.id || !p?.title) {

@@ -74,5 +74,21 @@ export default defineConfig({
     {
       resolve: "./src/modules/flash-sale",
     },
+    {
+      resolve: "@medusajs/medusa/notification",
+      options: {
+        providers: [
+          {
+            resolve: "./src/modules/email-notifications",
+            id: "resend-notification",
+            options: {
+              channels: ["email"],
+              apiKey: process.env.RESEND_API_KEY,
+              from: process.env.RESEND_FROM,
+            },
+          },
+        ],
+      },
+    },
   ],
 })

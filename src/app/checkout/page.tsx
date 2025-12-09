@@ -135,7 +135,7 @@ function CheckoutPageInner() {
       setBuyNowItem({
         variantId: variantFromQuery,
         quantity: Math.max(1, Number(qtyFromQuery) || 1),
-        priceMinor: priceFromQuery ? Number(priceFromQuery) * 100 : undefined,
+        priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
       });
     }
   }, [variantFromQuery, qtyFromQuery, priceFromQuery]);
@@ -320,13 +320,15 @@ function CheckoutPageInner() {
           }
         : null);
 
-    const res = await fetch("/api/checkout/draft-order", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
-      },
-      body: JSON.stringify({
+    // GUARD: If in Buy Now mode but item details are missing, block checkout
+    if (isBuyNow && !fallbackBuyNow) {
+        toast.error("Buy Now session expired. Please select the product again.");
+        // Optional: Redirect back to home or history
+        router.push("/");
+        throw new Error("Buy Now session expired");
+    }
+
+    const requestPayload = {
         shipping,
         billing,
         billingSameAsShipping: billingSame,
@@ -343,7 +345,17 @@ function CheckoutPageInner() {
               },
             ]
           : undefined,
-      }),
+    };
+    
+    console.log('🛒 [Frontend Debug] createDraftOrder Payload:', requestPayload);
+
+    const res = await fetch("/api/checkout/draft-order", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+         ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
+      },
+      body: JSON.stringify(requestPayload),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -381,10 +393,24 @@ function CheckoutPageInner() {
       const err = await createRes.json().catch(() => ({}));
       throw new Error(err.error || "Unable to create payment");
     }
-    const payload = await createRes.json();
+    const createData = await createRes.json();
+
+    // DB now stores Rupees (Major Units). Razorpay expects Paise (Minor Units).
+    // Convert: Rupees * 100 = Paise
+    const amountMinor = Math.round(draft.total * 100);
+
+    const payload = {
+      key: createData.key,
+      amount: amountMinor,
+      currency: createData.currency,
+      orderId: createData.orderId,
+    };
+
+    console.log("💳 [Razorpay Init] Converting Rupees to Paise:", { totalRupees: draft.total, amountPaise: amountMinor });
 
     const Razorpay = window.Razorpay;
     if (!Razorpay) throw new Error("Razorpay SDK unavailable");
+    
     const rzp = new Razorpay({
       key: payload.key,
       amount: payload.amount,
@@ -398,7 +424,7 @@ function CheckoutPageInner() {
         email: shipping.email,
         contact: shipping.phone,
       },
-      // Highlight UPI and keep other options available (collect flow allows typing UPI ID)
+      // Highlight UPI and keep other options available
       config: {
         display: {
           blocks: {
@@ -416,12 +442,10 @@ function CheckoutPageInner() {
             show_default_blocks: true,
           },
         },
-        // Enable UPI collect so users can enter UPI ID (GPay/PhonePe etc. still show)
         upi: {
           flow: "collect",
         },
         wallet: {
-          // Allow Google Pay / PhonePe etc. in wallet list
           enabled: true,
         },
       },

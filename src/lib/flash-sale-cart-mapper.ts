@@ -66,8 +66,7 @@ export function applyFlashSalePricesToCart(
   }
 
   // Map cart items to use flash_sale_price
-  // Medusa v2 uses minor units (paise) for INR, so convert flash_sale_price to paise
-  const CURRENCY_MULTIPLIER = 100 // INR: 1 rupee = 100 paise
+  // NOTE: Medusa v2 now stores in major units (Rupees), so use flash_sale_price directly
 
   cart.items = cart.items.map((item: CartItem) => {
     const variantId = item.variant?.id || item.variant_id
@@ -77,9 +76,8 @@ export function applyFlashSalePricesToCart(
     }
 
     // Product is in flash sale - use flash_sale_price (discounted price) for cart display
-    // flash_sale_price is in rupees (major units), convert to paise (minor units) for Medusa
-    const flashSalePriceRupees = priceMap.get(variantId)!
-    const priceToUse = Math.round(flashSalePriceRupees * CURRENCY_MULTIPLIER)
+    // flash_sale_price is in rupees (major units), use directly
+    const priceToUse = priceMap.get(variantId)!
 
     // Override unit_price
     if (item.unit_price !== undefined) {

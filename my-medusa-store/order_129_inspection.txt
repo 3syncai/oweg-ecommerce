@@ -1,0 +1,10 @@
+
+=== INSPECTING ORDER #129 ===
+
+📦 ORDER:
+  ID: a265cec7-be52-4d53-ae94-d0660da24de2
+  Display ID: 129
+  Status: pending
+  Currency: inr
+  Created: Mon Jun 19 2023 02:44:09 GMT+0530 (India Standard Time)
+Error: error: column "title" does not exist
