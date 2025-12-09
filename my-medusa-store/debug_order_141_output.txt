@@ -1,0 +1,177 @@
+
+=========================================================
+🔍 DEEP DEBUG: ORDER #141
+=========================================================
+
+📋 1. ORDER TABLE DATA
+
+Found 2 order(s) with display_id = 141:
+  [1] id: b6175cf1-4522-4f3d-acb8-ac95a362b89b
+      status: pending
+      currency: inr
+      version: 1
+      created_at: Sat Jun 24 2023 05:08:11 GMT+0530 (India Standard Time)
+  [2] id: order_01KC1CNBZGB6WC1W12S2C6W4XY
+      status: pending
+      currency: inr
+      version: 1
+      created_at: Tue Dec 09 2025 16:36:36 GMT+0530 (India Standard Time)
+
+
+========== INSPECTING ORDER b6175cf1-4522-4f3d-acb8-ac95a362b89b ==========
+
+📋 2. ORDER SUMMARY
+
+  No order_summary found
+
+📋 3. ORDER TRANSACTIONS
+
+  Found 0 order_transaction(s):
+
+📋 4. PAYMENT COLLECTIONS
+
+  Found 0 payment_collection(s):
+
+📋 5. PAYMENTS
+
+  Found 0 payment(s):
+
+📋 6. REFUNDS (refund table)
+
+  Found 0 refund(s):
+  ✅ No refunds in refund table for this order
+
+📋 7. CAPTURES
+
+  Found 0 capture(s):
+
+📋 8. ORDER CHANGES
+
+  Found 0 order_change entry(ies):
+
+
+========== INSPECTING ORDER order_01KC1CNBZGB6WC1W12S2C6W4XY ==========
+
+📋 2. ORDER SUMMARY
+
+  paid_total: 253.38
+  refunded_total: 0
+  transaction_total: 253.38
+  current_order_total: 253.38
+  pending_difference: 0
+  Full totals: {
+  "difference": 0,
+  "paid_total": 253.38,
+  "raw_difference": {
+    "value": "0",
+    "precision": 20
+  },
+  "raw_paid_total": {
+    "value": "253.38",
+    "precision": 20
+  },
+  "refunded_total": 0,
+  "accounting_total": 253.38,
+  "credit_line_total": 0,
+  "transaction_total": 253.38,
+  "pending_difference": 0,
+  "raw_refunded_total": {
+    "value": "0",
+    "precision": 20
+  },
+  "current_order_total": 253.38,
+  "original_order_total": 253.38,
+  "raw_accounting_total": {
+    "value": "253.38",
+    "precision": 20
+  },
+  "raw_credit_line_total": {
+    "value": "0",
+    "precision": 20
+  },
+  "raw_transaction_total": {
+    "value": "253.38",
+    "precision": 20
+  },
+  "raw_pending_difference": {
+    "value": "0",
+    "precision": 20
+  },
+  "raw_current_order_total": {
+    "value": "253.38",
+    "precision": 20
+  },
+  "raw_original_order_total": {
+    "value": "253.38",
+    "precision": 20
+  }
+}
+
+📋 3. ORDER TRANSACTIONS
+
+  Found 1 order_transaction(s):
+
+  [1] id: 0e8c1f41-f6cb-45dc-b08d-c204ae77ad80
+      amount: 253.38 
+      reference: pay_RpUTYBoW4iE9TS 
+      reference_id: order_RpUTNcVJ6aRH5X
+      return_id: NULL
+      claim_id: NULL
+      exchange_id: NULL
+      created_at: Tue Dec 09 2025 17:16:57 GMT+0530 (India Standard Time)
+
+📋 4. PAYMENT COLLECTIONS
+
+  Found 1 payment_collection(s):
+
+  [1] id: 2582395e-ab03-4ec6-89d3-28b9505e5103
+      status: completed
+      amount: 253.38
+      captured_amount: 253.38
+      refunded_amount: null 
+      currency: inr
+
+📋 5. PAYMENTS
+
+  Found 1 payment(s):
+
+  [1] id: 68fc61c1-c6da-48ae-a1ce-64ff428e8f05
+      amount: 253.38
+      currency: INR
+      captured_at: Tue Dec 09 2025 16:37:03 GMT+0530 (India Standard Time)
+      canceled_at: null
+      payment_collection_id: 2582395e-ab03-4ec6-89d3-28b9505e5103
+      data.status: captured
+      data.razorpay_payment_id: pay_RpUTYBoW4iE9TS
+
+📋 6. REFUNDS (refund table)
+
+  Found 0 refund(s):
+  ✅ No refunds in refund table for this order
+
+📋 7. CAPTURES
+
+  Found 1 capture(s):
+  [1] id: 7b9b0bec-df5c-4497-af02-50637635039c, amount: 253.38, payment_id: 68fc61c1-c6da-48ae-a1ce-64ff428e8f05
+
+📋 8. ORDER CHANGES
+
+  Found 2 order_change entry(ies):
+  [1] change_type: update_order, status: confirmed
+      action: UPDATE_ORDER_PROPERTIES, reference: NULL
+      amount: NULL 
+  [2] change_type: update_order, status: confirmed
+      action: UPDATE_ORDER_PROPERTIES, reference: NULL
+      amount: NULL 
+
+
+=========================================================
+📊 DIAGNOSIS SUMMARY
+=========================================================
+
+Check the output above for:
+  - order_transaction with amount < 0 or reference = 'refund'
+  - payment_collection with refunded_amount > 0
+  - refund table entries
+  - order_summary.totals.refunded_total > 0
+  - order_change_action with 'refund' reference

@@ -2,46 +2,46 @@
 === FINDING RECENT ORDERS ===
 
 📋 Recent orders (newest first):
-  1. Order #129: order_01KC069SE71GZ3714NQE741AZX
-     Created: Tue Dec 09 2025 05:26:11 GMT+0530 (India Standard Time), Status: pending
-  2. Order #128: order_01KC05ZRFX99A3SS7H2D86ZS7H
-     Created: Tue Dec 09 2025 05:20:42 GMT+0530 (India Standard Time), Status: pending
-  3. Order #127: order_01KBZXEYER7F8MA23WWHBDQC3Y
-     Created: Tue Dec 09 2025 02:51:42 GMT+0530 (India Standard Time), Status: pending
-  4. Order #126: order_01KBZX3B16HGHYJY0SSDMM6QGS
-     Created: Tue Dec 09 2025 02:45:22 GMT+0530 (India Standard Time), Status: pending
-  5. Order #125: order_01KBZW99X3N6FEWXAY41H5SK2P
-     Created: Tue Dec 09 2025 02:31:09 GMT+0530 (India Standard Time), Status: pending
-  6. Order #124: order_01KBZVSSK765JWA8NXMTD3A7KC
-     Created: Tue Dec 09 2025 02:22:41 GMT+0530 (India Standard Time), Status: pending
-  7. Order #123: order_01KBZV7XN82KR72A9QD9R4A8CC
-     Created: Tue Dec 09 2025 02:12:55 GMT+0530 (India Standard Time), Status: pending
-  8. Order #122: order_01KBZTXF9CBCM98X44G1AK22CN
-     Created: Tue Dec 09 2025 02:07:13 GMT+0530 (India Standard Time), Status: pending
-  9. Order #121: order_01KBZTJENHZWQBDDYHSST4YHP6
-     Created: Tue Dec 09 2025 02:01:12 GMT+0530 (India Standard Time), Status: pending
-  10. Order #120: order_01KBZT18KS0KKE3NHS3EDPTX1S
-     Created: Tue Dec 09 2025 01:51:48 GMT+0530 (India Standard Time), Status: pending
+  1. Order #142: order_01KC1E1RDZD5N30HJQMMXN1MGK
+     Created: Tue Dec 09 2025 17:00:50 GMT+0530 (India Standard Time), Status: pending
+  2. Order #141: order_01KC1CNBZGB6WC1W12S2C6W4XY
+     Created: Tue Dec 09 2025 16:36:36 GMT+0530 (India Standard Time), Status: pending
+  3. Order #140: order_01KC1C1M5067R6EP6SHHS7W7FW
+     Created: Tue Dec 09 2025 16:25:49 GMT+0530 (India Standard Time), Status: pending
+  4. Order #139: order_01KC1B1JWGRJDY6VG5FBGTJT0K
+     Created: Tue Dec 09 2025 16:08:19 GMT+0530 (India Standard Time), Status: pending
+  5. Order #138: order_01KC192P9H0AQDGVQKSMZZ6Q6K
+     Created: Tue Dec 09 2025 15:33:58 GMT+0530 (India Standard Time), Status: pending
+  6. Order #137: order_01KC18FP2D8A86AE9JXY40NP0B
+     Created: Tue Dec 09 2025 15:23:35 GMT+0530 (India Standard Time), Status: pending
+  7. Order #136: order_01KC16PFBZQM2XQR22JQ437PG6
+     Created: Tue Dec 09 2025 14:52:21 GMT+0530 (India Standard Time), Status: pending
+  8. Order #135: order_01KC169JQ533HGXNTRG6J8WZJC
+     Created: Tue Dec 09 2025 14:45:18 GMT+0530 (India Standard Time), Status: pending
+  9. Order #134: order_01KC15W6DS0B0KMJ5AGG89NT3F
+     Created: Tue Dec 09 2025 14:38:00 GMT+0530 (India Standard Time), Status: pending
+  10. Order #133: order_01KC15010Y0139BNXBEQE78RRG
+     Created: Tue Dec 09 2025 14:22:37 GMT+0530 (India Standard Time), Status: pending
 
 === INSPECTING MOST RECENT ORDER ===
 
 📦 ORDER:
-  ID: order_01KC069SE71GZ3714NQE741AZX
-  Display ID: 129
+  ID: order_01KC1E1RDZD5N30HJQMMXN1MGK
+  Display ID: 142
   Status: pending
   Currency: inr
-  Created: Tue Dec 09 2025 05:26:11 GMT+0530 (India Standard Time)
+  Created: Tue Dec 09 2025 17:00:50 GMT+0530 (India Standard Time)
 
 📋 ORDER_ITEM columns: id, order_id, version, item_id, quantity, raw_quantity, fulfilled_quantity, raw_fulfilled_quantity, shipped_quantity, raw_shipped_quantity, return_requested_quantity, raw_return_requested_quantity, return_received_quantity, raw_return_received_quantity, return_dismissed_quantity, raw_return_dismissed_quantity, written_off_quantity, raw_written_off_quantity, metadata, created_at, updated_at, deleted_at, delivered_quantity, raw_delivered_quantity, unit_price, raw_unit_price, compare_at_unit_price, raw_compare_at_unit_price
 
 📋 ORDER ITEMS:
-  - Item: {"id":"orditem_01KC069SE7SPYY7RX2Z3KQ3F18","order_id":"order_01KC069SE71GZ3714NQE741AZX","version":1,"item_id":"ordli_01KC069SE71AQH2QSJ1BH5YZWB","quantity":"2","raw_quantity":{"value":"2","precision":20},"fulfilled_quantity":"0","raw_fulfilled_quantity":{"value":"0","precision":20},"shipped_quantity":"0","raw_shipped_quantity":{"value":"0","precision":20},"return_requested_quantity":"0","raw_return_requested_quantity":{"value":"0","precision":20},"return_received_quantity":"0","raw_return_received_quantity":{"value":"0","precision":20},"return_dismissed_quantity":"0","raw_return_dismissed_quantity":{"value":"0","precision":20},"written_off_quantity":"0","raw_written_off_quantity":{"value":"0","precision":20},"metadata":null,"created_at":"2025-12-08T23:56:11.080Z","updated_at":"2025-12-08T23:56:11.080Z","deleted_at":null,"delivered_quantity":"0","raw_delivered_quantity":{"value":"0","precision":20},"unit_price":null,"raw_unit_price":null,"compare_at_unit_price":null,"raw_compare_at_unit_price":null}
+  - Item: {"id":"orditem_01KC1E1RE3K57QXCCHR3059NNV","order_id":"order_01KC1E1RDZD5N30HJQMMXN1MGK","version":1,"item_id":"ordli_01KC1E1RE2T8YA2BM6MRKPN71H","quantity":"1","raw_quantity":{"value":"1","precision":20},"fulfilled_quantity":"1","raw_fulfilled_quantity":{"value":"1","precision":20},"shipped_quantity":"0","raw_shipped_quantity":{"value":"0","precision":20},"return_requested_quantity":"0","raw_return_requested_quantity":{"value":"0","precision":20},"return_received_quantity":"0","raw_return_received_quantity":{"value":"0","precision":20},"return_dismissed_quantity":"0","raw_return_dismissed_quantity":{"value":"0","precision":20},"written_off_quantity":"0","raw_written_off_quantity":{"value":"0","precision":20},"metadata":null,"created_at":"2025-12-09T11:30:50.951Z","updated_at":"2025-12-09T11:31:47.674Z","deleted_at":null,"delivered_quantity":"0","raw_delivered_quantity":{"value":"0","precision":20},"unit_price":null,"raw_unit_price":null,"compare_at_unit_price":null,"raw_compare_at_unit_price":null}
 
 💳 PAYMENT COLLECTIONS:
-  - {"id":"22a74158-add3-4652-99bb-566b2f78237a","currency_code":"inr","amount":"891.06","raw_amount":{"amount":891.06},"authorized_amount":null,"raw_authorized_amount":null,"captured_amount":"891.06","raw_captured_amount":{"amount":891.06},"refunded_amount":null,"raw_refunded_amount":null,"created_at":"2025-12-08T23:56:38.682Z","updated_at":"2025-12-08T23:56:38.682Z","deleted_at":null,"completed_at":null,"status":"completed","metadata":{"cart_id":"cart_01KC05YYWXF6JSJKE57T269XJF"}}
+  - {"id":"050d266c-4190-4647-9eda-9c4db5af2d70","currency_code":"inr","amount":"295.76","raw_amount":{"amount":295.76},"authorized_amount":null,"raw_authorized_amount":null,"captured_amount":"295.76","raw_captured_amount":{"amount":295.76},"refunded_amount":null,"raw_refunded_amount":null,"created_at":"2025-12-09T11:31:47.378Z","updated_at":"2025-12-09T11:31:47.378Z","deleted_at":null,"completed_at":null,"status":"completed","metadata":{"cart_id":"cart_01KBPR16T5YT6K8CCGRD530M49"}}
 
 💰 PAYMENTS:
-  - {"id":"17dd6854-4a87-40a6-9402-0d2471943434","amount":"891.06","raw_amount":{"amount":891.06},"currency_code":"INR","provider_id":"razorpay","data":{"status":"captured","captured":true,"captured_at":"2025-12-08T23:56:36.818Z","amount_in_paise":89106,"razorpay_order_id":"order_RpJ3Bap5ScoJcH","razorpay_signature":"0c0066b7aa51198989183e6a420d4159081438afc85d3f962d8b1d1ecf0e349e","razorpay_payment_id":"pay_RpJ3LIto7wVKsc"},"created_at":"2025-12-08T23:56:38.758Z","updated_at":"2025-12-08T23:56:38.758Z","deleted_at":null,"captured_at":"2025-12-08T23:56:38.758Z","canceled_at":null,"payment_collection_id":"22a74158-add3-4652-99bb-566b2f78237a","payment_session_id":"92c28bc9-b9f6-4457-aaf9-313297c4376e","metadata":null}
+  - {"id":"f476af16-5e38-49c3-8888-5d7481158405","amount":"295.76","raw_amount":{"amount":295.76},"currency_code":"INR","provider_id":"razorpay","data":{"status":"captured","captured":true,"captured_at":"2025-12-09T11:31:45.801Z","amount_in_paise":29576,"razorpay_order_id":"order_RpUszIz6O1tAzk","razorpay_signature":"8dd8385fb52bb916dc4664374e73af7c87d8d5775c68865c5a32dbcff81eaa58","razorpay_payment_id":"pay_RpUtfjjTTCvxSG"},"created_at":"2025-12-09T11:31:47.412Z","updated_at":"2025-12-09T11:31:47.412Z","deleted_at":null,"captured_at":"2025-12-09T11:31:47.412Z","canceled_at":null,"payment_collection_id":"050d266c-4190-4647-9eda-9c4db5af2d70","payment_session_id":"3d108dd0-bdc7-40e8-82be-32a33aec9e9a","metadata":null}
 
 📝 ORDER TRANSACTIONS:
   No transactions found
@@ -50,4 +50,4 @@
   No refund records in refund table
 
 📊 ORDER SUMMARY:
-  {"id":"ordsum_01KC069SE7SZKXM7PTTAVH8ENM","order_id":"order_01KC069SE71GZ3714NQE741AZX","version":1,"totals":{"paid_total":0,"raw_paid_total":{"value":"0","precision":20},"refunded_total":0,"accounting_total":891.06,"credit_line_total":0,"transaction_total":0,"pending_difference":891.06,"raw_refunded_total":{"value":"0","precision":20},"current_order_total":891.06,"original_order_total":891.06,"raw_accounting_total":{"value":"891.06","precision":20},"raw_credit_line_total":{"value":"0","precision":20},"raw_transaction_total":{"value":"0","precision":20},"raw_pending_difference":{"value":"891.06","precision":20},"raw_current_order_total":{"value":"891.06","precision":20},"raw_original_order_total":{"value":"891.06","precision":20}},"created_at":"2025-12-08T23:56:11.080Z","updated_at":"2025-12-08T23:56:11.080Z","deleted_at":null}
+  {"id":"ordsum_01KC1E1RDYRTAQK0ESDFCKXDTF","order_id":"order_01KC1E1RDZD5N30HJQMMXN1MGK","version":1,"totals":{"difference":0,"paid_total":295.76,"raw_difference":{"value":"0","precision":20},"raw_paid_total":{"value":"295.76","precision":20},"refunded_total":0,"accounting_total":295.76,"credit_line_total":0,"transaction_total":295.76,"pending_difference":0,"raw_refunded_total":{"value":"0","precision":20},"current_order_total":295.76,"original_order_total":295.76,"raw_accounting_total":{"value":"295.76","precision":20},"raw_credit_line_total":{"value":"0","precision":20},"raw_transaction_total":{"value":"295.76","precision":20},"raw_pending_difference":{"value":"0","precision":20},"raw_current_order_total":{"value":"295.76","precision":20},"raw_original_order_total":{"value":"295.76","precision":20}},"created_at":"2025-12-09T11:30:50.952Z","updated_at":"2025-12-09T11:31:47.544Z","deleted_at":null}

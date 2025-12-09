@@ -1,4 +1,7 @@
+// FORCE REBUILD 2
 import { Pool } from 'pg';
+
+import crypto from "crypto";
 
 /**
  * Create complete payment record chain in Medusa's payment tables
@@ -227,6 +230,249 @@ export async function createOrderTransaction(transaction: {
     } catch (err) {
         await pool.end();
         console.error('❌ Failed to create OrderTransaction:', err);
+        return { success: false, error: String(err) };
+    }
+}
+
+/**
+ * Update order_summary.totals to reflect the actual order_transaction records.
+ * This ensures Medusa Admin shows correct paid_total and avoids "Refund" display issues.
+ * 
+ * Call this after creating an OrderTransaction to ensure the summary is in sync.
+ * 
+ * @param orderId - The Medusa order ID
+ * @returns Success/failure result
+ */
+export async function updateOrderSummaryTotals(orderId: string) {
+    if (!process.env.DATABASE_URL) {
+        console.error('❌ DATABASE_URL not set!');
+        return { success: false, error: 'DATABASE_URL not configured' };
+    }
+
+    const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+    });
+
+    try {
+        console.log('📊 Updating order_summary totals for order:', orderId);
+
+        // 1. Get current order summary
+        const summaryRes = await pool.query(`
+            SELECT id, totals, order_id FROM order_summary WHERE order_id = $1
+        `, [orderId]);
+
+        if (summaryRes.rows.length === 0) {
+            console.log('  ⚠️ No order_summary found for order');
+            await pool.end();
+            return { success: false, error: 'Order summary not found' };
+        }
+
+        const summary = summaryRes.rows[0];
+        const currentTotals = summary.totals || {};
+
+        // 2. Calculate transaction total from order_transaction records
+        const txSumRes = await pool.query(`
+            SELECT 
+                COALESCE(SUM(amount), 0) as transaction_total,
+                COUNT(*) as tx_count
+            FROM order_transaction 
+            WHERE order_id = $1 AND deleted_at IS NULL
+        `, [orderId]);
+
+        const transactionTotal = Number(txSumRes.rows[0].transaction_total);
+        const txCount = Number(txSumRes.rows[0].tx_count);
+        console.log(`  Transaction total from ${txCount} records: ${transactionTotal}`);
+
+        // 3. Get order total for calculating pending_difference
+        const orderTotal = Number(currentTotals.current_order_total || currentTotals.original_order_total || 0);
+        const pendingDifference = Math.max(0, orderTotal - transactionTotal);
+
+        // 4. Build updated totals
+        const updatedTotals = {
+            ...currentTotals,
+            paid_total: transactionTotal,
+            raw_paid_total: { value: String(transactionTotal), precision: 20 },
+            transaction_total: transactionTotal,
+            raw_transaction_total: { value: String(transactionTotal), precision: 20 },
+            pending_difference: pendingDifference,
+            raw_pending_difference: { value: String(pendingDifference), precision: 20 },
+        };
+
+        // 5. Update order_summary
+        await pool.query(`
+            UPDATE order_summary 
+            SET totals = $1, updated_at = now()
+            WHERE order_id = $2
+        `, [JSON.stringify(updatedTotals), orderId]);
+
+        console.log('✅ Order summary updated:');
+        console.log(`   paid_total: ${transactionTotal}`);
+        console.log(`   pending_difference: ${pendingDifference}`);
+
+        await pool.end();
+        return { success: true, data: { paid_total: transactionTotal, pending_difference: pendingDifference } };
+    } catch (err) {
+        await pool.end();
+        console.error('❌ Failed to update order_summary:', err);
+        return { success: false, error: String(err) };
+    }
+}
+
+/**
+ * Ensures an order has a shipping method attached.
+ * If missing, it finds a "Standard" shipping option and attaches it.
+ */
+export async function ensureOrderShippingMethod(orderId: string) {
+    if (!process.env.DATABASE_URL) return { success: false, error: 'No DB URL' };
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+    try {
+        console.log(`🚚 Checking shipping method for order: ${orderId}`);
+
+        // 1. Check if method exists
+        const checkRes = await pool.query(`
+            SELECT id FROM order_shipping WHERE order_id = $1
+        `, [orderId]);
+
+        if (checkRes.rowCount && checkRes.rowCount > 0) {
+            console.log('✅ Order already has a shipping method.');
+            await pool.end();
+            return { success: true };
+        }
+
+        console.log('⚠️ No shipping method found. Attaching standard shipping...');
+
+        // 2. Find a "Standard" option (or fallback to any valid option)
+        const optionRes = await pool.query(`
+            SELECT id, name, amount, price_type
+            FROM shipping_option
+            WHERE name ILIKE '%Standard%' OR name ILIKE '%Default%'
+            LIMIT 1
+        `);
+
+        if (optionRes.rowCount === 0) {
+            console.error('❌ No valid shipping option found in database.');
+            await pool.end();
+            return { success: false, error: 'No shipping option available' };
+        }
+
+        const option = optionRes.rows[0];
+        const methodId = `osm_${crypto.randomUUID()}`;
+        const amount = 0; // Free for now, or use option.amount if needed
+        const rawAmount = JSON.stringify({ value: String(amount), precision: 20 });
+
+        // 3. Insert specific method
+        await pool.query(`
+            INSERT INTO order_shipping_method (
+                id, name, amount, raw_amount, is_tax_inclusive,
+                shipping_option_id, created_at, updated_at, is_custom_amount
+            ) VALUES (
+                $1, $2, $3, $4, false,
+                $5, now(), now(), false
+            )
+        `, [methodId, option.name, amount, rawAmount, option.id]);
+
+        // 4. Link to Order
+        await pool.query(`
+            INSERT INTO order_shipping (
+                id, order_id, version, shipping_method_id, created_at, updated_at
+            ) VALUES (
+                gen_random_uuid(), $1, 1, $2, now(), now()
+            )
+        `, [orderId, methodId]);
+
+        console.log(`✅ Attached "${option.name}" to order.`);
+        await pool.end();
+        return { success: true };
+
+    } catch (err) {
+        console.error('❌ Failed to ensure shipping method:', err);
+        await pool.end();
+        return { success: false, error: String(err) };
+    }
+}
+
+/**
+ * Ensures all items in an order have stock reservations.
+ * If missing, creates them against the default stock location.
+ */
+export async function ensureOrderReservations(orderId: string) {
+    if (!process.env.DATABASE_URL) return { success: false, error: 'No DB URL' };
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+    try {
+        console.log(`📦 Checking reservations for order: ${orderId}`);
+
+        // 1. Get default stock location
+        const locRes = await pool.query(`SELECT id FROM stock_location LIMIT 1`);
+        if (locRes.rowCount === 0) {
+            console.error('❌ No stock location found.');
+            await pool.end();
+            return { success: false, error: 'No stock location' };
+        }
+        const locationId = locRes.rows[0].id;
+
+        // 2. Get unreserved items
+        // Join to find items that lack a corresponding reservation_item
+        // NOTE: quantity is on order_item (oi), variant_id is on order_line_item (oli)
+        const itemsRes = await pool.query(`
+            SELECT oli.id as line_item_id, oli.variant_id, oi.quantity, oli.title
+            FROM order_item oi
+            JOIN order_line_item oli ON oi.item_id = oli.id
+            WHERE oi.order_id = $1
+            AND NOT EXISTS (
+                SELECT 1 FROM reservation_item ri WHERE ri.line_item_id = oli.id
+            )
+        `, [orderId]);
+
+        if (itemsRes.rowCount === 0) {
+            console.log('✅ All items already have reservations.');
+            await pool.end();
+            return { success: true };
+        }
+
+        console.log(`⚠️ Found ${itemsRes.rowCount} items without reservations. Creating them...`);
+
+        for (const item of itemsRes.rows) {
+            if (!item.variant_id) continue;
+
+            // Find Inventory Item ID
+            const invRes = await pool.query(`
+                SELECT inventory_item_id
+                FROM product_variant_inventory_item
+                WHERE variant_id = $1
+            `, [item.variant_id]);
+
+            if (invRes.rowCount === 0) {
+                console.warn(`Skipping reservation for "${item.title}": No inventory item linked.`);
+                continue;
+            }
+
+            const inventoryItemId = invRes.rows[0].inventory_item_id;
+            const reservationId = `resitem_${crypto.randomUUID()}`;
+            const rawQuantity = JSON.stringify({ value: String(item.quantity), precision: 20 });
+
+            // Create Reservation
+            await pool.query(`
+                INSERT INTO reservation_item (
+                    id, line_item_id, location_id, quantity, raw_quantity,
+                    inventory_item_id, allow_backorder, created_at, updated_at
+                ) VALUES (
+                    $1, $2, $3, $4, $5,
+                    $6, true, now(), now()
+                )
+            `, [reservationId, item.line_item_id, locationId, item.quantity, rawQuantity, inventoryItemId]);
+
+            console.log(`   + Reserved ${item.quantity} of "${item.title}"`);
+        }
+
+        console.log('✅ Reservations created.');
+        await pool.end();
+        return { success: true };
+
+    } catch (err) {
+        console.error('❌ Failed to ensure reservations:', err);
+        await pool.end();
         return { success: false, error: String(err) };
     }
 }

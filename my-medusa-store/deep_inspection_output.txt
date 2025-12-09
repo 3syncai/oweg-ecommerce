@@ -1,0 +1,123 @@
+
+========================================
+🔍 DEEP INSPECTION - TRANSACTIONS & CAPTURES
+========================================
+
+📋 ALL order_transaction entries with FULL data:
+
+Order #95:
+  Full record: {"id":"872572f3-11fa-455e-a88a-dd2165b3a5ac","order_id":"order_01KBWZM62DQWTVPRXJY2Y6GDY7","version":1,"amount":"593","raw_amount":{"value":"593","precision":20},"currency_code":"inr","reference":"pay_RooU06IE5kng2B","reference_id":"order_RooTlXEXjkb3PM","created_at":"2025-12-09T11:47:02.879Z","updated_at":"2025-12-09T11:47:02.879Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":95}
+
+Order #110:
+  Full record: {"id":"b2a9aca4-8414-4e33-85b0-853d58bc293c","order_id":"order_01KBYSKPNDWEE8M34CV4JXEXTB","version":1,"amount":"406.77","raw_amount":{"value":"406.77","precision":20},"currency_code":"inr","reference":"pay_Rp5u1Y5xgvlcX8","reference_id":"order_Rp5trZv42eEFfc","created_at":"2025-12-09T11:47:02.063Z","updated_at":"2025-12-09T11:47:02.063Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":110}
+
+Order #110:
+  Full record: {"id":"6c0cb21b-1b31-45f4-9bf2-ce03bc6e8259","order_id":"order_01KBYSKPNDWEE8M34CV4JXEXTB","version":1,"amount":"31200","raw_amount":{"value":"31200","precision":20},"currency_code":"inr","reference":"pay_Rp5kQMGNxycam3","reference_id":"order_Rp5kEgMMIimRIW","created_at":"2025-12-09T11:47:02.043Z","updated_at":"2025-12-09T11:47:02.043Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":110}
+
+Order #111:
+  Full record: {"id":"0c60ebdc-b537-4e5a-a813-2b947fdaffcc","order_id":"order_01KBYT4CKBJFQW4GY1NAMDYBMM","version":1,"amount":"406.77","raw_amount":{"value":"406.77","precision":20},"currency_code":"inr","reference":"pay_Rp5u1Y5xgvlcX8","reference_id":"order_Rp5trZv42eEFfc","created_at":"2025-12-09T11:47:01.988Z","updated_at":"2025-12-09T11:47:01.988Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":111}
+
+Order #111:
+  Full record: {"id":"02ef6794-d810-43b1-a9eb-4e8881ba536c","order_id":"order_01KBYT4CKBJFQW4GY1NAMDYBMM","version":1,"amount":"31200","raw_amount":{"value":"31200","precision":20},"currency_code":"inr","reference":"pay_Rp5kQMGNxycam3","reference_id":"order_Rp5kEgMMIimRIW","created_at":"2025-12-09T11:47:01.969Z","updated_at":"2025-12-09T11:47:01.969Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":111}
+
+Order #112:
+  Full record: {"id":"59e4b902-1dca-47d0-8123-0589ebdeddcf","order_id":"order_01KBYTBNJC479TQQPCW39TJKR7","version":1,"amount":"2650.9","raw_amount":{"value":"2650.9","precision":20},"currency_code":"inr","reference":"pay_Rp5yDdjZEQqk8h","reference_id":"order_Rp5y41tRpPSgow","created_at":"2025-12-09T11:47:01.917Z","updated_at":"2025-12-09T11:47:01.917Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":112}
+
+Order #116:
+  Full record: {"id":"4bd95439-8092-4958-b14e-de2d2b9c1a9b","order_id":"order_01KBZ2XFWZSK7XJQC8BECQ4QRQ","version":1,"amount":"381.35","raw_amount":{"value":"381.35","precision":20},"currency_code":"inr","reference":"pay_Rp8W6hkhN49VwL","reference_id":"order_Rp8VwfNOb5kUd5","created_at":"2025-12-09T11:47:01.494Z","updated_at":"2025-12-09T11:47:01.494Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":116}
+
+Order #117:
+  Full record: {"id":"eebcb61b-b234-49ee-a6bb-3f88b8e8223e","order_id":"order_01KBZ3WGZ515EF891P6BAZ4RMD","version":1,"amount":"186.44","raw_amount":{"value":"186.44","precision":20},"currency_code":"inr","reference":"pay_Rp8oAmjAQlWcpr","reference_id":"order_Rp8nzLVcX62HiG","created_at":"2025-12-09T11:47:01.303Z","updated_at":"2025-12-09T11:47:01.303Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":117}
+
+Order #118:
+  Full record: {"id":"f711e5cc-1158-49cc-9444-ed3b896fb8cb","order_id":"order_01KBZ4HWT5RA3RD2BQ4ECFWDGS","version":1,"amount":"1999","raw_amount":{"value":"1999","precision":20},"currency_code":"inr","reference":"pay_Rp90MBsiDkbBb0","reference_id":"order_Rp90BaBrCNP4HM","created_at":"2025-12-09T11:47:01.187Z","updated_at":"2025-12-09T11:47:01.187Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":118}
+
+Order #119:
+  Full record: {"id":"0f4b3287-5e66-4e83-bb71-45ea21625efe","order_id":"order_01KBZ4R7EBVNJMNBR7RFEGT9RD","version":1,"amount":"423.72","raw_amount":{"value":"423.72","precision":20},"currency_code":"inr","reference":"pay_Rp94AZApYsUUkD","reference_id":"order_Rp93pKggoo9h74","created_at":"2025-12-09T11:47:00.874Z","updated_at":"2025-12-09T11:47:00.874Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":119}
+
+Order #120:
+  Full record: {"id":"73798fe1-e50c-4bfc-9fb2-9ff168f4632d","order_id":"order_01KBZT18KS0KKE3NHS3EDPTX1S","version":1,"amount":"320.53","raw_amount":{"value":"320.53","precision":20},"currency_code":"inr","reference":"pay_RpFOzTmEn6EiGl","reference_id":"order_RpFOlbOH0sPeAi","created_at":"2025-12-09T11:47:00.824Z","updated_at":"2025-12-09T11:47:00.824Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":120}
+
+Order #121:
+  Full record: {"id":"77acbb6e-7b4f-4c20-8578-501c1ec83acf","order_id":"order_01KBZTJENHZWQBDDYHSST4YHP6","version":1,"amount":"262.71","raw_amount":{"value":"262.71","precision":20},"currency_code":"inr","reference":"pay_RpFYqdcWJqti3f","reference_id":"order_RpFYeyakXLULJK","created_at":"2025-12-09T11:47:00.675Z","updated_at":"2025-12-09T11:47:00.675Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":121}
+
+Order #122:
+  Full record: {"id":"411e8db0-7b32-4656-ae64-c58f84d53459","order_id":"order_01KBZTXF9CBCM98X44G1AK22CN","version":1,"amount":"44400","raw_amount":{"value":"44400","precision":20},"currency_code":"inr","reference":"pay_RpFfIvZph9kxaS","reference_id":"order_RpFf0dqT1FfUgI","created_at":"2025-12-09T11:47:00.260Z","updated_at":"2025-12-09T11:47:00.260Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":122}
+
+Order #123:
+  Full record: {"id":"6ddffb71-3d54-4e89-a895-6cb1fdfbce0b","order_id":"order_01KBZV7XN82KR72A9QD9R4A8CC","version":1,"amount":"262.71","raw_amount":{"value":"262.71","precision":20},"currency_code":"inr","reference":"pay_RpFlCnVwQkb8Ap","reference_id":"order_RpFl1v6mGGe2JK","created_at":"2025-12-09T11:46:59.849Z","updated_at":"2025-12-09T11:46:59.849Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":123}
+
+Order #124:
+  Full record: {"id":"25ad380f-2e9d-4302-bfae-d4995af01b12","order_id":"order_01KBZVSSK765JWA8NXMTD3A7KC","version":1,"amount":"262.71","raw_amount":{"value":"262.71","precision":20},"currency_code":"inr","reference":"pay_RpFvUjBGK4nOJr","reference_id":"order_RpFvLBxJL0C2En","created_at":"2025-12-09T11:46:59.672Z","updated_at":"2025-12-09T11:46:59.672Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":124}
+
+Order #128:
+  Full record: {"id":"9a4a5272-bb0e-46e2-834a-06f16c64d3e5","order_id":"order_01KC05ZRFX99A3SS7H2D86ZS7H","version":1,"amount":"296.61","raw_amount":{"value":"296.61","precision":20},"currency_code":"inr","reference":"pay_RpIxabGNZLBoER","reference_id":"order_RpIxPQPlK516GE","created_at":"2025-12-09T11:46:59.247Z","updated_at":"2025-12-09T11:46:59.247Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":128}
+
+Order #138:
+  Full record: {"id":"9a2e16ec-161f-4752-8522-7c2b763b1ea7","order_id":"order_01KC192P9H0AQDGVQKSMZZ6Q6K","version":1,"amount":"253.38","raw_amount":{"value":"253.38","precision":20},"currency_code":"inr","reference":"pay_RpTPOnFZmIiUVv","reference_id":"order_RpTPDUxtUBZVCR","created_at":"2025-12-09T11:46:58.211Z","updated_at":"2025-12-09T11:46:58.211Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":138}
+
+Order #139:
+  Full record: {"id":"e85a791c-29e1-4215-bbb4-ad200ab4c43e","order_id":"order_01KC1B1JWGRJDY6VG5FBGTJT0K","version":1,"amount":"253.38","raw_amount":{"value":"253.38","precision":20},"currency_code":"inr","reference":"pay_RpTzfDYmMz7XPW","reference_id":"order_RpTzVuydrfVHKZ","created_at":"2025-12-09T11:46:58.011Z","updated_at":"2025-12-09T11:46:58.011Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":139}
+
+Order #140:
+  Full record: {"id":"51afa805-928c-41a3-9ac3-2bb4f8a723cd","order_id":"order_01KC1C1M5067R6EP6SHHS7W7FW","version":1,"amount":"253.38","raw_amount":{"value":"253.38","precision":20},"currency_code":"inr","reference":"pay_RpUI7na4aRc0T1","reference_id":"order_RpUHzFMqWllBsA","created_at":"2025-12-09T11:46:57.699Z","updated_at":"2025-12-09T11:46:57.699Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":140}
+
+Order #141:
+  Full record: {"id":"0e8c1f41-f6cb-45dc-b08d-c204ae77ad80","order_id":"order_01KC1CNBZGB6WC1W12S2C6W4XY","version":1,"amount":"253.38","raw_amount":{"value":"253.38","precision":20},"currency_code":"inr","reference":"pay_RpUTYBoW4iE9TS","reference_id":"order_RpUTNcVJ6aRH5X","created_at":"2025-12-09T11:46:57.501Z","updated_at":"2025-12-09T11:46:57.501Z","deleted_at":null,"return_id":null,"claim_id":null,"exchange_id":null,"display_id":141}
+
+
+📋 Capture entries with payment data:
+
+Capture ID: 18a10563-941a-4f93-87d9-e3161a9b84a1
+  Amount: 262.71
+  Payment Data: {"status":"captured","captured":true,"captured_at":"2025-12-08T20:31:39.737Z","amount_in_paise":26271,"razorpay_order_id":"order_RpFYeyakXLULJK","razorpay_signature":"0bd60da76b3066b4fce6698041d4e86d58cd52a474326c68f8b50e681fa6fda8","razorpay_payment_id":"pay_RpFYqdcWJqti3f"}
+
+Capture ID: 162ca5f4-058b-4b49-bae6-6d589591d9b0
+  Amount: 262.71
+  Payment Data: {"status":"captured","captured":true,"captured_at":"2025-12-08T20:43:20.420Z","amount_in_paise":26271,"razorpay_order_id":"order_RpFl1v6mGGe2JK","razorpay_signature":"0266bdd9a25ccfbd0da81cd92be9bc893bb46fbc12c101fe5981be642e8ac69a","razorpay_payment_id":"pay_RpFlCnVwQkb8Ap"}
+
+Capture ID: 21da0faf-7b9b-4f81-a96f-62670485fec7
+  Amount: 262.71
+  Payment Data: {"status":"captured","captured":true,"captured_at":"2025-12-08T21:16:08.344Z","amount_in_paise":26271,"razorpay_order_id":"order_RpGJKANgLLmQsn","razorpay_signature":"6a4d5f4b6f8a6cec8fa3ec78b6e0870f1f71828e02e26b419b1e38f95e98b2b2","razorpay_payment_id":"pay_RpGJqaQTXZp6lw"}
+
+Capture ID: e6bc7761-7265-4a41-a68b-7910941d9d09
+  Amount: 253.38
+  Payment Data: {"status":"captured","captured":true,"captured_at":"2025-12-09T09:22:44.531Z","amount_in_paise":25338,"razorpay_order_id":"order_RpShE946sy7rX1","razorpay_signature":"c9eda1c2d87cb98f3633b4910ed8a1df8f33c2a2e54b261245f50c848ed2bbeb","razorpay_payment_id":"pay_RpShOWi0vMN57f"}
+
+Capture ID: 62b62e7e-dd0b-4982-944d-68bf5795e58c
+  Amount: 253.38
+  Payment Data: {"status":"captured","captured":true,"captured_at":"2025-12-09T09:54:17.731Z","amount_in_paise":25338,"razorpay_order_id":"order_RpTEGwdE4v9CQl","razorpay_signature":"7fa3b8c4e8b52eb3ffff11a90a330fc68f0194942eaa3272bbdfe78bde1907da","razorpay_payment_id":"pay_RpTEi7z6oTQhFL"}
+
+Capture ID: 7443c9a0-2173-4c16-908e-63f8ef53c330
+  Amount: 253.38
+  Payment Data: {"status":"captured","captured":true,"captured_at":"2025-12-09T10:04:25.066Z","amount_in_paise":25338,"razorpay_order_id":"order_RpTPDUxtUBZVCR","razorpay_signature":"ee4a5b5ab6ac71fcf145e5ee6c8f33df605485bf40b4da0c840e296adf0d8534","razorpay_payment_id":"pay_RpTPOnFZmIiUVv"}
+
+Capture ID: eb1fffc8-02b6-486b-b15f-44ef8c98e40e
+  Amount: 253.38
+  Payment Data: {"status":"captured","captured":true,"captured_at":"2025-12-09T10:38:44.836Z","amount_in_paise":25338,"razorpay_order_id":"order_RpTzVuydrfVHKZ","razorpay_signature":"85f638a02165ab2535eecaf336a0f5fb776270f0f5298efddbd128c96d4cb61a","razorpay_payment_id":"pay_RpTzfDYmMz7XPW"}
+
+Capture ID: 85542292-c7d2-4ce2-96b6-f147743664cb
+  Amount: 253.38
+  Payment Data: {"status":"captured","captured":true,"captured_at":"2025-12-09T10:56:12.934Z","amount_in_paise":25338,"razorpay_order_id":"order_RpUHzFMqWllBsA","razorpay_signature":"4c9dd0fe75a5e00a6064ab0fc5efea7d7dad3deae77d2487fa7e5abdaa004931","razorpay_payment_id":"pay_RpUI7na4aRc0T1"}
+
+Capture ID: 7b9b0bec-df5c-4497-af02-50637635039c
+  Amount: 253.38
+  Payment Data: {"status":"captured","captured":true,"captured_at":"2025-12-09T11:07:01.568Z","amount_in_paise":25338,"razorpay_order_id":"order_RpUTNcVJ6aRH5X","razorpay_signature":"566843879e27094914645424c4858eb51b646e5796a38c018b3097565f1059eb","razorpay_payment_id":"pay_RpUTYBoW4iE9TS"}
+
+Capture ID: a78e856f-8c25-4333-a6ec-03b09ae1d2a0
+  Amount: 295.76
+  Payment Data: {"status":"captured","captured":true,"captured_at":"2025-12-09T11:31:45.801Z","amount_in_paise":29576,"razorpay_order_id":"order_RpUszIz6O1tAzk","razorpay_signature":"8dd8385fb52bb916dc4664374e73af7c87d8d5775c68865c5a32dbcff81eaa58","razorpay_payment_id":"pay_RpUtfjjTTCvxSG"}
+
+
+📋 Order summary vs order_transaction comparison:
+
+Order #144: summary_tx=295.76, actual_tx_sum=295.76, tx_count=1 ✅
+Order #143: summary_tx=0, actual_tx_sum=0, tx_count=0 ✅
+Order #142: summary_tx=295.76, actual_tx_sum=295.76, tx_count=1 ✅
+Order #141: summary_tx=253.38, actual_tx_sum=253.38, tx_count=1 ✅
+Order #140: summary_tx=253.38, actual_tx_sum=253.38, tx_count=1 ✅
+Order #139: summary_tx=253.38, actual_tx_sum=253.38, tx_count=1 ✅
+Order #138: summary_tx=253.38, actual_tx_sum=253.38, tx_count=1 ✅
+Order #137: summary_tx=253.38, actual_tx_sum=253.38, tx_count=1 ✅
+Order #136: summary_tx=253.38, actual_tx_sum=253.38, tx_count=1 ✅
+Order #135: summary_tx=253.38, actual_tx_sum=253.38, tx_count=1 ✅

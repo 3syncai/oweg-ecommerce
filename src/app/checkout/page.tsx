@@ -5,9 +5,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthProvider";
+import { useShippingOptions } from "@/hooks/use-shipping-options";
 
 type CartItem = {
   id: string;
@@ -44,10 +46,6 @@ const INR = new Intl.NumberFormat("en-IN", {
   minimumFractionDigits: 0,
 });
 
-const shippingOptions = [
-  { id: "standard", label: "Standard Shipping (3-6 days)", amount: 0 },
-  { id: "express", label: "Express Shipping (1-3 days)", amount: 19900 },
-];
 
 const isRazorpayTest =
   process.env.NEXT_PUBLIC_RAZORPAY_TESTMODE === "true" ||
@@ -88,7 +86,16 @@ function CheckoutPageInner() {
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "cod">("razorpay");
-  const [shippingMethod, setShippingMethod] = useState<string>("standard");
+  const [shippingMethod, setShippingMethod] = useState<string | null>(null);
+  
+  const { options: shippingMethods, isLoading: shippingMethodsLoading, refetch: refetchShipping } = useShippingOptions(cart?.id);
+
+  useEffect(() => {
+    if (shippingMethods.length > 0 && !shippingMethod) {
+        setShippingMethod(shippingMethods[0].id)
+    }
+  }, [shippingMethods, shippingMethod])
+
   const [referralCode, setReferralCode] = useState("");
   const [billingSame, setBillingSame] = useState(true);
   const [shipping, setShipping] = useState({
@@ -104,6 +111,12 @@ function CheckoutPageInner() {
     countryCode: "IN",
   });
   const [billing, setBilling] = useState({ ...shipping });
+
+  useEffect(() => {
+    if (cart?.id) {
+       refetchShipping();
+    }
+  }, [cart?.id, shipping.city, shipping.postalCode, refetchShipping])
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -194,13 +207,32 @@ function CheckoutPageInner() {
   const clientTotals = useMemo(() => {
     const itemsTotal =
       cart?.items?.reduce((sum, item) => sum + (item.unit_price || 0) * (item.quantity || 1), 0) || 0;
-    const shippingPrice = shippingOptions.find((s) => s.id === shippingMethod)?.amount || 0;
+    
+    const selectedMethod = shippingMethods.find((s) => s.id === shippingMethod);
+    const shippingAmountMinor = selectedMethod?.amount || 0;
+    
     return {
       subtotal: itemsTotal,
-      shipping: shippingPrice,
-      total: itemsTotal + shippingPrice,
+      shipping: shippingAmountMinor,
+      total: itemsTotal + shippingAmountMinor,
     };
-  }, [cart?.items, shippingMethod]);
+  }, [cart?.items, shippingMethod, shippingMethods]);
+
+  const handleShippingSelect = async (optionId: string) => {
+    setShippingMethod(optionId)
+    if (!cart?.id || cart.id === "buy-now") return
+    
+    try {
+        await fetch("/api/medusa/shipping-methods", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ cartId: cart.id, optionId })
+        })
+    } catch (e) {
+        console.error("Failed to select shipping method", e)
+        toast.error("Failed to update shipping method")
+    }
+  }
 
   const [serverTotals, setServerTotals] = useState<{
     subtotal: number;
@@ -239,6 +271,8 @@ function CheckoutPageInner() {
             }
           : null);
 
+      const selectedMethod = shippingMethods.find((s) => s.id === shippingMethod);
+
       try {
         setTotalsLoading(true);
         setTotalWarning(null);
@@ -253,6 +287,7 @@ function CheckoutPageInner() {
             cartId: cart?.id,
             guestCartId,
             shippingMethod,
+            shippingPrice: selectedMethod?.amount, // Pass explicit price (Major units)
             itemsOverride: isBuyNow && fallbackBuyNow
               ? [
                   {
@@ -296,6 +331,7 @@ function CheckoutPageInner() {
   ]);
 
   const formatInr = (value: number) => INR.format(value);
+  const formatMajor = (minorObj: number) => INR.format(minorObj);
 
   const ensureRazorpay = () =>
     new Promise<void>((resolve, reject) => {
@@ -328,11 +364,16 @@ function CheckoutPageInner() {
         throw new Error("Buy Now session expired");
     }
 
+    const selectedOption = shippingMethods.find((s) => s.id === shippingMethod);
+    const shippingPriceMajor = selectedOption && typeof selectedOption.amount === 'number' ? selectedOption.amount / 100 : 0;
+
     const requestPayload = {
         shipping,
         billing,
         billingSameAsShipping: billingSame,
         shippingMethod,
+        shippingPrice: shippingPriceMajor,
+        shippingMethodName: selectedOption?.name,
         referralCode,
         paymentMethod,
         mode: isBuyNow ? "buy_now" : "cart",
@@ -715,8 +756,14 @@ function CheckoutPageInner() {
 
             <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
               <h2 className="text-lg font-semibold text-slate-900">Shipping method</h2>
+              {shippingMethodsLoading && <p className="text-sm text-slate-500">Loading shipping options...</p>}
+              {!shippingMethodsLoading && shippingMethods.length === 0 && (
+                  <div className="p-3 bg-yellow-50 text-yellow-800 text-sm rounded-md">
+                      No shipping options available for your address. Please verify your address details.
+                  </div>
+              )}
               <div className="space-y-3">
-                {shippingOptions.map((opt) => (
+                {shippingMethods.map((opt) => (
                   <label
                     key={opt.id}
                     className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:border-green-500"
@@ -726,12 +773,12 @@ function CheckoutPageInner() {
                         type="radio"
                         name="shipping"
                         checked={shippingMethod === opt.id}
-                        onChange={() => setShippingMethod(opt.id)}
+                        onChange={() => handleShippingSelect(opt.id)}
                       />
-                      <span className="text-sm font-medium text-slate-800">{opt.label}</span>
+                      <span className="text-sm font-medium text-slate-800">{opt.name}</span>
                     </div>
                     <span className="text-sm font-semibold text-slate-900">
-                      {opt.amount === 0 ? "Free" : formatInr(opt.amount)}
+                      {opt.amount === 0 ? "Free" : formatMajor(opt.amount)}
                     </span>
                   </label>
                 ))}

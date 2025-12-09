@@ -1,0 +1,168 @@
+
+=====================================================
+🔍 ANALYZING CAPTURE AND PAYMENT STRUCTURE
+=====================================================
+
+📋 STEP 1: All capture table entries...
+
+Found 11 capture entries:
+
+  [1] Order #144:
+      capture_id: 20321351-7f16-46af-86b1-92163286c6df
+      capture_amount: 295.76
+      payment_id: 54facb12-0023-4a31-9407-c6dedf4f1703
+      payment_amount: 295.76
+      pc_captured_amount: 295.76
+      pc_refunded_amount: null
+      pc_status: completed
+      payment_data: {"status":"captured","captured":true,"captured_at":"2025-12-09T11:46:33.178Z","amount_in_paise":29576,"razorpay_order_id":"order_RpV98xUDXjYJ13","razorpay_signature":"43c33f551d38f80efc81b8485e4c926e8...
+
+  [2] Order #142:
+      capture_id: a78e856f-8c25-4333-a6ec-03b09ae1d2a0
+      capture_amount: 295.76
+      payment_id: f476af16-5e38-49c3-8888-5d7481158405
+      payment_amount: 295.76
+      pc_captured_amount: 295.76
+      pc_refunded_amount: null
+      pc_status: completed
+      payment_data: {"status":"captured","captured":true,"captured_at":"2025-12-09T11:31:45.801Z","amount_in_paise":29576,"razorpay_order_id":"order_RpUszIz6O1tAzk","razorpay_signature":"8dd8385fb52bb916dc4664374e73af7c8...
+
+  [3] Order #141:
+      capture_id: 7b9b0bec-df5c-4497-af02-50637635039c
+      capture_amount: 253.38
+      payment_id: 68fc61c1-c6da-48ae-a1ce-64ff428e8f05
+      payment_amount: 253.38
+      pc_captured_amount: 253.38
+      pc_refunded_amount: null
+      pc_status: completed
+      payment_data: {"status":"captured","captured":true,"captured_at":"2025-12-09T11:07:01.568Z","amount_in_paise":25338,"razorpay_order_id":"order_RpUTNcVJ6aRH5X","razorpay_signature":"566843879e27094914645424c4858eb51...
+
+  [4] Order #140:
+      capture_id: 85542292-c7d2-4ce2-96b6-f147743664cb
+      capture_amount: 253.38
+      payment_id: 972a1aa7-eb71-4dde-a6cb-2b2df03fe001
+      payment_amount: 253.38
+      pc_captured_amount: 253.38
+      pc_refunded_amount: 0
+      pc_status: completed
+      payment_data: {"status":"captured","captured":true,"captured_at":"2025-12-09T10:56:12.934Z","amount_in_paise":25338,"razorpay_order_id":"order_RpUHzFMqWllBsA","razorpay_signature":"4c9dd0fe75a5e00a6064ab0fc5efea7d7...
+
+  [5] Order #139:
+      capture_id: eb1fffc8-02b6-486b-b15f-44ef8c98e40e
+      capture_amount: 253.38
+      payment_id: 3c860e58-ec77-4518-8b45-1a668df50e5e
+      payment_amount: 253.38
+      pc_captured_amount: 253.38
+      pc_refunded_amount: null
+      pc_status: completed
+      payment_data: {"status":"captured","captured":true,"captured_at":"2025-12-09T10:38:44.836Z","amount_in_paise":25338,"razorpay_order_id":"order_RpTzVuydrfVHKZ","razorpay_signature":"85f638a02165ab2535eecaf336a0f5fb7...
+
+  [6] Order #138:
+      capture_id: 7443c9a0-2173-4c16-908e-63f8ef53c330
+      capture_amount: 253.38
+      payment_id: c8c1705c-bea7-4c83-876a-c9a4a15f6dcc
+      payment_amount: 253.38
+      pc_captured_amount: 253.38
+      pc_refunded_amount: null
+      pc_status: completed
+      payment_data: {"status":"captured","captured":true,"captured_at":"2025-12-09T10:04:25.066Z","amount_in_paise":25338,"razorpay_order_id":"order_RpTPDUxtUBZVCR","razorpay_signature":"ee4a5b5ab6ac71fcf145e5ee6c8f33df6...
+
+  [7] Order #137:
+      capture_id: 62b62e7e-dd0b-4982-944d-68bf5795e58c
+      capture_amount: 253.38
+      payment_id: 9f1afe5c-40c9-4bb3-8559-932764fd33bb
+      payment_amount: 253.38
+      pc_captured_amount: 253.38
+      pc_refunded_amount: null
+      pc_status: completed
+      payment_data: {"status":"captured","captured":true,"captured_at":"2025-12-09T09:54:17.731Z","amount_in_paise":25338,"razorpay_order_id":"order_RpTEGwdE4v9CQl","razorpay_signature":"7fa3b8c4e8b52eb3ffff11a90a330fc68...
+
+  [8] Order #136:
+      capture_id: e6bc7761-7265-4a41-a68b-7910941d9d09
+      capture_amount: 253.38
+      payment_id: cbaad3c0-1b1b-4e52-b4e9-039f95371552
+      payment_amount: 253.38
+      pc_captured_amount: 253.38
+      pc_refunded_amount: null
+      pc_status: completed
+      payment_data: {"status":"captured","captured":true,"captured_at":"2025-12-09T09:22:44.531Z","amount_in_paise":25338,"razorpay_order_id":"order_RpShE946sy7rX1","razorpay_signature":"c9eda1c2d87cb98f3633b4910ed8a1df8...
+
+  [9] Order #126:
+      capture_id: 21da0faf-7b9b-4f81-a96f-62670485fec7
+      capture_amount: 262.71
+      payment_id: 6343895e-3328-4c84-9d31-3a865d6a7fd5
+      payment_amount: 0
+      pc_captured_amount: 262.71
+      pc_refunded_amount: null
+      pc_status: completed
+      payment_data: {"status":"captured","captured":true,"captured_at":"2025-12-08T21:16:08.344Z","amount_in_paise":26271,"razorpay_order_id":"order_RpGJKANgLLmQsn","razorpay_signature":"6a4d5f4b6f8a6cec8fa3ec78b6e0870f1...
+
+  [10] Order #123:
+      capture_id: 162ca5f4-058b-4b49-bae6-6d589591d9b0
+      capture_amount: 262.71
+      payment_id: 2e48dc2f-7903-4b18-bd85-252ab50c8c80
+      payment_amount: 262.71
+      pc_captured_amount: 262.71
+      pc_refunded_amount: null
+      pc_status: completed
+      payment_data: {"status":"captured","captured":true,"captured_at":"2025-12-08T20:43:20.420Z","amount_in_paise":26271,"razorpay_order_id":"order_RpFl1v6mGGe2JK","razorpay_signature":"0266bdd9a25ccfbd0da81cd92be9bc893...
+
+  [11] Order #121:
+      capture_id: 18a10563-941a-4f93-87d9-e3161a9b84a1
+      capture_amount: 262.71
+      payment_id: 7561f6c1-bef2-4549-ac9a-12f08e190076
+      payment_amount: 262.71
+      pc_captured_amount: 262.71
+      pc_refunded_amount: null
+      pc_status: completed
+      payment_data: {"status":"captured","captured":true,"captured_at":"2025-12-08T20:31:39.737Z","amount_in_paise":26271,"razorpay_order_id":"order_RpFYeyakXLULJK","razorpay_signature":"0bd60da76b3066b4fce6698041d4e86d5...
+
+
+📋 STEP 2: Payments with multiple captures or any refunds...
+
+Found 0 payments with multiple captures or refunds:
+  ✅ All payments have exactly 1 capture and 0 refunds
+
+
+📋 STEP 3: Comparing capture vs payment amounts...
+
+Found 1 capture/payment amount mismatches:
+  Order #126: capture=262.71, payment=0, diff=262.71
+
+
+📋 STEP 4: Checking for order changes or edits...
+
+Found 10 order_change entries
+  Order #145: change_type=update_order, status=confirmed
+  Order #145: change_type=update_order, status=confirmed
+  Order #144: change_type=update_order, status=confirmed
+  Order #144: change_type=update_order, status=confirmed
+  Order #143: change_type=update_order, status=confirmed
+  Order #142: change_type=edit, status=pending
+  Order #142: change_type=update_order, status=confirmed
+  Order #142: change_type=update_order, status=confirmed
+  Order #141: change_type=update_order, status=confirmed
+  Order #141: change_type=update_order, status=confirmed
+
+
+📋 STEP 5: Listing all payment-related tables...
+
+Payment-related tables:
+  - capture
+  - cart_payment_collection
+  - order_payment_collection
+  - payment
+  - payment_collection
+  - payment_collection_payment_providers
+  - payment_provider
+  - payment_session
+  - razorpay_payment
+  - refund
+  - refund_reason
+  - region_payment_provider
+
+
+📋 STEP 6: Checking payment_session status...
+
+Found 0 payment sessions with unusual status:
+  ✅ All payment sessions have normal status

@@ -1,0 +1,43 @@
+
+========================================
+🔍 CHECKING REFUND TABLE
+========================================
+
+📋 Refund table schema:
+
+  id: text
+  amount: numeric
+  raw_amount: jsonb
+  payment_id: text
+  created_at: timestamp with time zone
+  updated_at: timestamp with time zone
+  deleted_at: timestamp with time zone
+  created_by: text
+  metadata: jsonb
+  refund_reason_id: text
+  note: text
+
+
+📋 ALL refund table entries:
+
+Found 0 refund entries
+
+
+📋 Refunds linked to orders via payment:
+
+Found 0 linked refunds
+
+
+📋 Capture table entries (payment captures):
+
+Found 10 capture entries
+  a78e856f-8c25-4333-a6ec-03b09ae1d2a0: amount=295.76
+  7b9b0bec-df5c-4497-af02-50637635039c: amount=253.38
+  85542292-c7d2-4ce2-96b6-f147743664cb: amount=253.38
+  eb1fffc8-02b6-486b-b15f-44ef8c98e40e: amount=253.38
+  7443c9a0-2173-4c16-908e-63f8ef53c330: amount=253.38
+  62b62e7e-dd0b-4982-944d-68bf5795e58c: amount=253.38
+  e6bc7761-7265-4a41-a68b-7910941d9d09: amount=253.38
+  21da0faf-7b9b-4f81-a96f-62670485fec7: amount=262.71
+  162ca5f4-058b-4b49-bae6-6d589591d9b0: amount=262.71
+  18a10563-941a-4f93-87d9-e3161a9b84a1: amount=262.71

@@ -5,7 +5,7 @@ import {
   registerOrderTransaction,
   captureOrderPayment,
 } from "@/lib/medusa-admin";
-import { createMedusaPayment, createOrderTransaction } from "@/lib/medusa-payment";
+import { createMedusaPayment, createOrderTransaction, updateOrderSummaryTotals, ensureOrderShippingMethod, ensureOrderReservations } from "@/lib/medusa-payment";
 
 type ConfirmBody = {
   medusaOrderId?: string;
@@ -76,6 +76,15 @@ export async function POST(req: Request) {
       console.error("razorpay confirm: metadata update failed", { status: metaRes.status, data: metaRes.data });
     }
 
+    // FORCE RESERVATIONS AND SHIPPING METHOD
+    // This is critical for Medusa v2 fulfillment to work correctly.
+    // Without reservations, fulfillment items will be empty.
+    if (medusaOrderId) {
+        console.log("razorpay confirm: Ensuring order readiness...");
+        await ensureOrderShippingMethod(medusaOrderId);
+        await ensureOrderReservations(medusaOrderId);
+    }
+
     // Create payment record in Medusa payment tables (payment_collection, payment_session, payment)
     let paymentCreated = false;
     if (amountMinor !== undefined) {
@@ -135,20 +144,28 @@ export async function POST(req: Request) {
         order_id: medusaOrderId,
         amount: amountRupees,  // RUPEES (major units)
         currency_code: currencyCode,
-        reference: razorpay_payment_id,
-        reference_id: razorpay_order_id,
+        reference: "capture",
+        reference_id: razorpay_payment_id,
         // NOTE: order_transaction table does not have metadata column
       });
       
       if (txResult.success) {
-        console.log("razorpay confirm: ✅ OrderTransaction created - paid_total will be updated");
+        console.log("razorpay confirm: ✅ OrderTransaction created");
+        
+        // Sync order_summary.totals with the new transaction
+        const summaryResult = await updateOrderSummaryTotals(medusaOrderId);
+        if (summaryResult.success) {
+          console.log("razorpay confirm: ✅ Order summary synced - paid_total updated");
+        } else {
+          console.warn("razorpay confirm: ⚠️ Order summary sync failed:", summaryResult.error);
+        }
       } else {
         console.error("razorpay confirm: ❌ Failed to create OrderTransaction:", txResult.error);
         // Also try the old API method as fallback
         const txRes = await registerOrderTransaction(medusaOrderId, {
           amount: amountRupees,  // Use Rupees here too
           currency_code: currencyCode,
-          reference: razorpay_payment_id,
+          reference: "capture",
           provider: "razorpay",
           metadata: {
             razorpay_payment_id,

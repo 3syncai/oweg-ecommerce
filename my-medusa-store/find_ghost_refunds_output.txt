@@ -1,0 +1,47 @@
+
+=====================================================
+🔍 FINDING ALL GHOST REFUND SOURCES
+=====================================================
+
+📋 STEP 1: Checking refund table entries linked to orders...
+
+Found 0 refund table entries linked to orders:
+  ✅ No refund records in database
+
+
+📋 STEP 2: Checking payment_collection with refunded_amount > 0...
+
+Found 0 payment collections with refunded_amount > 0:
+  ✅ No payment collections with refunded_amount > 0
+
+
+📋 STEP 3: Checking order_transaction with negative amounts...
+
+Found 0 order_transaction with negative amounts:
+  ✅ No transactions with negative amounts
+
+
+📋 STEP 4: Checking order_transaction with 'refund' reference...
+
+Found 0 order_transaction with reference='refund':
+  ✅ No transactions with 'refund' reference
+
+
+📋 STEP 5: Checking order_transaction with return_id set...
+
+Found 0 order_transaction with return_id set:
+  ✅ No transactions with return_id set
+
+
+📋 STEP 6: Checking payment table for any refund-related columns...
+
+Payment table columns with 'refund' in name:
+  No columns with 'refund' in name
+
+
+=====================================================
+📊 SUMMARY
+=====================================================
+
+✅ No ghost refund sources found in the database!
+   The 'Refund' display might be from Medusa Admin UI caching or frontend logic.
