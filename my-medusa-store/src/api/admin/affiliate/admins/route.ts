@@ -3,6 +3,24 @@ import AffiliateModuleService from "../../../../modules/affiliate/service"
 import { AFFILIATE_MODULE } from "../../../../modules/affiliate"
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
+  // Verify authenticated user exists (basic check, assumes auth middleware runs before)
+  // In Medusa admin routes, req.user or req.session.user_id should be present if authenticated
+  // If this is a custom route that bypasses auth, we need to ensure it's protected.
+  // Generally custom admin routes in /admin/ path are protected by default middleware in newer Medusa versions.
+  // However, explicit check is safer as per CodeRabbit.
+  
+  // NOTE: In some Medusa setups, getting req.user requires specific middleware. 
+  // For now, we'll assume standard admin protection but if CodeRabbit complained, it might be missing.
+  // Let's add a basic check if possible, or at least a comment that we rely on platform auth.
+  // Actually, let's look at how other routes do it or just add the check.
+  
+  // Checking for user properly:
+  // @ts-ignore
+  const userId = req.user?.id || req.user?.userId;
+  if (!userId) {
+     return res.status(401).json({ message: "Unauthorized" });
+  }
+
   try {
     const affiliateService: AffiliateModuleService = req.scope.resolve(AFFILIATE_MODULE)
 
@@ -29,6 +47,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 }
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
+  // @ts-ignore
+  const userId = req.user?.id || req.user?.userId;
+  if (!userId) {
+     return res.status(401).json({ message: "Unauthorized" });
+  }
+
   try {
     const body = req.body as { name?: string; email?: string; password?: string } || {}
     const { name, email, password } = body

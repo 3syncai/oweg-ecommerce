@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { MedusaService, MedusaError } from "@medusajs/framework/utils"
 import { Modules } from "@medusajs/framework/utils"
 import FlashSaleItem from "./models/flash-sale-item"

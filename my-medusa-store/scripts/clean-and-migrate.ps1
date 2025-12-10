@@ -2,7 +2,7 @@
 Write-Host "=== Clean and Migrate ===" -ForegroundColor Cyan
 
 # Set environment variables
-$env:MEDUSA_ADMIN_BASIC = "sk_2c6661959510e0b0286ca1565444c5726816a763231ac2a2f2eb6ff080f96bba"
+$env:MEDUSA_ADMIN_BASIC = $env:MEDUSA_ADMIN_API_KEY
 $env:MEDUSA_URL = "http://localhost:9000"
 $env:RESEED = "true"
 

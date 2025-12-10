@@ -57,7 +57,7 @@ const AffiliateAdminsPage = () => {
     setSuccess(null)
 
     try {
-      const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const backend = (process.env.NEXT_PUBLIC_BACKEND_URL || window.location.origin).replace(/\/$/, "")
       const response = await fetch(`${backend}/admin/affiliate/admins`, {
         method: "POST",
         headers: {

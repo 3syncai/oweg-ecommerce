@@ -15,12 +15,17 @@ const path = require('path');
 
 // OpenCart database configuration
 const openCartConfig = {
-  host: process.env.OPENCART_DB_HOST || '147.93.31.253',
+  host: process.env.OPENCART_DB_HOST,
   port: parseInt(process.env.OPENCART_DB_PORT || '3306', 10),
-  user: process.env.OPENCART_DB_USER || 'oweg_user2',
-  password: process.env.OPENCART_DB_PASSWORD || 'Oweg#@123',
-  database: process.env.OPENCART_DB_NAME || 'oweg_db',
+  user: process.env.OPENCART_DB_USER,
+  password: process.env.OPENCART_DB_PASSWORD,
+  database: process.env.OPENCART_DB_NAME,
 };
+
+// Validate required environment variables
+if (!openCartConfig.host || !openCartConfig.user || !openCartConfig.password || !openCartConfig.database) {
+  throw new Error('Missing required OpenCart database environment variables (OPENCART_DB_HOST, OPENCART_DB_USER, OPENCART_DB_PASSWORD, OPENCART_DB_NAME)');
+}
 
 const ORDER_LIMIT = 50; // Initial limit for testing
 const LANGUAGE_ID = 1; // English

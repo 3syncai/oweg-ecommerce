@@ -1,4 +1,3 @@
-import { RequiredEntityData } from "@medusajs/framework/types"
 import { AbstractNotificationProviderService } from "@medusajs/framework/utils"
 // @ts-ignore
 import { Resend } from "resend"
@@ -18,12 +17,18 @@ export default class ResendNotificationProviderService extends AbstractNotificat
   protected options: ResendOptions
 
   constructor(container: InjectedDependencies, options: ResendOptions) {
-    super(container)
+    super()
+    if (!options.apiKey) {
+       throw new Error("RESEND_API_KEY is required for ResendNotificationProviderService")
+    }
+    if (!options.from) {
+       throw new Error("RESEND_FROM is required for ResendNotificationProviderService")
+    }
     this.options = options
     this.resend = new Resend(options.apiKey)
   }
 
-  async send(notification: any): Promise<void> {
+  async send(notification: any): Promise<any> {
     // The 'notification' object contains 'to', 'template', 'data', etc.
     // We map this to Resend's API.
     

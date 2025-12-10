@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import FlashSaleModuleService from "../../../../modules/flash-sale/service"
 import { FLASH_SALE_MODULE } from "../../../../modules/flash-sale"

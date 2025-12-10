@@ -24,15 +24,23 @@ export function signAffiliateToken(payload: Omit<AffiliateClaims, "iat" | "exp">
 }
 
 export function verifyAffiliateToken(token: string): AffiliateClaims | null {
-  const parts = token.split(".")
-  if (parts.length !== 3) return null
-  const [h, p, s] = parts
-  const data = `${h}.${p}`
-  const expected = crypto.createHmac("sha256", getSecret()).update(data).digest("base64url")
-  if (!crypto.timingSafeEqual(Buffer.from(s), Buffer.from(expected))) return null
-  const claims = JSON.parse(Buffer.from(p, "base64url").toString()) as AffiliateClaims
-  if (claims.exp < Math.floor(Date.now() / 1000)) return null
-  if (claims.scope !== "affiliate") return null
-  return claims
+  try {
+    const parts = token.split(".")
+    if (parts.length !== 3) return null
+    const [h, p, s] = parts
+    const data = `${h}.${p}`
+    const expected = crypto.createHmac("sha256", getSecret()).update(data).digest("base64url")
+    
+    const sigBuf = Buffer.from(s)
+    const expectedBuf = Buffer.from(expected)
+    if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) return null
+
+    const claims = JSON.parse(Buffer.from(p, "base64url").toString()) as AffiliateClaims
+    if (claims.exp < Math.floor(Date.now() / 1000)) return null
+    if (claims.scope !== "affiliate") return null
+    return claims
+  } catch {
+    return null
+  }
 }
 
