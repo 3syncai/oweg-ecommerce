@@ -5,12 +5,7 @@ import { useEffect, useState } from "react"
 import { Container, Heading, Text, Button, Badge } from "@medusajs/ui"
 import { CheckCircleSolid, XCircleSolid, ClockSolid } from "@medusajs/icons"
 
-type VendorDocument = {
-  key: string
-  url: string
-  name?: string
-  type?: string
-}
+
 
 type VendorProduct = {
   id: string
@@ -46,7 +41,6 @@ const VendorsPage = () => {
   const [rejectedVendors, setRejectedVendors] = useState<Vendor[]>([])
   const [pendingVendors, setPendingVendors] = useState<Vendor[]>([])
   const [selectedTab, setSelectedTab] = useState<"all" | "approved" | "rejected" | "pending">("all")
-  const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null)
   const [expandedVendors, setExpandedVendors] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -244,7 +238,7 @@ const VendorsPage = () => {
                     </Text>
                     <Text size="small">{vendor.rejection_reason}</Text>
                     {vendor.rejected_at && (
-                      <Text size="xsmall" style={{ marginTop: 8, color: "var(--fg-muted)" }}>
+                      <Text size="x-small" style={{ marginTop: 8, color: "var(--fg-muted)" }}>
                         Rejected on: {formatDate(vendor.rejected_at)}
                       </Text>
                     )}
@@ -286,7 +280,7 @@ const VendorsPage = () => {
                       <div style={{ flex: 1 }}>
                         <Text size="small" weight="plus">{product.title}</Text>
                         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                          <Text size="xsmall" style={{ color: "var(--fg-muted)" }}>
+                          <Text size="x-small" style={{ color: "var(--fg-muted)" }}>
                             Status: {product.status}
                           </Text>
                           {product.approval_status && (

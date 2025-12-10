@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { verifyAffiliateToken } from "../../_lib/token"
@@ -270,7 +269,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         
         // Try to retrieve first product to see its structure
         try {
-          const sampleProduct = await productModuleService.retrieveProduct(products[0].id)
+          const sampleProduct: any = await productModuleService.retrieveProduct(products[0].id)
           console.log("Sample product from retrieveProduct:", {
             id: sampleProduct.id,
             hasCategories: !!sampleProduct.categories,
@@ -487,7 +486,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
               try {
                 const fullProduct = await productModuleService.retrieveProduct(product.id)
                 if (fullProduct.collection) {
-                  collectionId = fullProduct.collection.id || fullProduct.collection.collection_id || null
+                  collectionId = fullProduct.collection.id || (fullProduct.collection as any).collection_id || null
                   console.log(`Product ${product.id} collection from retrieveProduct:`, collectionId)
                 } else if (fullProduct.collection_id) {
                   collectionId = fullProduct.collection_id

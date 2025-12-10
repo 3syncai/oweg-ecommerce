@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { MedusaService, MedusaError } from "@medusajs/framework/utils"
 import { Modules } from "@medusajs/framework/utils"
 import FlashSaleItem from "./models/flash-sale-item"
@@ -198,7 +197,7 @@ class FlashSaleModuleService extends MedusaService({
     
     if (expiredItems.length > 0) {
       await this.updateFlashSaleItems(
-        { id: expiredItems.map(item => item.id) },
+        { id: expiredItems.map(item => item.id) } as any,
         { deleted_at: now, updated_at: now }
       )
     }

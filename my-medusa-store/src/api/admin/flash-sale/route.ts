@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { Client } from "pg"
@@ -95,7 +94,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     const productModuleService = req.scope.resolve(Modules.PRODUCT)
     const query = req.scope.resolve("query")
     
-    const { items } = req.body
+    const { items } = req.body as any
     
     // Validate input
     if (!Array.isArray(items) || items.length === 0) {
@@ -105,7 +104,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     }
     
     // Validate each item and fetch variant info
-    const validatedItems = []
+    const validatedItems: any[] = []
     for (const item of items) {
       if (!item.product_id) {
         return res.status(400).json({ 

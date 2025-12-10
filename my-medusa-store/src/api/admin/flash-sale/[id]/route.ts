@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import FlashSaleModuleService from "../../../../modules/flash-sale/service"
 import { FLASH_SALE_MODULE } from "../../../../modules/flash-sale"
@@ -8,7 +7,7 @@ export const PUT = async (req: MedusaRequest, res: MedusaResponse) => {
     const { id } = req.params
     const flashSaleService: FlashSaleModuleService = req.scope.resolve(FLASH_SALE_MODULE)
     
-    const { product_id, variant_id, price_id, flash_sale_price, original_price, original_price_id, expires_at } = req.body
+    const { product_id, variant_id, price_id, flash_sale_price, original_price, original_price_id, expires_at } = req.body as any
     
     // Input validation
     const errors: string[] = []

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * OpenCart to Medusa Order Migration - Load
@@ -19,13 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import { Modules } from '@medusajs/framework/utils';
 import { Client } from 'pg';
-import { ExecArgs } from '@medusajs/framework/types'; // Keep if it works, or remove if specific error persists.
-// IDE said: Module '"@medusajs/framework/types"' has no exported member 'ExecArgs'.
-// So we remove the import and define it.
-
-type ExecArgs = {
-  container: any;
-};
+// import { ExecArgs } from '@medusajs/framework/types'; // ExecArgs not found
 
 const ORDER_LIMIT = 50; // Match extract limit
 
@@ -298,7 +291,7 @@ async function createOrder(container, orderData, productMapping) {
 /**
  * Main load function (called by medusa exec)
  */
-async function loadOrders({ container }: ExecArgs) {
+async function loadOrders({ container }: any) {
   // Path to JSON file (relative to my-medusa-store directory, going up to root)
   const ordersFile = path.join(__dirname, '..', '..', 'etl', 'orders', 'exports', `medusa-orders-${ORDER_LIMIT}.json`);
   
@@ -377,9 +370,9 @@ async function loadOrders({ container }: ExecArgs) {
 }
 
 // Export for Medusa exec (TypeScript default export)
+// import { ExecArgs } from "@medusajs/framework/types";
 
-
-export default async function loadOpencartOrders({ container }: ExecArgs) {
+export default async function loadOpencartOrders({ container }: any) {
   return await loadOrders({ container });
 }
 

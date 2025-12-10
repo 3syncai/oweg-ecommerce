@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
 import { Modules, ProductStatus, ContainerRegistrationKeys } from "@medusajs/framework/utils"
@@ -249,10 +248,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           let existingTags: any[] = []
           try {
             // Try different possible method names
-            if (typeof productModuleService.listProductTags === "function") {
-              existingTags = await productModuleService.listProductTags({})
-            } else if (typeof productModuleService.listTags === "function") {
-              existingTags = await productModuleService.listTags({})
+            if (typeof (productModuleService as any).listProductTags === "function") {
+              existingTags = await (productModuleService as any).listProductTags({})
+            } else if (typeof (productModuleService as any).listTags === "function") {
+              existingTags = await (productModuleService as any).listTags({})
             } else if (typeof (productModuleService as any).list === "function") {
               // Some services use generic list method
               existingTags = await (productModuleService as any).list({})
@@ -283,11 +282,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
               try {
                 let newTag: any = null
                 // Try different possible method names for creating tags
-                if (typeof productModuleService.createProductTags === "function") {
-                  const created = await productModuleService.createProductTags([{ value: tagValue }])
+                if (typeof (productModuleService as any).createProductTags === "function") {
+                  const created = await (productModuleService as any).createProductTags([{ value: tagValue }])
                   newTag = created?.[0]
-                } else if (typeof productModuleService.createTags === "function") {
-                  const created = await productModuleService.createTags([{ value: tagValue }])
+                } else if (typeof (productModuleService as any).createTags === "function") {
+                  const created = await (productModuleService as any).createTags([{ value: tagValue }])
                   newTag = created?.[0]
                 } else if (typeof (productModuleService as any).create === "function") {
                   const created = await (productModuleService as any).create([{ value: tagValue }])
@@ -296,7 +295,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
                 
                 if (newTag?.id) {
                   tagId = newTag.id
-                  tagValueToId.set(normalizedValue, tagId)
+                  tagValueToId.set(normalizedValue, newTag.id) // Use newTag.id directly to be safe
                 }
               } catch (createError: any) {
                 console.warn(`Failed to create tag "${tagValue}":`, createError?.message)
