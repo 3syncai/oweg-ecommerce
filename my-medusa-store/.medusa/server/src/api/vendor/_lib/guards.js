@@ -1,0 +1,46 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.requireApprovedVendor = requireApprovedVendor;
+exports.requireVendorAuth = requireVendorAuth;
+const token_1 = require("./token");
+const vendor_1 = require("../../../modules/vendor");
+async function requireApprovedVendor(req, res) {
+    // Express style headers object
+    const headers = req.headers || {};
+    const rawAuth = headers.authorization || headers.Authorization || "";
+    const auth = typeof rawAuth === "string" ? rawAuth : "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    if (!token) {
+        res.status(401).json({ message: "Unauthorized" });
+        return null;
+    }
+    const claims = (0, token_1.verifyVendorToken)(token);
+    if (!claims) {
+        res.status(401).json({ message: "Invalid token" });
+        return null;
+    }
+    const vendorService = req.scope.resolve(vendor_1.VENDOR_MODULE);
+    try {
+        await vendorService.ensureApproved(claims.vendor_id);
+    }
+    catch {
+        res.status(403).json({ message: "Vendor not approved" });
+        return null;
+    }
+    return { vendor_id: claims.vendor_id };
+}
+async function requireVendorAuth(req) {
+    const headers = req.headers || {};
+    const rawAuth = headers.authorization || headers.Authorization || "";
+    const auth = typeof rawAuth === "string" ? rawAuth : "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    if (!token) {
+        return null;
+    }
+    const claims = (0, token_1.verifyVendorToken)(token);
+    if (!claims) {
+        return null;
+    }
+    return claims.vendor_id;
+}
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiZ3VhcmRzLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiLi4vLi4vLi4vLi4vLi4vLi4vc3JjL2FwaS92ZW5kb3IvX2xpYi9ndWFyZHMudHMiXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6Ijs7QUFLQSxzREEwQkM7QUFFRCw4Q0FnQkM7QUFoREQsbUNBQTJDO0FBRTNDLG9EQUF1RDtBQUVoRCxLQUFLLFVBQVUscUJBQXFCLENBQ3pDLEdBQWtCLEVBQ2xCLEdBQW1CO0lBRW5CLCtCQUErQjtJQUMvQixNQUFNLE9BQU8sR0FBUyxHQUFXLENBQUMsT0FBTyxJQUFJLEVBQUUsQ0FBQTtJQUMvQyxNQUFNLE9BQU8sR0FBRyxPQUFPLENBQUMsYUFBYSxJQUFJLE9BQU8sQ0FBQyxhQUFhLElBQUksRUFBRSxDQUFBO0lBQ3BFLE1BQU0sSUFBSSxHQUFHLE9BQU8sT0FBTyxLQUFLLFFBQVEsQ0FBQyxDQUFDLENBQUMsT0FBTyxDQUFDLENBQUMsQ0FBQyxFQUFFLENBQUE7SUFDdkQsTUFBTSxLQUFLLEdBQUcsSUFBSSxDQUFDLFVBQVUsQ0FBQyxTQUFTLENBQUMsQ0FBQyxDQUFDLENBQUMsSUFBSSxDQUFDLEtBQUssQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsRUFBRSxDQUFBO0lBQzdELElBQUksQ0FBQyxLQUFLLEVBQUUsQ0FBQztRQUNYLEdBQUcsQ0FBQyxNQUFNLENBQUMsR0FBRyxDQUFDLENBQUMsSUFBSSxDQUFDLEVBQUUsT0FBTyxFQUFFLGNBQWMsRUFBRSxDQUFDLENBQUE7UUFDakQsT0FBTyxJQUFJLENBQUE7SUFDYixDQUFDO0lBQ0QsTUFBTSxNQUFNLEdBQUcsSUFBQSx5QkFBaUIsRUFBQyxLQUFLLENBQUMsQ0FBQTtJQUN2QyxJQUFJLENBQUMsTUFBTSxFQUFFLENBQUM7UUFDWixHQUFHLENBQUMsTUFBTSxDQUFDLEdBQUcsQ0FBQyxDQUFDLElBQUksQ0FBQyxFQUFFLE9BQU8sRUFBRSxlQUFlLEVBQUUsQ0FBQyxDQUFBO1FBQ2xELE9BQU8sSUFBSSxDQUFBO0lBQ2IsQ0FBQztJQUNELE1BQU0sYUFBYSxHQUF3QixHQUFHLENBQUMsS0FBSyxDQUFDLE9BQU8sQ0FBQyxzQkFBYSxDQUFDLENBQUE7SUFDM0UsSUFBSSxDQUFDO1FBQ0gsTUFBTSxhQUFhLENBQUMsY0FBYyxDQUFDLE1BQU0sQ0FBQyxTQUFTLENBQUMsQ0FBQTtJQUN0RCxDQUFDO0lBQUMsTUFBTSxDQUFDO1FBQ1AsR0FBRyxDQUFDLE1BQU0sQ0FBQyxHQUFHLENBQUMsQ0FBQyxJQUFJLENBQUMsRUFBRSxPQUFPLEVBQUUscUJBQXFCLEVBQUUsQ0FBQyxDQUFBO1FBQ3hELE9BQU8sSUFBSSxDQUFBO0lBQ2IsQ0FBQztJQUNELE9BQU8sRUFBRSxTQUFTLEVBQUUsTUFBTSxDQUFDLFNBQVMsRUFBRSxDQUFBO0FBQ3hDLENBQUM7QUFFTSxLQUFLLFVBQVUsaUJBQWlCLENBQUMsR0FBa0I7SUFDeEQsTUFBTSxPQUFPLEdBQVMsR0FBVyxDQUFDLE9BQU8sSUFBSSxFQUFFLENBQUE7SUFDL0MsTUFBTSxPQUFPLEdBQUcsT0FBTyxDQUFDLGFBQWEsSUFBSSxPQUFPLENBQUMsYUFBYSxJQUFJLEVBQUUsQ0FBQTtJQUNwRSxNQUFNLElBQUksR0FBRyxPQUFPLE9BQU8sS0FBSyxRQUFRLENBQUMsQ0FBQyxDQUFDLE9BQU8sQ0FBQyxDQUFDLENBQUMsRUFBRSxDQUFBO0lBQ3ZELE1BQU0sS0FBSyxHQUFHLElBQUksQ0FBQyxVQUFVLENBQUMsU0FBUyxDQUFDLENBQUMsQ0FBQyxDQUFDLElBQUksQ0FBQyxLQUFLLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLEVBQUUsQ0FBQTtJQUU3RCxJQUFJLENBQUMsS0FBSyxFQUFFLENBQUM7UUFDWCxPQUFPLElBQUksQ0FBQTtJQUNiLENBQUM7SUFFRCxNQUFNLE1BQU0sR0FBRyxJQUFBLHlCQUFpQixFQUFDLEtBQUssQ0FBQyxDQUFBO0lBQ3ZDLElBQUksQ0FBQyxNQUFNLEVBQUUsQ0FBQztRQUNaLE9BQU8sSUFBSSxDQUFBO0lBQ2IsQ0FBQztJQUVELE9BQU8sTUFBTSxDQUFDLFNBQVMsQ0FBQTtBQUN6QixDQUFDIn0=

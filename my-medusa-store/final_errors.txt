@@ -1,0 +1,31 @@
+src/admin/routes/vendors/page.tsx(176,23): error TS2820: Type '"x-small"' is not assignable to type '"small" | "base" | "xsmall" | "large" | "xlarge" | undefined'. Did you mean '"xsmall"'?
+src/admin/routes/vendors/page.tsx(183,25): error TS2820: Type '"x-small"' is not assignable to type '"small" | "base" | "xsmall" | "large" | "xlarge" | undefined'. Did you mean '"xsmall"'?
+src/admin/routes/vendors/page.tsx(191,23): error TS2820: Type '"x-small"' is not assignable to type '"small" | "base" | "xsmall" | "large" | "xlarge" | undefined'. Did you mean '"xsmall"'?
+src/admin/routes/vendors/page.tsx(198,25): error TS2820: Type '"x-small"' is not assignable to type '"small" | "base" | "xsmall" | "large" | "xlarge" | undefined'. Did you mean '"xsmall"'?
+src/admin/routes/vendors/page.tsx(206,23): error TS2820: Type '"x-small"' is not assignable to type '"small" | "base" | "xsmall" | "large" | "xlarge" | undefined'. Did you mean '"xsmall"'?
+src/admin/routes/vendors/page.tsx(247,29): error TS2820: Type '"x-small"' is not assignable to type '"small" | "base" | "xsmall" | "large" | "xlarge" | undefined'. Did you mean '"xsmall"'?
+src/admin/routes/vendors/page.tsx(289,33): error TS2820: Type '"x-small"' is not assignable to type '"small" | "base" | "xsmall" | "large" | "xlarge" | undefined'. Did you mean '"xsmall"'?
+src/api/admin/flash-sale/[id]/route.ts(10,13): error TS2339: Property 'product_id' does not exist on type 'unknown'.
+src/api/admin/flash-sale/[id]/route.ts(10,25): error TS2339: Property 'variant_id' does not exist on type 'unknown'.
+src/api/admin/flash-sale/[id]/route.ts(10,37): error TS2339: Property 'price_id' does not exist on type 'unknown'.
+src/api/admin/flash-sale/[id]/route.ts(10,47): error TS2339: Property 'flash_sale_price' does not exist on type 'unknown'.
+src/api/admin/flash-sale/[id]/route.ts(10,65): error TS2339: Property 'original_price' does not exist on type 'unknown'.
+src/api/admin/flash-sale/[id]/route.ts(10,81): error TS2339: Property 'original_price_id' does not exist on type 'unknown'.
+src/api/admin/flash-sale/[id]/route.ts(10,100): error TS2339: Property 'expires_at' does not exist on type 'unknown'.
+src/api/admin/flash-sale/[id]/route.ts(67,7): error TS2353: Object literal may only specify known properties, and 'price_id' does not exist in type '{ product_id?: string | undefined; variant_id?: string | undefined; flash_sale_price?: number | undefined; original_price?: number | undefined; expires_at?: string | Date | undefined; }'.
+src/api/admin/flash-sale/route.ts(97,13): error TS2339: Property 'items' does not exist on type 'unknown'.
+src/api/admin/flash-sale/route.ts(181,27): error TS2345: Argument of type '{ product_id: any; variant_id: any; flash_sale_price: any; original_price: any; expires_at: any; }' is not assignable to parameter of type 'never'.
+src/api/affiliate/admin/products/route.ts(277,45): error TS2551: Property 'category_ids' does not exist on type 'ProductDTO'. Did you mean 'categories'?
+src/api/affiliate/admin/products/route.ts(278,40): error TS2551: Property 'category_ids' does not exist on type 'ProductDTO'. Did you mean 'categories'?
+src/api/affiliate/admin/products/route.ts(489,86): error TS2339: Property 'collection_id' does not exist on type 'ProductCollectionDTO'.
+src/api/vendor/products/route.ts(253,52): error TS2339: Property 'listTags' does not exist on type 'IProductModuleService'.
+src/api/vendor/products/route.ts(254,57): error TS2339: Property 'listTags' does not exist on type 'IProductModuleService'.
+src/api/vendor/products/route.ts(288,56): error TS2339: Property 'createTags' does not exist on type 'IProductModuleService'.
+src/api/vendor/products/route.ts(289,62): error TS2339: Property 'createTags' does not exist on type 'IProductModuleService'.
+src/api/vendor/products/route.ts(298,53): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/modules/flash-sale/service.ts(200,11): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(data: { id?: string | undefined; product_id?: string | undefined; variant_id?: string | undefined; flash_sale_price?: number | undefined; original_price?: number | undefined; original_price_id?: string | ... 1 more ... | undefined; expires_at?: Date | undefined; }, ...rest: any[]): Promise<...>', gave the following error.
+    Type 'string[]' is not assignable to type 'string'.
+  Overload 2 of 2, '(dataOrOptions: { id?: string | undefined; product_id?: string | undefined; variant_id?: string | undefined; flash_sale_price?: number | undefined; original_price?: number | undefined; original_price_id?: string | ... 1 more ... | undefined; expires_at?: Date | undefined; }[] | { ...; } | { ...; }[], ...rest: any[]): Promise<...>', gave the following error.
+    Object literal may only specify known properties, and 'id' does not exist in type '{ id?: string | undefined; product_id?: string | undefined; variant_id?: string | undefined; flash_sale_price?: number | undefined; original_price?: number | undefined; original_price_id?: string | ... 1 more ... | undefined; expires_at?: Date | undefined; }[] | { ...; } | { ...; }[]'.

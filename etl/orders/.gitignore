@@ -1,0 +1,7 @@
+# Ignore exports directory
+exports/
+*.json
+
+# Ignore logs
+*.log
+

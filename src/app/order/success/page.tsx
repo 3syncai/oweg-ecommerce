@@ -124,9 +124,7 @@ function OrderSuccessPageInner() {
   const paymentStatusLabel = isPaid ? "paid" : rawPaymentStatus || "pending";
 
   // Display amount helper:
-  // Many Medusa installs use integer smallest-unit (paise). Some use whole units.
-  // Heuristic: if total >= 1000 treat as rupees (1270 -> ₹11,270), otherwise treat as paise and divide by 100.
-  // If you know your Medusa returns paise always, remove heuristic and do `order.total / 100`.
+  // Order totals are stored in Paise (minor units), divide by 100 for display
   function formatAmount(rawTotal?: number | undefined) {
     if (rawTotal === undefined || rawTotal === null) return "N/A";
     return INR.format(rawTotal / 100);
@@ -134,7 +132,7 @@ function OrderSuccessPageInner() {
 
   function formatItemAmount(raw?: number) {
     if (raw === undefined || raw === null) return "N/A";
-    return INR.format(raw / 100);
+    return INR.format(raw);
   }
 
   return (
@@ -142,9 +140,8 @@ function OrderSuccessPageInner() {
       <div className="bg-white shadow-md rounded-2xl p-6 md:p-8 max-w-3xl w-full space-y-6">
         <div className="flex items-start gap-4">
           <div
-            className={`h-12 w-12 rounded-full flex items-center justify-center ${
-              isPaid ? "bg-green-100" : "bg-yellow-100"
-            }`}
+            className={`h-12 w-12 rounded-full flex items-center justify-center ${isPaid ? "bg-green-100" : "bg-yellow-100"
+              }`}
           >
             <span className="text-2xl">{isPaid ? "✅" : "⌛"}</span>
           </div>
@@ -154,8 +151,8 @@ function OrderSuccessPageInner() {
               {isPaid
                 ? "Your payment is confirmed. We'll share updates on your order."
                 : rawPaymentStatus
-                ? "Payment received (pending confirmation). We're waiting for Razorpay/Medusa to confirm."
-                : "Payment received. We're waiting for Razorpay to confirm."}
+                  ? "Payment received (pending confirmation). We're waiting for Razorpay/Medusa to confirm."
+                  : "Payment received. We're waiting for Razorpay to confirm."}
             </p>
             {orderId && (
               <p className="text-xs text-slate-500 mt-2">

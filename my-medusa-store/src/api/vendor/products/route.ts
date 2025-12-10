@@ -92,7 +92,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     console.log("Received options:", JSON.stringify(finalOptions, null, 2))
 
     // If no variants provided, create a default one
+    // Note: Default variant will have empty prices - vendor must provide variants with prices
     if (finalVariants.length === 0) {
+      console.warn('⚠️ No variants provided - creating default variant with empty prices. Vendor should provide variants with prices.')
       finalVariants = [
         {
           title: "Default variant",
@@ -119,14 +121,53 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         }
 
         // Preserve existing fields
+        // SKU is optional - if provided and conflicts, we'll handle it in error handling
         if (v.sku && typeof v.sku === "string" && v.sku.trim()) {
           cleaned.sku = v.sku.trim()
         }
+        // If SKU is empty string, don't include it (Medusa treats empty string differently)
+        else if (v.sku === "" || v.sku === null || v.sku === undefined) {
+          // Don't set SKU - let Medusa auto-generate or leave it empty
+        }
 
+        // Handle prices - ensure they're in the correct format
         if (v.prices && Array.isArray(v.prices) && v.prices.length > 0) {
-          cleaned.prices = v.prices.filter((p: any) => p && p.amount && p.currency_code)
+          cleaned.prices = v.prices
+            .map((p: any) => {
+              // Ensure price has amount and currency_code
+              if (!p || typeof p !== 'object') return null
+              
+              // Convert amount to number if it's a string
+              let amount = p.amount
+              if (typeof amount === 'string') {
+                amount = parseFloat(amount)
+              }
+              
+              // Ensure amount is a valid number
+              if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) {
+                return null
+              }
+              
+              // Ensure currency_code exists, default to 'inr'
+              const currency_code = p.currency_code || 'inr'
+              
+              return {
+                amount: Math.round(amount), // Ensure integer (paise/cents)
+                currency_code: currency_code.toLowerCase()
+              }
+            })
+            .filter((p: any): p is { amount: number; currency_code: string } => p !== null)
+          
+          // If no valid prices after filtering, log a warning
+          if (cleaned.prices.length === 0 && v.prices.length > 0) {
+            console.warn('⚠️ No valid prices found for variant:', v.title, 'Original prices:', v.prices)
+          }
         } else {
           cleaned.prices = []
+          // Log warning if variant has no prices
+          if (v.title) {
+            console.warn('⚠️ Variant has no prices:', v.title)
+          }
         }
 
         if (typeof v.manage_inventory === "boolean") {
@@ -179,23 +220,108 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     console.log("Final options:", JSON.stringify(finalOptions, null, 2))
     console.log("Final variants:", JSON.stringify(finalVariants, null, 2))
 
-    // Normalize tags - Medusa expects array of objects with 'value' property
-    let normalizedTags: Array<{ value: string }> = []
-    if (tags && Array.isArray(tags)) {
-      normalizedTags = tags
-        .map((tag: any) => {
-          // If tag is already an object with 'value', use it
-          if (typeof tag === "object" && tag.value) {
-            return { value: tag.value }
+    // Handle tags - Medusa v2 requires tag IDs, not values
+    // We need to find existing tags or create new ones, then use their IDs
+    let normalizedTags: Array<{ id: string }> = []
+    if (tags && Array.isArray(tags) && tags.length > 0) {
+      const productModuleService = req.scope.resolve(Modules.PRODUCT)
+      
+      // Separate tags with IDs from tags with values
+      const tagsWithIds: Array<{ id: string }> = []
+      const tagValues: string[] = []
+      
+      for (const tag of tags) {
+        if (typeof tag === "object" && tag.id) {
+          // Tag already has an ID, use it directly
+          tagsWithIds.push({ id: tag.id })
+        } else if (typeof tag === "object" && tag.value) {
+          tagValues.push(tag.value.trim())
+        } else if (typeof tag === "string") {
+          tagValues.push(tag.trim())
+        }
+      }
+
+      // For tags with values, find or create them
+      if (tagValues.length > 0) {
+        try {
+          // Try to list existing tags - method name may vary
+          let existingTags: any[] = []
+          try {
+            // Try different possible method names
+            if (typeof (productModuleService as any).listProductTags === "function") {
+              existingTags = await (productModuleService as any).listProductTags({})
+            } else if (typeof (productModuleService as any).listTags === "function") {
+              existingTags = await (productModuleService as any).listTags({})
+            } else if (typeof (productModuleService as any).list === "function") {
+              // Some services use generic list method
+              existingTags = await (productModuleService as any).list({})
+            }
+          } catch (listError: any) {
+            console.warn("Could not list existing tags:", listError?.message)
           }
-          // If tag is a string, convert to object
-          if (typeof tag === "string") {
-            return { value: tag.trim() }
+          
+          // Create a map of tag values to IDs (case-insensitive)
+          const tagValueToId = new Map<string, string>()
+          if (Array.isArray(existingTags)) {
+            existingTags.forEach((tag: any) => {
+              if (tag.value && tag.id) {
+                tagValueToId.set(tag.value.toLowerCase().trim(), tag.id)
+              }
+            })
           }
-          // Skip invalid tags
-          return null
-        })
-        .filter((tag): tag is { value: string } => tag !== null)
+
+          // Find or create tags
+          for (const tagValue of tagValues) {
+            if (!tagValue) continue
+            
+            const normalizedValue = tagValue.toLowerCase().trim()
+            let tagId = tagValueToId.get(normalizedValue)
+
+            // If tag doesn't exist, try to create it
+            if (!tagId) {
+              try {
+                let newTag: any = null
+                // Try different possible method names for creating tags
+                if (typeof (productModuleService as any).createProductTags === "function") {
+                  const created = await (productModuleService as any).createProductTags([{ value: tagValue }])
+                  newTag = created?.[0]
+                } else if (typeof (productModuleService as any).createTags === "function") {
+                  const created = await (productModuleService as any).createTags([{ value: tagValue }])
+                  newTag = created?.[0]
+                } else if (typeof (productModuleService as any).create === "function") {
+                  const created = await (productModuleService as any).create([{ value: tagValue }])
+                  newTag = created?.[0]
+                }
+                
+                if (newTag?.id) {
+                  tagId = newTag.id
+                  tagValueToId.set(normalizedValue, newTag.id) // Use newTag.id directly to be safe
+                }
+              } catch (createError: any) {
+                console.warn(`Failed to create tag "${tagValue}":`, createError?.message)
+                // Continue with other tags - don't fail product creation
+              }
+            }
+
+            if (tagId) {
+              normalizedTags.push({ id: tagId })
+            }
+          }
+        } catch (tagError: any) {
+          console.warn("Error processing tags:", tagError?.message)
+          // If tag processing fails, continue without tags rather than failing product creation
+        }
+      }
+
+      // Combine tags with IDs and newly created/found tags
+      normalizedTags = [...tagsWithIds, ...normalizedTags]
+      
+      console.log(`Processed ${normalizedTags.length} tag(s) for product creation`)
+      
+      // If no tags were successfully processed, set to empty array to avoid errors
+      if (normalizedTags.length === 0) {
+        normalizedTags = []
+      }
     }
 
     // Normalize category_ids - ensure it's an array of strings
@@ -237,12 +363,73 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       Object.assign(baseMetadata, metadata)
     }
 
+    // Add videos to images array (same structure as images) for database storage
+    // Videos will be stored in the database the same way as images
+    const videosFromMetadata = baseMetadata?.videos
+    if (videosFromMetadata && Array.isArray(videosFromMetadata)) {
+      const videoImageObjects = videosFromMetadata
+        .map((video: any) => {
+          if (typeof video === "object" && video.url) {
+            // Store video URL in images array (same structure as images)
+            return { url: video.url }
+          }
+          if (typeof video === "string") {
+            return { url: video }
+          }
+          return null
+        })
+        .filter((video): video is { url: string } => video !== null)
+      
+      // Add videos to the images array so they're stored in database the same way
+      normalizedImages = [...normalizedImages, ...videoImageObjects]
+      console.log(`Added ${videoImageObjects.length} video(s) to images array for database storage`)
+    }
+
+    // Generate handle from title if not provided
+    // Handle must be unique, so we'll append a timestamp if it already exists
+    const generateHandle = (title: string): string => {
+      return title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .substring(0, 100)
+    }
+
+    let finalHandle = handle || generateHandle(title)
+    
+    // If handle is provided but might be duplicate, append timestamp to make it unique
+    if (handle) {
+      // Check if handle already exists by trying to find products with this handle
+      try {
+        const productModuleService = req.scope.resolve(Modules.PRODUCT)
+        const existingProducts = await productModuleService.listProducts({
+          handle: finalHandle,
+        })
+        
+        if (existingProducts && existingProducts.length > 0) {
+          // Handle exists, append timestamp to make it unique
+          const timestamp = Date.now().toString().slice(-6) // Last 6 digits of timestamp
+          finalHandle = `${finalHandle}-${timestamp}`
+          console.log(`Handle "${handle}" already exists, using unique handle: "${finalHandle}"`)
+        }
+      } catch (checkError: any) {
+        // If check fails, append timestamp anyway to be safe
+        const timestamp = Date.now().toString().slice(-6)
+        finalHandle = `${finalHandle}-${timestamp}`
+        console.log(`Could not check handle uniqueness, using unique handle: "${finalHandle}"`)
+      }
+    } else {
+      // No handle provided, generate from title and append timestamp for uniqueness
+      const timestamp = Date.now().toString().slice(-6)
+      finalHandle = `${finalHandle}-${timestamp}`
+    }
+
     // Prepare product data
     const productData = {
             title,
       subtitle: subtitle || null,
             description: description || null,
-            handle: handle || null,
+            handle: finalHandle,
       thumbnail: thumbnail || (normalizedImages.length > 0 ? normalizedImages[0].url : null),
       is_giftcard: false,
       discountable: discountable !== false,
@@ -262,13 +449,25 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
             metadata: baseMetadata,
     }
 
+    // Log product data with detailed price information
     console.log("Creating product with data:", JSON.stringify({
       ...productData,
       variants: productData.variants.map((v: any) => ({
         ...v,
         prices: v.prices,
+        priceCount: v.prices?.length || 0,
+        hasPrices: (v.prices?.length || 0) > 0,
       })),
     }, null, 2))
+    
+    // Validate that at least one variant has prices
+    const hasAnyPrices = productData.variants.some((v: any) => 
+      v.prices && Array.isArray(v.prices) && v.prices.length > 0
+    )
+    
+    if (!hasAnyPrices) {
+      console.warn('⚠️ WARNING: Product has no prices! All variants have empty prices array.')
+    }
 
     // Create product using workflow with PENDING status for admin approval
     const { result } = await createProductsWorkflow(req.scope).run({
@@ -320,6 +519,25 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       code: error?.code,
       name: error?.name,
     })
+    
+    // Handle duplicate SKU error specifically
+    if (error?.message && error.message.includes("already exists") && error.message.includes("sku")) {
+      return res.status(400).json({ 
+        message: "A product variant with this SKU already exists. Please use a different SKU or leave it empty.",
+        error: "duplicate_sku",
+        details: error?.message,
+      })
+    }
+    
+    // Handle duplicate handle error - return helpful message
+    if (error?.message && error.message.includes("already exists") && error.message.includes("handle")) {
+      return res.status(400).json({ 
+        message: "A product with this handle already exists. The system will automatically generate a unique handle. Please try again.",
+        error: "duplicate_handle",
+        details: error?.message,
+      })
+    }
+    
     return res.status(500).json({ 
       message: error?.message || "Failed to create product",
       error: error?.type || "unknown_error",

@@ -97,27 +97,28 @@ export async function GET(req: Request) {
   });
 }
 
-const SHIPPING_OPTIONS: Record<string, number> = {
-  standard: 0,
-  express: 19900,
-};
-
 type SummaryBody = {
   mode?: "buy_now" | "cart";
   cartId?: string | null;
   guestCartId?: string | null;
   shippingMethod?: string;
+  shippingPrice?: number;
   itemsOverride?: Array<{ variant_id: string; quantity: number; price_minor?: number }>;
 };
 
-function normalizeTotalsFromCart(cart: Record<string, unknown> | null, shippingMethod?: string) {
+function normalizeTotalsFromCart(cart: Record<string, unknown> | null, shippingPrice?: number) {
   const subtotal =
     typeof cart?.subtotal === "number"
       ? cart.subtotal
       : typeof cart?.total === "number"
         ? cart.total
         : 0;
-  const shipping = SHIPPING_OPTIONS[shippingMethod || "standard"] ?? 0;
+  
+  // Use explicit shipping price if provided (optimistic UI), otherwise fallback to cart's shipping_total or 0
+  const shipping = typeof shippingPrice === "number" 
+      ? shippingPrice 
+      : (typeof cart?.shipping_total === "number" ? cart.shipping_total : 0);
+
   return { subtotal, shipping, total: subtotal + shipping };
 }
 
@@ -125,12 +126,11 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as SummaryBody;
     const cartId = body.cartId || body.guestCartId || undefined;
-    const shippingMethod = body.shippingMethod || "standard";
-
+    
     // Try to read cart totals from Medusa Store API
     const cartRes = await readStoreCart(cartId);
     const cart = cartRes?.cart || null;
-    const totals = normalizeTotalsFromCart(cart, shippingMethod);
+    const totals = normalizeTotalsFromCart(cart, body.shippingPrice);
 
     // If buy-now override with explicit prices exists, adjust subtotal
     if (Array.isArray(body.itemsOverride) && body.itemsOverride.length) {

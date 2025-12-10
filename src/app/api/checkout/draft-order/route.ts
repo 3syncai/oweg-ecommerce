@@ -1,4 +1,6 @@
 // File path: src/app/api/checkout/draft-order/route.ts
+// FORCE REBUILD 1
+
 
 import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
@@ -30,6 +32,8 @@ type DraftRequestBody = {
   paymentMethod?: "razorpay" | "cod";
   itemsOverride?: Array<{ variant_id: string; quantity: number }>;
   mode?: "buy_now" | "cart";
+  shippingPrice?: number;
+  shippingMethodName?: string;
 };
 
 function mapAddress(input?: AddressInput) {
@@ -106,10 +110,29 @@ async function backend(path: string, init?: RequestInit) {
   });
 }
 
+async function getFallbackRegionId() {
+  if (REGION_ID) return REGION_ID;
+  try {
+    const res = await backend("/store/regions");
+    if (res.ok) {
+      const data = await res.json();
+      if (data.regions && data.regions.length > 0) {
+        return data.regions[0].id;
+      }
+    }
+  } catch (e) {
+    console.error("Failed to fetch regions", e);
+  }
+  return undefined;
+}
+
 async function createTempCart() {
   const payload: Record<string, string> = {};
   if (SALES_CHANNEL_ID) payload.sales_channel_id = SALES_CHANNEL_ID;
-  if (REGION_ID) payload.region_id = REGION_ID;
+  
+  const regionId = await getFallbackRegionId();
+  if (regionId) payload.region_id = regionId;
+
   const res = await backend("/store/carts", {
     method: "POST",
     ...(Object.keys(payload).length ? { body: JSON.stringify(payload) } : {}),
@@ -148,6 +171,13 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as DraftRequestBody;
     const shipping = body.shipping;
 
+    console.log("🛒 [Checkout Debug] Incoming Request:", {
+      mode: body.mode,
+      hasItemsOverride: !!body.itemsOverride,
+      itemsOverrideCount: body.itemsOverride?.length,
+      shippingState: !!shipping
+    })
+
     // basic validation
     if (!shipping?.email || !shipping.firstName || !shipping.address1 || !shipping.postalCode) {
       return badRequest("Missing required shipping fields");
@@ -163,6 +193,7 @@ export async function POST(req: Request) {
             .map((it) => ({
               variant_id: it.variant_id,
               quantity: Math.max(1, Number(it.quantity)),
+              unit_price: typeof (it as any).price_minor === 'number' ? (it as any).price_minor : undefined
             }))
         : null;
 
@@ -175,7 +206,8 @@ export async function POST(req: Request) {
         const temp = await createTempCart();
         cartId = temp.id;
         for (const item of itemsOverride) {
-          await addItemToCart(temp.id, item);
+          // addItemToCart only supports standard variant add. Prices are overriden later in createDraftOrder
+          await addItemToCart(temp.id, { variant_id: item.variant_id, quantity: item.quantity });
         }
         const refreshed = await backend(`/store/carts/${encodeURIComponent(temp.id)}`);
         if (refreshed.ok) {
@@ -209,6 +241,15 @@ export async function POST(req: Request) {
       return badRequest("Cart is empty or unavailable");
     }
 
+    // Debug: Log cart structure
+    console.log("🛒 [Draft Order] Cart Debug:", {
+      hasCart: !!cart,
+      hasItems: !!cart.items,
+      itemsIsArray: Array.isArray(cart.items),
+      itemsLength: Array.isArray(cart.items) ? cart.items.length : 0,
+      firstItem: Array.isArray(cart.items) && cart.items.length > 0 ? cart.items[0] : null,
+    });
+
     const items = Array.isArray(cart.items)
       ? cart.items
           .map((item: unknown) => {
@@ -227,12 +268,18 @@ export async function POST(req: Request) {
                   ? Number(record.quantity)
                   : 1;
             const quantity = Math.max(1, quantityRaw);
+            
+            // Apply price override if it matches an overridden item (for Buy Now)
+            const override = itemsOverride?.find(it => it.variant_id === variantId)
+            const unit_price = override?.unit_price
+
             return {
               variant_id: variantId,
               quantity,
+              unit_price
             };
           })
-          .filter((item): item is { variant_id: string; quantity: number } => Boolean(item))
+          .filter((item): item is NonNullable<typeof item> => Boolean(item)) as unknown as { variant_id: string; quantity: number; unit_price?: number }[]
       : [];
 
     if (!items.length) {
@@ -243,8 +290,35 @@ export async function POST(req: Request) {
 
     const paymentMethod = body.paymentMethod || "razorpay";
 
-    const regionId = typeof cart.region_id === "string" ? cart.region_id : undefined;
-    const cartCurrency = typeof cart.currency_code === "string" ? cart.currency_code : undefined;
+    // Ensure we have a valid region
+    const fallbackRegion = await getFallbackRegionId();
+    const regionId = (typeof cart.region_id === "string" ? cart.region_id : undefined) || fallbackRegion;
+    const cartCurrency = (typeof cart.currency_code === "string" ? cart.currency_code : undefined) || "inr";
+
+    // Prepare shipping methods
+    // NOTE: Price passed from frontend is MAJOR (e.g. 150). Convert to MINOR (15000).
+    const shippingPriceMinor = typeof (body as any).shippingPrice === 'number' ? (body as any).shippingPrice! * 100 : 0;
+    
+    // Clean, standard payload for Medusa
+    const shippingMethodsPayload = Array.isArray(cart.shipping_methods) && cart.shipping_methods.length > 0
+        ? cart.shipping_methods.map((sm: any) => ({
+            shipping_option_id: sm.shipping_option_id,
+            option_id: sm.shipping_option_id, // Compat
+            amount: sm.price,
+            price: sm.price, // Compat
+            name: sm.name || "Shipping", 
+            data: sm.data || {},
+          }))
+        : (body.shippingMethod 
+            ? [{ 
+                shipping_option_id: body.shippingMethod,
+                option_id: body.shippingMethod, // Compat
+                amount: shippingPriceMinor,
+                price: shippingPriceMinor, // Compat
+                name: (body as any).shippingMethodName || "Shipping",
+                data: {},
+              }] 
+            : undefined);
 
     const payload = {
       region_id: regionId,
@@ -259,12 +333,17 @@ export async function POST(req: Request) {
         shipping_method: body.shippingMethod || null,
         payment_method: paymentMethod,
         mode: body.mode || (itemsOverride ? "buy_now" : "cart"),
+        expected_shipping_price: shippingPriceMinor // Store for verification
       },
+      shipping_methods: shippingMethodsPayload
     };
+
+    console.log("🛒 [Draft Order] Creating with payload:", { regionId, itemsCount: items.length, shippingMethods: shippingMethodsPayload });
 
     const draftRes = await createDraftOrder(payload);
     if (!draftRes.ok || !draftRes.data) {
       const error = extractMessage(draftRes.data) || "Failed to create draft order";
+      console.error("🛒 [Draft Order Debug] Creation Failed:", error);
       if ((draftRes.status as number) === 401) {
         return NextResponse.json({ error: "Unauthorized: check MEDUSA_ADMIN_API_KEY on frontend server" }, { status: 401 });
       }
@@ -272,15 +351,26 @@ export async function POST(req: Request) {
     }
 
     const draftOrder = extractOrder(draftRes.data);
+    console.log("🛒 [Draft Order Debug] Created Order Total:", draftOrder?.total);
+    
     if (!draftOrder?.id) {
       return NextResponse.json({ error: "Draft order missing id" }, { status: 500 });
     }
 
     let medusaOrderId = draftOrder.id;
     let medusaCurrency = draftOrder.currency_code || cartCurrency;
-    let medusaTotal = draftOrder.total;
-    let converted = false;
+    let medusaTotal = draftOrder.total || 0;
+    
+    // Optimistic Total Calculation
+    const itemsTotal = items.reduce((sum, item) => sum + (item.unit_price || 0) * item.quantity, 0);
+    const expectedTotal = itemsTotal + shippingPriceMinor;
 
+    if (medusaTotal < expectedTotal && shippingPriceMinor > 0) {
+        console.warn(`🛒 [Price Warning] Medusa total (${medusaTotal}) mismatch. Using Optimistic Total (${expectedTotal})`);
+        medusaTotal = expectedTotal;
+    }
+
+    let converted = false;
     let conversionError: string | null = null;
 
     if (paymentMethod === "razorpay") {
@@ -290,8 +380,8 @@ export async function POST(req: Request) {
           const convertedOrder = convertedRes.data ? extractOrder(convertedRes.data) : null;
           if (convertedOrder?.id) {
             medusaOrderId = convertedOrder.id;
-            medusaCurrency = convertedOrder.currency_code || medusaCurrency;
-            medusaTotal = convertedOrder.total ?? medusaTotal;
+            // If converted order has correct total, use it. Otherwise keep optimistic.
+            if (convertedOrder.total && convertedOrder.total >= expectedTotal) medusaTotal = convertedOrder.total;
             converted = true;
           } else {
             conversionError = "convertDraftOrder returned no order id";

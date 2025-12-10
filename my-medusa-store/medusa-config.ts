@@ -6,9 +6,12 @@ export default defineConfig({
   projectConfig: {
     databaseUrl: process.env.DATABASE_URL,
     http: {
-      storeCors: process.env.STORE_CORS || "http://localhost:3000,https://oweg-ecommerce.vercel.app",
+      // CORS configuration - supports comma-separated URLs or single URL
+      // Frontend URL: https://oweg-ecommerce.vercel.app/
+      // Affiliate Portal: http://localhost:5000
+      storeCors: process.env.STORE_CORS || "http://localhost:3000,http://localhost:5000,https://oweg-ecommerce.vercel.app",
       adminCors: process.env.ADMIN_CORS || "http://localhost:7001",
-      authCors: process.env.AUTH_CORS || "http://localhost:3000,https://oweg-ecommerce.vercel.app",
+      authCors: process.env.AUTH_CORS || "http://localhost:3000,http://localhost:5000,https://oweg-ecommerce.vercel.app",
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     },
@@ -67,6 +70,25 @@ export default defineConfig({
     },
     {
       resolve: "./src/modules/vendor",
+    },
+    {
+      resolve: "./src/modules/flash-sale",
+    },
+    {
+      resolve: "@medusajs/medusa/notification",
+      options: {
+        providers: [
+          {
+            resolve: "./src/modules/email-notifications",
+            id: "resend-notification",
+            options: {
+              channels: ["email"],
+              apiKey: process.env.RESEND_API_KEY,
+              from: process.env.RESEND_FROM,
+            },
+          },
+        ],
+      },
     },
   ],
 })

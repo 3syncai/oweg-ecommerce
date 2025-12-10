@@ -6,10 +6,10 @@ import {
   fetchProductsByCollectionId,
   fetchProductsByTag,
   fetchProductsByType,
-  MedusaProduct,
   toUiProduct,
 } from "@/lib/medusa"
-import { executeReadQuery } from "@/lib/mysql"
+import { getPriceListPrices } from "@/lib/price-lists"
+// MySQL import removed - using Medusa prices only
 
 export const dynamic = "force-dynamic"
 
@@ -129,7 +129,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ products })
     }
 
-    const priceOverrides = await buildPriceOverrides(products)
     const normalizedPriceMin =
       typeof priceMin === "number" && Number.isFinite(priceMin)
         ? priceMin
@@ -139,9 +138,51 @@ export async function GET(req: NextRequest) {
         ? priceMax
         : undefined
 
+    // Fetch price list (Special Prices) to apply discounts
+    const priceListPrices = await getPriceListPrices()
+    
     let ui = products.map((product) => {
-      const override = priceOverrides.get(product.id)
-      return toUiProduct(product, override)
+      // Apply price list discount if available
+      const variantId = product.variants?.[0]?.id
+      if (variantId && priceListPrices.has(variantId) && product.variants?.[0]) {
+        // Both price list and variant prices are in Rupees (major units) usually
+        const discountedPrice = priceListPrices.get(variantId)!
+        
+        // Prioritize Medusa's computed original_price, fallback to raw variant price
+        const originalPrice = product.price?.original_price || product.variants[0].prices?.[0]?.amount || discountedPrice
+        
+        // Create product with price override (in Rupees)
+        const productWithDiscount: typeof product = {
+          ...product,
+          price: {
+            calculated_price: discountedPrice,
+            original_price: originalPrice,
+          },
+        }
+        
+        // computeUiPrice (inside toUiProduct) now handles the "x100 MRP" correction globally
+        const uiProduct = toUiProduct(productWithDiscount)
+        
+        console.log('💰 [PRICE DEBUG]', {
+          title: product.title?.substring(0, 35),
+          discountedPrice,
+          originalPrice,
+          '→ UI_price': uiProduct.price,
+          '→ UI_mrp': uiProduct.mrp,
+          '→ UI_discount': uiProduct.discount + '%'
+        })
+        return uiProduct
+      }
+      const uiProduct = toUiProduct(product)
+      console.log('💰 [PRICE DEBUG]', {
+        title: product.title?.substring(0, 35),
+        medusa_calculated: product.price?.calculated_price,
+        medusa_original: product.price?.original_price,
+        '→ UI_price': uiProduct.price,
+        '→ UI_mrp': uiProduct.mrp,
+        '→ UI_discount': uiProduct.discount + '%'
+      })
+      return uiProduct
     })
 
     if (normalizedPriceMin !== undefined) {
@@ -168,202 +209,8 @@ export async function GET(req: NextRequest) {
   }
 }
 
-type PriceOverride = {
-  price?: number
-  mrp?: number
-  isDeal?: boolean
-  opencartId?: string
-}
+// PriceOverride type and caching removed - using Medusa prices only
 
-const PRICE_OVERRIDES_CACHE = new Map<
-  string,
-  { expires: number; entries: Array<[string, PriceOverride]> }
->()
-const PRICE_CACHE_TTL_MS = 1000 * 60 * 5 // cache price lookups for 5 minutes
 
-function normalizeProductName(name?: string | null) {
-  return (name || "").trim().toLowerCase()
-}
 
-function getOverrideCacheKey(products: MedusaProduct[]) {
-  const ids = products
-    .map((p) => p.id)
-    .filter(Boolean)
-    .sort()
-  return ids.join("|")
-}
-
-function getCachedOverrides(key: string) {
-  const cached = PRICE_OVERRIDES_CACHE.get(key)
-  if (cached && cached.expires > Date.now()) {
-    return new Map(cached.entries)
-  }
-  PRICE_OVERRIDES_CACHE.delete(key)
-  return null
-}
-
-function setCachedOverrides(key: string, map: Map<string, PriceOverride>) {
-  if (!key) return
-  PRICE_OVERRIDES_CACHE.set(key, {
-    expires: Date.now() + PRICE_CACHE_TTL_MS,
-    entries: Array.from(map.entries()),
-  })
-}
-
-async function buildPriceOverrides(products: MedusaProduct[]) {
-  const cacheKey = getOverrideCacheKey(products)
-  if (cacheKey) {
-    const cached = getCachedOverrides(cacheKey)
-    if (cached) return cached
-  }
-
-  const map = new Map<string, PriceOverride>()
-  const productIdToOcId = new Map<string, string>()
-  const ocIdToMedusaIds = new Map<string, string[]>()
-  const fallbackProducts: MedusaProduct[] = []
-
-  for (const product of products) {
-    const metadata = (product.metadata || {}) as Record<string, unknown>
-    const ocId = metadata["opencart_id"] as string | number | undefined
-    if (ocId !== undefined && ocId !== null) {
-      const ocIdStr = String(ocId)
-      productIdToOcId.set(product.id, ocIdStr)
-      const existing = ocIdToMedusaIds.get(ocIdStr) || []
-      existing.push(product.id)
-      ocIdToMedusaIds.set(ocIdStr, existing)
-    } else {
-      fallbackProducts.push(product)
-    }
-  }
-
-  const distinctOcIds = Array.from(new Set(productIdToOcId.values()))
-
-  if (distinctOcIds.length > 0) {
-    const placeholders = distinctOcIds.map(() => "?").join(",")
-    try {
-      const rows = await executeReadQuery<
-        Array<{ product_id: number; price: string | null; special_price: string | null }>
-      >(
-        `
-          SELECT 
-            p.product_id,
-            p.price,
-            (
-              SELECT ps.price
-              FROM oc_product_special ps
-              WHERE ps.product_id = p.product_id
-                AND (ps.date_start = '0000-00-00' OR ps.date_start <= NOW())
-                AND (ps.date_end = '0000-00-00' OR ps.date_end >= NOW())
-              ORDER BY ps.priority ASC, ps.price ASC
-              LIMIT 1
-            ) AS special_price
-          FROM oc_product p
-          WHERE p.product_id IN (${placeholders})
-        `,
-        distinctOcIds
-      )
-
-      for (const row of rows) {
-        const medusaIds = ocIdToMedusaIds.get(String(row.product_id)) || []
-        if (!medusaIds.length) continue
-        const basePrice = parseFloat(row.price || "")
-        const specialPrice = row.special_price ? parseFloat(row.special_price) : undefined
-        const hasBase = Number.isFinite(basePrice)
-        const hasSpecial = Number.isFinite(specialPrice)
-
-        if (!hasBase && !hasSpecial) continue
-
-        for (const medusaId of medusaIds) {
-          map.set(medusaId, {
-            price: hasSpecial ? (specialPrice as number) : (basePrice as number),
-            mrp: hasBase ? (basePrice as number) : hasSpecial ? (specialPrice as number) : undefined,
-            isDeal: hasSpecial,
-            opencartId: String(row.product_id),
-          })
-        }
-      }
-    } catch (err) {
-      console.warn("Failed to hydrate price overrides via OpenCart IDs", err)
-    }
-  }
-
-  if (fallbackProducts.length > 0) {
-    const nameMap = new Map<
-      string,
-      { originalName: string; medusaIds: string[] }
-    >()
-
-    for (const product of fallbackProducts) {
-      const key = normalizeProductName(product.title || product.subtitle)
-      if (!key) continue
-      const originalName = product.title || product.subtitle || product.handle || ""
-      if (!originalName) continue
-      const entry = nameMap.get(key)
-      if (entry) {
-        entry.medusaIds.push(product.id)
-      } else {
-        nameMap.set(key, { originalName, medusaIds: [product.id] })
-      }
-    }
-
-    const uniqueNames = Array.from(
-      new Set(Array.from(nameMap.values()).map((entry) => entry.originalName))
-    )
-
-    if (uniqueNames.length > 0) {
-      const placeholders = uniqueNames.map(() => "?").join(",")
-      try {
-        const rows = await executeReadQuery<
-          Array<{ name: string; price: string | null; special_price: string | null }>
-        >(
-          `
-            SELECT 
-              pd.name as name,
-              p.price,
-              (
-                SELECT ps.price
-                FROM oc_product_special ps
-                WHERE ps.product_id = p.product_id
-                  AND (ps.date_start = '0000-00-00' OR ps.date_start <= NOW())
-                  AND (ps.date_end = '0000-00-00' OR ps.date_end >= NOW())
-                ORDER BY ps.priority ASC, ps.price ASC
-                LIMIT 1
-              ) AS special_price
-            FROM oc_product p
-            INNER JOIN oc_product_description pd 
-              ON p.product_id = pd.product_id AND pd.language_id = 1
-            WHERE pd.name IN (${placeholders})
-          `,
-          uniqueNames
-        )
-
-        for (const row of rows) {
-          const key = normalizeProductName(row.name)
-          const entry = nameMap.get(key)
-          if (!entry) continue
-
-          const basePrice = parseFloat(row.price || "")
-          const specialPrice = row.special_price ? parseFloat(row.special_price) : undefined
-          const hasBase = Number.isFinite(basePrice)
-          const hasSpecial = Number.isFinite(specialPrice)
-          if (!hasBase && !hasSpecial) continue
-
-          for (const medusaId of entry.medusaIds) {
-            map.set(medusaId, {
-              price: hasSpecial ? (specialPrice as number) : (basePrice as number),
-              mrp: hasBase ? (basePrice as number) : hasSpecial ? (specialPrice as number) : undefined,
-              isDeal: hasSpecial,
-            })
-          }
-        }
-      } catch (err) {
-        console.warn("Failed to hydrate price via fallback names", err)
-      }
-    }
-  }
-
-  if (cacheKey) {
-    setCachedOverrides(cacheKey, map)
-  }
-  return map
-}
+// buildPriceOverrides function removed - using Medusa prices only

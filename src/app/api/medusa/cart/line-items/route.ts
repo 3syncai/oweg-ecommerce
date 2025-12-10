@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import axios from 'axios'
+import { applyFlashSalePricesToCart } from '@/lib/flash-sale-cart-mapper'
 
 const CART_COOKIE = "cart_id"
 const GUEST_CART_HEADER = "x-guest-cart-id"
@@ -17,7 +19,43 @@ async function backend(path: string, init?: RequestInit) {
   const sc = process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID || process.env.MEDUSA_SALES_CHANNEL_ID
   if (pk) headers["x-publishable-api-key"] = pk
   if (sc) headers["x-sales-channel-id"] = sc
-  return fetch(`${base}${path}`, { cache: "no-store", ...init, headers: { ...headers, ...(init?.headers as HeadersInit) } })
+  
+  const method = init?.method || 'GET'
+  const url = `${base}${path}`
+  
+  try {
+    const response = await axios({
+      method: method.toLowerCase() as 'get' | 'post' | 'put' | 'delete' | 'patch',
+      url,
+      headers: { ...headers, ...(init?.headers as Record<string, string>) },
+      data: init?.body ? (typeof init.body === 'string' ? (() => {
+        try {
+          return JSON.parse(init.body)
+        } catch {
+          return init.body
+        }
+      })() : init.body) : undefined,
+      validateStatus: () => true, // Don't throw on any status
+    })
+    
+    // Convert axios response to fetch-like response
+    return {
+      ok: response.status >= 200 && response.status < 300,
+      status: response.status,
+      statusText: response.statusText,
+      json: async () => response.data,
+      text: async () => typeof response.data === 'string' ? response.data : JSON.stringify(response.data),
+    } as Response
+  } catch (error) {
+    // Return error response
+    return {
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+      json: async () => ({ error: error instanceof Error ? error.message : 'Unknown error' }),
+      text: async () => error instanceof Error ? error.message : 'Unknown error',
+    } as Response
+  }
 }
 
 function buildCartCreateBody(): RequestInit["body"] {
@@ -124,6 +162,27 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json()
+    
+    // Map cart prices using flash_sale_item table after adding item
+    try {
+      const flashSaleRes = await backend('/store/flash-sale/products')
+      if (flashSaleRes.ok) {
+        const flashSaleData = await flashSaleRes.json()
+        const cart = data.cart || data
+        if (cart) {
+          const updatedCart = applyFlashSalePricesToCart(cart, flashSaleData)
+          if (data.cart) {
+            data.cart = updatedCart
+          } else {
+            Object.assign(data, updatedCart)
+          }
+        }
+      }
+    } catch (error) {
+      // If flash sale mapping fails, return cart as-is
+      console.error('Failed to map flash sale prices in cart:', error)
+    }
+    
     const response = NextResponse.json(data)
     const c = await cookies()
     const hasCookie = c.get(CART_COOKIE)?.value

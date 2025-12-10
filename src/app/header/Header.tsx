@@ -98,12 +98,10 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
     title: node.title,
     handle: node.handle,
     children: node.children
-      .sort((a, b) => a.title.localeCompare(b.title))
       .map(stripParent),
   });
 
   const roots = Array.from(nodes.values()).filter((node) => !node.parentId);
-  roots.sort((a, b) => a.title.localeCompare(b.title));
 
 const withChildren = roots
   .filter((node) => node.children.length > 0)

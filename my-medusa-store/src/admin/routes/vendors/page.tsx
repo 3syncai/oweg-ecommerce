@@ -5,12 +5,7 @@ import { useEffect, useState } from "react"
 import { Container, Heading, Text, Button, Badge } from "@medusajs/ui"
 import { CheckCircleSolid, XCircleSolid, ClockSolid } from "@medusajs/icons"
 
-type VendorDocument = {
-  key: string
-  url: string
-  name?: string
-  type?: string
-}
+
 
 type VendorProduct = {
   id: string
@@ -46,7 +41,6 @@ const VendorsPage = () => {
   const [rejectedVendors, setRejectedVendors] = useState<Vendor[]>([])
   const [pendingVendors, setPendingVendors] = useState<Vendor[]>([])
   const [selectedTab, setSelectedTab] = useState<"all" | "approved" | "rejected" | "pending">("all")
-  const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null)
   const [expandedVendors, setExpandedVendors] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -173,14 +167,14 @@ const VendorsPage = () => {
             </Text>
             {vendor.status === "approved" && vendor.approved_at && (
               <div>
-                <Text size="x-small" style={{ color: "var(--fg-muted)" }}>
+                <Text size="xsmall" style={{ color: "var(--fg-muted)" }}>
                   Approved Date:
                 </Text>
                 <Text size="small" style={{ color: "var(--fg-base)", fontWeight: 500 }}>
                   {formatDate(vendor.approved_at)}
                 </Text>
                 {vendor.approved_by && (
-                  <Text size="x-small" style={{ color: "var(--fg-muted)", marginTop: 2 }}>
+                  <Text size="xsmall" style={{ color: "var(--fg-muted)", marginTop: 2 }}>
                     By: {vendor.approved_by}
                   </Text>
                 )}
@@ -188,14 +182,14 @@ const VendorsPage = () => {
             )}
             {vendor.status === "rejected" && vendor.rejected_at && (
               <div>
-                <Text size="x-small" style={{ color: "var(--fg-muted)" }}>
+                <Text size="xsmall" style={{ color: "var(--fg-muted)" }}>
                   Rejected Date:
                 </Text>
                 <Text size="small" style={{ color: "var(--fg-destructive)", fontWeight: 500 }}>
                   {formatDate(vendor.rejected_at)}
                 </Text>
                 {vendor.rejected_by && (
-                  <Text size="x-small" style={{ color: "var(--fg-muted)", marginTop: 2 }}>
+                  <Text size="xsmall" style={{ color: "var(--fg-muted)", marginTop: 2 }}>
                     By: {vendor.rejected_by}
                   </Text>
                 )}
@@ -203,7 +197,7 @@ const VendorsPage = () => {
             )}
             {vendor.status === "pending" && (
               <div>
-                <Text size="x-small" style={{ color: "var(--fg-muted)" }}>
+                <Text size="xsmall" style={{ color: "var(--fg-muted)" }}>
                   Created Date:
                 </Text>
                 <Text size="small" style={{ color: "var(--fg-base)", fontWeight: 500 }}>
@@ -244,7 +238,7 @@ const VendorsPage = () => {
                     </Text>
                     <Text size="small">{vendor.rejection_reason}</Text>
                     {vendor.rejected_at && (
-                      <Text size="x-small" style={{ marginTop: 8, color: "var(--fg-muted)" }}>
+                      <Text size="xsmall" style={{ marginTop: 8, color: "var(--fg-muted)" }}>
                         Rejected on: {formatDate(vendor.rejected_at)}
                       </Text>
                     )}
@@ -286,7 +280,7 @@ const VendorsPage = () => {
                       <div style={{ flex: 1 }}>
                         <Text size="small" weight="plus">{product.title}</Text>
                         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                          <Text size="x-small" style={{ color: "var(--fg-muted)" }}>
+                          <Text size="xsmall" style={{ color: "var(--fg-muted)" }}>
                             Status: {product.status}
                           </Text>
                           {product.approval_status && (

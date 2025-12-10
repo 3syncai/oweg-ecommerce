@@ -1,0 +1,3 @@
+﻿src/admin/routes/vendors/page.tsx(247,29): error TS2820: Type '"x-small"' is not assignable to type '"small" | "base" | "xsmall" | "large" | "xlarge" | undefined'. Did you mean '"xsmall"'?
+src/admin/routes/vendors/page.tsx(289,33): error TS2820: Type '"x-small"' is not assignable to type '"small" | "base" | "xsmall" | "large" | "xlarge" | undefined'. Did you mean '"xsmall"'?
+src/api/admin/flash-sale/[id]/route.ts(67,7): error TS2353: Object literal may only specify known properties, and 'price_id' does not exist in type '{ product_id?: string | undefined; variant_id?: string | undefined; flash_sale_price?: number | undefined; original_price?: number | undefined; expires_at?: string | Date | undefined; }'.
