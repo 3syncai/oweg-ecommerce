@@ -64,10 +64,8 @@ export const PUT = async (req: MedusaRequest, res: MedusaResponse) => {
     const updatedItem = await flashSaleService.updateFlashSaleItem(id, {
       product_id,
       variant_id,
-      price_id,
       flash_sale_price,
       original_price,
-      original_price_id,
       expires_at,
     })
     
