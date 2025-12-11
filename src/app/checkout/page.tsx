@@ -825,7 +825,7 @@ function CheckoutPageInner() {
                           alt="Razorpay"
                           width={110}
                           height={30}
-                          priority
+                          unoptimized
                         />
                       </p>
                       <p className="text-xs text-slate-500">UPI, Cards, Netbanking</p>

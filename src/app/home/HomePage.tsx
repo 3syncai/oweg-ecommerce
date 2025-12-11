@@ -171,7 +171,7 @@ const MOBILE_TOP_BANNERS: Array<{ src: string; href: string; alt: string }> = [
   { src: '/App_Banner-3.jpg', href: '/c/kitchen-appliances', alt: 'Shop kitchen appliances' },
 ];
 
-function MobileBanner({ src, href, alt, priority }: { src: string; href: string; alt: string; priority?: boolean }) {
+function MobileBanner({ src, href, alt}: { src: string; href: string; alt: string; unoptimized?: boolean }) {
   return (
     <Link href={href} className="relative w-full h-34 overflow-hidden shadow-sm border border-gray-100 block">
       <Image
@@ -180,7 +180,7 @@ function MobileBanner({ src, href, alt, priority }: { src: string; href: string;
         fill
         className="object-container"
         sizes="(max-width: 768px) 100vw, 0px"
-        priority={priority}
+        unoptimized
       />
     </Link>
   );
@@ -270,7 +270,7 @@ function HeroBanner() {
                 src={slide.src}
                 alt={slide.label}
                 fill
-                priority={idx === 0}
+                unoptimized
                 onLoad={() => setHeroReady(true)}
                 className="object-container object-center"
               />
@@ -326,7 +326,7 @@ function PromoBanners() {
 
   return (
     <div className="hidden md:grid grid-cols-1 lg:grid-cols-4 gap-4 mb-8">
-      {banners.map((banner, index) => (
+      {banners.map((banner) => (
         <Link
           key={banner.href}
           href={banner.href}
@@ -337,7 +337,7 @@ function PromoBanners() {
             src={banner.image}
             alt={banner.alt}
             fill
-            priority={index === 0}
+            unoptimized
             className="object-container"
           />
         </Link>
@@ -491,7 +491,7 @@ function MobileCategoryGrid({
                         fill
                         className="object-contain"
                         sizes="196px"
-                        priority
+                        unoptimized
                         onLoadingComplete={() =>
                           setImageLoaded((prev) => ({ ...prev, [cat.id]: true }))
                         }
@@ -936,13 +936,13 @@ export default function HomePage() {
           categoryImages={categoryImages}
         />
         <div className="md:hidden px-4 mb-6 space-y-4">
-          {MOBILE_TOP_BANNERS.map((banner, idx) => (
+          {MOBILE_TOP_BANNERS.map((banner) => (
             <MobileBanner
               key={banner.src}
               src={banner.src}
               href={banner.href}
               alt={banner.alt}
-              priority={idx === 0}
+              unoptimized
             />
           ))}
         </div>
