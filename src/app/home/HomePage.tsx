@@ -1045,7 +1045,7 @@ export default function HomePage() {
                 aria-label={banner.alt}
                 className="relative h-48 overflow-hidden border border-gray-100 bg-white shadow transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
               >
-                <Image src={banner.image} alt={banner.alt} fill className="object-container" />
+                <Image src={banner.image} alt={banner.alt} fill className="object-container" unoptimized />
               </Link>
             ))}
           </div>
