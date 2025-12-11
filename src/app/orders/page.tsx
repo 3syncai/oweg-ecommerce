@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Package, ReceiptIndianRupee } from "lucide-react";
@@ -34,7 +34,7 @@ const formatCurrency = (value?: number, currency?: string) => {
     style: "currency",
     currency: (currency || "INR").toUpperCase(),
     maximumFractionDigits: 0,
-  }).format(value / 100);
+  }).format(value);
 };
 
 const statusLabel = (payment?: string, fulfillment?: string) => {
@@ -46,7 +46,7 @@ const statusLabel = (payment?: string, fulfillment?: string) => {
 };
 
 export default function OrdersPage() {
-  const { customer } = useAuth();
+  const { customer, refresh } = useAuth();
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
@@ -61,26 +61,57 @@ export default function OrdersPage() {
     if (!customer) return;
     if (!customer?.id) {
       router.push("/login?redirect=/orders");
-      return;
     }
-    const loadOrders = async () => {
+  }, [customer, router]);
+
+  const loadOrders = useCallback(
+    async (allowRetry = true, showSpinner = true) => {
+      if (!customer?.id) return;
+      const fetchLimit = scope === "all" && count ? count : limit;
+      const offset = scope === "all" ? 0 : page * limit;
+      if (showSpinner) setLoading(true);
       try {
-        setLoading(true);
-        const fetchLimit = scope === "all" && count ? count : limit;
-        const offset = scope === "all" ? 0 : page * limit;
-        const res = await fetch(`/api/medusa/orders?limit=${fetchLimit}&offset=${offset}`, { cache: "no-store" });
+        const res = await fetch(`/api/medusa/orders?limit=${fetchLimit}&offset=${offset}`, {
+          cache: "no-store",
+          credentials: "include",
+        });
+        if (res.status === 401 && allowRetry) {
+          await refresh();
+          return loadOrders(false, showSpinner);
+        }
         if (!res.ok) throw new Error("Unable to load orders");
         const data = await res.json();
         setOrders((data.orders || []) as Order[]);
         if (typeof data.count === "number") setCount(data.count);
+        setError(null);
       } catch {
         setError("Could not load orders right now.");
       } finally {
-        setLoading(false);
+        if (showSpinner) setLoading(false);
       }
+    },
+    [customer?.id, scope, count, page, refresh]
+  );
+
+  useEffect(() => {
+    void loadOrders(true, true);
+  }, [loadOrders]);
+
+  useEffect(() => {
+    if (!customer?.id) return;
+    const onFocus = () => {
+      void loadOrders(false, false);
     };
-    void loadOrders();
-  }, [customer, page, scope, count]);
+    const interval = window.setInterval(() => {
+      void loadOrders(false, false);
+    }, 10000);
+
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(interval);
+    };
+  }, [customer?.id, loadOrders]);
 
   const emptyState = useMemo(
     () => !loading && (!orders || orders.length === 0),
@@ -137,7 +168,7 @@ export default function OrdersPage() {
       {loading && (
         <div className="inline-flex items-center gap-2 text-sm text-emerald-700">
           <Loader2 className="w-4 h-4 animate-spin" />
-          Loading your orders…
+          Loading your orders
         </div>
       )}
 

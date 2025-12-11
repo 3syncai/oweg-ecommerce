@@ -218,7 +218,6 @@ function LoginPageInner() {
   }
 
   // Public banner image for preview (replace with your own when ready)
-  const PROMO_IMAGE_URL = "/loginofferbanner.webp";
 
   // Get current country
   const selectedCountry = COUNTRY_CODES.find(c => c.code === countryCode) || COUNTRY_CODES[0];
@@ -613,13 +612,13 @@ function LoginPageInner() {
           </section>
 
           {/* Promo panel - Image Banner */}
-          <aside className="order-1 md:order-2 rounded-2xl overflow-hidden shadow-2xl bg-white">
-            <div className="relative w-full h-full min-h-[28rem]">
+          <aside className="order-1 md:order-2 overflow-hidden shadow-2xl bg-white">
+            <div className="relative w-full h-full min-h-[18rem]">
               <Image 
-                src={PROMO_IMAGE_URL} 
+                src='/login.png' 
                 alt="OWEG Promotional Banner" 
                 fill 
-                className="object-cover"
+                className="object-container"
                 priority
               />
             </div>

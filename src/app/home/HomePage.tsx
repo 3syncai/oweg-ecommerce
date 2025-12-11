@@ -56,11 +56,13 @@ function ProductCarousel({
   products,
   sourceTag,
   loading,
+  paddingClass = 'px-4',
 }: {
   title: string;
   products: UIProduct[];
   sourceTag?: string;
   loading?: boolean;
+  paddingClass?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -89,7 +91,7 @@ function ProductCarousel({
   ));
 
   return (
-    <div className="mb-8 px-4">
+    <div className={`mb-8 ${paddingClass}`}>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold text-gray-900 transition-all duration-300 hover:text-green-600">{title}</h2>
         <div className="flex gap-2">
@@ -141,21 +143,48 @@ function ProductCarousel({
 
 // Hero Banner Component
 const HERO_SLIDES = [
-  '/HeroBaneer_1.png',
-  '/HeroBaneer_2.png',
-  '/HeroBaneer_3.png',
-  '/HeroBaneer_4.png',
-  '/HeroBaneer_5.png',
-  '/HeroBaneer_6.png',
-  '/HeroBaneer_7.png',
-  '/HeroBaneer_8.png',
-  '/HeroBaneer_9.png',
-  '/HeroBaneer_10.png',
-  '/HeroBaneer_11.png',
-  '/HeroBaneer_12.png',
-  '/Banner.png',
-  '/HeroBaneer_13.png',
+  { src: '/HeroBaneer_1.png', href: '/specials', label: 'See Specials offers' },
+  { src: '/HeroBaneer_2.png', href: '/c/home-appliances', label: 'Shop Home Appliances' },
+  { src: '/HeroBaneer_3.png', href: '/c/kitchen-appliances', label: 'Shop Kitchen Appliances' },
+  { src: '/HeroBaneer_4.png', href: '/c/computer-and-mobile-accessories', label: 'Shop Computer & Mobile Accessories' },
+  { src: '/HeroBaneer_5.png', href: '/c/mobile-accessories', label: 'Shop Mobile Accessories' },
+  { src: '/HeroBaneer_6.png', href: '/c/surveillance-and-security', label: 'Shop Surveillance & Security' },
+  { src: '/HeroBaneer_7.png', href: '/c/clothing', label: 'Shop Clothing' },
+  { src: '/HeroBaneer_8.png', href: '/c/bags', label: 'Shop Bags' },
+  { src: '/HeroBaneer_9.png', href: '/c/hardware', label: 'Shop Hardware' },
+  { src: '/HeroBaneer_10.png', href: '/c/toys-and-games', label: 'Shop Toys and Games' },
+  { src: '/HeroBaneer_11.png', href: '/c/health-care', label: 'Shop Health Care' },
+  { src: '/HeroBaneer_12.png', href: '/c/stationery', label: 'Shop Stationery' },
+  { src: '/Banner.png', href: '/c/beauty-and-personal-care', label: 'Shop Beauty and Personal Care' },
+  { src: '/HeroBaneer_13.png', href: '/c/jewellery', label: 'Shop Jewellery' },
 ];
+
+const BAG_SECTION_BANNERS = [
+  { image: '/kitchen-appliances_banner.png', href: '/c/kitchen-appliances', alt: 'Shop kitchen appliances' },
+  { image: '/ceiling-fans_banner.png', href: '/c/ceiling-fans', alt: 'Shop ceiling fans' },
+  { image: '/Mixer_banner.png', href: '/c/mixer-grinders', alt: 'Shop mixer grinders' },
+];
+
+const MOBILE_TOP_BANNERS: Array<{ src: string; href: string; alt: string }> = [
+  { src: '/App_Banner-1.jpg', href: '/specials', alt: 'Explore Specials' },
+  { src: '/App_Banner-2.jpg', href: '/vendors/sellerjoin', alt: 'Join as vendor' },
+  { src: '/App_Banner-3.jpg', href: '/c/kitchen-appliances', alt: 'Shop kitchen appliances' },
+];
+
+function MobileBanner({ src, href, alt, priority }: { src: string; href: string; alt: string; priority?: boolean }) {
+  return (
+    <Link href={href} className="relative w-full h-34 overflow-hidden shadow-sm border border-gray-100 block">
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        className="object-container"
+        sizes="(max-width: 768px) 100vw, 0px"
+        priority={priority}
+      />
+    </Link>
+  );
+}
 
 function HeroBanner() {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -211,40 +240,42 @@ function HeroBanner() {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-      <div className="absolute inset-0 flex items-center justify-between px-3 sm:px-6 z-10 pointer-events-none md:pointer-events-auto">
+      <div className="absolute inset-0 flex items-center justify-between px-3 sm:px-6 z-10 pointer-events-none">
         <button
           onClick={prev}
-          className="w-9 h-9 sm:w-12 sm:h-12 bg-white/85 backdrop-blur-sm rounded-full hidden md:flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all duration-300"
+          className="w-9 h-9 sm:w-12 sm:h-12 bg-white/85 backdrop-blur-sm rounded-full hidden md:flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all duration-300 pointer-events-auto"
           aria-label="Previous slide"
         >
           <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-gray-800" />
         </button>
         <button
           onClick={next}
-          className="w-9 h-9 sm:w-12 sm:h-12 bg-white/85 backdrop-blur-sm rounded-full hidden md:flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all duration-300"
+          className="w-9 h-9 sm:w-12 sm:h-12 bg-white/85 backdrop-blur-sm rounded-full hidden md:flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all duration-300 pointer-events-auto"
           aria-label="Next slide"
         >
           <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 text-gray-800" />
         </button>
       </div>
       <div className="relative w-full h-full min-h-[320px] sm:min-h-[360px]">
-        {HERO_SLIDES.map((src, idx) => (
+        {HERO_SLIDES.map((slide, idx) => (
           <div
-            key={src}
+            key={slide.src}
             className={`absolute inset-0 transition-opacity duration-700 ${
-              idx === currentSlide ? 'opacity-100' : 'opacity-0'
+              idx === currentSlide ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
             }`}
             aria-hidden={idx !== currentSlide}
           >
-            <Image
-              src={src}
-              alt={`Hero banner ${idx + 1}`}
-              fill
-              priority={idx === 0}
-              onLoad={() => setHeroReady(true)}
-              className="object-container object-center"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent md:from-black/30 md:via-black/10 md:to-transparent" />
+            <Link href={slide.href} aria-label={slide.label} className="absolute inset-0 block">
+              <Image
+                src={slide.src}
+                alt={slide.label}
+                fill
+                priority={idx === 0}
+                onLoad={() => setHeroReady(true)}
+                className="object-container object-center"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent md:from-black/30 md:via-black/10 md:to-transparent" />
+            </Link>
           </div>
         ))}
       </div>
@@ -269,66 +300,47 @@ function HeroBanner() {
 
 // Promo Banners Component
 function PromoBanners() {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-
   const banners = [
     {
-      title: 'INNOVATIVE',
-      subtitle: 'EASY TO USE INDUCTION',
-      bgGradient: 'from-blue-100 to-blue-200',
-      textColor: 'text-blue-900',
-      subtitleColor: 'text-blue-700',
-      buttonColor: 'bg-blue-600 hover:bg-blue-700',
-      image: 'https://images.unsplash.com/photo-1585659722983-3a675dabf23d?w=300&h=200&fit=crop',
-      alt: 'Induction cooktop',
+      image: '/Inductions_Cooktops_banner.png',
+      href: '/c/inductions-%26-cooktops',
+      alt: 'Shop inductions and cooktops',
+      
     },
     {
-      title: 'IRONING',
-      subtitle: 'As Good As New',
-      bgGradient: 'from-purple-100 to-purple-200',
-      textColor: 'text-purple-900',
-      subtitleColor: 'text-purple-700',
-      buttonColor: 'bg-purple-600 hover:bg-purple-700',
-      image: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=300&h=200&fit=crop',
-      alt: 'Iron',
+      image: '/Iron_banner.png',
+      href: '/c/iron',
+      alt: 'Shop irons',
     },
     {
-      title: 'GLASS',
-      subtitle: 'COOKTOP',
-      bgGradient: 'from-gray-100 to-gray-200',
-      textColor: 'text-gray-900',
-      subtitleColor: 'text-gray-700',
-      buttonColor: 'bg-gray-800 hover:bg-gray-900',
-      image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=300&h=200&fit=crop',
-      alt: 'Glass cooktop',
+      image: '/kettles_banner.png',
+      href: '/c/kettles',
+      alt: 'Shop kettles',
+    },
+    {
+      image: '/Gas_Stoves_Hobs_banner.png',
+      href: '/c/gas-stoves-%26-hobs',
+      alt: 'Shop gas stoves and hobs',
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+    <div className="hidden md:grid grid-cols-1 lg:grid-cols-4 gap-4 mb-8">
       {banners.map((banner, index) => (
-        <div
-          key={index}
-          className={`relative h-48 bg-gradient-to-br ${banner.bgGradient} rounded-lg overflow-hidden transition-all duration-500 hover:shadow-xl hover:-translate-y-2 cursor-pointer`}
-          onMouseEnter={() => setHoveredIndex(index)}
-          onMouseLeave={() => setHoveredIndex(null)}
+        <Link
+          key={banner.href}
+          href={banner.href}
+          aria-label={banner.alt}
+          className="relative h-52 overflow-hidden shadow border border-gray-100 bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
         >
-          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 z-10">
-            <h3 className={`text-2xl font-bold ${banner.textColor} mb-2 transition-transform duration-300 ${hoveredIndex === index ? 'scale-110' : 'scale-100'}`}>
-              {banner.title}
-            </h3>
-            <p className={`text-sm ${banner.subtitleColor} mb-3`}>{banner.subtitle}</p>
-            <button className={`${banner.buttonColor} text-white px-6 py-2 rounded-full font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg`}>
-              SHOP NOW
-            </button>
-          </div>
           <Image
             src={banner.image}
             alt={banner.alt}
             fill
-            className={`object-cover transition-all duration-500 ${hoveredIndex === index ? 'opacity-40 scale-110' : 'opacity-30 scale-100'}`}
+            priority={index === 0}
+            className="object-container"
           />
-        </div>
+        </Link>
       ))}
     </div>
   );
@@ -585,6 +597,11 @@ export default function HomePage() {
     staleTime: 1000 * 60 * 5,
     enabled: showDefaultSections,
   });
+  const bagsQuery = useQuery({
+    queryKey: ['home-products', 'Bags'],
+    queryFn: () => fetchProducts({ tag: 'Bags', limit: 40 }),
+    staleTime: 1000 * 60 * 5,
+  });
 
   const personalizedSections = useMemo(() => {
     if (!customer || !hasPreferences || !preferences) return [];
@@ -774,7 +791,9 @@ export default function HomePage() {
       cancelled = true;
     };
   }, [mobileCategories]);
-  const loading = sectionsToRender.some((section) => section.loading);
+  const loading =
+    sectionsToRender.some((section) => section.loading) ||
+    bagsQuery.isLoading;
   const defaultProductsError = nonStickQuery.error || fanQuery.error || mensQuery.error;
   const personalizedError = personalizedQueries.find((q) => q?.error)?.error;
   const errorMessage = showDefaultSections
@@ -783,11 +802,13 @@ export default function HomePage() {
       : defaultProductsError
         ? 'Unable to load products'
         : null
-    : personalizedError instanceof Error
-      ? personalizedError.message
-      : personalizedError
-        ? 'Unable to load your picks'
-        : null;
+      : personalizedError instanceof Error
+        ? personalizedError.message
+        : personalizedError
+          ? 'Unable to load your picks'
+          : null;
+  const additionalError = bagsQuery.error;
+  const displayError = errorMessage || (additionalError ? 'Unable to load featured items' : null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -915,19 +936,14 @@ export default function HomePage() {
           categoryImages={categoryImages}
         />
         <div className="md:hidden px-4 mb-6 space-y-4">
-          {['/App_Banner-1.jpg', '/App_Banner-2.jpg', '/App_Banner-3.jpg'].map((src, idx) => (
-            <div key={src} className="relative w-full h-44 overflow-hidden  shadow-sm border border-gray-100">
-              <Image
-                src={src}
-                alt="App promo banner"
-                fill
-                className="object-cover"
-                sizes="(max-width: 768px) 100vw, 0px"
-                loading="eager"
-                fetchPriority="high"
-                priority={idx === 0}
-              />
-            </div>
+          {MOBILE_TOP_BANNERS.map((banner, idx) => (
+            <MobileBanner
+              key={banner.src}
+              src={banner.src}
+              href={banner.href}
+              alt={banner.alt}
+              priority={idx === 0}
+            />
           ))}
         </div>
         <div className="px-4">
@@ -937,6 +953,9 @@ export default function HomePage() {
         </div>
 
         <FlashSaleSection />
+        <div className="md:hidden px-4 mt-8 mb-4">
+          <MobileBanner src="/App_Banner-4.png" href="/c/kitchen-appliances" alt="Shop kitchen appliances" />
+        </div>
 
         {customer ? (
           <div className="px-4 mt-4">
@@ -990,6 +1009,26 @@ export default function HomePage() {
                 <PromoBanners />
               </div>
             )}
+            {section.title === 'Fans' && (
+              <div className="md:hidden px-4 mb-4 space-y-4">
+                <MobileBanner src="/App_Banner-5.png" href="/c/home-appliances" alt="Shop home appliances" />
+                <MobileBanner src="/App_Banner-6.png" href="/c/ceiling-fans" alt="Shop ceiling fans" />
+              </div>
+            )}
+            {section.title === 'Mens Cloths' && (
+              <div className="md:hidden px-4 mt-4 space-y-4">
+                <MobileBanner
+                  src="/App_Banner-7.png"
+                  href="/c/computer-and-mobile-accessories"
+                  alt="Shop computer and mobile accessories"
+                />
+                <MobileBanner
+                  src="/App_Banner-8.png"
+                  href="/c/water-heaters-%26-geysers"
+                  alt="Shop water heaters and geysers"
+                />
+              </div>
+            )}
           </div>
         ))}
         {sectionsToRender.length <= 1 && (
@@ -997,6 +1036,27 @@ export default function HomePage() {
             <PromoBanners />
           </div>
         )}
+        <div className="px-4 md:px-4 mt-10 space-y-4">
+          <div className="hidden md:grid grid-cols-1 md:grid-cols-3 gap-4">
+            {BAG_SECTION_BANNERS.map((banner) => (
+              <Link
+                key={banner.href}
+                href={banner.href}
+                aria-label={banner.alt}
+                className="relative h-48 overflow-hidden border border-gray-100 bg-white shadow transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
+              >
+                <Image src={banner.image} alt={banner.alt} fill className="object-container" />
+              </Link>
+            ))}
+          </div>
+          <ProductCarousel
+            title="Bags"
+            products={bagsQuery.data ?? []}
+            sourceTag="Bags"
+            loading={bagsQuery.isLoading}
+            paddingClass="px-2 md:px-4"
+          />
+        </div>
         <div className="px-4 mt-10">
           <div className="p-4 sm:p-6 space-y-4">
             <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1048,13 +1108,16 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+        <div className="md:hidden px-4 mb-8">
+          <MobileBanner src="/App_Banner-9.png" href="/c/kitchen-appliances" alt="Shop kitchen appliances" />
+        </div>
         <MobileJoinCard />
         {loading && (
           <div className="px-4 py-3">
             <div className="w-full rounded-2xl bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 animate-pulse h-14" />
           </div>
         )}
-        {!loading && errorMessage && <div className="px-4 text-sm text-red-500">{errorMessage}</div>}
+        {!loading && displayError && <div className="px-4 text-sm text-red-500">{displayError}</div>}
       </main>
 
       <PreferenceModal

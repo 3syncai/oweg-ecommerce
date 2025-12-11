@@ -19,6 +19,12 @@ const logoMap: Record<string, string> = {
   "syska": "/Syska.png",
   "usha": "/Usha.png",
   "mpro": "/M_Pro.png",
+  "rj-denim":"/rj-denim.png",
+  "sassiest":"/sassiest.png",
+  "nirlep":"/nirlep.png",
+  "gilma":"/gilma.png",
+  "hyatt":"/hyatt.png",
+  "oweg":"/oweg_brand.png"
 };
 
 // Per-brand scale tweaks to better fit logos in uniform containers
