@@ -619,7 +619,7 @@ function LoginPageInner() {
                 alt="OWEG Promotional Banner" 
                 fill 
                 className="object-container"
-                priority
+                unoptimized
               />
             </div>
           </aside>
