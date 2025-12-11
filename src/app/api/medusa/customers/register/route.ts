@@ -200,6 +200,21 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Ensure referral code (if provided) is persisted on customer metadata
+    const referralCode = metadata.referral_code as string | undefined
+    if (referralCode) {
+      try {
+        await medusaStoreFetch("/store/customers/me", {
+          method: "POST",
+          headers: forwardedCookie ? { Cookie: forwardedCookie } : undefined,
+          forwardedHeaders,
+          body: JSON.stringify({ metadata: { referral_code: referralCode } }),
+        })
+      } catch (err) {
+        console.warn("Failed to persist referral_code on customer", err)
+      }
+    }
+
     let customer = registeredPayload?.customer || registeredPayload
     if (forwardedCookie) {
       const meRes = await medusaStoreFetch("/store/customers/me", {

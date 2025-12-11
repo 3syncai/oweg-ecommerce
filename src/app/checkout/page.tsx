@@ -112,6 +112,19 @@ function CheckoutPageInner() {
   });
   const [billing, setBilling] = useState({ ...shipping });
 
+  // Prefill email and referral code from logged-in customer
+  useEffect(() => {
+    if (customer?.email) {
+      setShipping((prev) => (prev.email ? prev : { ...prev, email: customer.email as string }));
+      setBilling((prev) => (prev.email ? prev : { ...prev, email: customer.email as string }));
+    }
+    const meta = (customer?.metadata || {}) as { referral_code?: string; referral?: string; referralCode?: string };
+    const refCode = meta.referral_code || meta.referral || meta.referralCode;
+    if (refCode && !referralCode) {
+      setReferralCode(refCode);
+    }
+  }, [customer, referralCode]);
+
   useEffect(() => {
     if (cart?.id) {
        refetchShipping();
@@ -640,6 +653,9 @@ function CheckoutPageInner() {
                   placeholder="Email"
                   value={shipping.email}
                   onChange={(e) => setShipping({ ...shipping, email: e.target.value })}
+                  readOnly={!!customer?.email}
+                  className={customer?.email ? "bg-gray-100 cursor-not-allowed" : undefined}
+                  aria-readonly={!!customer?.email}
                 />
                 <Input
                   required
@@ -712,6 +728,9 @@ function CheckoutPageInner() {
                     placeholder="Email"
                     value={billing.email}
                     onChange={(e) => setBilling({ ...billing, email: e.target.value })}
+                    readOnly={!!customer?.email}
+                    className={customer?.email ? "bg-gray-100 cursor-not-allowed" : undefined}
+                    aria-readonly={!!customer?.email}
                   />
                   <Input
                     required
@@ -982,9 +1001,6 @@ export default function CheckoutPage() {
     </Suspense>
   );
 }
-
-
-
 
 
 
