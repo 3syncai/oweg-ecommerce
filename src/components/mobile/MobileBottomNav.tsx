@@ -21,10 +21,23 @@ import {
   User,
   X,
   ChevronsLeft,
+  Gift,
+  Trophy,
+  Tag,
+  FileText,
+  RefreshCw,
+  Truck,
+  Percent,
+  Lock,
+  Info,
+  HelpCircle,
+  Users,
 } from 'lucide-react';
 import type { MedusaCategory } from '@/lib/medusa';
 import { useAuth } from '@/contexts/AuthProvider';
 import { getOriginalImageUrl } from '@/lib/image-utils';
+import { usePreferences } from '@/hooks/usePreferences';
+import { buildPreferenceSlug } from '@/lib/personalization';
 
 type MobileCategory = {
   id: string;
@@ -137,9 +150,8 @@ const categoryImageKeywords: Array<{ image: string; includes: string[] }> = [
 const accountLinks = [
   { label: 'Brands', href: '/brands' },
   { label: 'Gift Card', href: '/gift-card' },
-  { label: 'Affiliates', href: '/affiliates' },
-  { label: 'Specials', href: '/specials' },
   { label: 'My Reward', href: '/my-reward' },
+  { label: 'My Wishlist', href: '/wishlist' },
 ];
 
 const policyLinks = [
@@ -183,6 +195,16 @@ const buildCategoryList = (data?: unknown): MobileCategory[] => {
   });
 };
 
+type InlineProduct = {
+  id: string;
+  name: string;
+  image?: string;
+  price?: number;
+  mrp?: number;
+  discount?: number;
+  brand?: string;
+};
+
 const resolveProductImage = (p: ProductLike): string => {
   const candidates: Array<string | undefined | null> = [];
   candidates.push(p?.image);
@@ -195,7 +217,8 @@ const resolveProductImage = (p: ProductLike): string => {
         return;
       }
       candidates.push((img as { url?: string | null; original_url?: string | null }).original_url);
-      candidates.push((img as { url?: string | null }).url);
+      const urlVal = (img as { url?: string | null }).url;
+      if (typeof urlVal === 'string') candidates.push(urlVal);
     });
   }
   if (Array.isArray(p?.variants)) {
@@ -206,7 +229,8 @@ const resolveProductImage = (p: ProductLike): string => {
         (v as { images?: Array<{ url?: string | null; original_url?: string | null } | null> | null }).images!.forEach((img) => {
           if (!img) return;
           candidates.push(img.original_url);
-          candidates.push(img.url);
+          const urlVal = (img as { url?: string | null }).url;
+          if (typeof urlVal === 'string') candidates.push(urlVal);
         });
       }
     });
@@ -324,11 +348,11 @@ const Overlay = ({
     <div
       className={`absolute inset-x-0 top-0 bottom-0 bg-white transition-transform duration-200 ${
         open ? 'translate-y-0' : 'translate-y-full'
-      } shadow-[0_-6px_30px_-20px_rgba(0,0,0,0.35)] rounded-t-2xl border-t border-gray-100 overflow-hidden`}
+      } shadow-[0_-6px_30px_-20px_rgba(0,0,0,0.35)] border-t border-gray-100 overflow-hidden`}
       onClick={(e) => e.stopPropagation()}
     >
       <div
-        className={`h-full ${scrollable ? 'overflow-y-auto' : 'overflow-hidden'} px-4 pt-20 pb-[calc(env(safe-area-inset-bottom,0px)+160px)]`}
+        className={`h-full ${scrollable ? 'overflow-y-auto' : 'overflow-hidden'} px-4 pt-14 pb-[calc(env(safe-area-inset-bottom,0px)+160px)]`}
       >
         {children}
       </div>
@@ -364,15 +388,37 @@ export default function MobileBottomNav() {
     staleTime: 1000 * 60 * 10,
   });
   const categories = useMemo(() => buildCategoryList(categoryData), [categoryData]);
+  const { preferences, hasPreferences } = usePreferences();
+  const categoryHandleBySlug = useMemo(() => {
+    const map: Record<string, string> = {};
+    categories.forEach((cat) => {
+      const slug = normalizeCategoryKey(cat.title);
+      if (slug) map[slug] = cat.handle || slug;
+    });
+    return map;
+  }, [categories]);
+  const forYouItems = useMemo(() => {
+    const items: Array<{ label: string; query: { tag?: string; type?: string; category?: string; limit?: number } }> = [];
+    preferences?.categories.forEach((cat) => {
+      const slug = buildPreferenceSlug(cat);
+      const handle = categoryHandleBySlug[slug] || slug;
+      items.push({ label: cat, query: { category: handle, limit: 12 } });
+    });
+    preferences?.productTypes.forEach((type) => {
+      items.push({ label: type, query: { type, limit: 12 } });
+    });
+    preferences?.brands.forEach((brand) => {
+      items.push({ label: brand, query: { tag: brand, limit: 12 } });
+    });
+    return items.slice(0, 12);
+  }, [preferences, categoryHandleBySlug]);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState<MobileCategory | null>(null);
-  const [subProducts, setSubProducts] = useState<
-    Array<{ id: string; name: string; image?: string; price?: number; mrp?: number; discount?: number; brand?: string }>
-  >([]);
+  const [subProducts, setSubProducts] = useState<InlineProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState<MobileCategory | null>(null);
   const [priceSort, setPriceSort] = useState<'none' | 'asc' | 'desc'>('none');
@@ -516,6 +562,30 @@ export default function MobileBottomNav() {
     return filteredCategories.find((c) => c.id === selectedCategoryId) || null;
   }, [filteredCategories, selectedCategoryId]);
 
+  const mapInlineProduct = useCallback((p: any): InlineProduct => {
+    let img: string | undefined;
+    if (typeof p?.image === 'string') img = p.image;
+    else if (typeof p?.thumbnail === 'string') img = p.thumbnail;
+    else if (Array.isArray(p?.images) && p.images.length > 0) {
+      const first = p.images[0];
+      if (typeof first === 'string') img = first;
+      else if (first && typeof (first as { url?: string }).url === 'string') img = (first as { url?: string }).url;
+    }
+    return {
+      id: String(p?.id || p?.handle || Math.random()),
+      name: p?.title || p?.name || 'Product',
+      image: img,
+      price: typeof p?.price === 'number' ? p.price : undefined,
+      mrp: typeof p?.mrp === 'number' ? p.mrp : undefined,
+      discount: typeof p?.discount === 'number' ? p.discount : undefined,
+      brand: (p as { brand?: string })?.brand,
+    };
+  }, []);
+  const forYouSelected = false;
+  const _forYouQueries: Array<{ data?: any; isLoading?: boolean }> = [];
+  const _forYouProductMap: Record<string, InlineProduct[]> = useMemo(() => ({}), []);
+
+
   useEffect(() => {
     if (selectedCategoryId && !displayedCategory) {
       setSelectedCategoryId(null);
@@ -628,13 +698,42 @@ export default function MobileBottomNav() {
   }, [subProducts, brandFilter]);
 
   const iconSize = 'w-[22px] h-[22px]';
+  const isCategoryPath = pathname?.startsWith('/c/');
+  const isJoinPath = pathname?.startsWith('/vendors') || pathname?.includes('seller');
+  const _fetchPrefProducts = useCallback(async (query: { tag?: string; type?: string; category?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (query.tag) params.set('tag', query.tag);
+    if (query.type) params.set('type', query.type);
+    if (query.category) params.set('category', query.category);
+    params.set('limit', String(query.limit ?? 12));
+    const res = await fetch(`/api/medusa/products?${params.toString()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('Unable to load products');
+    const data = await res.json();
+    return Array.isArray(data?.products) ? data.products : [];
+  }, []);
+  // inline For You disabled; use dedicated page
+  // const forYouSelected = selectedCategoryId === 'for-you';
+  const navActiveKey =
+    profileOpen
+      ? 'profile'
+      : categoryOpen || isCategoryPath
+        ? 'category'
+        : joinOpen || isJoinPath
+          ? 'join'
+          : pathname?.startsWith('/wishlist')
+            ? 'wishlist'
+            : pathname?.startsWith('/profile')
+              ? 'profile'
+              : pathname === '/'
+                ? 'home'
+                : null;
   const navItems = [
     {
       key: 'home',
       label: 'Home',
       href: '/',
       icon: <Home className={iconSize} />,
-      active: pathname === '/',
+      active: undefined,
     },
     {
       key: 'category',
@@ -645,7 +744,7 @@ export default function MobileBottomNav() {
         setCategoryOpen(true);
       },
       icon: <Grid className="w-5 h-5" />,
-      active: categoryOpen,
+      active: undefined,
     },
     {
       key: 'join',
@@ -657,7 +756,7 @@ export default function MobileBottomNav() {
       },
       icon: <Store className="w-5 h-5" />,
       accent: true,
-      active: joinOpen,
+      active: undefined,
     },
     {
       key: 'wishlist',
@@ -665,7 +764,7 @@ export default function MobileBottomNav() {
       href: '/wishlist',
       badge: wishlistCount,
       icon: <Heart className={iconSize} />,
-      active: pathname?.startsWith('/wishlist'),
+      active: undefined,
       prefetchKey: 'wishlist',
     },
     {
@@ -677,7 +776,7 @@ export default function MobileBottomNav() {
         setProfileOpen(true);
       },
       icon: <User className="w-5 h-5" />,
-      active: profileOpen,
+      active: undefined,
     },
   ];
 
@@ -693,20 +792,55 @@ export default function MobileBottomNav() {
     }
     return 'Account';
   }, [customer]);
+  const deliverLocation = useMemo(() => {
+    const metaPlace =
+      (customer?.metadata as { place_name?: string; location?: string } | undefined)?.place_name ||
+      (customer?.metadata as { location?: string } | undefined)?.location;
+    const firstAddress = Array.isArray(customer?.shipping_addresses)
+      ? (customer?.shipping_addresses[0] as { city?: string; country?: string } | undefined)
+      : undefined;
+    const addressCity = firstAddress?.city || firstAddress?.country;
+    return metaPlace || addressCity || storedPincode || 'Set your location';
+  }, [customer?.metadata, customer?.shipping_addresses, storedPincode]);
+
+  const accountIcon = (label: string) => {
+    if (label.toLowerCase().includes('brand')) return <Store className="w-5 h-5 text-emerald-600" />;
+    if (label.toLowerCase().includes('gift')) return <Gift className="w-5 h-5 text-emerald-600" />;
+    if (label.toLowerCase().includes('reward')) return <Trophy className="w-5 h-5 text-emerald-600" />;
+    if (label.toLowerCase().includes('wishlist')) return <Heart className="w-5 h-5 text-emerald-600" />;
+    return <Tag className="w-5 h-5 text-emerald-600" />;
+  };
+  const policyIcon = (label: string) => {
+    const lower = label.toLowerCase();
+    if (lower.includes('return')) return <RefreshCw className="w-5 h-5 text-emerald-600" />;
+    if (lower.includes('shipping')) return <Truck className="w-5 h-5 text-emerald-600" />;
+    if (lower.includes('coupon')) return <Percent className="w-5 h-5 text-emerald-600" />;
+    if (lower.includes('privacy')) return <Lock className="w-5 h-5 text-emerald-600" />;
+    return <FileText className="w-5 h-5 text-emerald-600" />;
+  };
+  const quickIcon = (label: string) => {
+    const lower = label.toLowerCase();
+    if (lower.includes('about')) return <Info className="w-5 h-5 text-emerald-600" />;
+    if (lower.includes('faq')) return <HelpCircle className="w-5 h-5 text-emerald-600" />;
+    if (lower.includes('contact')) return <Phone className="w-5 h-5 text-emerald-600" />;
+    if (lower.includes('seller')) return <Store className="w-5 h-5 text-emerald-600" />;
+    if (lower.includes('agent')) return <Users className="w-5 h-5 text-emerald-600" />;
+    return <Tag className="w-5 h-5 text-emerald-600" />;
+  };
 
   return (
     <>
-      <div className="fixed inset-x-0 bottom-0 z-400 md:hidden bg-white backdrop-blur-xl border border-white/70 shadow-[0_-12px_30px_-18px_rgba(0,0,0,0.5)] ring-1 ring-black/5 rounded-t-2xl">
+      <div className="fixed inset-x-0 bottom-0 z-[900] md:hidden bg-white backdrop-blur-xl border border-white/70 shadow-[0_-12px_30px_-18px_rgba(0,0,0,0.5)] ring-1 ring-black/5 rounded-t-2xl">
         <div className="px-3 pb-[calc(env(safe-area-inset-bottom,0px)+8px)] pt-1.5 flex items-center justify-between">
           {navItems.map((item) => {
-            const active = item.active;
+            const active = navActiveKey === item.key;
             const shared =
               'flex flex-col items-center gap-1.5 px-2.5 py-1.5 rounded-2xl text-[10.5px] font-medium tracking-[0.02em] transition-colors duration-200 flex-1';
-            const iconState = item.accent
-              ? 'bg-gradient-to-br from-emerald-500 via-emerald-500 to-lime-400 text-white shadow-[0_10px_28px_-16px_rgba(16,185,129,0.7)]'
-              : active
-                ? 'bg-gradient-to-br from-emerald-500 to-lime-400 text-white shadow-[0_10px_28px_-16px_rgba(16,185,129,0.7)] border border-white/70'
-                : 'bg-white/75 text-gray-700/70 border border-white/80 shadow-[0_8px_20px_-16px_rgba(0,0,0,0.35)]';
+            const iconState = active
+              ? item.accent
+                ? 'bg-gradient-to-br from-orange-500 to-amber-400 text-white shadow-[0_10px_28px_-16px_rgba(245,158,11,0.6)] border border-white/70'
+                : 'bg-gradient-to-br from-emerald-500 to-lime-400 text-white shadow-[0_10px_28px_-16px_rgba(16,185,129,0.7)] border border-white/70'
+              : 'bg-white/75 text-gray-700/70 border border-white/80 shadow-[0_8px_20px_-16px_rgba(0,0,0,0.35)]';
             const content = (
               <>
                 <div
@@ -719,7 +853,15 @@ export default function MobileBottomNav() {
                     </span>
                   ) : null}
                 </div>
-                <span className={active || item.accent ? 'text-emerald-700' : 'text-gray-700/80'}>
+                <span
+                  className={
+                    active
+                      ? item.accent
+                        ? 'text-orange-700'
+                        : 'text-emerald-700'
+                      : 'text-gray-700/80'
+                  }
+                >
                   {item.label}
                 </span>
               </>
@@ -855,20 +997,20 @@ export default function MobileBottomNav() {
                     const hasChildren = Array.isArray(cat.children) && cat.children.length > 0;
                     if (cat.id === 'for-you') {
                       return (
-                        <div key={cat.id} className="rounded-2xl border border-gray-200 bg-white">
+                        <div key={cat.id} className="rounded-2xl border-gray-200 bg-white">
                           <button
                             type="button"
                             onClick={() => {
+                              resetPanels();
                               setCategoryOpen(false);
                               setSidebarOverlayOpen(false);
-                              resetPanels();
                               router.push('/for-you');
                             }}
                             className="w-full px-2.5 py-2 flex items-center justify-between gap-2"
                             title="For You"
                           >
                             <div className="flex items-center gap-3">
-                              <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-white border border-gray-100 flex items-center justify-center">
+                              <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-white border  flex items-center justify-center">
                                 <Image
                                   src="/For_You.png"
                                   alt="For You"
@@ -973,20 +1115,19 @@ export default function MobileBottomNav() {
                         onClick={() => {
                           resetPanels();
                           setCategoryOpen(false);
+                          setSidebarOverlayOpen(false);
                           router.push('/for-you');
                         }}
                         className={`group w-full rounded-2xl border transition-all duration-300 text-left ${
-                          pathname?.startsWith('/for-you')
-                            ? 'border-emerald-400 bg-emerald-50 shadow-sm'
-                            : 'border-gray-200 bg-white'
-                        } ${isOpen ? 'px-2.5 py-2' : 'px-1.5 py-1.5'}`}
+                          isOpen ? 'px-2.5 py-2' : 'px-1.5 py-1.5'
+                        }`}
                         title="For You"
+                      >
+                        <div className="flex flex-col items-center">
+                          <div
+                            className="relative w-full rounded-xl overflow-hidden bg-emerald-50 flex items-center justify-center border border-emerald-100"
+                            style={{ height: isOpen ? 96 : 80 }}
                           >
-                            <div className="flex flex-col items-center">
-                              <div
-                                className="relative w-full rounded-xl overflow-hidden bg-emerald-50 flex items-center justify-center border border-emerald-100"
-                                style={{ height: isOpen ? 96 : 80 }}
-                              >
                             <Image
                               src="/For_You.png"
                               alt="For You"
@@ -1046,6 +1187,128 @@ export default function MobileBottomNav() {
 
             <div className={`${selectedSubcategory ? 'w-full' : 'flex-1 min-w-0'} h-full min-h-0 overflow-y-auto pr-1 pb-35 transition-all duration-300 ease-in-out`}>
               <div className="space-y-3">
+                {forYouSelected ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">For You</p>
+                        <h2 className="text-lg font-semibold text-gray-900">Your picks</h2>
+                        <p className="text-xs text-gray-600">Quick access to what you chose.</p>
+                      </div>
+                    </div>
+                    {!hasPreferences ? (
+                      <div className="text-sm text-gray-600">Set your preferences to see them here.</div>
+                    ) : forYouItems.length === 0 ? (
+                      <div className="text-sm text-gray-600">No preferences added yet.</div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3">
+                        {forYouItems.map((item, idx) => {
+                          const query = _forYouQueries[idx];
+                          const prod = (query?.data && query.data[0]) || null;
+                          let img = '/oweg_logo.png';
+                          if (prod) {
+                            if (typeof prod.image === 'string') img = prod.image;
+                            else if (typeof prod.thumbnail === 'string') img = prod.thumbnail;
+                            else if (Array.isArray(prod.images) && prod.images.length > 0) {
+                              const first = prod.images[0];
+                              if (typeof first === 'string') img = first;
+                              else if (first && typeof (first as { url?: string }).url === 'string') {
+                                img = (first as { url?: string }).url as string;
+                              }
+                            }
+                          }
+                          const loading = query?.isLoading;
+                          return (
+                            <button
+                              key={item.label}
+                              type="button"
+                              onClick={() => {
+                                setSelectedSubcategory({
+                                  id: item.label,
+                                  title: item.label,
+                                  children: [],
+                                  handle: item.label,
+                                });
+                                setActiveCategory({
+                                  id: item.label,
+                                  title: item.label,
+                                  children: [],
+                                });
+                                setIsOpen(false);
+                                setSidebarOverlayOpen(false);
+                                if (query?.data && query.data.length > 0) {
+                                  setSubProducts(query.data.map((p: any) => mapInlineProduct(p)));
+                                } else {
+                                  setSubProducts([]);
+                                }
+                              }}
+                              className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden text-left"
+                            >
+                              <div className="relative w-full h-24 bg-gray-50">
+                                {loading ? (
+                                  <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-gray-100 via-white to-gray-100" />
+                                ) : (
+                                  <Image src={img} alt={item.label} fill className="object-contain p-3" sizes="180px" unoptimized />
+                                )}
+                              </div>
+                              <div className="p-2 space-y-1">
+                                <p className="text-sm font-semibold text-gray-900 line-clamp-2">{item.label}</p>
+                                <p className="text-[11px] text-gray-600">
+                                  {query?.data?.length ? `${query.data.length} picks` : loading ? 'Loading…' : 'Tap to view'}
+                                </p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {selectedSubcategory ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-2 text-sm text-gray-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-900">{selectedSubcategory.title}</span>
+                          </div>
+                          <span className="text-xs text-gray-500">{filteredProducts.length} products</span>
+                        </div>
+                        {productsLoading ? (
+                          <div className="grid grid-cols-2 gap-3">
+                            {Array.from({ length: 6 }).map((_, i) => (
+                              <div key={i} className="h-32 rounded-xl bg-gradient-to-br from-gray-100 via-white to-gray-100 animate-pulse" />
+                            ))}
+                          </div>
+                        ) : filteredProducts.length === 0 ? (
+                          <div className="text-sm text-gray-600">No products found for this preference.</div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-3">
+                            {filteredProducts.map((p) => (
+                              <Link
+                                key={p.id}
+                                href={typeof p.id === 'string' ? `/products/${p.id}` : '#'}
+                                className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden"
+                              >
+                                <div className="relative w-full h-28 bg-gray-50">
+                                  <Image
+                                    src={p.image || '/oweg_logo.png'}
+                                    alt={p.name}
+                                    fill
+                                    className="object-contain p-2"
+                                    sizes="180px"
+                                    unoptimized
+                                  />
+                                </div>
+                                <div className="p-2 space-y-1">
+                                  <p className="text-xs font-semibold text-gray-900 line-clamp-2">{p.name}</p>
+                                  {p.price ? <p className="text-xs font-semibold text-emerald-700">₹{p.price}</p> : null}
+                                </div>
+                              </Link>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                <>
                 {activeCategory && (activeCategory.children || []).length > 0 && !selectedSubcategory && (
                   <div className="grid grid-cols-2 gap-3 pb-2">
                     <div className="col-span-2 text-base font-semibold text-gray-900">
@@ -1085,10 +1348,10 @@ export default function MobileBottomNav() {
                 )}
 
                 {selectedSubcategory && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                      <button
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                        <button
                         type="button"
                         aria-label="Show categories"
                         onClick={() => {
@@ -1246,6 +1509,8 @@ export default function MobileBottomNav() {
                 ) : (
                   <div className="text-sm text-gray-500">Tap a subcategory to view its products.</div>
                 )}
+                </>
+                )}
               </div>
             </div>
           </div>
@@ -1254,37 +1519,19 @@ export default function MobileBottomNav() {
 
       {/* Profile sheet */}
       <Overlay open={profileOpen} onClose={closeProfile}>
-        <div className="p-4 pb-36 space-y-4">
-          <div className="flex items-start justify-between">
-            <div>
-              {/* <p className="text-[11px] uppercase tracking-[0.3em] text-gray-400">Profile</p> */}
-              <h1 className="text-2xl font-semibold text-gray-900">{customer ? `Hi, ${customerName}` : 'Welcome back'}</h1>
-              <p className="text-xs text-gray-500">
-                {customer ? 'Manage your account quickly.' : ''}
-              </p>
-            </div>
+        <div className="p-4 pb-32 space-y-5">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold text-gray-900">{customer ? `Hi, ${customerName}` : 'Welcome back'}</h1>
+            <p className="text-sm text-gray-600">Deliver to {deliverLocation}</p>
           </div>
 
-          {customer && storedPincode ? (
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 py-3 shadow-sm flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-white text-emerald-700 flex items-center justify-center border border-emerald-200">
-                <MapPin className="w-4 h-4" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-emerald-800 leading-tight">Deliver to</p>
-                <p className="text-xs text-emerald-700">{storedPincode}</p>
-              </div>
-            </div>
-          ) : null}
-
           {!customer && (
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 py-3 shadow-sm space-y-2">
-              <p className="text-sm font-semibold text-emerald-800">Sign in for a better experience</p>
-              <p className="text-xs text-emerald-700">Sync your wishlist, track orders, and unlock personalized deals.</p>
-              <div className="flex gap-2">
+            <div className="space-y-2">
+              <p className="text-sm text-gray-700">Sign in for a better experience.</p>
+              <div className="flex gap-3">
                 <button
                   type="button"
-                  className="flex-1 rounded-xl bg-emerald-600 text-white px-4 py-2.5 text-center font-semibold shadow hover:bg-emerald-700"
+                  className="flex-1 bg-emerald-600 text-white px-4 py-2.5 text-center font-semibold hover:bg-emerald-700"
                   onClick={() => {
                     closeProfile();
                     router.push('/login');
@@ -1294,7 +1541,7 @@ export default function MobileBottomNav() {
                 </button>
                 <button
                   type="button"
-                  className="flex-1 rounded-xl border border-emerald-200 text-emerald-700 px-4 py-2.5 text-center font-semibold shadow-sm hover:bg-emerald-50"
+                  className="flex-1 border border-gray-300 text-emerald-700 px-4 py-2.5 text-center font-semibold hover:bg-gray-50"
                   onClick={() => {
                     closeProfile();
                     router.replace('/signup');
@@ -1306,115 +1553,144 @@ export default function MobileBottomNav() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <Link
-              href="/cart"
-              className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 flex items-center gap-2 text-sm font-semibold text-gray-800 shadow-sm"
-              onClick={closeProfile}
-            >
-              <ShoppingBag className="w-4 h-4 text-emerald-600" />
-              Cart & Checkout
-            </Link>
-            <Link
-              href="/wishlist"
-              className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 flex items-center gap-2 text-sm font-semibold text-gray-800 shadow-sm"
-              onClick={closeProfile}
-            >
-              <Heart className="w-4 h-4 text-emerald-600" />
-              Wishlist
-            </Link>
-            <a
-              href="mailto:owegonline@oweg.in"
-              className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 flex items-center gap-2 text-sm font-semibold text-gray-800 shadow-sm"
-              onClick={closeProfile}
-            >
-              <Phone className="w-4 h-4 text-emerald-600" />
-              Support
-            </a>
-            <Link
-              href="/vendor-portal"
-              className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 flex items-center gap-2 text-sm font-semibold text-gray-800 shadow-sm"
-              onClick={closeProfile}
-            >
-              <Store className="w-4 h-4 text-emerald-600" />
-              My Shop
-            </Link>
-          </div>
-
-          <div className="space-y-3">
-            <div className="rounded-2xl border border-gray-100 bg-white px-3 py-3 shadow-sm">
-              <p className="text-sm font-semibold text-gray-900 mb-2">My Account</p>
-              <div className="flex flex-wrap gap-2">
-                {accountLinks.map((link) => (
-                  <Link
-                    key={link.label}
-                    href={link.href}
-                    className="px-3 py-1.5 rounded-full border border-emerald-100 text-emerald-700 text-[11px] font-semibold bg-emerald-50/60"
-                    onClick={closeProfile}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-gray-100 bg-white px-3 py-3 shadow-sm">
-              <p className="text-sm font-semibold text-gray-900 mb-2">Policy</p>
-              <div className="flex flex-wrap gap-2">
-                {policyLinks.map((link) => (
-                  <Link
-                    key={link.label}
-                    href={link.href}
-                    className="px-3 py-1.5 rounded-full border border-emerald-100 text-emerald-700 text-[11px] font-semibold bg-emerald-50/60"
-                    onClick={closeProfile}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-gray-100 bg-white px-3 py-3 shadow-sm">
-              <p className="text-sm font-semibold text-gray-900 mb-2">Quick Links</p>
-              <div className="flex flex-wrap gap-2">
-                {quickLinks.map((link) => (
-                  <Link
-                    key={link.label}
-                    href={link.href}
-                    className="px-3 py-1.5 rounded-full border border-emerald-100 text-emerald-700 text-[11px] font-semibold bg-emerald-50/60"
-                    onClick={closeProfile}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-gray-100 bg-white px-3 py-3 shadow-sm space-y-2">
-              <p className="text-sm font-semibold text-gray-900">Support</p>
-              <p className="text-xs text-gray-600">Ascent Retechno India Pvt Ltd</p>
-              <p className="text-xs text-gray-600">
-                Shop No.04, 05, 06 & 07 AV Crystal, Near Navneet Hospital, Opp. Achole Talav, Nallasopara East, Palghar, Maharashtra - 401209.
-              </p>
+          <div className="space-y-2">
+            <p className="text-base font-semibold text-gray-900">Quick actions</p>
+            <div className="space-y-2">
+              <Link
+                href="/orders"
+                onClick={closeProfile}
+                className="flex items-center justify-between border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+              >
+                <span className="flex items-center gap-2">
+                  <ChevronsLeft className="w-4 h-4 text-emerald-600" />
+                  Orders & Returns
+                </span>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </Link>
+              <Link
+                href="/cart"
+                onClick={closeProfile}
+                className="flex items-center justify-between border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+              >
+                <span className="flex items-center gap-2">
+                  <ShoppingBag className="w-4 h-4 text-emerald-600" />
+                  Cart & Checkout
+                </span>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </Link>
               <a
                 href="mailto:owegonline@oweg.in"
-                className="inline-flex items-center gap-2 text-emerald-700 text-sm font-semibold"
                 onClick={closeProfile}
+                className="flex items-center justify-between border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
               >
-                <Mail className="w-4 h-4" />
-                owegonline@oweg.in
+                <span className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-emerald-600" />
+                  Support
+                </span>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
               </a>
-              <div className="flex gap-6">
-                <a href="#" className="icon-link" aria-label="Facebook">
-                  <Facebook className="h-5 w-5" />
-                </a>
-                <a href="#" className="icon-link" aria-label="Twitter">
-                  <Twitter className="h-5 w-5" />
-                </a>
-                <a href="#" className="icon-link" aria-label="Instagram">
-                  <Instagram className="h-5 w-5" />
-                </a>
-                <a href="#" className="icon-link" aria-label="LinkedIn">
-                  <Linkedin className="h-5 w-5" />
-                </a>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  closeProfile();
+                  setJoinOpen(true);
+                }}
+                className="flex w-full items-center justify-between border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+              >
+                <span className="flex items-center gap-2">
+                  <Store className="w-4 h-4 text-emerald-600" />
+                  My Shop
+                </span>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-base font-semibold text-gray-900">My Account</p>
+            <div className="space-y-2">
+              {accountLinks.map((link) => (
+                <Link
+                  key={link.label}
+                  href={link.href}
+                  className="flex items-center justify-between border border-gray-200 px-3 py-3 text-base font-semibold text-gray-900 hover:bg-gray-50"
+                  onClick={closeProfile}
+                >
+                  <span className="flex items-center gap-3">
+                    {accountIcon(link.label)}
+                    {link.label}
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-base font-semibold text-gray-900">Policy</p>
+            <div className="space-y-2">
+              {policyLinks.map((link) => (
+                <Link
+                  key={link.label}
+                  href={link.href}
+                  className="flex items-center justify-between border border-gray-200 px-3 py-3 text-base font-semibold text-gray-900 hover:bg-gray-50"
+                  onClick={closeProfile}
+                >
+                  <span className="flex items-center gap-3">
+                    {policyIcon(link.label)}
+                    {link.label}
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-base font-semibold text-gray-900">Quick Links</p>
+            <div className="space-y-2">
+              {quickLinks.map((link) => (
+                <Link
+                  key={link.label}
+                  href={link.href}
+                  className="flex items-center justify-between border border-gray-200 px-3 py-3 text-base font-semibold text-gray-900 hover:bg-gray-50"
+                  onClick={closeProfile}
+                >
+                  <span className="flex items-center gap-3">
+                    {quickIcon(link.label)}
+                    {link.label}
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1 text-sm text-gray-600">
+            <p className="font-semibold text-gray-900">Support</p>
+            <p>Ascent Retechno India Pvt Ltd</p>
+            <p>Shop No.04, 05, 06 & 07 AV Crystal, Near Navneet Hospital, Opp. Achole Talav, Nallasopara East, Palghar, Maharashtra - 401209.</p>
+            <a
+              href="mailto:owegonline@oweg.in"
+              className="inline-flex items-center gap-2 text-emerald-700 font-semibold"
+              onClick={closeProfile}
+            >
+              <Mail className="w-4 h-4" />
+              owegonline@oweg.in
+            </a>
+            <div className="flex gap-4 text-gray-500">
+              <a href="#" aria-label="Facebook">
+                <Facebook className="h-5 w-5" />
+              </a>
+              <a href="#" aria-label="Twitter">
+                <Twitter className="h-5 w-5" />
+              </a>
+              <a href="#" aria-label="Instagram">
+                <Instagram className="h-5 w-5" />
+              </a>
+              <a href="#" aria-label="LinkedIn">
+                <Linkedin className="h-5 w-5" />
+              </a>
             </div>
           </div>
 
@@ -1426,7 +1702,7 @@ export default function MobileBottomNav() {
                 setProfileOpen(false);
                 router.refresh();
               }}
-              className="w-full rounded-xl bg-red-50 text-red-600 border border-red-100 px-4 py-3 flex items-center justify-center gap-2 font-semibold"
+              className="w-full border border-red-200 bg-red-50 text-red-600 px-4 py-3 flex items-center justify-center gap-2 font-semibold"
             >
               <LogOut className="w-4 h-4" />
               Sign out

@@ -54,3 +54,5 @@ coverage/
 .vercel/
 yarn.lock
 my-medusa-store/yarn.lock
+my-medusa-store/.medusa/
+.medusa/

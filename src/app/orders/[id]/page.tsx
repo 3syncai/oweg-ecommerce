@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -55,7 +55,7 @@ const formatCurrency = (value?: number, currency?: string) => {
     style: "currency",
     currency: (currency || "INR").toUpperCase(),
     maximumFractionDigits: 0,
-  }).format(value / 100);
+  }).format(value);
 };
 
 function trackerSteps(order?: OrderDetail) {
@@ -69,7 +69,7 @@ function trackerSteps(order?: OrderDetail) {
     { key: "placed", label: "Order placed", active: true, icon: Clock },
     { key: "paid", label: "Payment confirmed", active: payment === "captured" || payment === "paid", icon: CheckCircle2 },
     { key: "processing", label: "Processing", active: payment === "captured" || payment === "paid", icon: Package },
-    { key: "shipped", label: "Shipped", active: shippedStates.includes(fulfillment), icon: Package },
+    { key: "shipped", label: "Shipped", active: shippedStates.includes(fulfillment) || deliveredStates.includes(fulfillment), icon: Package },
     { key: "delivered", label: "Delivered", active: deliveredStates.includes(fulfillment), icon: CheckCircle2 },
   ];
 }
@@ -77,30 +77,70 @@ function trackerSteps(order?: OrderDetail) {
 export default function OrderDetailPage() {
   const params = useParams();
   const orderId = Array.isArray(params?.id) ? params.id[0] : (params?.id as string | undefined);
-  const { customer } = useAuth();
+  const { customer, refresh } = useAuth();
 
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const orderRef = useRef<OrderDetail | null>(null);
 
   useEffect(() => {
-    if (!orderId) return;
-    if (!customer?.id) return;
-    const loadOrder = async () => {
+    orderRef.current = order;
+  }, [order]);
+
+  const loadOrder = useCallback(
+    async (allowRetry = true, showSpinner = true) => {
+      if (!orderId || !customer?.id) return;
+      if (showSpinner) setLoading(true);
       try {
-        setLoading(true);
-        const res = await fetch(`/api/medusa/orders/${encodeURIComponent(orderId)}`, { cache: "no-store" });
+        const res = await fetch(`/api/medusa/orders/${encodeURIComponent(orderId)}`, {
+          cache: "no-store",
+          credentials: "include",
+        });
+        if (res.status === 401 && allowRetry) {
+          await refresh();
+          return loadOrder(false, showSpinner);
+        }
         if (!res.ok) throw new Error("Unable to load order");
         const data = await res.json();
         setOrder((data.order || data) as OrderDetail);
+        setError(null);
       } catch {
         setError("Could not load order right now.");
       } finally {
-        setLoading(false);
+        if (showSpinner) setLoading(false);
       }
+    },
+    [orderId, customer?.id, refresh]
+  );
+
+  useEffect(() => {
+    if (!orderId || !customer?.id) return;
+    let cancelled = false;
+
+    const fetchLatest = async (allowRetry = true, showSpinner = false) => {
+      if (cancelled) return;
+      await loadOrder(allowRetry, showSpinner);
     };
-    void loadOrder();
-  }, [orderId, customer?.id]);
+
+    void fetchLatest(true, true);
+
+    const onFocus = () => {
+      void fetchLatest(false, false);
+    };
+
+    const interval = window.setInterval(() => {
+      if (orderRef.current?.fulfillment_status === "delivered") return;
+      void fetchLatest(false, false);
+    }, 10000);
+
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(interval);
+    };
+  }, [orderId, customer?.id, loadOrder]);
 
   const steps = useMemo(() => trackerSteps(order || undefined), [order]);
 
@@ -136,7 +176,7 @@ export default function OrderDetailPage() {
         {loading && (
           <div className="inline-flex items-center gap-2 text-sm text-emerald-700">
             <Loader2 className="w-4 h-4 animate-spin" />
-            Loading…
+            Loading
           </div>
         )}
       </div>

@@ -1,45 +1,84 @@
-import { Flame, Zap } from "lucide-react";
+'use client';
 
-const specials = [
-  { title: "Weekend Flash", copy: "48-hour drops on popular mixers, air fryers, and smart lights.", badge: "Live" },
-  { title: "Combo Power", copy: "Bundle kitchen essentials with flat savings + faster delivery.", badge: "Combos" },
-  { title: "Upgrade Swap", copy: "Exchange select old appliances for instant discounts.", badge: "Exchange" },
-  { title: "App-only", copy: "Mobile-only price locks with extra coins on checkout.", badge: "Mobile" },
-];
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
+import { ProductCard } from '@/components/modules/ProductCard';
+
+type UIProduct = {
+  id: string | number;
+  name: string;
+  image: string;
+  price: number;
+  mrp: number;
+  discount: number;
+  limitedDeal?: boolean;
+  variant_id?: string;
+  handle?: string;
+  sourceTag?: string;
+};
+
+async function fetchSpecials(): Promise<UIProduct[]> {
+  const res = await fetch('/api/medusa/products?tag=Specials&limit=200', { cache: 'no-store' });
+  if (!res.ok) {
+    throw new Error('Unable to load Specials');
+  }
+  const data = await res.json();
+  return (data?.products || []) as UIProduct[];
+}
 
 export default function SpecialsPage() {
+  const specialsQuery = useQuery({
+    queryKey: ['specials-page'],
+    queryFn: fetchSpecials,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const products = specialsQuery.data ?? [];
+  const loading = specialsQuery.isLoading;
+  const hasError = specialsQuery.error;
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/30 to-white text-gray-900">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-10 py-16 space-y-10">
-        <header className="space-y-3">
+    <div className="min-h-screen bg-gray-50 pb-10">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-6">
+        <header className="space-y-2">
           <div className="inline-flex items-center gap-2 rounded-full bg-emerald-100 text-emerald-700 px-4 py-1 text-xs font-semibold">
-            <Flame className="w-4 h-4" />
             Specials
           </div>
-          <h1 className="text-3xl sm:text-4xl font-semibold">Limited-time drops curated for you.</h1>
-          <p className="text-gray-600">Fresh offers with transparent pricing. Track what’s live and what’s coming next.</p>
+          <h1 className="text-3xl sm:text-4xl font-semibold text-gray-900">Specials tagged products</h1>
+          <p className="text-gray-600 text-sm sm:text-base">
+            Explore every product marked with the Specials tag across the store.
+          </p>
         </header>
 
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {specials.map((deal) => (
-            <div
-              key={deal.title}
-              className="group rounded-3xl border border-gray-100 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-[0_22px_48px_-28px_rgba(0,0,0,0.45)]"
-            >
-              <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 text-emerald-700 px-3 py-1 text-xs font-semibold">
-                {deal.badge}
-                <Zap className="w-4 h-4" />
-              </div>
-              <h3 className="text-lg font-semibold mt-3">{deal.title}</h3>
-              <p className="text-sm text-gray-600 mt-2">{deal.copy}</p>
-              <div className="text-xs text-emerald-700 font-semibold mt-3 group-hover:translate-x-1 transition">See eligible products →</div>
-            </div>
-          ))}
-        </section>
-
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-800 px-4 py-3 text-sm font-semibold">
-          Turn on notifications in Profile → Preferences to be the first to catch flash drops.
-        </div>
+        {loading ? (
+          <div className="flex items-center gap-2 text-emerald-700 text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading Specials…
+          </div>
+        ) : hasError ? (
+          <div className="text-sm text-red-500">Unable to load Specials right now. Please try again.</div>
+        ) : products.length === 0 ? (
+          <div className="text-sm text-gray-600">No Specials products available right now.</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+            {products.map((product) => (
+              <ProductCard
+                key={product.id}
+                id={product.id}
+                name={product.name}
+                image={product.image}
+                price={product.price}
+                mrp={product.mrp}
+                discount={product.discount}
+                limitedDeal={product.limitedDeal}
+                variant_id={product.variant_id}
+                handle={product.handle}
+                sourceTag="Specials"
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
