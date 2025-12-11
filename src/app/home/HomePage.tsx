@@ -171,7 +171,7 @@ const MOBILE_TOP_BANNERS: Array<{ src: string; href: string; alt: string }> = [
   { src: '/App_Banner-3.jpg', href: '/c/kitchen-appliances', alt: 'Shop kitchen appliances' },
 ];
 
-function MobileBanner({ src, href, alt, priority }: { src: string; href: string; alt: string; priority?: boolean }) {
+function MobileBanner({ src, href, alt, unoptimized }: { src: string; href: string; alt: string; priority?: boolean }) {
   return (
     <Link href={href} className="relative w-full h-34 overflow-hidden shadow-sm border border-gray-100 block">
       <Image
@@ -180,7 +180,7 @@ function MobileBanner({ src, href, alt, priority }: { src: string; href: string;
         fill
         className="object-container"
         sizes="(max-width: 768px) 100vw, 0px"
-        priority={priority}
+        unoptimized
       />
     </Link>
   );
@@ -942,7 +942,7 @@ export default function HomePage() {
               src={banner.src}
               href={banner.href}
               alt={banner.alt}
-              priority={idx === 0}
+              unoptimized
             />
           ))}
         </div>
