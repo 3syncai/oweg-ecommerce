@@ -14,10 +14,10 @@ const DEFAULT_BACKEND =
   "http://localhost:9000";
 
 const ADMIN_API_KEY =
-  process.env.MEDUSA_ADMIN_API_KEY ||
-  process.env.MEDUSA_ADMIN_TOKEN ||
-  process.env.MEDUSA_ADMIN_BASIC ||
-  "";
+  // process.env.MEDUSA_ADMIN_API_KEY ||
+  // process.env.MEDUSA_ADMIN_TOKEN ||
+  // process.env.MEDUSA_ADMIN_BASIC ||
+  "sk_0d60738d6f5c57f469cefa3bbf79dd121bcfd44378d991eada21823abc965ab7";
 const ADMIN_AUTH_SCHEME = (process.env.MEDUSA_ADMIN_AUTH_SCHEME || "bearer").toLowerCase();
 const PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY ||
@@ -84,6 +84,16 @@ export async function adminFetch<T = unknown>(
     } catch {
       // ignore JSON parse errors (data stays null)
       data = null;
+    }
+
+    if (res.status === 401) {
+      console.error("medusa-admin: 401 Unauthorized accessing", url);
+      console.error("medusa-admin: Using Backend URL:", medusaBaseUrl());
+      console.error("medusa-admin: Has ADMIN_API_KEY:", !!ADMIN_API_KEY);
+      if (ADMIN_API_KEY) {
+        console.error("medusa-admin: Key prefix:", ADMIN_API_KEY.substring(0, 3) + "...");
+        console.error("medusa-admin: Auth Scheme:", ADMIN_AUTH_SCHEME);
+      }
     }
 
     return { ok: res.ok, status: res.status, data, raw: res };
