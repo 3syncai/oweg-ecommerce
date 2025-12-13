@@ -12,7 +12,7 @@ export async function GET() {
   }
 
   try {
-    const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
+    const backendUrl = process.env.MEDUSA_BACKEND_URL || process.env.BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
     const url = `${backendUrl}/store/flash-sale/products`
 
     // Get publishable key and sales channel ID like other routes
