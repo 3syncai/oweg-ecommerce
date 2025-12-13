@@ -304,8 +304,8 @@ export async function POST(req: Request) {
         ? cart.shipping_methods.map((sm: any) => ({
             shipping_option_id: sm.shipping_option_id,
             option_id: sm.shipping_option_id, // Compat
-            amount: sm.price,
-            price: sm.price, // Compat
+            amount: sm.price || 0,
+            price: sm.price || 0, // Compat
             name: sm.name || "Shipping", 
             data: sm.data || {},
           }))
@@ -313,8 +313,8 @@ export async function POST(req: Request) {
             ? [{ 
                 shipping_option_id: body.shippingMethod,
                 option_id: body.shippingMethod, // Compat
-                amount: shippingPriceMinor,
-                price: shippingPriceMinor, // Compat
+                amount: shippingPriceMinor || 0,
+                price: shippingPriceMinor || 0, // Compat
                 name: (body as any).shippingMethodName || "Shipping",
                 data: {},
               }] 
