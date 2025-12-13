@@ -18,7 +18,7 @@ const ADMIN_API_KEY =
   process.env.MEDUSA_ADMIN_TOKEN ||
   process.env.MEDUSA_ADMIN_BASIC ||
   "";
-const ADMIN_AUTH_SCHEME = (process.env.MEDUSA_ADMIN_AUTH_SCHEME || "bearer").toLowerCase();
+
 const PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY ||
   process.env.MEDUSA_PUBLISHABLE_KEY ||
