@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ChangeEvent, FocusEvent } from "react";
 import Link from "next/link";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
@@ -48,6 +48,30 @@ const Signup = () => {
     gst: "",
     company: "",
   });
+
+  // Read referral code from URL query parameters or localStorage on component mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const refCode = params.get('ref');
+
+      // Priority: URL param > localStorage
+      if (refCode) {
+        setForm(prev => ({ ...prev, referral: refCode }));
+      } else {
+        // Check localStorage for referral code from product page
+        try {
+          const storedRef = localStorage.getItem('affiliateReferralCode');
+          if (storedRef) {
+            setForm(prev => ({ ...prev, referral: storedRef }));
+            console.log('Loaded referral code from localStorage:', storedRef);
+          }
+        } catch (error) {
+          console.error('Failed to read referral code from localStorage:', error);
+        }
+      }
+    }
+  }, []);
 
   // track touched fields so errors appear after blur/submit
   const [touched, setTouched] = useState<Partial<Record<FormKeys, boolean>>>({});
@@ -244,6 +268,30 @@ const Signup = () => {
       }
 
       const nextCustomer = data?.customer ?? null;
+
+      // Save referral code to database if present
+      if (payload.referral && nextCustomer?.id) {
+        try {
+          const saveRes = await fetch('/api/store/save-referral', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              customer_id: nextCustomer.id,
+              referral_code: payload.referral
+            }),
+            credentials: 'include'
+          });
+          const saveData = await saveRes.json();
+          if (saveData.success) {
+            console.log('Referral code saved successfully');
+          } else {
+            console.warn('Failed to save referral code:', saveData);
+          }
+        } catch (e) {
+          console.error('Error saving referral code:', e);
+        }
+      }
+
       if (nextCustomer) {
         setCustomer(nextCustomer);
       } else {
@@ -569,9 +617,8 @@ const Signup = () => {
                 {/* Submit Button */}
                 <Button
                   type="submit"
-                  className={`w-full h-12 text-base font-footer submit-btn ${
-                    isFormValid() && !submitting ? "" : "disabled"
-                  }`}
+                  className={`w-full h-12 text-base font-footer submit-btn ${isFormValid() && !submitting ? "" : "disabled"
+                    }`}
                   disabled={!isFormValid() || submitting}
                 >
                   {submitting ? (

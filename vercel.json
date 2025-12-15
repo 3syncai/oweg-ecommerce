@@ -31,6 +31,11 @@
         }
       ]
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/expire-coins",
+      "schedule": "0 0 * * *"
+    }
   ]
 }
-

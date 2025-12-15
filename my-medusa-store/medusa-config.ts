@@ -74,6 +74,9 @@ export default defineConfig({
     {
       resolve: "./src/modules/flash-sale",
     },
+    {
+      resolve: "./src/modules/affiliate",
+    },
     // {
     //   resolve: "@medusajs/medusa/notification",
     //   options: {

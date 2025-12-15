@@ -35,6 +35,7 @@ function OrderSuccessPageInner() {
   const [order, setOrder] = useState<OrderSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
+  const [coinsEarned, setCoinsEarned] = useState<number | null>(null);
   const pollAttempts = useRef(0);
   const maxPollAttempts = 12; // 12 * 5s = 60s
 
@@ -135,6 +136,24 @@ function OrderSuccessPageInner() {
     return INR.format(raw);
   }
 
+  // Calculate coins earned (1% of order total)
+  useEffect(() => {
+    if (order && isPaid) {
+      // Use the same total value as displayed (paid_total if available, otherwise total)
+      const rawTotal = typeof (order as OrderSummary & { paid_total?: number })?.paid_total === "number"
+        ? (order as OrderSummary & { paid_total?: number }).paid_total
+        : order?.total;
+
+      if (rawTotal && rawTotal > 0) {
+        // rawTotal is in paise (minor units), convert to rupees
+        const totalInRupees = rawTotal / 100;
+        const earned = parseFloat((totalInRupees * 0.01).toFixed(2)); // 1% cashback
+        console.log("Coins calculation:", { rawTotal, totalInRupees, earned });
+        setCoinsEarned(earned);
+      }
+    }
+  }, [order, isPaid]);
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
       <div className="bg-white shadow-md rounded-2xl p-6 md:p-8 max-w-3xl w-full space-y-6">
@@ -178,6 +197,29 @@ function OrderSuccessPageInner() {
             </span>
           </div>
         </div>
+
+        {/* Coins Earned Section */}
+        {isPaid && coinsEarned !== null && coinsEarned > 0 && (
+          <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-4">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center">
+                <img src="/uploads/coin/oweg_bag.png" alt="Coins" className="w-8 h-8" />
+              </div>
+              <div className="flex-1">
+                <p className="text-amber-800 font-semibold">You earned coins!</p>
+                <p className="text-amber-700 text-sm">
+                  <span className="text-lg font-bold flex items-center gap-1">
+                    <img src="/uploads/coin/coin.png" alt="Coin" className="w-6 h-6 object-contain" />
+                    {coinsEarned.toFixed(0)}
+                  </span> coins (1% cashback)
+                </p>
+                <p className="text-xs text-amber-600 mt-1">
+                  Use these coins on your next order. 1 coin = ₹1 discount!
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-slate-800">Items</h2>

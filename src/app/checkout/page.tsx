@@ -87,16 +87,109 @@ function CheckoutPageInner() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "cod">("razorpay");
   const [shippingMethod, setShippingMethod] = useState<string | null>(null);
-  
+
   const { options: shippingMethods, isLoading: shippingMethodsLoading, refetch: refetchShipping } = useShippingOptions(cart?.id);
 
   useEffect(() => {
     if (shippingMethods.length > 0 && !shippingMethod) {
-        setShippingMethod(shippingMethods[0].id)
+      setShippingMethod(shippingMethods[0].id)
     }
   }, [shippingMethods, shippingMethod])
 
   const [referralCode, setReferralCode] = useState("");
+  const [referralCodeApplied, setReferralCodeApplied] = useState(false); // Track if auto-applied
+  const [referralLoading, setReferralLoading] = useState(false);
+
+  // Auto-fetch referral code from database for logged in customers
+  useEffect(() => {
+    const fetchReferralCode = async () => {
+      if (!customer?.id) return;
+
+      setReferralLoading(true);
+      try {
+        const res = await fetch('/api/store/referral-code', {
+          headers: { 'x-customer-id': customer.id },
+          credentials: 'include',
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.referral_code) {
+            setReferralCode(data.referral_code);
+            setReferralCodeApplied(true);
+            console.log('Auto-applied referral code:', data.referral_code);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch referral code:', error);
+      } finally {
+        setReferralLoading(false);
+      }
+    };
+
+    fetchReferralCode();
+  }, [customer?.id]);
+
+  // Handler to cancel/remove the referral code
+  const handleCancelReferral = () => {
+    setReferralCode("");
+    setReferralCodeApplied(false);
+  };
+
+  // WALLET SYSTEM STATE
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [_walletPending, setWalletPending] = useState(0);
+  const [_walletLocked, setWalletLocked] = useState(0);
+  const [walletExpiring, setWalletExpiring] = useState(0);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [useCoins, setUseCoins] = useState(false);
+  const [coinsToUse, setCoinsToUse] = useState(0);
+  const [coinDiscountCode, setCoinDiscountCode] = useState<string | null>(null);
+  const [applyingCoinDiscount, setApplyingCoinDiscount] = useState(false);
+
+  // Fetch wallet balance when customer loads
+  useEffect(() => {
+    const fetchWallet = async () => {
+      if (!customer?.id) {
+        setWalletBalance(0);
+        setWalletExpiring(0);
+        return;
+      }
+
+      setWalletLoading(true);
+      try {
+        const res = await fetch('/api/store/wallet', {
+          headers: { 'x-customer-id': customer.id },
+          credentials: 'include',
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setWalletBalance(data.balance || 0);
+          setWalletPending(data.pending_coins || 0);
+          setWalletLocked(data.locked_coins || 0);
+          setWalletExpiring(data.expiring_soon || 0);
+          console.log('Wallet loaded:', data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch wallet:', error);
+      } finally {
+        setWalletLoading(false);
+      }
+    };
+
+    fetchWallet();
+  }, [customer?.id]);
+
+  // Calculate max redeemable coins based on order total (tiered limits)
+  const getMaxRedeemableCoins = (orderTotal: number): number => {
+    if (orderTotal < 200) return 20;
+    if (orderTotal < 500) return 40;
+    if (orderTotal < 1000) return 60;
+    if (orderTotal < 1500) return 100;
+    return 150; // ₹1500+
+  };
+
   const [billingSame, setBillingSame] = useState(true);
   const [shipping, setShipping] = useState({
     firstName: "",
@@ -127,7 +220,7 @@ function CheckoutPageInner() {
 
   useEffect(() => {
     if (cart?.id) {
-       refetchShipping();
+      refetchShipping();
     }
   }, [cart?.id, shipping.city, shipping.postalCode, refetchShipping])
 
@@ -174,11 +267,11 @@ function CheckoutPageInner() {
           buyNowItem ||
           (isBuyNow && variantFromQuery
             ? {
-                variantId: variantFromQuery,
-                quantity: Math.max(1, Number(qtyFromQuery) || 1),
-                title: "Selected item",
-                priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
-              }
+              variantId: variantFromQuery,
+              quantity: Math.max(1, Number(qtyFromQuery) || 1),
+              title: "Selected item",
+              priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
+            }
             : null);
 
         if (isBuyNow && fallbackBuyNow) {
@@ -220,10 +313,10 @@ function CheckoutPageInner() {
   const clientTotals = useMemo(() => {
     const itemsTotal =
       cart?.items?.reduce((sum, item) => sum + (item.unit_price || 0) * (item.quantity || 1), 0) || 0;
-    
+
     const selectedMethod = shippingMethods.find((s) => s.id === shippingMethod);
     const shippingAmountMinor = selectedMethod?.amount || 0;
-    
+
     return {
       subtotal: itemsTotal,
       shipping: shippingAmountMinor,
@@ -234,16 +327,16 @@ function CheckoutPageInner() {
   const handleShippingSelect = async (optionId: string) => {
     setShippingMethod(optionId)
     if (!cart?.id || cart.id === "buy-now") return
-    
+
     try {
-        await fetch("/api/medusa/shipping-methods", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ cartId: cart.id, optionId })
-        })
+      await fetch("/api/medusa/shipping-methods", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cartId: cart.id, optionId })
+      })
     } catch (e) {
-        console.error("Failed to select shipping method", e)
-        toast.error("Failed to update shipping method")
+      console.error("Failed to select shipping method", e)
+      toast.error("Failed to update shipping method")
     }
   }
 
@@ -255,10 +348,17 @@ function CheckoutPageInner() {
   const [totalsLoading, setTotalsLoading] = useState(false);
   const [totalWarning, setTotalWarning] = useState<string | null>(null);
 
+  // Calculate wallet coin values (after serverTotals and clientTotals are defined)
+  const orderTotal = (serverTotals || clientTotals).total;
+  const maxRedeemable = getMaxRedeemableCoins(orderTotal);
+  // Trust coinsToUse when useCoins is checked, as it was validated at the time of checking.
+  // We don't want to re-clamp against walletBalance because it might decrease after deduction on backend.
+  const coinDiscount = useCoins ? coinsToUse : 0;
+
   useEffect(() => {
     const hasCartItems = (cart?.items?.length || 0) > 0;
     const hasBuyNowItem = isBuyNow && (buyNowItem || variantFromQuery);
-    
+
     // Explicitly reset server totals if we have no valid items to checkout
     if (!hasCartItems && !hasBuyNowItem) {
       setServerTotals(null);
@@ -278,10 +378,10 @@ function CheckoutPageInner() {
         buyNowItem ||
         (isBuyNow && variantFromQuery
           ? {
-              variantId: variantFromQuery,
-              quantity: Math.max(1, Number(qtyFromQuery) || 1),
-              priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
-            }
+            variantId: variantFromQuery,
+            quantity: Math.max(1, Number(qtyFromQuery) || 1),
+            priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
+          }
           : null);
 
       const selectedMethod = shippingMethods.find((s) => s.id === shippingMethod);
@@ -301,14 +401,19 @@ function CheckoutPageInner() {
             guestCartId,
             shippingMethod,
             shippingPrice: selectedMethod?.amount, // Pass explicit price (Major units)
+            coinDiscount: (() => {
+              const discountValue = useCoins ? coinsToUse / 100 : 0; // Convert coins (paise) to rupees
+              console.log("🔥🔥🔥 [Frontend] Draft Order Coin Discount:", { useCoins, coinsToUse, coinDiscountRupees: discountValue });
+              return discountValue;
+            })(),
             itemsOverride: isBuyNow && fallbackBuyNow
               ? [
-                  {
-                    variant_id: fallbackBuyNow.variantId,
-                    quantity: fallbackBuyNow.quantity,
-                    price_minor: fallbackBuyNow.priceMinor,
-                  },
-                ]
+                {
+                  variant_id: fallbackBuyNow.variantId,
+                  quantity: fallbackBuyNow.quantity,
+                  price_minor: fallbackBuyNow.priceMinor,
+                },
+              ]
               : undefined,
           }),
         });
@@ -363,51 +468,51 @@ function CheckoutPageInner() {
       buyNowItem ||
       (isBuyNow && variantFromQuery
         ? {
-            variantId: variantFromQuery,
-            quantity: Math.max(1, Number(qtyFromQuery) || 1),
-            priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
-          }
+          variantId: variantFromQuery,
+          quantity: Math.max(1, Number(qtyFromQuery) || 1),
+          priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
+        }
         : null);
 
     // GUARD: If in Buy Now mode but item details are missing, block checkout
     if (isBuyNow && !fallbackBuyNow) {
-        toast.error("Buy Now session expired. Please select the product again.");
-        // Optional: Redirect back to home or history
-        router.push("/");
-        throw new Error("Buy Now session expired");
+      toast.error("Buy Now session expired. Please select the product again.");
+      // Optional: Redirect back to home or history
+      router.push("/");
+      throw new Error("Buy Now session expired");
     }
 
     const selectedOption = shippingMethods.find((s) => s.id === shippingMethod);
     const shippingPriceMajor = selectedOption && typeof selectedOption.amount === 'number' ? selectedOption.amount / 100 : 0;
 
     const requestPayload = {
-        shipping,
-        billing,
-        billingSameAsShipping: billingSame,
-        shippingMethod,
-        shippingPrice: shippingPriceMajor,
-        shippingMethodName: selectedOption?.name,
-        referralCode,
-        paymentMethod,
-        mode: isBuyNow ? "buy_now" : "cart",
-        itemsOverride: isBuyNow && fallbackBuyNow
-          ? [
-              {
-                variant_id: fallbackBuyNow.variantId,
-                quantity: fallbackBuyNow.quantity,
-                price_minor: fallbackBuyNow.priceMinor,
-              },
-            ]
-          : undefined,
+      shipping,
+      billing,
+      billingSameAsShipping: billingSame,
+      shippingMethod,
+      shippingPrice: shippingPriceMajor,
+      shippingMethodName: selectedOption?.name,
+      referralCode,
+      paymentMethod,
+      mode: isBuyNow ? "buy_now" : "cart",
+      itemsOverride: isBuyNow && fallbackBuyNow
+        ? [
+          {
+            variant_id: fallbackBuyNow.variantId,
+            quantity: fallbackBuyNow.quantity,
+            price_minor: fallbackBuyNow.priceMinor,
+          },
+        ]
+        : undefined,
     };
-    
+
     console.log('🛒 [Frontend Debug] createDraftOrder Payload:', requestPayload);
 
     const res = await fetch("/api/checkout/draft-order", {
       method: "POST",
       headers: {
         "content-type": "application/json",
-         ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
+        ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
       },
       body: JSON.stringify(requestPayload),
     });
@@ -464,7 +569,7 @@ function CheckoutPageInner() {
 
     const Razorpay = window.Razorpay;
     if (!Razorpay) throw new Error("Razorpay SDK unavailable");
-    
+
     const rzp = new Razorpay({
       key: payload.key,
       amount: payload.amount,
@@ -777,9 +882,9 @@ function CheckoutPageInner() {
               <h2 className="text-lg font-semibold text-slate-900">Shipping method</h2>
               {shippingMethodsLoading && <p className="text-sm text-slate-500">Loading shipping options...</p>}
               {!shippingMethodsLoading && shippingMethods.length === 0 && (
-                  <div className="p-3 bg-yellow-50 text-yellow-800 text-sm rounded-md">
-                      No shipping options available for your address. Please verify your address details.
-                  </div>
+                <div className="p-3 bg-yellow-50 text-yellow-800 text-sm rounded-md">
+                  No shipping options available for your address. Please verify your address details.
+                </div>
               )}
               <div className="space-y-3">
                 {shippingMethods.map((opt) => (
@@ -851,12 +956,199 @@ function CheckoutPageInner() {
 
             <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
               <h2 className="text-lg font-semibold text-slate-900">Referral code</h2>
-              <Input
-                placeholder="Enter referral code (optional)"
-                value={referralCode}
-                onChange={(e) => setReferralCode(e.target.value)}
-              />
+              {referralLoading ? (
+                <p className="text-sm text-slate-500">Loading referral code...</p>
+              ) : referralCodeApplied && referralCode ? (
+                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-green-600 text-lg">✓</span>
+                    <div>
+                      <p className="text-sm font-medium text-green-800">Referral code applied</p>
+                      <p className="text-xs text-green-600">{referralCode}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCancelReferral}
+                    className="text-sm text-red-600 hover:text-red-800 underline"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <Input
+                  placeholder="Enter referral code (optional)"
+                  value={referralCode}
+                  onChange={(e) => setReferralCode(e.target.value)}
+                />
+              )}
             </section>
+
+            {/* WALLET COINS SECTION */}
+            {customer && (
+              <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
+                <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                  <img src="/uploads/coin/oweg_bag.png" alt="Wallet" className="w-8 h-8" />
+                  Wallet Coins
+                </h2>
+                {walletLoading ? (
+                  <p className="text-sm text-slate-500">Loading wallet...</p>
+                ) : walletBalance > 0 ? (
+                  <div className="space-y-3">
+                    {/* Available Balance */}
+                    {walletBalance > 0 && (
+                      <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <div>
+                          <p className="text-sm font-medium text-amber-800">Available Balance</p>
+                          <p className="text-lg font-bold text-amber-700">{Math.round(walletBalance)} coins</p>
+                          <p className="text-xs text-amber-600">1 coin = ₹1 discount</p>
+                        </div>
+                        {walletExpiring > 0 && (
+                          <div className="text-right">
+                            <p className="text-xs text-red-500">⏰ {Math.round(walletExpiring)} expiring soon</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+
+
+                    {/* Redemption Limit Info */}
+                    <div className="text-xs text-slate-500 bg-slate-50 rounded p-2">
+                      <p>Max redeemable for this order: <strong>{maxRedeemable} coins</strong></p>
+                      <p className="text-slate-400">Limit based on order value (₹{orderTotal.toFixed(0)})</p>
+                    </div>
+
+                    <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={useCoins}
+                        onChange={async (e) => {
+                          const isChecked = e.target.checked;
+
+                          if (isChecked) {
+                            // User wants to use coins
+                            const maxCoins = Math.min(walletBalance, orderTotal, maxRedeemable);
+                            const coinsInMinorUnits = Math.round(maxCoins * 100); // Convert to minor units
+
+                            setApplyingCoinDiscount(true);
+                            try {
+                              // Step 1: Create Medusa discount code
+                              const discountRes = await fetch('/api/store/wallet/create-coin-discount', {
+                                method: 'POST',
+                                headers: { 'content-type': 'application/json' },
+                                body: JSON.stringify({
+                                  customer_id: customer?.id,
+                                  cart_id: cart?.id,
+                                  coin_amount: coinsInMinorUnits
+                                })
+                              });
+
+                              if (!discountRes.ok) {
+                                const error = await discountRes.json();
+                                throw new Error(error.error || 'Failed to create discount');
+                              }
+
+                              const discountData = await discountRes.json();
+                              const { discount_code } = discountData;
+
+                              // Step 2: Apply discount to Medusa cart
+                              const applyRes = await fetch('/api/store/cart/apply-discount', {
+                                method: 'POST',
+                                headers: { 'content-type': 'application/json' },
+                                body: JSON.stringify({
+                                  cart_id: cart?.id,
+                                  discount_code
+                                })
+                              });
+
+                              if (!applyRes.ok) {
+                                throw new Error('Failed to apply discount to cart');
+                              }
+
+                              // Success! Update state
+                              setUseCoins(true);
+                              setCoinsToUse(maxCoins);
+                              setCoinDiscountCode(discount_code);
+                              toast.success(`₹${maxCoins.toFixed(2)} coin discount applied!`);
+
+                            } catch (error) {
+                              console.error('Coin discount error:', error);
+                              toast.error(error instanceof Error ? error.message : 'Failed to apply coin discount');
+                              setUseCoins(false);
+                              setCoinsToUse(0);
+                              setCoinDiscountCode(null);
+                            } finally {
+                              setApplyingCoinDiscount(false);
+                            }
+
+                          } else {
+                            // User wants to remove coins
+                            if (coinDiscountCode && cart?.id) {
+                              setApplyingCoinDiscount(true);
+                              try {
+                                // Remove discount from cart
+                                await fetch(`/api/store/cart/apply-discount?cart_id=${cart.id}&discount_code=${coinDiscountCode}`, {
+                                  method: 'DELETE'
+                                });
+
+                                // Refund coins back to wallet
+                                await fetch('/api/store/wallet/refund-coin-discount', {
+                                  method: 'POST',
+                                  headers: { 'content-type': 'application/json' },
+                                  body: JSON.stringify({
+                                    customer_id: customer?.id,
+                                    discount_code: coinDiscountCode
+                                  })
+                                });
+
+                                toast.success("Coins refunded to your wallet");
+
+                              } catch (error) {
+                                console.error('Failed to remove discount:', error);
+                              } finally {
+                                setApplyingCoinDiscount(false);
+                              }
+                            }
+
+                            setUseCoins(false);
+                            setCoinsToUse(0);
+                            setCoinDiscountCode(null);
+                          }
+                        }}
+                        className="w-4 h-4 text-green-600"
+                        disabled={applyingCoinDiscount}
+                      />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-slate-800">
+                          Use {Math.round(Math.min(walletBalance, maxRedeemable))} coins
+                        </p>
+                        <p className="text-xs text-green-600">
+                          Save ₹{Math.round(Math.min(walletBalance, orderTotal, maxRedeemable))}
+                        </p>
+                        {applyingCoinDiscount && (
+                          <p className="text-xs text-slate-500 mt-1">Applying discount...</p>
+                        )}
+                      </div>
+                    </label>
+
+                    {useCoins && (
+                      <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg p-3">
+                        <span className="text-green-600">✓</span>
+                        <p className="text-sm text-green-800">
+                          Discount of <strong>₹{coinDiscount.toFixed(2)}</strong> will be applied
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-500 bg-slate-50 rounded-lg p-3">
+                    <p>No coins available yet.</p>
+                    <p className="text-xs mt-1 flex items-center gap-1">Earn 2% coins on every purchase! <img src="/uploads/coin/oweg_bag.png" alt="coins" className="w-4 h-4 inline" /></p>
+                  </div>
+                )}
+              </section>
+            )}
           </div>
 
           <div className="lg:col-span-1 space-y-4">
@@ -897,9 +1189,16 @@ function CheckoutPageInner() {
                     {(serverTotals || clientTotals).shipping === 0 ? "Free" : formatInr((serverTotals || clientTotals).shipping)}
                   </span>
                 </div>
+                {/* Coin Discount Line */}
+                {useCoins && coinDiscount > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span><img src="/uploads/coin/coin.png" alt="Coin" className="w-5 h-5 inline-block object-contain mr-1" /> Coin Discount</span>
+                    <span className="font-semibold">-{formatInr(coinDiscount)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-base font-semibold text-slate-900 pt-2 border-t">
                   <span>Total</span>
-                  <span>{formatInr((serverTotals || clientTotals).total)}</span>
+                  <span>{formatInr(Math.max(0, (serverTotals || clientTotals).total - coinDiscount))}</span>
                 </div>
                 {totalsLoading && <div className="text-xs text-slate-500">Refreshing totals...</div>}
                 {totalWarning && (
@@ -918,7 +1217,7 @@ function CheckoutPageInner() {
                   (isBuyNow && !buyNowItem && !variantFromQuery)
                 }
               >
-                {processing ? "Processing PaymentΓÇª" : `Pay securely (${formatInr((serverTotals || clientTotals).total)})`}
+                {processing ? "Processing Payment…" : `Pay securely (${formatInr(Math.max(0, (serverTotals || clientTotals).total - coinDiscount))})`}
               </Button>
               {isRazorpayTest && (
                 <p className="text-xs text-slate-500 text-center">

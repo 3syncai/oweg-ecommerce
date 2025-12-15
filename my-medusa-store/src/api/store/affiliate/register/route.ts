@@ -22,12 +22,21 @@ export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
 }
 
 function getS3Config() {
-  return {
+  const config = {
     s3Region: process.env.S3_REGION?.trim() || "",
     s3AccessKeyId: process.env.S3_ACCESS_KEY_ID?.trim() || "",
     s3SecretAccessKey: process.env.S3_SECRET_ACCESS_KEY?.trim() || "",
     s3Bucket: process.env.S3_BUCKET?.trim() || "",
   }
+
+  console.log('=== S3 Configuration Debug ===')
+  console.log('S3_REGION:', config.s3Region)
+  console.log('S3_BUCKET:', config.s3Bucket)
+  console.log('S3_ACCESS_KEY_ID:', config.s3AccessKeyId ? `${config.s3AccessKeyId.substring(0, 10)}...` : 'NOT SET')
+  console.log('S3_SECRET_ACCESS_KEY:', config.s3SecretAccessKey ? 'SET (hidden)' : 'NOT SET')
+  console.log('==============================')
+
+  return config
 }
 
 function sanitizeForPath(str: string): string {
@@ -44,7 +53,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   try {
     const affiliateService: AffiliateModuleService = req.scope.resolve(AFFILIATE_MODULE)
-    
+
     // Check if it's multipart/form-data
     const contentType = (req.headers['content-type'] || '').toLowerCase()
     const isMultipart = contentType.includes('multipart/form-data')
@@ -92,8 +101,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         bb.on("file", (name: string, file: NodeJS.ReadableStream, info: { filename: string; encoding: string; mimeType: string }) => {
           if (name === "aadhar_card_photo" || name === "pan_card_photo") {
             const filePromise = (async () => {
-              if (!s3Client) {
-                console.warn("S3 not configured, skipping file upload")
+              // Skip upload if S3 is not configured
+              if (!s3Client || !s3Bucket || !s3AccessKeyId || !s3SecretAccessKey) {
+                console.warn(`S3 not properly configured, skipping ${name} upload`)
+                // Drain the file stream to prevent hanging
+                file.resume()
                 return
               }
 
@@ -122,13 +134,19 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
                     await s3Client!.send(command)
                     const fileUrl = `${s3FileUrl}/${s3Key}`
                     uploadedFiles[name as keyof typeof uploadedFiles] = fileUrl
+                    console.log(`Successfully uploaded ${name} to S3`)
                     fileResolve()
                   } catch (err) {
                     console.error(`Error uploading ${name}:`, err)
-                    fileReject(err)
+                    // Don't reject - just log and continue without file
+                    console.warn(`Continuing registration without ${name}`)
+                    fileResolve()
                   }
                 })
-                file.on("error", fileReject)
+                file.on("error", (err) => {
+                  console.error(`File stream error for ${name}:`, err)
+                  fileResolve() // Resolve instead of reject
+                })
               })
             })()
             filePromises.push(filePromise)
@@ -142,7 +160,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         })
 
         bb.on("error", reject)
-        ;(req as any).pipe(bb)
+          ; (req as any).pipe(bb)
       })
     } else {
       // Handle JSON body
@@ -259,7 +277,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     })
   } catch (error: any) {
     console.error("Affiliate registration error:", error)
-    
+
     if (error.type === "DUPLICATE_ERROR") {
       return res.status(409).json({
         message: error.message || "Email already exists",
