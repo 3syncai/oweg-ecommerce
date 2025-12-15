@@ -18,7 +18,7 @@ const ADMIN_API_KEY =
   process.env.MEDUSA_ADMIN_TOKEN ||
   process.env.MEDUSA_ADMIN_BASIC ||
   "";
-const ADMIN_AUTH_SCHEME = (process.env.MEDUSA_ADMIN_AUTH_SCHEME || "bearer").toLowerCase();
+
 const PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY ||
   process.env.MEDUSA_PUBLISHABLE_KEY ||
@@ -34,14 +34,14 @@ function getAdminHeaders(extra?: Record<string, string>): HeadersInit {
   };
 
   if (ADMIN_API_KEY) {
-    // Medusa v2: support both authorization header and medusa access token headers for compatibility
+    // Medusa v2 Secret Key requires Basic Auth
+    // The key itself is the username, password is empty
+    headers.Authorization = `Basic ${ADMIN_API_KEY}`;
+    
+    // Legacy support (optional, can keep or remove based on needs)
     headers["x-medusa-access-token"] = ADMIN_API_KEY;
-    headers["x-medusa-basic-token"] = ADMIN_API_KEY;
-    headers.Authorization =
-      ADMIN_AUTH_SCHEME === "basic" ? `Basic ${ADMIN_API_KEY}` : `Bearer ${ADMIN_API_KEY}`;
   } else {
     // helpful warning for local/dev debugging
-    // (do not spam; keep a single warning is fine)
     if (process.env.NODE_ENV !== "test") {
       console.warn("medusa-admin: MEDUSA_ADMIN_API_KEY is not set; admin requests will be unauthenticated");
     }
