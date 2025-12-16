@@ -42,7 +42,8 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as RequestBody;
 
-    console.log("🔥🔥🔥 [Razorpay Debug] Incoming Body:", JSON.stringify(body, null, 2));
+    // Only log non-sensitive identifiers for debugging
+    console.log("[Razorpay] Processing order:", body.medusaOrderId?.trim() || "N/A");
 
     let medusaOrderId = body.medusaOrderId?.trim();
 
@@ -79,49 +80,65 @@ export async function POST(req: Request) {
     }
 
     // SECURITY FIX: Server-side validation of payment amount
-    // Prevent clients from bypassing pricing by sending arbitrary amounts
+    // Don't trust client-provided amounts - verify coin discount from database
     let finalAmount = totalRupees;
+    let verifiedCoinDiscount = 0;
+
+    // Step 1: Fetch actual coin discount from wallet_transactions table
+    try {
+      const { Pool } = await import('pg');
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+      try {
+        const discountQuery = await pool.query(
+          `SELECT amount FROM wallet_transactions 
+           WHERE order_id = $1 
+           AND transaction_type = 'REDEEMED'
+           AND status = 'USED'
+           ORDER BY created_at DESC 
+           LIMIT 1`,
+          [medusaOrderId]
+        );
+
+        if (discountQuery.rows.length > 0) {
+          // amount is stored in paise, convert to rupees
+          verifiedCoinDiscount = parseFloat(discountQuery.rows[0].amount) / 100;
+          console.log(`💰 [Razorpay] Verified coin discount: ₹${verifiedCoinDiscount}`);
+        }
+      } finally {
+        await pool.end();
+      }
+    } catch (dbErr) {
+      console.error("[Razorpay] Failed to verify coin discount:", dbErr);
+      // Continue without discount if DB fails
+    }
+
+    // Step 2: Calculate server-verified final amount
+    finalAmount = totalRupees - verifiedCoinDiscount;
+
+    // Step 3: Validate frontend amount matches server calculation (1 rupee tolerance for rounding)
     const requestedAmount = Number(body.amount);
-
     if (!isNaN(requestedAmount) && requestedAmount > 0) {
-      // Check if the requested amount is within acceptable tolerance (5%)
-      // This allows for minor rounding differences but prevents major bypass attempts
-      const tolerance = totalRupees * 0.05; // 5% tolerance
-      const minAcceptable = totalRupees - tolerance;
-
-      if (requestedAmount < minAcceptable) {
-        console.error(`🚨 [Razorpay Security] Payment bypass attempt! Order: ${totalRupees}, Requested: ${requestedAmount}`);
-        return badRequest(`Invalid payment amount. Order total is ₹${totalRupees.toFixed(2)}`);
+      if (Math.abs(requestedAmount - finalAmount) > 1) {
+        console.error(`🚨 [Razorpay Security] Amount mismatch! Server: ${finalAmount}, Client: ${requestedAmount}`);
+        return badRequest(`Payment amount mismatch. Expected ₹${finalAmount.toFixed(2)}`);
       }
-
-      // If amount is lower (within tolerance), it's likely a coin discount - allow but log
-      if (requestedAmount < totalRupees) {
-        console.log(`💰 [Razorpay] Discounted amount: Order=${totalRupees}, Paying=${requestedAmount} (discount of ₹${(totalRupees - requestedAmount).toFixed(2)})`);
-      }
-
-      finalAmount = requestedAmount;
-    } else {
-      console.log(`⚠️ [Razorpay Debug] No valid amount override provided. Using calculated total: ${totalRupees}`);
     }
 
     const metadata = (order.metadata || {}) as Record<string, unknown>;
     if (typeof metadata.razorpay_order_id === "string" && metadata.razorpay_order_id) {
-      // CHECK IF EXISTING ORDER AMOUNT MATCHES (approximate check)
-      // We don't store the exact amount in metadata usually, but we can check if coin discount changed
-      // For safety: If we have an explicit override amount from frontend, and it differs from totalRupees,
-      // we should probably CREATE A NEW ONE to be safe, or just ignore the cache if coin discount is active.
-
-      if (Math.abs(finalAmount - totalRupees) > 1) {
-        console.log("💰 [Razorpay Refresh] Discount active, ignoring cached order ID to force new amount");
-        // Fall through to create new order
-      } else {
+      // Check if cached order amount still matches (after applying verified discount)
+      const cachedAmount = Number(metadata.razorpay_cached_amount);
+      if (!isNaN(cachedAmount) && Math.abs(cachedAmount - finalAmount) <= 1) {
         return NextResponse.json({
           orderId: metadata.razorpay_order_id,
           key: getPublicRazorpayKey(),
-          amount: totalRupees,
+          amount: finalAmount, // Return server-calculated amount, not totalRupees
           currency,
         });
       }
+      // Amount changed (e.g., coin discount applied/removed), fall through to create new order
+      console.log("💰 [Razorpay Refresh] Amount changed, creating new order");
     }
 
     const rzpOrder = await createRazorpayOrder(
@@ -140,6 +157,7 @@ export async function POST(req: Request) {
       ...metadata,
       razorpay_order_id: rzpOrder.id,
       razorpay_payment_status: "created",
+      razorpay_cached_amount: finalAmount, // Store amount for cache validation
     };
 
     await updateOrderMetadata(medusaOrderId, nextMetadata);

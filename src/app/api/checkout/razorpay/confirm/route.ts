@@ -6,6 +6,21 @@ import {
   captureOrderPayment,
 } from "@/lib/medusa-admin";
 import { createMedusaPayment, createOrderTransaction, updateOrderSummaryTotals, ensureOrderShippingMethod, ensureOrderReservations } from "@/lib/medusa-payment";
+import { Pool } from 'pg';
+
+// Module-level database pool singleton to avoid connection exhaustion
+let dbPool: Pool | null = null;
+function getDbPool(): Pool | null {
+  if (!process.env.DATABASE_URL) return null;
+  if (!dbPool) {
+    dbPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 5,
+      idleTimeoutMillis: 30000,
+    });
+  }
+  return dbPool;
+}
 
 type ConfirmBody = {
   medusaOrderId?: string;
@@ -180,62 +195,56 @@ export async function POST(req: Request) {
 
     // COIN DISCOUNT PAYMENT: Record coins as separate payment
     // This ensures admin shows: Razorpay Payment + Coin Payment = Total (Outstanding = 0)
-    try {
-      const { Pool } = require('pg');
-      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const pool = getDbPool();
+    if (pool) {
+      try {
+        // SECURITY FIX: Check coin discount linked to THIS SPECIFIC order
+        const coinResult = await pool.query(
+          `SELECT amount FROM wallet_transactions 
+           WHERE transaction_type = 'REDEEMED' 
+           AND status = 'USED'
+           AND order_id = $1
+           ORDER BY created_at DESC 
+           LIMIT 1`,
+          [medusaOrderId]
+        );
 
-      // SECURITY FIX: Check coin discount linked to THIS SPECIFIC order
-      const coinResult = await pool.query(
-        `SELECT amount FROM wallet_transactions 
-         WHERE transaction_type = 'REDEEMED' 
-         AND status = 'USED'
-         AND order_id = $1
-         ORDER BY created_at DESC 
-         LIMIT 1`,
-        [medusaOrderId]
-      );
+        if (coinResult.rows.length > 0) {
+          const coinsUsed = parseFloat(coinResult.rows[0].amount);
+          const coinAmountRupees = coinsUsed / 100; // Convert paise to rupees
 
-      if (coinResult.rows.length > 0) {
-        const coinsUsed = parseFloat(coinResult.rows[0].amount);
-        const coinAmountRupees = coinsUsed / 100; // Convert paise to rupees
+          console.log(`💰 [Coin Payment] Recording ${coinAmountRupees} rupees as coin payment...`);
 
-        console.log(`💰 [Coin Payment] Recording ${coinAmountRupees} rupees as coin payment...`);
+          // Create order transaction for coin payment
+          const coinTxResult = await createOrderTransaction({
+            order_id: medusaOrderId,
+            amount: coinAmountRupees,
+            currency_code: currencyCode,
+            reference: "coin_discount",
+            reference_id: `coins-${Date.now()}`,
+          });
 
-        // Create order transaction for coin payment
-        const coinTxResult = await createOrderTransaction({
-          order_id: medusaOrderId,
-          amount: coinAmountRupees,
-          currency_code: currencyCode,
-          reference: "coin_discount",
-          reference_id: `coins-${Date.now()}`,
-        });
+          if (coinTxResult.success) {
+            console.log("✅ [Coin Payment] Coin discount recorded as payment");
 
-        if (coinTxResult.success) {
-          console.log("✅ [Coin Payment] Coin discount recorded as payment");
-
-          // Sync order_summary again to include coin payment
-          const summaryResult = await updateOrderSummaryTotals(medusaOrderId);
-          if (summaryResult.success) {
-            console.log("✅ [Coin Payment] Order summary updated - outstanding should be 0");
+            // Sync order_summary again to include coin payment
+            const summaryResult = await updateOrderSummaryTotals(medusaOrderId);
+            if (summaryResult.success) {
+              console.log("✅ [Coin Payment] Order summary updated - outstanding should be 0");
+            }
+          } else {
+            console.error("❌ [Coin Payment] Failed to record coin payment:", coinTxResult.error);
           }
-        } else {
-          console.error("❌ [Coin Payment] Failed to record coin payment:", coinTxResult.error);
         }
+      } catch (coinError) {
+        console.error("❌ [Coin Payment] Error recording coin payment:", coinError);
       }
-
-      await pool.end();
-    } catch (coinError) {
-      console.error("❌ [Coin Payment] Error recording coin payment:", coinError);
     }
 
     // WALLET SYSTEM: Award 2% coins on successful payment
-    if (medusaOrderId && typeof amountMinor === "number") {
+    if (pool && medusaOrderId && typeof amountMinor === "number") {
       try {
         console.log("razorpay confirm: Awarding wallet coins...");
-
-        // Direct database query to get customer_id (bypasses Medusa API auth issues)
-        const { Pool } = require('pg');
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
         // Query customer_id directly from order table
         const orderResult = await pool.query(
@@ -251,7 +260,6 @@ export async function POST(req: Request) {
         const coinsEarnedMinorUnits = Math.round(coinsEarned * 100); // Convert to minor units for storage
 
         if (customerId && coinsEarned > 0) {
-
           try {
             // Ensure wallet exists
             await pool.query(
@@ -288,15 +296,11 @@ export async function POST(req: Request) {
             } else {
               console.log("razorpay confirm: Coins already awarded for this order");
             }
-
-            await pool.end();
           } catch (dbErr) {
             console.error("razorpay confirm: ❌ Database error awarding coins:", dbErr);
-            await pool.end().catch(() => { });
           }
         } else {
           console.log("razorpay confirm: No customer_id or coins too small", { customerId, coinsEarned });
-          await pool.end();
         }
       } catch (walletErr) {
         console.error("razorpay confirm: ⚠️ Wallet coin award failed:", walletErr);
@@ -305,12 +309,9 @@ export async function POST(req: Request) {
     }
 
     // AFFILIATE COMMISSION: Check if customer was referred and log commission
-    if (medusaOrderId && typeof amountMinor === "number") {
+    if (pool && medusaOrderId && typeof amountMinor === "number") {
       try {
         console.log("razorpay confirm: Checking affiliate commission...");
-
-        const { Pool } = require('pg');
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
         // Get customer info including referral_code from customer_referral table
         const customerResult = await pool.query(
@@ -362,9 +363,11 @@ export async function POST(req: Request) {
             console.log(`razorpay confirm: [COMMISSION DEBUG] Processing item: ${item.product_name}, product_id: ${item.product_id}`);
 
             // Calculate commission for this item using unit_price * quantity
-            const unitPrice = parseFloat(item.unit_price || 0);
-            const itemAmount = unitPrice * (item.quantity || 1); // Price is already in major units (Rupees), no need to divide by 100
-            console.log(`razorpay confirm: [COMMISSION DEBUG] Item amount: ₹${itemAmount} (price: ${unitPrice} x qty: ${item.quantity})`);
+            // NOTE: unit_price is in PAISE (minor units) - convert to rupees
+            const unitPricePaise = parseFloat(item.unit_price || 0);
+            const unitPriceRupees = unitPricePaise / 100;
+            const itemAmount = unitPriceRupees * (item.quantity || 1);
+            console.log(`razorpay confirm: [COMMISSION DEBUG] Item amount: ₹${itemAmount} (price: ${unitPriceRupees} x qty: ${item.quantity})`);
 
             // Get categories for this product
             let categoryIds: string[] = [];
@@ -446,7 +449,19 @@ export async function POST(req: Request) {
               );
               const affiliateUserId = affiliateResult.rows[0]?.id || null;
 
+              // IDEMPOTENCY CHECK: Prevent duplicate commission entries on retries
+              const existingCommission = await pool.query(
+                `SELECT id FROM affiliate_commission_log WHERE order_id = $1 AND product_id = $2`,
+                [medusaOrderId, item.product_id]
+              );
+
+              if (existingCommission.rows.length > 0) {
+                console.log(`razorpay confirm: Commission already logged for ${item.product_name}, skipping`);
+                continue;
+              }
+
               // Log commission (status PENDING - will be credited after delivery)
+              // NOTE: item_price stored in rupees (converted from paise)
               await pool.query(
                 `INSERT INTO affiliate_commission_log 
                    (affiliate_code, affiliate_user_id, order_id, customer_id, product_id, 
@@ -454,7 +469,7 @@ export async function POST(req: Request) {
                     commission_rate, commission_amount, commission_source, category_id, collection_id, status)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'PENDING')`,
                 [affiliateCode, affiliateUserId, medusaOrderId, customer.id, item.product_id,
-                  item.product_name, item.variant_id, item.quantity, parseFloat(item.unit_price) / 100, itemAmount,
+                  item.product_name, item.variant_id, item.quantity, unitPriceRupees, itemAmount,
                   commissionRate, commissionAmount, commissionSource,
                   commissionSource === 'category' ? sourceId : null,
                   commissionSource === 'collection' ? sourceId : null]
@@ -464,16 +479,17 @@ export async function POST(req: Request) {
             }
           }
 
-          // Update referral stats
+          // Update referral stats using UPSERT pattern to handle missing rows
           if (totalCommission > 0 || itemsResult.rows.length > 0) {
             const orderValue = amountMinor / 100;
             await pool.query(
-              `UPDATE affiliate_referrals
-               SET total_orders = total_orders + 1,
-                   total_order_value = total_order_value + $3,
-                   total_commission = total_commission + $4,
-                   first_order_at = COALESCE(first_order_at, NOW())
-               WHERE affiliate_code = $1 AND customer_id = $2`,
+              `INSERT INTO affiliate_referrals (affiliate_code, customer_id, total_orders, total_order_value, total_commission, first_order_at)
+               VALUES ($1, $2, 1, $3, $4, NOW())
+               ON CONFLICT (affiliate_code, customer_id) DO UPDATE SET
+                 total_orders = affiliate_referrals.total_orders + 1,
+                 total_order_value = affiliate_referrals.total_order_value + EXCLUDED.total_order_value,
+                 total_commission = affiliate_referrals.total_commission + EXCLUDED.total_commission,
+                 first_order_at = COALESCE(affiliate_referrals.first_order_at, NOW())`,
               [affiliateCode, customer.id, orderValue, totalCommission]
             );
           }
@@ -486,8 +502,7 @@ export async function POST(req: Request) {
         } else {
           console.log("razorpay confirm: Customer not referred by affiliate");
         }
-
-        await pool.end();
+        // Note: pool is module-level singleton, don't end it here
       } catch (affiliateErr) {
         console.error("razorpay confirm: ⚠️ Affiliate commission failed:", affiliateErr);
         // Don't fail the payment confirmation if affiliate commission fails

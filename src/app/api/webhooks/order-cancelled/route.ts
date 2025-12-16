@@ -72,16 +72,30 @@ export async function POST(req: NextRequest) {
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
             (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
 
+        // Call the coin reversal endpoint with timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
         const reverseRes = await fetch(`${baseUrl}/api/store/wallet/reverse`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
             body: JSON.stringify({
                 order_id: orderId,
                 reason: `Order ${event || "cancelled/refunded"}`
             })
         })
 
-        const reverseData = await reverseRes.json()
+        clearTimeout(timeoutId);
+
+        // Check response status before parsing JSON
+        let reverseData: Record<string, unknown> = {};
+        if (reverseRes.ok) {
+            reverseData = await reverseRes.json();
+        } else {
+            console.error(`Coin reversal failed: ${reverseRes.status} ${reverseRes.statusText}`);
+            reverseData = { error: `HTTP ${reverseRes.status}`, status: reverseRes.statusText };
+        }
 
         console.log("Coin reversal result:", reverseData)
 

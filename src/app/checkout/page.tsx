@@ -102,6 +102,8 @@ function CheckoutPageInner() {
 
   // Auto-fetch referral code from database for logged in customers
   useEffect(() => {
+    const controller = new AbortController();
+
     const fetchReferralCode = async () => {
       if (!customer?.id) return;
 
@@ -110,6 +112,7 @@ function CheckoutPageInner() {
         const res = await fetch('/api/store/referral-code', {
           headers: { 'x-customer-id': customer.id },
           credentials: 'include',
+          signal: controller.signal,
         });
 
         if (res.ok) {
@@ -121,6 +124,7 @@ function CheckoutPageInner() {
           }
         }
       } catch (error) {
+        if ((error as Error).name === 'AbortError') return;
         console.error('Failed to fetch referral code:', error);
       } finally {
         setReferralLoading(false);
@@ -128,6 +132,7 @@ function CheckoutPageInner() {
     };
 
     fetchReferralCode();
+    return () => controller.abort();
   }, [customer?.id]);
 
   // Handler to cancel/remove the referral code
@@ -149,6 +154,8 @@ function CheckoutPageInner() {
 
   // Fetch wallet balance when customer loads
   useEffect(() => {
+    const controller = new AbortController();
+
     const fetchWallet = async () => {
       if (!customer?.id) {
         setWalletBalance(0);
@@ -161,6 +168,7 @@ function CheckoutPageInner() {
         const res = await fetch('/api/store/wallet', {
           headers: { 'x-customer-id': customer.id },
           credentials: 'include',
+          signal: controller.signal,
         });
 
         if (res.ok) {
@@ -172,6 +180,7 @@ function CheckoutPageInner() {
           console.log('Wallet loaded:', data);
         }
       } catch (error) {
+        if ((error as Error).name === 'AbortError') return;
         console.error('Failed to fetch wallet:', error);
       } finally {
         setWalletLoading(false);
@@ -179,6 +188,7 @@ function CheckoutPageInner() {
     };
 
     fetchWallet();
+    return () => controller.abort();
   }, [customer?.id]);
 
   // Calculate max redeemable coins based on order total (tiered limits)

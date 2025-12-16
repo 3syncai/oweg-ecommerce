@@ -5,8 +5,23 @@
 import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { convertDraftOrder, createDraftOrder, readStoreCart } from "@/lib/medusa-admin";
+import { Pool } from 'pg';
 
 export const dynamic = "force-dynamic";
+
+// Module-level database pool singleton to avoid connection exhaustion
+let dbPool: Pool | null = null;
+function getDbPool(): Pool | null {
+  if (!process.env.DATABASE_URL) return null;
+  if (!dbPool) {
+    dbPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 5, // Limit connections
+      idleTimeoutMillis: 30000,
+    });
+  }
+  return dbPool;
+}
 
 const DEFAULT_COUNTRY = "IN";
 
@@ -301,9 +316,55 @@ export async function POST(req: Request) {
     // NOTE: Price passed from frontend is MAJOR (e.g. 150). Convert to MINOR (15000).
     const shippingPriceMinor = typeof (body as any).shippingPrice === 'number' ? (body as any).shippingPrice! * 100 : 0;
 
-    // Clean, standard payload for Medusa
-    // Declare coinDiscountRupees early (will be populated from database later)
+    // ========== COIN DISCOUNT LOOKUP - MOVED BEFORE createDraftOrder ==========
+    // This ensures metadata contains actual coin discount values
     let coinDiscountRupees = 0;
+
+    // TODO: For production security, validate customerId against authenticated session/JWT
+    // instead of trusting client-provided headers/body. This requires auth infrastructure.
+    const customerId = headerList.get("x-customer-id") || body.customerId;
+
+    if (customerId) {
+      const pool = getDbPool();
+      if (pool) {
+        try {
+          console.log("🔍 [Coin Debug] Looking up coin discount for customer:", customerId);
+
+          const result = await pool.query(
+            `SELECT amount, customer_id, created_at FROM wallet_transactions 
+             WHERE transaction_type = 'REDEEMED' 
+             AND status = 'USED'
+             AND customer_id = $1
+             AND created_at > NOW() - INTERVAL '2 minutes'
+             ORDER BY created_at DESC 
+             LIMIT 1`,
+            [customerId]
+          );
+
+          if (result.rows.length > 0) {
+            const row = result.rows[0];
+            const coinsDeducted = parseFloat(row.amount);
+            coinDiscountRupees = coinsDeducted / 100; // Convert coins (paise) to rupees
+
+            console.log("💰 [Database] FOUND coin redemption:", {
+              coinsDeducted,
+              coinDiscountRupees,
+              customer: row.customer_id,
+              timestamp: row.created_at
+            });
+          } else {
+            console.log("⚠️ [Database] NO recent coin redemptions found in last 2 minutes");
+          }
+        } catch (dbError) {
+          console.error("❌ [Database] Query FAILED:", dbError);
+          // Don't fail the order, just skip coin discount
+        }
+        // Note: We don't end the pool here - it's a module-level singleton
+      }
+    } else {
+      console.log("⚠️ [Coin Debug] No customer ID available for coin lookup");
+    }
+    // ========== END COIN DISCOUNT LOOKUP ==========
 
     // Clean, standard payload for Medusa
     const shippingMethodsPayload = Array.isArray(cart.shipping_methods) && cart.shipping_methods.length > 0
@@ -340,7 +401,7 @@ export async function POST(req: Request) {
         payment_method: paymentMethod,
         mode: body.mode || (itemsOverride ? "buy_now" : "cart"),
         expected_shipping_price: shippingPriceMinor,
-        coin_discount_rupees: coinDiscountRupees > 0 ? coinDiscountRupees : undefined, // Visible in admin
+        coin_discount_rupees: coinDiscountRupees > 0 ? coinDiscountRupees : undefined, // Now populated!
         coin_discount_applied: coinDiscountRupees > 0 ? `₹${coinDiscountRupees.toFixed(2)} OWEG Coins` : undefined
       },
       shipping_methods: shippingMethodsPayload
@@ -403,64 +464,20 @@ export async function POST(req: Request) {
       }
     }
 
-    // DATABASE-DRIVEN COIN DISCOUNT - SIMPLIFIED & DEBUGGED
-    console.log("🔍 [Coin Debug] Starting database query...");
-
-    try {
-      const { Pool } = await import('pg');
-      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-      console.log("🔍 [Coin Debug] Database connection established");
-
-      // SECURITY FIX: Get customer_id from auth context or request
-      const customerId = headerList.get("x-customer-id") || body.customerId;
-
-      if (!customerId) {
-        console.log("⚠️ [Coin Debug] No customer ID available for coin lookup");
-      } else {
-        // Query coin redemptions for THIS SPECIFIC customer only
-        const result = await pool.query(
-          `SELECT amount, customer_id, created_at FROM wallet_transactions 
-           WHERE transaction_type = 'REDEEMED' 
-           AND status = 'USED'
-           AND customer_id = $1
-           AND created_at > NOW() - INTERVAL '2 minutes'
-           ORDER BY created_at DESC 
-           LIMIT 1`,
-          [customerId]
-        );
-
-        console.log("🔍 [Coin Debug] Query executed, rows:", result.rows.length);
-
-        if (result.rows.length > 0) {
-          const row = result.rows[0];
-          const coinsDeducted = parseFloat(row.amount);
-          coinDiscountRupees = coinsDeducted / 100; // Convert coins (paise) to rupees
-
-          console.log("💰 [Database] FOUND coin redemption:", {
-            coinsDeducted,
-            coinDiscountRupees,
-            customer: row.customer_id,
-            timestamp: row.created_at
-          });
-        } else {
-          console.log("⚠️ [Database] NO recent coin redemptions found in last 2 minutes");
-        }
-      }
-      await pool.end();
-    } catch (dbError) {
-      console.error("❌ [Database] Query FAILED:", dbError);
-    }
-
+    // Coin discount was already looked up before createDraftOrder
     console.log("🔍 [Coin Debug] Final discount value:", coinDiscountRupees);
 
-    // Subtract discount from total
-    const finalTotal = Math.max(0, medusaTotal - coinDiscountRupees);
+    // CRITICAL FIX: medusaTotal is in PAISE (minor units)
+    // coinDiscountRupees is in RUPEES (major units)
+    // Convert coinDiscountRupees to paise before subtracting
+    const coinDiscountPaise = Math.round(coinDiscountRupees * 100);
+    const finalTotal = Math.max(0, medusaTotal - coinDiscountPaise);
 
     console.log("💰 Coin Discount Applied:", {
       coinDiscountRupees,
-      originalTotal: medusaTotal,
-      finalTotal,
+      coinDiscountPaise,
+      originalTotalPaise: medusaTotal,
+      finalTotalPaise: finalTotal,
       reduction: medusaTotal - finalTotal,
       source: coinDiscountRupees > 0 ? "database-wallet-transactions" : "none"
     });
@@ -484,11 +501,11 @@ export async function POST(req: Request) {
                   // Add negative line item for discount
                   title: "Coin Discount",
                   quantity: 1,
-                  unit_price: -Math.round(coinDiscountRupees * 100), // Negative amount in paise
+                  unit_price: -coinDiscountPaise, // Already in paise
                   variant_id: null,
                   metadata: {
                     type: "coin_discount",
-                    coins_redeemed: Math.round(coinDiscountRupees * 100)
+                    coins_redeemed: coinDiscountPaise
                   }
                 }
               ]
@@ -511,12 +528,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       medusaOrderId,
-      total: finalTotal, // Return discounted total
+      total: finalTotal, // Return discounted total in paise
       currency_code: medusaCurrency,
       cartId,
       draft: !converted,
       conversionWarning: conversionError || undefined,
-      coinDiscountApplied: coinDiscountRupees, // For frontend reference
+      coinDiscountApplied: coinDiscountRupees, // In rupees for frontend display
     });
   } catch (err) {
     console.error("draft-order error", err);
