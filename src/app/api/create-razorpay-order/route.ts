@@ -129,6 +129,12 @@ export async function POST(req: Request) {
     // Step 2: Calculate server-verified final amount
     finalAmount = totalRupees - verifiedCoinDiscount;
 
+    // Ensure final amount is never negative (data corruption or race condition protection)
+    if (finalAmount < 0) {
+      console.error(`🚨 [Razorpay] Invalid discount: ₹${verifiedCoinDiscount} exceeds order total ₹${totalRupees}`);
+      return badRequest("Discount amount exceeds order total");
+    }
+
     // Step 3: Validate frontend amount matches server calculation (1 rupee tolerance for rounding)
     const requestedAmount = Number(body.amount);
     if (!isNaN(requestedAmount) && requestedAmount > 0) {
