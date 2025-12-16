@@ -898,8 +898,8 @@ const Cart: React.FC = () => {
                 return (
                   <div
                     key={item.id}
-                    className={`flex flex - col md: flex - row items - center gap - 4 md: gap - 6 p - 4 md: p - 0 md: py - 4 bg - white rounded transition - all transform ${mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
-                      } ${isRemoving ? "opacity-0 scale-95" : ""} `}
+                    className={`flex flex-col md:flex-row items-center gap-4 md:gap-6 p-4 md:p-0 md:py-4 bg-white rounded transition-all transform ${mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
+                      } ${isRemoving ? "opacity-0 scale-95" : ""}`}
                     style={{ transitionDuration: "320ms" }}
                   >
                     {/* Product */}
@@ -907,9 +907,9 @@ const Cart: React.FC = () => {
                       <button
                         onClick={() => removeItem(item)}
                         title="Remove item"
-                        className={`text - red - 500 hover: bg - red - 50 rounded - full p - 1 transition ${isRemoving ? "opacity-50 cursor-not-allowed" : ""
-                          } `}
-                        aria-label={`Remove ${item.name} `}
+                        className={`text-red-500 hover:bg-red-50 rounded-full p-1 transition ${isRemoving ? "opacity-50 cursor-not-allowed" : ""
+                          }`}
+                        aria-label={`Remove ${item.name}`}
                         type="button"
                         disabled={isRemoving}
                       >
@@ -947,8 +947,8 @@ const Cart: React.FC = () => {
                         <button
                           onClick={() => updateQuantity(item.id, item.quantity - 1, item.name)}
                           aria-label="Decrease"
-                          className={`px - 3 py - 2 hover: bg - slate - 50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
-                            } `}
+                          className={`px-3 py-2 hover:bg-slate-50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
                           type="button"
                           disabled={controlsDisabled}
                         >
@@ -960,8 +960,8 @@ const Cart: React.FC = () => {
                         <button
                           onClick={() => updateQuantity(item.id, item.quantity + 1, item.name)}
                           aria-label="Increase"
-                          className={`px - 3 py - 2 hover: bg - slate - 50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
-                            } `}
+                          className={`px-3 py-2 hover:bg-slate-50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
                           type="button"
                           disabled={controlsDisabled}
                         >
@@ -991,8 +991,8 @@ const Cart: React.FC = () => {
                           <button
                             onClick={() => updateQuantity(item.id, item.quantity - 1, item.name)}
                             aria-label="Decrease"
-                            className={`px - 3 py - 2 hover: bg - slate - 50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
-                              } `}
+                            className={`px-3 py-2 hover:bg-slate-50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                              }`}
                             type="button"
                             disabled={controlsDisabled}
                           >
@@ -1004,8 +1004,8 @@ const Cart: React.FC = () => {
                           <button
                             onClick={() => updateQuantity(item.id, item.quantity + 1, item.name)}
                             aria-label="Increase"
-                            className={`px - 3 py - 2 hover: bg - slate - 50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
-                              } `}
+                            className={`px-3 py-2 hover:bg-slate-50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                              }`}
                             type="button"
                             disabled={controlsDisabled}
                           >
@@ -1131,8 +1131,8 @@ const Cart: React.FC = () => {
 
               {/* Content wrapper with smooth transition */}
               <div
-                className={`transition - all duration - 300 ease -in -out ${checkoutExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 overflow-hidden"
-                  } md: max - h - none md: opacity - 100`}
+                className={`transition-all duration-300 ease-in-out ${checkoutExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 overflow-hidden"
+                  } md:max-h-none md:opacity-100`}
               >
                 <div className="px-4 md:px-6 pt-0 pb-3 md:pt-6 md:pb-6 space-y-3 md:space-y-4">
                   <div className="flex justify-between items-center border-b pb-2 md:pb-3 pt-3 md:pt-0">
