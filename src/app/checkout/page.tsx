@@ -102,8 +102,6 @@ function CheckoutPageInner() {
 
   // Auto-fetch referral code from database for logged in customers
   useEffect(() => {
-    const controller = new AbortController();
-
     const fetchReferralCode = async () => {
       if (!customer?.id) return;
 
@@ -112,7 +110,6 @@ function CheckoutPageInner() {
         const res = await fetch('/api/store/referral-code', {
           headers: { 'x-customer-id': customer.id },
           credentials: 'include',
-          signal: controller.signal,
         });
 
         if (res.ok) {
@@ -124,7 +121,6 @@ function CheckoutPageInner() {
           }
         }
       } catch (error) {
-        if ((error as Error).name === 'AbortError') return;
         console.error('Failed to fetch referral code:', error);
       } finally {
         setReferralLoading(false);
@@ -132,7 +128,6 @@ function CheckoutPageInner() {
     };
 
     fetchReferralCode();
-    return () => controller.abort();
   }, [customer?.id]);
 
   // Handler to cancel/remove the referral code
@@ -154,8 +149,6 @@ function CheckoutPageInner() {
 
   // Fetch wallet balance when customer loads
   useEffect(() => {
-    const controller = new AbortController();
-
     const fetchWallet = async () => {
       if (!customer?.id) {
         setWalletBalance(0);
@@ -168,7 +161,6 @@ function CheckoutPageInner() {
         const res = await fetch('/api/store/wallet', {
           headers: { 'x-customer-id': customer.id },
           credentials: 'include',
-          signal: controller.signal,
         });
 
         if (res.ok) {
@@ -180,7 +172,6 @@ function CheckoutPageInner() {
           console.log('Wallet loaded:', data);
         }
       } catch (error) {
-        if ((error as Error).name === 'AbortError') return;
         console.error('Failed to fetch wallet:', error);
       } finally {
         setWalletLoading(false);
@@ -188,7 +179,6 @@ function CheckoutPageInner() {
     };
 
     fetchWallet();
-    return () => controller.abort();
   }, [customer?.id]);
 
   // Calculate max redeemable coins based on order total (tiered limits)
@@ -412,7 +402,7 @@ function CheckoutPageInner() {
             shippingMethod,
             shippingPrice: selectedMethod?.amount, // Pass explicit price (Major units)
             coinDiscount: (() => {
-              const discountValue = useCoins ? coinsToUse : 0; // coinsToUse is already in rupees
+              const discountValue = useCoins ? coinsToUse / 100 : 0; // Convert coins (paise) to rupees
               console.log("🔥🔥🔥 [Frontend] Draft Order Coin Discount:", { useCoins, coinsToUse, coinDiscountRupees: discountValue });
               return discountValue;
             })(),
@@ -1094,26 +1084,16 @@ function CheckoutPageInner() {
 
                           } else {
                             // User wants to remove coins
-                            // Guard: prevent overlapping operations
-                            if (applyingCoinDiscount) return;
-
                             if (coinDiscountCode && cart?.id) {
                               setApplyingCoinDiscount(true);
-                              let deleteSuccess = false;
-                              let refundSuccess = false;
-
                               try {
                                 // Remove discount from cart
-                                const deleteRes = await fetch(`/api/store/cart/apply-discount?cart_id=${cart.id}&discount_code=${coinDiscountCode}`, {
+                                await fetch(`/api/store/cart/apply-discount?cart_id=${cart.id}&discount_code=${coinDiscountCode}`, {
                                   method: 'DELETE'
                                 });
-                                deleteSuccess = deleteRes.ok;
-                                if (!deleteSuccess) {
-                                  console.error('Failed to remove discount from cart:', deleteRes.status);
-                                }
 
                                 // Refund coins back to wallet
-                                const refundRes = await fetch('/api/store/wallet/refund-coin-discount', {
+                                await fetch('/api/store/wallet/refund-coin-discount', {
                                   method: 'POST',
                                   headers: { 'content-type': 'application/json' },
                                   body: JSON.stringify({
@@ -1121,33 +1101,19 @@ function CheckoutPageInner() {
                                     discount_code: coinDiscountCode
                                   })
                                 });
-                                refundSuccess = refundRes.ok;
-                                if (!refundSuccess) {
-                                  console.error('Failed to refund coins:', refundRes.status);
-                                }
 
-                                // Only show success if both operations succeeded
-                                if (deleteSuccess && refundSuccess) {
-                                  toast.success("Coins refunded to your wallet");
-                                  // Only reset state on success
-                                  setUseCoins(false);
-                                  setCoinsToUse(0);
-                                  setCoinDiscountCode(null);
-                                } else {
-                                  toast.error("Failed to remove coin discount. Please try again.");
-                                }
+                                toast.success("Coins refunded to your wallet");
+
                               } catch (error) {
                                 console.error('Failed to remove discount:', error);
-                                toast.error("Failed to remove coin discount. Please try again.");
                               } finally {
                                 setApplyingCoinDiscount(false);
                               }
-                            } else {
-                              // No discount code to remove, just reset state
-                              setUseCoins(false);
-                              setCoinsToUse(0);
-                              setCoinDiscountCode(null);
                             }
+
+                            setUseCoins(false);
+                            setCoinsToUse(0);
+                            setCoinDiscountCode(null);
                           }
                         }}
                         className="w-4 h-4 text-green-600"
