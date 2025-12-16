@@ -1,8 +1,23 @@
 import { NextResponse } from "next/server";
 import { createRazorpayOrder, getPublicRazorpayKey } from "@/lib/razorpay";
 import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
+import { Pool } from 'pg';
 
 export const dynamic = "force-dynamic";
+
+// Module-level database pool singleton to avoid connection exhaustion
+let dbPool: Pool | null = null;
+function getDbPool(): Pool | null {
+  if (!process.env.DATABASE_URL) return null;
+  if (!dbPool) {
+    dbPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 1, // Limit connections for this route
+      idleTimeoutMillis: 30000,
+    });
+  }
+  return dbPool;
+}
 
 const DEFAULT_CURRENCY = "INR";
 
@@ -85,10 +100,8 @@ export async function POST(req: Request) {
     let verifiedCoinDiscount = 0;
 
     // Step 1: Fetch actual coin discount from wallet_transactions table
-    try {
-      const { Pool } = await import('pg');
-      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
+    const pool = getDbPool();
+    if (pool) {
       try {
         const discountQuery = await pool.query(
           `SELECT amount FROM wallet_transactions 
@@ -101,16 +114,16 @@ export async function POST(req: Request) {
         );
 
         if (discountQuery.rows.length > 0) {
-          // amount is stored in paise, convert to rupees
-          verifiedCoinDiscount = parseFloat(discountQuery.rows[0].amount) / 100;
+          // amount is stored in paise (integer), use integer arithmetic then divide
+          // This avoids parseFloat precision issues
+          verifiedCoinDiscount = Number(discountQuery.rows[0].amount) / 100;
           console.log(`💰 [Razorpay] Verified coin discount: ₹${verifiedCoinDiscount}`);
         }
-      } finally {
-        await pool.end();
+      } catch (dbErr) {
+        console.error("[Razorpay] Failed to verify coin discount:", dbErr);
+        // Continue without discount if DB fails
       }
-    } catch (dbErr) {
-      console.error("[Razorpay] Failed to verify coin discount:", dbErr);
-      // Continue without discount if DB fails
+      // Note: pool is module-level singleton, don't end it
     }
 
     // Step 2: Calculate server-verified final amount

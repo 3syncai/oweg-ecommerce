@@ -1094,16 +1094,26 @@ function CheckoutPageInner() {
 
                           } else {
                             // User wants to remove coins
+                            // Guard: prevent overlapping operations
+                            if (applyingCoinDiscount) return;
+
                             if (coinDiscountCode && cart?.id) {
                               setApplyingCoinDiscount(true);
+                              let deleteSuccess = false;
+                              let refundSuccess = false;
+
                               try {
                                 // Remove discount from cart
-                                await fetch(`/api/store/cart/apply-discount?cart_id=${cart.id}&discount_code=${coinDiscountCode}`, {
+                                const deleteRes = await fetch(`/api/store/cart/apply-discount?cart_id=${cart.id}&discount_code=${coinDiscountCode}`, {
                                   method: 'DELETE'
                                 });
+                                deleteSuccess = deleteRes.ok;
+                                if (!deleteSuccess) {
+                                  console.error('Failed to remove discount from cart:', deleteRes.status);
+                                }
 
                                 // Refund coins back to wallet
-                                await fetch('/api/store/wallet/refund-coin-discount', {
+                                const refundRes = await fetch('/api/store/wallet/refund-coin-discount', {
                                   method: 'POST',
                                   headers: { 'content-type': 'application/json' },
                                   body: JSON.stringify({
@@ -1111,19 +1121,33 @@ function CheckoutPageInner() {
                                     discount_code: coinDiscountCode
                                   })
                                 });
+                                refundSuccess = refundRes.ok;
+                                if (!refundSuccess) {
+                                  console.error('Failed to refund coins:', refundRes.status);
+                                }
 
-                                toast.success("Coins refunded to your wallet");
-
+                                // Only show success if both operations succeeded
+                                if (deleteSuccess && refundSuccess) {
+                                  toast.success("Coins refunded to your wallet");
+                                  // Only reset state on success
+                                  setUseCoins(false);
+                                  setCoinsToUse(0);
+                                  setCoinDiscountCode(null);
+                                } else {
+                                  toast.error("Failed to remove coin discount. Please try again.");
+                                }
                               } catch (error) {
                                 console.error('Failed to remove discount:', error);
+                                toast.error("Failed to remove coin discount. Please try again.");
                               } finally {
                                 setApplyingCoinDiscount(false);
                               }
+                            } else {
+                              // No discount code to remove, just reset state
+                              setUseCoins(false);
+                              setCoinsToUse(0);
+                              setCoinDiscountCode(null);
                             }
-
-                            setUseCoins(false);
-                            setCoinsToUse(0);
-                            setCoinDiscountCode(null);
                           }
                         }}
                         className="w-4 h-4 text-green-600"
