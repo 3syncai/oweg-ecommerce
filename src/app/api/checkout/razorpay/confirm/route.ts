@@ -6,6 +6,17 @@ import {
   captureOrderPayment,
 } from "@/lib/medusa-admin";
 import { createMedusaPayment, createOrderTransaction, updateOrderSummaryTotals, ensureOrderShippingMethod, ensureOrderReservations } from "@/lib/medusa-payment";
+import { Pool } from 'pg';
+
+// Shared pool instance at module level to avoid creating multiple connections per request
+let sharedPool: Pool | null = null;
+
+function getPool(): Pool | null {
+  if (!sharedPool && process.env.DATABASE_URL) {
+    sharedPool = new Pool({ connectionString: process.env.DATABASE_URL });
+  }
+  return sharedPool;
+}
 
 type ConfirmBody = {
   medusaOrderId?: string;
@@ -181,8 +192,8 @@ export async function POST(req: Request) {
     // COIN DISCOUNT PAYMENT: Record coins as separate payment
     // This ensures admin shows: Razorpay Payment + Coin Payment = Total (Outstanding = 0)
     try {
-      const { Pool } = require('pg');
-      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      const pool = getPool();
+      if (!pool) throw new Error('Database not configured');
 
       // Check if this order has coin discount from wallet_transactions
       const coinResult = await pool.query(
@@ -221,8 +232,7 @@ export async function POST(req: Request) {
           console.error("❌ [Coin Payment] Failed to record coin payment:", coinTxResult.error);
         }
       }
-
-      await pool.end();
+      // Note: pool.end() removed - using shared pool
     } catch (coinError) {
       console.error("❌ [Coin Payment] Error recording coin payment:", coinError);
     }
@@ -233,8 +243,8 @@ export async function POST(req: Request) {
         console.log("razorpay confirm: Awarding wallet coins...");
 
         // Direct database query to get customer_id (bypasses Medusa API auth issues)
-        const { Pool } = require('pg');
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+        const pool = getPool();
+        if (!pool) throw new Error('Database not configured');
 
         // Query customer_id directly from order table
         const orderResult = await pool.query(
@@ -287,15 +297,14 @@ export async function POST(req: Request) {
             } else {
               console.log("razorpay confirm: Coins already awarded for this order");
             }
-
-            await pool.end();
+            // Note: pool.end() removed - using shared pool
           } catch (dbErr) {
             console.error("razorpay confirm: ❌ Database error awarding coins:", dbErr);
-            await pool.end().catch(() => { });
+            // Note: pool.end() removed - using shared pool
           }
         } else {
           console.log("razorpay confirm: No customer_id or coins too small", { customerId, coinsEarned });
-          await pool.end();
+          // Note: pool.end() removed - using shared pool
         }
       } catch (walletErr) {
         console.error("razorpay confirm: ⚠️ Wallet coin award failed:", walletErr);
@@ -308,8 +317,8 @@ export async function POST(req: Request) {
       try {
         console.log("razorpay confirm: Checking affiliate commission...");
 
-        const { Pool } = require('pg');
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+        const pool = getPool();
+        if (!pool) throw new Error('Database not configured');
 
         // Get customer info including referral_code from customer_referral table
         const customerResult = await pool.query(
@@ -445,6 +454,17 @@ export async function POST(req: Request) {
               );
               const affiliateUserId = affiliateResult.rows[0]?.id || null;
 
+              // Check if commission already logged for this order/item (idempotency)
+              const existingCommission = await pool.query(
+                `SELECT id FROM affiliate_commission_log WHERE order_id = $1 AND variant_id = $2`,
+                [medusaOrderId, item.variant_id]
+              );
+
+              if (existingCommission.rows.length > 0) {
+                console.log(`razorpay confirm: Commission already logged for ${item.product_name}`);
+                continue;
+              }
+
               // Log commission (status PENDING - will be credited after delivery)
               await pool.query(
                 `INSERT INTO affiliate_commission_log 
@@ -485,8 +505,7 @@ export async function POST(req: Request) {
         } else {
           console.log("razorpay confirm: Customer not referred by affiliate");
         }
-
-        await pool.end();
+        // Note: pool.end() removed - using shared pool
       } catch (affiliateErr) {
         console.error("razorpay confirm: ⚠️ Affiliate commission failed:", affiliateErr);
         // Don't fail the payment confirmation if affiliate commission fails

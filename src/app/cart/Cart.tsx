@@ -812,7 +812,7 @@ const Cart: React.FC = () => {
           for (const queue of perItemQueues) {
             while (queue.length) {
               const ctx = queue.shift()!;
-              const key = `${ctx.kind}:${ctx.v} `;
+              const key = `${ctx.kind}:${ctx.v}`;
               if (seenOrderedKeys.has(key)) {
                 continue;
               }
@@ -846,7 +846,7 @@ const Cart: React.FC = () => {
         for (const res of results) {
           for (const p of res.products || []) {
             if (excludeIds.has(String(p.id))) continue;
-            const key = `${p.id} `;
+            const key = `${p.id}`;
             if (seen.has(key)) continue;
             seen.add(key);
             flat.push(p);
