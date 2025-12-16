@@ -35,6 +35,7 @@ type DraftRequestBody = {
   shippingPrice?: number;
   shippingMethodName?: string;
   coinDiscount?: number; // Coin discount in rupees
+  customerId?: string; // Customer ID for coin discount lookup
 };
 
 function mapAddress(input?: AddressInput) {
@@ -411,35 +412,42 @@ export async function POST(req: Request) {
 
       console.log("🔍 [Coin Debug] Database connection established");
 
-      // SIMPLIFIED: Get most recent REDEEMED transaction from ANY user (last 2 minutes)
-      // This avoids customer_id extraction issues
-      const result = await pool.query(
-        `SELECT amount, customer_id, created_at FROM wallet_transactions 
-         WHERE transaction_type = 'REDEEMED' 
-         AND status = 'USED'
-         AND created_at > NOW() - INTERVAL '2 minutes'
-         ORDER BY created_at DESC 
-         LIMIT 1`
-      );
+      // SECURITY FIX: Get customer_id from auth context or request
+      const customerId = headerList.get("x-customer-id") || body.customerId;
 
-      console.log("🔍 [Coin Debug] Query executed, rows:", result.rows.length);
-
-      await pool.end();
-
-      if (result.rows.length > 0) {
-        const row = result.rows[0];
-        const coinsDeducted = parseFloat(row.amount);
-        coinDiscountRupees = coinsDeducted / 100; // Convert coins (paise) to rupees
-
-        console.log("💰 [Database] FOUND coin redemption:", {
-          coinsDeducted,
-          coinDiscountRupees,
-          customer: row.customer_id,
-          timestamp: row.created_at
-        });
+      if (!customerId) {
+        console.log("⚠️ [Coin Debug] No customer ID available for coin lookup");
       } else {
-        console.log("⚠️ [Database] NO recent coin redemptions found in last 2 minutes");
+        // Query coin redemptions for THIS SPECIFIC customer only
+        const result = await pool.query(
+          `SELECT amount, customer_id, created_at FROM wallet_transactions 
+           WHERE transaction_type = 'REDEEMED' 
+           AND status = 'USED'
+           AND customer_id = $1
+           AND created_at > NOW() - INTERVAL '2 minutes'
+           ORDER BY created_at DESC 
+           LIMIT 1`,
+          [customerId]
+        );
+
+        console.log("🔍 [Coin Debug] Query executed, rows:", result.rows.length);
+
+        if (result.rows.length > 0) {
+          const row = result.rows[0];
+          const coinsDeducted = parseFloat(row.amount);
+          coinDiscountRupees = coinsDeducted / 100; // Convert coins (paise) to rupees
+
+          console.log("💰 [Database] FOUND coin redemption:", {
+            coinsDeducted,
+            coinDiscountRupees,
+            customer: row.customer_id,
+            timestamp: row.created_at
+          });
+        } else {
+          console.log("⚠️ [Database] NO recent coin redemptions found in last 2 minutes");
+        }
       }
+      await pool.end();
     } catch (dbError) {
       console.error("❌ [Database] Query FAILED:", dbError);
     }

@@ -78,14 +78,27 @@ export async function POST(req: Request) {
       return badRequest("Order total is invalid");
     }
 
-    // FORCE OVERRIDE: If frontend sends an amount, USE IT.
-    // The frontend has the most up-to-date calculation including coin discounts.
-    // FORCE OVERRIDE: If frontend sends an amount, USE IT.
+    // SECURITY FIX: Server-side validation of payment amount
+    // Prevent clients from bypassing pricing by sending arbitrary amounts
     let finalAmount = totalRupees;
     const requestedAmount = Number(body.amount);
 
     if (!isNaN(requestedAmount) && requestedAmount > 0) {
-      console.log(`💰 [Razorpay Force] Override: Order says ${totalRupees}, Frontend says ${requestedAmount}`);
+      // Check if the requested amount is within acceptable tolerance (5%)
+      // This allows for minor rounding differences but prevents major bypass attempts
+      const tolerance = totalRupees * 0.05; // 5% tolerance
+      const minAcceptable = totalRupees - tolerance;
+
+      if (requestedAmount < minAcceptable) {
+        console.error(`🚨 [Razorpay Security] Payment bypass attempt! Order: ${totalRupees}, Requested: ${requestedAmount}`);
+        return badRequest(`Invalid payment amount. Order total is ₹${totalRupees.toFixed(2)}`);
+      }
+
+      // If amount is lower (within tolerance), it's likely a coin discount - allow but log
+      if (requestedAmount < totalRupees) {
+        console.log(`💰 [Razorpay] Discounted amount: Order=${totalRupees}, Paying=${requestedAmount} (discount of ₹${(totalRupees - requestedAmount).toFixed(2)})`);
+      }
+
       finalAmount = requestedAmount;
     } else {
       console.log(`⚠️ [Razorpay Debug] No valid amount override provided. Using calculated total: ${totalRupees}`);

@@ -184,14 +184,15 @@ export async function POST(req: Request) {
       const { Pool } = require('pg');
       const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-      // Check if this order has coin discount from wallet_transactions
+      // SECURITY FIX: Check coin discount linked to THIS SPECIFIC order
       const coinResult = await pool.query(
         `SELECT amount FROM wallet_transactions 
          WHERE transaction_type = 'REDEEMED' 
          AND status = 'USED'
-         AND created_at > NOW() - INTERVAL '5 minutes'
+         AND order_id = $1
          ORDER BY created_at DESC 
-         LIMIT 1`
+         LIMIT 1`,
+        [medusaOrderId]
       );
 
       if (coinResult.rows.length > 0) {

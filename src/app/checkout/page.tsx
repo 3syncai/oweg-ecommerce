@@ -402,7 +402,7 @@ function CheckoutPageInner() {
             shippingMethod,
             shippingPrice: selectedMethod?.amount, // Pass explicit price (Major units)
             coinDiscount: (() => {
-              const discountValue = useCoins ? coinsToUse / 100 : 0; // Convert coins (paise) to rupees
+              const discountValue = useCoins ? coinsToUse : 0; // coinsToUse is already in rupees
               console.log("🔥🔥🔥 [Frontend] Draft Order Coin Discount:", { useCoins, coinsToUse, coinDiscountRupees: discountValue });
               return discountValue;
             })(),
