@@ -6,6 +6,7 @@ import {
   extractErrorPayload,
   medusaStoreFetch,
 } from "@/lib/medusa-auth"
+import { Pool } from "pg"
 
 export const dynamic = "force-dynamic"
 
@@ -37,6 +38,8 @@ function buildMetadata(body: RegisterBody) {
   if (body.gst) metadata.gst_number = body.gst.trim()
   if (body.userType) metadata.user_type = body.userType
   if (typeof body.newsletter === "boolean") metadata.newsletter_opt_in = body.newsletter
+  // Initialize wallet with 0 coins for rewards system
+  metadata.wallet_coins = 0
   return metadata
 }
 
@@ -227,6 +230,56 @@ export async function POST(req: NextRequest) {
         customer = mePayload?.customer || mePayload
       } else {
         console.warn("registered but failed to fetch /store/customers/me", meRes.status)
+      }
+    }
+
+    // Insert into customer_referral table if referral code provided
+    if (body.referral && customer?.id) {
+      console.error('[[ REGISTRATION ]] Saving referral code:', body.referral, 'for customer:', customer.id)
+
+      if (!process.env.DATABASE_URL) {
+        console.error('[[ REGISTRATION ERROR ]] DATABASE_URL is missing in API route environment!')
+      } else {
+        try {
+          const pool = new Pool({ connectionString: process.env.DATABASE_URL }) // Create new pool for this request to be safe
+
+          await pool.query(
+            `INSERT INTO customer_referral (customer_id, referral_code, created_at)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (customer_id) DO UPDATE 
+             SET referral_code = EXCLUDED.referral_code`, // Update if exists to be safe
+            [customer.id, body.referral.trim()]
+          )
+
+          // Also track in affiliate_referrals table for affiliate dashboard
+          const affiliateCode = body.referral.trim()
+          const customerEmail = body.email || customer.email
+          const customerName = `${body.firstName || ''} ${body.lastName || ''}`.trim()
+
+          // Find affiliate_user_id if exists
+          const affiliateResult = await pool.query(
+            `SELECT id FROM affiliate_user WHERE refer_code = $1`,
+            [affiliateCode]
+          )
+          const affiliateUserId = affiliateResult.rows[0]?.id || null
+
+          await pool.query(
+            `INSERT INTO affiliate_referrals 
+               (affiliate_code, affiliate_user_id, customer_id, customer_email, customer_name)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (affiliate_code, customer_id) DO UPDATE 
+             SET customer_email = EXCLUDED.customer_email,
+                 customer_name = EXCLUDED.customer_name`,
+            [affiliateCode, affiliateUserId, customer.id, customerEmail, customerName]
+          )
+
+          console.error('[[ REGISTRATION ]] Tracked affiliate referral for:', affiliateCode)
+
+          await pool.end()
+          console.error('[[ REGISTRATION SUCCESS ]] Saved referral code to database automatically.')
+        } catch (dbError) {
+          console.error('[[ REGISTRATION ERROR ]] Failed to save referral code to DB:', dbError)
+        }
       }
     }
 

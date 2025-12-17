@@ -1,0 +1,11 @@
+{
+    "login": {
+        "title": "Welcome to OWEG Admin",
+        "hint": "Sign in to access the admin dashboard",
+        "forgotPassword": "Forgot password? - <0>Reset</0>"
+    },
+    "invite": {
+        "title": "Welcome to OWEG Admin",
+        "hint": "Create your account below"
+    }
+}

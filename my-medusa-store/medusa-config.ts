@@ -29,21 +29,21 @@ export default defineConfig({
     }),
   },
   modules: [
-    {
-      resolve: "@medusajs/medusa/auth",
-      dependencies: [Modules.CACHE, ContainerRegistrationKeys.LOGGER],
-      options: {
-        providers: [
-          {
-            resolve: "@medusajs/medusa/auth-emailpass",
-            id: "emailpass",
-            options: {
-              // optional provider-specific options
-            },
-          },
-        ],
-      },
-    },
+    // {
+    //   resolve: "@medusajs/medusa/auth",
+    //   dependencies: [Modules.CACHE, ContainerRegistrationKeys.LOGGER],
+    //   options: {
+    //     providers: [
+    //       {
+    //         resolve: "@medusajs/medusa/auth-emailpass",
+    //         id: "emailpass",
+    //         options: {
+    //           // optional provider-specific options
+    //         },
+    //       },
+    //     ],
+    //   },
+    // },
     {
       resolve: "@medusajs/file",
       options: {
@@ -73,6 +73,9 @@ export default defineConfig({
     },
     {
       resolve: "./src/modules/flash-sale",
+    },
+    {
+      resolve: "./src/modules/affiliate",
     },
     // {
     //   resolve: "@medusajs/medusa/notification",

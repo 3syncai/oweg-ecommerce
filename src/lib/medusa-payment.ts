@@ -191,9 +191,9 @@ export async function createOrderTransaction(transaction: {
         console.log('   Amount:', transaction.amount, transaction.currency_code.toUpperCase());
 
         // Build raw_amount JSON for Medusa v2
-        const rawAmount = JSON.stringify({ 
-            value: String(transaction.amount), 
-            precision: 20 
+        const rawAmount = JSON.stringify({
+            value: String(transaction.amount),
+            precision: 20
         });
 
         // order_transaction schema: id, order_id, version, amount, raw_amount, 
@@ -221,10 +221,10 @@ export async function createOrderTransaction(transaction: {
         ];
 
         const result = await pool.query(query, values);
-        
+
         console.log('✅ OrderTransaction created:', result.rows[0].id);
         console.log('   This will update paid_total in order_summary!');
-        
+
         await pool.end();
         return { success: true, data: result.rows[0] };
     } catch (err) {

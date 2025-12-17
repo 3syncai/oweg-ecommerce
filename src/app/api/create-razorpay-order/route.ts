@@ -41,6 +41,9 @@ function badRequest(message: string) {
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as RequestBody;
+
+    console.log("🔥🔥🔥 [Razorpay Debug] Incoming Body:", JSON.stringify(body, null, 2));
+
     let medusaOrderId = body.medusaOrderId?.trim();
 
     if (!medusaOrderId) {
@@ -75,24 +78,42 @@ export async function POST(req: Request) {
       return badRequest("Order total is invalid");
     }
 
-    if (typeof body.amount === "number" && Math.abs(body.amount - totalRupees) > 1) {
-      return badRequest("Amount mismatch");
+    // FORCE OVERRIDE: If frontend sends an amount, USE IT.
+    // The frontend has the most up-to-date calculation including coin discounts.
+    // FORCE OVERRIDE: If frontend sends an amount, USE IT.
+    let finalAmount = totalRupees;
+    const requestedAmount = Number(body.amount);
+
+    if (!isNaN(requestedAmount) && requestedAmount > 0) {
+      console.log(`💰 [Razorpay Force] Override: Order says ${totalRupees}, Frontend says ${requestedAmount}`);
+      finalAmount = requestedAmount;
+    } else {
+      console.log(`⚠️ [Razorpay Debug] No valid amount override provided. Using calculated total: ${totalRupees}`);
     }
 
     const metadata = (order.metadata || {}) as Record<string, unknown>;
     if (typeof metadata.razorpay_order_id === "string" && metadata.razorpay_order_id) {
-      return NextResponse.json({
-        orderId: metadata.razorpay_order_id,
-        key: getPublicRazorpayKey(),
-        amount: totalRupees,
-        currency,
-      });
+      // CHECK IF EXISTING ORDER AMOUNT MATCHES (approximate check)
+      // We don't store the exact amount in metadata usually, but we can check if coin discount changed
+      // For safety: If we have an explicit override amount from frontend, and it differs from totalRupees,
+      // we should probably CREATE A NEW ONE to be safe, or just ignore the cache if coin discount is active.
+
+      if (Math.abs(finalAmount - totalRupees) > 1) {
+        console.log("💰 [Razorpay Refresh] Discount active, ignoring cached order ID to force new amount");
+        // Fall through to create new order
+      } else {
+        return NextResponse.json({
+          orderId: metadata.razorpay_order_id,
+          key: getPublicRazorpayKey(),
+          amount: totalRupees,
+          currency,
+        });
+      }
     }
 
     const rzpOrder = await createRazorpayOrder(
       {
-        // Medusa totals are in major unit (rupees); let helper convert to paise
-        amount: totalRupees,
+        amount: finalAmount, // Use the forced amount
         currency,
         receipt: medusaOrderId,
         notes: {

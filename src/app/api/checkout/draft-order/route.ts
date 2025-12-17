@@ -34,6 +34,7 @@ type DraftRequestBody = {
   mode?: "buy_now" | "cart";
   shippingPrice?: number;
   shippingMethodName?: string;
+  coinDiscount?: number; // Coin discount in rupees
 };
 
 function mapAddress(input?: AddressInput) {
@@ -129,7 +130,7 @@ async function getFallbackRegionId() {
 async function createTempCart() {
   const payload: Record<string, string> = {};
   if (SALES_CHANNEL_ID) payload.sales_channel_id = SALES_CHANNEL_ID;
-  
+
   const regionId = await getFallbackRegionId();
   if (regionId) payload.region_id = regionId;
 
@@ -189,12 +190,12 @@ export async function POST(req: Request) {
     const itemsOverride =
       Array.isArray(body.itemsOverride) && body.itemsOverride.length
         ? body.itemsOverride
-            .filter((it) => it?.variant_id && Number(it.quantity) > 0)
-            .map((it) => ({
-              variant_id: it.variant_id,
-              quantity: Math.max(1, Number(it.quantity)),
-              unit_price: typeof (it as any).price_minor === 'number' ? (it as any).price_minor : undefined
-            }))
+          .filter((it) => it?.variant_id && Number(it.quantity) > 0)
+          .map((it) => ({
+            variant_id: it.variant_id,
+            quantity: Math.max(1, Number(it.quantity)),
+            unit_price: typeof (it as any).price_minor === 'number' ? (it as any).price_minor : undefined
+          }))
         : null;
 
     let cart: Record<string, unknown> | null = null;
@@ -252,34 +253,34 @@ export async function POST(req: Request) {
 
     const items = Array.isArray(cart.items)
       ? cart.items
-          .map((item: unknown) => {
-            const record = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
-            const variantObj = record.variant as Record<string, unknown> | undefined;
-            const variantId =
-              (typeof record.variant_id === "string" && record.variant_id) ||
-              (variantObj && typeof variantObj.id === "string" && variantObj.id) ||
-              (typeof record.id === "string" && record.id) ||
-              undefined;
-            if (typeof variantId !== "string") return null;
-            const quantityRaw =
-              typeof record.quantity === "number"
-                ? record.quantity
-                : Number.isFinite(Number(record.quantity))
-                  ? Number(record.quantity)
-                  : 1;
-            const quantity = Math.max(1, quantityRaw);
-            
-            // Apply price override if it matches an overridden item (for Buy Now)
-            const override = itemsOverride?.find(it => it.variant_id === variantId)
-            const unit_price = override?.unit_price
+        .map((item: unknown) => {
+          const record = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
+          const variantObj = record.variant as Record<string, unknown> | undefined;
+          const variantId =
+            (typeof record.variant_id === "string" && record.variant_id) ||
+            (variantObj && typeof variantObj.id === "string" && variantObj.id) ||
+            (typeof record.id === "string" && record.id) ||
+            undefined;
+          if (typeof variantId !== "string") return null;
+          const quantityRaw =
+            typeof record.quantity === "number"
+              ? record.quantity
+              : Number.isFinite(Number(record.quantity))
+                ? Number(record.quantity)
+                : 1;
+          const quantity = Math.max(1, quantityRaw);
 
-            return {
-              variant_id: variantId,
-              quantity,
-              unit_price
-            };
-          })
-          .filter((item): item is NonNullable<typeof item> => Boolean(item)) as unknown as { variant_id: string; quantity: number; unit_price?: number }[]
+          // Apply price override if it matches an overridden item (for Buy Now)
+          const override = itemsOverride?.find(it => it.variant_id === variantId)
+          const unit_price = override?.unit_price
+
+          return {
+            variant_id: variantId,
+            quantity,
+            unit_price
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item)) as unknown as { variant_id: string; quantity: number; unit_price?: number }[]
       : [];
 
     if (!items.length) {
@@ -298,27 +299,31 @@ export async function POST(req: Request) {
     // Prepare shipping methods
     // NOTE: Price passed from frontend is MAJOR (e.g. 150). Convert to MINOR (15000).
     const shippingPriceMinor = typeof (body as any).shippingPrice === 'number' ? (body as any).shippingPrice! * 100 : 0;
-    
+
+    // Clean, standard payload for Medusa
+    // Declare coinDiscountRupees early (will be populated from database later)
+    let coinDiscountRupees = 0;
+
     // Clean, standard payload for Medusa
     const shippingMethodsPayload = Array.isArray(cart.shipping_methods) && cart.shipping_methods.length > 0
-        ? cart.shipping_methods.map((sm: any) => ({
-            shipping_option_id: sm.shipping_option_id,
-            option_id: sm.shipping_option_id, // Compat
-            amount: sm.price || 0,
-            price: sm.price || 0, // Compat
-            name: sm.name || "Shipping", 
-            data: sm.data || {},
-          }))
-        : (body.shippingMethod 
-            ? [{ 
-                shipping_option_id: body.shippingMethod,
-                option_id: body.shippingMethod, // Compat
-                amount: shippingPriceMinor || 0,
-                price: shippingPriceMinor || 0, // Compat
-                name: (body as any).shippingMethodName || "Shipping",
-                data: {},
-              }] 
-            : undefined);
+      ? cart.shipping_methods.map((sm: any) => ({
+        shipping_option_id: sm.shipping_option_id,
+        option_id: sm.shipping_option_id, // Compat
+        amount: sm.price || 0,
+        price: sm.price || 0, // Compat
+        name: sm.name || "Shipping",
+        data: sm.data || {},
+      }))
+      : (body.shippingMethod
+        ? [{
+          shipping_option_id: body.shippingMethod,
+          option_id: body.shippingMethod, // Compat
+          amount: shippingPriceMinor || 0,
+          price: shippingPriceMinor || 0, // Compat
+          name: (body as any).shippingMethodName || "Shipping",
+          data: {},
+        }]
+        : undefined);
 
     const payload = {
       region_id: regionId,
@@ -333,7 +338,9 @@ export async function POST(req: Request) {
         shipping_method: body.shippingMethod || null,
         payment_method: paymentMethod,
         mode: body.mode || (itemsOverride ? "buy_now" : "cart"),
-        expected_shipping_price: shippingPriceMinor // Store for verification
+        expected_shipping_price: shippingPriceMinor,
+        coin_discount_rupees: coinDiscountRupees > 0 ? coinDiscountRupees : undefined, // Visible in admin
+        coin_discount_applied: coinDiscountRupees > 0 ? `₹${coinDiscountRupees.toFixed(2)} OWEG Coins` : undefined
       },
       shipping_methods: shippingMethodsPayload
     };
@@ -352,7 +359,7 @@ export async function POST(req: Request) {
 
     const draftOrder = extractOrder(draftRes.data);
     console.log("🛒 [Draft Order Debug] Created Order Total:", draftOrder?.total);
-    
+
     if (!draftOrder?.id) {
       return NextResponse.json({ error: "Draft order missing id" }, { status: 500 });
     }
@@ -360,14 +367,14 @@ export async function POST(req: Request) {
     let medusaOrderId = draftOrder.id;
     let medusaCurrency = draftOrder.currency_code || cartCurrency;
     let medusaTotal = draftOrder.total || 0;
-    
+
     // Optimistic Total Calculation
     const itemsTotal = items.reduce((sum, item) => sum + (item.unit_price || 0) * item.quantity, 0);
     const expectedTotal = itemsTotal + shippingPriceMinor;
 
     if (medusaTotal < expectedTotal && shippingPriceMinor > 0) {
-        console.warn(`🛒 [Price Warning] Medusa total (${medusaTotal}) mismatch. Using Optimistic Total (${expectedTotal})`);
-        medusaTotal = expectedTotal;
+      console.warn(`🛒 [Price Warning] Medusa total (${medusaTotal}) mismatch. Using Optimistic Total (${expectedTotal})`);
+      medusaTotal = expectedTotal;
     }
 
     let converted = false;
@@ -395,13 +402,113 @@ export async function POST(req: Request) {
       }
     }
 
+    // DATABASE-DRIVEN COIN DISCOUNT - SIMPLIFIED & DEBUGGED
+    console.log("🔍 [Coin Debug] Starting database query...");
+
+    try {
+      const { Pool } = await import('pg');
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+      console.log("🔍 [Coin Debug] Database connection established");
+
+      // SIMPLIFIED: Get most recent REDEEMED transaction from ANY user (last 2 minutes)
+      // This avoids customer_id extraction issues
+      const result = await pool.query(
+        `SELECT amount, customer_id, created_at FROM wallet_transactions 
+         WHERE transaction_type = 'REDEEMED' 
+         AND status = 'USED'
+         AND created_at > NOW() - INTERVAL '2 minutes'
+         ORDER BY created_at DESC 
+         LIMIT 1`
+      );
+
+      console.log("🔍 [Coin Debug] Query executed, rows:", result.rows.length);
+
+      await pool.end();
+
+      if (result.rows.length > 0) {
+        const row = result.rows[0];
+        const coinsDeducted = parseFloat(row.amount);
+        coinDiscountRupees = coinsDeducted / 100; // Convert coins (paise) to rupees
+
+        console.log("💰 [Database] FOUND coin redemption:", {
+          coinsDeducted,
+          coinDiscountRupees,
+          customer: row.customer_id,
+          timestamp: row.created_at
+        });
+      } else {
+        console.log("⚠️ [Database] NO recent coin redemptions found in last 2 minutes");
+      }
+    } catch (dbError) {
+      console.error("❌ [Database] Query FAILED:", dbError);
+    }
+
+    console.log("🔍 [Coin Debug] Final discount value:", coinDiscountRupees);
+
+    // Subtract discount from total
+    const finalTotal = Math.max(0, medusaTotal - coinDiscountRupees);
+
+    console.log("💰 Coin Discount Applied:", {
+      coinDiscountRupees,
+      originalTotal: medusaTotal,
+      finalTotal,
+      reduction: medusaTotal - finalTotal,
+      source: coinDiscountRupees > 0 ? "database-wallet-transactions" : "none"
+    });
+
+    // ADD COIN DISCOUNT AS ORDER ADJUSTMENT in Medusa Admin
+    if (coinDiscountRupees > 0 && medusaOrderId) {
+      try {
+        console.log("🔧 [Medusa] Adding coin discount adjustment to order...");
+
+        const adminApiKey = process.env.MEDUSA_ADMIN_API_KEY;
+        if (adminApiKey) {
+          const adjustmentRes = await fetch(`${BACKEND_BASE}/admin/orders/${medusaOrderId}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${adminApiKey}`
+            },
+            body: JSON.stringify({
+              items: [
+                {
+                  // Add negative line item for discount
+                  title: "Coin Discount",
+                  quantity: 1,
+                  unit_price: -Math.round(coinDiscountRupees * 100), // Negative amount in paise
+                  variant_id: null,
+                  metadata: {
+                    type: "coin_discount",
+                    coins_redeemed: Math.round(coinDiscountRupees * 100)
+                  }
+                }
+              ]
+            })
+          });
+
+          if (adjustmentRes.ok) {
+            console.log("✅ [Medusa] Coin discount adjustment added to order");
+          } else {
+            const errorText = await adjustmentRes.text();
+            console.warn("⚠️ [Medusa] Failed to add adjustment:", errorText);
+          }
+        } else {
+          console.warn("⚠️ [Medusa] MEDUSA_ADMIN_API_KEY not configured");
+        }
+      } catch (updateError) {
+        console.error("❌ [Medusa] Error adding adjustment:", updateError);
+      }
+    }
+
     return NextResponse.json({
       medusaOrderId,
-      total: medusaTotal,
+      total: finalTotal, // Return discounted total
       currency_code: medusaCurrency,
       cartId,
       draft: !converted,
       conversionWarning: conversionError || undefined,
+      coinDiscountApplied: coinDiscountRupees, // For frontend reference
     });
   } catch (err) {
     console.error("draft-order error", err);

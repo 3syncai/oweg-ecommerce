@@ -22,6 +22,7 @@ import {
   notifyQuantityUpdated,
   notifyRemoveItem,
 } from "@/lib/notifications";
+import { useAuth } from "@/contexts/AuthProvider";
 
 interface CartItemUI {
   id: string;
@@ -411,11 +412,49 @@ const mapCartPayloadToItems = (payload?: CartApiPayload): CartItemUI[] => {
 
 const Cart: React.FC = () => {
   const { syncFromCartPayload } = useCartSummary();
+  const { customer } = useAuth();
   const [cartItems, setCartItems] = useState<CartItemUI[]>([]);
   const [couponCode, setCouponCode] = useState<string>("");
   const [mounted, setMounted] = useState<boolean>(false);
   const [removingIds, setRemovingIds] = useState<Record<string, boolean>>({});
   const [updatingIds, setUpdatingIds] = useState<Record<string, boolean>>({});
+
+  // Auto-apply referral code from customer_referral table
+  useEffect(() => {
+    const fetchReferralCode = async () => {
+      if (!customer?.id) {
+        console.log('No customer logged in');
+        return;
+      }
+
+      try {
+        console.log('Fetching referral code for customer:', customer.id);
+
+        const res = await fetch('/api/store/referral-code', {
+          headers: {
+            'x-customer-id': customer.id,
+          },
+          credentials: 'include',
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          console.log('Referral code response:', data);
+
+          if (data.referral_code) {
+            console.log('Auto-applying referral code:', data.referral_code);
+            setCouponCode(data.referral_code);
+          } else {
+            console.log('No referral code found for this customer');
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch referral code:', error);
+      }
+    };
+
+    fetchReferralCode();
+  }, [customer?.id]);
 
   const deriveErrorMessage = useCallback((payload: unknown, fallback: string): string => {
     if (payload && typeof payload === "object") {
@@ -446,7 +485,7 @@ const Cart: React.FC = () => {
       try {
         // Get guest cart ID if available
         const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
-        
+
         const res = await fetch("/api/medusa/cart", {
           cache: "no-store",
           credentials: "include",
@@ -456,12 +495,12 @@ const Cart: React.FC = () => {
         });
         if (!res.ok) return;
         const data = (await res.json()) as CartApiPayload;
-        
+
         // Store guest cart ID if returned
         if (data.guestCartId && typeof window !== "undefined" && typeof data.guestCartId === "string") {
           localStorage.setItem("guest_cart_id", data.guestCartId);
         }
-        
+
         applyCartPayload(data, options);
       } catch (err) {
         console.warn("Failed to refresh cart from server", err);
@@ -481,7 +520,7 @@ const Cart: React.FC = () => {
       try {
         // Get guest cart ID if available
         const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
-        
+
         const res = await fetch("/api/medusa/cart", {
           cache: "no-store",
           credentials: "include",
@@ -515,12 +554,12 @@ const Cart: React.FC = () => {
         }
 
         const data = (await res.json()) as CartApiPayload;
-        
+
         // Store guest cart ID if returned
         if (data.guestCartId && typeof window !== "undefined" && typeof data.guestCartId === "string") {
           localStorage.setItem("guest_cart_id", data.guestCartId);
         }
-        
+
         if (!cancelled) {
           applyCartPayload(data);
         }
@@ -546,10 +585,10 @@ const Cart: React.FC = () => {
     try {
       // Get guest cart ID if available
       const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
-      
-      const res = await fetch(`/api/medusa/cart/line-items/${encodeURIComponent(id)}`, {
+
+      const res = await fetch(`/ api / medusa / cart / line - items / ${encodeURIComponent(id)} `, {
         method: "PATCH",
-        headers: { 
+        headers: {
           "content-type": "application/json",
           ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
         },
@@ -586,8 +625,8 @@ const Cart: React.FC = () => {
     try {
       // Get guest cart ID if available
       const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
-      
-      const res = await fetch(`/api/medusa/cart/line-items/${encodeURIComponent(item.id)}`, {
+
+      const res = await fetch(`/ api / medusa / cart / line - items / ${encodeURIComponent(item.id)} `, {
         method: "DELETE",
         headers: {
           ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
@@ -734,7 +773,7 @@ const Cart: React.FC = () => {
           const detailResults = await Promise.all(
             fallbackDetailRequests.map(async ({ productId, index }) => {
               try {
-                const res = await fetch(`/api/medusa/products/${encodeURIComponent(productId)}`, {
+                const res = await fetch(`/ api / medusa / products / ${encodeURIComponent(productId)} `, {
                   cache: "no-store",
                 });
                 if (!res.ok) {
@@ -793,7 +832,7 @@ const Cart: React.FC = () => {
         const results = await Promise.all(
           picks.map(async (p) => {
             try {
-              const r = await fetch(`/api/medusa/products?${p.kind}=${encodeURIComponent(p.v)}&limit=12`, { cache: "no-store" });
+              const r = await fetch(`/ api / medusa / products ? ${p.kind}=${encodeURIComponent(p.v)}& limit=12`, { cache: "no-store" });
               if (!r.ok) return { products: [] } as { products: UIProduct[] };
               return (await r.json()) as { products: UIProduct[] };
             } catch {
@@ -859,9 +898,8 @@ const Cart: React.FC = () => {
                 return (
                   <div
                     key={item.id}
-                    className={`flex flex-col md:flex-row items-center gap-4 md:gap-6 p-4 md:p-0 md:py-4 bg-white rounded transition-all transform ${
-                      mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
-                    } ${isRemoving ? "opacity-0 scale-95" : ""}`}
+                    className={`flex flex-col md:flex-row items-center gap-4 md:gap-6 p-4 md:p-0 md:py-4 bg-white rounded transition-all transform ${mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
+                      } ${isRemoving ? "opacity-0 scale-95" : ""}`}
                     style={{ transitionDuration: "320ms" }}
                   >
                     {/* Product */}
@@ -869,9 +907,8 @@ const Cart: React.FC = () => {
                       <button
                         onClick={() => removeItem(item)}
                         title="Remove item"
-                        className={`text-red-500 hover:bg-red-50 rounded-full p-1 transition ${
-                          isRemoving ? "opacity-50 cursor-not-allowed" : ""
-                        }`}
+                        className={`text-red-500 hover:bg-red-50 rounded-full p-1 transition ${isRemoving ? "opacity-50 cursor-not-allowed" : ""
+                          }`}
                         aria-label={`Remove ${item.name}`}
                         type="button"
                         disabled={isRemoving}
@@ -910,9 +947,8 @@ const Cart: React.FC = () => {
                         <button
                           onClick={() => updateQuantity(item.id, item.quantity - 1, item.name)}
                           aria-label="Decrease"
-                          className={`px-3 py-2 hover:bg-slate-50 transition ${
-                            controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
-                          }`}
+                          className={`px-3 py-2 hover:bg-slate-50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
                           type="button"
                           disabled={controlsDisabled}
                         >
@@ -924,9 +960,8 @@ const Cart: React.FC = () => {
                         <button
                           onClick={() => updateQuantity(item.id, item.quantity + 1, item.name)}
                           aria-label="Increase"
-                          className={`px-3 py-2 hover:bg-slate-50 transition ${
-                            controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
-                          }`}
+                          className={`px-3 py-2 hover:bg-slate-50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
                           type="button"
                           disabled={controlsDisabled}
                         >
@@ -956,9 +991,8 @@ const Cart: React.FC = () => {
                           <button
                             onClick={() => updateQuantity(item.id, item.quantity - 1, item.name)}
                             aria-label="Decrease"
-                            className={`px-3 py-2 hover:bg-slate-50 transition ${
-                              controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
-                            }`}
+                            className={`px-3 py-2 hover:bg-slate-50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                              }`}
                             type="button"
                             disabled={controlsDisabled}
                           >
@@ -970,9 +1004,8 @@ const Cart: React.FC = () => {
                           <button
                             onClick={() => updateQuantity(item.id, item.quantity + 1, item.name)}
                             aria-label="Increase"
-                            className={`px-3 py-2 hover:bg-slate-50 transition ${
-                              controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
-                            }`}
+                            className={`px-3 py-2 hover:bg-slate-50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                              }`}
                             type="button"
                             disabled={controlsDisabled}
                           >
@@ -1034,7 +1067,7 @@ const Cart: React.FC = () => {
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {recommended.map((p) => {
                     const slug = encodeURIComponent(String(p.handle || p.id));
-                    const href = `/productDetail/${slug}?id=${encodeURIComponent(String(p.id))}`;
+                    const href = `/ productDetail / ${slug}?id = ${encodeURIComponent(String(p.id))} `;
                     return (
                       <Link
                         key={p.id}
@@ -1098,9 +1131,8 @@ const Cart: React.FC = () => {
 
               {/* Content wrapper with smooth transition */}
               <div
-                className={`transition-all duration-300 ease-in-out ${
-                  checkoutExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 overflow-hidden"
-                } md:max-h-none md:opacity-100`}
+                className={`transition-all duration-300 ease-in-out ${checkoutExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 overflow-hidden"
+                  } md:max-h-none md:opacity-100`}
               >
                 <div className="px-4 md:px-6 pt-0 pb-3 md:pt-6 md:pb-6 space-y-3 md:space-y-4">
                   <div className="flex justify-between items-center border-b pb-2 md:pb-3 pt-3 md:pt-0">

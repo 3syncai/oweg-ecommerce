@@ -129,7 +129,20 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const sourceTagParam = searchParams?.get('sourceTag')?.trim() || undefined
   const sourceCategoryIdParam = searchParams?.get('sourceCategoryId')?.trim() || undefined
   const sourceCategoryHandleParam = searchParams?.get('sourceCategoryHandle')?.trim() || undefined
+  const referralCodeParam = searchParams?.get('ref')?.trim() || undefined
   const { customer, setCustomer } = useAuth()
+
+  // Store referral code in localStorage when detected
+  useEffect(() => {
+    if (referralCodeParam) {
+      try {
+        localStorage.setItem('affiliateReferralCode', referralCodeParam)
+        console.log('Stored affiliate referral code:', referralCodeParam)
+      } catch (error) {
+        console.error('Failed to store referral code:', error)
+      }
+    }
+  }, [referralCodeParam])
 
   const goToCart = useCallback(() => {
     router.push('/cart')
@@ -415,9 +428,9 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const preferredTagValues = useMemo(() => {
     const set = new Set<string>()
     if (shouldUseSourceTag && sourceTagParam) set.add(sourceTagParam)
-    ;(product?.tags || []).forEach((tag) => {
-      if (tag) set.add(tag)
-    })
+      ; (product?.tags || []).forEach((tag) => {
+        if (tag) set.add(tag)
+      })
     return Array.from(set)
   }, [shouldUseSourceTag, sourceTagParam, product?.tags])
 
@@ -733,10 +746,10 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       const price = Number(item.price)
       const labels = item.category_labels || {}
       const tokens = new Set<string>()
-      ;(item.category_ids || [])
-        .map((id) => (id == null ? '' : String(id)))
-        .filter((id) => id.trim().length > 0)
-        .forEach((id) => tokens.add(id))
+        ; (item.category_ids || [])
+          .map((id) => (id == null ? '' : String(id)))
+          .filter((id) => id.trim().length > 0)
+          .forEach((id) => tokens.add(id))
       Object.entries(labels).forEach(([key, value]) => {
         if (!key) return
         tokens.add(String(key))
@@ -883,27 +896,27 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       const key = String(item.id)
       if (compareDetails[key] !== undefined || compareDetailsLoading[key]) return
       setCompareDetailsLoading((prev) => ({ ...prev, [key]: true }))
-      ;(async () => {
-        try {
-          const res = await fetch(`/api/medusa/products/${encodeURIComponent(String(item.id))}`, {
-            cache: 'no-store',
-          })
-          if (res.ok) {
-            const data = await res.json()
-            setCompareDetails((prev) => ({ ...prev, [key]: (data.product as DetailedProductType) || null }))
-          } else {
+        ; (async () => {
+          try {
+            const res = await fetch(`/api/medusa/products/${encodeURIComponent(String(item.id))}`, {
+              cache: 'no-store',
+            })
+            if (res.ok) {
+              const data = await res.json()
+              setCompareDetails((prev) => ({ ...prev, [key]: (data.product as DetailedProductType) || null }))
+            } else {
+              setCompareDetails((prev) => ({ ...prev, [key]: null }))
+            }
+          } catch {
             setCompareDetails((prev) => ({ ...prev, [key]: null }))
+          } finally {
+            setCompareDetailsLoading((prev) => {
+              const next = { ...prev }
+              delete next[key]
+              return next
+            })
           }
-        } catch {
-          setCompareDetails((prev) => ({ ...prev, [key]: null }))
-        } finally {
-          setCompareDetailsLoading((prev) => {
-            const next = { ...prev }
-            delete next[key]
-            return next
-          })
-        }
-      })()
+        })()
     },
     [compareDetails, compareDetailsLoading]
   )
@@ -1087,21 +1100,21 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     if (!stockInfo.manage) return true
     // If backorders are allowed, it's always in stock
     if (stockInfo.backorder) return true
-    
+
     // Otherwise check quantity > 0
     if (typeof stockInfo.quantity === 'number') {
       return stockInfo.quantity > 0
     }
-    
+
     // Fallback if no quantity found: check variants array if we didn't resolve specific variant
     if (!product?.variants?.length) return false
-    
+
     // Try to find ANY variant in stock (fallback logic)
     return product.variants.some((variant) => {
       const vRec = variant as unknown as Record<string, unknown>
       const vManage = (variant.manage_inventory as boolean | undefined) ?? (vRec.manage_inventory as boolean | undefined) ?? true
       const vBack = (variant.allow_backorder as boolean | undefined) ?? (vRec.allow_backorder as boolean | undefined) ?? false
-      
+
       if (!vManage || vBack) return true
 
       const candidates = [
@@ -1140,20 +1153,20 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     try {
       // Get guest cart ID if available
       const guestCartId = typeof window !== 'undefined' ? localStorage.getItem('guest_cart_id') : null
-      
+
       // Ensure cart exists
-      await fetch('/api/medusa/cart', { 
-        method: 'POST', 
+      await fetch('/api/medusa/cart', {
+        method: 'POST',
         credentials: 'include',
         headers: {
           ...(guestCartId ? { 'x-guest-cart-id': guestCartId } : {}),
         },
       })
-      
+
       // Add item to cart
       const res = await fetch('/api/medusa/cart/line-items', {
         method: 'POST',
-        headers: { 
+        headers: {
           'content-type': 'application/json',
           ...(guestCartId ? { 'x-guest-cart-id': guestCartId } : {}),
         },
@@ -1166,20 +1179,20 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           (payload && (payload.error || payload.message)) || 'Unable to add to cart right now.'
         throw new Error(message)
       }
-      
+
       // Store guest cart ID if returned
       if (payload?.guestCartId && typeof window !== 'undefined' && typeof payload.guestCartId === 'string') {
         localStorage.setItem('guest_cart_id', payload.guestCartId)
       }
-      
+
       // Sync cart count
       if (payload) {
         syncFromCartPayload(payload)
       }
-      
+
       // Refresh cart to ensure count is up to date
       await refreshCart()
-      
+
       notifyCartAddSuccess(label ?? product?.title ?? 'Item', qty, goToCart)
     } catch (err) {
       console.warn('addVariantToCart failed', err)
@@ -1703,9 +1716,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                         key={item.id}
                         type="button"
                         onClick={() => toggleCompareSelection(item)}
-                        className={`flex items-start gap-3 rounded-2xl border px-3 py-2 text-left transition ${
-                          selected ? 'border-green-400 bg-green-50' : 'border-slate-200 bg-white hover:border-slate-300'
-                        }`}
+                        className={`flex items-start gap-3 rounded-2xl border px-3 py-2 text-left transition ${selected ? 'border-green-400 bg-green-50' : 'border-slate-200 bg-white hover:border-slate-300'
+                          }`}
                       >
                         <input
                           type="checkbox"
@@ -1758,11 +1770,10 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   type="button"
                   disabled={!compareSelection.length}
                   onClick={handleCompareNow}
-                  className={`rounded-full px-5 py-2 text-sm font-semibold transition ${
-                    compareSelection.length
+                  className={`rounded-full px-5 py-2 text-sm font-semibold transition ${compareSelection.length
                       ? 'bg-green-600 text-white hover:bg-green-700'
                       : 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                  }`}
+                    }`}
                 >
                   Compare now
                 </button>

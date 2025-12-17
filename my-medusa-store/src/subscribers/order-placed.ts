@@ -13,7 +13,7 @@ export default async function orderPlacedSubscriber({
 
   // 1. Fetch Order Details
   const order = await orderModuleService.retrieveOrder(orderId, {
-    relations: ["items", "shipping_address", "billing_address", "currency"],
+    relations: ["items", "shipping_address", "billing_address"],
   })
 
   // 2. Generate Invoice
@@ -43,13 +43,13 @@ export default async function orderPlacedSubscriber({
     template: "order-confirmation",
     data: {
       subject: `Order Confirmation #${order.display_id}`,
-      order: order, 
+      order: order,
       text: `Thank you for your order! Order ID: ${order.display_id}. Find your invoice attached.`,
       html: `<h1>Thank you for your order!</h1><p>Order ID: ${order.display_id}</p><p>Your invoice is attached.</p>`,
       attachments: attachments
     }
   })
-  
+
   console.log(`Notification sent for order ${orderId}`)
 }
 
