@@ -11,6 +11,7 @@ type Order = {
   display_id?: string
   email?: string
   status: string
+  fulfillment_status?: string
   total: any
   created_at: string
   items?: Array<{
@@ -28,7 +29,7 @@ const VendorOrdersPage = () => {
 
   useEffect(() => {
     const vendorToken = localStorage.getItem("vendor_token")
-    
+
     if (!vendorToken) {
       router.push("/login")
       return
@@ -57,7 +58,7 @@ const VendorOrdersPage = () => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
-    }).format(amount / 100)
+    }).format(amount) // Don't divide - already in rupees
   }
 
   const formatDate = (dateString: string) => {
@@ -84,61 +85,69 @@ const VendorOrdersPage = () => {
     )
   } else {
     content = (
-    <Container className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <Heading level="h1">Orders</Heading>
-          <Text className="text-ui-fg-subtle">Manage your orders</Text>
+      <Container className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Heading level="h1">Orders</Heading>
+            <Text className="text-ui-fg-subtle">Manage your orders</Text>
+          </div>
         </div>
-      </div>
 
-      {orders.length === 0 ? (
-        <div className="p-8 text-center border border-ui-border-base rounded-lg">
-          <Text className="text-ui-fg-subtle">No orders found</Text>
-        </div>
-      ) : (
-        <div className="border border-ui-border-base rounded-lg overflow-hidden">
-          <Table>
-            <Table.Header>
-              <Table.Row>
-                <Table.HeaderCell>Order</Table.HeaderCell>
-                <Table.HeaderCell>Customer</Table.HeaderCell>
-                <Table.HeaderCell>Date</Table.HeaderCell>
-                <Table.HeaderCell>Status</Table.HeaderCell>
-                <Table.HeaderCell className="text-right">Total</Table.HeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {orders.map((order) => {
+        {orders.length === 0 ? (
+          <div className="p-8 text-center border border-ui-border-base rounded-lg">
+            <Text className="text-ui-fg-subtle">No orders found</Text>
+          </div>
+        ) : (
+          <div className="border border-ui-border-base rounded-lg overflow-hidden">
+            <Table>
+              <Table.Header>
+                <Table.Row>
+                  <Table.HeaderCell>Order</Table.HeaderCell>
+                  <Table.HeaderCell>Customer</Table.HeaderCell>
+                  <Table.HeaderCell>Date</Table.HeaderCell>
+                  <Table.HeaderCell>Status</Table.HeaderCell>
+                  <Table.HeaderCell className="text-right">Total</Table.HeaderCell>
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {orders.map((order) => {
                   const orderTotal =
                     typeof order.total === "number" ? order.total : order.total?.amount || 0
-                
-                return (
-                  <Table.Row key={order.id}>
-                    <Table.Cell>
+
+                  return (
+                    <Table.Row key={order.id}>
+                      <Table.Cell>
                         <Text className="font-medium">#{order.display_id || order.id.slice(0, 8)}</Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text>{order.email || "N/A"}</Text>
-                    </Table.Cell>
-                    <Table.Cell>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Text>{order.email || "N/A"}</Text>
+                      </Table.Cell>
+                      <Table.Cell>
                         <Text className="text-ui-fg-subtle">{formatDate(order.created_at)}</Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Badge color="blue">{order.status}</Badge>
-                    </Table.Cell>
-                    <Table.Cell className="text-right">
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Badge
+                          color={
+                            order.fulfillment_status === 'delivered' ? 'green' :
+                              order.fulfillment_status === 'shipped' ? 'blue' :
+                                order.fulfillment_status === 'canceled' ? 'red' : 'orange'
+                          }
+                        >
+                          {order.fulfillment_status || 'pending'}
+                        </Badge>
+                      </Table.Cell>
+                      <Table.Cell className="text-right">
                         <Text className="font-medium">{formatCurrency(orderTotal)}</Text>
-                    </Table.Cell>
-                  </Table.Row>
-                )
-              })}
-            </Table.Body>
-          </Table>
-        </div>
-      )}
-    </Container>
-  )
+                      </Table.Cell>
+                    </Table.Row>
+                  )
+                })}
+              </Table.Body>
+            </Table>
+          </div>
+        )}
+      </Container>
+    )
   }
 
   return <VendorShell>{content}</VendorShell>

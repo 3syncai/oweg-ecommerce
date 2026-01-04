@@ -12,6 +12,7 @@
     "@medusajs/icons": "^2.11.3",
     "@medusajs/ui": "^4.0.27",
     "@medusajs/ui-preset": "^2.11.3",
+    "@tailwindcss/postcss": "^4.1.18",
     "autoprefixer": "^10.4.22",
     "axios": "^1.13.2",
     "next": "16.0.3",

@@ -41,7 +41,6 @@ const VendorsPage = () => {
   const [rejectedVendors, setRejectedVendors] = useState<Vendor[]>([])
   const [pendingVendors, setPendingVendors] = useState<Vendor[]>([])
   const [selectedTab, setSelectedTab] = useState<"all" | "approved" | "rejected" | "pending">("all")
-  const [expandedVendors, setExpandedVendors] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     loadVendors()
@@ -67,16 +66,6 @@ const VendorsPage = () => {
     } finally {
       setLoading(false)
     }
-  }
-
-  const toggleVendorProducts = (vendorId: string) => {
-    const newExpanded = new Set(expandedVendors)
-    if (newExpanded.has(vendorId)) {
-      newExpanded.delete(vendorId)
-    } else {
-      newExpanded.add(vendorId)
-    }
-    setExpandedVendors(newExpanded)
   }
 
   const formatDate = (dateString: string | null | undefined) => {
@@ -133,8 +122,6 @@ const VendorsPage = () => {
   }
 
   const renderVendorRow = (vendor: Vendor) => {
-    const isExpanded = expandedVendors.has(vendor.id)
-    
     return (
       <div key={vendor.id} style={{ marginBottom: 8 }}>
         <div
@@ -160,7 +147,7 @@ const VendorsPage = () => {
               {vendor.phone || "No phone"}
             </Text>
           </div>
-          
+
           <div style={{ minWidth: 200, textAlign: "right" }}>
             <Text size="small" style={{ color: "var(--fg-muted)", marginBottom: 4 }}>
               Products: <strong>{vendor.product_count}</strong>
@@ -206,108 +193,14 @@ const VendorsPage = () => {
               </div>
             )}
           </div>
-          
+
           <Button
             variant="secondary"
-            onClick={() => toggleVendorProducts(vendor.id)}
+            onClick={() => window.location.href = `/app/vendors/${vendor.id}`}
           >
-            {isExpanded ? "Hide" : "Show"} Products
+            View Details
           </Button>
         </div>
-        
-        {isExpanded && (
-          <div
-            style={{
-              marginTop: 8,
-              marginLeft: 32,
-              padding: 16,
-              background: "var(--bg-subtle)",
-              border: "1px solid var(--border-base)",
-              borderRadius: 8,
-            }}
-          >
-            {vendor.status === "rejected" && (
-              <div style={{ marginBottom: 16 }}>
-                <Badge color="red" style={{ marginBottom: 8 }}>
-                  Rejected - Vendor can reapply
-                </Badge>
-                {vendor.rejection_reason && (
-                  <div style={{ padding: 12, background: "var(--bg-base)", borderRadius: 6 }}>
-                    <Text size="small" weight="plus" style={{ marginBottom: 4, color: "var(--fg-destructive)" }}>
-                      Rejection Reason:
-                    </Text>
-                    <Text size="small">{vendor.rejection_reason}</Text>
-                    {vendor.rejected_at && (
-                      <Text size="xsmall" style={{ marginTop: 8, color: "var(--fg-muted)" }}>
-                        Rejected on: {formatDate(vendor.rejected_at)}
-                      </Text>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {vendor.products.length > 0 ? (
-              <div>
-                <Text weight="plus" style={{ marginBottom: 12 }}>
-                  Products ({vendor.products.length})
-                </Text>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {vendor.products.map((product) => (
-                    <div
-                      key={product.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        padding: 12,
-                        background: "var(--bg-base)",
-                        borderRadius: 6,
-                      }}
-                    >
-                      {product.thumbnail && (
-                        <img
-                          src={product.thumbnail}
-                          alt={product.title}
-                          style={{
-                            width: 48,
-                            height: 48,
-                            objectFit: "cover",
-                            borderRadius: 4,
-                          }}
-                        />
-                      )}
-                      <div style={{ flex: 1 }}>
-                        <Text size="small" weight="plus">{product.title}</Text>
-                        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                          <Text size="xsmall" style={{ color: "var(--fg-muted)" }}>
-                            Status: {product.status}
-                          </Text>
-                          {product.approval_status && (
-                            <Badge color={product.approval_status === "approved" ? "green" : product.approval_status === "rejected" ? "red" : "orange"}>
-                              {product.approval_status}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                      <Button
-                        size="small"
-                        variant="secondary"
-                        onClick={() => window.open(`/app/products/${product.id}`, "_blank")}
-                      >
-                        View
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <Text size="small" style={{ color: "var(--fg-muted)" }}>
-                No products listed yet
-              </Text>
-            )}
-          </div>
-        )}
       </div>
     )
   }
@@ -334,9 +227,9 @@ const VendorsPage = () => {
       </div>
 
       {/* Tabs */}
-      <div style={{ 
-        display: "flex", 
-        gap: 8, 
+      <div style={{
+        display: "flex",
+        gap: 8,
         marginBottom: 24,
         borderBottom: "1px solid var(--border-base)",
         paddingBottom: 8,
@@ -367,17 +260,17 @@ const VendorsPage = () => {
         </Button>
       </div>
 
-        {vendorsToDisplay.length === 0 ? (
-          <div style={{ textAlign: "center", padding: 48 }}>
-            <Text style={{ color: "var(--fg-muted)" }}>
-              No {selectedTab !== "all" ? selectedTab : ""} vendors found
-            </Text>
-          </div>
-        ) : (
-          <div>
-            {vendorsToDisplay.map((vendor) => renderVendorRow(vendor))}
-          </div>
-        )}
+      {vendorsToDisplay.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 48 }}>
+          <Text style={{ color: "var(--fg-muted)" }}>
+            No {selectedTab !== "all" ? selectedTab : ""} vendors found
+          </Text>
+        </div>
+      ) : (
+        <div>
+          {vendorsToDisplay.map((vendor) => renderVendorRow(vendor))}
+        </div>
+      )}
     </Container>
   )
 }

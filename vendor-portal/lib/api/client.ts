@@ -6,7 +6,7 @@
 import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 
 // Get API URL - in Next.js, NEXT_PUBLIC_* vars are available on client
-const API_URL = typeof window !== 'undefined' 
+const API_URL = typeof window !== 'undefined'
   ? (process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000')
   : (process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000')
 
@@ -33,7 +33,7 @@ export async function apiRequest<T>(
   options: AxiosRequestConfig = {}
 ): Promise<T> {
   const url = `${API_URL}${endpoint}`
-  
+
   const defaultHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
   }
@@ -79,7 +79,7 @@ export async function apiRequest<T>(
           { originalError: error.message, url }
         )
       }
-      
+
       const errorData = error.response?.data || { message: error.message }
       throw new ApiError(
         error.response?.status || 0,
@@ -228,7 +228,7 @@ export const vendorSignupApi = {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     }
-    
+
     if (PUBLISHABLE_KEY) {
       headers['x-publishable-api-key'] = PUBLISHABLE_KEY
     }
@@ -282,7 +282,7 @@ export const vendorSignupApi = {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     }
-    
+
     if (PUBLISHABLE_KEY) {
       headers['x-publishable-api-key'] = PUBLISHABLE_KEY
     }
@@ -337,13 +337,13 @@ export const vendorProductsApi = {
   uploadImage: async (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
-    
+
     const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
     const headers: Record<string, string> = {}
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
     }
-    
+
     try {
       const response = await axios.post(`${API_URL}/vendor/products/upload-image`, formData, {
         headers,
@@ -380,7 +380,7 @@ export const vendorCategoriesApi = {
     const query = new URLSearchParams()
     if (params?.limit) query.append('limit', params.limit.toString())
     if (params?.offset) query.append('offset', params.offset.toString())
-    
+
     const queryString = query.toString()
     return apiRequest<{ product_categories: any[]; count: number }>(
       `/vendor/categories${queryString ? `?${queryString}` : ''}`
@@ -394,7 +394,7 @@ export const vendorCollectionsApi = {
     const query = new URLSearchParams()
     if (params?.limit) query.append('limit', params.limit.toString())
     if (params?.offset) query.append('offset', params.offset.toString())
-    
+
     const queryString = query.toString()
     return apiRequest<{ collections: any[]; count: number }>(
       `/vendor/collections${queryString ? `?${queryString}` : ''}`
@@ -406,6 +406,30 @@ export const vendorCollectionsApi = {
 export const vendorStatsApi = {
   get: async () => {
     return apiRequest<{ stats: any }>('/vendor/stats')
+  },
+}
+
+// Vendor Inventory API
+export const vendorInventoryApi = {
+  list: async () => {
+    return apiRequest<{ success: boolean; inventory: any[]; total: number }>('/vendor/inventory')
+  },
+
+  update: async (variantId: string, quantity: number) => {
+    return apiRequest<{ success: boolean; message: string }>('/vendor/inventory/update', {
+      method: 'POST',
+      data: {
+        variant_id: variantId,
+        quantity,
+      },
+    })
+  },
+}
+
+// Vendor Customers API
+export const vendorCustomersApi = {
+  list: async () => {
+    return apiRequest<{ customers: any[] }>('/vendor/customers')
   },
 }
 

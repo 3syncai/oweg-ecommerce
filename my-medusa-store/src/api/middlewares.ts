@@ -12,8 +12,15 @@ async function corsMiddleware(
 ) {
   // Get allowed origins from environment or use default
   // Supports comma-separated URLs: "http://localhost:3000,http://localhost:5000,https://oweg-ecommerce.vercel.app"
-  const allowedOrigins = process.env.STORE_CORS || process.env.AUTH_CORS || "http://localhost:3000,http://localhost:5000,https://oweg-ecommerce.vercel.app"
-  const originList = allowedOrigins.split(',').map(o => o.trim())
+  const baseOrigins = process.env.STORE_CORS || process.env.AUTH_CORS || "http://localhost:3000,http://localhost:3001,https://oweg-ecommerce.vercel.app"
+
+  // ALWAYS include vendor portal (localhost:4000) to ensure it works
+  const vendorPortalOrigin = "http://localhost:4000"
+  const allOrigins = baseOrigins.includes(vendorPortalOrigin)
+    ? baseOrigins
+    : `${baseOrigins},${vendorPortalOrigin}`
+
+  const originList = allOrigins.split(',').map(o => o.trim())
 
   // Get the origin from the request
   const origin = (req as any).headers?.origin || (req as any).headers?.referer
