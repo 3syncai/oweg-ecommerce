@@ -5,7 +5,7 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get('vendor_token')?.value
 
   // Protected routes
-  const protectedPaths = ['/dashboard']
+  const protectedPaths = ['/dashboard', '/inventory', '/products', '/orders', '/profile']
   const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))
 
   // Auth routes

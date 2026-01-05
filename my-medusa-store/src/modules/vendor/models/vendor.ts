@@ -43,6 +43,9 @@ const Vendor = model.define("vendor", {
   ifsc_code: model.text().nullable(),
   cancel_cheque_url: model.text().nullable(),
 
+  // Commission Settings
+  commission_rate: model.float().default(2.0), // Percentage commission rate (default 2%)
+
   // Documents
   documents: model.json().nullable(), // Array of VendorDocument
 
@@ -50,7 +53,7 @@ const Vendor = model.define("vendor", {
   is_approved: model.boolean().default(false),
   approved_at: model.dateTime().nullable(),
   approved_by: model.text().nullable(),
-  
+
   // Rejection Status
   rejection_reason: model.text().nullable(),
   rejected_at: model.dateTime().nullable(),

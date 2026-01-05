@@ -13,15 +13,22 @@ import {
   ChevronRight,
   EllipsisHorizontal,
   ChartBar,
+  CurrencyDollar,
 } from "@medusajs/icons"
 import { usePathname, useRouter } from "next/navigation"
-import { vendorProfileApi } from "@/lib/api/client"
+import { vendorProfileApi, vendorOrdersApi } from "@/lib/api/client"
 
 type VendorInfo = {
   name?: string
   email?: string
   store_name?: string
   store_logo?: string | null
+}
+
+type PayoutData = {
+  totalRevenue: number
+  totalBalance: number
+  loading: boolean
 }
 
 const sidebarWidth = 256
@@ -80,10 +87,10 @@ const navItems = [
     type: "normal",
   },
   {
-    label: "Analytics",
+    label: "Payout",
     description: "",
-    path: "/analytics",
-    icon: ChartBar,
+    path: "/payout",
+    icon: CurrencyDollar,
     type: "normal",
   },
 ]
@@ -101,6 +108,7 @@ const VendorShell = ({ children }: PropsWithChildren) => {
   const pathname = usePathname()
   const router = useRouter()
   const [vendorInfo, setVendorInfo] = useState<VendorInfo | null>(null)
+  const [payoutData, setPayoutData] = useState<PayoutData>({ totalRevenue: 0, totalBalance: 0, loading: true })
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>(["Products"])
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
@@ -137,6 +145,30 @@ const VendorShell = ({ children }: PropsWithChildren) => {
   }, [])
 
   useEffect(() => {
+    const loadPayoutData = async () => {
+      try {
+        const ordersData = await vendorOrdersApi.list().catch(() => ({ orders: [] }))
+        const orders = ordersData?.orders || []
+
+        const totalRevenue = orders.reduce((sum: number, order: any) => {
+          return sum + (order.total || 0)
+        }, 0)
+
+        // For now, total balance equals total revenue
+        // In the future, you can subtract withdrawn amounts
+        const totalBalance = totalRevenue
+
+        setPayoutData({ totalRevenue, totalBalance, loading: false })
+      } catch (error) {
+        console.error("Failed to load payout data:", error)
+        setPayoutData({ totalRevenue: 0, totalBalance: 0, loading: false })
+      }
+    }
+
+    loadPayoutData()
+  }, [])
+
+  useEffect(() => {
     const handleClick = (event: MouseEvent) => {
       if (!accountMenuRef.current) return
       if (!accountMenuRef.current.contains(event.target as Node)) {
@@ -150,13 +182,13 @@ const VendorShell = ({ children }: PropsWithChildren) => {
 
   const activePath = useMemo(() => {
     if (!pathname) return ""
-    
+
     // Check if we're on a child route (collections or categories)
-    if (pathname.includes("/products/collections") || 
-        pathname.includes("/products/categories")) {
+    if (pathname.includes("/products/collections") ||
+      pathname.includes("/products/categories")) {
       return "/products"
     }
-    
+
     const activeItem = navItems.find((item) => pathname.startsWith(item.path))
     return activeItem?.path || ""
   }, [pathname])
@@ -408,141 +440,117 @@ const VendorShell = ({ children }: PropsWithChildren) => {
               position: "relative",
             }}
           >
-          <button
-            onClick={() => setAccountMenuOpen((prev) => !prev)}
-            style={{
-              width: "100%",
-              border: "none",
-              borderRadius: 8,
-              padding: "10px 12px",
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              background: "transparent",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)"
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent"
-            }}
-          >
-            <div
+            <button
+              onClick={() => setAccountMenuOpen((prev) => !prev)}
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                background: "rgba(255, 255, 255, 0.1)",
+                width: "100%",
+                border: "none",
+                borderRadius: 8,
+                padding: "10px 12px",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                color: shellColors.sidebarText,
-                fontWeight: 600,
-                fontSize: 14,
+                gap: 12,
+                background: "transparent",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)"
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent"
               }}
             >
-              {vendorInfo?.email?.[0]?.toUpperCase() || "A"}
-            </div>
-            <div style={{ textAlign: "left", flex: 1 }}>
-              <Text size="small" weight="plus" style={{ color: shellColors.sidebarText }}>
-                {vendorInfo?.email?.split("@")[0] || "admin"}
-              </Text>
-            </div>
-            <span style={{ color: shellColors.sidebarMuted, width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <EllipsisHorizontal />
-            </span>
-          </button>
-          {accountMenuOpen && (
-            <div
-              style={{
-                position: "absolute",
-                left: 20,
-                right: 20,
-                bottom: 78,
-                background: shellColors.headerBg,
-                border: `1px solid ${shellColors.sidebarBorder}`,
-                borderRadius: 12,
-                padding: 8,
-                boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
-                display: "flex",
-                flexDirection: "column",
-                gap: 4,
-                zIndex: 10,
-              }}
-            >
-              <button
-                onClick={() => {
-                  setAccountMenuOpen(false)
-                  navigate("/profile")
-                }}
+              <div
                 style={{
-                  border: "none",
-                  background: "transparent",
-                  textAlign: "left",
-                  padding: "8px 10px",
-                  borderRadius: 8,
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  background: "rgba(255, 255, 255, 0.1)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                   color: shellColors.sidebarText,
-                  cursor: "pointer",
+                  fontWeight: 600,
                   fontSize: 14,
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)"
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent"
-                }}
               >
-                Profile settings
-              </button>
-              <button
-                onClick={() => {
-                  setAccountMenuOpen(false)
-                  navigate("/analytics")
-                }}
+                {vendorInfo?.email?.[0]?.toUpperCase() || "A"}
+              </div>
+              <div style={{ textAlign: "left", flex: 1 }}>
+                <Text size="small" weight="plus" style={{ color: shellColors.sidebarText }}>
+                  {vendorInfo?.email?.split("@")[0] || "admin"}
+                </Text>
+              </div>
+              <span style={{ color: shellColors.sidebarMuted, width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <EllipsisHorizontal />
+              </span>
+            </button>
+            {accountMenuOpen && (
+              <div
                 style={{
-                  border: "none",
-                  background: "transparent",
-                  textAlign: "left",
-                  padding: "8px 10px",
-                  borderRadius: 8,
-                  color: shellColors.sidebarText,
-                  cursor: "pointer",
-                  fontSize: 14,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)"
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent"
-                }}
-              >
-                Insights
-              </button>
-              <div style={{ height: 1, background: shellColors.sidebarBorder, margin: "4px 0" }} />
-              <button
-                onClick={handleLogout}
-                style={{
-                  border: "none",
-                  textAlign: "left",
-                  padding: "8px 10px",
-                  borderRadius: 8,
-                  background: "transparent",
-                  color: shellColors.sidebarMuted,
-                  cursor: "pointer",
-                  fontSize: 14,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)"
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent"
+                  position: "absolute",
+                  left: 20,
+                  right: 20,
+                  bottom: 78,
+                  background: shellColors.headerBg,
+                  border: `1px solid ${shellColors.sidebarBorder}`,
+                  borderRadius: 12,
+                  padding: 8,
+                  boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                  zIndex: 10,
                 }}
               >
-                Log out
-              </button>
-            </div>
-          )}
+                <button
+                  onClick={() => {
+                    setAccountMenuOpen(false)
+                    navigate("/profile")
+                  }}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    textAlign: "left",
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    color: shellColors.sidebarText,
+                    cursor: "pointer",
+                    fontSize: 14,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)"
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent"
+                  }}
+                >
+                  Profile settings
+                </button>
+                <div style={{ height: 1, background: shellColors.sidebarBorder, margin: "4px 0" }} />
+                <button
+                  onClick={handleLogout}
+                  style={{
+                    border: "none",
+                    textAlign: "left",
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    background: "transparent",
+                    color: shellColors.sidebarMuted,
+                    cursor: "pointer",
+                    fontSize: 14,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)"
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent"
+                  }}
+                >
+                  Log out
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </aside>

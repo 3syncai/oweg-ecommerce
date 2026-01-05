@@ -5,6 +5,7 @@ import { Heading, Text, Button, Input, Textarea, Label, Switch, toast } from "@m
 import { CheckCircleSolid, CircleMiniSolid } from "@medusajs/icons"
 import VendorShell from "@/components/VendorShell"
 import { useRouter } from "next/navigation"
+import { BrandAuthorizationField } from "@/components/BrandAuthorizationField"
 import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi } from "@/lib/api/client"
 import axios from "axios"
 
@@ -34,7 +35,7 @@ type ProductFormData = {
   uploadedVideos: UploadedVideo[]
   thumbnailUrl: string | null
   hasVariants: boolean
-  
+
   // Attributes
   height: string
   width: string
@@ -43,7 +44,8 @@ type ProductFormData = {
   midCode: string
   hsCode: string
   countryOfOrigin: string
-  
+  brand: string
+
   // Organize
   discountable: boolean
   type: string
@@ -52,7 +54,7 @@ type ProductFormData = {
   tags: string[]
   shippingProfile: string
   salesChannels: string[]
-  
+
   // Variants
   variants: Array<{
     title: string
@@ -61,6 +63,7 @@ type ProductFormData = {
     allowBackorder: boolean
     hasInventoryKit: boolean
     price: string
+    discountedPrice: string
   }>
 }
 
@@ -72,7 +75,7 @@ const VendorProductNewPage = () => {
   const [loading, setLoading] = useState(false)
   const [categories, setCategories] = useState<any[]>([])
   const [collections, setCollections] = useState<any[]>([])
-  
+
   const [formData, setFormData] = useState<ProductFormData>({
     title: "",
     subtitle: "",
@@ -90,6 +93,7 @@ const VendorProductNewPage = () => {
     midCode: "",
     hsCode: "",
     countryOfOrigin: "",
+    brand: "",
     discountable: true,
     type: "",
     collection: "",
@@ -104,12 +108,14 @@ const VendorProductNewPage = () => {
       allowBackorder: false,
       hasInventoryKit: false,
       price: "",
+      discountedPrice: "",
     }],
   })
-  
+
   const [uploadingImages, setUploadingImages] = useState(false)
   const [uploadingVideos, setUploadingVideos] = useState(false)
   const [uploadingMedia, setUploadingMedia] = useState(false)
+  const [brandIsAuthorized, setBrandIsAuthorized] = useState(false)
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null)
   const menuRefs = React.useRef<{ [key: number]: HTMLDivElement | null }>({})
 
@@ -152,14 +158,14 @@ const VendorProductNewPage = () => {
   // Unified media upload handler that detects file type and routes appropriately
   const uploadMediaToS3 = async (files: File[]) => {
     if (files.length === 0) return
-    
+
     setUploadingMedia(true)
-    
+
     try {
       // Separate images and videos
       const imageFiles: File[] = []
       const videoFiles: File[] = []
-      
+
       files.forEach((file) => {
         if (file.type.startsWith('image/')) {
           imageFiles.push(file)
@@ -169,27 +175,27 @@ const VendorProductNewPage = () => {
           toast.error("Error", { description: `Unsupported file type: ${file.name}` })
         }
       })
-      
+
       // Upload images and videos in parallel
       const uploadPromises: Promise<void>[] = []
-      
+
       if (imageFiles.length > 0) {
         uploadPromises.push(uploadImagesToS3(imageFiles))
       }
-      
+
       if (videoFiles.length > 0) {
         uploadPromises.push(uploadVideosToS3(videoFiles))
       }
-      
+
       await Promise.all(uploadPromises)
     } finally {
       setUploadingMedia(false)
     }
   }
-  
+
   const uploadImagesToS3 = async (files: File[]) => {
     if (files.length === 0) return
-    
+
     setUploadingImages(true)
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
@@ -197,14 +203,14 @@ const VendorProductNewPage = () => {
         toast.error("Error", { description: "Not authenticated" })
         return
       }
-      
+
       const API_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
-      
+
       // Get collection name if available
       const collectionName = formData.collection && collections.length > 0
         ? collections.find(c => c.id === formData.collection)?.title || ''
         : ''
-      
+
       // Create FormData with metadata first (so fields are processed before files)
       const formDataToSend = new FormData()
       // Add fields first so Busboy processes them before files
@@ -216,13 +222,13 @@ const VendorProductNewPage = () => {
       files.forEach((file) => {
         formDataToSend.append("files", file)
       })
-      
+
       const uploadRes = await axios.post(`${API_URL}/vendor/products/upload-image`, formDataToSend, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       })
-      
+
       const uploadData = uploadRes.data
       const newImages: UploadedImage[] = uploadData.files?.map((f: any) => ({
         url: f.url,
@@ -231,13 +237,13 @@ const VendorProductNewPage = () => {
         originalName: f.originalName,
         isThumbnail: false,
       })) || []
-      
+
       setFormData(prev => ({
         ...prev,
         uploadedImages: [...prev.uploadedImages, ...newImages],
         thumbnailUrl: prev.uploadedImages.length === 0 && newImages.length > 0 ? newImages[0].url : prev.thumbnailUrl,
       }))
-      
+
       toast.success("Success", { description: `${newImages.length} image(s) uploaded` })
     } catch (error: any) {
       console.error("Upload error:", error)
@@ -249,7 +255,7 @@ const VendorProductNewPage = () => {
 
   const uploadVideosToS3 = async (files: File[]) => {
     if (files.length === 0) return
-    
+
     setUploadingVideos(true)
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
@@ -257,14 +263,14 @@ const VendorProductNewPage = () => {
         toast.error("Error", { description: "Not authenticated" })
         return
       }
-      
+
       const API_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
-      
+
       // Get collection name if available
       const collectionName = formData.collection && collections.length > 0
         ? collections.find(c => c.id === formData.collection)?.title || ''
         : ''
-      
+
       // Create FormData with metadata first (so fields are processed before files)
       const formDataToSend = new FormData()
       // Add fields first so Busboy processes them before files
@@ -276,13 +282,13 @@ const VendorProductNewPage = () => {
       files.forEach((file) => {
         formDataToSend.append("files", file)
       })
-      
+
       const uploadRes = await axios.post(`${API_URL}/vendor/products/upload-video`, formDataToSend, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       })
-      
+
       const uploadData = uploadRes.data
       const newVideos: UploadedVideo[] = uploadData.files?.map((f: any) => ({
         url: f.url,
@@ -290,12 +296,12 @@ const VendorProductNewPage = () => {
         filename: f.filename,
         originalName: f.originalName,
       })) || []
-      
+
       setFormData(prev => ({
         ...prev,
         uploadedVideos: [...prev.uploadedVideos, ...newVideos],
       }))
-      
+
       toast.success("Success", { description: `${newVideos.length} video(s) uploaded` })
     } catch (error: any) {
       console.error("Upload error:", error)
@@ -304,7 +310,7 @@ const VendorProductNewPage = () => {
       setUploadingVideos(false)
     }
   }
-  
+
   const handleMakeThumbnail = (index: number) => {
     const image = formData.uploadedImages[index]
     setFormData({
@@ -318,14 +324,14 @@ const VendorProductNewPage = () => {
     setOpenMenuIndex(null)
     toast.success("Success", { description: "Thumbnail set" })
   }
-  
+
   const handleDeleteImage = (index: number) => {
     const imageToDelete = formData.uploadedImages[index]
     const newImages = formData.uploadedImages.filter((_, idx) => idx !== index)
     const newThumbnailUrl = imageToDelete.url === formData.thumbnailUrl
       ? (newImages.length > 0 ? newImages[0].url : null)
       : formData.thumbnailUrl
-    
+
     setFormData({
       ...formData,
       uploadedImages: newImages,
@@ -343,7 +349,7 @@ const VendorProductNewPage = () => {
     })
     toast.success("Success", { description: "Video removed" })
   }
-  
+
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -354,7 +360,7 @@ const VendorProductNewPage = () => {
         }
       }
     }
-    
+
     document.addEventListener("mousedown", handleClickOutside)
     return () => {
       document.removeEventListener("mousedown", handleClickOutside)
@@ -419,24 +425,31 @@ const VendorProductNewPage = () => {
       // Prepare variant data - create a default variant if no variants specified
       const variants = formData.variants && formData.variants.length > 0
         ? formData.variants.map((v) => ({
-            title: v.title || "Default variant",
-            sku: v.sku || undefined,
-            manage_inventory: v.managedInventory,
-            allow_backorder: v.allowBackorder,
-            prices: v.price ? [
-              {
-                amount: Math.round(parseFloat(v.price) * 100), // Convert to cents/paise
-                currency_code: "inr",
-              }
-            ] : [],
-            inventory_quantity: v.managedInventory ? 0 : undefined,
-          }))
-        : [
+          title: v.title || "Default variant",
+          sku: v.sku || undefined,
+          manage_inventory: v.managedInventory,
+          allow_backorder: v.allowBackorder,
+          prices: v.price ? [
+            // Base price (no price_list_id)
             {
-              title: "Default variant",
-              prices: [],
-            }
-          ]
+              amount: parseFloat(v.price),
+              currency_code: "inr",
+            },
+            // Discounted price (with price_list_id) - only if provided
+            ...(v.discountedPrice ? [{
+              amount: parseFloat(v.discountedPrice),
+              currency_code: "inr",
+              price_list_id: "pl_1765232034558" // India price list
+            }] : [])
+          ] : [],
+          inventory_quantity: v.managedInventory ? 0 : undefined,
+        }))
+        : [
+          {
+            title: "Default variant",
+            prices: [],
+          }
+        ]
 
       // Prepare attributes - convert strings to numbers where applicable
       const parseNumber = (value: string): number | null => {
@@ -469,12 +482,13 @@ const VendorProductNewPage = () => {
         metadata: {
           categories: formData.categories,
           tags: formData.tags,
+          brand: formData.brand || null,
           // Additional attributes in metadata
           mid_code: formData.midCode || null,
           hs_code: formData.hsCode || null,
           country_of_origin: formData.countryOfOrigin || null,
           // Videos
-          videos: formData.uploadedVideos.length > 0 
+          videos: formData.uploadedVideos.length > 0
             ? formData.uploadedVideos.map(v => ({ url: v.url, key: v.key, filename: v.filename }))
             : null,
         },
@@ -493,7 +507,7 @@ const VendorProductNewPage = () => {
     const isDetailsComplete = currentStep === "organize" || currentStep === "variants"
     const isOrganizeComplete = currentStep === "variants"
 
-  return (
+    return (
       <div style={{ display: "flex", gap: 8, marginBottom: 32 }}>
         <button
           onClick={() => setCurrentStep("details")}
@@ -579,7 +593,7 @@ const VendorProductNewPage = () => {
   const renderDetailsStep = () => (
     <div style={{ maxWidth: 1200 }}>
       <Heading level="h2" style={{ marginBottom: 16 }}>General</Heading>
-      
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 24 }}>
         <div>
           <Label>Title</Label>
@@ -608,26 +622,26 @@ const VendorProductNewPage = () => {
           </Label>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ color: "var(--fg-muted)" }}>/</span>
-          <Input
-            value={formData.handle}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, handle: e.target.value })}
+            <Input
+              value={formData.handle}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, handle: e.target.value })}
               placeholder="winter-jacket"
-          />
+            />
           </div>
         </div>
-        </div>
+      </div>
 
       <div style={{ marginBottom: 32 }}>
         <Label>
           Description <span style={{ color: "var(--fg-muted)" }}>(Optional)</span>
         </Label>
-          <Textarea
-            value={formData.description}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, description: e.target.value })}
+        <Textarea
+          value={formData.description}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, description: e.target.value })}
           placeholder="A warm and cozy jacket"
           rows={4}
-          />
-        </div>
+        />
+      </div>
 
       <div>
         <Label>
@@ -661,7 +675,7 @@ const VendorProductNewPage = () => {
         >
           <div style={{ marginBottom: 16 }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ margin: "0 auto", color: "var(--fg-muted)" }}>
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
           <Text weight="plus" style={{ marginBottom: 4 }}>Upload images and videos</Text>
@@ -691,9 +705,9 @@ const VendorProductNewPage = () => {
         )}
         {(formData.uploadedImages.length > 0 || formData.uploadedVideos.length > 0) && (
           <div style={{ marginTop: 16 }}>
-            <div style={{ 
-              display: "flex", 
-              flexDirection: "column", 
+            <div style={{
+              display: "flex",
+              flexDirection: "column",
               gap: 8,
               background: "var(--bg-base)",
               border: "1px solid var(--border-base)",
@@ -727,7 +741,7 @@ const VendorProductNewPage = () => {
                   >
                     ⋮⋮
                   </div>
-                  
+
                   {/* Image thumbnail */}
                   <div
                     style={{
@@ -755,7 +769,7 @@ const VendorProductNewPage = () => {
                       }}
                     />
                   </div>
-                  
+
                   {/* File info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <Text size="small" weight="plus" style={{ display: "block", marginBottom: 4 }}>
@@ -766,7 +780,7 @@ const VendorProductNewPage = () => {
                     </Text>
                     {image.url === formData.thumbnailUrl && (
                       <div style={{ marginTop: 4 }}>
-                        <Text size="xsmall" style={{ 
+                        <Text size="xsmall" style={{
                           color: "var(--fg-accent)",
                           background: "var(--bg-accent)",
                           padding: "2px 6px",
@@ -778,7 +792,7 @@ const VendorProductNewPage = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Actions */}
                   <div style={{ position: "relative" }}>
                     <button
@@ -795,7 +809,7 @@ const VendorProductNewPage = () => {
                     >
                       ⋮
                     </button>
-                    
+
                     {/* Context menu */}
                     {openMenuIndex === idx && (
                       <div
@@ -869,7 +883,7 @@ const VendorProductNewPage = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Delete button */}
                   <button
                     onClick={() => handleDeleteImage(idx)}
@@ -892,7 +906,7 @@ const VendorProductNewPage = () => {
               {/* Display Videos */}
               {formData.uploadedVideos.map((video, idx) => (
                 <div
-                  key={`video-${idx}`}
+                  key={`video - ${idx}`}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -919,10 +933,10 @@ const VendorProductNewPage = () => {
                     }}
                   >
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ color: "var(--fg-muted)" }}>
-                      <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </div>
-                  
+
                   {/* File info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <Text size="small" weight="plus" style={{ display: "block", marginBottom: 4 }}>
@@ -932,7 +946,7 @@ const VendorProductNewPage = () => {
                       {video.filename}
                     </Text>
                     <div style={{ marginTop: 4 }}>
-                      <Text size="xsmall" style={{ 
+                      <Text size="xsmall" style={{
                         color: "var(--fg-accent)",
                         background: "var(--bg-accent)",
                         padding: "2px 6px",
@@ -957,7 +971,7 @@ const VendorProductNewPage = () => {
                       </a>
                     </div>
                   </div>
-                  
+
                   {/* Delete button */}
                   <button
                     onClick={() => handleDeleteVideo(idx)}
@@ -1000,7 +1014,7 @@ const VendorProductNewPage = () => {
             ⋮
           </button>
         </div>
-        
+
         <div style={{
           background: "var(--bg-base)",
           border: "1px solid var(--border-base)",
@@ -1028,7 +1042,7 @@ const VendorProductNewPage = () => {
                 style={{ flex: 1 }}
               />
             </div>
-            
+
             {/* Width */}
             <div style={{
               padding: "12px 16px",
@@ -1045,7 +1059,7 @@ const VendorProductNewPage = () => {
                 style={{ flex: 1 }}
               />
             </div>
-            
+
             {/* Length */}
             <div style={{
               padding: "12px 16px",
@@ -1062,7 +1076,7 @@ const VendorProductNewPage = () => {
                 style={{ flex: 1 }}
               />
             </div>
-            
+
             {/* Weight */}
             <div style={{
               padding: "12px 16px",
@@ -1079,7 +1093,7 @@ const VendorProductNewPage = () => {
                 style={{ flex: 1 }}
               />
             </div>
-            
+
             {/* MID code */}
             <div style={{
               padding: "12px 16px",
@@ -1096,7 +1110,7 @@ const VendorProductNewPage = () => {
                 style={{ flex: 1 }}
               />
             </div>
-            
+
             {/* HS code */}
             <div style={{
               padding: "12px 16px",
@@ -1113,7 +1127,7 @@ const VendorProductNewPage = () => {
                 style={{ flex: 1 }}
               />
             </div>
-            
+
             {/* Country of origin */}
             <div style={{
               padding: "12px 16px",
@@ -1129,6 +1143,15 @@ const VendorProductNewPage = () => {
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, countryOfOrigin: e.target.value })}
                 placeholder="-"
                 style={{ flex: 1 }}
+              />
+            </div>
+
+            {/* Brand with Authorization Check */}
+            <div style={{ gridColumn: "1 / -1" }}>
+              <BrandAuthorizationField
+                brand={formData.brand}
+                onBrandChange={(brand) => setFormData({ ...formData, brand })}
+                onAuthorizationStatusChange={(isAuthorized) => setBrandIsAuthorized(isAuthorized)}
               />
             </div>
           </div>
@@ -1352,7 +1375,13 @@ const VendorProductNewPage = () => {
                 Price INR
               </th>
               <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
-                
+                Discounted Price INR
+              </th>
+              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
+                Discount %
+              </th>
+              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
+
               </th>
             </tr>
           </thead>
@@ -1434,6 +1463,43 @@ const VendorProductNewPage = () => {
                   </div>
                 </td>
                 <td style={{ padding: "12px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ color: "var(--fg-muted)" }}>₹</span>
+                    <Input
+                      value={variant.discountedPrice}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        const newVariants = [...formData.variants]
+                        newVariants[idx].discountedPrice = e.target.value
+                        setFormData({ ...formData, variants: newVariants })
+                      }}
+                      placeholder="0.00"
+                      style={{ width: 100 }}
+                    />
+                  </div>
+                </td>
+                <td style={{ padding: "12px 16px" }}>
+                  {variant.price && variant.discountedPrice ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{
+                        color: parseFloat(variant.discountedPrice) < parseFloat(variant.price) ? "#10b981" : "var(--fg-muted)",
+                        fontWeight: 500
+                      }}>
+                        {(() => {
+                          const basePrice = parseFloat(variant.price)
+                          const discountedPrice = parseFloat(variant.discountedPrice)
+                          if (basePrice > 0 && discountedPrice < basePrice) {
+                            const discount = ((basePrice - discountedPrice) / basePrice * 100).toFixed(1)
+                            return `${discount}%`
+                          }
+                          return "—"
+                        })()}
+                      </span>
+                    </div>
+                  ) : (
+                    <span style={{ color: "var(--fg-muted)" }}>—</span>
+                  )}
+                </td>
+                <td style={{ padding: "12px 16px" }}>
                   <button
                     style={{
                       background: "none",
@@ -1491,17 +1557,17 @@ const VendorProductNewPage = () => {
             <Button
               variant="secondary"
               onClick={() => router.push("/products")}
-          >
-            Cancel
-          </Button>
-        </div>
+            >
+              Cancel
+            </Button>
+          </div>
 
           <div style={{ display: "flex", gap: 12 }}>
             <Button variant="secondary" onClick={() => toast.info("Draft saved")}>
               Save as draft
             </Button>
             {currentStep === "variants" ? (
-              <Button variant="primary" onClick={handleSubmit} disabled={loading}>
+              <Button variant="primary" onClick={handleSubmit} disabled={loading || !brandIsAuthorized}>
                 {loading ? "Publishing..." : "Publish"}
               </Button>
             ) : (

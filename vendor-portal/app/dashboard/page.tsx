@@ -1,51 +1,176 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Container, Heading, Text, Badge } from "@medusajs/ui"
+import { Container, Heading, Text, Badge, Button, Table } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
-import { vendorStatsApi } from "@/lib/api/client"
+import { vendorProductsApi, vendorOrdersApi, vendorCustomersApi, vendorInventoryApi } from "@/lib/api/client"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import {
+  ShoppingCart,
+  CurrencyDollar,
+  Users,
+  ArchiveBox,
+  Plus,
+  ArrowUpRightMini,
+  ExclamationCircle,
+  Clock,
+  CheckCircle
+} from "@medusajs/icons"
 
-type Stats = {
-  total_products: number
-  total_orders: number
-  total_revenue: number
-  products_by_status: {
-    draft: number
-    published: number
-  }
-  recent_orders: Array<{
-    id: string
-    display_id: string
-    email: string
-    total: any
-    status: string
-    created_at: string
-  }>
+type DashboardData = {
+  // Metrics
+  totalProducts: number
+  publishedProducts: number
+  draftProducts: number
+  pendingApprovalProducts: number
+  totalOrders: number
+  pendingOrders: number
+  completedOrders: number
+  totalRevenue: number
+  totalCustomers: number
+  averageOrderValue: number
+
+  // Lists
+  recentOrders: any[]
+  lowStockProducts: any[]
+  topProducts: { product: string; orders: number }[]
+  actionItems: { type: string; message: string; link: string }[]
 }
 
 const VendorDashboardPage = () => {
   const router = useRouter()
-  const [stats, setStats] = useState<Stats | null>(null)
+  const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const vendorToken = localStorage.getItem("vendor_token")
-    
+
     if (!vendorToken) {
       router.push("/login")
       return
     }
 
-    const loadStats = async () => {
+    const loadDashboardData = async () => {
       try {
-        const data = await vendorStatsApi.get()
+        setLoading(true)
 
-        if (data?.stats) {
-          setStats(data.stats)
+        // Fetch all data in parallel
+        const [productsData, ordersData, customersData, inventoryData] = await Promise.all([
+          vendorProductsApi.list().catch(() => ({ products: [] })),
+          vendorOrdersApi.list().catch(() => ({ orders: [] })),
+          vendorCustomersApi.list().catch(() => ({ customers: [] })),
+          vendorInventoryApi.list().catch(() => ({ inventory: [] }))
+        ])
+
+        const products = productsData?.products || []
+        const orders = ordersData?.orders || []
+        const customers = customersData?.customers || []
+        const inventory = inventoryData?.inventory || []
+
+        // Product stats
+        const publishedProducts = products.filter((p: any) =>
+          p.status === 'published' &&
+          p.metadata?.approval_status !== 'pending' &&
+          p.metadata?.approval_status !== 'rejected'
+        ).length
+
+        const pendingApprovalProducts = products.filter((p: any) =>
+          p.metadata?.approval_status === 'pending'
+        ).length
+
+        const draftProducts = products.filter((p: any) =>
+          p.status === 'draft'
+        ).length
+
+        // Order stats - use fulfillment_status
+        const pendingOrders = orders.filter((o: any) =>
+          o.fulfillment_status === 'pending' || o.fulfillment_status === 'processing'
+        ).length
+        const completedOrders = orders.filter((o: any) =>
+          o.fulfillment_status === 'shipped' || o.fulfillment_status === 'delivered'
+        ).length
+
+        const totalRevenue = orders.reduce((sum: number, order: any) => {
+          return sum + (order.total || 0)
+        }, 0)
+
+        const avgOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0
+
+        // Recent orders
+        const recentOrders = orders
+          .sort((a: any, b: any) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          )
+          .slice(0, 5)
+
+        // Low stock items (< 10 units)
+        const lowStockProducts = inventory
+          .filter((item: any) => {
+            const qty = item.available_quantity || item.stocked_quantity || 0
+            return qty > 0 && qty < 10
+          })
+          .slice(0, 5)
+
+        // Top products by order count
+        const productOrderCount = new Map<string, number>()
+        orders.forEach((order: any) => {
+          (order.items || []).forEach((item: any) => {
+            const title = item.title || 'Unknown Product'
+            productOrderCount.set(title, (productOrderCount.get(title) || 0) + 1)
+          })
+        })
+
+        const topProducts = Array.from(productOrderCount.entries())
+          .map(([product, orders]) => ({ product, orders }))
+          .sort((a, b) => b.orders - a.orders)
+          .slice(0, 5)
+
+        // Action items
+        const actionItems: any[] = []
+
+        if (pendingApprovalProducts > 0) {
+          actionItems.push({
+            type: 'warning',
+            message: `${pendingApprovalProducts} product${pendingApprovalProducts > 1 ? 's' : ''} awaiting approval`,
+            link: '/products'
+          })
         }
+
+        if (pendingOrders > 0) {
+          actionItems.push({
+            type: 'info',
+            message: `${pendingOrders} pending order${pendingOrders > 1 ? 's' : ''} to process`,
+            link: '/orders'
+          })
+        }
+
+        if (lowStockProducts.length > 0) {
+          actionItems.push({
+            type: 'warning',
+            message: `${lowStockProducts.length} product${lowStockProducts.length > 1 ? 's' : ''} running low on stock`,
+            link: '/inventory'
+          })
+        }
+
+        setData({
+          totalProducts: products.length,
+          publishedProducts,
+          draftProducts,
+          pendingApprovalProducts,
+          totalOrders: orders.length,
+          pendingOrders,
+          completedOrders,
+          totalRevenue,
+          totalCustomers: customers.length,
+          averageOrderValue: avgOrderValue,
+          recentOrders,
+          lowStockProducts,
+          topProducts,
+          actionItems
+        })
+
       } catch (e: any) {
         if (e.status === 403) {
           router.push("/pending")
@@ -58,14 +183,21 @@ const VendorDashboardPage = () => {
       }
     }
 
-    loadStats()
+    loadDashboardData()
   }, [router])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
-    }).format(amount / 100) // Assuming amount is in smallest currency unit
+    }).format(amount)
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("en-IN", {
+      month: "short",
+      day: "numeric",
+    })
   }
 
   let content
@@ -82,111 +214,286 @@ const VendorDashboardPage = () => {
         <Text className="text-ui-fg-error">{error}</Text>
       </Container>
     )
-  } else {
+  } else if (data) {
     content = (
-    <Container className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <Heading level="h1">Dashboard</Heading>
-          <Text className="text-ui-fg-subtle">Overview of your vendor account</Text>
+      <Container className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Heading level="h1">Dashboard</Heading>
+            <Text className="text-ui-fg-subtle">Welcome back! Here's what's happening</Text>
+          </div>
+          <Button
+            variant="primary"
+            onClick={() => router.push("/products/new")}
+          >
+            <Plus />
+            Create Product
+          </Button>
         </div>
-      </div>
 
-      {stats && (
-        <>
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base">
-              <Text className="text-ui-fg-subtle text-sm mb-2">Total Products</Text>
-              <Heading level="h2" className="text-2xl">
-                {stats.total_products}
-              </Heading>
-              <div className="mt-2 flex gap-2">
-                <Badge color="blue">{stats.products_by_status.published} Published</Badge>
-                <Badge color="grey">{stats.products_by_status.draft} Draft</Badge>
+        {/* Action Items Alert */}
+        {data.actionItems.length > 0 && (
+          <div className="border border-orange-500/20 bg-orange-500/5 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <ExclamationCircle className="text-orange-500" />
+              <Heading level="h3" className="text-orange-500">Action Required</Heading>
+            </div>
+            <div className="space-y-2">
+              {data.actionItems.map((item, idx) => (
+                <Link
+                  key={idx}
+                  href={item.link}
+                  className="flex items-center justify-between p-3 bg-ui-bg-base rounded-md hover:bg-ui-bg-base-hover transition-colors group"
+                >
+                  <Text>{item.message}</Text>
+                  <ArrowUpRightMini className="text-ui-fg-muted group-hover:text-ui-fg-base" />
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Active Products Info Card */}
+        {data.publishedProducts > 0 && (
+          <div className="border border-green-500/20 bg-green-500/5 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-md bg-green-500/10">
+                  <CheckCircle className="text-green-600" />
+                </div>
+                <div>
+                  <Heading level="h3" className="text-green-700 dark:text-green-400">
+                    {data.publishedProducts} Active Product{data.publishedProducts > 1 ? 's' : ''}
+                  </Heading>
+                  <Text className="text-ui-fg-subtle text-sm">
+                    Your approved products are live and visible to customers
+                  </Text>
+                </div>
               </div>
+              <Button
+                variant="transparent"
+                onClick={() => router.push("/products")}
+                className="text-green-600 hover:text-green-700"
+              >
+                View Products
+                <ArrowUpRightMini />
+              </Button>
             </div>
+          </div>
+        )}
 
-            <div className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base">
-              <Text className="text-ui-fg-subtle text-sm mb-2">Total Orders</Text>
-              <Heading level="h2" className="text-2xl">
-                {stats.total_orders}
-              </Heading>
+        {/* Primary Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 rounded-md bg-ui-bg-base-hover">
+                <CurrencyDollar className="text-ui-fg-muted" />
+              </div>
+              <Text className="text-ui-fg-subtle text-sm">Total Revenue</Text>
             </div>
+            <Heading level="h2" className="text-2xl">
+              {formatCurrency(data.totalRevenue)}
+            </Heading>
+            {data.totalOrders > 0 && (
+              <Text className="text-ui-fg-subtle text-xs mt-2">
+                Avg: {formatCurrency(data.averageOrderValue)} per order
+              </Text>
+            )}
+          </div>
 
-            <div className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base">
-              <Text className="text-ui-fg-subtle text-sm mb-2">Total Revenue</Text>
-              <Heading level="h2" className="text-2xl">
-                {formatCurrency(stats.total_revenue)}
-              </Heading>
+          <div className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 rounded-md bg-ui-bg-base-hover">
+                <ShoppingCart className="text-ui-fg-muted" />
+              </div>
+              <Text className="text-ui-fg-subtle text-sm">Orders</Text>
+            </div>
+            <Heading level="h2" className="text-2xl">
+              {data.totalOrders}
+            </Heading>
+            <div className="mt-2 flex gap-2">
+              <Badge size="small" color="orange">{data.pendingOrders} Pending</Badge>
+              <Badge size="small" color="green">{data.completedOrders} Done</Badge>
             </div>
           </div>
 
-          {/* Quick Links */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Link
-              href="/products"
-              className="p-6 border border-ui-border-base rounded-lg hover:bg-ui-bg-subtle transition-colors block"
-            >
-              <Heading level="h3" className="mb-2">Products</Heading>
-              <Text className="text-ui-fg-subtle text-sm">Manage your products</Text>
-            </Link>
-            <Link
-              href="/orders"
-              className="p-6 border border-ui-border-base rounded-lg hover:bg-ui-bg-subtle transition-colors block"
-            >
-              <Heading level="h3" className="mb-2">Orders</Heading>
-              <Text className="text-ui-fg-subtle text-sm">View your orders</Text>
-            </Link>
-            <Link
-              href="/profile"
-              className="p-6 border border-ui-border-base rounded-lg hover:bg-ui-bg-subtle transition-colors block"
-            >
-              <Heading level="h3" className="mb-2">Profile</Heading>
-              <Text className="text-ui-fg-subtle text-sm">Update your profile</Text>
-            </Link>
+          <div className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 rounded-md bg-ui-bg-base-hover">
+                <Users className="text-ui-fg-muted" />
+              </div>
+              <Text className="text-ui-fg-subtle text-sm">Customers</Text>
+            </div>
+            <Heading level="h2" className="text-2xl">
+              {data.totalCustomers}
+            </Heading>
+            <Text className="text-ui-fg-subtle text-xs mt-2">
+              Unique buyers
+            </Text>
           </div>
 
+          <div className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 rounded-md bg-ui-bg-base-hover">
+                <ArchiveBox className="text-ui-fg-muted" />
+              </div>
+              <Text className="text-ui-fg-subtle text-sm">Products</Text>
+            </div>
+            <Heading level="h2" className="text-2xl">
+              {data.totalProducts}
+            </Heading>
+            <div className="mt-2 flex gap-2">
+              <Badge size="small" color="green">{data.publishedProducts} Live</Badge>
+              {/*  <Badge size="small" color="grey">{data.draftProducts} Draft</Badge> */}
+              {data.pendingApprovalProducts > 0 && (
+                <Badge size="small" color="orange">{data.pendingApprovalProducts} Pending</Badge>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Recent Orders */}
-          {stats.recent_orders.length > 0 && (
-            <div className="border border-ui-border-base rounded-lg">
-              <div className="p-4 border-b border-ui-border-base">
+          {data.recentOrders.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
                 <Heading level="h3">Recent Orders</Heading>
+                <Button
+                  variant="transparent"
+                  onClick={() => router.push("/orders")}
+                >
+                  View All
+                  <ArrowUpRightMini />
+                </Button>
               </div>
-              <div className="divide-y divide-ui-border-base">
-                {stats.recent_orders.map((order) => (
-                  <div key={order.id} className="p-4 flex items-center justify-between">
-                    <div>
-                      <Text className="font-medium">#{order.display_id}</Text>
+              <div className="border border-ui-border-base rounded-lg divide-y divide-ui-border-base">
+                {data.recentOrders.map((order: any) => (
+                  <div key={order.id} className="p-4 flex items-center justify-between hover:bg-ui-bg-subtle transition-colors">
+                    <div className="flex-1">
+                      <Text className="font-medium">#{order.display_id || order.id.slice(0, 8)}</Text>
                       <Text className="text-ui-fg-subtle text-sm">{order.email}</Text>
                     </div>
-                    <div className="text-right">
-                      <Text className="font-medium">
-                        {formatCurrency(
-                            typeof order.total === "number" ? order.total : order.total?.amount || 0
-                        )}
+                    <div className="flex items-center gap-3">
+                      <Badge size="small" color={
+                        order.fulfillment_status === 'delivered' ? 'green' :
+                          order.fulfillment_status === 'shipped' ? 'blue' :
+                            order.fulfillment_status === 'canceled' ? 'red' : 'orange'
+                      }>
+                        {order.fulfillment_status || 'pending'}
+                      </Badge>
+                      <Text className="font-medium min-w-[80px] text-right">
+                        {formatCurrency(order.total || 0)}
                       </Text>
-                      <Badge color="blue" className="mt-1">{order.status}</Badge>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
-        </>
-      )}
-    </Container>
-  )
+
+          {/* Top Products */}
+          {data.topProducts.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <Heading level="h3">Top Selling Products</Heading>
+              </div>
+              <div className="border border-ui-border-base rounded-lg divide-y divide-ui-border-base">
+                {data.topProducts.map((item, idx) => (
+                  <div key={idx} className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-ui-bg-base-hover">
+                        <Text className="text-sm font-medium">{idx + 1}</Text>
+                      </div>
+                      <Text className="font-medium">{item.product}</Text>
+                    </div>
+                    <Badge size="small" color="blue">{item.orders} orders</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Low Stock Alert */}
+          {data.lowStockProducts.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <Heading level="h3">Low Stock Alert</Heading>
+                <Button
+                  variant="transparent"
+                  onClick={() => router.push("/inventory")}
+                >
+                  Manage
+                  <ArrowUpRightMini />
+                </Button>
+              </div>
+              <div className="border border-orange-500/20 bg-orange-500/5 rounded-lg divide-y divide-orange-500/10">
+                {data.lowStockProducts.map((item: any, idx: number) => (
+                  <div key={idx} className="p-4 flex items-center justify-between">
+                    <div>
+                      <Text className="font-medium">{item.product_title}</Text>
+                      <Text className="text-ui-fg-subtle text-sm">{item.variant_title}</Text>
+                    </div>
+                    <Badge size="small" color="orange">
+                      {item.available_quantity || item.stocked_quantity} left
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Quick Actions */}
+          <div>
+            <Heading level="h3" className="mb-4">Quick Actions</Heading>
+            <div className="grid grid-cols-1 gap-3">
+              <Link
+                href="/products"
+                className="p-4 border border-ui-border-base rounded-lg hover:bg-ui-bg-subtle transition-colors flex items-center justify-between group"
+              >
+                <div>
+                  <Text className="font-medium">Manage Products</Text>
+                  <Text className="text-ui-fg-subtle text-sm">View and edit your catalog</Text>
+                </div>
+                <ArrowUpRightMini className="text-ui-fg-muted group-hover:text-ui-fg-base" />
+              </Link>
+              <Link
+                href="/orders"
+                className="p-4 border border-ui-border-base rounded-lg hover:bg-ui-bg-subtle transition-colors flex items-center justify-between group"
+              >
+                <div>
+                  <Text className="font-medium">View Orders</Text>
+                  <Text className="text-ui-fg-subtle text-sm">Process customer orders</Text>
+                </div>
+                <ArrowUpRightMini className="text-ui-fg-muted group-hover:text-ui-fg-base" />
+              </Link>
+              <Link
+                href="/customers"
+                className="p-4 border border-ui-border-base rounded-lg hover:bg-ui-bg-subtle transition-colors flex items-center justify-between group"
+              >
+                <div>
+                  <Text className="font-medium">View Customers</Text>
+                  <Text className="text-ui-fg-subtle text-sm">See who's buying from you</Text>
+                </div>
+                <ArrowUpRightMini className="text-ui-fg-muted group-hover:text-ui-fg-base" />
+              </Link>
+              <Link
+                href="/inventory"
+                className="p-4 border border-ui-border-base rounded-lg hover:bg-ui-bg-subtle transition-colors flex items-center justify-between group"
+              >
+                <div>
+                  <Text className="font-medium">Manage Inventory</Text>
+                  <Text className="text-ui-fg-subtle text-sm">Update stock levels</Text>
+                </div>
+                <ArrowUpRightMini className="text-ui-fg-muted group-hover:text-ui-fg-base" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </Container>
+    )
   }
 
   return <VendorShell>{content}</VendorShell>
 }
 
-// Explicitly no config export to prevent sidebar registration
-// Route is still accessible at /app/vendor/dashboard
-// export const config = defineRouteConfig({
-//   label: "Dashboard",
-// })
-
 export default VendorDashboardPage
-

@@ -4,7 +4,7 @@ import { Modules } from "@medusajs/framework/utils"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Origin', 'http://localhost:4000')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
   res.setHeader('Access-Control-Allow-Credentials', 'true')
@@ -21,30 +21,100 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   if (!auth) return
 
   try {
-    const orderModuleService = req.scope.resolve(Modules.ORDER)
-    const productModuleService = req.scope.resolve(Modules.PRODUCT)
+    console.log(`[Orders API] Starting for vendor: ${auth.vendor_id}`)
+    const query = req.scope.resolve("query")
 
-    // Get all vendor products
-    const allProducts = await productModuleService.listProducts({})
-    const vendorProducts = allProducts.filter((p: any) => {
-      const metadata = p.metadata || {}
-      return metadata.vendor_id === auth.vendor_id
+    // Use query module to efficiently get vendor's product IDs with metadata filter
+    const { data: vendorProducts } = await query.graph({
+      entity: "product",
+      fields: ["id"],
+      filters: {
+        metadata: {
+          vendor_id: auth.vendor_id
+        }
+      }
     })
-    const vendorProductIds = new Set(vendorProducts.map((p: any) => p.id))
 
-    // List all orders
-    const orders = await orderModuleService.listOrders({})
+    if (!vendorProducts || vendorProducts.length === 0) {
+      console.log(`[Orders API] No products found for vendor ${auth.vendor_id}`)
+      return res.json({ orders: [] })
+    }
+
+    const vendorProductIds = vendorProducts.map((p: any) => p.id)
+    console.log(`[Orders API] Found ${vendorProductIds.length} vendor products`)
+
+    // Get orders with items efficiently using query module
+    const { data: ordersData } = await query.graph({
+      entity: "order",
+      fields: [
+        "id",
+        "display_id",
+        "email",
+        "status",
+        "summary",
+        "currency_code",
+        "created_at",
+        "items.id",
+        "items.title",
+        "items.variant_title",
+        "items.quantity",
+        "items.unit_price",
+        "items.product_id",
+        "items.variant.product_id",
+        "fulfillments.id",
+        "fulfillments.shipped_at",
+        "fulfillments.delivered_at",
+        "fulfillments.canceled_at"
+      ],
+      filters: {}
+    })
+
+    console.log(`[Orders API] Total orders in system: ${ordersData?.length || 0}`)
 
     // Filter orders that contain vendor's products
-    const vendorOrders = orders.filter((order: any) => {
+    const vendorOrders = (ordersData || []).filter((order: any) => {
       const items = order.items || []
       return items.some((item: any) => {
         const productId = item.product_id || item.variant?.product_id
-        return productId && vendorProductIds.has(productId)
+        return productId && vendorProductIds.includes(productId)
       })
     })
 
-    return res.json({ orders: vendorOrders })
+    // Debug: Log first order structure to see actual data
+    if (vendorOrders.length > 0) {
+      console.log(`[Orders API] Sample order structure:`, JSON.stringify(vendorOrders[0], null, 2))
+    }
+
+    // Format orders with proper total
+    const formattedOrders = vendorOrders.map((order: any) => {
+      // Calculate fulfillment status
+      let fulfillmentStatus = 'pending'
+      const fulfillments = order.fulfillments || []
+
+      if (fulfillments.length > 0) {
+        if (fulfillments.some((f: any) => f.delivered_at)) {
+          fulfillmentStatus = 'delivered'
+        }
+        else if (fulfillments.some((f: any) => f.shipped_at && !f.canceled_at)) {
+          fulfillmentStatus = 'shipped'
+        }
+        else if (fulfillments.every((f: any) => f.canceled_at)) {
+          fulfillmentStatus = 'canceled'
+        }
+        else {
+          fulfillmentStatus = 'processing'
+        }
+      }
+
+      return {
+        ...order,
+        total: order.summary?.current_order_total || 0,
+        fulfillment_status: fulfillmentStatus
+      }
+    })
+
+    console.log(`[Orders API] Returning ${formattedOrders.length} orders`)
+    return res.json({ orders: formattedOrders })
   } catch (error: any) {
     console.error("Vendor orders list error:", error)
     return res.status(500).json({ message: error?.message || "Failed to list orders" })

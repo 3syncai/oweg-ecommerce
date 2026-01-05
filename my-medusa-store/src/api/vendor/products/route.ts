@@ -23,7 +23,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
   try {
     const productModuleService = req.scope.resolve(Modules.PRODUCT)
-    
+
     // List all products - we'll filter by metadata client-side since Medusa v2
     // doesn't support metadata filtering directly in listProducts
     const products = await productModuleService.listProducts({})
@@ -71,6 +71,31 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     if (!title) {
       return res.status(400).json({ message: "title is required" })
+    }
+
+    // Check brand authorization before proceeding
+    // Extract brand from metadata (or use "UNBRANDED" if not provided)
+    const brandName = (metadata?.brand || "UNBRANDED").toString().trim()
+
+    try {
+      const brandAuthService = req.scope.resolve("vendorBrandAuthorization") as any
+      const hasAuthorization = await brandAuthService.checkBrandAuthorization(
+        auth.vendor_id,
+        brandName
+      )
+
+      if (!hasAuthorization) {
+        return res.status(400).json({
+          error: "brand_authorization_required",
+          message: `Please upload brand authorization letter for "${brandName}" before creating products`,
+          brand_name: brandName,
+        })
+      }
+    } catch (brandAuthError: any) {
+      console.error("Brand authorization check error:", brandAuthError)
+      // If brand auth module is not available, log warning but continue
+      // This allows gradual rollout
+      console.warn("⚠️ Brand authorization module not available, skipping check")
     }
 
     // Get default shipping profile if not provided
@@ -130,37 +155,54 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           // Don't set SKU - let Medusa auto-generate or leave it empty
         }
 
-        // Handle prices - ensure they're in the correct format
+        // Process prices: separate base prices from price list prices
         if (v.prices && Array.isArray(v.prices) && v.prices.length > 0) {
-          cleaned.prices = v.prices
+          const allPrices = v.prices
             .map((p: any) => {
               // Ensure price has amount and currency_code
               if (!p || typeof p !== 'object') return null
-              
+
               // Convert amount to number if it's a string
               let amount = p.amount
               if (typeof amount === 'string') {
                 amount = parseFloat(amount)
               }
-              
+
               // Ensure amount is a valid number
               if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) {
                 return null
               }
-              
+
               // Ensure currency_code exists, default to 'inr'
               const currency_code = p.currency_code || 'inr'
-              
+
               return {
                 amount: Math.round(amount), // Ensure integer (paise/cents)
-                currency_code: currency_code.toLowerCase()
+                currency_code: currency_code.toLowerCase(),
+                price_list_id: p.price_list_id || null
               }
             })
-            .filter((p: any): p is { amount: number; currency_code: string } => p !== null)
-          
+            .filter((p: any) => p !== null)
+
+          // Separate base prices (no price_list_id) from price list prices
+          cleaned.prices = allPrices
+            .filter((p: any) => !p.price_list_id)
+            .map((p: any) => ({
+              amount: p.amount,
+              currency_code: p.currency_code
+            }))
+
+          // Store price list prices separately for later (we'll add them after product creation)
+          const priceListPrices = allPrices.filter((p: any) => p.price_list_id)
+          if (priceListPrices.length > 0) {
+            // Store in variant's metadata temporarily so we can access it after creation
+            if (!cleaned.metadata) cleaned.metadata = {}
+            cleaned.metadata._price_list_prices = priceListPrices
+          }
+
           // If no valid prices after filtering, log a warning
           if (cleaned.prices.length === 0 && v.prices.length > 0) {
-            console.warn('⚠️ No valid prices found for variant:', v.title, 'Original prices:', v.prices)
+            console.warn('⚠️ No valid base prices found for variant:', v.title, 'Original prices:', v.prices)
           }
         } else {
           cleaned.prices = []
@@ -182,13 +224,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           cleaned.inventory_quantity = v.inventory_quantity
         }
 
-        // CRITICAL: Medusa v2 expects option_values, NOT options
-        // Using 'options' causes Medusa to merge with prices and corrupt the data
-        cleaned.option_values = [
-          {
-            value: "Default",
-          },
-        ]
+        // CRITICAL: Medusa v2 expects option_values with option reference
+        // The option_value must reference the product option by title
+        cleaned.options = {
+          Default: "Default"
+        }
 
         return cleaned
       })
@@ -225,11 +265,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     let normalizedTags: Array<{ id: string }> = []
     if (tags && Array.isArray(tags) && tags.length > 0) {
       const productModuleService = req.scope.resolve(Modules.PRODUCT)
-      
+
       // Separate tags with IDs from tags with values
       const tagsWithIds: Array<{ id: string }> = []
       const tagValues: string[] = []
-      
+
       for (const tag of tags) {
         if (typeof tag === "object" && tag.id) {
           // Tag already has an ID, use it directly
@@ -259,7 +299,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           } catch (listError: any) {
             console.warn("Could not list existing tags:", listError?.message)
           }
-          
+
           // Create a map of tag values to IDs (case-insensitive)
           const tagValueToId = new Map<string, string>()
           if (Array.isArray(existingTags)) {
@@ -273,7 +313,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           // Find or create tags
           for (const tagValue of tagValues) {
             if (!tagValue) continue
-            
+
             const normalizedValue = tagValue.toLowerCase().trim()
             let tagId = tagValueToId.get(normalizedValue)
 
@@ -292,7 +332,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
                   const created = await (productModuleService as any).create([{ value: tagValue }])
                   newTag = created?.[0]
                 }
-                
+
                 if (newTag?.id) {
                   tagId = newTag.id
                   tagValueToId.set(normalizedValue, newTag.id) // Use newTag.id directly to be safe
@@ -315,9 +355,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
       // Combine tags with IDs and newly created/found tags
       normalizedTags = [...tagsWithIds, ...normalizedTags]
-      
+
       console.log(`Processed ${normalizedTags.length} tag(s) for product creation`)
-      
+
       // If no tags were successfully processed, set to empty array to avoid errors
       if (normalizedTags.length === 0) {
         normalizedTags = []
@@ -331,8 +371,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
 
     // Normalize collection_id - convert empty string to undefined (Medusa expects undefined, not null)
-    const normalizedCollectionId = collection_id && typeof collection_id === "string" && collection_id.trim() 
-      ? collection_id.trim() 
+    const normalizedCollectionId = collection_id && typeof collection_id === "string" && collection_id.trim()
+      ? collection_id.trim()
       : undefined
 
     // Normalize images - ensure they're objects with 'url' property
@@ -357,7 +397,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       approval_status: "pending", // Custom status for admin approval
       submitted_at: new Date().toISOString(),
     }
-    
+
     // Merge user-provided metadata (MID code, HS code, country of origin, etc.)
     if (metadata && typeof metadata === "object") {
       Object.assign(baseMetadata, metadata)
@@ -379,7 +419,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           return null
         })
         .filter((video): video is { url: string } => video !== null)
-      
+
       // Add videos to the images array so they're stored in database the same way
       normalizedImages = [...normalizedImages, ...videoImageObjects]
       console.log(`Added ${videoImageObjects.length} video(s) to images array for database storage`)
@@ -396,7 +436,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
 
     let finalHandle = handle || generateHandle(title)
-    
+
     // If handle is provided but might be duplicate, append timestamp to make it unique
     if (handle) {
       // Check if handle already exists by trying to find products with this handle
@@ -405,7 +445,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         const existingProducts = await productModuleService.listProducts({
           handle: finalHandle,
         })
-        
+
         if (existingProducts && existingProducts.length > 0) {
           // Handle exists, append timestamp to make it unique
           const timestamp = Date.now().toString().slice(-6) // Last 6 digits of timestamp
@@ -426,10 +466,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     // Prepare product data
     const productData = {
-            title,
+      title,
       subtitle: subtitle || null,
-            description: description || null,
-            handle: finalHandle,
+      description: description || null,
+      handle: finalHandle,
       thumbnail: thumbnail || (normalizedImages.length > 0 ? normalizedImages[0].url : null),
       is_giftcard: false,
       discountable: discountable !== false,
@@ -445,8 +485,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       width: width || null,
       length: length || null,
       status: ProductStatus.DRAFT, // Set to DRAFT, pending admin approval
-            shipping_profile_id: finalShippingProfileId,
-            metadata: baseMetadata,
+      shipping_profile_id: finalShippingProfileId,
+      metadata: baseMetadata,
     }
 
     // Log product data with detailed price information
@@ -459,12 +499,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         hasPrices: (v.prices?.length || 0) > 0,
       })),
     }, null, 2))
-    
+
     // Validate that at least one variant has prices
-    const hasAnyPrices = productData.variants.some((v: any) => 
+    const hasAnyPrices = productData.variants.some((v: any) =>
       v.prices && Array.isArray(v.prices) && v.prices.length > 0
     )
-    
+
     if (!hasAnyPrices) {
       console.warn('⚠️ WARNING: Product has no prices! All variants have empty prices array.')
     }
@@ -477,18 +517,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     })
 
     const product = result[0]
-    
+
     // Link product to default sales channel
     try {
       const salesChannelModuleService = req.scope.resolve(Modules.SALES_CHANNEL)
       const defaultSalesChannels = await salesChannelModuleService.listSalesChannels({
         name: "Default Sales Channel",
       })
-      
+
       if (defaultSalesChannels && defaultSalesChannels.length > 0) {
         const defaultSalesChannel = defaultSalesChannels[0]
         const linkModule = req.scope.resolve(ContainerRegistrationKeys.LINK) as any
-        
+
         // Link product to sales channel using Medusa v2 link module
         // Format: { [module1]: { id_field: id }, [module2]: { id_field: id } }
         await linkModule.create({
@@ -499,14 +539,173 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
             sales_channel_id: defaultSalesChannel.id,
           },
         })
-        
+
         console.log(`✅ Linked product ${product.id} to default sales channel ${defaultSalesChannel.id}`)
       } else {
-        console.warn("⚠️ Default Sales Channel not found - product may not be available in any sales channel")
+        console.warn(`⚠️ Default sales channel not found`)
       }
-    } catch (linkError: any) {
-      console.error("❌ Failed to link product to sales channel:", linkError?.message)
+    } catch (salesChannelError: any) {
+      console.error(`❌ Failed to link product to sales channel:`, salesChannelError?.message)
       // Don't fail product creation if sales channel linking fails, but log the error
+    }
+
+    // Add discounted prices to price lists after product creation
+    try {
+      const pricingModule = req.scope.resolve(Modules.PRICING)
+      const query = req.scope.resolve("query")
+
+      // Check if any variants have price list prices stored in metadata
+      for (let i = 0; i < product.variants.length; i++) {
+        const variant = product.variants[i]
+        const priceListPrices = variant.metadata?._price_list_prices
+
+        if (priceListPrices && Array.isArray(priceListPrices) && priceListPrices.length > 0) {
+          console.log(`🔍 Found ${priceListPrices.length} price list prices for variant ${variant.id}`)
+
+          // Get the variant's price_set_id
+          const { data: variantData } = await query.graph({
+            entity: "product_variant",
+            fields: ["id", "price_set.id"],
+            filters: { id: variant.id }
+          })
+
+          const priceSetId = variantData?.[0]?.price_set?.id
+          if (!priceSetId) {
+            console.error(`❌ No price_set_id found for variant ${variant.id}`)
+            continue
+          }
+
+          // Group prices by price_list_id
+          const pricesByList: Record<string, any[]> = {}
+          for (const priceData of priceListPrices) {
+            const priceListId = priceData.price_list_id
+            if (!pricesByList[priceListId]) {
+              pricesByList[priceListId] = []
+            }
+
+            pricesByList[priceListId].push({
+              currency_code: priceData.currency_code,
+              amount: priceData.amount,
+              price_set_id: priceSetId
+            })
+          }
+
+          // Add prices to each price list using addPriceListPrices
+          for (const [priceListId, prices] of Object.entries(pricesByList)) {
+            try {
+              await (pricingModule as any).addPriceListPrices([{
+                price_list_id: priceListId,
+                prices: prices
+              }])
+
+              console.log(`✅ Added ${prices.length} price(s) to price list ${priceListId} for variant ${variant.id}`)
+            } catch (priceError: any) {
+              console.error(`❌ Failed to add prices to price list ${priceListId}:`, priceError?.message)
+            }
+          }
+        }
+      }
+    } catch (priceListError: any) {
+      console.error(`❌ Failed to process price list prices:`, priceListError?.message)
+      console.error(priceListError?.stack)
+      // Don't fail product creation if price list processing fails
+    }
+
+    // Handle inventory management for variants
+    try {
+      const inventoryModule = req.scope.resolve(Modules.INVENTORY)
+      const stockLocationModule = req.scope.resolve(Modules.STOCK_LOCATION)
+
+      // Get the default stock location (Default Warehouse)
+      const stockLocations = await stockLocationModule.listStockLocations({
+        name: "Default Warehouse"
+      })
+
+      let defaultLocation = stockLocations?.[0]
+
+      // If no "Default Warehouse", try to get any stock location
+      if (!defaultLocation) {
+        const allLocations = await stockLocationModule.listStockLocations({})
+        defaultLocation = allLocations?.[0]
+        console.warn(`⚠️ "Default Warehouse" not found, using location: ${defaultLocation?.name}`)
+      }
+
+      if (defaultLocation) {
+        console.log(`📦 Using stock location: ${defaultLocation.name} (${defaultLocation.id})`)
+
+        // Get the original variant data to retrieve inventory quantities
+        const originalVariants = variants || []
+
+        // Process each variant's inventory
+        for (let i = 0; i < product.variants.length; i++) {
+          const variant = product.variants[i]
+          const originalVariant = originalVariants[i] || {}
+
+          // Check if this variant should manage inventory and has a quantity
+          const manageInventory = originalVariant.manage_inventory !== false // Default to true
+          const inventoryQuantity = typeof originalVariant.inventory_quantity === 'number'
+            ? originalVariant.inventory_quantity
+            : 0
+
+          if (manageInventory && variant.id) {
+            try {
+              let inventoryItem
+
+              // Check if inventory item already exists with this SKU
+              if (variant.sku) {
+                const existingItems = await inventoryModule.listInventoryItems({
+                  sku: variant.sku
+                })
+                inventoryItem = existingItems?.[0]
+              }
+
+              // Create new inventory item if doesn't exist
+              if (!inventoryItem) {
+                const inventoryItems = await inventoryModule.createInventoryItems([{
+                  sku: variant.sku || undefined,
+                }])
+                inventoryItem = inventoryItems[0]
+                console.log(`📦 Created inventory item ${inventoryItem.id} for variant ${variant.id}`)
+              } else {
+                console.log(`♻️ Using existing inventory item ${inventoryItem.id} for SKU ${variant.sku}`)
+              }
+
+              // Link inventory item to variant
+              const linkModule = req.scope.resolve(ContainerRegistrationKeys.LINK) as any
+              await linkModule.create({
+                [Modules.PRODUCT]: {
+                  variant_id: variant.id,
+                },
+                [Modules.INVENTORY]: {
+                  inventory_item_id: inventoryItem.id,
+                },
+              })
+
+              console.log(`🔗 Linked inventory item ${inventoryItem.id} to variant ${variant.id}`)
+
+              // Create inventory level for the default location
+              await inventoryModule.createInventoryLevels([{
+                inventory_item_id: inventoryItem.id,
+                location_id: defaultLocation.id,
+                stocked_quantity: inventoryQuantity,
+              }])
+
+              console.log(`✅ Stocked ${inventoryQuantity} units for variant ${variant.id} at location ${defaultLocation.name}`)
+            } catch (inventoryError: any) {
+              console.error(`❌ Failed to create inventory for variant ${variant.id}:`, inventoryError?.message)
+              // Continue with other variants even if one fails
+            }
+          } else {
+            console.log(`⏭️ Skipping inventory for variant ${variant.id} (manage_inventory: ${manageInventory})`)
+          }
+        }
+      } else {
+        console.warn('⚠️ No stock location found - inventory will not be created')
+      }
+    } catch (inventoryError: any) {
+      console.error(`❌ Failed to process inventory:`, inventoryError?.message)
+      console.error(inventoryError?.stack)
+      // Don't fail product creation if inventory processing fails
     }
 
     return res.json({ product })
@@ -519,26 +718,26 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       code: error?.code,
       name: error?.name,
     })
-    
+
     // Handle duplicate SKU error specifically
     if (error?.message && error.message.includes("already exists") && error.message.includes("sku")) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: "A product variant with this SKU already exists. Please use a different SKU or leave it empty.",
         error: "duplicate_sku",
         details: error?.message,
       })
     }
-    
+
     // Handle duplicate handle error - return helpful message
     if (error?.message && error.message.includes("already exists") && error.message.includes("handle")) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: "A product with this handle already exists. The system will automatically generate a unique handle. Please try again.",
         error: "duplicate_handle",
         details: error?.message,
       })
     }
-    
-    return res.status(500).json({ 
+
+    return res.status(500).json({
       message: error?.message || "Failed to create product",
       error: error?.type || "unknown_error",
       details: process.env.NODE_ENV === "development" ? error?.stack : undefined,
