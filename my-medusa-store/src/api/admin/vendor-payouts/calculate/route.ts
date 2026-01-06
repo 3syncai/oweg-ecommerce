@@ -1,5 +1,4 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { Modules } from "@medusajs/framework/utils"
 import { VENDOR_MODULE } from "../../../../modules/vendor"
 
 /**
@@ -19,7 +18,7 @@ export async function POST(
             return
         }
 
-        // Get vendor details using the vendor module
+        // Get vendor details
         const vendorModuleService = req.scope.resolve(VENDOR_MODULE)
         const [vendor] = await vendorModuleService.listVendors({ id: vendor_id })
 
@@ -30,56 +29,122 @@ export async function POST(
 
         const commission_rate = vendor.commission_rate || 2.0
 
-        // Get order module
-        const orderModuleService = req.scope.resolve(Modules.ORDER)
+        // Use SQL query to get vendor orders and revenue
+        const query = req.scope.resolve("query")
 
-        // Fetch all orders for this vendor
-        const allOrders = await orderModuleService.listOrders({
-            metadata: {
-                vendor_id: vendor_id,
-            },
+        // Get all products by this vendor
+        const { data: vendorProducts } = await query.graph({
+            entity: "product",
+            fields: ["id", "variants.*"],
+            filters: {
+                metadata: {
+                    vendor_id: vendor_id
+                }
+            }
         })
 
-        // Filter orders: Completed/Delivered (fulfillment_status)
-        // NOTE: Changed to 0 days for testing - remove date check
-        const eligibleOrders = allOrders.filter((order: any) => {
-            const isFulfilled =
-                order.fulfillment_status === 'shipped' ||
-                order.fulfillment_status === 'delivered'
-            return isFulfilled // No date check - all completed orders eligible
-        })
-
-        // TODO: Check existing payouts to exclude already paid orders
-        // For now, calculate on all eligible orders
-        const unpaidOrders = eligibleOrders
-
-        // Calculate totals
-        const gross_amount = unpaidOrders.reduce(
-            (sum: number, order: any) => sum + (order.total || 0),
-            0
-        )
-
-        const commission = (gross_amount * commission_rate) / 100
-        const net_amount = gross_amount - commission
-
-        res.json({
-            success: true,
-            calculation: {
+        if (!vendorProducts || vendorProducts.length === 0) {
+            // No products = no revenue
+            return res.json({
                 vendor_id,
                 vendor_name: vendor.store_name || vendor.name,
                 commission_rate,
-                gross_amount,
-                commission_amount: commission,
-                net_amount,
-                order_count: unpaidOrders.length,
-                orders: unpaidOrders.map((order: any) => ({
-                    id: order.id,
-                    display_id: order.display_id,
-                    total: order.total,
-                    created_at: order.created_at,
-                    fulfillment_status: order.fulfillment_status,
-                })),
-            },
+                total_revenue: 0,
+                commission: 0,
+                net_amount: 0,
+                order_count: 0,
+                order_ids: [],
+            })
+        }
+
+        // Extract all variant IDs for this vendor
+        const variantIds: string[] = []
+        vendorProducts.forEach((product: any) => {
+            product.variants?.forEach((variant: any) => {
+                if (variant.id) variantIds.push(variant.id)
+            })
+        })
+
+        if (variantIds.length === 0) {
+            return res.json({
+                vendor_id,
+                vendor_name: vendor.store_name || vendor.name,
+                commission_rate,
+                total_revenue: 0,
+                commission: 0,
+                net_amount: 0,
+                order_count: 0,
+                order_ids: [],
+            })
+        }
+
+        // Get all orders with line items and fulfillments
+        const { data: orders } = await query.graph({
+            entity: "order",
+            fields: ["id", "display_id", "items.*", "fulfillments.*"]
+        })
+
+        // Calculate revenue from matching items
+        let total_revenue = 0
+        const vendor_order_ids: string[] = []
+        const processedOrders = new Set<string>()
+
+        console.log(`[Payout Debug] Total orders fetched: ${orders?.length || 0}`)
+        console.log(`[Payout Debug] Looking for variant IDs:`, variantIds.slice(0, 5), `... (${variantIds.length} total)`)
+
+        orders?.forEach((order: any) => {
+            // Check if order is delivered by looking at fulfillments
+            const hasDeliveredFulfillment = order.fulfillments?.some((f: any) =>
+                f.delivered_at !== null && f.delivered_at !== undefined
+            )
+            const hasShippedFulfillment = order.fulfillments?.some((f: any) =>
+                f.shipped_at !== null && f.shipped_at !== undefined
+            )
+            const isDelivered = hasDeliveredFulfillment || hasShippedFulfillment
+
+            console.log(`[Payout Debug] Order ${order.display_id}: fulfillments=${order.fulfillments?.length || 0}, isDelivered=${isDelivered}, items=${order.items?.length || 0}`)
+
+            if (!isDelivered) return
+
+            let orderHasVendorItem = false
+            let orderRevenue = 0
+
+            order.items?.forEach((item: any) => {
+                const itemVariantId = item.variant_id
+                const matchesVendor = variantIds.includes(itemVariantId)
+
+                console.log(`[Payout Debug]   Item variant: ${itemVariantId}, matches vendor: ${matchesVendor}`)
+
+                if (matchesVendor) {
+                    orderHasVendorItem = true
+                    const itemRevenue = (item.unit_price || 0) * (item.quantity || 1)
+                    orderRevenue += itemRevenue
+                    console.log(`[Payout Debug]   ✅ Matched! Revenue: ${itemRevenue}`)
+                }
+            })
+
+            if (orderHasVendorItem && !processedOrders.has(order.id)) {
+                processedOrders.add(order.id)
+                vendor_order_ids.push(order.id)
+                total_revenue += orderRevenue
+                console.log(`[Payout Debug] ✅ Order ${order.display_id} added to payout`)
+            }
+        })
+
+        const commission = (total_revenue * commission_rate) / 100
+        const net_amount = total_revenue - commission
+
+        console.log(`[Payout Calculate] Vendor: ${vendor.name}, Products: ${vendorProducts.length}, Variants: ${variantIds.length}, Orders: ${vendor_order_ids.length}, Revenue: ${total_revenue}`)
+
+        res.json({
+            vendor_id,
+            vendor_name: vendor.store_name || vendor.name,
+            commission_rate,
+            total_revenue,
+            commission,
+            net_amount,
+            order_count: vendor_order_ids.length,
+            order_ids: vendor_order_ids,
         })
     } catch (error: any) {
         console.error("Calculate payout error:", error)
