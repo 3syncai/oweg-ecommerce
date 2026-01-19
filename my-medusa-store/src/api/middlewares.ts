@@ -57,5 +57,9 @@ export default defineMiddlewares({
       matcher: /^\/store\/vendors\/.*/,
       middlewares: [corsMiddleware],
     },
+    {
+      matcher: /^\/store\/return-requests$/,
+      middlewares: [],
+    },
   ],
 })

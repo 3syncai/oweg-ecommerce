@@ -37,6 +37,21 @@ type DraftOrderResponse = {
   cartId: string;
 };
 
+type CustomerAddress = {
+  id: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  address_1?: string;
+  address_2?: string;
+  city?: string;
+  province?: string;
+  postal_code?: string;
+  country_code?: string;
+  is_default_shipping?: boolean;
+  is_default_billing?: boolean;
+};
+
 const RAZORPAY_SUCCESS = process.env.NEXT_PUBLIC_PAYMENT_SUCCESS_URL || "/order/success";
 const RAZORPAY_FAILED = process.env.NEXT_PUBLIC_PAYMENT_FAILED_URL || "/order/failed";
 
@@ -204,6 +219,12 @@ function CheckoutPageInner() {
     countryCode: "IN",
   });
   const [billing, setBilling] = useState({ ...shipping });
+  const [_addresses, setAddresses] = useState<CustomerAddress[]>([]);
+  const [defaultAddress, setDefaultAddress] = useState<CustomerAddress | null>(null);
+  const [addressTouched, setAddressTouched] = useState(false);
+  const [saveAsDefault, setSaveAsDefault] = useState(false);
+  const [showSaveDefault, setShowSaveDefault] = useState(false);
+  const [savingAddress, setSavingAddress] = useState(false);
 
   // Prefill email and referral code from logged-in customer
   useEffect(() => {
@@ -217,6 +238,108 @@ function CheckoutPageInner() {
       setReferralCode(refCode);
     }
   }, [customer, referralCode]);
+
+  useEffect(() => {
+    const loadAddresses = async () => {
+      if (!customer?.id) {
+        setAddresses([]);
+        setDefaultAddress(null);
+        return;
+      }
+      try {
+        const res = await fetch("/api/medusa/customer-addresses", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const list = (data.addresses || data?.customer?.addresses || []) as CustomerAddress[];
+        setAddresses(list);
+        const def = list.find((addr) => addr.is_default_shipping) || list[0] || null;
+        setDefaultAddress(def);
+        if (def && !addressTouched) {
+          setShipping((prev) => ({
+            ...prev,
+            firstName: def.first_name || prev.firstName,
+            lastName: def.last_name || prev.lastName,
+            phone: def.phone || prev.phone,
+            address1: def.address_1 || prev.address1,
+            address2: def.address_2 || prev.address2,
+            city: def.city || prev.city,
+            state: def.province || prev.state,
+            postalCode: def.postal_code || prev.postalCode,
+            countryCode: def.country_code || prev.countryCode || "IN",
+          }));
+        }
+      } catch (error) {
+        console.warn("Failed to load customer addresses", error);
+      }
+    };
+
+    loadAddresses();
+  }, [customer?.id, addressTouched]);
+
+  useEffect(() => {
+    if (!defaultAddress) {
+      setShowSaveDefault(Boolean(customer?.id));
+      return;
+    }
+    const normalize = (value?: string | null) => (value || "").trim().toLowerCase();
+    const changed =
+      normalize(defaultAddress.first_name) !== normalize(shipping.firstName) ||
+      normalize(defaultAddress.last_name) !== normalize(shipping.lastName) ||
+      normalize(defaultAddress.phone) !== normalize(shipping.phone) ||
+      normalize(defaultAddress.address_1) !== normalize(shipping.address1) ||
+      normalize(defaultAddress.address_2) !== normalize(shipping.address2) ||
+      normalize(defaultAddress.city) !== normalize(shipping.city) ||
+      normalize(defaultAddress.province) !== normalize(shipping.state) ||
+      normalize(defaultAddress.postal_code) !== normalize(shipping.postalCode) ||
+      normalize(defaultAddress.country_code) !== normalize(shipping.countryCode);
+    setShowSaveDefault(changed);
+    if (!changed) {
+      setSaveAsDefault(false);
+    }
+  }, [defaultAddress, shipping, customer?.id]);
+
+  const saveDefaultAddress = async () => {
+    if (!customer?.id || !saveAsDefault) return;
+    const payload = {
+      first_name: shipping.firstName,
+      last_name: shipping.lastName,
+      phone: shipping.phone,
+      address_1: shipping.address1,
+      address_2: shipping.address2,
+      city: shipping.city,
+      province: shipping.state,
+      postal_code: shipping.postalCode,
+      country_code: shipping.countryCode || "IN",
+      is_default_shipping: true,
+      is_default_billing: true,
+    };
+
+    try {
+      setSavingAddress(true);
+      if (defaultAddress?.id) {
+        await fetch(`/api/medusa/customer-addresses/${encodeURIComponent(defaultAddress.id)}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await fetch("/api/medusa/customer-addresses", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+      }
+    } catch (error) {
+      console.warn("Failed to save default address", error);
+    } finally {
+      setSavingAddress(false);
+    }
+  };
 
   useEffect(() => {
     if (cart?.id) {
@@ -508,6 +631,10 @@ function CheckoutPageInner() {
 
     console.log('🛒 [Frontend Debug] createDraftOrder Payload:', requestPayload);
 
+    if (saveAsDefault) {
+      await saveDefaultAddress();
+    }
+
     const res = await fetch("/api/checkout/draft-order", {
       method: "POST",
       headers: {
@@ -740,17 +867,35 @@ function CheckoutPageInner() {
                 <h2 className="text-lg font-semibold text-slate-900">Shipping details</h2>
                 <span className="text-xs text-slate-500">All fields required</span>
               </div>
+              {showSaveDefault && customer?.id && (
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={saveAsDefault}
+                    onChange={(e) => setSaveAsDefault(e.target.checked)}
+                    disabled={savingAddress}
+                  />
+                  <span>Save this as default address for next time</span>
+                  {savingAddress && <span className="text-xs text-slate-400">Saving...</span>}
+                </label>
+              )}
               <div className="grid md:grid-cols-2 gap-4">
                 <Input
                   required
                   placeholder="First name"
                   value={shipping.firstName}
-                  onChange={(e) => setShipping({ ...shipping, firstName: e.target.value })}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, firstName: e.target.value });
+                  }}
                 />
                 <Input
                   placeholder="Last name"
                   value={shipping.lastName}
-                  onChange={(e) => setShipping({ ...shipping, lastName: e.target.value })}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, lastName: e.target.value });
+                  }}
                 />
                 <Input
                   required
@@ -766,38 +911,56 @@ function CheckoutPageInner() {
                   required
                   placeholder="Phone"
                   value={shipping.phone}
-                  onChange={(e) => setShipping({ ...shipping, phone: e.target.value })}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, phone: e.target.value });
+                  }}
                 />
                 <Input
                   required
                   placeholder="Address line 1"
                   className="md:col-span-2"
                   value={shipping.address1}
-                  onChange={(e) => setShipping({ ...shipping, address1: e.target.value })}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, address1: e.target.value });
+                  }}
                 />
                 <Input
                   placeholder="Address line 2"
                   className="md:col-span-2"
                   value={shipping.address2}
-                  onChange={(e) => setShipping({ ...shipping, address2: e.target.value })}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, address2: e.target.value });
+                  }}
                 />
                 <Input
                   required
                   placeholder="City"
                   value={shipping.city}
-                  onChange={(e) => setShipping({ ...shipping, city: e.target.value })}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, city: e.target.value });
+                  }}
                 />
                 <Input
                   required
                   placeholder="State"
                   value={shipping.state}
-                  onChange={(e) => setShipping({ ...shipping, state: e.target.value })}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, state: e.target.value });
+                  }}
                 />
                 <Input
                   required
                   placeholder="PIN code"
                   value={shipping.postalCode}
-                  onChange={(e) => setShipping({ ...shipping, postalCode: e.target.value })}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, postalCode: e.target.value });
+                  }}
                 />
               </div>
             </section>
