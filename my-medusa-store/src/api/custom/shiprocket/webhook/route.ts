@@ -78,8 +78,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       if (status === "delivered") {
         updates.shiprocket_delivered_at = new Date().toISOString()
       }
-      await orderModuleService.updateOrders({
-        id: match.id,
+      await orderModuleService.updateOrders(match.id, {
         metadata: {
           ...metadata,
           ...updates,

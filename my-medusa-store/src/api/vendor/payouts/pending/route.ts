@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { VENDOR_MODULE } from "../../../../modules/vendor"
+import type VendorModuleService from "../../../../modules/vendor/service"
 
 /**
  * Get pending payout summary for logged-in vendor
@@ -22,7 +23,7 @@ export async function GET(
         const vendor_id = vendorUser.vendor_id
 
         // Get vendor details for commission rate
-        const vendorModuleService = req.scope.resolve(VENDOR_MODULE)
+        const vendorModuleService = req.scope.resolve(VENDOR_MODULE) as VendorModuleService
         const [vendor] = await vendorModuleService.listVendors({ id: vendor_id })
 
         if (!vendor) {
@@ -36,14 +37,14 @@ export async function GET(
         const orderModuleService = req.scope.resolve(Modules.ORDER)
 
         // Fetch all orders for this vendor
-        const allOrders = await orderModuleService.listOrders({
-            metadata: {
-                vendor_id: vendor_id,
-            },
+        const allOrders = await orderModuleService.listOrders({})
+        const vendorOrders = allOrders.filter((order: any) => {
+            const metadata = order?.metadata || {}
+            return metadata.vendor_id === vendor_id
         })
 
         // Filter completed orders (no date restriction for testing)
-        const eligibleOrders = allOrders.filter((order: any) => {
+        const eligibleOrders = vendorOrders.filter((order: any) => {
             const isFulfilled =
                 order.fulfillment_status === 'shipped' ||
                 order.fulfillment_status === 'delivered'

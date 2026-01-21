@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { VENDOR_MODULE } from "../../../../modules/vendor"
+import type VendorModuleService from "../../../../modules/vendor/service"
 
 /**
  * Calculate pending payout for a vendor
@@ -20,7 +21,7 @@ export async function POST(
         }
 
         // Get vendor details using the vendor module
-        const vendorModuleService = req.scope.resolve(VENDOR_MODULE)
+        const vendorModuleService = req.scope.resolve(VENDOR_MODULE) as VendorModuleService
         const [vendor] = await vendorModuleService.listVendors({ id: vendor_id })
 
         if (!vendor) {
@@ -34,15 +35,15 @@ export async function POST(
         const orderModuleService = req.scope.resolve(Modules.ORDER)
 
         // Fetch all orders for this vendor
-        const allOrders = await orderModuleService.listOrders({
-            metadata: {
-                vendor_id: vendor_id,
-            },
+        const allOrders = await orderModuleService.listOrders({})
+        const vendorOrders = allOrders.filter((order: any) => {
+            const metadata = order?.metadata || {}
+            return metadata.vendor_id === vendor_id
         })
 
         // Filter orders: Completed/Delivered (fulfillment_status)
         // NOTE: Changed to 0 days for testing - remove date check
-        const eligibleOrders = allOrders.filter((order: any) => {
+        const eligibleOrders = vendorOrders.filter((order: any) => {
             const isFulfilled =
                 order.fulfillment_status === 'shipped' ||
                 order.fulfillment_status === 'delivered'

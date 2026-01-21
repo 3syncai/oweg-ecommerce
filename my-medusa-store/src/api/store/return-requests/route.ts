@@ -63,18 +63,19 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     relations: ["items", "shipping_address", "billing_address"],
   })
 
+  const orderAny = order as any
   console.log("[Return] Order status check", {
     order_id: order?.id,
     status: order?.status,
-    payment_status: order?.payment_status,
-    fulfillment_status: order?.fulfillment_status,
-    delivered_at: order?.delivered_at,
+    payment_status: orderAny?.payment_status,
+    fulfillment_status: orderAny?.fulfillment_status,
+    delivered_at: orderAny?.delivered_at,
     updated_at: order?.updated_at,
     created_at: order?.created_at,
     shiprocket_delivered_at: order?.metadata?.shiprocket_delivered_at,
   })
 
-  const orderCustomerId = order?.customer_id || order?.customer?.id
+  const orderCustomerId = order?.customer_id || orderAny?.customer?.id
   if (orderCustomerId !== authContext.actor_id) {
     throw new MedusaError(MedusaErrorTypes.UNAUTHORIZED, "Order does not belong to customer.")
   }
