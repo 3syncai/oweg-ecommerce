@@ -24,14 +24,15 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     relations: ["items", "shipping_address", "billing_address"],
   })
 
-  const orderCustomerId = order?.customer_id || order?.customer?.id
+  const orderAny = order as any
+  const orderCustomerId = order?.customer_id || orderAny?.customer?.id
   if (orderCustomerId !== authContext.actor_id) {
     throw new MedusaError(MedusaErrorTypes.UNAUTHORIZED, "Order does not belong to customer.")
   }
 
   const metadata = order.metadata || {}
   const shiprocketStatus = String((metadata as any).shiprocket_status || "").toLowerCase()
-  const fulfillment = String(order?.fulfillment_status || "").toLowerCase()
+  const fulfillment = String(orderAny?.fulfillment_status || "").toLowerCase()
 
   if (BLOCKED_SHIPROCKET.has(shiprocketStatus) || fulfillment === "shipped" || fulfillment === "delivered") {
     throw new MedusaError(
@@ -45,8 +46,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     try {
       const shiprocket = new ShiprocketService()
       await shiprocket.cancelOrders([String(shiprocketOrderId)])
-      await orderModuleService.updateOrders({
-        id: order.id,
+      await orderModuleService.updateOrders(order.id, {
         metadata: {
           ...metadata,
           shiprocket_status: "cancelled",

@@ -65,9 +65,13 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         }
 
         // Update the price
-        await pricingModule.updatePrices([{
-            id: priceToUpdate.id,
-            amount: amount
+        await pricingModule.updatePriceListPrices([{
+            price_list_id,
+            prices: [{
+                id: priceToUpdate.id,
+                price_set_id,
+                amount: amount
+            }]
         }])
 
         return res.json({

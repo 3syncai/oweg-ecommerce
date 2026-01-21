@@ -40,7 +40,13 @@ class ReturnModuleService extends MedusaService({
           "Bank details are required for COD refunds."
         )
       }
-      bank_details_encrypted = encryptBankDetails(input.bank_details)
+      const bankDetails = {
+        account_name: input.bank_details.account_name,
+        account_number: input.bank_details.account_number,
+        ifsc_code: input.bank_details.ifsc_code,
+        bank_name: input.bank_details.bank_name ?? "",
+      }
+      bank_details_encrypted = encryptBankDetails(bankDetails)
       bank_account_last4 = input.bank_details.account_number.slice(-4)
     }
 

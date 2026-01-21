@@ -97,7 +97,7 @@ export async function POST(
             }).then(async () => {
                 // Direct insert via container
                 const container = req.scope
-                const manager = container.resolve("manager")
+                const manager = container.resolve("manager") as any
 
                 const result = await manager.transaction(async (em: any) => {
                     const payoutEntity = em.create("vendor_payout", payoutData)

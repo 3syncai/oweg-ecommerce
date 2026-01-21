@@ -61,7 +61,7 @@ export default async function shiprocketForwardOrderSubscriber({
       weight: defaultWeight,
       order_items: (order.items || []).map((item: any) => ({
         name: item.title || "Item",
-        sku: item.sku || item.id || "SKU",
+        sku: item.variant_sku || item.id || "SKU",
         units: item.quantity,
         selling_price: item.unit_price || 0,
       })),
@@ -72,8 +72,7 @@ export default async function shiprocketForwardOrderSubscriber({
     const response = await shiprocket.createForwardShipment(payload as any)
     console.log(`[Shiprocket] Forward shipment created for order ${order.id}`)
 
-    await orderModuleService.updateOrders({
-      id: order.id,
+    await orderModuleService.updateOrders(order.id, {
       metadata: {
         ...metadata,
         shiprocket_order_id: (response as any)?.order_id || (response as any)?.data?.order_id || null,

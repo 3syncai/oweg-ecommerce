@@ -105,7 +105,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       const original = orderItems.find((orderItem: any) => orderItem.id === item.order_item_id)
       return {
         name: original?.title || "Return Item",
-        sku: original?.sku || original?.id || "SKU",
+        sku: original?.variant_sku || original?.id || "SKU",
         units: item.quantity,
         selling_price: original?.unit_price || 0,
       }
