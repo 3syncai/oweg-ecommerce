@@ -23,7 +23,8 @@ export default defineConfig({
         allowedHosts: [
           "localhost",
           "127.0.0.1",
-          ".trycloudflare.com"
+          ".trycloudflare.com",
+          "evasive-laverne-semipaganish.ngrok-free.dev"
         ],
       },
     }),
@@ -79,6 +80,9 @@ export default defineConfig({
     },
     {
       resolve: "./src/modules/affiliate",
+    },
+    {
+      resolve: "./src/modules/returns",
     },
     // {
     //   resolve: "@medusajs/medusa/notification",

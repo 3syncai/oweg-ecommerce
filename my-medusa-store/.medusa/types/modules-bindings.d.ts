@@ -27,6 +27,7 @@ import type Vendor from '../../src/modules/vendor'
 import type VendorBrandAuthorization from '../../src/modules/vendor-brand-authorization'
 import type FlashSale from '../../src/modules/flash-sale'
 import type Affiliate from '../../src/modules/affiliate'
+import type Returns from '../../src/modules/returns'
 
 declare module '@medusajs/framework/types' {
   interface ModuleImplementations {
@@ -58,6 +59,7 @@ declare module '@medusajs/framework/types' {
     'vendor': InstanceType<(typeof Vendor)['service']>,
     'vendorBrandAuthorization': InstanceType<(typeof VendorBrandAuthorization)['service']>,
     'flashSale': InstanceType<(typeof FlashSale)['service']>,
-    'affiliate': InstanceType<(typeof Affiliate)['service']>
+    'affiliate': InstanceType<(typeof Affiliate)['service']>,
+    'returns': InstanceType<(typeof Returns)['service']>
   }
 }

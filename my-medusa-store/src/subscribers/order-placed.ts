@@ -37,21 +37,23 @@ export default async function orderPlacedSubscriber({
   }
 
   // 3. Send Notification
-  // Temporarily disabled until email provider is configured
-  // await notificationModuleService.createNotifications({
-  //   to: order.email,
-  //   channel: "email",
-  //   template: "order-confirmation",
-  //   data: {
-  //     subject: `Order Confirmation #${order.display_id}`,
-  //     order: order,
-  //     text: `Thank you for your order! Order ID: ${order.display_id}. Find your invoice attached.`,
-  //     html: `<h1>Thank you for your order!</h1><p>Order ID: ${order.display_id}</p><p>Your invoice is attached.</p>`,
-  //     attachments: attachments
-  //   }
-  // })
-
-  console.log(`Order placed notification skipped (no email provider configured) for order ${orderId}`)
+  try {
+    await notificationModuleService.createNotifications({
+      to: order.email,
+      channel: "email",
+      template: "order-confirmation",
+      data: {
+        subject: `Order Confirmation #${order.display_id}`,
+        order: order,
+        text: `Thank you for your order! Order ID: ${order.display_id}. Find your invoice attached.`,
+        html: `<h1>Thank you for your order!</h1><p>Order ID: ${order.display_id}</p><p>Your invoice is attached.</p>`,
+        attachments: attachments,
+      },
+    })
+    console.log(`Notification sent for order ${orderId}`)
+  } catch (error) {
+    console.error("Notification failed for order", orderId, error)
+  }
 }
 
 export const config: SubscriberConfig = {

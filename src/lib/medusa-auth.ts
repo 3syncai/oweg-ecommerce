@@ -104,8 +104,26 @@ export function cookiesToHeader(cookies: string[]): string | undefined {
 
 export function appendUpstreamCookies(target: Response, upstream: Response) {
   const cookies = collectSetCookies(upstream.headers)
+  const normalizeCookie = (cookie: string) => {
+    const parts = cookie.split(";").map((part) => part.trim())
+    const filtered = parts.filter((part) => !/^domain=/i.test(part))
+
+    if (process.env.NODE_ENV !== "production") {
+      const withoutSecure = filtered.filter((part) => part.toLowerCase() !== "secure")
+      const rewritten = withoutSecure.map((part) => {
+        if (/^samesite=none/i.test(part)) {
+          return "SameSite=Lax"
+        }
+        return part
+      })
+      return rewritten.join("; ")
+    }
+
+    return filtered.join("; ")
+  }
+
   cookies.forEach((cookie) => {
-    target.headers.append("set-cookie", cookie)
+    target.headers.append("set-cookie", normalizeCookie(cookie))
   })
 }
 
