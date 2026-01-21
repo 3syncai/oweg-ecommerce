@@ -54,10 +54,10 @@ export default function HomePage() {
         {/* Animated background elements */}
         <div className="absolute inset-0 opacity-20">
           <div className="absolute top-20 left-10 w-72 h-72 bg-white rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-20 right-10 w-96 h-96 bg-white rounded-full blur-3xl animate-pulse" style={{animationDelay: '1s'}}></div>
-          <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-white rounded-full blur-3xl animate-pulse" style={{animationDelay: '2s'}}></div>
+          <div className="absolute bottom-20 right-10 w-96 h-96 bg-white rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+          <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-white rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }}></div>
         </div>
-        
+
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             <div className="text-center lg:text-left">
@@ -86,15 +86,15 @@ export default function HomePage() {
                   Sign In
                 </Link>
               </div>
-              
+
               {/* Stats */}
               <div className="mt-12 grid grid-cols-3 gap-8 max-w-lg mx-auto lg:mx-0">
                 <div className="text-center lg:text-left">
-                  <div className="text-4xl font-extrabold mb-1">10K+</div>
+                  <div className="text-4xl font-extrabold mb-1">100+</div>
                   <div className="text-sm text-white/80 font-medium">Active Sellers</div>
                 </div>
                 <div className="text-center lg:text-left">
-                  <div className="text-4xl font-extrabold mb-1">50K+</div>
+                  <div className="text-4xl font-extrabold mb-1">2K+</div>
                   <div className="text-sm text-white/80 font-medium">Products Listed</div>
                 </div>
                 <div className="text-center lg:text-left">
@@ -103,7 +103,7 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
-            
+
             {/* Hero Image */}
             <div className="hidden lg:flex justify-center items-center">
               <div className="relative w-full max-w-lg">
@@ -212,8 +212,8 @@ export default function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12 relative">
             {/* Connection lines - hidden on mobile */}
-            <div className="hidden md:block absolute top-10 left-1/6 right-1/6 h-1 bg-gradient-to-r from-[#00D26A] via-[#00D26A] to-[#00D26A] opacity-20" style={{top: '2.5rem'}}></div>
-            
+            <div className="hidden md:block absolute top-10 left-1/6 right-1/6 h-1 bg-gradient-to-r from-[#00D26A] via-[#00D26A] to-[#00D26A] opacity-20" style={{ top: '2.5rem' }}></div>
+
             {/* Step 1 */}
             <div className="text-center relative">
               <div className="w-20 h-20 bg-gradient-to-br from-[#00D26A] to-[#00B856] rounded-2xl flex items-center justify-center mx-auto mb-6 text-white text-3xl font-bold shadow-xl relative z-10">

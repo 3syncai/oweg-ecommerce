@@ -1,7 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { VENDOR_MODULE } from "../../../../modules/vendor"
-import type VendorModuleService from "../../../../modules/vendor/service"
-import { Modules } from "@medusajs/framework/utils"
+import VendorModuleService from "../../../../modules/vendor/service"
 
 /**
  * Calculate pending payout for a vendor
@@ -20,8 +19,8 @@ export async function POST(
             return
         }
 
-        // Get vendor details using the vendor module
-        const vendorModuleService: VendorModuleService = req.scope.resolve(VENDOR_MODULE)
+        // Get vendor details
+        const vendorModuleService = req.scope.resolve(VENDOR_MODULE) as VendorModuleService
         const [vendor] = await vendorModuleService.listVendors({ id: vendor_id })
 
         if (!vendor) {
@@ -31,13 +30,13 @@ export async function POST(
 
         const commission_rate = vendor.commission_rate || 2.0
 
-        // Get query service
+        // Use SQL query to get vendor orders and revenue
         const query = req.scope.resolve("query")
 
-        // Get all products for this vendor
+        // Get all products by this vendor
         const { data: vendorProducts } = await query.graph({
             entity: "product",
-            fields: ["id", "title", "variants.*"],
+            fields: ["id", "variants.*"],
             filters: {
                 metadata: {
                     vendor_id: vendor_id
@@ -46,6 +45,7 @@ export async function POST(
         })
 
         if (!vendorProducts || vendorProducts.length === 0) {
+            // No products = no revenue
             res.json({
                 vendor_id,
                 vendor_name: vendor.store_name || vendor.name,
@@ -63,7 +63,7 @@ export async function POST(
         const variantIds: string[] = []
         vendorProducts.forEach((product: any) => {
             product.variants?.forEach((variant: any) => {
-                variantIds.push(variant.id)
+                if (variant.id) variantIds.push(variant.id)
             })
         })
 
@@ -92,6 +92,9 @@ export async function POST(
         const vendor_order_ids: string[] = []
         const processedOrders = new Set<string>()
 
+        console.log(`[Payout Debug] Total orders fetched: ${orders?.length || 0}`)
+        console.log(`[Payout Debug] Looking for variant IDs:`, variantIds.slice(0, 5), `... (${variantIds.length} total)`)
+
         orders?.forEach((order: any) => {
             // Check if order is delivered by looking at fulfillments
             const hasDeliveredFulfillment = order.fulfillments?.some((f: any) =>
@@ -102,6 +105,8 @@ export async function POST(
             )
             const isDelivered = hasDeliveredFulfillment || hasShippedFulfillment
 
+            console.log(`[Payout Debug] Order ${order.display_id}: fulfillments=${order.fulfillments?.length || 0}, isDelivered=${isDelivered}, items=${order.items?.length || 0}`)
+
             if (!isDelivered) return
 
             let orderHasVendorItem = false
@@ -111,10 +116,13 @@ export async function POST(
                 const itemVariantId = item.variant_id
                 const matchesVendor = variantIds.includes(itemVariantId)
 
+                console.log(`[Payout Debug]   Item variant: ${itemVariantId}, matches vendor: ${matchesVendor}`)
+
                 if (matchesVendor) {
                     orderHasVendorItem = true
                     const itemRevenue = (item.unit_price || 0) * (item.quantity || 1)
                     orderRevenue += itemRevenue
+                    console.log(`[Payout Debug]   ✅ Matched! Revenue: ${itemRevenue}`)
                 }
             })
 
@@ -122,11 +130,14 @@ export async function POST(
                 processedOrders.add(order.id)
                 vendor_order_ids.push(order.id)
                 total_revenue += orderRevenue
+                console.log(`[Payout Debug] ✅ Order ${order.display_id} added to payout`)
             }
         })
 
         const commission = (total_revenue * commission_rate) / 100
         const net_amount = total_revenue - commission
+
+        console.log(`[Payout Calculate] Vendor: ${vendor.name}, Products: ${vendorProducts.length}, Variants: ${variantIds.length}, Orders: ${vendor_order_ids.length}, Revenue: ${total_revenue}`)
 
         res.json({
             vendor_id,
