@@ -320,12 +320,15 @@ export async function POST(req: Request) {
         const pool = getPool();
         if (!pool) throw new Error('Database not configured');
 
-        // Get customer info including referral_code from customer_referral table
+        // Get customer info including referral_code from metadata
         const customerResult = await pool.query(
-          `SELECT c.id, cr.referral_code, c.email, c.first_name || ' ' || c.last_name as name
+          `SELECT 
+             c.id, 
+             c.email, 
+             c.first_name || ' ' || c.last_name as name,
+             c.metadata->>'referral_code' as referral_code
            FROM "order" o
            JOIN customer c ON o.customer_id = c.id
-           LEFT JOIN customer_referral cr ON c.id = cr.customer_id
            WHERE o.id = $1`,
           [medusaOrderId]
         );
@@ -333,7 +336,17 @@ export async function POST(req: Request) {
         const customer = customerResult.rows[0];
         const affiliateCode = customer?.referral_code;
 
-        console.log(`razorpay confirm: Customer ${customer?.email}, referral_code: ${affiliateCode || 'none'}`);
+        // Check if this is a branch admin referral by checking if code exists in branch_admin table
+        let isBranchAdminReferral = false;
+        if (affiliateCode) {
+          const branchCheck = await pool.query(
+            `SELECT id FROM branch_admin WHERE refer_code = $1 AND is_active = true`,
+            [affiliateCode]
+          );
+          isBranchAdminReferral = branchCheck.rows.length > 0;
+        }
+
+        console.log(`razorpay confirm: Customer ${customer?.email}, referral_code: ${affiliateCode || 'none'}${isBranchAdminReferral ? ' (BRANCH ADMIN)' : ''}`);
 
         if (affiliateCode) {
           console.log(`razorpay confirm: Customer ${customer.email} has affiliate code ${affiliateCode}`);
@@ -454,10 +467,34 @@ export async function POST(req: Request) {
               );
               const affiliateUserId = affiliateResult.rows[0]?.id || null;
 
+              // Determine affiliate rate
+              let affiliateRate = 70; // Default 70%
+              if (isBranchAdminReferral) {
+                // Fetch branch rate to be dynamic/precise
+                try {
+                  const affRateRes = await pool.query(`SELECT commission_percentage FROM commission_rates WHERE role_type = 'affiliate'`);
+                  const brRateRes = await pool.query(`SELECT commission_percentage FROM commission_rates WHERE role_type = 'branch'`);
+                  const aPct = parseFloat(affRateRes.rows[0]?.commission_percentage || 70);
+                  const bPct = parseFloat(brRateRes.rows[0]?.commission_percentage || 15);
+                  affiliateRate = aPct + bPct;
+                } catch (ignore) {
+                  affiliateRate = 85;
+                }
+              } else {
+                try {
+                  const affRateRes = await pool.query(`SELECT commission_percentage FROM commission_rates WHERE role_type = 'affiliate'`);
+                  affiliateRate = parseFloat(affRateRes.rows[0]?.commission_percentage || 70);
+                } catch (ignore) { }
+              }
+
+              // Calculate split
+              const affiliateCommission = commissionAmount * (affiliateRate / 100);
+
               // Check if commission already logged for this order/item (idempotency)
+              // Note: using product_name instead of variant_id as variant_id isn't in log table
               const existingCommission = await pool.query(
-                `SELECT id FROM affiliate_commission_log WHERE order_id = $1 AND variant_id = $2`,
-                [medusaOrderId, item.variant_id]
+                `SELECT id FROM affiliate_commission_log WHERE order_id = $1 AND product_name = $2`,
+                [medusaOrderId, item.product_name]
               );
 
               if (existingCommission.rows.length > 0) {
@@ -466,35 +503,67 @@ export async function POST(req: Request) {
               }
 
               // Log commission (status PENDING - will be credited after delivery)
+              // Only inserting columns that ACTUALLY exist in the table
               await pool.query(
                 `INSERT INTO affiliate_commission_log 
-                   (affiliate_code, affiliate_user_id, order_id, customer_id, product_id, 
-                    product_name, variant_id, quantity, item_price, order_amount,
-                    commission_rate, commission_amount, commission_source, category_id, collection_id, status)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'PENDING')`,
-                [affiliateCode, affiliateUserId, medusaOrderId, customer.id, item.product_id,
-                  item.product_name, item.variant_id, item.quantity, parseFloat(item.unit_price) / 100, itemAmount,
+                   (affiliate_code, order_id, 
+                    product_name, quantity, item_price, order_amount,
+                    commission_rate, commission_amount, commission_source, 
+                    is_branch_admin_referral, branch_admin_code, status,
+                    affiliate_rate, affiliate_commission, customer_id, customer_name, customer_email, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PENDING', $12, $13, $14, $15, $16, NOW())`,
+                [affiliateCode, medusaOrderId,
+                  item.product_name, item.quantity, parseFloat(item.unit_price) / 100, itemAmount,
                   commissionRate, commissionAmount, commissionSource,
-                  commissionSource === 'category' ? sourceId : null,
-                  commissionSource === 'collection' ? sourceId : null]
+                  isBranchAdminReferral,
+                  isBranchAdminReferral ? affiliateCode : null,
+                  affiliateRate, affiliateCommission,
+                  customer.id, customer.name, customer.email]
               );
 
-              console.log(`razorpay confirm: Commission logged: ₹${commissionAmount.toFixed(2)} for ${item.product_name} (${commissionSource} @ ${commissionRate}%)`);
+              console.log(`razorpay confirm: Commission logged: ₹${commissionAmount.toFixed(2)} for ${item.product_name} (${commissionSource} @ ${commissionRate}%) [Rate: ${affiliateRate}%]`);
             }
           }
 
           // Update referral stats
           if (totalCommission > 0 || itemsResult.rows.length > 0) {
             const orderValue = amountMinor / 100;
-            await pool.query(
-              `UPDATE affiliate_referrals
-               SET total_orders = total_orders + 1,
-                   total_order_value = total_order_value + $3,
-                   total_commission = total_commission + $4,
-                   first_order_at = COALESCE(first_order_at, NOW())
-               WHERE affiliate_code = $1 AND customer_id = $2`,
-              [affiliateCode, customer.id, orderValue, totalCommission]
-            );
+
+            // Update stats in the appropriate table
+            if (isBranchAdminReferral) {
+              // Ensure branch_admin_referrals entry exists (auto-create if needed)
+              await pool.query(
+                `INSERT INTO branch_admin_referrals (branch_admin_code, customer_id, customer_email, customer_name, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, NOW(), NOW())
+                 ON CONFLICT (branch_admin_code, customer_id) DO NOTHING`,
+                [affiliateCode, customer.id, customer.email, customer.name]
+              );
+
+              // Update branch_admin_referrals stats
+              await pool.query(
+                `UPDATE branch_admin_referrals
+                 SET total_orders = total_orders + 1,
+                     total_order_value = total_order_value + $3,
+                     total_commission = total_commission + $4,
+                     first_order_at = COALESCE(first_order_at, NOW()),
+                     updated_at = NOW()
+                 WHERE branch_admin_code = $1 AND customer_id = $2`,
+                [affiliateCode, customer.id, orderValue, totalCommission]
+              );
+              console.log(`razorpay confirm: Updated branch admin referral stats for ${affiliateCode}`);
+            } else {
+              // Update affiliate_referrals stats
+              await pool.query(
+                `UPDATE affiliate_referrals
+                 SET total_orders = total_orders + 1,
+                     total_order_value = total_order_value + $3,
+                     total_commission = total_commission + $4,
+                     first_order_at = COALESCE(first_order_at, NOW())
+                 WHERE affiliate_code = $1 AND customer_id = $2`,
+                [affiliateCode, customer.id, orderValue, totalCommission]
+              );
+              console.log(`razorpay confirm: Updated affiliate referral stats for ${affiliateCode}`);
+            }
           }
 
           if (totalCommission > 0) {
