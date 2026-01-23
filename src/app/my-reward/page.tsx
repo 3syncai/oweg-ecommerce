@@ -89,6 +89,11 @@ export default function MyRewardPage() {
                 <span className="text-5xl font-bold text-gray-900">{(wallet?.balance || 0).toFixed(0)}</span>
               </div>
               <p className="text-emerald-700 text-sm font-medium pl-1">Worth ₹{(wallet?.balance || 0).toFixed(0)} at checkout</p>
+              {wallet?.adjustment_message && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-2 py-1 inline-block mt-2">
+                  {wallet.adjustment_message}
+                </p>
+              )}
             </div>
 
             {/* Status Stats */}
@@ -112,8 +117,8 @@ export default function MyRewardPage() {
                   <p className="text-xs text-purple-800 font-semibold">Lifetime Earned</p>
                   <p className="text-lg font-bold text-purple-900">
                     {((wallet?.transactions || [])
-                      .filter((t: any) => t.transaction_type === 'EARNED')
-                      .reduce((acc: number, curr: any) => acc + Number(curr.amount), 0)
+                      .filter((t: any) => t.transaction_type === 'EARN')
+                      .reduce((acc: number, curr: any) => acc + Math.abs(Number(curr.amount)), 0)
                     ).toFixed(0)}
                   </p>
                 </div>
@@ -171,16 +176,13 @@ export default function MyRewardPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold
-                                                ${tx.status === 'ACTIVE' ? 'bg-green-100 text-green-700' :
-                              tx.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
-                                'bg-gray-100 text-gray-700'}`}>
-                            {tx.status}
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-700">
+                            {tx.status || "COMPLETED"}
                           </span>
                         </td>
-                        <td className={`px-6 py-4 text-right font-bold flex items-center justify-end gap-1 ${tx.transaction_type === 'EARNED' ? 'text-green-600' : 'text-red-600'}`}>
-                          {tx.transaction_type === 'EARNED' ? '+' : '-'}
-                          {Number(tx.amount).toFixed(0)}
+                        <td className={`px-6 py-4 text-right font-bold flex items-center justify-end gap-1 ${tx.transaction_type === 'EARN' ? 'text-green-600' : 'text-red-600'}`}>
+                          {tx.transaction_type === 'EARN' ? '+' : '-'}
+                          {Math.abs(Number(tx.amount)).toFixed(0)}
                           <img src="/uploads/coin/coin.png" alt="Coin" className="w-4 h-4 object-contain" />
                         </td>
                       </tr>

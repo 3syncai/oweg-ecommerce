@@ -586,7 +586,7 @@ const Cart: React.FC = () => {
       // Get guest cart ID if available
       const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
 
-      const res = await fetch(`/ api / medusa / cart / line - items / ${encodeURIComponent(id)} `, {
+      const res = await fetch(`/api/medusa/cart/line-items/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: {
           "content-type": "application/json",
@@ -626,7 +626,7 @@ const Cart: React.FC = () => {
       // Get guest cart ID if available
       const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
 
-      const res = await fetch(`/ api / medusa / cart / line - items / ${encodeURIComponent(item.id)} `, {
+      const res = await fetch(`/api/medusa/cart/line-items/${encodeURIComponent(item.id)}`, {
         method: "DELETE",
         headers: {
           ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
@@ -773,7 +773,7 @@ const Cart: React.FC = () => {
           const detailResults = await Promise.all(
             fallbackDetailRequests.map(async ({ productId, index }) => {
               try {
-                const res = await fetch(`/ api / medusa / products / ${encodeURIComponent(productId)} `, {
+                const res = await fetch(`/api/medusa/products/${encodeURIComponent(productId)}`, {
                   cache: "no-store",
                 });
                 if (!res.ok) {
@@ -832,7 +832,7 @@ const Cart: React.FC = () => {
         const results = await Promise.all(
           picks.map(async (p) => {
             try {
-              const r = await fetch(`/ api / medusa / products ? ${p.kind}=${encodeURIComponent(p.v)}& limit=12`, { cache: "no-store" });
+              const r = await fetch(`/api/medusa/products?${p.kind}=${encodeURIComponent(p.v)}&limit=12`, { cache: "no-store" });
               if (!r.ok) return { products: [] } as { products: UIProduct[] };
               return (await r.json()) as { products: UIProduct[] };
             } catch {

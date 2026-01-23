@@ -39,16 +39,16 @@ export async function GET(req: NextRequest) {
         SELECT 
           id,
           amount,
-          expiry_date,
-          description,
+          (metadata->>'expires_at')::timestamp as expiry_date,
+          metadata->>'reason' as description,
           created_at,
-          EXTRACT(DAY FROM (expiry_date - NOW())) as days_until_expiry
-        FROM wallet_transactions
+          EXTRACT(DAY FROM ((metadata->>'expires_at')::timestamp - NOW())) as days_until_expiry
+        FROM wallet_ledger
         WHERE customer_id = $1
-          AND transaction_type = 'EARNED'
-          AND status = 'ACTIVE'
-          AND expiry_date BETWEEN NOW() AND NOW() + INTERVAL '30 days'
-        ORDER BY expiry_date ASC
+          AND type = 'EARN'
+          AND (metadata->>'expires_at')::timestamp IS NOT NULL
+          AND (metadata->>'expires_at')::timestamp BETWEEN NOW() AND NOW() + INTERVAL '30 days'
+        ORDER BY (metadata->>'expires_at')::timestamp ASC
       `, [customerId])
 
             const expiringCoins = expiringSoonResult.rows
@@ -74,16 +74,16 @@ export async function GET(req: NextRequest) {
             await pool.end()
 
             return NextResponse.json({
-                expiring_soon: totalExpiringSoon,
+                expiring_soon: totalExpiringSoon / 100,
                 earliest_expiry: earliestExpiry,
                 breakdown: {
-                    expiring_in_7_days: in7Days,
-                    expiring_in_15_days: in15Days,
-                    expiring_in_30_days: totalExpiringSoon
+                    expiring_in_7_days: in7Days / 100,
+                    expiring_in_15_days: in15Days / 100,
+                    expiring_in_30_days: totalExpiringSoon / 100
                 },
                 coins_expiring: expiringCoins.map(c => ({
                     id: c.id,
-                    amount: parseFloat(c.amount),
+                    amount: (parseFloat(c.amount) || 0) / 100,
                     expiry_date: c.expiry_date,
                     days_until_expiry: parseInt(c.days_until_expiry),
                     description: c.description

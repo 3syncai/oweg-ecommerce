@@ -190,126 +190,52 @@ export async function POST(req: Request) {
     }
 
     // COIN DISCOUNT PAYMENT: Record coins as separate payment
-    // This ensures admin shows: Razorpay Payment + Coin Payment = Total (Outstanding = 0)
+    // Uses order metadata set during draft-order creation.
     try {
       const pool = getPool();
-      if (!pool) throw new Error('Database not configured');
+      if (!pool) throw new Error("Database not configured");
 
-      // Check if this order has coin discount from wallet_transactions
-      const coinResult = await pool.query(
-        `SELECT amount FROM wallet_transactions 
-         WHERE transaction_type = 'REDEEMED' 
-         AND status = 'USED'
-         AND created_at > NOW() - INTERVAL '5 minutes'
-         ORDER BY created_at DESC 
-         LIMIT 1`
+      const metaResult = await pool.query(
+        `SELECT metadata FROM "order" WHERE id = $1`,
+        [medusaOrderId]
       );
+      const metadata = metaResult.rows[0]?.metadata || {};
+      const coinMinor =
+        typeof metadata?.coin_discount_minor === "number"
+          ? metadata.coin_discount_minor
+          : typeof metadata?.coin_discount_rupees === "number"
+            ? Math.round(metadata.coin_discount_rupees * 100)
+            : 0;
 
-      if (coinResult.rows.length > 0) {
-        const coinsUsed = parseFloat(coinResult.rows[0].amount);
-        const coinAmountRupees = coinsUsed / 100; // Convert paise to rupees
-
-        console.log(`💰 [Coin Payment] Recording ${coinAmountRupees} rupees as coin payment...`);
-
-        // Create order transaction for coin payment
-        const coinTxResult = await createOrderTransaction({
-          order_id: medusaOrderId,
-          amount: coinAmountRupees,
-          currency_code: currencyCode,
-          reference: "coin_discount",
-          reference_id: `coins-${Date.now()}`,
-        });
-
-        if (coinTxResult.success) {
-          console.log("✅ [Coin Payment] Coin discount recorded as payment");
-
-          // Sync order_summary again to include coin payment
-          const summaryResult = await updateOrderSummaryTotals(medusaOrderId);
-          if (summaryResult.success) {
-            console.log("✅ [Coin Payment] Order summary updated - outstanding should be 0");
-          }
-        } else {
-          console.error("❌ [Coin Payment] Failed to record coin payment:", coinTxResult.error);
-        }
-      }
-      // Note: pool.end() removed - using shared pool
-    } catch (coinError) {
-      console.error("❌ [Coin Payment] Error recording coin payment:", coinError);
-    }
-
-    // WALLET SYSTEM: Award 2% coins on successful payment
-    if (medusaOrderId && typeof amountMinor === "number") {
-      try {
-        console.log("razorpay confirm: Awarding wallet coins...");
-
-        // Direct database query to get customer_id (bypasses Medusa API auth issues)
-        const pool = getPool();
-        if (!pool) throw new Error('Database not configured');
-
-        // Query customer_id directly from order table
-        const orderResult = await pool.query(
-          `SELECT customer_id FROM "order" WHERE id = $1`,
+      if (coinMinor > 0) {
+        const existingTx = await pool.query(
+          `SELECT id FROM order_transaction WHERE order_id = $1 AND reference = 'coin_discount' LIMIT 1`,
           [medusaOrderId]
         );
+        if (existingTx.rows.length === 0) {
+          const coinAmountRupees = coinMinor / 100;
+          console.log(`Coin payment: recording ${coinAmountRupees} rupees as coin payment...`);
 
-        const customerId = orderResult.rows[0]?.customer_id;
-        console.log("razorpay confirm: Found customer_id from DB:", customerId);
+          const coinTxResult = await createOrderTransaction({
+            order_id: medusaOrderId,
+            amount: coinAmountRupees,
+            currency_code: currencyCode,
+            reference: "coin_discount",
+            reference_id: `coins-${Date.now()}`,
+          });
 
-        const orderTotal = amountMinor / 100; // Convert paise to rupees
-        const coinsEarned = parseFloat((orderTotal * 0.01).toFixed(2)); // 1% cashback
-        const coinsEarnedMinorUnits = Math.round(coinsEarned * 100); // Convert to minor units for storage
-
-        if (customerId && coinsEarned > 0) {
-
-          try {
-            // Ensure wallet exists
-            await pool.query(
-              `INSERT INTO customer_wallet (customer_id, coins_balance)
-                 VALUES ($1, 0)
-                 ON CONFLICT (customer_id) DO NOTHING`,
-              [customerId]
-            );
-
-            // Check if already awarded for this order
-            const existingCheck = await pool.query(
-              `SELECT id FROM wallet_transactions WHERE order_id = $1 AND transaction_type = 'EARNED'`,
-              [medusaOrderId]
-            );
-
-            if (existingCheck.rows.length === 0) {
-              // Set expiry to 1 year from now (from when coins become active after delivery)
-              const expiryDate = new Date();
-              expiryDate.setFullYear(expiryDate.getFullYear() + 1);
-
-              // Add transaction record as PENDING (will become ACTIVE after delivery + 5 min)
-              // Store in minor units (paise) - e.g., 5.29 coins = 529 in database
-              await pool.query(
-                `INSERT INTO wallet_transactions 
-                   (customer_id, order_id, transaction_type, amount, description, expiry_date, status)
-                   VALUES ($1, $2, 'EARNED', $3, $4, $5, 'PENDING')`,
-                [customerId, medusaOrderId, coinsEarnedMinorUnits, `1% cashback on order`, expiryDate.toISOString()]
-              );
-
-              // NOTE: Balance is NOT updated here. Coins will be added to balance
-              // when order is delivered (via /api/webhooks/order-delivered)
-
-              console.log(`razorpay confirm: ✅ Awarded ${coinsEarned} PENDING coins to ${customerId} (will activate after delivery)`);
-            } else {
-              console.log("razorpay confirm: Coins already awarded for this order");
+          if (coinTxResult.success) {
+            const summaryResult = await updateOrderSummaryTotals(medusaOrderId);
+            if (summaryResult.success) {
+              console.log("Coin payment recorded and order summary updated");
             }
-            // Note: pool.end() removed - using shared pool
-          } catch (dbErr) {
-            console.error("razorpay confirm: ❌ Database error awarding coins:", dbErr);
-            // Note: pool.end() removed - using shared pool
+          } else {
+            console.error("Coin payment failed:", coinTxResult.error);
           }
-        } else {
-          console.log("razorpay confirm: No customer_id or coins too small", { customerId, coinsEarned });
-          // Note: pool.end() removed - using shared pool
         }
-      } catch (walletErr) {
-        console.error("razorpay confirm: ⚠️ Wallet coin award failed:", walletErr);
-        // Don't fail the payment confirmation if wallet fails
       }
+    } catch (coinError) {
+      console.error("Coin payment error:", coinError);
     }
 
     // AFFILIATE COMMISSION: Check if customer was referred and log commission
