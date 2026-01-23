@@ -6,6 +6,7 @@ import {
   captureOrderPayment,
 } from "@/lib/medusa-admin";
 import { createMedusaPayment, createOrderTransaction, updateOrderSummaryTotals, ensureOrderShippingMethod, ensureOrderReservations } from "@/lib/medusa-payment";
+import { applyCoinDiscountToOrder } from "@/lib/order-discount";
 import { Pool } from 'pg';
 
 // Shared pool instance at module level to avoid creating multiple connections per request
@@ -189,7 +190,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // COIN DISCOUNT PAYMENT: Record coins as separate payment
+    // COIN DISCOUNT: apply as order discount (not as payment transaction)
     // Uses order metadata set during draft-order creation.
     try {
       const pool = getPool();
@@ -199,43 +200,22 @@ export async function POST(req: Request) {
         `SELECT metadata FROM "order" WHERE id = $1`,
         [medusaOrderId]
       );
-      const metadata = metaResult.rows[0]?.metadata || {};
+      const dbMetadata = metaResult.rows[0]?.metadata || {};
       const coinMinor =
-        typeof metadata?.coin_discount_minor === "number"
-          ? metadata.coin_discount_minor
-          : typeof metadata?.coin_discount_rupees === "number"
-            ? Math.round(metadata.coin_discount_rupees * 100)
+        typeof dbMetadata?.coin_discount_minor === "number"
+          ? dbMetadata.coin_discount_minor
+          : typeof dbMetadata?.coin_discount_rupees === "number"
+            ? Math.round(dbMetadata.coin_discount_rupees * 100)
             : 0;
 
       if (coinMinor > 0) {
-        const existingTx = await pool.query(
-          `SELECT id FROM order_transaction WHERE order_id = $1 AND reference = 'coin_discount' LIMIT 1`,
-          [medusaOrderId]
-        );
-        if (existingTx.rows.length === 0) {
-          const coinAmountRupees = coinMinor / 100;
-          console.log(`Coin payment: recording ${coinAmountRupees} rupees as coin payment...`);
-
-          const coinTxResult = await createOrderTransaction({
-            order_id: medusaOrderId,
-            amount: coinAmountRupees,
-            currency_code: currencyCode,
-            reference: "coin_discount",
-            reference_id: `coins-${Date.now()}`,
-          });
-
-          if (coinTxResult.success) {
-            const summaryResult = await updateOrderSummaryTotals(medusaOrderId);
-            if (summaryResult.success) {
-              console.log("Coin payment recorded and order summary updated");
-            }
-          } else {
-            console.error("Coin payment failed:", coinTxResult.error);
-          }
-        }
+        await applyCoinDiscountToOrder({
+          orderId: medusaOrderId,
+          discountMinor: coinMinor
+        });
       }
     } catch (coinError) {
-      console.error("Coin payment error:", coinError);
+      console.error("Coin discount update error:", coinError);
     }
 
     // AFFILIATE COMMISSION: Check if customer was referred and log commission

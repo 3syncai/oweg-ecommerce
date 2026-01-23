@@ -18,7 +18,7 @@ const DATABASE_URL = process.env.DATABASE_URL;
 
 let sharedPool: Pool | null = null;
 
-function getPool(): Pool {
+export function getPool(): Pool {
   if (!DATABASE_URL) {
     throw new Error("DATABASE_URL not configured");
   }
@@ -237,13 +237,13 @@ export async function reverseEarned(options: {
       [options.orderId]
     );
     if (!earned.rows[0]) {
-      return { applied: false, actual_balance: null };
+      return { applied: false, actual_balance: null, reversedAmount: 0 };
     }
 
     const customerId = earned.rows[0].customer_id as string;
     const earnedAmount = Math.abs(Number(earned.rows[0].amount) || 0);
     if (earnedAmount <= 0) {
-      return { applied: false, actual_balance: null };
+      return { applied: false, actual_balance: null, reversedAmount: 0 };
     }
 
     const account = await ensureAccount(client, customerId);
@@ -259,7 +259,7 @@ export async function reverseEarned(options: {
     });
 
     if (!insertedId) {
-      return { applied: false, actual_balance: account.actual_balance };
+      return { applied: false, actual_balance: account.actual_balance, reversedAmount: 0, customerId };
     }
 
     const nextBalance = account.actual_balance - earnedAmount;
@@ -270,7 +270,7 @@ export async function reverseEarned(options: {
       [nextBalance, customerId]
     );
 
-    return { applied: true, actual_balance: nextBalance, customerId };
+    return { applied: true, actual_balance: nextBalance, customerId, reversedAmount: earnedAmount };
   });
 }
 
@@ -336,6 +336,29 @@ export async function findSpendByReference(options: {
   if (!res.rows[0]) return null;
   const amount = Math.abs(Number(res.rows[0].amount) || 0);
   return {
+    amountMinor: amount,
+    metadata: res.rows[0].metadata as Record<string, unknown>,
+    created_at: res.rows[0].created_at as string,
+  };
+}
+
+export async function findSpendByReferenceAny(options: {
+  referenceId: string;
+}) {
+  if (!options.referenceId) return null;
+  const pool = getPool();
+  const res = await pool.query(
+    `SELECT customer_id, amount, metadata, created_at
+     FROM wallet_ledger
+     WHERE reference_id = $1 AND type = 'SPEND'
+     ORDER BY id DESC
+     LIMIT 1`,
+    [options.referenceId]
+  );
+  if (!res.rows[0]) return null;
+  const amount = Math.abs(Number(res.rows[0].amount) || 0);
+  return {
+    customerId: res.rows[0].customer_id as string,
     amountMinor: amount,
     metadata: res.rows[0].metadata as Record<string, unknown>,
     created_at: res.rows[0].created_at as string,

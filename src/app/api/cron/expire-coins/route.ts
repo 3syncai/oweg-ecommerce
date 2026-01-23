@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
                 })
             }
 
+            const affectedCustomerIds = new Set<string>()
             let affectedCustomers = 0
             let totalExpired = 0
             for (const coin of expiredCoins) {
@@ -52,7 +53,10 @@ export async function POST(req: NextRequest) {
                 })
                 if (result.applied) {
                     totalExpired += amountMinor
-                    affectedCustomers += 1
+                    if (!affectedCustomerIds.has(coin.customer_id)) {
+                        affectedCustomerIds.add(coin.customer_id)
+                        affectedCustomers += 1
+                    }
                 }
             }
 

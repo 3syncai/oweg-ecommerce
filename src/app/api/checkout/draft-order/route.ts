@@ -344,7 +344,8 @@ export async function POST(req: Request) {
         coin_discount_code: body.coinDiscountCode || null,
         coin_discount_minor: coinDiscountRupees > 0 ? Math.round(coinDiscountRupees * 100) : undefined,
         coin_discount_rupees: coinDiscountRupees > 0 ? coinDiscountRupees : undefined, // Visible in admin
-        coin_discount_applied: coinDiscountRupees > 0 ? `₹${coinDiscountRupees.toFixed(2)} OWEG Coins` : undefined
+        coin_discount_applied: coinDiscountRupees > 0 ? `₹${coinDiscountRupees.toFixed(2)} OWEG Coins` : undefined,
+        coins_discountend: coinDiscountRupees > 0 ? coinDiscountRupees : undefined
       },
       shipping_methods: shippingMethodsPayload
     };
@@ -426,6 +427,10 @@ export async function POST(req: Request) {
       }
     }
 
+    if (coinDiscountRupees <= 0 && typeof body.coinDiscount === "number" && body.coinDiscount > 0) {
+      coinDiscountRupees = body.coinDiscount;
+    }
+
     // Subtract discount from total
     const finalTotal = Math.max(0, medusaTotal - coinDiscountRupees);
 
@@ -443,56 +448,14 @@ export async function POST(req: Request) {
           coin_discount_code: body.coinDiscountCode || null,
           coin_discount_minor: Math.round(coinDiscountRupees * 100),
           coin_discount_rupees: coinDiscountRupees,
-          coin_discount_applied: `₹${coinDiscountRupees.toFixed(2)} OWEG Coins`
+          coin_discount_applied: `₹${coinDiscountRupees.toFixed(2)} OWEG Coins`,
+          coins_discountend: coinDiscountRupees
         });
       } catch (err) {
         console.warn("Failed to update order metadata for coin discount:", err);
       }
     }
 
-    // ADD COIN DISCOUNT AS ORDER ADJUSTMENT in Medusa Admin
-    if (coinDiscountRupees > 0 && medusaOrderId) {
-      try {
-        console.log("🔧 [Medusa] Adding coin discount adjustment to order...");
-
-        const adminApiKey = process.env.MEDUSA_ADMIN_API_KEY;
-        if (adminApiKey) {
-          const adjustmentRes = await fetch(`${BACKEND_BASE}/admin/orders/${medusaOrderId}`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${adminApiKey}`
-            },
-            body: JSON.stringify({
-              items: [
-                {
-                  // Add negative line item for discount
-                  title: "Coin Discount",
-                  quantity: 1,
-                  unit_price: -Math.round(coinDiscountRupees * 100), // Negative amount in paise
-                  variant_id: null,
-                  metadata: {
-                    type: "coin_discount",
-                    coins_redeemed: Math.round(coinDiscountRupees * 100)
-                  }
-                }
-              ]
-            })
-          });
-
-          if (adjustmentRes.ok) {
-            console.log("✅ [Medusa] Coin discount adjustment added to order");
-          } else {
-            const errorText = await adjustmentRes.text();
-            console.warn("⚠️ [Medusa] Failed to add adjustment:", errorText);
-          }
-        } else {
-          console.warn("⚠️ [Medusa] MEDUSA_ADMIN_API_KEY not configured");
-        }
-      } catch (updateError) {
-        console.error("❌ [Medusa] Error adding adjustment:", updateError);
-      }
-    }
 
     return NextResponse.json({
       medusaOrderId,

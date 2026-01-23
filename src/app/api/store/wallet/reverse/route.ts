@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
             success: true,
             message: `Reversed coins for order ${order_id}`,
             reversed: true,
-            amount: null,
+            amount: (result.reversedAmount || 0) / 100,
             new_actual_balance: (result.actual_balance || 0) / 100,
             customer_id: result.customerId
         })
