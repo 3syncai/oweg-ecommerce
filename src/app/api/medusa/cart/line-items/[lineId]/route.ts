@@ -101,7 +101,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     }
     const { cartId, shouldSetCookie } = cartResult;
     const res = await backend(
-      `/store/carts/${cartId}/line-items/${encodeURIComponent(lineId)}`,
+      `/store/carts/${encodeURIComponent(cartId)}/line-items/${encodeURIComponent(lineId)}`,
       {
         method: "POST",
         body: JSON.stringify({ quantity }),
@@ -136,7 +136,7 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
     }
     const { cartId, shouldSetCookie } = cartResult;
     const res = await backend(
-      `/store/carts/${cartId}/line-items/${encodeURIComponent(lineId)}`,
+      `/store/carts/${encodeURIComponent(cartId)}/line-items/${encodeURIComponent(lineId)}`,
       { method: "DELETE" }
     );
     if (!res.ok) {

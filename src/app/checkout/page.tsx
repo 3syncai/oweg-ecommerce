@@ -612,22 +612,23 @@ function CheckoutPageInner() {
     const selectedOption = shippingMethods.find((s) => s.id === shippingMethod);
     const shippingPriceMajor = selectedOption && typeof selectedOption.amount === 'number' ? selectedOption.amount / 100 : 0;
 
-    const requestPayload = {
-      shipping,
-      billing,
-      billingSameAsShipping: billingSame,
-      shippingMethod,
-      shippingPrice: shippingPriceMajor,
-      shippingMethodName: selectedOption?.name,
-      referralCode,
-      paymentMethod,
-      mode: isBuyNow ? "buy_now" : "cart",
-      coinDiscountCode: coinDiscountCode || undefined,
-      itemsOverride: isBuyNow && fallbackBuyNow
-        ? [
-          {
-            variant_id: fallbackBuyNow.variantId,
-            quantity: fallbackBuyNow.quantity,
+      const requestPayload = {
+        shipping,
+        billing,
+        billingSameAsShipping: billingSame,
+        shippingMethod,
+        shippingPrice: shippingPriceMajor,
+        shippingMethodName: selectedOption?.name,
+        referralCode,
+        paymentMethod,
+        mode: isBuyNow ? "buy_now" : "cart",
+        coinDiscountCode: coinDiscountCode || undefined,
+        coinDiscount: useCoins ? coinsToUse : 0,
+        itemsOverride: isBuyNow && fallbackBuyNow
+          ? [
+            {
+              variant_id: fallbackBuyNow.variantId,
+              quantity: fallbackBuyNow.quantity,
             price_minor: fallbackBuyNow.priceMinor,
           },
         ]

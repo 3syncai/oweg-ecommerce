@@ -37,6 +37,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           },
         }),
       })
+
+      await fetch(`${baseUrl}/api/store/wallet/refund-coin-discount-order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order_id: request.order_id, reason: "return" }),
+      })
     }
   } catch (err) {
     console.error("[return-refund] Failed to trigger coin reversal webhook:", err)

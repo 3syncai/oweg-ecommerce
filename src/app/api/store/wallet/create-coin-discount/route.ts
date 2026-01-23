@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { adminFetch } from "@/lib/medusa-admin"
-import { spendCoins } from "@/lib/wallet-ledger"
+import { spendCoins, creditAdjustment } from "@/lib/wallet-ledger"
 
 export const dynamic = "force-dynamic"
 
@@ -29,43 +29,7 @@ export async function POST(req: NextRequest) {
         const random = Math.random().toString(36).substring(2, 8).toUpperCase()
         const discountCode = `COINS-${timestamp}-${random}`
 
-        // 2. Create Medusa promotion
-        const discountPayload = {
-            code: discountCode,
-            type: "standard",
-            application_method: {
-                type: "fixed",
-                target_type: "order",
-                value: coin_amount, // minor units
-                currency_code: "INR"
-            },
-            rules: [{
-                attribute: "customer_id",
-                operator: "eq",
-                values: [customer_id]
-            }]
-        }
-
-        console.log("Creating Medusa v2 promotion:", discountPayload)
-
-        const discountResponse = await adminFetch("/admin/promotions", {
-            method: "POST",
-            body: JSON.stringify(discountPayload)
-        })
-
-        if (!discountResponse.ok) {
-            console.error("Failed to create Medusa discount:", discountResponse)
-            return NextResponse.json(
-                {
-                    error: "Failed to create discount code",
-                    details: discountResponse.data,
-                    success: false
-                },
-                { status: 500 }
-            )
-        }
-
-        // 3. Deduct coins via ledger (idempotent)
+        // 2. Deduct coins via ledger (idempotent) BEFORE creating promotion
         try {
             await spendCoins({
                 customerId: customer_id,
@@ -93,6 +57,53 @@ export async function POST(req: NextRequest) {
                 )
             }
             throw err
+        }
+
+        // 3. Create Medusa promotion only after coins are spent
+        const discountPayload = {
+            code: discountCode,
+            type: "standard",
+            application_method: {
+                type: "fixed",
+                target_type: "order",
+                value: coin_amount, // minor units
+                currency_code: "INR"
+            },
+            rules: [{
+                attribute: "customer_id",
+                operator: "eq",
+                values: [customer_id]
+            }]
+        }
+
+        console.log("Creating Medusa v2 promotion:", discountPayload)
+
+        const discountResponse = await adminFetch("/admin/promotions", {
+            method: "POST",
+            body: JSON.stringify(discountPayload)
+        })
+
+        if (!discountResponse.ok) {
+            console.error("Failed to create Medusa discount:", discountResponse)
+            try {
+                await creditAdjustment({
+                    customerId: customer_id,
+                    referenceId: `refund:${discountCode}`,
+                    idempotencyKey: `refund:${discountCode}`,
+                    amountMinor: coin_amount,
+                    reason: "promotion_create_failed",
+                    metadata: { discount_code: discountCode }
+                })
+            } catch (refundErr) {
+                console.error("Failed to refund coins after promotion error:", refundErr)
+            }
+            return NextResponse.json(
+                {
+                    error: "Failed to create discount code",
+                    success: false
+                },
+                { status: 500 }
+            )
         }
 
         console.log(`Created discount code ${discountCode} for ${coin_amount / 100} rupees`)

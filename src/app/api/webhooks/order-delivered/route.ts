@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { Pool } from "pg"
-import { earnCoins, creditAdjustment } from "@/lib/wallet-ledger"
+import { earnCoins, creditAdjustment, getPool } from "@/lib/wallet-ledger"
 
 export const dynamic = "force-dynamic"
 
-const DATABASE_URL = process.env.DATABASE_URL
 const COIN_EARNING_RATE = 0.01 // 1% of order total
 
 /**
@@ -47,15 +45,7 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        if (!DATABASE_URL) {
-            console.error("DATABASE_URL not configured")
-            return NextResponse.json(
-                { error: "Server configuration error" },
-                { status: 500 }
-            )
-        }
-
-        const pool = new Pool({ connectionString: DATABASE_URL })
+        const pool = getPool()
 
         try {
             const orderResult = await pool.query(
@@ -85,7 +75,6 @@ export async function POST(req: NextRequest) {
             const totalMinor = Math.round(totalRupees * 100)
 
             if (!customerId) {
-                await pool.end()
                 return NextResponse.json(
                     { error: "Order has no customer_id" },
                     { status: 400 }
@@ -94,7 +83,6 @@ export async function POST(req: NextRequest) {
 
             const coinsMinor = Math.round(totalMinor * COIN_EARNING_RATE)
             if (coinsMinor <= 0) {
-                await pool.end()
                 return NextResponse.json({
                     success: true,
                     message: "No coins to award for this order",
@@ -160,8 +148,6 @@ export async function POST(req: NextRequest) {
                 console.error("Error crediting affiliate commission:", affiliateErr)
             }
 
-            await pool.end()
-
             return NextResponse.json({
                 success: true,
                 message: `Awarded coins for order ${orderId}`,
@@ -173,7 +159,6 @@ export async function POST(req: NextRequest) {
             })
         } catch (dbErr) {
             console.error("Database error in delivery webhook:", dbErr)
-            await pool.end().catch(() => { })
             return NextResponse.json(
                 { error: "Database error", details: String(dbErr) },
                 { status: 500 }

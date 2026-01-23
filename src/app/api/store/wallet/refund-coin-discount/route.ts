@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { creditAdjustment, findSpendByReference } from "@/lib/wallet-ledger"
+import { creditAdjustment, findSpendByReference, findSpendByReferenceAny } from "@/lib/wallet-ledger"
 
 export const dynamic = "force-dynamic"
 
@@ -16,18 +16,22 @@ export async function POST(req: NextRequest) {
 
         console.log("Refund request:", { customer_id, discount_code })
 
-        if (!customer_id || !discount_code) {
+        if (!discount_code) {
             return NextResponse.json(
-                { error: "customer_id and discount_code required" },
+                { error: "discount_code required" },
                 { status: 400 }
             )
         }
 
         try {
-            const spend = await findSpendByReference({
-                customerId: customer_id,
-                referenceId: discount_code
-            })
+            const spend = customer_id
+                ? await findSpendByReference({
+                    customerId: customer_id,
+                    referenceId: discount_code
+                })
+                : await findSpendByReferenceAny({
+                    referenceId: discount_code
+                })
 
             if (!spend) {
                 return NextResponse.json(
@@ -36,8 +40,21 @@ export async function POST(req: NextRequest) {
                 )
             }
 
+            const resolvedCustomerId =
+                customer_id ||
+                ("customerId" in spend && typeof spend.customerId === "string"
+                    ? spend.customerId
+                    : undefined);
+
+            if (!resolvedCustomerId) {
+                return NextResponse.json(
+                    { error: "customer_id required" },
+                    { status: 400 }
+                );
+            }
+
             await creditAdjustment({
-                customerId: customer_id,
+                customerId: resolvedCustomerId,
                 referenceId: `refund:${discount_code}`,
                 idempotencyKey: `refund:${discount_code}`,
                 amountMinor: spend.amountMinor,
@@ -53,7 +70,7 @@ export async function POST(req: NextRequest) {
         } catch (err) {
             console.error("Refund error:", err)
             return NextResponse.json(
-                { error: "Database error", details: String(err) },
+                { error: "Database error" },
                 { status: 500 }
             )
         }

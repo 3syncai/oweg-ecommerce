@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+import { getOrderById } from "@/lib/medusa-admin"
+import { creditAdjustment } from "@/lib/wallet-ledger"
 
 export const dynamic = "force-dynamic"
 
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest) {
             })
         }
 
-        // Call the coin reversal endpoint
+        // Call the coin reversal endpoint (earned coins)
         const baseUrl =
             process.env.NEXT_PUBLIC_APP_URL ||
             (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
@@ -85,6 +87,72 @@ export async function POST(req: NextRequest) {
         })
 
         const reverseData = await reverseRes.json()
+        let refundData: unknown = null
+
+        // If coins were spent on this order, refund them back to the wallet
+        try {
+            const orderRes = await getOrderById(orderId)
+            const orderPayload = orderRes?.data as Record<string, unknown> | null
+            const order =
+                (orderPayload && typeof orderPayload === "object" && "order" in orderPayload
+                    ? (orderPayload as Record<string, unknown>).order
+                    : orderPayload) as Record<string, unknown> | null
+
+            const customerId =
+                (order && typeof order === "object" && (order as Record<string, unknown>).customer_id) ||
+                (data && typeof data === "object" && (data as Record<string, unknown>).customer_id)
+
+            const metadata =
+                order && typeof order === "object"
+                    ? ((order as Record<string, unknown>).metadata as Record<string, unknown> | undefined)
+                    : undefined
+
+            const discountCode =
+                (metadata?.coin_discount_code as string | undefined) ||
+                (metadata?.coin_discount as string | undefined) ||
+                (metadata?.coin_discount_id as string | undefined)
+
+            const coinsDiscounted =
+                typeof metadata?.coins_discountend === "number"
+                    ? metadata.coins_discountend
+                    : typeof metadata?.coin_discount_rupees === "number"
+                        ? metadata.coin_discount_rupees
+                        : typeof metadata?.coin_discount_minor === "number"
+                            ? metadata.coin_discount_minor / 100
+                            : 0
+
+            if (customerId && discountCode) {
+                const refundRes = await fetch(`${baseUrl}/api/store/wallet/refund-coin-discount`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        customer_id: customerId,
+                        discount_code: discountCode
+                    })
+                })
+                refundData = await refundRes.json()
+            } else if (customerId && coinsDiscounted > 0) {
+                const amountMinor = Math.round(coinsDiscounted * 100)
+                await creditAdjustment({
+                    customerId: String(customerId),
+                    referenceId: `refund-order:${orderId}`,
+                    idempotencyKey: `refund-order:${orderId}`,
+                    amountMinor,
+                    reason: `Refund coins for order ${orderId}`,
+                    metadata: {
+                        order_id: orderId,
+                        coins_discountend: coinsDiscounted
+                    }
+                })
+                refundData = {
+                    success: true,
+                    refunded_amount: amountMinor / 100,
+                    message: "Coins refunded via order metadata"
+                }
+            }
+        } catch (err) {
+            console.error("Coin discount refund error:", err)
+        }
 
         console.log("Coin reversal result:", reverseData)
 
@@ -92,7 +160,8 @@ export async function POST(req: NextRequest) {
             success: true,
             event: event,
             order_id: orderId,
-            coin_reversal: reverseData
+            coin_reversal: reverseData,
+            coin_discount_refund: refundData
         })
     } catch (error) {
         console.error("Order cancellation webhook error:", error)
