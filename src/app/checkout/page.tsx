@@ -156,6 +156,8 @@ function CheckoutPageInner() {
   const [_walletPending, setWalletPending] = useState(0);
   const [_walletLocked, setWalletLocked] = useState(0);
   const [walletExpiring, setWalletExpiring] = useState(0);
+  const [walletAdjustmentMessage, setWalletAdjustmentMessage] = useState<string | null>(null);
+  const [walletCanRedeem, setWalletCanRedeem] = useState(true);
   const [walletLoading, setWalletLoading] = useState(false);
   const [useCoins, setUseCoins] = useState(false);
   const [coinsToUse, setCoinsToUse] = useState(0);
@@ -184,6 +186,8 @@ function CheckoutPageInner() {
           setWalletPending(data.pending_coins || 0);
           setWalletLocked(data.locked_coins || 0);
           setWalletExpiring(data.expiring_soon || 0);
+          setWalletAdjustmentMessage(data.adjustment_message || null);
+          setWalletCanRedeem(data.can_redeem !== false);
           console.log('Wallet loaded:', data);
         }
       } catch (error) {
@@ -618,6 +622,7 @@ function CheckoutPageInner() {
       referralCode,
       paymentMethod,
       mode: isBuyNow ? "buy_now" : "cart",
+      coinDiscountCode: coinDiscountCode || undefined,
       itemsOverride: isBuyNow && fallbackBuyNow
         ? [
           {
@@ -1173,6 +1178,11 @@ function CheckoutPageInner() {
                         )}
                       </div>
                     )}
+                    {walletAdjustmentMessage && (
+                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                        {walletAdjustmentMessage}
+                      </div>
+                    )}
 
 
 
@@ -1190,6 +1200,13 @@ function CheckoutPageInner() {
                           const isChecked = e.target.checked;
 
                           if (isChecked) {
+                            if (!cart?.id || cart.id === "buy-now") {
+                              toast.error("Coin discount is available only for cart checkout.");
+                              setUseCoins(false);
+                              setCoinsToUse(0);
+                              setCoinDiscountCode(null);
+                              return;
+                            }
                             // User wants to use coins
                             const maxCoins = Math.min(walletBalance, orderTotal, maxRedeemable);
                             const coinsInMinorUnits = Math.round(maxCoins * 100); // Convert to minor units
@@ -1226,7 +1243,20 @@ function CheckoutPageInner() {
                               });
 
                               if (!applyRes.ok) {
-                                throw new Error('Failed to apply discount to cart');
+                                let message = 'Failed to apply discount to cart';
+                                try {
+                                  const errorPayload = await applyRes.json();
+                                  if (errorPayload?.error) message = String(errorPayload.error);
+                                  if (errorPayload?.details) {
+                                    const details = typeof errorPayload.details === "string"
+                                      ? errorPayload.details
+                                      : JSON.stringify(errorPayload.details);
+                                    message = `${message}: ${details}`;
+                                  }
+                                } catch {
+                                  // ignore parse errors
+                                }
+                                throw new Error(message);
                               }
 
                               // Success! Update state
@@ -1280,7 +1310,7 @@ function CheckoutPageInner() {
                           }
                         }}
                         className="w-4 h-4 text-green-600"
-                        disabled={applyingCoinDiscount}
+                        disabled={applyingCoinDiscount || !walletCanRedeem}
                       />
                       <div className="flex-1">
                         <p className="text-sm font-medium text-slate-800">

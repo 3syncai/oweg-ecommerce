@@ -99,13 +99,12 @@ export async function GET(req: NextRequest) {
             if (affiliateUserResult.rows.length > 0) {
                 const affiliateUserId = affiliateUserResult.rows[0].id
 
-                // Check if they have a wallet
                 const walletResult = await pool.query(`
-                    SELECT coins_balance FROM customer_wallet WHERE customer_id = $1
+                    SELECT actual_balance FROM wallet_account WHERE customer_id = $1
                 `, [affiliateUserId])
 
                 if (walletResult.rows.length > 0) {
-                    walletBalance = parseFloat(walletResult.rows[0].coins_balance) || 0
+                    walletBalance = (parseFloat(walletResult.rows[0].actual_balance) || 0) / 100
                 }
 
                 // Get pending (locked) commission

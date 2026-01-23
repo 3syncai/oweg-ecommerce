@@ -4,7 +4,8 @@
 
 import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
-import { convertDraftOrder, createDraftOrder, readStoreCart } from "@/lib/medusa-admin";
+import { convertDraftOrder, createDraftOrder, readStoreCart, updateOrderMetadata } from "@/lib/medusa-admin";
+import { findSpendByReference } from "@/lib/wallet-ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ type DraftRequestBody = {
   shippingPrice?: number;
   shippingMethodName?: string;
   coinDiscount?: number; // Coin discount in rupees
+  coinDiscountCode?: string;
 };
 
 function mapAddress(input?: AddressInput) {
@@ -339,6 +341,8 @@ export async function POST(req: Request) {
         payment_method: paymentMethod,
         mode: body.mode || (itemsOverride ? "buy_now" : "cart"),
         expected_shipping_price: shippingPriceMinor,
+        coin_discount_code: body.coinDiscountCode || null,
+        coin_discount_minor: coinDiscountRupees > 0 ? Math.round(coinDiscountRupees * 100) : undefined,
         coin_discount_rupees: coinDiscountRupees > 0 ? coinDiscountRupees : undefined, // Visible in admin
         coin_discount_applied: coinDiscountRupees > 0 ? `₹${coinDiscountRupees.toFixed(2)} OWEG Coins` : undefined
       },
@@ -402,49 +406,25 @@ export async function POST(req: Request) {
       }
     }
 
-    // DATABASE-DRIVEN COIN DISCOUNT - SIMPLIFIED & DEBUGGED
-    console.log("🔍 [Coin Debug] Starting database query...");
+    // Ledger-driven coin discount using discount code
+    const cartCustomerId =
+      typeof (cart as Record<string, unknown>)?.customer_id === "string"
+        ? (cart as Record<string, unknown>).customer_id as string
+        : undefined;
 
-    try {
-      const { Pool } = await import('pg');
-      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-      console.log("🔍 [Coin Debug] Database connection established");
-
-      // SIMPLIFIED: Get most recent REDEEMED transaction from ANY user (last 2 minutes)
-      // This avoids customer_id extraction issues
-      const result = await pool.query(
-        `SELECT amount, customer_id, created_at FROM wallet_transactions 
-         WHERE transaction_type = 'REDEEMED' 
-         AND status = 'USED'
-         AND created_at > NOW() - INTERVAL '2 minutes'
-         ORDER BY created_at DESC 
-         LIMIT 1`
-      );
-
-      console.log("🔍 [Coin Debug] Query executed, rows:", result.rows.length);
-
-      await pool.end();
-
-      if (result.rows.length > 0) {
-        const row = result.rows[0];
-        const coinsDeducted = parseFloat(row.amount);
-        coinDiscountRupees = coinsDeducted / 100; // Convert coins (paise) to rupees
-
-        console.log("💰 [Database] FOUND coin redemption:", {
-          coinsDeducted,
-          coinDiscountRupees,
-          customer: row.customer_id,
-          timestamp: row.created_at
+    if (body.coinDiscountCode && cartCustomerId) {
+      try {
+        const spend = await findSpendByReference({
+          customerId: cartCustomerId,
+          referenceId: body.coinDiscountCode
         });
-      } else {
-        console.log("⚠️ [Database] NO recent coin redemptions found in last 2 minutes");
+        if (spend) {
+          coinDiscountRupees = spend.amountMinor / 100;
+        }
+      } catch (err) {
+        console.error("Coin discount lookup failed:", err);
       }
-    } catch (dbError) {
-      console.error("❌ [Database] Query FAILED:", dbError);
     }
-
-    console.log("🔍 [Coin Debug] Final discount value:", coinDiscountRupees);
 
     // Subtract discount from total
     const finalTotal = Math.max(0, medusaTotal - coinDiscountRupees);
@@ -454,8 +434,21 @@ export async function POST(req: Request) {
       originalTotal: medusaTotal,
       finalTotal,
       reduction: medusaTotal - finalTotal,
-      source: coinDiscountRupees > 0 ? "database-wallet-transactions" : "none"
+      source: coinDiscountRupees > 0 ? "ledger" : "none"
     });
+
+    if (coinDiscountRupees > 0 && medusaOrderId) {
+      try {
+        await updateOrderMetadata(medusaOrderId, {
+          coin_discount_code: body.coinDiscountCode || null,
+          coin_discount_minor: Math.round(coinDiscountRupees * 100),
+          coin_discount_rupees: coinDiscountRupees,
+          coin_discount_applied: `₹${coinDiscountRupees.toFixed(2)} OWEG Coins`
+        });
+      } catch (err) {
+        console.warn("Failed to update order metadata for coin discount:", err);
+      }
+    }
 
     // ADD COIN DISCOUNT AS ORDER ADJUSTMENT in Medusa Admin
     if (coinDiscountRupees > 0 && medusaOrderId) {

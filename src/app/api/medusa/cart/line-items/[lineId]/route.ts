@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 const CART_COOKIE = "cart_id";
+const GUEST_CART_HEADER = "x-guest-cart-id";
 
 async function backend(path: string, init?: RequestInit) {
   const base = (
@@ -28,23 +29,22 @@ async function backend(path: string, init?: RequestInit) {
   });
 }
 
-type EnsureCartResult = {
+type ResolveCartResult = {
   cartId: string;
   shouldSetCookie: boolean;
 };
 
-async function ensureCartId(): Promise<EnsureCartResult> {
+async function resolveCartId(req: NextRequest): Promise<ResolveCartResult | null> {
   const c = await cookies();
-  const existing = c.get(CART_COOKIE)?.value;
-  if (existing) {
-    return { cartId: existing, shouldSetCookie: false };
+  const cookieCartId = c.get(CART_COOKIE)?.value;
+  if (cookieCartId) {
+    return { cartId: cookieCartId, shouldSetCookie: false };
   }
-  const res = await backend(`/store/carts`, { method: "POST" });
-  if (!res.ok) throw new Error("create cart failed");
-  const json = await res.json();
-  const id = json.cart?.id || json.id;
-  if (!id) throw new Error("cart id missing from backend");
-  return { cartId: id, shouldSetCookie: true };
+  const guestCartId = req.headers.get(GUEST_CART_HEADER) || undefined;
+  if (guestCartId) {
+    return { cartId: guestCartId, shouldSetCookie: false };
+  }
+  return null;
 }
 
 type RouteParams = {
@@ -95,7 +95,11 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     if (!Number.isFinite(quantity) || quantity < 1) {
       return NextResponse.json({ error: "quantity must be >= 1" }, { status: 400 });
     }
-    const { cartId, shouldSetCookie } = await ensureCartId();
+    const cartResult = await resolveCartId(req);
+    if (!cartResult?.cartId) {
+      return NextResponse.json({ error: "cart_id not found" }, { status: 400 });
+    }
+    const { cartId, shouldSetCookie } = cartResult;
     const res = await backend(
       `/store/carts/${cartId}/line-items/${encodeURIComponent(lineId)}`,
       {
@@ -120,13 +124,17 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   }
 }
 
-export async function DELETE(_req: NextRequest, ctx: RouteContext) {
+export async function DELETE(req: NextRequest, ctx: RouteContext) {
   const { lineId } = await getParams(ctx);
   if (!lineId) {
     return NextResponse.json({ error: "lineId required" }, { status: 400 });
   }
   try {
-    const { cartId, shouldSetCookie } = await ensureCartId();
+    const cartResult = await resolveCartId(req);
+    if (!cartResult?.cartId) {
+      return NextResponse.json({ error: "cart_id not found" }, { status: 400 });
+    }
+    const { cartId, shouldSetCookie } = cartResult;
     const res = await backend(
       `/store/carts/${cartId}/line-items/${encodeURIComponent(lineId)}`,
       { method: "DELETE" }

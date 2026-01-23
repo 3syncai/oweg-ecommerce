@@ -10,11 +10,11 @@ export const dynamic = "force-dynamic"
  * 
  * Expected payload from Medusa:
  * {
- *   "event": "order.cancelled" | "order.refunded",
+ *   "event": "order.cancelled" | "order.refunded" | "order.return_approved",
  *   "data": {
  *     "id": "order_123",
  *     "customer_id": "cus_123",
- *     "status": "cancelled" | "refunded"
+ *     "status": "cancelled" | "refunded" | "return_approved"
  *   }
  * }
  * 
@@ -56,9 +56,11 @@ export async function POST(req: NextRequest) {
             event === "order.canceled" ||
             event === "order.refunded" ||
             event === "order.refund_created" ||
+            event === "order.return_approved" ||
             data.status === "cancelled" ||
             data.status === "canceled" ||
-            data.status === "refunded"
+            data.status === "refunded" ||
+            data.status === "return_approved"
 
         if (!isCancellation) {
             console.log(`Ignoring event: ${event}, status: ${data.status}`)
@@ -69,9 +71,9 @@ export async function POST(req: NextRequest) {
         }
 
         // Call the coin reversal endpoint
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
-            process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` :
-            "http://localhost:3000"
+        const baseUrl =
+            process.env.NEXT_PUBLIC_APP_URL ||
+            (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
 
         const reverseRes = await fetch(`${baseUrl}/api/store/wallet/reverse`, {
             method: "POST",
@@ -108,7 +110,7 @@ export async function GET(_req: NextRequest) {
         endpoint: "/api/webhooks/order-cancelled",
         description: "Webhook for order cancellation/refund to reverse earned coins",
         expected_payload: {
-            event: "order.cancelled | order.refunded",
+            event: "order.cancelled | order.refunded | order.return_approved",
             data: {
                 id: "order_123"
             }

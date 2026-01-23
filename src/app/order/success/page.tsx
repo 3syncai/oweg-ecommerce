@@ -37,6 +37,7 @@ function OrderSuccessPageInner() {
   const [polling, setPolling] = useState(false);
   const [coinsEarned, setCoinsEarned] = useState<number | null>(null);
   const pollAttempts = useRef(0);
+  const clearedCartRef = useRef(false);
   const maxPollAttempts = 12; // 12 * 5s = 60s
 
   async function fetchOrder() {
@@ -123,6 +124,50 @@ function OrderSuccessPageInner() {
     metadataStatus || (typeof order?.payment_status === "string" ? order.payment_status : undefined);
   const isPaid = rawPaymentStatus === "captured" || rawPaymentStatus === "paid" || rawPaymentStatus === "cod";
   const paymentStatusLabel = isPaid ? "paid" : rawPaymentStatus || "pending";
+
+  const orderMode =
+    typeof order?.metadata?.mode === "string" ? (order?.metadata?.mode as string) : undefined;
+  const orderPaymentMethod =
+    typeof order?.metadata?.payment_method === "string"
+      ? (order?.metadata?.payment_method as string)
+      : undefined;
+
+  // Clear cart once payment is confirmed (only for normal cart checkouts)
+  useEffect(() => {
+    const shouldClear = isPaid || orderPaymentMethod === "cod";
+    if (!shouldClear || clearedCartRef.current) return;
+    if (orderMode === "buy_now") {
+      clearedCartRef.current = true;
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("buy_now_item");
+      }
+      return;
+    }
+
+    const clearCart = async () => {
+      try {
+        const guestCartId =
+          typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
+        await fetch("/api/medusa/cart/clear", {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
+          },
+        });
+      } catch (err) {
+        console.warn("Failed to clear cart after order", err);
+      } finally {
+        clearedCartRef.current = true;
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("guest_cart_id");
+          localStorage.removeItem("buy_now_item");
+        }
+      }
+    };
+
+    void clearCart();
+  }, [isPaid, orderMode, orderPaymentMethod]);
 
   // Display amount helper:
   // Order totals are stored in Paise (minor units), divide by 100 for display
