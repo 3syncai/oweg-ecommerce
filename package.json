@@ -10,7 +10,6 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
-    "@next/swc-darwin-arm64": "^16.1.1",
     "@radix-ui/react-label": "^2.1.8",
     "@radix-ui/react-radio-group": "^1.3.8",
     "@radix-ui/react-select": "^2.2.6",
