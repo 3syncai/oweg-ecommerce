@@ -59,12 +59,11 @@ export default async function orderFulfilledSubscriber({
 
         console.log(`[Coin Activation] Calling webhook at ${frontendUrl}/api/webhooks/order-delivered`)
 
-        // Call the coin activation webhook
-        const response = await fetch(`${frontendUrl}/api/webhooks/order-delivered`, {
+        // 1. Call the coin activation webhook
+        const coinResponse = await fetch(`${frontendUrl}/api/webhooks/order-delivered`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                // Add webhook secret for security
                 "x-webhook-secret": process.env.MEDUSA_WEBHOOK_SECRET || "",
             },
             body: JSON.stringify({
@@ -73,20 +72,52 @@ export default async function orderFulfilledSubscriber({
             }),
         })
 
-        if (response.ok) {
-            const result = await response.json()
+        if (coinResponse.ok) {
+            const result = await coinResponse.json()
             console.log(`[Coin Activation] ✅ Coins activated for order ${orderId}:`, result)
         } else {
-            const error = await response.text()
+            const error = await coinResponse.text()
             console.error(`[Coin Activation] ❌ Failed to activate coins for order ${orderId}:`, error)
         }
+
+        // 2. Call Affiliate Portal to update commission status
+        const affiliateWebhookUrl = process.env.AFFILIATE_WEBHOOK_URL ?
+            process.env.AFFILIATE_WEBHOOK_URL.replace('/commission', '/commission/update-status') :
+            "http://localhost:3001/api/webhook/commission/update-status"
+
+        console.log(`[Affiliate Commission] 更新 commission status at ${affiliateWebhookUrl}`)
+
+        const affiliateResponse = await fetch(affiliateWebhookUrl, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                order_id: orderId,
+                status: "CREDITED"
+            }),
+        })
+
+        if (affiliateResponse.ok) {
+            console.log(`[Affiliate Commission] ✅ Commission status updated to CREDITED for order ${orderId}`)
+        } else {
+            const error = await affiliateResponse.text()
+            console.error(`[Affiliate Commission] ❌ Failed to update commission status for order ${orderId}:`, error)
+        }
+
     } catch (err) {
-        console.error(`[Coin Activation] ❌ Error calling webhook for order ${orderId}:`, err)
+        console.error(`[Order Fulfilled] ❌ Error processing webhooks for order ${orderId}:`, err)
     }
 }
 
+console.log("[Coin Activation] 🚀 Subscriber loaded! Listening for Fulfillment Events...")
+
 export const config: SubscriberConfig = {
-    // Listen for delivery created events (Medusa 2.0)
-    // This fires when admin marks an order as delivered
-    event: "delivery.created",
+    // Listen for MULTIPLE events to catch the correct one
+    event: [
+        "order.fulfillment_created",
+        "fulfillment.created",
+        "shipment.created",
+        "delivery.created"
+    ],
 }

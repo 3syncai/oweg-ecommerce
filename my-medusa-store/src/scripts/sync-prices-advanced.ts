@@ -24,7 +24,7 @@ const OPENCART_DB = {
 };
 
 const MEDUSA_DB_URL = process.env.DATABASE_URL ||
-    'postgres://postgres:Oweg4719@oweg-db4719.cdq0aquucpbq.ap-south-1.rds.amazonaws.com:5432/oweg_testing?sslmode=no-verify';
+    'postgres://postgres:Oweg4719@oweg-ecom.cz282guu85co.ap-south-1.rds.amazonaws.com:5432/oweg_db?sslmode=no-verify';
 
 const BATCH_SIZE = 100; // Process products in batches
 // ===========================================
