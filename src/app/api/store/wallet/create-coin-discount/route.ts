@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { Pool } from "pg"
 import { adminFetch } from "@/lib/medusa-admin"
+import { spendCoins, creditAdjustment } from "@/lib/wallet-ledger"
 
 export const dynamic = "force-dynamic"
-
-const DATABASE_URL = process.env.DATABASE_URL
 
 /**
  * POST /api/store/wallet/create-coin-discount
@@ -26,132 +24,99 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        if (!DATABASE_URL) {
-            console.error("DATABASE_URL not configured")
-            return NextResponse.json(
-                { error: "Server configuration error" },
-                { status: 500 }
-            )
-        }
+        // 1. Generate unique discount code
+        const timestamp = Date.now()
+        const random = Math.random().toString(36).substring(2, 8).toUpperCase()
+        const discountCode = `COINS-${timestamp}-${random}`
 
-        const pool = new Pool({ connectionString: DATABASE_URL })
-
+        // 2. Deduct coins via ledger (idempotent) BEFORE creating promotion
         try {
-            // 1. Get current wallet balance (in minor units)
-            const walletResult = await pool.query(
-                `SELECT coins_balance FROM customer_wallet WHERE customer_id = $1`,
-                [customer_id]
-            )
-
-            if (walletResult.rows.length === 0) {
-                await pool.end()
+            await spendCoins({
+                customerId: customer_id,
+                amountMinor: coin_amount,
+                referenceId: discountCode,
+                idempotencyKey: `spend:${discountCode}`,
+                metadata: {
+                    cart_id: cart_id || null,
+                    discount_code: discountCode,
+                    reason: "coin_discount"
+                }
+            })
+        } catch (err) {
+            const code = (err as Error & { code?: string }).code
+            if (code === "NEGATIVE_BALANCE") {
                 return NextResponse.json(
-                    { error: "Wallet not found", success: false },
-                    { status: 404 }
-                )
-            }
-
-            const currentBalance = parseFloat(walletResult.rows[0].coins_balance) || 0
-
-            // coin_amount is in minor units (e.g., 1063 for 10.63 coins)
-            if (coin_amount > currentBalance) {
-                await pool.end()
-                return NextResponse.json(
-                    {
-                        error: "Insufficient coins",
-                        success: false,
-                        available: currentBalance,
-                        requested: coin_amount
-                    },
+                    { error: "Wallet has pending adjustments. Redemption is disabled until balance is settled." },
                     { status: 400 }
                 )
             }
-
-            // 2. Generate unique discount code
-            const timestamp = Date.now()
-            const random = Math.random().toString(36).substring(2, 8).toUpperCase()
-            const discountCode = `COINS-${timestamp}-${random}`
-
-            // 3. Create Medusa discount via Admin API
-            // Medusa v2 uses promotions API instead of discounts
-            const discountPayload = {
-                code: discountCode,
-                type: "standard",
-                application_method: {
-                    type: "fixed",
-                    target_type: "order",
-                    value: coin_amount, // Already in minor units
-                    currency_code: "INR"
-                },
-                rules: [{
-                    attribute: "customer_id",
-                    operator: "eq",
-                    values: [customer_id]
-                }]
-            }
-
-            console.log("Creating Medusa v2 promotion:", discountPayload)
-
-            const discountResponse = await adminFetch("/admin/promotions", {
-                method: "POST",
-                body: JSON.stringify(discountPayload)
-            })
-
-            if (!discountResponse.ok) {
-                console.error("Failed to create Medusa discount:", discountResponse)
-                await pool.end()
+            if (code === "INSUFFICIENT_BALANCE") {
                 return NextResponse.json(
-                    {
-                        error: "Failed to create discount code",
-                        details: discountResponse.data,
-                        success: false
-                    },
-                    { status: 500 }
+                    { error: "Insufficient coins" },
+                    { status: 400 }
                 )
             }
+            throw err
+        }
 
-            // 4. Deduct coins from wallet (reserve them for this discount)
-            await pool.query(
-                `UPDATE customer_wallet 
-                 SET coins_balance = coins_balance - $1, 
-                     updated_at = NOW()
-                 WHERE customer_id = $2`,
-                [coin_amount, customer_id]
-            )
+        // 3. Create Medusa promotion only after coins are spent
+        const discountPayload = {
+            code: discountCode,
+            type: "standard",
+            application_method: {
+                type: "fixed",
+                target_type: "order",
+                value: coin_amount, // minor units
+                currency_code: "INR"
+            },
+            rules: [{
+                attribute: "customer_id",
+                operator: "eq",
+                values: [customer_id]
+            }]
+        }
 
-            // 5. Create transaction record
-            await pool.query(
-                `INSERT INTO wallet_transactions 
-                 (customer_id, transaction_type, amount, description, status)
-                 VALUES ($1, 'REDEEMED', $2, $3, 'USED')`,
-                [
-                    customer_id,
-                    coin_amount,
-                    `Coins used for discount ${discountCode}`
-                ]
-            )
+        console.log("Creating Medusa v2 promotion:", discountPayload)
 
-            await pool.end()
+        const discountResponse = await adminFetch("/admin/promotions", {
+            method: "POST",
+            body: JSON.stringify(discountPayload)
+        })
 
-            console.log(`✅ Created discount code ${discountCode} for ${coin_amount / 100} rupees and deducted ${coin_amount} coins`)
-
-            return NextResponse.json({
-                success: true,
-                discount_code: discountCode,
-                discount_amount_minor: coin_amount,
-                discount_amount_rupees: coin_amount / 100,
-                coins_deducted: coin_amount
-            })
-        } catch (dbError) {
-            console.error("❌ Database error:", dbError)
-            await pool.end().catch(() => { })
+        if (!discountResponse.ok) {
+            console.error("Failed to create Medusa discount:", discountResponse)
+            try {
+                await creditAdjustment({
+                    customerId: customer_id,
+                    referenceId: `refund:${discountCode}`,
+                    idempotencyKey: `refund:${discountCode}`,
+                    amountMinor: coin_amount,
+                    reason: "promotion_create_failed",
+                    metadata: { discount_code: discountCode }
+                })
+            } catch (refundErr) {
+                console.error("Failed to refund coins after promotion error:", refundErr)
+            }
             return NextResponse.json(
-                { error: "Database error", details: String(dbError) },
+                {
+                    error: "Failed to create discount code",
+                    success: false
+                },
                 { status: 500 }
             )
         }
+
+        console.log(`Created discount code ${discountCode} for ${coin_amount / 100} rupees`)
+
+        return NextResponse.json({
+            success: true,
+            discount_code: discountCode,
+            discount_amount_minor: coin_amount,
+            discount_amount_rupees: coin_amount / 100,
+            coins_deducted: coin_amount
+        })
     } catch (error) {
-        console.error("❌ Create discount error:", error)
+        console.error("Create discount error:", error)
         return NextResponse.json(
             { error: "Internal server error" },
             { status: 500 }

@@ -11,7 +11,10 @@ type ReturnItem = {
 type ReturnRequest = {
   id: string
   order_id: string
-  customer_id: string
+  customer_id: string | null
+  customer_email?: string | null
+  customer_name?: string | null
+  coins_used?: number | null
   type: string
   status: string
   reason?: string | null
@@ -88,7 +91,7 @@ const ReturnRequestsPage = () => {
       }
       const data = await res.json()
       setBankDetails(data?.return_request?.bank_details || null)
-    } catch (e: any) {
+    } catch (e: any) { 
       const msg = e?.message || "Failed to load bank details"
       toast.error("Error", { description: msg })
     }
@@ -156,6 +159,13 @@ const ReturnRequestsPage = () => {
                     {request.reason && (
                       <Text className="text-sm text-ui-fg-subtle">Reason: {request.reason}</Text>
                     )}
+                    <Text className="text-sm text-ui-fg-subtle">
+                      Customer: {request.customer_name || "Unknown"} ({request.customer_email || "no-email"}) • ID:{" "}
+                      {request.customer_id || "unknown"}
+                    </Text>
+                    <Text className="text-sm text-ui-fg-subtle">
+                      Coins used: {Math.round(typeof request.coins_used === "number" ? request.coins_used : 0)}
+                    </Text>
                     <Text className="text-sm text-ui-fg-subtle">
                       Payment: {request.payment_type} {request.bank_account_last4 ? `(xxxx${request.bank_account_last4})` : ""}
                     </Text>

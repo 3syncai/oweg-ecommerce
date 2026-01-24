@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { verifyRazorpaySignature } from "@/lib/razorpay";
+import { creditAdjustment } from "@/lib/wallet-ledger";
 import {
   convertDraftOrder,
   deleteDraftOrder,
@@ -13,6 +14,7 @@ import {
   updateOrderMetadata,
   registerOrderPaymentV2,
 } from "@/lib/medusa-admin";
+import { applyCoinDiscountToOrder } from "@/lib/order-discount";
 
 type RazorpayPaymentEntity = {
   id?: string;
@@ -242,6 +244,54 @@ function extractPaymentContext(order: MedusaOrder) {
   };
 }
 
+async function refundCoinsFromMetadata(options: {
+  orderId: string;
+  customerId?: string | null;
+  metadata: Record<string, unknown>;
+}) {
+  const { orderId, customerId, metadata } = options;
+  const discountCode =
+    (metadata?.coin_discount_code as string | undefined) ||
+    (metadata?.coin_discount as string | undefined) ||
+    (metadata?.coin_discount_id as string | undefined);
+
+  const coinsDiscounted =
+    typeof metadata?.coins_discountend === "number"
+      ? metadata.coins_discountend
+      : typeof metadata?.coin_discount_rupees === "number"
+        ? metadata.coin_discount_rupees
+        : typeof metadata?.coin_discount_minor === "number"
+          ? metadata.coin_discount_minor / 100
+          : 0;
+
+  if (discountCode) {
+    const baseUrl =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+    await fetch(`${baseUrl}/api/store/wallet/refund-coin-discount`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_id: customerId || undefined,
+        discount_code: discountCode,
+      }),
+    });
+    return;
+  }
+
+  if (customerId && coinsDiscounted > 0) {
+    const amountMinor = Math.round(coinsDiscounted * 100);
+    await creditAdjustment({
+      customerId: String(customerId),
+      referenceId: `refund-failed:${orderId}`,
+      idempotencyKey: `refund-failed:${orderId}`,
+      amountMinor,
+      reason: `Refund coins for failed payment ${orderId}`,
+      metadata: { order_id: orderId, coins_discountend: coinsDiscounted },
+    });
+  }
+}
+
 export async function POST(req: Request) {
   const rawArrayBuffer = await req.arrayBuffer();
   const rawBodyBuffer = Buffer.from(rawArrayBuffer);
@@ -424,6 +474,25 @@ export async function POST(req: Request) {
       // Persist metadata
       await updateOrderMetadata(medusaOrderId, metaWithCapture);
 
+      try {
+        const coinMinor =
+          typeof metadata?.coin_discount_minor === "number"
+            ? metadata.coin_discount_minor
+            : typeof metadata?.coin_discount_rupees === "number"
+              ? Math.round(metadata.coin_discount_rupees * 100)
+              : typeof metadata?.coins_discountend === "number"
+                ? Math.round(metadata.coins_discountend * 100)
+                : 0;
+        if (coinMinor > 0) {
+          await applyCoinDiscountToOrder({
+            orderId: medusaOrderId,
+            discountMinor: coinMinor,
+          });
+        }
+      } catch (coinErr) {
+        console.error("razorpay webhook: coin discount apply failed", coinErr);
+      }
+
       // Keep Medusa paid totals in sync with Razorpay's captured amount
       if (txRes?.ok) {
         try {
@@ -519,6 +588,22 @@ export async function POST(req: Request) {
   // Failure path (not captured)
   try {
     await updateOrderMetadata(medusaOrderId, nextMetadata);
+
+    try {
+      const customerId =
+        typeof (order as any)?.customer_id === "string"
+          ? (order as any).customer_id
+          : typeof (order as any)?.customer?.id === "string"
+            ? (order as any).customer.id
+            : undefined;
+      await refundCoinsFromMetadata({
+        orderId: medusaOrderId,
+        customerId,
+        metadata,
+      });
+    } catch (refundErr) {
+      console.error("razorpay webhook failed to refund coin discount", refundErr);
+    }
 
     if (order.is_draft_order) {
       try {

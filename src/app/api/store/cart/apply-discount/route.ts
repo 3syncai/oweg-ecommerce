@@ -7,6 +7,16 @@ const MEDUSA_BACKEND_URL =
     process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL ||
     "http://localhost:9000"
 
+const SALES_CHANNEL_ID =
+    process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID ||
+    process.env.MEDUSA_SALES_CHANNEL_ID ||
+    ""
+
+const REGION_ID =
+    process.env.NEXT_PUBLIC_MEDUSA_REGION_ID ||
+    process.env.MEDUSA_REGION_ID ||
+    ""
+
 const PUBLISHABLE_KEY =
     process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY ||
     process.env.MEDUSA_PUBLISHABLE_KEY ||
@@ -38,7 +48,9 @@ export async function POST(req: NextRequest) {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    ...(PUBLISHABLE_KEY ? { "x-publishable-api-key": PUBLISHABLE_KEY } : {})
+                    ...(PUBLISHABLE_KEY ? { "x-publishable-api-key": PUBLISHABLE_KEY } : {}),
+                    ...(SALES_CHANNEL_ID ? { "x-sales-channel-id": SALES_CHANNEL_ID } : {}),
+                    ...(REGION_ID ? { "x-region-id": REGION_ID } : {})
                 },
                 body: JSON.stringify({
                     promo_codes: [discount_code]
@@ -102,7 +114,9 @@ export async function DELETE(req: NextRequest) {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    ...(PUBLISHABLE_KEY ? { "x-publishable-api-key": PUBLISHABLE_KEY } : {})
+                    ...(PUBLISHABLE_KEY ? { "x-publishable-api-key": PUBLISHABLE_KEY } : {}),
+                    ...(SALES_CHANNEL_ID ? { "x-sales-channel-id": SALES_CHANNEL_ID } : {}),
+                    ...(REGION_ID ? { "x-region-id": REGION_ID } : {})
                 },
                 body: JSON.stringify({
                     promo_codes: [] // Clear promo codes

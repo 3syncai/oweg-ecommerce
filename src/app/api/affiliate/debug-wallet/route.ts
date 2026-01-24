@@ -31,8 +31,8 @@ export async function GET(req: NextRequest) {
 
         // 2. Check wallet
         const walletResult = await pool.query(`
-            SELECT customer_id, coins_balance, created_at, updated_at
-            FROM customer_wallet
+            SELECT customer_id, actual_balance, created_at, updated_at
+            FROM wallet_account
             WHERE customer_id = $1
         `, [affiliateUser.id])
 
@@ -54,9 +54,9 @@ export async function GET(req: NextRequest) {
             recent_commissions: commissionResult.rows,
             debug_info: {
                 affiliate_user_id: affiliateUser.id,
-                wallet_customer_id: walletResult.rows[0]?.customer_id,
-                ids_match: walletResult.rows[0]?.customer_id === affiliateUser.id
-            }
+            wallet_customer_id: walletResult.rows[0]?.customer_id,
+            ids_match: walletResult.rows[0]?.customer_id === affiliateUser.id
+        }
         })
 
     } catch (error) {

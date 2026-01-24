@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
+import { applyCoinDiscountToOrder } from "@/lib/order-discount";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +87,26 @@ export async function POST(req: Request) {
       cod_status: "confirmed",
       razorpay_payment_status: razorpayStatus || "cod",
     });
+
+    try {
+      const refreshed = await getOrderById(finalOrderId);
+      const refreshedOrder = refreshed.ok && refreshed.data ? extractOrder(refreshed.data) : order;
+      const refreshedMeta = (refreshedOrder?.metadata || {}) as Record<string, unknown>;
+      const coinMinor =
+        typeof refreshedMeta?.coin_discount_minor === "number"
+          ? refreshedMeta.coin_discount_minor
+          : typeof refreshedMeta?.coin_discount_rupees === "number"
+            ? Math.round(refreshedMeta.coin_discount_rupees * 100)
+            : 0;
+      if (coinMinor > 0) {
+        await applyCoinDiscountToOrder({
+          orderId: finalOrderId,
+          discountMinor: coinMinor
+        });
+      }
+    } catch (coinErr) {
+      console.error("cod confirm: coin discount update failed", coinErr);
+    }
 
     return NextResponse.json({ ok: true, medusaOrderId: finalOrderId, status: "confirmed" });
   } catch (err) {

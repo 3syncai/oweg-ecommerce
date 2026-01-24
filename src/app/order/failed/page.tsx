@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
@@ -8,6 +8,22 @@ function OrderFailedPageInner() {
   const params = useSearchParams();
   const router = useRouter();
   const orderId = params.get("orderId");
+
+  useEffect(() => {
+    if (!orderId) return;
+    const refundCoins = async () => {
+      try {
+        await fetch("/api/store/wallet/refund-coin-discount-order", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ order_id: orderId, reason: "failed" }),
+        });
+      } catch {
+        // best-effort fallback; webhook handles primary refund
+      }
+    };
+    refundCoins();
+  }, [orderId]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
