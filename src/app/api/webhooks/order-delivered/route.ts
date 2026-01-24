@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
             }
 
             const coinsMinor = Math.round(totalMinor * COIN_EARNING_RATE)
-            let earnResult = { applied: false, amount: 0 };
+            let earnResult = { applied: false, actual_balance: 0 };
 
             if (coinsMinor > 0) {
                 const expiryDate = new Date()
