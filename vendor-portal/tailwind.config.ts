@@ -4,6 +4,7 @@ const medusaPreset = require("@medusajs/ui-preset");
 
 const config: Config = {
   presets: [medusaPreset],
+  darkMode: 'class',
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
