@@ -10,8 +10,8 @@ export default defineConfig({
       // Frontend URL: https://oweg-ecommerce.vercel.app/
       // Affiliate Portal: http://localhost:5000
       storeCors: process.env.STORE_CORS || "http://localhost:3000,http://localhost:3001,http://localhost:4000,https://oweg-ecommerce.vercel.app",
-      adminCors: process.env.ADMIN_CORS || "http://localhost:7001",
-      authCors: process.env.AUTH_CORS || "http://localhost:3000,http://localhost:3001,http://localhost:4000,https://oweg-ecommerce.vercel.app",
+      adminCors: process.env.ADMIN_CORS || "http://localhost:7001,https://ecomm-admin-ecru.vercel.app,/.*/",
+      authCors: process.env.AUTH_CORS || "http://localhost:3000,http://localhost:3001,http://localhost:4000,https://oweg-ecommerce.vercel.app,https://ecomm-admin-ecru.vercel.app,/.*/",
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     },
