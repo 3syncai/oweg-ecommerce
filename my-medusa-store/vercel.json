@@ -6,11 +6,11 @@
         },
         {
             "source": "/app/(.*)",
-            "destination": "/"
+            "destination": "/index.html"
         },
         {
             "source": "/(.*)",
-            "destination": "/"
+            "destination": "/index.html"
         }
     ]
 }

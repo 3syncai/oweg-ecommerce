@@ -229,14 +229,14 @@ After deployment:
 If you want to host **only** the admin dashboard on Vercel (separate from your backend), follow these steps.
 
 ### 1. Preparation
-Ensure you have the `admin-vercel.json` file in your `my-medusa-store` folder with the following content (fixed for Medusa v2 asset paths):
+Ensure you have a `vercel.json` file in your `my-medusa-store` folder with the following content. This is **REQUIRED** for Vercel pick up the rewrites for the `/app` prefix:
 
 ```json
 {
   "rewrites": [
     { "source": "/app/assets/(.*)", "destination": "/assets/$1" },
-    { "source": "/app/(.*)", "destination": "/" },
-    { "source": "/(.*)", "destination": "/" }
+    { "source": "/app/(.*)", "destination": "/index.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
 ```
@@ -246,7 +246,7 @@ Ensure you have the `admin-vercel.json` file in your `my-medusa-store` folder wi
 2. Select the `my-medusa-store` folder as the **Root Directory**.
 3. **Build Settings**:
    - **Framework Preset**: `Other`
-   - **Build Command**: `npx @medusajs/medusa-cli build && cp admin-vercel.json .medusa/server/public/admin/vercel.json`
+   - **Build Command**: `npx @medusajs/medusa-cli build`
    - **Output Directory**: `.medusa/server/public/admin`
    - **Install Command**: `npm install`
 4. **Environment Variables**:
