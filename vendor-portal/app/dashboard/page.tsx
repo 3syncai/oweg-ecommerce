@@ -13,9 +13,7 @@ import {
   ArchiveBox,
   Plus,
   ArrowUpRightMini,
-  ExclamationCircle,
-  Clock,
-  CheckCircle
+  Clock
 } from "@medusajs/icons"
 
 type DashboardData = {
@@ -233,17 +231,17 @@ const VendorDashboardPage = () => {
 
         {/* Action Items Alert */}
         {data.actionItems.length > 0 && (
-          <div className="border border-orange-500/20 bg-orange-500/5 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <ExclamationCircle className="text-orange-500" />
-              <Heading level="h3" className="text-orange-500">Action Required</Heading>
+          <div className="border border-ui-border-base bg-ui-bg-base rounded-lg p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]" />
+              <Heading level="h3" className="text-ui-fg-base">Action Required</Heading>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 pl-5">
               {data.actionItems.map((item, idx) => (
                 <Link
                   key={idx}
                   href={item.link}
-                  className="flex items-center justify-between p-3 bg-ui-bg-base rounded-md hover:bg-ui-bg-base-hover transition-colors group"
+                  className="flex items-center justify-between p-3 bg-ui-bg-subtle/50 rounded-md hover:bg-ui-bg-subtle transition-colors group"
                 >
                   <Text>{item.message}</Text>
                   <ArrowUpRightMini className="text-ui-fg-muted group-hover:text-ui-fg-base" />
@@ -255,14 +253,12 @@ const VendorDashboardPage = () => {
 
         {/* Active Products Info Card */}
         {data.publishedProducts > 0 && (
-          <div className="border border-green-500/20 bg-green-500/5 rounded-lg p-4">
+          <div className="border border-ui-border-base bg-ui-bg-base rounded-lg p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-md bg-green-500/10">
-                  <CheckCircle className="text-green-600" />
-                </div>
+                <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
                 <div>
-                  <Heading level="h3" className="text-green-700 dark:text-green-400">
+                  <Heading level="h3" className="text-ui-fg-base">
                     {data.publishedProducts} Active Product{data.publishedProducts > 1 ? 's' : ''}
                   </Heading>
                   <Text className="text-ui-fg-subtle text-sm">
@@ -273,7 +269,7 @@ const VendorDashboardPage = () => {
               <Button
                 variant="transparent"
                 onClick={() => router.push("/products")}
-                className="text-green-600 hover:text-green-700"
+                className="text-ui-fg-subtle hover:text-ui-fg-base"
               >
                 View Products
                 <ArrowUpRightMini />
@@ -311,9 +307,15 @@ const VendorDashboardPage = () => {
             <Heading level="h2" className="text-2xl">
               {data.totalOrders}
             </Heading>
-            <div className="mt-2 flex gap-2">
-              <Badge size="small" color="orange">{data.pendingOrders} Pending</Badge>
-              <Badge size="small" color="green">{data.completedOrders} Done</Badge>
+            <div className="mt-2 flex gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]" />
+                <Text className="text-ui-fg-subtle text-sm">{data.pendingOrders} Pending</Text>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
+                <Text className="text-ui-fg-subtle text-sm">{data.completedOrders} Done</Text>
+              </div>
             </div>
           </div>
 
@@ -342,11 +344,16 @@ const VendorDashboardPage = () => {
             <Heading level="h2" className="text-2xl">
               {data.totalProducts}
             </Heading>
-            <div className="mt-2 flex gap-2">
-              <Badge size="small" color="green">{data.publishedProducts} Live</Badge>
-              {/*  <Badge size="small" color="grey">{data.draftProducts} Draft</Badge> */}
+            <div className="mt-2 flex gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
+                <Text className="text-ui-fg-subtle text-sm">{data.publishedProducts} Live</Text>
+              </div>
               {data.pendingApprovalProducts > 0 && (
-                <Badge size="small" color="orange">{data.pendingApprovalProducts} Pending</Badge>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]" />
+                  <Text className="text-ui-fg-subtle text-sm">{data.pendingApprovalProducts} Pending</Text>
+                </div>
               )}
             </div>
           </div>
@@ -367,26 +374,30 @@ const VendorDashboardPage = () => {
                 </Button>
               </div>
               <div className="border border-ui-border-base rounded-lg divide-y divide-ui-border-base">
-                {data.recentOrders.map((order: any) => (
-                  <div key={order.id} className="p-4 flex items-center justify-between hover:bg-ui-bg-subtle transition-colors">
-                    <div className="flex-1">
-                      <Text className="font-medium">#{order.display_id || order.id.slice(0, 8)}</Text>
-                      <Text className="text-ui-fg-subtle text-sm">{order.email}</Text>
+                {data.recentOrders.map((order: any) => {
+                  const statusColor = order.fulfillment_status === 'delivered' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' :
+                    order.fulfillment_status === 'shipped' ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]' :
+                      order.fulfillment_status === 'canceled' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]' :
+                        'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]';
+
+                  return (
+                    <div key={order.id} className="p-4 flex items-center justify-between hover:bg-ui-bg-subtle transition-colors">
+                      <div className="flex-1">
+                        <Text className="font-medium">#{order.display_id || order.id.slice(0, 8)}</Text>
+                        <Text className="text-ui-fg-subtle text-sm">{order.email}</Text>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${statusColor}`} />
+                          <Text className="text-ui-fg-subtle text-sm capitalize">{order.fulfillment_status || 'pending'}</Text>
+                        </div>
+                        <Text className="font-medium min-w-[80px] text-right">
+                          {formatCurrency(order.total || 0)}
+                        </Text>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <Badge size="small" color={
-                        order.fulfillment_status === 'delivered' ? 'green' :
-                          order.fulfillment_status === 'shipped' ? 'blue' :
-                            order.fulfillment_status === 'canceled' ? 'red' : 'orange'
-                      }>
-                        {order.fulfillment_status || 'pending'}
-                      </Badge>
-                      <Text className="font-medium min-w-[80px] text-right">
-                        {formatCurrency(order.total || 0)}
-                      </Text>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
@@ -406,7 +417,10 @@ const VendorDashboardPage = () => {
                       </div>
                       <Text className="font-medium">{item.product}</Text>
                     </div>
-                    <Badge size="small" color="blue">{item.orders} orders</Badge>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]" />
+                      <Text className="text-ui-fg-subtle text-sm">{item.orders} orders</Text>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -433,9 +447,12 @@ const VendorDashboardPage = () => {
                       <Text className="font-medium">{item.product_title}</Text>
                       <Text className="text-ui-fg-subtle text-sm">{item.variant_title}</Text>
                     </div>
-                    <Badge size="small" color="orange">
-                      {item.available_quantity || item.stocked_quantity} left
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]" />
+                      <Text className="text-ui-fg-subtle text-sm">
+                        {item.available_quantity || item.stocked_quantity} left
+                      </Text>
+                    </div>
                   </div>
                 ))}
               </div>

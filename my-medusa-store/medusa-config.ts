@@ -17,6 +17,7 @@ export default defineConfig({
     },
   },
   admin: {
+    disable:true,
     backendUrl: process.env.MEDUSA_ADMIN_BACKEND_URL,
     vite: () => ({
       server: {
