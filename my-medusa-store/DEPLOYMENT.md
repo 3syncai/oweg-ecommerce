@@ -236,7 +236,7 @@ Ensure you have a `vercel.json` file in your `my-medusa-store` folder with the f
   "rewrites": [
     { "source": "/app/assets/(.*)", "destination": "/assets/$1" },
     { "source": "/app/(.*)", "destination": "/index.html" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/", "destination": "/index.html" }
   ]
 }
 ```
@@ -246,11 +246,13 @@ Ensure you have a `vercel.json` file in your `my-medusa-store` folder with the f
 2. Select the `my-medusa-store` folder as the **Root Directory**.
 3. **Build Settings**:
    - **Framework Preset**: `Other`
-   - **Build Command**: `npx @medusajs/medusa-cli build`
+   - **Build Command**: `MEDUSA_ADMIN_BACKEND_URL=$MEDUSA_ADMIN_BACKEND_URL npx @medusajs/medusa-cli build`
    - **Output Directory**: `.medusa/server/public/admin`
    - **Install Command**: `npm install`
 4. **Environment Variables**:
-   - Add `MEDUSA_ADMIN_BACKEND_URL`: `https://your-medusa-backend.com` (Your deployed backend URL)
+   - `MEDUSA_ADMIN_BACKEND_URL`: `https://your-medusa-backend.com`
+   - `BACKEND_URL`: `https://your-medusa-backend.com`
+   - `VITE_MEDUSA_ADMIN_BACKEND_URL`: `https://your-medusa-backend.com` (Add this just in case)
 
 ### 3. Backend Configuration
 Ensure your Medusa backend has the Vercel Admin URL in its `ADMIN_CORS` environment variable.
