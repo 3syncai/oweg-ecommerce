@@ -531,7 +531,7 @@ export type Price = {
   id: Scalars['ID']['output'];
   title: Maybe<Scalars['String']['output']>;
   currency_code: Scalars['String']['output'];
-  amount: Scalars['Float']['output'];
+  amount: Scalars['Int']['output'];
   min_quantity: Maybe<Scalars['Int']['output']>;
   max_quantity: Maybe<Scalars['Int']['output']>;
   rules_count: Maybe<Scalars['Int']['output']>;
@@ -1500,9 +1500,9 @@ export type OrderDetail = {
   raw_original_shipping_subtotal: Maybe<Scalars['JSON']['output']>;
   raw_original_shipping_tax_total: Maybe<Scalars['JSON']['output']>;
   payment_collections: Maybe<Array<Maybe<PaymentCollection>>>;
-  payment_status: PaymentStatus;
+  payment_status: Maybe<PaymentStatus>;
   fulfillments: Maybe<Array<Maybe<Fulfillment>>>;
-  fulfillment_status: FulfillmentStatus;
+  fulfillment_status: Maybe<FulfillmentStatus>;
 };
 
 export type OrderChange = {
