@@ -222,9 +222,30 @@ After deployment:
 
 ---
 
-## Support
+---
 
-- Medusa Docs: https://docs.medusajs.com
-- Railway Docs: https://docs.railway.app
-- Render Docs: https://render.com/docs
+## Standalone: Medusa Admin Dashboard on Vercel
+
+If you want to host **only** the admin dashboard on Vercel (separate from your backend), follow these steps.
+
+### 1. Preparation
+Ensure you have the `admin-vercel.json` file in your `my-medusa-store` folder. It contains the necessary SPA routing rules for Vite.
+
+### 2. Vercel Project Setup
+1. **Import your repository** to Vercel.
+2. Select the `my-medusa-store` folder as the **Root Directory**.
+3. **Build Settings**:
+   - **Framework Preset**: `Other`
+   - **Build Command**: `npx @medusajs/medusa-cli build && cp admin-vercel.json .medusa/server/public/admin/vercel.json`
+   - **Output Directory**: `.medusa/server/public/admin`
+   - **Install Command**: `npm install`
+4. **Environment Variables**:
+   - Add `MEDUSA_ADMIN_BACKEND_URL`: `https://your-medusa-backend.com` (Your deployed backend URL)
+
+### 3. Backend Configuration
+Ensure your Medusa backend has the Vercel Admin URL in its `ADMIN_CORS` environment variable.
+
+---
+
+## Support
 
