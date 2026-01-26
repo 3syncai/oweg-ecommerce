@@ -229,7 +229,17 @@ After deployment:
 If you want to host **only** the admin dashboard on Vercel (separate from your backend), follow these steps.
 
 ### 1. Preparation
-Ensure you have the `admin-vercel.json` file in your `my-medusa-store` folder. It contains the necessary SPA routing rules for Vite.
+Ensure you have the `admin-vercel.json` file in your `my-medusa-store` folder with the following content (fixed for Medusa v2 asset paths):
+
+```json
+{
+  "rewrites": [
+    { "source": "/app/assets/(.*)", "destination": "/assets/$1" },
+    { "source": "/app/(.*)", "destination": "/" },
+    { "source": "/(.*)", "destination": "/" }
+  ]
+}
+```
 
 ### 2. Vercel Project Setup
 1. **Import your repository** to Vercel.
