@@ -51,9 +51,18 @@ const VendorBadge = () => {
           } else if (styleEl) {
              styleEl.remove()
           }
+        } else {
+          // Remove badge if response is not ok (e.g. auth error)
+          const styleId = "vendor-badge-style"
+          const styleEl = document.getElementById(styleId)
+          if (styleEl) styleEl.remove()
         }
       } catch (error) {
         console.error("Badge error:", error)
+        // Remove badge on error
+        const styleId = "vendor-badge-style"
+        const styleEl = document.getElementById(styleId)
+        if (styleEl) styleEl.remove()
       }
     }
 
