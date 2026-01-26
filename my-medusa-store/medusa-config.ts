@@ -16,8 +16,8 @@ export default defineConfig({
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     },
   },
-  // Add this admin configuration
   admin: {
+    backendUrl: process.env.MEDUSA_ADMIN_BACKEND_URL,
     vite: () => ({
       server: {
         allowedHosts: [
