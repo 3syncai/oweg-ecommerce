@@ -2,10 +2,34 @@
 ;(function() {
   'use strict'
   
+  // Prevent multiple initializations
+  if (window.__vendorBadgeInitialized) return
+  window.__vendorBadgeInitialized = true
+
   let styleInjected = false
+  let intervalId = null
   
   async function updateVendorBadge() {
     try {
+      // Check for conflicting badges from React widgets
+      const conflictingIds = [
+        'vendor-requests-global-badge', 
+        'vendor-badge-style', 
+        'vendor-badge-global-style'
+      ]
+      
+      const hasConflict = conflictingIds.some(id => document.getElementById(id))
+      
+      // If a widget badge exists, cleanup our static badge and exit
+      if (hasConflict) {
+        const myStyle = document.getElementById('vendornotifbadge')
+        if (myStyle) {
+          myStyle.remove()
+          styleInjected = false
+        }
+        return
+      }
+
       const res = await fetch('/admin/vendors/pending', {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' }
@@ -62,5 +86,10 @@
   }
   
   // Refresh every 30s
-  setInterval(updateVendorBadge, 30000)
+  intervalId = setInterval(updateVendorBadge, 30000)
+
+  // Cleanup on unload to prevent leaks
+  window.addEventListener('beforeunload', () => {
+    if (intervalId) clearInterval(intervalId)
+  })
 })()
