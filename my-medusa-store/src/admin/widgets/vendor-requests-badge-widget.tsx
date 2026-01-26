@@ -12,11 +12,11 @@ const VendorBadge = () => {
           const data = await res.json()
           const pendingCount = data?.vendors?.length || 0
           
-          // Inject CSS for the badge
+          // Inject or remove CSS for the badge
+          const styleId = "vendor-badge-style"
+          let styleEl = document.getElementById(styleId) as HTMLStyleElement
+
           if (pendingCount > 0) {
-            const styleId = "vendor-badge-style"
-            let styleEl = document.getElementById(styleId) as HTMLStyleElement
-            
             if (!styleEl) {
               styleEl = document.createElement("style")
               styleEl.id = styleId
@@ -48,6 +48,8 @@ const VendorBadge = () => {
                 position: relative !important;
               }
             `
+          } else if (styleEl) {
+             styleEl.remove()
           }
         }
       } catch (error) {

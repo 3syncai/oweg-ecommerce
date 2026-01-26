@@ -440,6 +440,7 @@ const VendorProductNewPage = () => {
             }
           )
           toast.success("Success", { description: "Brand authorization uploaded" })
+          setBrandAuthorizationFile(null) // Prevent re-upload on retry
         } catch (authError: any) {
           console.error("Auth upload error:", authError)
           toast.error("Error", { description: "Failed to upload brand authorization. Please try again." })

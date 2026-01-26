@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { Input, Text } from "@medusajs/ui"
+import { Input, Text, toast } from "@medusajs/ui"
 import axios from "axios"
 
 interface BrandAuthorizationProps {
@@ -89,10 +89,10 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
             }
         } catch (error) {
             console.error("Brand authorization check error:", error)
-            // On error, allow product creation to proceed ?? Or fail safe?
-            // Existing logic allowed proceeding.
-            setAuthStatus("idle")
-            onAuthorizationStatusChange(true, false)
+            // Fail closed: Block progress on error
+            setAuthStatus("idle") 
+            onAuthorizationStatusChange(false, false)
+            toast.error("Error", { description: "Failed to verify brand authorization. Please check connection." })
         }
     }
 
