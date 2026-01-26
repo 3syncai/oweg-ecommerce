@@ -104,9 +104,9 @@ const VendorProductNewPage = () => {
     variants: [{
       title: "Default variant",
       sku: "",
-      managedInventory: false,
-      allowBackorder: false,
-      hasInventoryKit: false,
+      managedInventory: true,
+      allowBackorder: true,
+      hasInventoryKit: true,
       price: "",
       discountedPrice: "",
     }],
@@ -116,7 +116,9 @@ const VendorProductNewPage = () => {
   const [uploadingVideos, setUploadingVideos] = useState(false)
   const [uploadingMedia, setUploadingMedia] = useState(false)
   const [brandIsAuthorized, setBrandIsAuthorized] = useState(false)
+  const [brandNeedsAuthorization, setBrandNeedsAuthorization] = useState(false)
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null)
+  const [brandAuthorizationFile, setBrandAuthorizationFile] = useState<File | null>(null)
   const menuRefs = React.useRef<{ [key: number]: HTMLDivElement | null }>({})
 
   useEffect(() => {
@@ -419,6 +421,33 @@ const VendorProductNewPage = () => {
     }
 
     try {
+      // 1. Upload Brand Authorization if pending
+      if (brandAuthorizationFile && formData.brand) {
+        try {
+          const API_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
+          const authFormData = new FormData()
+          authFormData.append("brand_name", formData.brand)
+          authFormData.append("file", brandAuthorizationFile)
+
+          await axios.post(
+            `${API_URL}/vendor/brands/upload-authorization`,
+            authFormData,
+            {
+              headers: {
+                Authorization: `Bearer ${vendorToken}`,
+                "Content-Type": "multipart/form-data"
+              }
+            }
+          )
+          toast.success("Success", { description: "Brand authorization uploaded" })
+        } catch (authError: any) {
+          console.error("Auth upload error:", authError)
+          toast.error("Error", { description: "Failed to upload brand authorization. Please try again." })
+          setLoading(false)
+          return
+        }
+      }
+
       // Use already uploaded images
       const imageUrls = formData.uploadedImages.map(img => img.url)
 
@@ -1151,7 +1180,11 @@ const VendorProductNewPage = () => {
               <BrandAuthorizationField
                 brand={formData.brand}
                 onBrandChange={(brand) => setFormData({ ...formData, brand })}
-                onAuthorizationStatusChange={(isAuthorized) => setBrandIsAuthorized(isAuthorized)}
+                onAuthorizationStatusChange={(isAuthorized, needsAuthorization) => {
+                  setBrandIsAuthorized(isAuthorized)
+                  setBrandNeedsAuthorization(needsAuthorization)
+                }}
+                onFileSelect={(file) => setBrandAuthorizationFile(file)}
               />
             </div>
           </div>
@@ -1571,7 +1604,21 @@ const VendorProductNewPage = () => {
                 {loading ? "Publishing..." : "Publish"}
               </Button>
             ) : (
-              <Button variant="primary" onClick={handleNext}>
+              <Button 
+                variant="primary" 
+                onClick={handleNext}
+                disabled={
+                  !formData.brand.trim() || // Brand is mandatory
+                  (brandNeedsAuthorization && !brandIsAuthorized) // Authorization required but not uploaded
+                }
+                title={
+                  !formData.brand.trim() 
+                    ? "Please enter a brand name" 
+                    : brandNeedsAuthorization && !brandIsAuthorized 
+                      ? "Please upload brand authorization letter before continuing" 
+                      : ""
+                }
+              >
                 Continue
               </Button>
             )}

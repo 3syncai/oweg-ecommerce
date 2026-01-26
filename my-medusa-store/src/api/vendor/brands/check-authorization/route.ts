@@ -37,7 +37,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
         if (authorization) {
             return res.json({
-                requires_authorization: false,
+                requires_authorization: false, // File already uploaded
+                status: authorization.verified ? "authorized" : "pending",
                 authorization: {
                     brand_name: authorization.brand_name,
                     uploaded_at: authorization.created_at,
@@ -48,6 +49,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         } else {
             return res.json({
                 requires_authorization: true,
+                status: "missing",
                 brand_name: brandName,
             })
         }
