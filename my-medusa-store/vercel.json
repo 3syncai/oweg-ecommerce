@@ -9,11 +9,11 @@
             "destination": "/assets/$1"
         },
         {
-            "source": "/app",
+            "source": "/app/(.*)",
             "destination": "/index.html"
         },
         {
-            "source": "/app/(.*)",
+            "source": "/app",
             "destination": "/index.html"
         },
         {
