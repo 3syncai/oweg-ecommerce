@@ -16,6 +16,7 @@ type UIProduct = {
   variant_id?: string;
   handle?: string;
   sourceTag?: string;
+  inventory_quantity?: number;
 };
 
 async function fetchSpecials(): Promise<UIProduct[]> {
@@ -62,7 +63,16 @@ export default function SpecialsPage() {
           <div className="text-sm text-gray-600">No Specials products available right now.</div>
         ) : (
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-            {products.map((product) => (
+            {[...products]
+              .sort((a, b) => {
+                // Sort in-stock products first, out-of-stock last
+                const aInStock = typeof a.inventory_quantity === 'number' && a.inventory_quantity > 0;
+                const bInStock = typeof b.inventory_quantity === 'number' && b.inventory_quantity > 0;
+                if (aInStock && !bInStock) return -1;
+                if (!aInStock && bInStock) return 1;
+                return 0;
+              })
+              .map((product) => (
               <ProductCard
                 key={product.id}
                 id={product.id}
@@ -75,6 +85,7 @@ export default function SpecialsPage() {
                 variant_id={product.variant_id}
                 handle={product.handle}
                 sourceTag="Specials"
+                inventory_quantity={product.inventory_quantity}
               />
             ))}
           </div>

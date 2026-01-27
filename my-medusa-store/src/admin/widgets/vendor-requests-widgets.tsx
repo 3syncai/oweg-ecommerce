@@ -562,7 +562,7 @@ const VendorRequestsWidget = () => {
 }
 
 export const config = defineWidgetConfig({
-  zone: "order.list.before",
+  zone: "product.details.before", // Changed from order.list.before to hide from Orders page
 })
 
 export default VendorRequestsWidget

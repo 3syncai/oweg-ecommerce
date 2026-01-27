@@ -784,6 +784,7 @@ export function toUiProduct(p: MedusaProduct) {
     variant_id: p?.variants?.[0]?.id,
     handle: p?.handle,
     category_ids: p?.categories?.map((c) => c.id).filter((id): id is string => !!id) || [],
+    inventory_quantity: p?.variants?.[0]?.inventory_quantity,
   }
 }
 
