@@ -56,17 +56,18 @@ const VendorRequestsPage = () => {
     setLoading(true)
     setError("")
     try {
-      const res = await fetch("/admin/vendors/pending", { 
+      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const res = await fetch(`${backendUrl}/admin/vendors/pending`, {
         credentials: "include",
         headers: {
           "Content-Type": "application/json"
         }
       })
-      
+
       if (!res.ok) {
         throw new Error(`Failed to fetch vendors: ${res.status}`)
       }
-      
+
       const data = await res.json()
       setVendors(data?.vendors || [])
     } catch (e: any) {
@@ -105,22 +106,23 @@ const VendorRequestsPage = () => {
     setActionLoading(id)
     setError("")
     try {
-      const res = await fetch(`/admin/vendors/${id}/approve`, { 
-        method: "POST", 
+      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const res = await fetch(`${backendUrl}/admin/vendors/${id}/approve`, {
+        method: "POST",
         credentials: "include",
         headers: {
           "Content-Type": "application/json"
         }
       })
-      
+
       if (!res.ok) {
         throw new Error(`Approve failed: ${res.status}`)
       }
-      
+
       toast.success("Success", {
         description: "Vendor approved successfully"
       })
-      
+
       await loadVendors()
     } catch (e: any) {
       const errorMsg = e?.message || "Failed to approve vendor"
@@ -137,23 +139,24 @@ const VendorRequestsPage = () => {
     setRejecting(true)
     setError("")
     try {
-      const res = await fetch(`/admin/vendors/${id}/reject`, { 
-        method: "POST", 
+      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const res = await fetch(`${backendUrl}/admin/vendors/${id}/reject`, {
+        method: "POST",
         credentials: "include",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({ rejection_reason: reason }),
       })
-      
+
       if (!res.ok) {
         throw new Error(`Reject failed: ${res.status}`)
       }
-      
+
       toast.success("Success", {
         description: "Vendor rejected successfully"
       })
-      
+
       setRejectVendor(null)
       setRejectionNotice("")
       await loadVendors()
@@ -219,11 +222,10 @@ const VendorRequestsPage = () => {
             {filled ? String(value) : "Not provided"}
           </div>
         </div>
-        <div className={`px-2 py-1 rounded text-xs font-medium ${
-          filled 
-            ? "bg-green-100 text-green-800" 
+        <div className={`px-2 py-1 rounded text-xs font-medium ${filled
+            ? "bg-green-100 text-green-800"
             : "bg-orange-100 text-orange-800"
-        }`}>
+          }`}>
           {filled ? "✓ Filled" : "✗ Missing"}
         </div>
       </div>
@@ -242,8 +244,8 @@ const VendorRequestsPage = () => {
             Review and approve pending vendor registrations
           </Text>
         </div>
-        <Button 
-          variant="secondary" 
+        <Button
+          variant="secondary"
           onClick={loadVendors}
           disabled={loading}
           size="base"
@@ -282,17 +284,17 @@ const VendorRequestsPage = () => {
           ) : (
             /* Vendor Cards */
             vendors.map((vendor) => (
-              <div 
-                key={vendor.id} 
+              <div
+                key={vendor.id}
                 className="bg-ui-bg-base border border-ui-border-base rounded-xl p-6 hover:shadow-md transition-all duration-200"
               >
                 <div className="flex items-start gap-6">
                   {/* Logo */}
                   <div className="flex-shrink-0">
                     {vendor.store_logo ? (
-                      <img 
-                        src={vendor.store_logo} 
-                        alt={vendor.store_name || vendor.name} 
+                      <img
+                        src={vendor.store_logo}
+                        alt={vendor.store_name || vendor.name}
                         className="w-20 h-20 rounded-lg object-cover border-2 border-ui-border-base"
                       />
                     ) : (
@@ -301,7 +303,7 @@ const VendorRequestsPage = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Vendor Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-3">
@@ -312,14 +314,14 @@ const VendorRequestsPage = () => {
                         Pending Approval
                       </Badge>
                     </div>
-                    
+
                     <div className="space-y-2">
                       {/* Email */}
                       <div className="flex items-center gap-2 text-ui-fg-subtle">
                         <span>📧</span>
                         <Text className="text-sm">{vendor.email}</Text>
                       </div>
-                      
+
                       {/* Phone */}
                       {vendor.phone && (
                         <div className="flex items-center gap-2 text-ui-fg-subtle">
@@ -327,7 +329,7 @@ const VendorRequestsPage = () => {
                           <Text className="text-sm">{vendor.phone}</Text>
                         </div>
                       )}
-                      
+
                       {/* PAN/GST */}
                       {vendor.pan_gst && (
                         <div className="flex items-center gap-2 text-ui-fg-subtle">
@@ -337,10 +339,10 @@ const VendorRequestsPage = () => {
                           </Text>
                         </div>
                       )}
-                      
+
                       {/* Documents */}
                       {vendor.documents && vendor.documents.length > 0 && (
-                        <div 
+                        <div
                           className="relative flex items-center gap-2 text-ui-fg-subtle"
                           ref={(el) => (dropdownRefs.current[vendor.id] = el)}
                         >
@@ -384,10 +386,10 @@ const VendorRequestsPage = () => {
                       )}
                     </div>
                   </div>
-                  
+
                   {/* Actions */}
                   <div className="flex gap-2 flex-shrink-0">
-                    <Button 
+                    <Button
                       variant="secondary"
                       size="base"
                       onClick={() => setReviewVendor(vendor)}
@@ -395,7 +397,7 @@ const VendorRequestsPage = () => {
                     >
                       Review
                     </Button>
-                    <Button 
+                    <Button
                       variant="secondary"
                       size="base"
                       onClick={() => {
@@ -406,7 +408,7 @@ const VendorRequestsPage = () => {
                     >
                       Reject
                     </Button>
-                    <Button 
+                    <Button
                       variant="primary"
                       size="base"
                       onClick={() => approveVendor(vendor.id)}
@@ -424,11 +426,11 @@ const VendorRequestsPage = () => {
 
       {/* Review Modal */}
       {reviewVendor && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
           onClick={() => setReviewVendor(null)}
         >
-          <div 
+          <div
             className="bg-ui-bg-base rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
@@ -526,9 +528,9 @@ const VendorRequestsPage = () => {
                   {reviewVendor.cancel_cheque_url && (
                     <div className="py-2 border-b border-ui-border-base">
                       <Text className="text-xs font-medium text-ui-fg-muted mb-2">Cancel Cheque</Text>
-                      <a 
-                        href={reviewVendor.cancel_cheque_url} 
-                        target="_blank" 
+                      <a
+                        href={reviewVendor.cancel_cheque_url}
+                        target="_blank"
                         rel="noopener noreferrer"
                         className="text-ui-fg-interactive hover:underline text-sm"
                       >
@@ -611,11 +613,11 @@ const VendorRequestsPage = () => {
 
       {/* Rejection Modal */}
       {rejectVendor && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
           onClick={() => setRejectVendor(null)}
         >
-          <div 
+          <div
             className="bg-ui-bg-base rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >

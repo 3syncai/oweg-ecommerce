@@ -54,7 +54,8 @@ const VendorRequestsWidget = () => {
     setLoading(true)
     setError("")
     try {
-      const res = await fetch("/admin/vendors/pending", { credentials: "include" })
+      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const res = await fetch(`${backendUrl}/admin/vendors/pending`, { credentials: "include" })
       if (!res.ok) throw new Error(`Failed: ${res.status}`)
       const data = await res.json()
       setVendors(data?.vendors || [])
@@ -72,7 +73,8 @@ const VendorRequestsWidget = () => {
   const approve = async (id: string) => {
     setError("")
     try {
-      const res = await fetch(`/admin/vendors/${id}/approve`, { method: "POST", credentials: "include" })
+      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const res = await fetch(`${backendUrl}/admin/vendors/${id}/approve`, { method: "POST", credentials: "include" })
       if (!res.ok) throw new Error(`Approve failed: ${res.status}`)
       await load()
     } catch (e: any) {
@@ -84,7 +86,8 @@ const VendorRequestsWidget = () => {
     setRejecting(true)
     setError("")
     try {
-      const res = await fetch(`/admin/vendors/${id}/reject`, {
+      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const res = await fetch(`${backendUrl}/admin/vendors/${id}/reject`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -181,11 +184,10 @@ const VendorRequestsWidget = () => {
             {filled ? String(value) : "Not provided"}
           </div>
         </div>
-        <div className={`px-2 py-1 rounded text-xs font-medium ${
-          filled 
-            ? "bg-green-100 text-green-800" 
+        <div className={`px-2 py-1 rounded text-xs font-medium ${filled
+            ? "bg-green-100 text-green-800"
             : "bg-orange-100 text-orange-800"
-        }`}>
+          }`}>
           {filled ? "✓ Filled" : "✗ Missing"}
         </div>
       </div>
@@ -247,14 +249,14 @@ const VendorRequestsWidget = () => {
                   )}
                 </div>
                 <div className="flex gap-1">
-                  <button 
-                    className="btn btn-secondary btn-small" 
+                  <button
+                    className="btn btn-secondary btn-small"
                     onClick={() => setReviewVendor(v)}
                   >
                     Review
                   </button>
-                  <button 
-                    className="btn btn-secondary btn-small" 
+                  <button
+                    className="btn btn-secondary btn-small"
                     onClick={() => {
                       setRejectVendor(v)
                       setRejectionNotice("")
@@ -262,7 +264,7 @@ const VendorRequestsWidget = () => {
                   >
                     Reject
                   </button>
-                <button className="btn btn-primary btn-small" onClick={() => approve(v.id)}>Approve</button>
+                  <button className="btn btn-primary btn-small" onClick={() => approve(v.id)}>Approve</button>
                 </div>
               </div>
             ))}
@@ -274,11 +276,11 @@ const VendorRequestsWidget = () => {
 
       {/* Review Modal */}
       {reviewVendor && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
           onClick={() => setReviewVendor(null)}
         >
-          <div 
+          <div
             className="bg-ui-bg-base rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
@@ -374,9 +376,9 @@ const VendorRequestsWidget = () => {
                   {reviewVendor.cancel_cheque_url && (
                     <div className="py-2 border-b border-ui-border-base">
                       <div className="text-xs font-medium text-ui-fg-muted mb-2">Cancel Cheque</div>
-                      <a 
-                        href={reviewVendor.cancel_cheque_url} 
-                        target="_blank" 
+                      <a
+                        href={reviewVendor.cancel_cheque_url}
+                        target="_blank"
                         rel="noopener noreferrer"
                         className="text-ui-fg-interactive hover:underline"
                       >
@@ -459,11 +461,11 @@ const VendorRequestsWidget = () => {
 
       {/* Rejection Modal */}
       {rejectVendor && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
           onClick={() => setRejectVendor(null)}
         >
-          <div 
+          <div
             className="bg-ui-bg-base rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
