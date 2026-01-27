@@ -58,7 +58,8 @@ export function ProductCard({
   const cardRef = useRef<HTMLAnchorElement | null>(null);
 
   // Check if product is out of stock
-  const isOutOfStock = typeof inventory_quantity === 'number' && inventory_quantity <= 0;
+  // Check if product is out of stock (undefined/null or <= 0 is considered out of stock)
+  const isOutOfStock = typeof inventory_quantity !== 'number' || inventory_quantity <= 0;
 
   const params = new URLSearchParams();
   params.set("id", String(id));
