@@ -38,8 +38,7 @@ const ReturnRequestsPage = () => {
     setLoading(true)
     setError("")
     try {
-      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
-      const res = await fetch(`${backendUrl}/admin/return-requests`, { credentials: "include" })
+      const res = await fetch("/admin/return-requests", { credentials: "include" })
       if (!res.ok) {
         throw new Error(`Failed to fetch: ${res.status}`)
       }
@@ -62,9 +61,7 @@ const ReturnRequestsPage = () => {
     setActionLoading(id)
     setError("")
     try {
-      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
-      const fullUrl = url.startsWith("http") ? url : `${backendUrl}${url}`
-      const res = await fetch(fullUrl, {
+      const res = await fetch(url, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -88,14 +85,13 @@ const ReturnRequestsPage = () => {
     setBankDetails(null)
     setBankDetailsFor(id)
     try {
-      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
-      const res = await fetch(`${backendUrl}/admin/return-requests/${id}`, { credentials: "include" })
+      const res = await fetch(`/admin/return-requests/${id}`, { credentials: "include" })
       if (!res.ok) {
         throw new Error(`Failed to load details: ${res.status}`)
       }
       const data = await res.json()
       setBankDetails(data?.return_request?.bank_details || null)
-    } catch (e: any) {
+    } catch (e: any) { 
       const msg = e?.message || "Failed to load bank details"
       toast.error("Error", { description: msg })
     }
@@ -147,97 +143,97 @@ const ReturnRequestsPage = () => {
                   const canRefund = request.status === "picked_up"
 
                   return (
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-2">
-                        <Heading level="h2" className="text-lg font-semibold">
-                          Order {request.order_id}
-                        </Heading>
-                        <div className="flex items-center gap-2">
-                          <Badge size="small" color="blue">
-                            {request.type}
-                          </Badge>
-                          <Badge size="small" color="green">
-                            {request.status}
-                          </Badge>
-                        </div>
-                        {request.reason && (
-                          <Text className="text-sm text-ui-fg-subtle">Reason: {request.reason}</Text>
-                        )}
-                        <Text className="text-sm text-ui-fg-subtle">
-                          Customer: {request.customer_name || "Unknown"} ({request.customer_email || "no-email"}) • ID:{" "}
-                          {request.customer_id || "unknown"}
-                        </Text>
-                        <Text className="text-sm text-ui-fg-subtle">
-                          Coins used: {Math.round(typeof request.coins_used === "number" ? request.coins_used : 0)}
-                        </Text>
-                        <Text className="text-sm text-ui-fg-subtle">
-                          Payment: {request.payment_type} {request.bank_account_last4 ? `(xxxx${request.bank_account_last4})` : ""}
-                        </Text>
-                        {request.shiprocket_awb && (
-                          <Text className="text-sm text-ui-fg-subtle">
-                            AWB: {request.shiprocket_awb} ({request.shiprocket_status || "pending"})
-                          </Text>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="secondary"
-                          size="base"
-                          disabled={actionLoading === request.id || !canApprove}
-                          onClick={() => runAction(request.id, `/admin/return-requests/${request.id}/approve`)}
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="base"
-                          disabled={actionLoading === request.id || !canReject}
-                          onClick={() => {
-                            const reason = prompt("Rejection reason")
-                            if (reason) {
-                              runAction(request.id, `/admin/return-requests/${request.id}/reject`, { reason })
-                            }
-                          }}
-                        >
-                          Reject
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="base"
-                          disabled={actionLoading === request.id || !canInitiatePickup}
-                          onClick={() => {
-                            const reason = window.prompt(
-                              "Return reason (leave blank to use customer reason):",
-                              request.reason || ""
-                            )
-                            runAction(
-                              request.id,
-                              `/admin/return-requests/${request.id}/initiate-pickup`,
-                              reason ? { reason } : undefined
-                            )
-                          }}
-                        >
-                          Initiate Pickup
-                        </Button>
-                        <Button
-                          variant="primary"
-                          size="base"
-                          disabled={actionLoading === request.id || !canRefund}
-                          onClick={() => runAction(request.id, `/admin/return-requests/${request.id}/mark-refunded`)}
-                        >
-                          Mark Refunded
-                        </Button>
-                        {request.payment_type === "cod" && (
-                          <Button
-                            variant="secondary"
-                            size="base"
-                            onClick={() => loadBankDetails(request.id)}
-                          >
-                            View Bank Details
-                          </Button>
-                        )}
-                      </div>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-2">
+                    <Heading level="h2" className="text-lg font-semibold">
+                      Order {request.order_id}
+                    </Heading>
+                    <div className="flex items-center gap-2">
+                      <Badge size="small" color="blue">
+                        {request.type}
+                      </Badge>
+                      <Badge size="small" color="green">
+                        {request.status}
+                      </Badge>
                     </div>
+                    {request.reason && (
+                      <Text className="text-sm text-ui-fg-subtle">Reason: {request.reason}</Text>
+                    )}
+                    <Text className="text-sm text-ui-fg-subtle">
+                      Customer: {request.customer_name || "Unknown"} ({request.customer_email || "no-email"}) • ID:{" "}
+                      {request.customer_id || "unknown"}
+                    </Text>
+                    <Text className="text-sm text-ui-fg-subtle">
+                      Coins used: {Math.round(typeof request.coins_used === "number" ? request.coins_used : 0)}
+                    </Text>
+                    <Text className="text-sm text-ui-fg-subtle">
+                      Payment: {request.payment_type} {request.bank_account_last4 ? `(xxxx${request.bank_account_last4})` : ""}
+                    </Text>
+                    {request.shiprocket_awb && (
+                      <Text className="text-sm text-ui-fg-subtle">
+                        AWB: {request.shiprocket_awb} ({request.shiprocket_status || "pending"})
+                      </Text>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="secondary"
+                      size="base"
+                      disabled={actionLoading === request.id || !canApprove}
+                      onClick={() => runAction(request.id, `/admin/return-requests/${request.id}/approve`)}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="base"
+                      disabled={actionLoading === request.id || !canReject}
+                      onClick={() => {
+                        const reason = prompt("Rejection reason")
+                        if (reason) {
+                          runAction(request.id, `/admin/return-requests/${request.id}/reject`, { reason })
+                        }
+                      }}
+                    >
+                      Reject
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="base"
+                      disabled={actionLoading === request.id || !canInitiatePickup}
+                      onClick={() => {
+                        const reason = window.prompt(
+                          "Return reason (leave blank to use customer reason):",
+                          request.reason || ""
+                        )
+                        runAction(
+                          request.id,
+                          `/admin/return-requests/${request.id}/initiate-pickup`,
+                          reason ? { reason } : undefined
+                        )
+                      }}
+                    >
+                      Initiate Pickup
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="base"
+                      disabled={actionLoading === request.id || !canRefund}
+                      onClick={() => runAction(request.id, `/admin/return-requests/${request.id}/mark-refunded`)}
+                    >
+                      Mark Refunded
+                    </Button>
+                    {request.payment_type === "cod" && (
+                      <Button
+                        variant="secondary"
+                        size="base"
+                        onClick={() => loadBankDetails(request.id)}
+                      >
+                        View Bank Details
+                      </Button>
+                    )}
+                  </div>
+                </div>
                   )
                 })()}
 
