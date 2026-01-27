@@ -1412,6 +1412,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   productTitle={product.title}
                   productPrice={product.price}
                   productHighlights={highlights}
+                  hasStock={hasStock}
                 />
 
                 <div className="pointer-events-none absolute inset-0 flex items-start justify-end z-30">

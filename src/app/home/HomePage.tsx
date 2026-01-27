@@ -26,6 +26,7 @@ type UIProduct = {
   variant_id?: string;
   handle?: string;
   sourceTag?: string;
+  inventory_quantity?: number;
 };
 
 type ProductQuery = {
@@ -120,7 +121,16 @@ function ProductCarousel({
       >
         {loading
           ? skeletonCards
-          : products.map((product) => (
+          : [...products]
+              .sort((a, b) => {
+                // Sort in-stock products first, out-of-stock last
+                const aInStock = typeof a.inventory_quantity === 'number' && a.inventory_quantity > 0;
+                const bInStock = typeof b.inventory_quantity === 'number' && b.inventory_quantity > 0;
+                if (aInStock && !bInStock) return -1;
+                if (!aInStock && bInStock) return 1;
+                return 0;
+              })
+              .map((product) => (
               <div key={product.id} className="flex-shrink-0 w-[200px] sm:w-[220px] md:w-[260px] lg:w-[300px]">
                 <ProductCard
                   id={product.id}
@@ -133,6 +143,7 @@ function ProductCarousel({
                   variant_id={product.variant_id}
                   handle={product.handle}
                   sourceTag={sourceTag}
+                  inventory_quantity={product.inventory_quantity}
                 />
               </div>
             ))}

@@ -1,6 +1,7 @@
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { useEffect, useState, useRef } from "react"
 import { Container, Heading, Text, Button, Badge, toast } from "@medusajs/ui"
+import { Users } from "@medusajs/icons"
 
 type VendorDocument = {
   key: string
@@ -721,8 +722,10 @@ const VendorRequestsPage = () => {
   )
 }
 
+
 export const config = defineRouteConfig({
   label: "Vendor Requests",
+  icon: Users,
 })
 
 export default VendorRequestsPage

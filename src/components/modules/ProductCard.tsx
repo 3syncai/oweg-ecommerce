@@ -25,6 +25,7 @@ export type ProductCardProps = {
   sourceTag?: string;
   sourceCategoryId?: string;
   sourceCategoryHandle?: string;
+  inventory_quantity?: number;
 };
 
 const inr = new Intl.NumberFormat("en-IN", {
@@ -45,6 +46,7 @@ export function ProductCard({
   sourceTag,
   sourceCategoryId,
   sourceCategoryHandle,
+  inventory_quantity,
 }: ProductCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [prefetched, setPrefetched] = useState(false);
@@ -54,6 +56,9 @@ export function ProductCard({
   const queryClient = useQueryClient();
   const router = useRouter();
   const cardRef = useRef<HTMLAnchorElement | null>(null);
+
+  // Check if product is out of stock
+  const isOutOfStock = typeof inventory_quantity === 'number' && inventory_quantity <= 0;
 
   const params = new URLSearchParams();
   params.set("id", String(id));
@@ -127,10 +132,20 @@ export function ProductCard({
             src={image}
             alt={name}
             fill
-            className="object-contain p-3"
+            className={`object-contain p-3 transition-all duration-300 ${
+              isOutOfStock ? "opacity-60 grayscale" : ""
+            }`}
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
           />
         </div>
+        {/* Out of Stock Overlay */}
+        {isOutOfStock && (
+          <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-t-lg z-20">
+            <div className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-lg">
+              OUT OF STOCK
+            </div>
+          </div>
+        )}
         <div
           className={`absolute top-2 right-2 flex flex-col gap-2 z-30 transition-all duration-300 ${
             isHovered ? "opacity-100 translate-x-0" : "opacity-0 translate-x-2"
@@ -140,10 +155,10 @@ export function ProductCard({
           <button
             type="button"
             onClick={handleQuickAdd}
-            title="Add to Cart"
-            disabled={!variant_id || isAddingToCart}
+            title={isOutOfStock ? "Out of Stock" : "Add to Cart"}
+            disabled={!variant_id || isAddingToCart || isOutOfStock}
             className={`w-9 h-9 rounded-full text-white flex items-center justify-center shadow-lg ${
-              variant_id
+              variant_id && !isOutOfStock
                 ? "bg-green-500 hover:bg-green-600"
                 : "bg-slate-400 cursor-not-allowed opacity-70"
             } ${isAddingToCart ? "opacity-60 cursor-not-allowed" : ""}`}
