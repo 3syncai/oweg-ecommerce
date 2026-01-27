@@ -82,11 +82,12 @@ const Footer = () => {
           {/* Support Section */}
           <div>
             <h3 className="text-xl font-normal mb-6 section-title">Support</h3>
-            <div className="space-y-4 text-sm">
+            <div className="text-sm">
               <p>Ascent Retechno India Pvt Ltd</p>
               <p>
-                Shop No.04, 05, 06 & 07 AV Crystal, Near Navneet Hospital, Opp.
-                Achole Talav, Nallasopara East, Palghar, Maharashtra - 401209.
+                Av Pride, B-12, Ground Floor, Opp. Rahul, 
+                International School, Nilemore 4th Road, 
+                Nalasopara West, Thane, Maharashtra - 401203.
               </p>
               <a
                 href="mailto:owegonline@oweg.in"
@@ -143,7 +144,7 @@ const Footer = () => {
       {/* Copyright */}
       <div className="border-top">
         <div className="container mx-auto px-6 py-6">
-          <p className="text-center copyright hoverable">© 2025 OWEG. All right reserved</p>
+          <p className="text-center copyright hoverable">© 2026 OWEG. All Rights Reserved.</p>
         </div>
       </div>
 

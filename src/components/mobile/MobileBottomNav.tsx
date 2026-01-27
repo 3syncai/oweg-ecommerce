@@ -1556,6 +1556,19 @@ export default function MobileBottomNav() {
           <div className="space-y-2">
             <p className="text-base font-semibold text-gray-900">Quick actions</p>
             <div className="space-y-2">
+              {customer ? (
+                <Link
+                  href="/account"
+                  onClick={closeProfile}
+                  className="flex items-center justify-between border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+                >
+                  <span className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-emerald-600" />
+                    My Profile
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </Link>
+              ) : null}
               <Link
                 href="/orders"
                 onClick={closeProfile}
