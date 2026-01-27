@@ -18,7 +18,6 @@ export default defineConfig({
     cookieOptions: {
       sameSite: "none",
       secure: true,
-      partitioned: true,
     },
   },
   admin: {
