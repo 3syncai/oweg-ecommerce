@@ -12,10 +12,12 @@ export default defineConfig({
       storeCors: process.env.STORE_CORS || "http://localhost:3000,http://localhost:3001,http://localhost:4000,https://oweg-ecommerce.vercel.app",
       adminCors: process.env.ADMIN_CORS || "http://localhost:7001,https://ecomm-admin-ecru.vercel.app",
       authCors: process.env.AUTH_CORS || "http://localhost:3000,http://localhost:3001,http://localhost:4000,https://oweg-ecommerce.vercel.app,https://ecomm-admin-ecru.vercel.app",
-      // Optional: Add explicit cookie options for cross-site if needed
-      // but Medusa v2 defaults are usually fine if cookies are HTTPS
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
+    },
+    cookieOptions: {
+      sameSite: "none",
+      secure: true,
     },
   },
   admin: {
