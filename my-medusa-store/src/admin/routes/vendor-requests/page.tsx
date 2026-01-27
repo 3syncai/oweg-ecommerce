@@ -56,8 +56,7 @@ const VendorRequestsPage = () => {
     setLoading(true)
     setError("")
     try {
-      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
-      const res = await fetch(`${backendUrl}/admin/vendors/pending`, {
+      const res = await fetch("/admin/vendors/pending", {
         credentials: "include",
         headers: {
           "Content-Type": "application/json"
@@ -106,8 +105,7 @@ const VendorRequestsPage = () => {
     setActionLoading(id)
     setError("")
     try {
-      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
-      const res = await fetch(`${backendUrl}/admin/vendors/${id}/approve`, {
+      const res = await fetch(`/admin/vendors/${id}/approve`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -139,8 +137,7 @@ const VendorRequestsPage = () => {
     setRejecting(true)
     setError("")
     try {
-      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
-      const res = await fetch(`${backendUrl}/admin/vendors/${id}/reject`, {
+      const res = await fetch(`/admin/vendors/${id}/reject`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -223,8 +220,8 @@ const VendorRequestsPage = () => {
           </div>
         </div>
         <div className={`px-2 py-1 rounded text-xs font-medium ${filled
-            ? "bg-green-100 text-green-800"
-            : "bg-orange-100 text-orange-800"
+          ? "bg-green-100 text-green-800"
+          : "bg-orange-100 text-orange-800"
           }`}>
           {filled ? "✓ Filled" : "✗ Missing"}
         </div>
