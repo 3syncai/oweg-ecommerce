@@ -250,9 +250,10 @@ Ensure you have a `vercel.json` file in your `my-medusa-store` folder with the f
    - **Output Directory**: `.medusa/server/public/admin`
    - **Install Command**: `npm install`
 4. **Environment Variables**:
-   - `MEDUSA_ADMIN_BACKEND_URL`: `https://your-medusa-backend.com`
-   - `BACKEND_URL`: `https://your-medusa-backend.com`
-   - `VITE_MEDUSA_ADMIN_BACKEND_URL`: `https://your-medusa-backend.com` (Add this just in case)
+   To fix CORS, set these to your **Dashboard's own Vercel URL**. This tells the dashboard to talk to Vercel, which then proxies requests to your API:
+   - `MEDUSA_ADMIN_BACKEND_URL`: `https://ecomm-admin-ecru.vercel.app`
+   - `BACKEND_URL`: `https://ecomm-admin-ecru.vercel.app`
+   - `VITE_MEDUSA_ADMIN_BACKEND_URL`: `https://ecomm-admin-ecru.vercel.app`
 
 ### 3. Backend Configuration
 Ensure your Medusa backend has the Vercel Admin URL in its `ADMIN_CORS` environment variable.
