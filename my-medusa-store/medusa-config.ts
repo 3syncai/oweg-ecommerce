@@ -15,10 +15,6 @@ export default defineConfig({
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     },
-    cookieOptions: {
-      sameSite: "none",
-      secure: true,
-    },
   },
   admin: {
     backendUrl: process.env.MEDUSA_ADMIN_BACKEND_URL || "https://api.oweg.itshover.com",
