@@ -34,8 +34,8 @@ const AffiliateAdminsPage = () => {
   const loadAffiliateAdmins = async () => {
     setLoading(true)
     try {
-      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
-      const response = await fetch(`${backendUrl}/admin/affiliate/admins`, {
+      const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const response = await fetch(`${backend}/admin/affiliate/admins`, {
         credentials: "include",
       })
 
@@ -57,8 +57,8 @@ const AffiliateAdminsPage = () => {
     setSuccess(null)
 
     try {
-      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
-      const response = await fetch(`${backendUrl}/admin/affiliate/admins`, {
+      const backend = (process.env.NEXT_PUBLIC_BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const response = await fetch(`${backend}/admin/affiliate/admins`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
