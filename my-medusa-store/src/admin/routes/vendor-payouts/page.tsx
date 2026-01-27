@@ -39,8 +39,10 @@ const VendorPayoutsPage = () => {
         try {
             setLoading(true)
 
+            const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
+
             // Fetch all approved vendors
-            const vendorsRes = await fetch("/admin/vendors/all", {
+            const vendorsRes = await fetch(`${backendUrl}/admin/vendors/all`, {
                 credentials: "include",
             })
 
@@ -55,7 +57,7 @@ const VendorPayoutsPage = () => {
             // Fetch pending payouts for each vendor
             const payoutPromises = approvedVendors.map(async (vendor: Vendor) => {
                 try {
-                    const res = await fetch(`/admin/vendor-payouts/calculate`, {
+                    const res = await fetch(`${backendUrl}/admin/vendor-payouts/calculate`, {
                         method: "POST",
                         headers: { "content-type": "application/json" },
                         credentials: "include",
@@ -131,7 +133,9 @@ const VendorPayoutsPage = () => {
         try {
             setProcessingVendor(vendor.id)
 
-            const res = await fetch("/admin/vendor-payouts/razorpay/process", {
+            const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
+
+            const res = await fetch(`${backendUrl}/admin/vendor-payouts/razorpay/process`, {
                 method: "POST",
                 headers: { "content-type": "application/json" },
                 credentials: "include",
