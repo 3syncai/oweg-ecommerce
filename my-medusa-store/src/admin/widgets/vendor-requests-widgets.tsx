@@ -54,7 +54,8 @@ const VendorRequestsWidget = () => {
     setLoading(true)
     setError("")
     try {
-      const res = await fetch("/admin/vendors/pending", { credentials: "include" })
+      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const res = await fetch(`${backendUrl}/admin/vendors/pending`, { credentials: "include" })
       if (!res.ok) throw new Error(`Failed: ${res.status}`)
       const data = await res.json()
       setVendors(data?.vendors || [])
@@ -72,7 +73,8 @@ const VendorRequestsWidget = () => {
   const approve = async (id: string) => {
     setError("")
     try {
-      const res = await fetch(`/admin/vendors/${id}/approve`, { method: "POST", credentials: "include" })
+      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const res = await fetch(`${backendUrl}/admin/vendors/${id}/approve`, { method: "POST", credentials: "include" })
       if (!res.ok) throw new Error(`Approve failed: ${res.status}`)
       await load()
     } catch (e: any) {
@@ -84,7 +86,8 @@ const VendorRequestsWidget = () => {
     setRejecting(true)
     setError("")
     try {
-      const res = await fetch(`/admin/vendors/${id}/reject`, {
+      const backendUrl = (process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const res = await fetch(`${backendUrl}/admin/vendors/${id}/reject`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -182,8 +185,8 @@ const VendorRequestsWidget = () => {
           </div>
         </div>
         <div className={`px-2 py-1 rounded text-xs font-medium ${filled
-          ? "bg-green-100 text-green-800"
-          : "bg-orange-100 text-orange-800"
+            ? "bg-green-100 text-green-800"
+            : "bg-orange-100 text-orange-800"
           }`}>
           {filled ? "✓ Filled" : "✗ Missing"}
         </div>
