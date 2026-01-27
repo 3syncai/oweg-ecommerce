@@ -21,7 +21,9 @@ export default defineConfig({
     },
   },
   admin: {
-    backendUrl: process.env.MEDUSA_ADMIN_BACKEND_URL || "https://api.oweg.itshover.com",
+    // Use /api path for Vercel proxy - this makes cookies first-party
+    // Vercel rewrites /api/* to https://api.oweg.itshover.com/*
+    backendUrl: process.env.MEDUSA_ADMIN_BACKEND_URL || "/api",
     vite: () => ({
       server: {
         allowedHosts: [
