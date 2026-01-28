@@ -16,14 +16,14 @@ export default defineConfig({
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     },
     cookieOptions: {
-      sameSite: "none",
-      secure: true,
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      secure: process.env.NODE_ENV === "production",
     },
   },
   admin: {
     // Use /api path for Vercel proxy - this makes cookies first-party
     // Vercel rewrites /api/* to https://api.oweg.itshover.com/*
-    backendUrl: process.env.MEDUSA_ADMIN_BACKEND_URL || "/api",
+    backendUrl: process.env.MEDUSA_ADMIN_BACKEND_URL || (process.env.NODE_ENV === "production" ? "/api" : "http://localhost:9000"),
     vite: () => ({
       server: {
         allowedHosts: [
