@@ -195,7 +195,6 @@ function OrderSuccessPageInner() {
         // COD totals are already in rupees; online totals are in paise.
         const totalInRupees = isCod ? rawTotal : rawTotal / 100;
         const earned = parseFloat((totalInRupees * 0.01).toFixed(2)); // 1% cashback
-        console.log("Coins calculation:", { rawTotal, totalInRupees, earned });
         setCoinsEarned(earned);
       }
     }
@@ -234,7 +233,7 @@ function OrderSuccessPageInner() {
             <span className={`font-semibold ${isCod ? "uppercase" : "capitalize"}`}>{paymentStatusLabel}</span>
           </div>
           <div className="flex justify-between text-sm text-slate-700">
-            <span>Total paid</span>
+            <span>{isCod ? "Order total" : "Total paid"}</span>
             <span className="font-semibold">
               {formatAmount(
                 typeof (order as OrderSummary & { paid_total?: number })?.paid_total === "number"

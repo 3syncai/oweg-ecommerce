@@ -675,9 +675,11 @@ const Header: React.FC = () => {
     const el = event.currentTarget;
     const { scrollTop, scrollHeight, clientHeight } = el;
     const delta = event.deltaY;
-    const canScrollUp = delta < 0 && scrollTop > 0;
-    const canScrollDown = delta > 0 && scrollTop + clientHeight < scrollHeight;
-    if (canScrollUp || canScrollDown) {
+    const atTop = scrollTop <= 0;
+    const atBottom = scrollTop + clientHeight >= scrollHeight;
+    const cannotScrollUp = delta < 0 && atTop;
+    const cannotScrollDown = delta > 0 && atBottom;
+    if (cannotScrollUp || cannotScrollDown) {
       event.preventDefault();
       event.stopPropagation();
     }

@@ -74,6 +74,22 @@ export type VendorUser = {
   deleted_at: Maybe<Scalars['DateTime']['output']>;
 };
 
+export type VendorBrandAuthorization = {
+  __typename?: 'VendorBrandAuthorization';
+  id: Scalars['ID']['output'];
+  vendor_id: Scalars['String']['output'];
+  brand_name: Scalars['String']['output'];
+  authorization_file_url: Scalars['String']['output'];
+  authorization_file_key: Scalars['String']['output'];
+  verified: Scalars['Boolean']['output'];
+  verified_at: Maybe<Scalars['DateTime']['output']>;
+  verified_by: Maybe<Scalars['String']['output']>;
+  metadata: Maybe<Scalars['JSON']['output']>;
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+};
+
 export type FlashSaleItem = {
   __typename?: 'FlashSaleItem';
   id: Scalars['ID']['output'];
@@ -88,16 +104,45 @@ export type FlashSaleItem = {
   deleted_at: Maybe<Scalars['DateTime']['output']>;
 };
 
-export type VendorBrandAuthorization = {
-  __typename?: 'VendorBrandAuthorization';
+export type ReturnRequest = {
+  __typename?: 'ReturnRequest';
   id: Scalars['ID']['output'];
-  vendor_id: Scalars['String']['output'];
-  brand_name: Scalars['String']['output'];
-  authorization_file_url: Scalars['String']['output'];
-  authorization_file_key: Scalars['String']['output'];
-  verified: Scalars['Boolean']['output'];
-  verified_at: Maybe<Scalars['DateTime']['output']>;
-  verified_by: Maybe<Scalars['String']['output']>;
+  order_id: Scalars['String']['output'];
+  customer_id: Scalars['String']['output'];
+  type: Scalars['String']['output'];
+  status: Scalars['String']['output'];
+  reason: Maybe<Scalars['String']['output']>;
+  notes: Maybe<Scalars['String']['output']>;
+  payment_type: Scalars['String']['output'];
+  refund_method: Maybe<Scalars['String']['output']>;
+  bank_details_encrypted: Maybe<Scalars['String']['output']>;
+  bank_account_last4: Maybe<Scalars['String']['output']>;
+  approved_at: Maybe<Scalars['DateTime']['output']>;
+  approved_by: Maybe<Scalars['String']['output']>;
+  rejected_at: Maybe<Scalars['DateTime']['output']>;
+  rejected_by: Maybe<Scalars['String']['output']>;
+  rejection_reason: Maybe<Scalars['String']['output']>;
+  pickup_initiated_at: Maybe<Scalars['DateTime']['output']>;
+  picked_up_at: Maybe<Scalars['DateTime']['output']>;
+  received_at: Maybe<Scalars['DateTime']['output']>;
+  refunded_at: Maybe<Scalars['DateTime']['output']>;
+  shiprocket_order_id: Maybe<Scalars['String']['output']>;
+  shiprocket_awb: Maybe<Scalars['String']['output']>;
+  shiprocket_status: Maybe<Scalars['String']['output']>;
+  metadata: Maybe<Scalars['JSON']['output']>;
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+};
+
+export type ReturnRequestItem = {
+  __typename?: 'ReturnRequestItem';
+  id: Scalars['ID']['output'];
+  return_request_id: Scalars['String']['output'];
+  order_item_id: Scalars['String']['output'];
+  quantity: Scalars['Int']['output'];
+  condition: Maybe<Scalars['String']['output']>;
+  reason: Maybe<Scalars['String']['output']>;
   metadata: Maybe<Scalars['JSON']['output']>;
   created_at: Scalars['DateTime']['output'];
   updated_at: Scalars['DateTime']['output'];
@@ -180,51 +225,6 @@ export type AffiliateCommission = {
   collection_id: Maybe<Scalars['String']['output']>;
   type_id: Maybe<Scalars['String']['output']>;
   commission_rate: Scalars['Int']['output'];
-  metadata: Maybe<Scalars['JSON']['output']>;
-  created_at: Scalars['DateTime']['output'];
-  updated_at: Scalars['DateTime']['output'];
-  deleted_at: Maybe<Scalars['DateTime']['output']>;
-};
-
-export type ReturnRequest = {
-  __typename?: 'ReturnRequest';
-  id: Scalars['ID']['output'];
-  order_id: Scalars['String']['output'];
-  customer_id: Scalars['String']['output'];
-  type: Scalars['String']['output'];
-  status: Scalars['String']['output'];
-  reason: Maybe<Scalars['String']['output']>;
-  notes: Maybe<Scalars['String']['output']>;
-  payment_type: Scalars['String']['output'];
-  refund_method: Maybe<Scalars['String']['output']>;
-  bank_details_encrypted: Maybe<Scalars['String']['output']>;
-  bank_account_last4: Maybe<Scalars['String']['output']>;
-  approved_at: Maybe<Scalars['DateTime']['output']>;
-  approved_by: Maybe<Scalars['String']['output']>;
-  rejected_at: Maybe<Scalars['DateTime']['output']>;
-  rejected_by: Maybe<Scalars['String']['output']>;
-  rejection_reason: Maybe<Scalars['String']['output']>;
-  pickup_initiated_at: Maybe<Scalars['DateTime']['output']>;
-  picked_up_at: Maybe<Scalars['DateTime']['output']>;
-  received_at: Maybe<Scalars['DateTime']['output']>;
-  refunded_at: Maybe<Scalars['DateTime']['output']>;
-  shiprocket_order_id: Maybe<Scalars['String']['output']>;
-  shiprocket_awb: Maybe<Scalars['String']['output']>;
-  shiprocket_status: Maybe<Scalars['String']['output']>;
-  metadata: Maybe<Scalars['JSON']['output']>;
-  created_at: Scalars['DateTime']['output'];
-  updated_at: Scalars['DateTime']['output'];
-  deleted_at: Maybe<Scalars['DateTime']['output']>;
-};
-
-export type ReturnRequestItem = {
-  __typename?: 'ReturnRequestItem';
-  id: Scalars['ID']['output'];
-  return_request_id: Scalars['String']['output'];
-  order_item_id: Scalars['String']['output'];
-  quantity: Scalars['Int']['output'];
-  condition: Maybe<Scalars['String']['output']>;
-  reason: Maybe<Scalars['String']['output']>;
   metadata: Maybe<Scalars['JSON']['output']>;
   created_at: Scalars['DateTime']['output'];
   updated_at: Scalars['DateTime']['output'];
@@ -650,6 +650,73 @@ export type ApplicationMethod = {
   promotion: Maybe<Promotion>;
   target_rules: Maybe<Array<Maybe<PromotionRule>>>;
   buy_rules: Maybe<Array<Maybe<PromotionRule>>>;
+};
+
+export type PriceSet = {
+  __typename?: 'PriceSet';
+  id: Scalars['ID']['output'];
+  prices: Array<Maybe<Price>>;
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+  variant_link: Maybe<LinkProductVariantPriceSet>;
+  variant: Maybe<ProductVariant>;
+  shipping_option_link: Maybe<LinkShippingOptionPriceSet>;
+  shipping_option: Maybe<ShippingOption>;
+};
+
+export type PriceListStatusEnum =
+  | 'active'
+  | 'draft';
+
+export type PriceListTypeEnum =
+  | 'sale'
+  | 'override';
+
+export type PriceList = {
+  __typename?: 'PriceList';
+  id: Scalars['ID']['output'];
+  title: Scalars['String']['output'];
+  description: Scalars['String']['output'];
+  status: PriceListStatusEnum;
+  type: PriceListTypeEnum;
+  starts_at: Maybe<Scalars['DateTime']['output']>;
+  ends_at: Maybe<Scalars['DateTime']['output']>;
+  rules_count: Maybe<Scalars['Int']['output']>;
+  prices: Array<Maybe<Price>>;
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+};
+
+export type Price = {
+  __typename?: 'Price';
+  id: Scalars['ID']['output'];
+  title: Maybe<Scalars['String']['output']>;
+  currency_code: Scalars['String']['output'];
+  amount: Scalars['Float']['output'];
+  min_quantity: Maybe<Scalars['Int']['output']>;
+  max_quantity: Maybe<Scalars['Int']['output']>;
+  rules_count: Maybe<Scalars['Int']['output']>;
+  price_set_id: Scalars['String']['output'];
+  price_set: PriceSet;
+  price_list_id: Maybe<Scalars['String']['output']>;
+  price_list: Maybe<PriceList>;
+  raw_amount: Scalars['JSON']['output'];
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+};
+
+export type PricePreference = {
+  __typename?: 'PricePreference';
+  id: Scalars['ID']['output'];
+  attribute: Scalars['String']['output'];
+  value: Maybe<Scalars['String']['output']>;
+  is_tax_inclusive: Scalars['Boolean']['output'];
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
 };
 
 export type CustomerAddress = {
@@ -2342,20 +2409,20 @@ declare module '@medusajs/framework/types' {
     vendors: Vendor
     vendor_user: VendorUser
     vendor_users: VendorUser
-    flash_sale_item: FlashSaleItem
-    flash_sale_items: FlashSaleItem
     vendor_brand_authorization: VendorBrandAuthorization
     vendor_brand_authorizations: VendorBrandAuthorization
+    flash_sale_item: FlashSaleItem
+    flash_sale_items: FlashSaleItem
+    return_request: ReturnRequest
+    return_requests: ReturnRequest
+    return_request_item: ReturnRequestItem
+    return_request_items: ReturnRequestItem
     affiliate_admin: AffiliateAdmin
     affiliate_admins: AffiliateAdmin
     affiliate_user: AffiliateUser
     affiliate_users: AffiliateUser
     affiliate_commission: AffiliateCommission
     affiliate_commissions: AffiliateCommission
-    return_request: ReturnRequest
-    return_requests: ReturnRequest
-    return_request_item: ReturnRequestItem
-    return_request_items: ReturnRequestItem
     stock_location_address: StockLocationAddress
     stock_location_addresses: StockLocationAddress
     stock_location: StockLocation
