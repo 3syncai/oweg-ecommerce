@@ -9,21 +9,21 @@ export default defineConfig({
       // CORS configuration - supports comma-separated URLs or single URL
       // Frontend URL: https://oweg-ecommerce.vercel.app/
       // Affiliate Portal: http://localhost:5000
-      storeCors: process.env.STORE_CORS || "http://localhost:3000,http://localhost:3001,http://localhost:4000,https://oweg-ecommerce.vercel.app",
+      storeCors: process.env.STORE_CORS || `http://localhost:3000,http://localhost:3001,${process.env.VENDOR_CORS || "http://localhost:4000"},https://oweg-ecommerce.vercel.app`,
       adminCors: process.env.ADMIN_CORS || "http://localhost:7001,https://ecomm-admin-ecru.vercel.app",
-      authCors: process.env.AUTH_CORS || "http://localhost:3000,http://localhost:3001,http://localhost:4000,https://oweg-ecommerce.vercel.app,https://ecomm-admin-ecru.vercel.app",
+      authCors: process.env.AUTH_CORS || `http://localhost:3000,http://localhost:3001,${process.env.VENDOR_CORS || "http://localhost:4000"},https://oweg-ecommerce.vercel.app,https://ecomm-admin-ecru.vercel.app`,
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     },
     cookieOptions: {
-      sameSite: "none",
-      secure: true,
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      secure: process.env.NODE_ENV === "production",
     },
   },
   admin: {
     // Use /api path for Vercel proxy - this makes cookies first-party
     // Vercel rewrites /api/* to https://api.oweg.itshover.com/*
-    backendUrl: process.env.MEDUSA_ADMIN_BACKEND_URL || "/api",
+    backendUrl: process.env.MEDUSA_ADMIN_BACKEND_URL || (process.env.NODE_ENV === "production" ? "/api" : "http://localhost:9000"),
     vite: () => ({
       server: {
         allowedHosts: [
@@ -108,4 +108,6 @@ export default defineConfig({
     // },
   ],
 })
+
+
 

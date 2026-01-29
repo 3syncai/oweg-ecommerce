@@ -64,8 +64,8 @@ async function corsMiddleware(
   // Supports comma-separated URLs: "http://localhost:3000,http://localhost:5000,https://oweg-ecommerce.vercel.app"
   const baseOrigins = process.env.STORE_CORS || process.env.AUTH_CORS || "http://localhost:3000,http://localhost:3001,https://oweg-ecommerce.vercel.app"
 
-  // ALWAYS include vendor portal (localhost:4000) to ensure it works
-  const vendorPortalOrigin = "http://localhost:4000"
+  // ALWAYS include vendor portal to ensure it works
+  const vendorPortalOrigin = process.env.VENDOR_CORS || "http://localhost:4000"
   const allOrigins = baseOrigins.includes(vendorPortalOrigin)
     ? baseOrigins
     : `${baseOrigins},${vendorPortalOrigin}`
