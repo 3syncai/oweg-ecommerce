@@ -262,44 +262,48 @@ export async function POST(req: Request) {
           );
 
           // Call webhook for each item (same as Medusa subscriber)
-          const webhookUrl = process.env.AFFILIATE_WEBHOOK_URL || "http://localhost:3001/api/webhook/commission";
+          const webhookUrl = process.env.AFFILIATE_WEBHOOK_URL;
 
-          for (const item of itemsResult.rows) {
-            const unitPrice = parseFloat(item.unit_price || 0);
-            const itemAmount = unitPrice * (item.quantity || 1);
+          if (!webhookUrl) {
+            console.error("razorpay confirm: ⚠️ AFFILIATE_WEBHOOK_URL not set, skipping commission webhook");
+          } else {
+            for (const item of itemsResult.rows) {
+              const unitPrice = parseFloat(item.unit_price || 0);
+              const itemAmount = unitPrice * (item.quantity || 1);
 
-            const payload = {
-              order_id: medusaOrderId,
-              affiliate_code: affiliateCode,
-              product_id: item.product_id,
-              product_name: item.product_name,
-              quantity: item.quantity,
-              item_price: unitPrice / 100, // Convert to rupees
-              order_amount: itemAmount,
-              status: "PENDING",
-              customer_id: customer.id,
-              customer_name: customer.name,
-              customer_email: customer.email,
-            };
+              const payload = {
+                order_id: medusaOrderId,
+                affiliate_code: affiliateCode,
+                product_id: item.product_id,
+                product_name: item.product_name,
+                quantity: item.quantity,
+                item_price: unitPrice / 100, // Convert to rupees
+                order_amount: itemAmount,
+                status: "PENDING",
+                customer_id: customer.id,
+                customer_name: customer.name,
+                customer_email: customer.email,
+              };
 
-            console.log(`razorpay confirm: Sending webhook for ${item.product_name}...`);
+              console.log(`razorpay confirm: Sending webhook for ${item.product_name}...`);
 
-            try {
-              const response = await fetch(webhookUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-              });
+              try {
+                const response = await fetch(webhookUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                });
 
-              if (response.ok) {
-                const result = await response.json();
-                console.log(`✅ Webhook success for ${item.product_name}:`, result);
-              } else {
-                const error = await response.text();
-                console.error(`❌ Webhook failed for ${item.product_name}:`, error);
+                if (response.ok) {
+                  const result = await response.json();
+                  console.log(`✅ Webhook success for ${item.product_name}:`, result);
+                } else {
+                  const error = await response.text();
+                  console.error(`❌ Webhook failed for ${item.product_name}:`, error);
+                }
+              } catch (fetchErr) {
+                console.error(`❌ Webhook fetch error for ${item.product_name}:`, fetchErr);
               }
-            } catch (fetchErr) {
-              console.error(`❌ Webhook fetch error for ${item.product_name}:`, fetchErr);
             }
           }
         } else {
