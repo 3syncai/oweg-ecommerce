@@ -85,6 +85,8 @@ const emptyAddressForm: AddressForm = {
   countryCode: "IN",
 };
 
+const toDigits = (value: string, max: number) => value.replace(/\D/g, "").slice(0, max);
+
 const formatDate = (value?: string) => {
   if (!value) return "";
   const d = new Date(value);
@@ -805,7 +807,11 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
               <Input
                 placeholder="Phone"
                 value={shipping.phone}
-                onChange={(e) => setShipping((prev) => ({ ...prev, phone: e.target.value }))}
+                onChange={(e) => setShipping((prev) => ({ ...prev, phone: toDigits(e.target.value, 10) }))}
+                inputMode="numeric"
+                pattern="\\d{10}"
+                maxLength={10}
+                title="Enter a 10-digit phone number"
               />
               <Input
                 placeholder="Address line 1"
@@ -833,7 +839,11 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
                 <Input
                   placeholder="Postal code"
                   value={shipping.postalCode}
-                  onChange={(e) => setShipping((prev) => ({ ...prev, postalCode: e.target.value }))}
+                  onChange={(e) => setShipping((prev) => ({ ...prev, postalCode: toDigits(e.target.value, 6) }))}
+                  inputMode="numeric"
+                  pattern="\\d{6}"
+                  maxLength={6}
+                  title="Enter a 6-digit PIN code"
                 />
                 <Input
                   placeholder="Country"
@@ -887,7 +897,11 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
               <Input
                 placeholder="Phone"
                 value={billing.phone}
-                onChange={(e) => setBilling((prev) => ({ ...prev, phone: e.target.value }))}
+                onChange={(e) => setBilling((prev) => ({ ...prev, phone: toDigits(e.target.value, 10) }))}
+                inputMode="numeric"
+                pattern="\\d{10}"
+                maxLength={10}
+                title="Enter a 10-digit phone number"
               />
               <Input
                 placeholder="Address line 1"
@@ -915,7 +929,11 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
                 <Input
                   placeholder="Postal code"
                   value={billing.postalCode}
-                  onChange={(e) => setBilling((prev) => ({ ...prev, postalCode: e.target.value }))}
+                  onChange={(e) => setBilling((prev) => ({ ...prev, postalCode: toDigits(e.target.value, 6) }))}
+                  inputMode="numeric"
+                  pattern="\\d{6}"
+                  maxLength={6}
+                  title="Enter a 6-digit PIN code"
                 />
                 <Input
                   placeholder="Country"
