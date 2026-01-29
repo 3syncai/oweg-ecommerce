@@ -298,9 +298,6 @@ export default function PreferenceModal({
               {optionsLoading && !availableTypes.length ? (
                 <div className="text-sm text-gray-500">Loading product types...</div>
               ) : null}
-              {optionsLoading && !availableTypes.length ? (
-                <div className="text-sm text-gray-500">Loading product types...</div>
-              ) : null}
               {visibleTypes.length ? (
                 <ChipGroup
                   label="Available product types"
