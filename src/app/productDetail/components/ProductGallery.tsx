@@ -14,12 +14,13 @@ type ProductGalleryProps = {
   productTitle?: string
   productPrice?: number
   productHighlights?: string[]
+  hasStock?: boolean
 }
 
 const LENS_SIZE = 160
 const ZOOM_SCALE = 2.2
 
-const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitle, productPrice, productHighlights }: ProductGalleryProps) => {
+const ProductGallery = ({ images, selectedIndex, onSelect, fallback, productTitle, productPrice, productHighlights, hasStock = true }: ProductGalleryProps) => {
   const activeImage = images[selectedIndex] || fallback
   const hasMultiple = images.length > 1
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -263,9 +264,19 @@ const handleOpenFullscreen = () => {
               alt="Selected product image"
               fill
               sizes="(max-width: 1024px) 100vw, 50vw"
-              className="object-contain p-4 lg:p-10 transition-transform duration-300 group-hover:scale-105 pointer-events-none"
+              className={`object-contain p-4 lg:p-10 transition-transform duration-300 group-hover:scale-105 pointer-events-none ${
+                !hasStock ? "opacity-60 grayscale" : ""
+              }`}
               priority
             />
+            {/* Out of Stock Overlay */}
+            {!hasStock && (
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-30 pointer-events-none">
+                <div className="bg-red-600 text-white px-6 py-3 rounded-lg font-bold text-lg shadow-lg">
+                  OUT OF STOCK
+                </div>
+              </div>
+            )}
           </div>
           {hasMultiple && (
             <div className="absolute inset-x-0 bottom-4 flex justify-between px-4 z-20">

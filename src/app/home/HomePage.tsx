@@ -26,6 +26,7 @@ type UIProduct = {
   variant_id?: string;
   handle?: string;
   sourceTag?: string;
+  inventory_quantity?: number;
 };
 
 type ProductQuery = {
@@ -120,7 +121,16 @@ function ProductCarousel({
       >
         {loading
           ? skeletonCards
-          : products.map((product) => (
+          : [...products]
+              .sort((a, b) => {
+                // Sort in-stock products first, out-of-stock last
+                const aInStock = typeof a.inventory_quantity === 'number' && a.inventory_quantity > 0;
+                const bInStock = typeof b.inventory_quantity === 'number' && b.inventory_quantity > 0;
+                if (aInStock && !bInStock) return -1;
+                if (!aInStock && bInStock) return 1;
+                return 0;
+              })
+              .map((product) => (
               <div key={product.id} className="flex-shrink-0 w-[200px] sm:w-[220px] md:w-[260px] lg:w-[300px]">
                 <ProductCard
                   id={product.id}
@@ -133,6 +143,7 @@ function ProductCarousel({
                   variant_id={product.variant_id}
                   handle={product.handle}
                   sourceTag={sourceTag}
+                  inventory_quantity={product.inventory_quantity}
                 />
               </div>
             ))}
@@ -352,6 +363,7 @@ type MobileCategory = {
   handle?: string;
   image?: string;
   children?: MobileCategory[];
+  rank?: number;
 };
 
 const categoryImageMap: Record<string, string> = {
@@ -375,6 +387,7 @@ const categoryImageMap: Record<string, string> = {
   'toys-and-games': '/Toysandgames.png',
   jewellery: '/Jewellery.png',
   umbrella: '/Umbrella.png',
+  umbrellas: '/Umbrella.png',
   'health-care': '/Sassiest-Health-Care.png',
   health: '/Sassiest-Health-Care.png',
   stationery: '/Stationery.png',
@@ -392,13 +405,10 @@ const categoryImageKeywords: Array<{ image: string; includes: string[] }> = [
 function MobileCategoryGrid({
   categories,
   loading,
-  categoryImages,
 }: {
   categories: MobileCategory[];
   loading: boolean;
-  categoryImages?: Record<string, string>;
 }) {
-  const images = categoryImages || {};
   const [imageLoaded, setImageLoaded] = useState<Record<string, boolean>>({});
   const normalize = (value?: string) =>
     (value || '')
@@ -475,8 +485,6 @@ function MobileCategoryGrid({
                 const displayImage =
                   mappedImage ||
                   (keywordHit ? keywordHit.image : undefined) ||
-                  images[cat.id] ||
-                  cat.image ||
                   '/oweg_logo.png';
                 const loaded = imageLoaded[cat.id];
                 return (
@@ -714,8 +722,13 @@ export default function HomePage() {
       return !parentId;
     });
 
+    const withChildren = roots.filter((cat) => {
+      const children = (cat as MedusaCategory).category_children;
+      return Array.isArray(children) && children.length > 0;
+    });
+
     const result: MobileCategory[] = [];
-    roots.forEach((node) => {
+    withChildren.forEach((node) => {
       if (!node) return;
       const id = (node.id || node.handle || node.title || node.name || Math.random().toString()).toString();
       if (seen.has(id)) return;
@@ -724,13 +737,19 @@ export default function HomePage() {
         id,
         title: (node.title || node.name || 'Category').toString(),
         handle: node.handle || undefined,
+        rank: typeof (node as MedusaCategory).rank === 'number' ? (node as MedusaCategory).rank : undefined,
         image:
           (node as MedusaCategory & { metadata?: { thumbnail?: string; image?: string } }).metadata?.thumbnail ||
           (node as MedusaCategory & { metadata?: { thumbnail?: string; image?: string } }).metadata?.image ||
           undefined,
       });
     });
-    return result.sort((a, b) => a.title.localeCompare(b.title));
+    return result.sort((a, b) => {
+      const rankA = a.rank ?? 9999;
+      const rankB = b.rank ?? 9999;
+      if (rankA !== rankB) return rankA - rankB;
+      return a.title.localeCompare(b.title);
+    });
   }, [categoriesData]);
 
   const categorySuggestions = useMemo(
@@ -738,59 +757,7 @@ export default function HomePage() {
     [mobileCategories]
   );
 
-  const [categoryImages, setCategoryImages] = useState<Record<string, string>>({});
-  const categoryImagesRef = useRef<Record<string, string>>({});
-  useEffect(() => {
-    categoryImagesRef.current = categoryImages;
-  }, [categoryImages]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const targets = mobileCategories
-      .filter((cat) => cat?.id && !categoryImagesRef.current[cat.id])
-      .slice(0, Math.min(16, mobileCategories.length));
-    const fetchThumbs = async () => {
-      const entries = await Promise.all(
-        targets.map(async (cat) => {
-          if (!cat?.id) return null;
-          try {
-            const query =
-              cat.handle && cat.handle.length > 0
-                ? `category=${encodeURIComponent(cat.handle)}`
-                : cat.id
-                  ? `categoryId=${encodeURIComponent(cat.id)}`
-                  : '';
-            if (!query) return null;
-            const res = await fetch(`/api/medusa/products?${query}&limit=1`, { cache: 'no-store' });
-            if (!res.ok) return null;
-            const data = await res.json();
-            const prod = Array.isArray(data?.products) ? data.products[0] : null;
-            const thumb = prod?.thumbnail || prod?.image || (Array.isArray(prod?.images) ? prod.images[0]?.url : undefined);
-            if (thumb) return [cat.id, thumb] as const;
-          } catch {
-            // ignore errors, fallback to default
-          }
-          return null;
-        })
-      );
-      if (cancelled) return;
-      setCategoryImages((prev) => {
-        const next = { ...prev };
-        entries.forEach((pair) => {
-          if (pair) {
-            const [id, img] = pair;
-            if (!next[id]) next[id] = img;
-          }
-        });
-        categoryImagesRef.current = next;
-        return next;
-      });
-    };
-    fetchThumbs();
-    return () => {
-      cancelled = true;
-    };
-  }, [mobileCategories]);
+  // Category images use public assets only in mobile grid.
   const loading =
     sectionsToRender.some((section) => section.loading) ||
     bagsQuery.isLoading;
@@ -933,7 +900,6 @@ export default function HomePage() {
         <MobileCategoryGrid
           categories={mobileCategories}
           loading={categoriesQuery.isLoading}
-          categoryImages={categoryImages}
         />
         <div className="md:hidden px-4 mb-6 space-y-4">
           {MOBILE_TOP_BANNERS.map((banner) => (

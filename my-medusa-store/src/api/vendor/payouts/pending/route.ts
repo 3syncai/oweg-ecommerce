@@ -1,7 +1,8 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { VENDOR_MODULE } from "../../../../modules/vendor"
-import type VendorModuleService from "../../../../modules/vendor/service"
+
+import VendorModuleService from "../../../../modules/vendor/service"
 
 /**
  * Get pending payout summary for logged-in vendor
@@ -34,17 +35,22 @@ export async function GET(
         const commission_rate = vendor.commission_rate || 2.0
 
         // Get order module
-        const orderModuleService = req.scope.resolve(Modules.ORDER)
+        // Get query service
+        const query = req.scope.resolve("query")
 
-        // Fetch all orders for this vendor
-        const allOrders = await orderModuleService.listOrders({})
-        const vendorOrders = allOrders.filter((order: any) => {
-            const metadata = order?.metadata || {}
-            return metadata.vendor_id === vendor_id
+        // Fetch all orders for this vendor using Remote Query
+        const { data: allOrders } = await query.graph({
+            entity: "order",
+            fields: ["id", "fulfillment_status", "total", "metadata"],
+            filters: {
+                metadata: {
+                    vendor_id: vendor_id,
+                },
+            },
         })
 
         // Filter completed orders (no date restriction for testing)
-        const eligibleOrders = vendorOrders.filter((order: any) => {
+        const eligibleOrders = allOrders.filter((order: any) => {
             const isFulfilled =
                 order.fulfillment_status === 'shipped' ||
                 order.fulfillment_status === 'delivered'
@@ -52,7 +58,7 @@ export async function GET(
         })
 
         // Get existing paid orders
-        const query = req.scope.resolve("query")
+
         const { data: existingPayouts } = await query.graph({
             entity: "vendor_payout",
             fields: ["order_ids"],

@@ -3064,10 +3064,10 @@
   resolved "https://registry.npmjs.org/@pkgjs/parseargs/-/parseargs-0.11.0.tgz"
   integrity sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==
 
-"@posthog/core@1.5.2":
-  version "1.5.2"
-  resolved "https://registry.npmjs.org/@posthog/core/-/core-1.5.2.tgz"
-  integrity sha512-iedUP3EnOPPxTA2VaIrsrd29lSZnUV+ZrMnvY56timRVeZAXoYCkmjfIs3KBAsF8OUT5h1GXLSkoQdrV0r31OQ==
+"@posthog/core@1.10.0":
+  version "1.10.0"
+  resolved "https://registry.npmjs.org/@posthog/core/-/core-1.10.0.tgz"
+  integrity sha512-Xk3JQ+cdychsvftrV3G9ZrN9W329lbyFW0pGJXFGKFQf8qr4upw2SgNg9BVorjSrfhoXZRnJGt/uNF4nGFBL5A==
   dependencies:
     cross-spawn "^7.0.6"
 
@@ -9666,12 +9666,7 @@ lru-cache@^6.0.0:
   dependencies:
     yallist "^4.0.0"
 
-lru-cache@^7.14.1:
-  version "7.18.3"
-  resolved "https://registry.npmjs.org/lru-cache/-/lru-cache-7.18.3.tgz"
-  integrity sha512-jumlc0BIUrS3qJGgIkWZsyfAM7NCWiBcCDhnd+3NNM5KbBmLTgHVfWBcg6W+rLUsIpzpERPsvwUP7CckAQSOoA==
-
-lru.min@^1.0.0:
+lru.min@^1.0.0, lru.min@^1.1.0:
   version "1.1.3"
   resolved "https://registry.npmjs.org/lru.min/-/lru.min-1.1.3.tgz"
   integrity sha512-Lkk/vx6ak3rYkRR0Nhu4lFUT2VDnQSxBe8Hbl7f36358p6ow8Bnvr8lrLt98H8J1aGxfhbX4Fs5tYg2+FTwr5Q==
@@ -9955,10 +9950,10 @@ mute-stream@0.0.8:
   resolved "https://registry.npmjs.org/mute-stream/-/mute-stream-0.0.8.tgz"
   integrity sha512-nnbWWOkoWyUsTjKrhgD0dcz22mdkSnpYqbEjIm2nhwhuxlSkpywJmBo8h0ZqJdkp73mb90SssHkN4rsRaBAfAA==
 
-mysql2@^3.15.3:
-  version "3.15.3"
-  resolved "https://registry.npmjs.org/mysql2/-/mysql2-3.15.3.tgz"
-  integrity sha512-FBrGau0IXmuqg4haEZRBfHNWB5mUARw6hNwPDXXGg0XzVJ50mr/9hb267lvpVMnhZ1FON3qNd4Xfcez1rbFwSg==
+mysql2@^3.16.1:
+  version "3.16.1"
+  resolved "https://registry.npmjs.org/mysql2/-/mysql2-3.16.1.tgz"
+  integrity sha512-b75qsDB3ieYEzMsT1uRGsztM/sy6vWPY40uPZlVVl8eefAotFCoS7jaDB5DxDNtlW5kdVGd9jptSpkvujNxI2A==
   dependencies:
     aws-ssl-profiles "^1.1.1"
     denque "^2.1.0"
@@ -9966,7 +9961,7 @@ mysql2@^3.15.3:
     iconv-lite "^0.7.0"
     long "^5.2.1"
     lru.min "^1.0.0"
-    named-placeholders "^1.1.3"
+    named-placeholders "^1.1.6"
     seq-queue "^0.0.5"
     sqlstring "^2.3.2"
 
@@ -9979,12 +9974,12 @@ mz@^2.7.0:
     object-assign "^4.0.1"
     thenify-all "^1.0.0"
 
-named-placeholders@^1.1.3:
-  version "1.1.3"
-  resolved "https://registry.npmjs.org/named-placeholders/-/named-placeholders-1.1.3.tgz"
-  integrity sha512-eLoBxg6wE/rZkJPhU/xRX1WTpkFEwDJEN96oxFrTsqBdbT5ec295Q+CoHrL9IT0DipqKhmGcaZmwOt8OON5x1w==
+named-placeholders@^1.1.6:
+  version "1.1.6"
+  resolved "https://registry.npmjs.org/named-placeholders/-/named-placeholders-1.1.6.tgz"
+  integrity sha512-Tz09sEL2EEuv5fFowm419c1+a/jSMiBjI9gHxVLrVdbUkkNUUfjsVYs9pVZu5oCon/kmRh9TfLEObFtkVxmY0w==
   dependencies:
-    lru-cache "^7.14.1"
+    lru.min "^1.1.0"
 
 nanoid@^3.3.11:
   version "3.3.11"
@@ -10603,11 +10598,11 @@ postgres-interval@4.0.2:
   integrity sha512-EMsphSQ1YkQqKZL2cuG0zHkmjCCzQqQ71l2GXITqRwjhRleCdv00bDk/ktaSi0LnlaPzAc3535KTrjXsTdtx7A==
 
 posthog-node@^5.11.0:
-  version "5.11.2"
-  resolved "https://registry.npmjs.org/posthog-node/-/posthog-node-5.11.2.tgz"
-  integrity sha512-z+XekcBUmGePMsjPlGaEF2bJFiDHKHYPQjS4OEw4YPDQz8s7Owuim/L7xNX+6UJkyIRniBza9iC7bW8yrGTv1g==
+  version "5.21.2"
+  resolved "https://registry.npmjs.org/posthog-node/-/posthog-node-5.21.2.tgz"
+  integrity sha512-Jehlu0KguL1LLyUczCt86OtA5INmeStK3zcgbv1BSyMcNxs0HP3GQogBrYhwhqHsk6JopiFFVpJyZEoXOUMhGw==
   dependencies:
-    "@posthog/core" "1.5.2"
+    "@posthog/core" "1.10.0"
 
 prettier@^3.5.3:
   version "3.7.4"

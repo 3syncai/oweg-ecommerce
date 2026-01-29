@@ -1,21 +1,23 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { Input, Label, Text, Button, toast } from "@medusajs/ui"
+import { Input, Text, toast } from "@medusajs/ui"
 import axios from "axios"
 
 interface BrandAuthorizationProps {
     brand: string
     onBrandChange: (brand: string) => void
-    onAuthorizationStatusChange: (isAuthorized: boolean) => void
+    onAuthorizationStatusChange: (isAuthorized: boolean, needsAuthorization: boolean) => void
+    onFileSelect: (file: File | null) => void
 }
 
-type AuthStatus = "idle" | "checking" | "authorized" | "needs_upload" | "uploading"
+type AuthStatus = "idle" | "checking" | "authorized" | "pending" | "needs_upload" | "file_selected"
 
 export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
     brand,
     onBrandChange,
     onAuthorizationStatusChange,
+    onFileSelect,
 }) => {
     const [authStatus, setAuthStatus] = useState<AuthStatus>("idle")
     const [authorizationFile, setAuthorizationFile] = useState<File | null>(null)
@@ -30,7 +32,9 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
 
         if (!brand || brand.trim() === "") {
             setAuthStatus("idle")
-            onAuthorizationStatusChange(false)
+            onAuthorizationStatusChange(false, false)
+            onFileSelect(null)
+            setAuthorizationFile(null)
             return
         }
 
@@ -63,63 +67,43 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
                 }
             )
 
-            if (response.data.requires_authorization) {
-                setAuthStatus("needs_upload")
-                onAuthorizationStatusChange(false)
-            } else {
+            const status = response.data.status || (response.data.requires_authorization ? "missing" : "authorized")
+
+            if (status === "pending") {
+                setAuthStatus("pending")
+                onFileSelect(null)
+                setAuthorizationFile(null)
+                // Block progress: not authorized, but doesn't need upload (needs approval)
+                // We set needsAuthorization=true so parent blocks "Next" if not authorized
+                onAuthorizationStatusChange(false, true) 
+            } else if (status === "authorized") {
                 setAuthStatus("authorized")
-                onAuthorizationStatusChange(true)
+                setAuthorizationFile(null)
+                onFileSelect(null)
+                onAuthorizationStatusChange(true, false)
+            } else { // missing or other
+                setAuthStatus("needs_upload")
+                setAuthorizationFile(null)
+                onFileSelect(null)
+                onAuthorizationStatusChange(false, true)
             }
         } catch (error) {
             console.error("Brand authorization check error:", error)
-            // On error, allow product creation to proceed
-            setAuthStatus("idle")
-            onAuthorizationStatusChange(true)
+            // Fail closed: Block progress on error
+            setAuthStatus("idle") 
+            onAuthorizationStatusChange(false, false)
+            toast.error("Error", { description: "Failed to verify brand authorization. Please check connection." })
         }
     }
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            setAuthorizationFile(e.target.files[0])
-        }
-    }
-
-    const handleUploadAuthorization = async () => {
-        if (!authorizationFile || !brand) return
-
-        setAuthStatus("uploading")
-
-        try {
-            const token = localStorage.getItem("vendor_token")
-            if (!token) {
-                toast.error("Error", { description: "Not authenticated" })
-                return
-            }
-
-            const API_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
-            const formData = new FormData()
-            formData.append("brand_name", brand)
-            formData.append("file", authorizationFile)
-
-            await axios.post(
-                `${API_URL}/vendor/brands/upload-authorization`,
-                formData,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        "Content-Type": "multipart/form-data"
-                    }
-                }
-            )
-
-            toast.success("Success", { description: "Brand authorization uploaded" })
-            setAuthStatus("authorized")
-            onAuthorizationStatusChange(true)
-            setAuthorizationFile(null)
-        } catch (error: any) {
-            console.error("Upload error:", error)
-            toast.error("Error", { description: error?.response?.data?.error || "Failed to upload authorization" })
-            setAuthStatus("needs_upload")
+            const file = e.target.files[0]
+            setAuthorizationFile(file)
+            onFileSelect(file)
+            setAuthStatus("file_selected")
+            // Mark as authorized (temporarily) because we have the file ready to upload
+            onAuthorizationStatusChange(true, true)
         }
     }
 
@@ -150,11 +134,24 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
                         </Text>
                     </div>
                 )
-            case "needs_upload":
+            case "pending":
                 return (
                     <div style={{ marginTop: 8, padding: 12, background: "var(--bg-warning-subtle)", borderRadius: 6, border: "1px solid var(--border-warning)" }}>
-                        <Text size="small" style={{ color: "var(--fg-warning)", marginBottom: 8 }}>
-                            ⚠ Upload brand authorization letter for "{brand}"
+                        <Text size="small" weight="plus" style={{ color: "var(--fg-warning)", display: "flex", alignItems: "center", gap: 8 }}>
+                            <span>⏳</span>
+                            <span>Authorization Pending Approval</span>
+                        </Text>
+                        <Text size="small" style={{ color: "var(--fg-muted)", marginTop: 4 }}>
+                            You have already uploaded an authorization letter for this brand. Please wait for admin approval before adding products.
+                        </Text>
+                    </div>
+                )
+            case "needs_upload":
+            case "file_selected":
+                return (
+                    <div style={{ marginTop: 8, padding: 12, background: "var(--bg-warning-subtle)", borderRadius: 6, border: "1px solid var(--border-warning)" }}>
+                        <Text size="small" weight="plus" style={{ color: "var(--fg-warning)", marginBottom: 8 }}>
+                            ⚠️ Required: Upload brand authorization letter for "{brand}" to continue
                         </Text>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <input
@@ -163,27 +160,17 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
                                 onChange={handleFileSelect}
                                 style={{ flex: 1, fontSize: 12 }}
                             />
-                            <Button
-                                size="small"
-                                onClick={handleUploadAuthorization}
-                                disabled={!authorizationFile}
-                            >
-                                Upload
-                            </Button>
                         </div>
-                        {authorizationFile && (
-                            <Text size="xsmall" style={{ marginTop: 4, color: "var(--fg-muted)" }}>
-                                Selected: {authorizationFile.name}
-                            </Text>
+                        {authStatus === "file_selected" && authorizationFile && (
+                            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                                <Text size="small" style={{ color: "var(--fg-success)" }}>
+                                    ✓ File selected: {authorizationFile.name}
+                                </Text>
+                                <Text size="xsmall" style={{ color: "var(--fg-muted)" }}>
+                                    (Will be uploaded upon publishing)
+                                </Text>
+                            </div>
                         )}
-                    </div>
-                )
-            case "uploading":
-                return (
-                    <div style={{ marginTop: 8, padding: 8, background: "var(--bg-subtle)", borderRadius: 6 }}>
-                        <Text size="small" style={{ color: "var(--fg-muted)" }}>
-                            Uploading authorization...
-                        </Text>
                     </div>
                 )
             default:

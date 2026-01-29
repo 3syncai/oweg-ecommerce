@@ -218,20 +218,23 @@ export async function POST(req: Request) {
       console.error("Coin discount update error:", coinError);
     }
 
-    // AFFILIATE COMMISSION: Check if customer was referred and log commission
+    // AFFILIATE COMMISSION: Call the commission webhook for hierarchy support
     if (medusaOrderId && typeof amountMinor === "number") {
       try {
-        console.log("razorpay confirm: Checking affiliate commission...");
+        console.log("razorpay confirm: Triggering commission webhook for hierarchy...");
 
         const pool = getPool();
         if (!pool) throw new Error('Database not configured');
 
-        // Get customer info including referral_code from customer_referral table
+        // Get customer and order item info
         const customerResult = await pool.query(
-          `SELECT c.id, cr.referral_code, c.email, c.first_name || ' ' || c.last_name as name
+          `SELECT 
+             c.id, 
+             c.email, 
+             c.first_name || ' ' || c.last_name as name,
+             c.metadata->>'referral_code' as referral_code
            FROM "order" o
            JOIN customer c ON o.customer_id = c.id
-           LEFT JOIN customer_referral cr ON c.id = cr.customer_id
            WHERE o.id = $1`,
           [medusaOrderId]
         );
@@ -239,26 +242,17 @@ export async function POST(req: Request) {
         const customer = customerResult.rows[0];
         const affiliateCode = customer?.referral_code;
 
-        console.log(`razorpay confirm: Customer ${customer?.email}, referral_code: ${affiliateCode || 'none'}`);
-
         if (affiliateCode) {
-          console.log(`razorpay confirm: Customer ${customer.email} has affiliate code ${affiliateCode}`);
+          console.log(`razorpay confirm: Found affiliate code ${affiliateCode}, calling webhook...`);
 
-
-          // Get order items with product/category/collection info
-          // Medusa 2.0 schema: order_item.item_id → order_line_item.id, order_line_item.variant_id → product_variant
-          console.log(`razorpay confirm: [COMMISSION DEBUG] Querying order items for ${medusaOrderId}`);
-
-          // NOTE: oli.total does not exist, so we calculate from unit_price * quantity
+          // Get order items
           const itemsResult = await pool.query(
             `SELECT 
                oi.id, 
                pv.product_id,
                oi.quantity,
                oli.unit_price,
-               oli.variant_id,
-               p.title as product_name,
-               p.collection_id
+               p.title as product_name
              FROM order_item oi
              JOIN order_line_item oli ON oi.item_id = oli.id
              LEFT JOIN product_variant pv ON oli.variant_id = pv.id
@@ -267,154 +261,52 @@ export async function POST(req: Request) {
             [medusaOrderId]
           );
 
-          console.log(`razorpay confirm: [COMMISSION DEBUG] Found ${itemsResult.rows.length} order items`);
-          console.log(`razorpay confirm: [COMMISSION DEBUG] Items:`, JSON.stringify(itemsResult.rows));
-
-          let totalCommission = 0;
+          // Call webhook for each item (same as Medusa subscriber)
+          const webhookUrl = process.env.AFFILIATE_WEBHOOK_URL || "http://localhost:3001/api/webhook/commission";
 
           for (const item of itemsResult.rows) {
-            console.log(`razorpay confirm: [COMMISSION DEBUG] Processing item: ${item.product_name}, product_id: ${item.product_id}`);
-
-            // Calculate commission for this item using unit_price * quantity
             const unitPrice = parseFloat(item.unit_price || 0);
-            const itemAmount = unitPrice * (item.quantity || 1); // Price is already in major units (Rupees), no need to divide by 100
-            console.log(`razorpay confirm: [COMMISSION DEBUG] Item amount: ₹${itemAmount} (price: ${unitPrice} x qty: ${item.quantity})`);
+            const itemAmount = unitPrice * (item.quantity || 1);
 
-            // Get categories for this product
-            let categoryIds: string[] = [];
+            const payload = {
+              order_id: medusaOrderId,
+              affiliate_code: affiliateCode,
+              product_id: item.product_id,
+              product_name: item.product_name,
+              quantity: item.quantity,
+              item_price: unitPrice / 100, // Convert to rupees
+              order_amount: itemAmount,
+              status: "PENDING",
+              customer_id: customer.id,
+              customer_name: customer.name,
+              customer_email: customer.email,
+            };
+
+            console.log(`razorpay confirm: Sending webhook for ${item.product_name}...`);
+
             try {
-              const categoryResult = await pool.query(
-                `SELECT product_category_id FROM product_category_product WHERE product_id = $1`,
-                [item.product_id]
-              );
-              categoryIds = categoryResult.rows.map((r: any) => r.product_category_id);
-              console.log(`razorpay confirm: [COMMISSION DEBUG] Product categories:`, categoryIds);
-            } catch (err) {
-              console.log(`razorpay confirm: [COMMISSION DEBUG] Failed to get categories (skipping category rules): ${err}`);
-            }
+              const response = await fetch(webhookUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
 
-            // Check for product-specific commission first
-            console.log(`razorpay confirm: [COMMISSION DEBUG] Checking product commission for: ${item.product_id}`);
-            let commissionResult = await pool.query(
-              `SELECT commission_rate FROM affiliate_commission WHERE product_id = $1 LIMIT 1`,
-              [item.product_id]
-            );
-            console.log(`razorpay confirm: [COMMISSION DEBUG] Product commission result:`, commissionResult.rows);
-
-            let commissionRate = 0;
-            let commissionSource = 'none';
-            let sourceId = null;
-
-            if (commissionResult.rows.length > 0) {
-              commissionRate = parseFloat(commissionResult.rows[0].commission_rate);
-              commissionSource = 'product';
-              sourceId = item.product_id;
-              console.log(`razorpay confirm: [COMMISSION DEBUG] Found product commission: ${commissionRate}%`);
-            } else if (categoryIds.length > 0) {
-              // Check category commission
-              console.log(`razorpay confirm: [COMMISSION DEBUG] Checking category commission for:`, categoryIds);
-              commissionResult = await pool.query(
-                `SELECT category_id, commission_rate FROM affiliate_commission 
-                 WHERE category_id = ANY($1) 
-                 ORDER BY commission_rate DESC LIMIT 1`,
-                [categoryIds]
-              );
-              console.log(`razorpay confirm: [COMMISSION DEBUG] Category commission result:`, commissionResult.rows);
-
-              if (commissionResult.rows.length > 0) {
-                commissionRate = parseFloat(commissionResult.rows[0].commission_rate);
-                commissionSource = 'category';
-                sourceId = commissionResult.rows[0].category_id;
-                console.log(`razorpay confirm: [COMMISSION DEBUG] Found category commission: ${commissionRate}%`);
+              if (response.ok) {
+                const result = await response.json();
+                console.log(`✅ Webhook success for ${item.product_name}:`, result);
+              } else {
+                const error = await response.text();
+                console.error(`❌ Webhook failed for ${item.product_name}:`, error);
               }
+            } catch (fetchErr) {
+              console.error(`❌ Webhook fetch error for ${item.product_name}:`, fetchErr);
             }
-
-            if (commissionSource === 'none' && item.collection_id) {
-              // Check collection commission
-              console.log(`razorpay confirm: [COMMISSION DEBUG] Checking collection commission for: ${item.collection_id}`);
-              commissionResult = await pool.query(
-                `SELECT commission_rate FROM affiliate_commission WHERE collection_id = $1 LIMIT 1`,
-                [item.collection_id]
-              );
-              console.log(`razorpay confirm: [COMMISSION DEBUG] Collection commission result:`, commissionResult.rows);
-
-              if (commissionResult.rows.length > 0) {
-                commissionRate = parseFloat(commissionResult.rows[0].commission_rate);
-                commissionSource = 'collection';
-                sourceId = item.collection_id;
-                console.log(`razorpay confirm: [COMMISSION DEBUG] Found collection commission: ${commissionRate}%`);
-              }
-            }
-
-            console.log(`razorpay confirm: [COMMISSION DEBUG] Final: source=${commissionSource}, rate=${commissionRate}%`);
-
-            // Only log commission if a rule was found
-            if (commissionRate > 0) {
-              const commissionAmount = (itemAmount * commissionRate) / 100;
-              totalCommission += commissionAmount;
-
-              // Get affiliate_user_id
-              const affiliateResult = await pool.query(
-                `SELECT id FROM affiliate_user WHERE refer_code = $1`,
-                [affiliateCode]
-              );
-              const affiliateUserId = affiliateResult.rows[0]?.id || null;
-
-              // Check if commission already logged for this order/item (idempotency)
-              const existingCommission = await pool.query(
-                `SELECT id FROM affiliate_commission_log WHERE order_id = $1 AND variant_id = $2`,
-                [medusaOrderId, item.variant_id]
-              );
-
-              if (existingCommission.rows.length > 0) {
-                console.log(`razorpay confirm: Commission already logged for ${item.product_name}`);
-                continue;
-              }
-
-              // Log commission (status PENDING - will be credited after delivery)
-              await pool.query(
-                `INSERT INTO affiliate_commission_log 
-                   (affiliate_code, affiliate_user_id, order_id, customer_id, product_id, 
-                    product_name, variant_id, quantity, item_price, order_amount,
-                    commission_rate, commission_amount, commission_source, category_id, collection_id, status)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'PENDING')`,
-                [affiliateCode, affiliateUserId, medusaOrderId, customer.id, item.product_id,
-                  item.product_name, item.variant_id, item.quantity, parseFloat(item.unit_price) / 100, itemAmount,
-                  commissionRate, commissionAmount, commissionSource,
-                  commissionSource === 'category' ? sourceId : null,
-                  commissionSource === 'collection' ? sourceId : null]
-              );
-
-              console.log(`razorpay confirm: Commission logged: ₹${commissionAmount.toFixed(2)} for ${item.product_name} (${commissionSource} @ ${commissionRate}%)`);
-            }
-          }
-
-          // Update referral stats
-          if (totalCommission > 0 || itemsResult.rows.length > 0) {
-            const orderValue = amountMinor / 100;
-            await pool.query(
-              `UPDATE affiliate_referrals
-               SET total_orders = total_orders + 1,
-                   total_order_value = total_order_value + $3,
-                   total_commission = total_commission + $4,
-                   first_order_at = COALESCE(first_order_at, NOW())
-               WHERE affiliate_code = $1 AND customer_id = $2`,
-              [affiliateCode, customer.id, orderValue, totalCommission]
-            );
-          }
-
-          if (totalCommission > 0) {
-            console.log(`razorpay confirm: ✅ Total affiliate commission: ₹${totalCommission.toFixed(2)} for ${affiliateCode} (PENDING)`);
-          } else {
-            console.log("razorpay confirm: No commission earned (no matching commission rules)");
           }
         } else {
-          console.log("razorpay confirm: Customer not referred by affiliate");
+          console.log("razorpay confirm: No affiliate code, skipping commission");
         }
-        // Note: pool.end() removed - using shared pool
       } catch (affiliateErr) {
-        console.error("razorpay confirm: ⚠️ Affiliate commission failed:", affiliateErr);
-        // Don't fail the payment confirmation if affiliate commission fails
+        console.error("razorpay confirm: ⚠️ Affiliate webhook failed:", affiliateErr);
       }
     }
 

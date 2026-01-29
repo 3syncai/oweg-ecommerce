@@ -82,25 +82,20 @@ export async function POST(req: NextRequest) {
             }
 
             const coinsMinor = Math.round(totalMinor * COIN_EARNING_RATE)
-            if (coinsMinor <= 0) {
-                return NextResponse.json({
-                    success: true,
-                    message: "No coins to award for this order",
-                    activated: false,
-                    amount: 0
+            let earnResult = { applied: false, actual_balance: 0 };
+
+            if (coinsMinor > 0) {
+                const expiryDate = new Date()
+                expiryDate.setFullYear(expiryDate.getFullYear() + 1)
+
+                earnResult = await earnCoins({
+                    customerId,
+                    orderId,
+                    amountMinor: coinsMinor,
+                    expiresAt: expiryDate.toISOString(),
+                    metadata: { reason: "delivery_reward" }
                 })
             }
-
-            const expiryDate = new Date()
-            expiryDate.setFullYear(expiryDate.getFullYear() + 1)
-
-            const earnResult = await earnCoins({
-                customerId,
-                orderId,
-                amountMinor: coinsMinor,
-                expiresAt: expiryDate.toISOString(),
-                metadata: { reason: "delivery_reward" }
-            })
 
             // ============================================
             // AFFILIATE COMMISSION: Credit to affiliate wallet
@@ -108,39 +103,70 @@ export async function POST(req: NextRequest) {
             let affiliateCommissionTotal = 0
             try {
                 const affiliateCommissionResult = await pool.query(`
-                    SELECT affiliate_code, affiliate_user_id, commission_amount, id
+                    SELECT *
                     FROM affiliate_commission_log
                     WHERE order_id = $1 AND status = 'PENDING'
                 `, [orderId])
 
                 if (affiliateCommissionResult.rows.length > 0) {
-                    const affiliateCode = affiliateCommissionResult.rows[0].affiliate_code
-                    const affiliateUserId = affiliateCommissionResult.rows[0].affiliate_user_id
-
                     for (const row of affiliateCommissionResult.rows) {
-                        affiliateCommissionTotal += parseFloat(row.commission_amount)
-                    }
+                        let userId = row.affiliate_user_id;
+                        const affiliateCode = row.affiliate_code;
 
-                    if (affiliateCommissionTotal > 0 && affiliateUserId) {
-                        const commissionMinor = Math.round(affiliateCommissionTotal * 100)
-                        await creditAdjustment({
-                            customerId: affiliateUserId,
-                            referenceId: `affiliate:${orderId}`,
-                            idempotencyKey: `affiliate:${orderId}`,
-                            amountMinor: commissionMinor,
-                            reason: `Affiliate commission for order ${orderId}`,
-                            metadata: { affiliate_code: affiliateCode, order_id: orderId }
-                        })
+                        // Robustness: If affiliate_user_id is missing, look it up
+                        if (!userId && affiliateCode) {
+                            console.log(`[AFFILIATE WEBHOOK] Missing user_id for code ${affiliateCode}, looking up in all tables...`);
 
-                        const commissionUnlockTime = new Date(Date.now() + 5 * 60 * 1000)
-                        for (const row of affiliateCommissionResult.rows) {
-                            await pool.query(`
-                                UPDATE affiliate_commission_log
-                                SET status = 'CREDITED',
-                                    credited_at = NOW(),
-                                    unlock_at = $2
-                                WHERE id = $1
-                            `, [row.id, commissionUnlockTime.toISOString()])
+                            // Check Affiliate User
+                            let userLookup = await pool.query(`SELECT id FROM affiliate_user WHERE refer_code = $1`, [affiliateCode]);
+
+                            // Check Branch Admin
+                            if (userLookup.rows.length === 0) {
+                                userLookup = await pool.query(`SELECT id FROM branch_admin WHERE refer_code = $1`, [affiliateCode]);
+                            }
+
+                            // Check Area/State Manager by EMAIL as fallback if code is generic (like 'AREA' or 'STATE')
+                            if (userLookup.rows.length === 0) {
+                                if (affiliateCode === 'AREA') {
+                                    userLookup = await pool.query(`SELECT id FROM area_sales_manager WHERE email = $1`, [row.customer_email]);
+                                } else if (affiliateCode === 'STATE') {
+                                    userLookup = await pool.query(`SELECT id FROM state_admin WHERE email = $1`, [row.customer_email]);
+                                }
+                            }
+
+                            if (userLookup.rows.length > 0) {
+                                userId = userLookup.rows[0].id;
+                                console.log(`[AFFILIATE WEBHOOK] Found user ${userId} for code ${affiliateCode}`);
+                            } else {
+                                console.warn(`[AFFILIATE WEBHOOK] Could not find user for code ${affiliateCode}`);
+                            }
+                        }
+
+                        if (userId) {
+                            const commissionAmount = parseFloat(row.commission_amount);
+                            if (commissionAmount > 0) {
+                                affiliateCommissionTotal += commissionAmount;
+                                const commissionMinor = Math.round(commissionAmount * 100)
+
+                                await creditAdjustment({
+                                    customerId: userId,
+                                    referenceId: `affiliate:${row.id}`,
+                                    idempotencyKey: `affiliate:${row.id}`,
+                                    amountMinor: commissionMinor,
+                                    reason: `Affiliate commission for order ${orderId}`,
+                                    metadata: { affiliate_code: affiliateCode, order_id: orderId, log_id: row.id }
+                                })
+
+                                const commissionUnlockTime = new Date(Date.now() + 5 * 60 * 1000)
+                                await pool.query(`
+                                    UPDATE affiliate_commission_log
+                                    SET status = 'CREDITED',
+                                        credited_at = NOW(),
+                                        unlock_at = $2,
+                                        affiliate_user_id = $3
+                                    WHERE id = $1
+                                `, [row.id, commissionUnlockTime.toISOString(), userId])
+                            }
                         }
                     }
                 }
@@ -154,7 +180,6 @@ export async function POST(req: NextRequest) {
                 activated: earnResult.applied,
                 amount: coinsMinor / 100,
                 customer_id: customerId,
-                expiry_date: expiryDate.toISOString(),
                 affiliate_commission: affiliateCommissionTotal
             })
         } catch (dbErr) {
@@ -183,7 +208,8 @@ export async function GET() {
         },
         notes: [
             "Coins are earned only after delivery",
-            "Ledger entries are append-only and idempotent"
+            "Ledger entries are append-only and idempotent",
+            "Affiliate commissions are also credited here"
         ]
     })
 }

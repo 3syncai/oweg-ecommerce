@@ -19,6 +19,7 @@ type UiProduct = {
   limitedDeal?: boolean;
   variant_id?: string;
   handle?: string;
+  inventory_quantity?: number;
 };
 
 export default function BrandDetailPage() {
@@ -177,7 +178,16 @@ export default function BrandDetailPage() {
               No products for this brand yet.
             </div>
           ) : (
-            products.map((p) => <ProductCard key={p.id} {...p} />)
+            [...products]
+              .sort((a, b) => {
+                // Sort in-stock products first, out-of-stock last
+                const aInStock = typeof a.inventory_quantity === 'number' && a.inventory_quantity > 0;
+                const bInStock = typeof b.inventory_quantity === 'number' && b.inventory_quantity > 0;
+                if (aInStock && !bInStock) return -1;
+                if (!aInStock && bInStock) return 1;
+                return 0;
+              })
+              .map((p) => <ProductCard key={p.id} {...p} />)
           )}
         </section>
       </div>

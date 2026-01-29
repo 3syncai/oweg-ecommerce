@@ -61,10 +61,10 @@ export default function WalletBalance({
         return null;
     }
 
-    // Don't show if balance is 0
-    if (balance === 0) {
-        return null;
-    }
+    // Show even if balance is 0 to let user know they have a wallet
+    // if (balance === 0) {
+    //     return null;
+    // }
 
     if (compact) {
         return (

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
@@ -259,21 +259,41 @@ function CheckoutPageInner() {
         const data = await res.json();
         const list = (data.addresses || data?.customer?.addresses || []) as CustomerAddress[];
         setAddresses(list);
-        const def = list.find((addr) => addr.is_default_shipping) || list[0] || null;
-        setDefaultAddress(def);
-        if (def && !addressTouched) {
-          setShipping((prev) => ({
-            ...prev,
-            firstName: def.first_name || prev.firstName,
-            lastName: def.last_name || prev.lastName,
-            phone: def.phone || prev.phone,
-            address1: def.address_1 || prev.address1,
-            address2: def.address_2 || prev.address2,
-            city: def.city || prev.city,
-            state: def.province || prev.state,
-            postalCode: def.postal_code || prev.postalCode,
-            countryCode: def.country_code || prev.countryCode || "IN",
-          }));
+        const defaultShipping = list.find((addr) => addr.is_default_shipping) || list[0] || null;
+        const defaultBilling = list.find((addr) => addr.is_default_billing) || defaultShipping;
+        setDefaultAddress(defaultShipping);
+        if (!addressTouched) {
+          if (defaultShipping) {
+            setShipping((prev) => ({
+              ...prev,
+              firstName: defaultShipping.first_name || prev.firstName,
+              lastName: defaultShipping.last_name || prev.lastName,
+              phone: defaultShipping.phone || prev.phone,
+              address1: defaultShipping.address_1 || prev.address1,
+              address2: defaultShipping.address_2 || prev.address2,
+              city: defaultShipping.city || prev.city,
+              state: defaultShipping.province || prev.state,
+              postalCode: defaultShipping.postal_code || prev.postalCode,
+              countryCode: defaultShipping.country_code || prev.countryCode || "IN",
+            }));
+          }
+          if (defaultBilling) {
+            setBilling((prev) => ({
+              ...prev,
+              firstName: defaultBilling.first_name || prev.firstName,
+              lastName: defaultBilling.last_name || prev.lastName,
+              phone: defaultBilling.phone || prev.phone,
+              address1: defaultBilling.address_1 || prev.address1,
+              address2: defaultBilling.address_2 || prev.address2,
+              city: defaultBilling.city || prev.city,
+              state: defaultBilling.province || prev.state,
+              postalCode: defaultBilling.postal_code || prev.postalCode,
+              countryCode: defaultBilling.country_code || prev.countryCode || "IN",
+            }));
+          }
+          if (defaultBilling && defaultShipping) {
+            setBillingSame(defaultBilling.id === defaultShipping.id);
+          }
         }
       } catch (error) {
         console.warn("Failed to load customer addresses", error);

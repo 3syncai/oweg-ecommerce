@@ -88,6 +88,7 @@ export async function POST(req: Request) {
       razorpay_payment_status: razorpayStatus || "cod",
     });
 
+    // 1. UPDATED UPSTREAM: Coin Discount Logic
     try {
       const refreshed = await getOrderById(finalOrderId);
       const refreshedOrder = refreshed.ok && refreshed.data ? extractOrder(refreshed.data) : order;
@@ -106,6 +107,64 @@ export async function POST(req: Request) {
       }
     } catch (coinErr) {
       console.error("cod confirm: coin discount update failed", coinErr);
+    }
+
+    // 2. STASHED CHANGE: Affiliate Commission Webhook (Robustness)
+    try {
+      console.log("cod confirm: Triggering commission webhook...");
+      const { Pool } = await import('pg');
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+      // Get customer and order items
+      const customerResult = await pool.query(
+        `SELECT c.id, c.email, c.first_name || ' ' || c.last_name as name,
+                c.metadata->>'referral_code' as referral_code
+         FROM "order" o JOIN customer c ON o.customer_id = c.id
+         WHERE o.id = $1`,
+        [finalOrderId]
+      );
+
+      const customer = customerResult.rows[0];
+      if (customer?.referral_code) {
+        const itemsResult = await pool.query(
+          `SELECT oi.id, pv.product_id, oi.quantity, oli.unit_price, p.title as product_name
+           FROM order_item oi
+           JOIN order_line_item oli ON oi.item_id = oli.id
+           LEFT JOIN product_variant pv ON oli.variant_id = pv.id
+           LEFT JOIN product p ON pv.product_id = p.id
+           WHERE oi.order_id = $1`,
+          [finalOrderId]
+        );
+
+        const webhookUrl = process.env.AFFILIATE_WEBHOOK_URL || "http://localhost:3001/api/webhook/commission";
+
+        for (const item of itemsResult.rows) {
+          const unitPrice = parseFloat(item.unit_price || 0);
+          const payload = {
+            order_id: finalOrderId,
+            affiliate_code: customer.referral_code,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            quantity: item.quantity,
+            item_price: unitPrice / 100,
+            order_amount: unitPrice * (item.quantity || 1),
+            status: "PENDING",
+            customer_id: customer.id,
+            customer_name: customer.name,
+            customer_email: customer.email,
+          };
+
+          await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        }
+        console.log("✅ COD commission webhook triggered");
+      }
+      await pool.end();
+    } catch (err) {
+      console.error("⚠️ COD commission webhook failed:", err);
     }
 
     return NextResponse.json({ ok: true, medusaOrderId: finalOrderId, status: "confirmed" });

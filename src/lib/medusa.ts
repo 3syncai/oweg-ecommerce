@@ -251,18 +251,25 @@ function api(path: string, init?: RequestInit) {
 }
 
 export async function fetchCategories(): Promise<MedusaCategory[]> {
-  const params = new URLSearchParams({
-    limit: "100",
-    include_descendants_tree: "true",
-    order: "rank",
-  })
-  const res = await api(`/store/product-categories?${params.toString()}`)
-  if (!res.ok) throw new Error(`Failed categories: ${res.status}`)
-  const data = await res.json()
-  // Support v1 ({ product_categories }) and v2 ({ categories }) shapes
-  return (
-    data.product_categories || data.categories || data || []
-  ) as MedusaCategory[]
+  const limit = 200
+  const collected: MedusaCategory[] = []
+  for (let offset = 0; offset < 2000; offset += limit) {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+      include_descendants_tree: "true",
+      order: "rank",
+    })
+    const res = await api(`/store/product-categories?${params.toString()}`)
+    if (!res.ok) throw new Error(`Failed categories: ${res.status}`)
+    const data = await res.json()
+    // Support v1 ({ product_categories }) and v2 ({ categories }) shapes
+    const page = (data.product_categories || data.categories || data || []) as MedusaCategory[]
+    if (!Array.isArray(page) || page.length === 0) break
+    collected.push(...page)
+    if (page.length < limit) break
+  }
+  return collected
 }
 
 export async function fetchCollections(): Promise<MedusaCollection[]> {
@@ -270,6 +277,13 @@ export async function fetchCollections(): Promise<MedusaCollection[]> {
   if (!res.ok) throw new Error(`Failed collections: ${res.status}`)
   const data = await res.json()
   return (data.collections || data || []) as MedusaCollection[]
+}
+
+export async function fetchProductTypes(): Promise<MedusaProductType[]> {
+  const res = await api("/store/product-types?limit=200")
+  if (!res.ok) throw new Error(`Failed product types: ${res.status}`)
+  const data = await res.json()
+  return (data.product_types || data.types || data || []) as MedusaProductType[]
 }
 
 export async function findCategoryByTitleOrHandle(
@@ -784,6 +798,7 @@ export function toUiProduct(p: MedusaProduct) {
     variant_id: p?.variants?.[0]?.id,
     handle: p?.handle,
     category_ids: p?.categories?.map((c) => c.id).filter((id): id is string => !!id) || [],
+    inventory_quantity: p?.variants?.[0]?.inventory_quantity,
   }
 }
 
