@@ -11,12 +11,11 @@ export default async function orderPlacedSubscriber({
 
   const orderId = data.id
 
-  // 1. Fetch Order Details with Product Relations
+  // 1. Fetch Order Details with basic relations (avoid deep nesting)
   const order = await orderModuleService.retrieveOrder(orderId, {
     relations: [
       "items",
       "items.variant",
-      "items.variant.product", // Fetch product details for category/collection info
       "shipping_address",
       "billing_address"
     ],
@@ -37,24 +36,34 @@ export default async function orderPlacedSubscriber({
     if (!affiliateCode) {
       console.log(`[Webhook] No referral code found for order ${orderId}, skipping commission webhook`)
     } else {
+      console.log(`\n${'='.repeat(80)}`);
+      console.log(`🎯 ORDER PLACED - Commission Webhook Triggered`);
+      console.log(`${'='.repeat(80)}`);
+      console.log(`📦 Order ID: ${orderId}`);
+      console.log(`👤 Customer: ${order.email}`);
+      console.log(`🏷️  Affiliate Code: ${affiliateCode}`);
+      console.log(`📊 Items Count: ${order.items?.length || 0}`);
+      console.log(`${'='.repeat(80)}\n`);
+
       console.log(`[Webhook] Processing commission for ${order.items?.length || 0} items with affiliate code: ${affiliateCode}`)
 
       const webhookUrl = process.env.AFFILIATE_WEBHOOK_URL
 
       if (!webhookUrl) {
+        console.error(`\n❌ CRITICAL ERROR: AFFILIATE_WEBHOOK_URL not set!`);
         console.log(`[Webhook] AFFILIATE_WEBHOOK_URL not set, skipping commission webhook for order ${orderId}`)
         return
       }
 
+      console.log(`✅ Webhook URL configured: ${webhookUrl}\n`);
+
       // Send one webhook per order item
       const webhookPromises = (order.items || []).map(async (item: any) => {
-        const product = item.variant?.product
-
-        // Extract category, collection, type from product if not in metadata
-        // Note: product.categories might need deeper expansion if required, but collection/type are on product
-        const categoryId = (item.variant?.metadata as any)?.category_id || (product?.categories?.[0]?.id) || null;
-        const collectionId = (item.variant?.metadata as any)?.collection_id || product?.collection_id || null;
-        const productTypeId = (item.variant?.metadata as any)?.product_type_id || product?.type_id || null;
+        // Extract category, collection, type from variant metadata
+        // Note: Product details should be in variant metadata from order creation
+        const categoryId = (item.variant?.metadata as any)?.category_id || item.metadata?.category_id || null;
+        const collectionId = (item.variant?.metadata as any)?.collection_id || item.metadata?.collection_id || null;
+        const productTypeId = (item.variant?.metadata as any)?.product_type_id || item.metadata?.product_type_id || null;
 
         const payload = {
           order_id: order.id,
@@ -73,7 +82,11 @@ export default async function orderPlacedSubscriber({
           customer_email: order.email,
         }
 
-        console.log(`[Webhook] Sending payload for item ${item.product_id}:`, JSON.stringify(payload, null, 2))
+        console.log(`\n📤 Sending webhook for item: ${item.title}`);
+        console.log(`   Product ID: ${item.product_id}`);
+        console.log(`   Quantity: ${item.quantity}`);
+        console.log(`   Amount: ₹${(item.unit_price || 0) / 100}`);
+        console.log(`   Status: PENDING`);
 
         const response = await fetch(webhookUrl, {
           method: "POST",
@@ -85,17 +98,28 @@ export default async function orderPlacedSubscriber({
 
         if (!response.ok) {
           const errorText = await response.text()
-          console.error(`[Webhook] Failed for item ${item.product_id}:`, errorText)
+          console.error(`\n❌ Webhook FAILED for item ${item.product_id}:`)
+          console.error(`   Status: ${response.status}`)
+          console.error(`   Error: ${errorText}`)
           return { success: false, item: item.product_id, error: errorText }
         } else {
-          console.log(`✓ Webhook sent for item ${item.product_id}`)
+          const result = await response.json();
+          console.log(`✅ Webhook SUCCESS for ${item.title}`)
+          console.log(`   Response:`, JSON.stringify(result, null, 2))
           return { success: true, item: item.product_id }
         }
       })
 
       const results = await Promise.all(webhookPromises)
       const successCount = results.filter(r => r.success).length
-      console.log(`[Webhook] Commission webhooks completed: ${successCount}/${results.length} successful`)
+
+      console.log(`\n${'='.repeat(80)}`);
+      console.log(`📊 COMMISSION WEBHOOK SUMMARY`);
+      console.log(`${'='.repeat(80)}`);
+      console.log(`✅ Successful: ${successCount}/${results.length}`);
+      console.log(`❌ Failed: ${results.length - successCount}/${results.length}`);
+      console.log(`📝 Status: PENDING (awaiting delivery)`);
+      console.log(`${'='.repeat(80)}\n`);
     }
   } catch (error) {
     console.error(`[Webhook] Commission webhook error for order ${orderId}:`, error)

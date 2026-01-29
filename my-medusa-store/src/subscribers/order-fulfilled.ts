@@ -87,9 +87,17 @@ export default async function orderFulfilledSubscriber({
         const affiliateWebhookUrl = process.env.AFFILIATE_WEBHOOK_URL;
 
         if (!affiliateWebhookUrl) {
+            console.error(`\n❌ CRITICAL ERROR: AFFILIATE_WEBHOOK_URL not set!`);
             console.error(`[Affiliate Commission] ⚠️ AFFILIATE_WEBHOOK_URL environment variable not set! Skipping commission update.`);
             return;
         }
+
+        console.log(`\n${'='.repeat(80)}`);
+        console.log(`🚚 ORDER FULFILLED - Commission Update to CREDITED`);
+        console.log(`${'='.repeat(80)}`);
+        console.log(`📦 Order ID: ${orderId}`);
+        console.log(`🔗 Webhook URL: ${affiliateWebhookUrl}`);
+        console.log(`${'='.repeat(80)}\n`);
 
         console.log(`[Affiliate Commission] Updating commission status at ${affiliateWebhookUrl}`)
 
@@ -97,6 +105,8 @@ export default async function orderFulfilledSubscriber({
         try {
             const { Pool } = await import('pg');
             const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+            console.log(`📊 Querying database for customer and order details...`);
 
             // Get customer and referral code
             const customerResult = await pool.query(
@@ -110,10 +120,14 @@ export default async function orderFulfilledSubscriber({
             const customer = customerResult.rows[0];
 
             if (!customer?.referral_code) {
+                console.log(`\n⚠️  No referral code found for order ${orderId}`);
                 console.log(`[Affiliate Commission] No referral code found for order ${orderId}, skipping`);
                 await pool.end();
                 return;
             }
+
+            console.log(`✅ Found customer: ${customer.name}`);
+            console.log(`🏷️  Affiliate Code: ${customer.referral_code}\n`);
 
             // Get order items
             const itemsResult = await pool.query(
@@ -126,7 +140,12 @@ export default async function orderFulfilledSubscriber({
                 [orderId]
             );
 
+            console.log(`📦 Found ${itemsResult.rows.length} items in order\n`);
+
             // Send webhook for each item with status: CREDITED
+            let successCount = 0;
+            let failCount = 0;
+
             for (const item of itemsResult.rows) {
                 const unitPrice = parseFloat(item.unit_price || 0);
                 const payload = {
@@ -143,6 +162,11 @@ export default async function orderFulfilledSubscriber({
                     customer_email: customer.email,
                 };
 
+                console.log(`\n📤 Updating commission to CREDITED for: ${item.product_name}`);
+                console.log(`   Product ID: ${item.product_id}`);
+                console.log(`   Amount: ₹${unitPrice / 100}`);
+                console.log(`   Commission Status: PENDING → CREDITED`);
+
                 const affiliateResponse = await fetch(affiliateWebhookUrl, {
                     method: "POST",
                     headers: {
@@ -152,15 +176,30 @@ export default async function orderFulfilledSubscriber({
                 });
 
                 if (affiliateResponse.ok) {
-                    console.log(`[Affiliate Commission] ✅ Commission updated to CREDITED for ${item.product_name}`);
+                    const result = await affiliateResponse.json();
+                    successCount++;
+                    console.log(`✅ Commission updated to CREDITED for ${item.product_name}`);
+                    console.log(`   Response:`, JSON.stringify(result, null, 2));
                 } else {
+                    failCount++;
                     const error = await affiliateResponse.text();
-                    console.error(`[Affiliate Commission] ❌ Failed to update ${item.product_name}:`, error);
+                    console.error(`❌ Failed to update ${item.product_name}`);
+                    console.error(`   Status: ${affiliateResponse.status}`);
+                    console.error(`   Error: ${error}`);
                 }
             }
 
+            console.log(`\n${'='.repeat(80)}`);
+            console.log(`💰 COMMISSION UPDATE SUMMARY`);
+            console.log(`${'='.repeat(80)}`);
+            console.log(`✅ Updated to CREDITED: ${successCount}`);
+            console.log(`❌ Failed: ${failCount}`);
+            console.log(`📝 Wallets should now be credited with commission amounts`);
+            console.log(`${'='.repeat(80)}\n`);
+
             await pool.end();
         } catch (dbErr) {
+            console.error(`\n❌ DATABASE ERROR:`, dbErr);
             console.error(`[Affiliate Commission] ❌ Database query failed:`, dbErr);
         }
 
