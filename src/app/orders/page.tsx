@@ -91,9 +91,16 @@ const resolveOrderStatus = (order: Order, returnStatus?: string) => {
 const resolvePaymentMethod = (order: Order) => {
   const meta = (order.metadata || {}) as Record<string, unknown>;
   const method = typeof meta.payment_method === "string" ? meta.payment_method.toLowerCase() : "";
+  const razorpayStatus =
+    typeof meta.razorpay_payment_status === "string" ? meta.razorpay_payment_status.toLowerCase() : "";
+  const codStatus = typeof meta.cod_status === "string" ? meta.cod_status.toLowerCase() : "";
   const payment = (order.payment_status || "").toLowerCase();
-  if (method.includes("cod") || payment === "cod") return "cod";
-  return "online";
+  const isCod =
+    method.includes("cod") ||
+    razorpayStatus === "cod" ||
+    codStatus.length > 0 ||
+    payment === "cod";
+  return isCod ? "cod" : "online";
 };
 
 export default function OrdersPage() {
@@ -105,7 +112,7 @@ export default function OrdersPage() {
   const [count, setCount] = useState<number | null>(null);
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<"latest" | "oldest" | "amount-high" | "amount-low">("latest");
-  const [scope, setScope] = useState<"page" | "all">("all");
+  const [scope, setScope] = useState<"page" | "all">("page");
   const [statusFilter, setStatusFilter] = useState<
     "all" | "order-placed" | "payment-confirmed" | "shipped" | "return" | "cancel"
   >("all");
@@ -159,24 +166,35 @@ export default function OrdersPage() {
     const onFocus = () => {
       void loadOrders(false, false);
     };
+    window.addEventListener("focus", onFocus);
+
+    if (scope === "all") {
+      return () => {
+        window.removeEventListener("focus", onFocus);
+      };
+    }
+
     const interval = window.setInterval(() => {
       void loadOrders(false, false);
     }, 10000);
 
-    window.addEventListener("focus", onFocus);
     return () => {
       window.removeEventListener("focus", onFocus);
       window.clearInterval(interval);
     };
-  }, [customer?.id, loadOrders]);
+  }, [customer?.id, loadOrders, scope]);
 
-  const loadReturnRequests = useCallback(async () => {
+  const loadReturnRequests = useCallback(async (allowRetry = true) => {
     if (!customer?.id) return;
     try {
       const res = await fetch("/api/medusa/return-requests", {
         cache: "no-store",
         credentials: "include",
       });
+      if (res.status === 401 && allowRetry) {
+        await refresh();
+        return loadReturnRequests(false);
+      }
       if (!res.ok) return;
       const data = await res.json();
       const raw = (data as { return_requests?: unknown } | null)?.return_requests ?? data;
@@ -189,7 +207,7 @@ export default function OrdersPage() {
     } catch {
       // ignore
     }
-  }, [customer?.id]);
+  }, [customer?.id, refresh]);
 
   useEffect(() => {
     void loadReturnRequests();
