@@ -841,7 +841,7 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
                   value={shipping.postalCode}
                   onChange={(e) => setShipping((prev) => ({ ...prev, postalCode: toDigits(e.target.value, 6) }))}
                   inputMode="numeric"
-                  pattern="\\d{6}"
+                  pattern="^[0-9]{6}$"
                   maxLength={6}
                   title="Enter a 6-digit PIN code"
                 />
@@ -931,7 +931,7 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
                   value={billing.postalCode}
                   onChange={(e) => setBilling((prev) => ({ ...prev, postalCode: toDigits(e.target.value, 6) }))}
                   inputMode="numeric"
-                  pattern="\\d{6}"
+                  pattern="^[0-9]{6}$"
                   maxLength={6}
                   title="Enter a 6-digit PIN code"
                 />
