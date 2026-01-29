@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
+import { ChevronDown, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -125,39 +126,6 @@ const formatAddressLine = (address?: AddressForm) => {
   return parts.length ? parts.join(", ") : "Add address";
 };
 
-const preferenceOptions = {
-  categories: [
-    "Computer & Mobile Accessories",
-    "Home Decor",
-    "Kitchen & Dining",
-    "Furniture",
-    "Lighting",
-    "Garden",
-    "Sports & Fitness",
-    "Personal Care",
-  ],
-  brands: [
-    "Samsung",
-    "LG",
-    "Philips",
-    "Whirlpool",
-    "Bosch",
-    "Havells",
-    "Godrej",
-    "Panasonic",
-  ],
-  productTypes: [
-    "Appliances",
-    "Electronics",
-    "Furniture",
-    "Decor",
-    "Tools",
-    "Outdoor",
-    "Fitness",
-    "Storage",
-  ],
-};
-
 const normalizePrefList = (list: string[]) => {
   const seen = new Set<string>();
   return list.filter((item) => {
@@ -166,6 +134,13 @@ const normalizePrefList = (list: string[]) => {
     seen.add(slug);
     return true;
   });
+};
+
+const normalizeOptionList = (list: string[]) => {
+  const cleaned = list
+    .map((item) => (item || "").trim())
+    .filter(Boolean);
+  return normalizePrefList(cleaned);
 };
 
 export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerHubProps) {
@@ -192,10 +167,20 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [_passwordError, setPasswordError] = useState<string | null>(null);
 
   const [prefCategories, setPrefCategories] = useState<string[]>([]);
   const [prefBrands, setPrefBrands] = useState<string[]>([]);
   const [prefTypes, setPrefTypes] = useState<string[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [availableBrands, setAvailableBrands] = useState<string[]>([]);
+  const [availableTypes, setAvailableTypes] = useState<string[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
+  const [visibleCategoryCount, setVisibleCategoryCount] = useState(10);
+  const [visibleTypeCount, setVisibleTypeCount] = useState(10);
 
   useEffect(() => {
     if (!customer?.id) return;
@@ -205,12 +190,65 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
   }, [customer?.id, preferences?.brands, preferences?.categories, preferences?.productTypes]);
 
   useEffect(() => {
+    let isActive = true;
+    const loadOptions = async () => {
+      setOptionsLoading(true);
+      try {
+        const [catRes, brandRes, typeRes] = await Promise.all([
+          fetch("/api/medusa/categories", { cache: "no-store" }),
+          fetch("/api/medusa/collections", { cache: "no-store" }),
+          fetch("/api/medusa/product-types", { cache: "no-store" }),
+        ]);
+
+        const catData = catRes.ok ? await catRes.json().catch(() => ({})) : {};
+        const brandData = brandRes.ok ? await brandRes.json().catch(() => ({})) : {};
+        const typeData = typeRes.ok ? await typeRes.json().catch(() => ({})) : {};
+
+        const cats = normalizeOptionList(
+          (catData.categories || catData.product_categories || [])
+            .map((item: { title?: string; name?: string; handle?: string }) =>
+              item?.title || item?.name || item?.handle || ""
+            )
+        );
+        const brands = normalizeOptionList(
+          (brandData.collections || [])
+            .map((item: { title?: string; handle?: string }) =>
+              item?.title || item?.handle || ""
+            )
+        );
+        const types = normalizeOptionList(
+          (typeData.product_types || typeData.types || [])
+            .map((item: { value?: string; handle?: string }) =>
+              item?.value || item?.handle || ""
+            )
+        );
+
+        if (!isActive) return;
+        setAvailableCategories(cats);
+        setAvailableBrands(brands);
+        setAvailableTypes(types);
+        setVisibleCategoryCount(10);
+        setVisibleTypeCount(10);
+      } catch (error) {
+        console.warn("Failed to load preference options", error);
+      } finally {
+        if (isActive) setOptionsLoading(false);
+      }
+    };
+
+    void loadOptions();
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!customer?.id) return;
     const loadOrders = async () => {
       setOrdersLoading(true);
       try {
         const fetchOrders = () =>
-          fetch("/api/medusa/orders?limit=3&offset=0", {
+          fetch("/api/medusa/orders?limit=20&offset=0", {
             cache: "no-store",
             credentials: "include",
           });
@@ -222,7 +260,16 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
         }
         if (!res.ok) throw new Error("Unable to load orders");
         const data = await res.json();
-        setOrders((data.orders || []) as Order[]);
+        const list = (data.orders || []) as Order[];
+        const sorted = list
+          .slice()
+          .sort((a, b) => {
+            const aTime = new Date((a as { created_at?: string }).created_at || 0).getTime();
+            const bTime = new Date((b as { created_at?: string }).created_at || 0).getTime();
+            return bTime - aTime;
+          })
+          .slice(0, 3);
+        setOrders(sorted);
         setOrdersError(null);
       } catch {
         setOrdersError("Could not load orders.");
@@ -366,6 +413,7 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
   };
 
   const handlePasswordSave = async () => {
+    setPasswordError(null);
     if (!currentPassword || !newPassword) {
       toast.error("Enter your current and new password.");
       return;
@@ -401,7 +449,12 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
         onLogout();
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to update password.";
+      let message = error instanceof Error ? error.message : "Unable to update password.";
+      const normalized = message.toLowerCase();
+      if (normalized.includes("current password") || normalized.includes("invalid email or password")) {
+        message = "Incorrect Current Password";
+      }
+      setPasswordError(message);
       toast.error(message);
     } finally {
       setSavingPassword(false);
@@ -460,31 +513,83 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
 
       <div className={`${sectionClass} grid gap-4 md:grid-cols-2`}>
         <div className="rounded-md border border-gray-200 p-4 transition hover:-translate-y-0.5 hover:shadow-md">
-          <p className="text-base font-semibold text-gray-900">Login credentials</p>
-          <div className="mt-2 space-y-2">
-            <Input
-              type="password"
-              placeholder="Current password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-            />
-            <Input
-              type="password"
-              placeholder="New password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-            />
-            <Input
-              type="password"
-              placeholder="Confirm new password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
+          <p className="text-base font-semibold text-gray-900">Update credentials</p>
+          <div className="mt-2 space-y-2 max-h-[320px] overflow-y-auto pr-1">
+            <div className="relative">
+              <Input
+                type={showCurrentPassword ? "text" : "password"}
+                placeholder="Current password"
+                value={currentPassword}
+                onChange={(e) => {
+                  setCurrentPassword(e.target.value);
+                  setPasswordError(null);
+                }}
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowCurrentPassword((prev) => !prev)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                aria-label={showCurrentPassword ? "Hide current password" : "Show current password"}
+              >
+                {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <div className="relative">
+              <Input
+                type={showNewPassword ? "text" : "password"}
+                placeholder="New password"
+                value={newPassword}
+                onChange={(e) => {
+                  setNewPassword(e.target.value);
+                  setPasswordError(null);
+                }}
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword((prev) => !prev)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                aria-label={showNewPassword ? "Hide new password" : "Show new password"}
+              >
+                {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <div className="relative">
+              <Input
+                type={showConfirmPassword ? "text" : "password"}
+                placeholder="Confirm new password"
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  setPasswordError(null);
+                }}
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+              >
+                {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
             <Button
               size="sm"
-              className="w-full bg-emerald-600 text-white hover:bg-emerald-700 text-base"
+              className={`w-full text-base ${
+                !currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword
+                  ? "bg-emerald-200 text-emerald-900 cursor-not-allowed hover:bg-emerald-200"
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+              }`}
               onClick={handlePasswordSave}
-              disabled={savingPassword}
+              disabled={
+                savingPassword ||
+                !currentPassword ||
+                !newPassword ||
+                !confirmPassword ||
+                newPassword !== confirmPassword
+              }
             >
               {savingPassword ? "Saving..." : "Update password"}
             </Button>
@@ -493,7 +598,7 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
 
         <div className="rounded-md border border-gray-200 p-4 transition hover:-translate-y-0.5 hover:shadow-md">
           <p className="text-base font-semibold text-gray-900">Preferences</p>
-          <div className="mt-3 space-y-3">
+          <div className="mt-3 space-y-3 max-h-[420px] overflow-y-auto pr-1">
             <div>
               <p className="text-sm font-medium text-gray-700 mb-2">Chosen</p>
               <div className="flex flex-wrap gap-2">
@@ -546,74 +651,122 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
               <div>
                 <p className="text-sm font-medium text-gray-700 mb-2">Categories</p>
                 <div className="flex flex-wrap gap-2">
-                  {preferenceOptions.categories.map((item) => {
-                    const active = prefCategories.some((value) => buildPreferenceSlug(value) === buildPreferenceSlug(item));
+                  {(() => {
+                    const chosen = new Set(prefCategories.map((value) => buildPreferenceSlug(value)));
+                    const options = availableCategories.filter((item) => !chosen.has(buildPreferenceSlug(item)));
+                    const visible = options.slice(0, visibleCategoryCount);
+                    if (options.length === 0) {
+                      return (
+                        <span className="text-sm text-gray-500">
+                          {optionsLoading ? "Loading categories..." : "No more categories to choose."}
+                        </span>
+                      );
+                    }
                     return (
-                      <button
-                        key={`opt-cat-${buildPreferenceSlug(item)}`}
-                        type="button"
-                        onClick={() => togglePreference(item, prefCategories, setPrefCategories)}
-                        className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
-                          active ? "bg-emerald-600 text-white border-emerald-600" : "border-gray-200 text-gray-700 hover:border-emerald-400"
-                        }`}
-                      >
-                        {item}
-                      </button>
+                      <>
+                        {visible.map((item) => (
+                          <button
+                            key={`opt-cat-${buildPreferenceSlug(item)}`}
+                            type="button"
+                            onClick={() => togglePreference(item, prefCategories, setPrefCategories)}
+                            className="px-3 py-1.5 rounded-full text-sm font-medium border transition border-gray-200 text-gray-700 hover:border-emerald-400"
+                          >
+                            {item}
+                          </button>
+                        ))}
+                        {options.length > visible.length && (
+                          <button
+                            type="button"
+                            onClick={() => setVisibleCategoryCount((prev) => prev + 10)}
+                            className="group flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 active:scale-95"
+                          >
+                            Show more
+                            <ChevronDown className="h-4 w-4 transition-transform duration-200 group-hover:translate-y-0.5" />
+                          </button>
+                        )}
+                      </>
                     );
-                  })}
+                  })()}
                 </div>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-700 mb-2">Brands</p>
                 <div className="flex flex-wrap gap-2">
-                  {preferenceOptions.brands.map((item) => {
-                    const active = prefBrands.some((value) => buildPreferenceSlug(value) === buildPreferenceSlug(item));
-                    return (
+                  {(() => {
+                    const chosen = new Set(prefBrands.map((value) => buildPreferenceSlug(value)));
+                    const options = availableBrands.filter((item) => !chosen.has(buildPreferenceSlug(item)));
+                    if (options.length === 0) {
+                      return (
+                        <span className="text-sm text-gray-500">
+                          {optionsLoading ? "Loading brands..." : "No more brands to choose."}
+                        </span>
+                      );
+                    }
+                    return options.map((item) => (
                       <button
                         key={`opt-brand-${buildPreferenceSlug(item)}`}
                         type="button"
                         onClick={() => togglePreference(item, prefBrands, setPrefBrands)}
-                        className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
-                          active ? "bg-emerald-600 text-white border-emerald-600" : "border-gray-200 text-gray-700 hover:border-emerald-400"
-                        }`}
+                        className="px-3 py-1.5 rounded-full text-sm font-medium border transition border-gray-200 text-gray-700 hover:border-emerald-400"
                       >
                         {item}
                       </button>
-                    );
-                  })}
+                    ));
+                  })()}
                 </div>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-700 mb-2">Product types</p>
                 <div className="flex flex-wrap gap-2">
-                  {preferenceOptions.productTypes.map((item) => {
-                    const active = prefTypes.some((value) => buildPreferenceSlug(value) === buildPreferenceSlug(item));
+                  {(() => {
+                    const chosen = new Set(prefTypes.map((value) => buildPreferenceSlug(value)));
+                    const options = availableTypes.filter((item) => !chosen.has(buildPreferenceSlug(item)));
+                    const visible = options.slice(0, visibleTypeCount);
+                    if (options.length === 0) {
+                      return (
+                        <span className="text-sm text-gray-500">
+                          {optionsLoading ? "Loading product types..." : "No more product types to choose."}
+                        </span>
+                      );
+                    }
                     return (
-                      <button
-                        key={`opt-type-${buildPreferenceSlug(item)}`}
-                        type="button"
-                        onClick={() => togglePreference(item, prefTypes, setPrefTypes)}
-                        className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
-                          active ? "bg-emerald-600 text-white border-emerald-600" : "border-gray-200 text-gray-700 hover:border-emerald-400"
-                        }`}
-                      >
-                        {item}
-                      </button>
+                      <>
+                        {visible.map((item) => (
+                          <button
+                            key={`opt-type-${buildPreferenceSlug(item)}`}
+                            type="button"
+                            onClick={() => togglePreference(item, prefTypes, setPrefTypes)}
+                            className="px-3 py-1.5 rounded-full text-sm font-medium border transition border-gray-200 text-gray-700 hover:border-emerald-400"
+                          >
+                            {item}
+                          </button>
+                        ))}
+                        {options.length > visible.length && (
+                          <button
+                            type="button"
+                            onClick={() => setVisibleTypeCount((prev) => prev + 10)}
+                            className="group flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 active:scale-95"
+                          >
+                            Show more
+                            <ChevronDown className="h-4 w-4 transition-transform duration-200 group-hover:translate-y-0.5" />
+                          </button>
+                        )}
+                      </>
                     );
-                  })}
+                  })()}
                 </div>
               </div>
             </div>
 
-            <Button
-              size="sm"
-              className="w-full bg-emerald-600 text-white hover:bg-emerald-700 text-base"
-              onClick={handleSavePreferences}
-              disabled={savingPreferences}
-            >
-              {savingPreferences ? "Saving..." : "Save preferences"}
-            </Button>
           </div>
+          <Button
+            size="sm"
+            className="w-full bg-emerald-600 text-white hover:bg-emerald-700 text-base"
+            onClick={handleSavePreferences}
+            disabled={savingPreferences}
+          >
+            {savingPreferences ? "Saving..." : "Save preferences"}
+          </Button>
         </div>
       </div>
 

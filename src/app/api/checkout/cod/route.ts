@@ -136,7 +136,13 @@ export async function POST(req: Request) {
           [finalOrderId]
         );
 
-        const webhookUrl = process.env.AFFILIATE_WEBHOOK_URL || "http://localhost:3001/api/webhook/commission";
+        const webhookUrl = process.env.AFFILIATE_WEBHOOK_URL;
+
+        if (!webhookUrl) {
+          console.error("⚠️ AFFILIATE_WEBHOOK_URL not set, skipping commission webhook");
+          await pool.end();
+          return NextResponse.json({ ok: true, medusaOrderId: finalOrderId, status: "confirmed" });
+        }
 
         for (const item of itemsResult.rows) {
           const unitPrice = parseFloat(item.unit_price || 0);

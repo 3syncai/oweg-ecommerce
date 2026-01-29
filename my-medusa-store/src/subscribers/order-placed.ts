@@ -39,7 +39,12 @@ export default async function orderPlacedSubscriber({
     } else {
       console.log(`[Webhook] Processing commission for ${order.items?.length || 0} items with affiliate code: ${affiliateCode}`)
 
-      const webhookUrl = process.env.AFFILIATE_WEBHOOK_URL || "http://localhost:3001/api/webhook/commission"
+      const webhookUrl = process.env.AFFILIATE_WEBHOOK_URL
+
+      if (!webhookUrl) {
+        console.log(`[Webhook] AFFILIATE_WEBHOOK_URL not set, skipping commission webhook for order ${orderId}`)
+        return
+      }
 
       // Send one webhook per order item
       const webhookPromises = (order.items || []).map(async (item: any) => {

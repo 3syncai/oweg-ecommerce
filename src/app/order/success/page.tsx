@@ -123,7 +123,6 @@ function OrderSuccessPageInner() {
   const rawPaymentStatus =
     metadataStatus || (typeof order?.payment_status === "string" ? order.payment_status : undefined);
   const isPaid = rawPaymentStatus === "captured" || rawPaymentStatus === "paid" || rawPaymentStatus === "cod";
-  const paymentStatusLabel = isPaid ? "paid" : rawPaymentStatus || "pending";
 
   const orderMode =
     typeof order?.metadata?.mode === "string" ? (order?.metadata?.mode as string) : undefined;
@@ -131,6 +130,8 @@ function OrderSuccessPageInner() {
     typeof order?.metadata?.payment_method === "string"
       ? (order?.metadata?.payment_method as string)
       : undefined;
+  const isCod = orderPaymentMethod === "cod" || rawPaymentStatus === "cod";
+  const paymentStatusLabel = isCod ? "COD" : isPaid ? "paid" : rawPaymentStatus || "pending";
 
   // Clear cart once payment is confirmed (only for normal cart checkouts)
   useEffect(() => {
@@ -170,10 +171,11 @@ function OrderSuccessPageInner() {
   }, [isPaid, orderMode, orderPaymentMethod]);
 
   // Display amount helper:
-  // Order totals are stored in Paise (minor units), divide by 100 for display
-  function formatAmount(rawTotal?: number | undefined) {
+  // Online order totals are stored in Paise (minor units), divide by 100 for display.
+  // COD totals are already in rupees, so show as-is.
+  function formatAmount(rawTotal?: number | undefined, codOrder?: boolean) {
     if (rawTotal === undefined || rawTotal === null) return "N/A";
-    return INR.format(rawTotal / 100);
+    return INR.format(codOrder ? rawTotal : rawTotal / 100);
   }
 
   function formatItemAmount(raw?: number) {
@@ -190,14 +192,13 @@ function OrderSuccessPageInner() {
         : order?.total;
 
       if (rawTotal && rawTotal > 0) {
-        // rawTotal is in paise (minor units), convert to rupees
-        const totalInRupees = rawTotal / 100;
+        // COD totals are already in rupees; online totals are in paise.
+        const totalInRupees = isCod ? rawTotal : rawTotal / 100;
         const earned = parseFloat((totalInRupees * 0.01).toFixed(2)); // 1% cashback
-        console.log("Coins calculation:", { rawTotal, totalInRupees, earned });
         setCoinsEarned(earned);
       }
     }
-  }, [order, isPaid]);
+  }, [order, isPaid, isCod]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
@@ -229,15 +230,16 @@ function OrderSuccessPageInner() {
         <div className="bg-slate-50 rounded-xl p-4 space-y-3">
           <div className="flex justify-between text-sm text-slate-700">
             <span>Status</span>
-            <span className="font-semibold capitalize">{paymentStatusLabel}</span>
+            <span className={`font-semibold ${isCod ? "uppercase" : "capitalize"}`}>{paymentStatusLabel}</span>
           </div>
           <div className="flex justify-between text-sm text-slate-700">
-            <span>Total paid</span>
+            <span>{isCod ? "Order total" : "Total paid"}</span>
             <span className="font-semibold">
               {formatAmount(
                 typeof (order as OrderSummary & { paid_total?: number })?.paid_total === "number"
                   ? (order as OrderSummary & { paid_total?: number }).paid_total
-                  : order?.total
+                  : order?.total,
+                isCod
               )}
             </span>
           </div>

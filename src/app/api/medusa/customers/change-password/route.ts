@@ -4,7 +4,6 @@ import {
   extractErrorPayload,
   medusaStoreFetch,
 } from "@/lib/medusa-auth";
-
 export const dynamic = "force-dynamic";
 
 type ChangePasswordPayload = {
@@ -45,25 +44,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "New password must be at least 8 characters long." }, { status: 400 });
     }
 
-    const updateRes = await medusaStoreFetch("/store/customers/me", {
+    const updateRes = await medusaStoreFetch("/store/customers/change-password", {
       method: "POST",
       forwardedCookie,
       forwardedHeaders,
-      body: JSON.stringify({
-        password: newPassword,
-        old_password: currentPassword,
-      }),
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
     });
 
-    if (!updateRes.ok) {
-      const payload = await extractErrorPayload(updateRes);
-      const message = toErrorMessage(payload, "Unable to update password.");
-      return NextResponse.json({ error: message }, { status: updateRes.status });
+    if (updateRes.ok) {
+      const response = NextResponse.json({ success: true }, { status: 200 });
+      appendUpstreamCookies(response, updateRes);
+      return response;
     }
 
-    const response = NextResponse.json({ success: true }, { status: 200 });
-    appendUpstreamCookies(response, updateRes);
-    return response;
+    const payload = await extractErrorPayload(updateRes);
+    const message = toErrorMessage(payload, "Unable to update password.");
+    return NextResponse.json({ error: message }, { status: updateRes.status });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update password.";
     return NextResponse.json({ error: message }, { status: 500 });
