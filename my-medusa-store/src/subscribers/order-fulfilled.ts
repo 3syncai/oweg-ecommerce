@@ -52,10 +52,13 @@ export default async function orderFulfilledSubscriber({
     console.log(`[Coin Activation] 📦 Processing fulfillment for order ${orderId}`)
 
     try {
-        // Get the frontend URL from environment
-        const frontendUrl = process.env.STOREFRONT_URL ||
-            process.env.NEXT_PUBLIC_APP_URL ||
-            "http://localhost:3000"
+        // Get the frontend URL from environment (required)
+        const frontendUrl = process.env.STOREFRONT_URL || process.env.NEXT_PUBLIC_APP_URL;
+
+        if (!frontendUrl) {
+            console.error(`[Coin Activation] ❌ STOREFRONT_URL or NEXT_PUBLIC_APP_URL environment variable not set! Cannot activate coins.`);
+            return;
+        }
 
         console.log(`[Coin Activation] Calling webhook at ${frontendUrl}/api/webhooks/order-delivered`)
 
@@ -80,12 +83,15 @@ export default async function orderFulfilledSubscriber({
             console.error(`[Coin Activation] ❌ Failed to activate coins for order ${orderId}:`, error)
         }
 
-        // 2. Call Affiliate Portal to update commission status
-        const affiliateWebhookUrl = process.env.AFFILIATE_WEBHOOK_URL ?
-            process.env.AFFILIATE_WEBHOOK_URL.replace('/commission', '/commission/update-status') :
-            "http://localhost:3001/api/webhook/commission/update-status"
+        // 2. Call Affiliate Portal to update commission status (required)
+        const affiliateWebhookUrl = process.env.AFFILIATE_WEBHOOK_URL;
 
-        console.log(`[Affiliate Commission] 更新 commission status at ${affiliateWebhookUrl}`)
+        if (!affiliateWebhookUrl) {
+            console.error(`[Affiliate Commission] ⚠️ AFFILIATE_WEBHOOK_URL environment variable not set! Skipping commission update.`);
+            return;
+        }
+
+        console.log(`[Affiliate Commission] Updating commission status at ${affiliateWebhookUrl}`)
 
         const affiliateResponse = await fetch(affiliateWebhookUrl, {
             method: "POST",
