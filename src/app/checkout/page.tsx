@@ -229,6 +229,7 @@ function CheckoutPageInner() {
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [showSaveDefault, setShowSaveDefault] = useState(false);
   const [savingAddress, setSavingAddress] = useState(false);
+  const toDigits = (value: string, max: number) => value.replace(/\D/g, "").slice(0, max);
 
   // Prefill email and referral code from logged-in customer
   useEffect(() => {
@@ -929,6 +930,9 @@ function CheckoutPageInner() {
                   placeholder="Email"
                   value={shipping.email}
                   onChange={(e) => setShipping({ ...shipping, email: e.target.value })}
+                  inputMode="email"
+                  pattern="^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+                  title="Enter a valid email address"
                   readOnly={!!customer?.email}
                   className={customer?.email ? "bg-gray-100 cursor-not-allowed" : undefined}
                   aria-readonly={!!customer?.email}
@@ -939,8 +943,12 @@ function CheckoutPageInner() {
                   value={shipping.phone}
                   onChange={(e) => {
                     setAddressTouched(true);
-                    setShipping({ ...shipping, phone: e.target.value });
+                    setShipping({ ...shipping, phone: toDigits(e.target.value, 10) });
                   }}
+                  inputMode="numeric"
+                  pattern="\\d{10}"
+                  maxLength={10}
+                  title="Enter a 10-digit phone number"
                 />
                 <Input
                   required
@@ -985,8 +993,12 @@ function CheckoutPageInner() {
                   value={shipping.postalCode}
                   onChange={(e) => {
                     setAddressTouched(true);
-                    setShipping({ ...shipping, postalCode: e.target.value });
+                    setShipping({ ...shipping, postalCode: toDigits(e.target.value, 6) });
                   }}
+                  inputMode="numeric"
+                  pattern="\\d{6}"
+                  maxLength={6}
+                  title="Enter a 6-digit PIN code"
                 />
               </div>
             </section>
@@ -1028,6 +1040,9 @@ function CheckoutPageInner() {
                     placeholder="Email"
                     value={billing.email}
                     onChange={(e) => setBilling({ ...billing, email: e.target.value })}
+                    inputMode="email"
+                    pattern="^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+                    title="Enter a valid email address"
                     readOnly={!!customer?.email}
                     className={customer?.email ? "bg-gray-100 cursor-not-allowed" : undefined}
                     aria-readonly={!!customer?.email}
@@ -1036,7 +1051,11 @@ function CheckoutPageInner() {
                     required
                     placeholder="Phone"
                     value={billing.phone}
-                    onChange={(e) => setBilling({ ...billing, phone: e.target.value })}
+                    onChange={(e) => setBilling({ ...billing, phone: toDigits(e.target.value, 10) })}
+                    inputMode="numeric"
+                    pattern="\\d{10}"
+                    maxLength={10}
+                    title="Enter a 10-digit phone number"
                   />
                   <Input
                     required
@@ -1067,7 +1086,11 @@ function CheckoutPageInner() {
                     required
                     placeholder="PIN code"
                     value={billing.postalCode}
-                    onChange={(e) => setBilling({ ...billing, postalCode: e.target.value })}
+                    onChange={(e) => setBilling({ ...billing, postalCode: toDigits(e.target.value, 6) })}
+                    inputMode="numeric"
+                    pattern="\\d{6}"
+                    maxLength={6}
+                    title="Enter a 6-digit PIN code"
                   />
                 </div>
               )}
