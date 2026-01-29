@@ -14,20 +14,40 @@ export async function POST(
   try {
     const paymentModule = req.scope.resolve(Modules.PAYMENT)
 
-    // Create a payment record in the Payment Module
-    // This acts as the "Transaction" record for the order
-    const payment = await paymentModule.createPayment({
-      amount: payload.amount,
+    // 1. Create Payment Collection
+    // We create a container for the payment
+    const paymentCollection = await paymentModule.createPaymentCollections({
       currency_code: payload.currency_code,
-      provider_id: payload.provider || "razorpay",
-      data: {
-        ...(payload.metadata || {}),
-        order_id: id,
-        reference_id: payload.reference,
-      },
+      amount: payload.amount,
+      // We can map this to the order via metadata if needed, usually the link is created via RemoteLink separately
+      // metadata: { order_id: id } 
     })
 
-    console.log("Transaction registered:", payment)
+    // 2. Create Payment Session
+    // We create a session for the specific provider (e.g. razorpay/manual)
+    const paymentSession = await paymentModule.createPaymentSession(
+      paymentCollection.id,
+      {
+        provider_id: payload.provider || "razorpay", // Default to razorpay if not provided
+        currency_code: payload.currency_code,
+        amount: payload.amount,
+        data: {
+          ...(payload.metadata || {}),
+          order_id: id,
+          reference_id: payload.reference,
+        },
+      }
+    )
+
+    // 3. Authorize Payment Session
+    // This converts the session into a "Payment" (Authorized state)
+    // For manual transactions, we assume it's already done, so we authorize immediately.
+    const payment = await paymentModule.authorizePaymentSession(
+      paymentSession.id,
+      {}
+    )
+
+    console.log("Transaction registered (Payment Created):", payment)
 
     res.json({ transaction: payment })
   } catch (error: any) {
