@@ -998,7 +998,13 @@ function CheckoutPageInner() {
                   <input
                     type="checkbox"
                     checked={billingSame}
-                    onChange={(e) => setBillingSame(e.target.checked)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setBillingSame(checked);
+                      if (checked) {
+                        setBilling({ ...shipping });
+                      }
+                    }}
                   />
                   Same as shipping
                 </label>
@@ -1091,7 +1097,7 @@ function CheckoutPageInner() {
                       <span className="text-sm font-medium text-slate-800">{opt.name}</span>
                     </div>
                     <span className="text-sm font-semibold text-slate-900">
-                      {opt.amount === 0 ? "Free" : formatMajor(opt.amount)}
+                      {opt.amount === 0 ? "Free" : formatMajor(opt.amount / 100)}
                     </span>
                   </label>
                 ))}
