@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
@@ -10,89 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useShippingOptions } from "@/hooks/use-shipping-options";
-import { Check, ChevronRight, CreditCard, MapPin, Truck, Wallet } from "lucide-react";
-
-type CheckoutStep = 1 | 2 | 3;
-
-const StepHeader = ({
-  step,
-  currentStep,
-  title,
-  icon: Icon,
-  isCompleted,
-  onClick
-}: {
-  step: CheckoutStep;
-  currentStep: CheckoutStep;
-  title: string;
-  icon: any;
-  isCompleted: boolean;
-  onClick?: () => void;
-}) => {
-  const isActive = currentStep === step;
-  const isPast = currentStep > step;
-
-  return (
-    <div
-      onClick={isCompleted || isPast ? onClick : undefined}
-      className={`flex items-center gap-3 p-4 ${isActive ? 'bg-green-50/50 text-green-900' : isPast ? 'bg-white cursor-pointer hover:bg-slate-50' : 'bg-white text-slate-400'} border-b transition-all duration-200 select-none`}
-    >
-      <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold shadow-sm transition-all ${isActive ? 'bg-green-600 text-white shadow-green-200' :
-        isCompleted || isPast ? 'bg-green-500 text-white shadow-green-200' : 'bg-slate-100 text-slate-500'
-        }`}>
-        {isCompleted || isPast ? <Check className="w-5 h-5" /> : step}
-      </div>
-      <div className="flex-1 font-semibold text-lg flex items-center gap-2">
-        <Icon className={`w-5 h-5 ${isActive ? 'text-green-600' : isCompleted || isPast ? 'text-green-600' : 'text-slate-300'}`} />
-        <span className={isActive ? 'text-slate-900' : isCompleted || isPast ? 'text-slate-900' : 'text-slate-400'}>{title}</span>
-      </div>
-      {(isCompleted || isPast) && !isActive && (
-        <div className="text-xs font-medium text-emerald-600 uppercase tracking-wide px-2 py-1 bg-emerald-50 rounded">
-          Change
-        </div>
-      )}
-    </div>
-  );
-};
-
-const AddressCard = ({
-  address,
-  selected,
-  onSelect
-}: {
-  address: CustomerAddress;
-  selected: boolean;
-  onSelect: () => void;
-}) => {
-  return (
-    <div
-      onClick={onSelect}
-      className={`relative p-4 rounded-xl border-2 transition-all cursor-pointer ${selected ? 'border-green-600 bg-green-50/50' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50'
-        }`}
-    >
-      <div className="flex items-start gap-3">
-        <div className={`mt-1 w-5 h-5 rounded-full border flex items-center justify-center ${selected ? 'border-green-600 bg-green-600' : 'border-slate-300'
-          }`}>
-          {selected && <div className="w-2 h-2 bg-white rounded-full" />}
-        </div>
-        <div className="flex-1 space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-900">{address.first_name} {address.last_name}</span>
-            {address.phone && <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{address.phone}</span>}
-          </div>
-          <p className="text-sm text-slate-600 leading-relaxed">
-            {address.address_1}
-            {address.address_2 && <>, {address.address_2}</>}
-            <br />
-            {address.city}, {address.province} - {address.postal_code}
-            <br />
-            <span className="uppercase text-xs font-medium text-slate-400">{address.country_code || 'IN'}</span>
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 type CartItem = {
   id: string;
@@ -185,21 +102,6 @@ function CheckoutPageInner() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "cod">("razorpay");
   const [shippingMethod, setShippingMethod] = useState<string | null>(null);
-
-  // checkout stepping
-  const [currentStep, setCurrentStep] = useState<CheckoutStep>(1);
-  const [completedSteps, setCompletedSteps] = useState<{ [key in CheckoutStep]?: boolean }>({});
-
-  const finishStep = (step: CheckoutStep) => {
-    setCompletedSteps(prev => ({ ...prev, [step]: true }));
-    if (step < 3) setCurrentStep((prev) => (prev + 1) as CheckoutStep);
-  };
-
-  const jumpToStep = (step: CheckoutStep) => {
-    if (step < currentStep || completedSteps[(step - 1) as CheckoutStep] || completedSteps[step]) {
-      setCurrentStep(step);
-    }
-  };
 
   const { options: shippingMethods, isLoading: shippingMethodsLoading, refetch: refetchShipping } = useShippingOptions(cart?.id);
 
@@ -327,24 +229,6 @@ function CheckoutPageInner() {
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [showSaveDefault, setShowSaveDefault] = useState(false);
   const [savingAddress, setSavingAddress] = useState(false);
-  const [showAddressForm, setShowAddressForm] = useState(false);
-
-  const handleAddressSelect = (addr: CustomerAddress) => {
-    setDefaultAddress(addr); // Visually select
-    setShipping({
-      firstName: addr.first_name || "",
-      lastName: addr.last_name || "",
-      email: shipping.email, // keep email
-      phone: addr.phone || "",
-      address1: addr.address_1 || "",
-      address2: addr.address_2 || "",
-      city: addr.city || "",
-      state: addr.province || "",
-      postalCode: addr.postal_code || "",
-      countryCode: addr.country_code || "IN",
-    });
-    setShowAddressForm(false);
-  };
 
   // Prefill email and referral code from logged-in customer
   useEffect(() => {
@@ -375,21 +259,41 @@ function CheckoutPageInner() {
         const data = await res.json();
         const list = (data.addresses || data?.customer?.addresses || []) as CustomerAddress[];
         setAddresses(list);
-        const def = list.find((addr) => addr.is_default_shipping) || list[0] || null;
-        setDefaultAddress(def);
-        if (def && !addressTouched) {
-          setShipping((prev) => ({
-            ...prev,
-            firstName: def.first_name || prev.firstName,
-            lastName: def.last_name || prev.lastName,
-            phone: def.phone || prev.phone,
-            address1: def.address_1 || prev.address1,
-            address2: def.address_2 || prev.address2,
-            city: def.city || prev.city,
-            state: def.province || prev.state,
-            postalCode: def.postal_code || prev.postalCode,
-            countryCode: def.country_code || prev.countryCode || "IN",
-          }));
+        const defaultShipping = list.find((addr) => addr.is_default_shipping) || list[0] || null;
+        const defaultBilling = list.find((addr) => addr.is_default_billing) || defaultShipping;
+        setDefaultAddress(defaultShipping);
+        if (!addressTouched) {
+          if (defaultShipping) {
+            setShipping((prev) => ({
+              ...prev,
+              firstName: defaultShipping.first_name || prev.firstName,
+              lastName: defaultShipping.last_name || prev.lastName,
+              phone: defaultShipping.phone || prev.phone,
+              address1: defaultShipping.address_1 || prev.address1,
+              address2: defaultShipping.address_2 || prev.address2,
+              city: defaultShipping.city || prev.city,
+              state: defaultShipping.province || prev.state,
+              postalCode: defaultShipping.postal_code || prev.postalCode,
+              countryCode: defaultShipping.country_code || prev.countryCode || "IN",
+            }));
+          }
+          if (defaultBilling) {
+            setBilling((prev) => ({
+              ...prev,
+              firstName: defaultBilling.first_name || prev.firstName,
+              lastName: defaultBilling.last_name || prev.lastName,
+              phone: defaultBilling.phone || prev.phone,
+              address1: defaultBilling.address_1 || prev.address1,
+              address2: defaultBilling.address_2 || prev.address2,
+              city: defaultBilling.city || prev.city,
+              state: defaultBilling.province || prev.state,
+              postalCode: defaultBilling.postal_code || prev.postalCode,
+              countryCode: defaultBilling.country_code || prev.countryCode || "IN",
+            }));
+          }
+          if (defaultBilling && defaultShipping) {
+            setBillingSame(defaultBilling.id === defaultShipping.id);
+          }
         }
       } catch (error) {
         console.warn("Failed to load customer addresses", error);
@@ -728,23 +632,23 @@ function CheckoutPageInner() {
     const selectedOption = shippingMethods.find((s) => s.id === shippingMethod);
     const shippingPriceMajor = selectedOption && typeof selectedOption.amount === 'number' ? selectedOption.amount / 100 : 0;
 
-    const requestPayload = {
-      shipping,
-      billing,
-      billingSameAsShipping: billingSame,
-      shippingMethod,
-      shippingPrice: shippingPriceMajor,
-      shippingMethodName: selectedOption?.name,
-      referralCode,
-      paymentMethod,
-      mode: isBuyNow ? "buy_now" : "cart",
-      coinDiscountCode: coinDiscountCode || undefined,
-      coinDiscount: useCoins ? coinsToUse : 0,
-      itemsOverride: isBuyNow && fallbackBuyNow
-        ? [
-          {
-            variant_id: fallbackBuyNow.variantId,
-            quantity: fallbackBuyNow.quantity,
+      const requestPayload = {
+        shipping,
+        billing,
+        billingSameAsShipping: billingSame,
+        shippingMethod,
+        shippingPrice: shippingPriceMajor,
+        shippingMethodName: selectedOption?.name,
+        referralCode,
+        paymentMethod,
+        mode: isBuyNow ? "buy_now" : "cart",
+        coinDiscountCode: coinDiscountCode || undefined,
+        coinDiscount: useCoins ? coinsToUse : 0,
+        itemsOverride: isBuyNow && fallbackBuyNow
+          ? [
+            {
+              variant_id: fallbackBuyNow.variantId,
+              quantity: fallbackBuyNow.quantity,
             price_minor: fallbackBuyNow.priceMinor,
           },
         ]
@@ -984,618 +888,481 @@ function CheckoutPageInner() {
         <h1 className="text-2xl font-semibold text-slate-900 mb-6">Checkout</h1>
         <form onSubmit={handleSubmit} className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            {/* STEP 1: DELIVERY ADDRESS */}
-            <div className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all ${currentStep === 1 ? 'ring-2 ring-green-600 ring-offset-2' : ''}`}>
-              <StepHeader
-                step={1}
-                currentStep={currentStep}
-                title="Delivery Address"
-                icon={MapPin}
-                isCompleted={!!completedSteps[1]}
-                onClick={() => jumpToStep(1)}
-              />
+            <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-slate-900">Shipping details</h2>
+                <span className="text-xs text-slate-500">All fields required</span>
+              </div>
+              {showSaveDefault && customer?.id && (
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={saveAsDefault}
+                    onChange={(e) => setSaveAsDefault(e.target.checked)}
+                    disabled={savingAddress}
+                  />
+                  <span>Save this as default address for next time</span>
+                  {savingAddress && <span className="text-xs text-slate-400">Saving...</span>}
+                </label>
+              )}
+              <div className="grid md:grid-cols-2 gap-4">
+                <Input
+                  required
+                  placeholder="First name"
+                  value={shipping.firstName}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, firstName: e.target.value });
+                  }}
+                />
+                <Input
+                  placeholder="Last name"
+                  value={shipping.lastName}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, lastName: e.target.value });
+                  }}
+                />
+                <Input
+                  required
+                  type="email"
+                  placeholder="Email"
+                  value={shipping.email}
+                  onChange={(e) => setShipping({ ...shipping, email: e.target.value })}
+                  readOnly={!!customer?.email}
+                  className={customer?.email ? "bg-gray-100 cursor-not-allowed" : undefined}
+                  aria-readonly={!!customer?.email}
+                />
+                <Input
+                  required
+                  placeholder="Phone"
+                  value={shipping.phone}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, phone: e.target.value });
+                  }}
+                />
+                <Input
+                  required
+                  placeholder="Address line 1"
+                  className="md:col-span-2"
+                  value={shipping.address1}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, address1: e.target.value });
+                  }}
+                />
+                <Input
+                  placeholder="Address line 2"
+                  className="md:col-span-2"
+                  value={shipping.address2}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, address2: e.target.value });
+                  }}
+                />
+                <Input
+                  required
+                  placeholder="City"
+                  value={shipping.city}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, city: e.target.value });
+                  }}
+                />
+                <Input
+                  required
+                  placeholder="State"
+                  value={shipping.state}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, state: e.target.value });
+                  }}
+                />
+                <Input
+                  required
+                  placeholder="PIN code"
+                  value={shipping.postalCode}
+                  onChange={(e) => {
+                    setAddressTouched(true);
+                    setShipping({ ...shipping, postalCode: e.target.value });
+                  }}
+                />
+              </div>
+            </section>
 
-              {currentStep === 1 && (
-                <div className="p-4 md:p-6 animate-in slide-in-from-top-2 space-y-6">
-                  {/* Saved Addresses List */}
-                  {customer?.id && _addresses.length > 0 && !showAddressForm && (
-                    <div className="space-y-4">
-                      <div className="grid md:grid-cols-2 gap-4">
-                        {_addresses.map(addr => (
-                          <AddressCard
-                            key={addr.id}
-                            address={addr}
-                            selected={defaultAddress?.id === addr.id}
-                            onSelect={() => handleAddressSelect(addr)}
-                          />
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowAddressForm(true);
-                          setDefaultAddress(null);
-                          setShipping({ ...shipping, firstName: "", lastName: "", address1: "", address2: "", city: "", postalCode: "" });
-                        }}
-                        className="text-sm font-semibold text-green-600 flex items-center gap-1 hover:underline px-1"
-                      >
-                        + Add a new address
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Address Form */}
-                  {(!customer?.id || _addresses.length === 0 || showAddressForm) && (
-                    <div className="space-y-4">
-                      {showAddressForm && (
-                        <button type="button" onClick={() => setShowAddressForm(false)} className="text-xs font-medium text-slate-500 hover:text-green-600 mb-2 flex items-center gap-1">
-                          <ChevronRight className="w-3 h-3 rotate-180" /> Back to saved addresses
-                        </button>
-                      )}
-
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-medium text-slate-900">Enter delivery details</h3>
-                      </div>
-
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <Input
-                          required
-                          placeholder="First name"
-                          value={shipping.firstName}
-                          onChange={(e) => {
-                            setAddressTouched(true);
-                            setShipping({ ...shipping, firstName: e.target.value });
-                          }}
-                        />
-                        <Input
-                          placeholder="Last name"
-                          value={shipping.lastName}
-                          onChange={(e) => {
-                            setAddressTouched(true);
-                            setShipping({ ...shipping, lastName: e.target.value });
-                          }}
-                        />
-                        <Input
-                          required
-                          type="email"
-                          placeholder="Email"
-                          value={shipping.email}
-                          onChange={(e) => setShipping({ ...shipping, email: e.target.value })}
-                          readOnly={!!customer?.email}
-                          className={customer?.email ? "bg-gray-100 cursor-not-allowed" : undefined}
-                          aria-readonly={!!customer?.email}
-                        />
-                        <Input
-                          required
-                          placeholder="Phone"
-                          value={shipping.phone}
-                          onChange={(e) => {
-                            setAddressTouched(true);
-                            setShipping({ ...shipping, phone: e.target.value });
-                          }}
-                        />
-                        <Input
-                          required
-                          placeholder="Address line 1"
-                          className="md:col-span-2"
-                          value={shipping.address1}
-                          onChange={(e) => {
-                            setAddressTouched(true);
-                            setShipping({ ...shipping, address1: e.target.value });
-                          }}
-                        />
-                        <Input
-                          placeholder="Address line 2"
-                          className="md:col-span-2"
-                          value={shipping.address2}
-                          onChange={(e) => {
-                            setAddressTouched(true);
-                            setShipping({ ...shipping, address2: e.target.value });
-                          }}
-                        />
-                        <Input
-                          required
-                          placeholder="City"
-                          value={shipping.city}
-                          onChange={(e) => {
-                            setAddressTouched(true);
-                            setShipping({ ...shipping, city: e.target.value });
-                          }}
-                        />
-                        <Input
-                          required
-                          placeholder="State"
-                          value={shipping.state}
-                          onChange={(e) => {
-                            setAddressTouched(true);
-                            setShipping({ ...shipping, state: e.target.value });
-                          }}
-                        />
-                        <Input
-                          required
-                          placeholder="PIN code"
-                          value={shipping.postalCode}
-                          onChange={(e) => {
-                            setAddressTouched(true);
-                            setShipping({ ...shipping, postalCode: e.target.value });
-                          }}
-                        />
-                      </div>
-
-                      {showSaveDefault && customer?.id && (
-                        <label className="flex items-center gap-2 text-sm text-slate-600 mt-2">
-                          <input
-                            type="checkbox"
-                            checked={saveAsDefault}
-                            onChange={(e) => setSaveAsDefault(e.target.checked)}
-                            disabled={savingAddress}
-                            className="rounded border-slate-300 text-green-600 focus:ring-green-500"
-                          />
-                          <span>Save this as default address for next time</span>
-                          {savingAddress && <span className="text-xs text-slate-400">Saving...</span>}
-                        </label>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="pt-4 border-t flex justify-end">
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        const isValid = shipping.firstName && shipping.address1 && shipping.city && shipping.postalCode && shipping.phone;
-                        if (!isValid) {
-                          toast.error("Please fill in all required address details");
-                          return;
-                        }
-                        finishStep(1);
-                      }}
-                      className="bg-green-600 hover:bg-green-700 text-white min-w-[140px]"
-                    >
-                      Deliver Here
-                    </Button>
-                  </div>
+            <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-slate-900">Billing details</h2>
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={billingSame}
+                    onChange={(e) => setBillingSame(e.target.checked)}
+                  />
+                  Same as shipping
+                </label>
+              </div>
+              {!billingSame && (
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Input
+                    required
+                    placeholder="First name"
+                    value={billing.firstName}
+                    onChange={(e) => setBilling({ ...billing, firstName: e.target.value })}
+                  />
+                  <Input
+                    placeholder="Last name"
+                    value={billing.lastName}
+                    onChange={(e) => setBilling({ ...billing, lastName: e.target.value })}
+                  />
+                  <Input
+                    required
+                    type="email"
+                    placeholder="Email"
+                    value={billing.email}
+                    onChange={(e) => setBilling({ ...billing, email: e.target.value })}
+                    readOnly={!!customer?.email}
+                    className={customer?.email ? "bg-gray-100 cursor-not-allowed" : undefined}
+                    aria-readonly={!!customer?.email}
+                  />
+                  <Input
+                    required
+                    placeholder="Phone"
+                    value={billing.phone}
+                    onChange={(e) => setBilling({ ...billing, phone: e.target.value })}
+                  />
+                  <Input
+                    required
+                    placeholder="Address line 1"
+                    className="md:col-span-2"
+                    value={billing.address1}
+                    onChange={(e) => setBilling({ ...billing, address1: e.target.value })}
+                  />
+                  <Input
+                    placeholder="Address line 2"
+                    className="md:col-span-2"
+                    value={billing.address2}
+                    onChange={(e) => setBilling({ ...billing, address2: e.target.value })}
+                  />
+                  <Input
+                    required
+                    placeholder="City"
+                    value={billing.city}
+                    onChange={(e) => setBilling({ ...billing, city: e.target.value })}
+                  />
+                  <Input
+                    required
+                    placeholder="State"
+                    value={billing.state}
+                    onChange={(e) => setBilling({ ...billing, state: e.target.value })}
+                  />
+                  <Input
+                    required
+                    placeholder="PIN code"
+                    value={billing.postalCode}
+                    onChange={(e) => setBilling({ ...billing, postalCode: e.target.value })}
+                  />
                 </div>
               )}
-            </div>
+            </section>
 
-            {/* STEP 2: DELIVERY OPTIONS */}
-            <div className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all ${currentStep === 2 ? 'ring-2 ring-green-600 ring-offset-2' : ''}`}>
-              <StepHeader
-                step={2}
-                currentStep={currentStep}
-                title="Delivery Options"
-                icon={Truck}
-                isCompleted={!!completedSteps[2]}
-                onClick={() => jumpToStep(2)}
-              />
-
-              {currentStep === 2 && (
-                <div className="p-4 md:p-6 animate-in slide-in-from-top-2 space-y-6">
-                  {shippingMethodsLoading && <p className="text-sm text-slate-500 animate-pulse">Loading shipping options...</p>}
-
-                  {!shippingMethodsLoading && shippingMethods.length === 0 && (
-                    <div className="p-3 bg-amber-50 text-amber-800 text-sm rounded-md border border-amber-200">
-                      No shipping options available for your location.
+            <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
+              <h2 className="text-lg font-semibold text-slate-900">Shipping method</h2>
+              {shippingMethodsLoading && <p className="text-sm text-slate-500">Loading shipping options...</p>}
+              {!shippingMethodsLoading && shippingMethods.length === 0 && (
+                <div className="p-3 bg-yellow-50 text-yellow-800 text-sm rounded-md">
+                  No shipping options available for your address. Please verify your address details.
+                </div>
+              )}
+              <div className="space-y-3">
+                {shippingMethods.map((opt) => (
+                  <label
+                    key={opt.id}
+                    className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:border-green-500"
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="radio"
+                        name="shipping"
+                        checked={shippingMethod === opt.id}
+                        onChange={() => handleShippingSelect(opt.id)}
+                      />
+                      <span className="text-sm font-medium text-slate-800">{opt.name}</span>
                     </div>
-                  )}
+                    <span className="text-sm font-semibold text-slate-900">
+                      {opt.amount === 0 ? "Free" : formatMajor(opt.amount)}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </section>
 
+            <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-slate-900">Payment</h2>
+              </div>
+              <div className="space-y-3">
+                <label className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:border-green-500">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="radio"
+                      name="payment"
+                      checked={paymentMethod === "razorpay"}
+                      onChange={() => setPaymentMethod("razorpay")}
+                    />
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                        <span className="sr-only">Razorpay</span>
+                        <Image
+                          src="/razorpay_logo.png"
+                          alt="Razorpay"
+                          width={110}
+                          height={30}
+                          unoptimized
+                        />
+                      </p>
+                      <p className="text-xs text-slate-500">UPI, Cards, Netbanking</p>
+                    </div>
+                  </div>
+                </label>
+                <label className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:border-green-500">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="radio"
+                      name="payment"
+                      checked={paymentMethod === "cod"}
+                      onChange={() => setPaymentMethod("cod")}
+                    />
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Cash on Delivery</p>
+                      <p className="text-xs text-slate-500">Pay when the order arrives</p>
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </section>
+
+            <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
+              <h2 className="text-lg font-semibold text-slate-900">Referral code</h2>
+              {referralLoading ? (
+                <p className="text-sm text-slate-500">Loading referral code...</p>
+              ) : referralCodeApplied && referralCode ? (
+                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-green-600 text-lg">✓</span>
+                    <div>
+                      <p className="text-sm font-medium text-green-800">Referral code applied</p>
+                      <p className="text-xs text-green-600">{referralCode}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCancelReferral}
+                    className="text-sm text-red-600 hover:text-red-800 underline"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <Input
+                  placeholder="Enter referral code (optional)"
+                  value={referralCode}
+                  onChange={(e) => setReferralCode(e.target.value)}
+                />
+              )}
+            </section>
+
+            {/* WALLET COINS SECTION */}
+            {customer && (
+              <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
+                <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                  <img src="/uploads/coin/oweg_bag.png" alt="Wallet" className="w-8 h-8" />
+                  Wallet Coins
+                </h2>
+                {walletLoading ? (
+                  <p className="text-sm text-slate-500">Loading wallet...</p>
+                ) : walletBalance > 0 ? (
                   <div className="space-y-3">
-                    {shippingMethods.map((opt) => (
-                      <label
-                        key={opt.id}
-                        className={`flex items-center justify-between rounded-xl border p-4 cursor-pointer transition-all ${shippingMethod === opt.id ? 'border-green-600 bg-green-50/50 shadow-sm' : 'border-slate-200 hover:border-slate-300'
-                          }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="radio"
-                            name="shipping"
-                            checked={shippingMethod === opt.id}
-                            onChange={() => handleShippingSelect(opt.id)}
-                            className="w-5 h-5 text-green-600 border-gray-300 focus:ring-green-500"
-                          />
-                          <div>
-                            <span className="text-base font-medium text-slate-900">{opt.name}</span>
-                            <p className="text-xs text-slate-500">Standard Delivery</p>
-                          </div>
+                    {/* Available Balance */}
+                    {walletBalance > 0 && (
+                      <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <div>
+                          <p className="text-sm font-medium text-amber-800">Available Balance</p>
+                          <p className="text-lg font-bold text-amber-700">{Math.round(walletBalance)} coins</p>
+                          <p className="text-xs text-amber-600">1 coin = ₹1 discount</p>
                         </div>
-                        <span className="text-base font-semibold text-slate-900">
-                          {opt.amount === 0 ? "Free" : formatMajor(opt.amount)}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-
-                  <div className="pt-4 border-t flex justify-between">
-                    <Button type="button" variant="ghost" onClick={() => jumpToStep(1)}>
-                      Back
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        if (!shippingMethod) {
-                          toast.error("Please select a shipping method");
-                          return;
-                        }
-                        finishStep(2);
-                      }}
-                      disabled={!shippingMethod}
-                      className="bg-green-600 hover:bg-green-700 text-white min-w-[120px]"
-                    >
-                      Continue
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* STEP 3: PAYMENT & OFFERS */}
-            <div className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all ${currentStep === 3 ? 'ring-2 ring-green-600 ring-offset-2' : ''}`}>
-              <StepHeader
-                step={3}
-                currentStep={currentStep}
-                title="Payment & Offers"
-                icon={CreditCard}
-                isCompleted={!!completedSteps[3]}
-                onClick={() => jumpToStep(3)}
-              />
-
-              {currentStep === 3 && (
-                <div className="p-4 md:p-6 animate-in slide-in-from-top-2 space-y-8">
-
-                  {/* WALLET & OFFERS */}
-                  {customer && (
-                    <div className="space-y-4">
-                      <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                        <Wallet className="w-4 h-4 text-green-600" /> Wallet & Offers
-                      </h3>
-
-                      {/* Wallet Logic */}
-                      <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                        {walletLoading ? (
-                          <p className="text-sm text-slate-500">Loading wallet...</p>
-                        ) : walletBalance > 0 ? (
-                          <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="text-sm font-medium text-slate-900">Your Balance</p>
-                                <div className="flex items-center gap-2">
-                                  <p className="text-2xl font-bold text-green-600">{Math.round(walletBalance)}</p>
-                                  <span className="text-xs font-medium bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Coins</span>
-                                </div>
-                              </div>
-                              {walletExpiring > 0 && (
-                                <div className="text-right">
-                                  <p className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">
-                                    ⏰ {Math.round(walletExpiring)} expiring soon
-                                  </p>
-                                </div>
-                              )}
-                              {walletAdjustmentMessage && (
-                                <div className="text-right mt-1 w-full">
-                                  <p className="text-xs text-slate-500 italic bg-slate-100/50 px-2 py-1 rounded inline-block">
-                                    {walletAdjustmentMessage}
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-
-                            <label className={`flex items-start gap-3 p-3 bg-white border rounded-lg cursor-pointer transition-all ${useCoins ? 'border-green-600 ring-1 ring-green-600' : 'hover:border-slate-300'}`}>
-                              <input
-                                type="checkbox"
-                                checked={useCoins}
-                                onChange={async (e) => {
-                                  const isChecked = e.target.checked;
-
-                                  if (isChecked) {
-                                    if (!cart?.id || cart.id === "buy-now") {
-                                      toast.error("Coin discount is available only for cart checkout.");
-                                      setUseCoins(false);
-                                      setCoinsToUse(0);
-                                      setCoinDiscountCode(null);
-                                      return;
-                                    }
-                                    // User wants to use coins
-                                    const maxCoins = Math.min(walletBalance, orderTotal, maxRedeemable);
-                                    const coinsInMinorUnits = Math.round(maxCoins * 100); // Convert to minor units
-
-                                    setApplyingCoinDiscount(true);
-                                    try {
-                                      // Step 1: Create Medusa discount code
-                                      const discountRes = await fetch('/api/store/wallet/create-coin-discount', {
-                                        method: 'POST',
-                                        headers: { 'content-type': 'application/json' },
-                                        body: JSON.stringify({
-                                          customer_id: customer?.id,
-                                          cart_id: cart?.id,
-                                          coin_amount: coinsInMinorUnits
-                                        })
-                                      });
-
-                                      if (!discountRes.ok) {
-                                        const error = await discountRes.json();
-                                        throw new Error(error.error || 'Failed to create discount');
-                                      }
-
-                                      const discountData = await discountRes.json();
-                                      const { discount_code } = discountData;
-
-                                      // Step 2: Apply discount to Medusa cart
-                                      const applyRes = await fetch('/api/store/cart/apply-discount', {
-                                        method: 'POST',
-                                        headers: { 'content-type': 'application/json' },
-                                        body: JSON.stringify({
-                                          cart_id: cart?.id,
-                                          discount_code
-                                        })
-                                      });
-
-                                      if (!applyRes.ok) {
-                                        let message = 'Failed to apply discount to cart';
-                                        try {
-                                          const errorPayload = await applyRes.json();
-                                          if (errorPayload?.error) message = String(errorPayload.error);
-                                          if (errorPayload?.details) {
-                                            const details = typeof errorPayload.details === "string"
-                                              ? errorPayload.details
-                                              : JSON.stringify(errorPayload.details);
-                                            message = `${message}: ${details}`;
-                                          }
-                                        } catch {
-                                          // ignore parse errors
-                                        }
-                                        throw new Error(message);
-                                      }
-
-                                      // Success! Update state
-                                      setUseCoins(true);
-                                      setCoinsToUse(maxCoins);
-                                      setCoinDiscountCode(discount_code);
-                                      toast.success(`₹${maxCoins.toFixed(2)} coin discount applied!`);
-
-                                    } catch (error) {
-                                      console.error('Coin discount error:', error);
-                                      toast.error(error instanceof Error ? error.message : 'Failed to apply coin discount');
-                                      setUseCoins(false);
-                                      setCoinsToUse(0);
-                                      setCoinDiscountCode(null);
-                                    } finally {
-                                      setApplyingCoinDiscount(false);
-                                    }
-
-                                  } else {
-                                    // User wants to remove coins
-                                    if (coinDiscountCode && cart?.id) {
-                                      setApplyingCoinDiscount(true);
-                                      try {
-                                        // Remove discount from cart
-                                        await fetch(`/api/store/cart/apply-discount?cart_id=${cart.id}&discount_code=${coinDiscountCode}`, {
-                                          method: 'DELETE'
-                                        });
-
-                                        // Refund coins back to wallet
-                                        await fetch('/api/store/wallet/refund-coin-discount', {
-                                          method: 'POST',
-                                          headers: { 'content-type': 'application/json' },
-                                          body: JSON.stringify({
-                                            customer_id: customer?.id,
-                                            discount_code: coinDiscountCode
-                                          })
-                                        });
-
-                                        toast.success("Coins refunded to your wallet");
-
-                                      } catch (error) {
-                                        console.error('Failed to remove discount:', error);
-                                      } finally {
-                                        setApplyingCoinDiscount(false);
-                                      }
-                                    }
-
-                                    setUseCoins(false);
-                                    setCoinsToUse(0);
-                                    setCoinDiscountCode(null);
-                                  }
-                                }}
-                                className="mt-1 w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500"
-                                disabled={applyingCoinDiscount || !walletCanRedeem}
-                              />
-                              <div className="flex-1">
-                                <p className="text-sm font-medium text-slate-900">
-                                  Use {Math.round(Math.min(walletBalance, maxRedeemable))} coins
-                                </p>
-                                <p className="text-xs text-slate-500">
-                                  Save <span className="font-semibold text-green-600">₹{Math.round(Math.min(walletBalance, orderTotal, maxRedeemable))}</span> on this order
-                                </p>
-                                {applyingCoinDiscount && (
-                                  <p className="text-xs text-green-600 mt-1 animate-pulse">Applying discount...</p>
-                                )}
-                              </div>
-                            </label>
-                          </div>
-                        ) : (
-                          <div className="text-sm text-slate-500 text-center py-2">
-                            No coins available. Earn coins on this order!
+                        {walletExpiring > 0 && (
+                          <div className="text-right">
+                            <p className="text-xs text-red-500">⏰ {Math.round(walletExpiring)} expiring soon</p>
                           </div>
                         )}
                       </div>
-
-                      {/* Referral Logic */}
-                      <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                        <p className="text-sm font-medium text-slate-900 mb-2">Have a referral code?</p>
-                        {referralLoading ? (
-                          <p className="text-sm text-slate-500 animate-pulse">Checking code...</p>
-                        ) : referralCodeApplied && referralCode ? (
-                          <div className="flex items-center justify-between bg-green-100/50 border border-green-200 rounded-lg p-3">
-                            <div className="flex items-center gap-2">
-                              <div className="bg-green-100 p-1 rounded-full text-green-600">
-                                <Check className="w-3 h-3" />
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium text-green-800">Code applied</p>
-                                <p className="text-xs text-green-600 font-mono">{referralCode}</p>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={handleCancelReferral}
-                              className="text-xs font-semibold text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-1 rounded"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex gap-2">
-                            <Input
-                              placeholder="Enter code"
-                              value={referralCode}
-                              onChange={(e) => setReferralCode(e.target.value)}
-                              className="bg-white"
-                            />
-                          </div>
-                        )}
+                    )}
+                    {walletAdjustmentMessage && (
+                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                        {walletAdjustmentMessage}
                       </div>
+                    )}
+
+
+
+                    {/* Redemption Limit Info */}
+                    <div className="text-xs text-slate-500 bg-slate-50 rounded p-2">
+                      <p>Max redeemable for this order: <strong>{maxRedeemable} coins</strong></p>
+                      <p className="text-slate-400">Limit based on order value (₹{orderTotal.toFixed(0)})</p>
                     </div>
-                  )}
 
-                  {/* PAYMENT METHOD */}
-                  <div className="space-y-4 pt-4 border-t">
-                    <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-green-600" /> Payment Method
-                    </h3>
-                    <div className="space-y-3">
-                      <label className={`flex items-center justify-between rounded-xl border p-4 cursor-pointer transition-all ${paymentMethod === "razorpay" ? 'border-green-600 bg-green-50/50 shadow-sm' : 'border-slate-200 hover:border-slate-300'
-                        }`}>
-                        <div className="flex items-center gap-3">
-                          <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${paymentMethod === 'razorpay' ? 'border-green-600' : 'border-slate-300'}`}>
-                            {paymentMethod === 'razorpay' && <div className="w-2.5 h-2.5 bg-green-600 rounded-full" />}
-                          </div>
-                          <input
-                            type="radio"
-                            name="payment"
-                            className="hidden"
-                            checked={paymentMethod === "razorpay"}
-                            onChange={() => setPaymentMethod("razorpay")}
-                          />
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                              Online Payment
-                              <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Fast</span>
-                            </p>
-                            <p className="text-xs text-slate-500">UPI, Cards, Wallets, Netbanking</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-1">
-                          <Image src="/razorpay_logo.png" alt="Razorpay" width={80} height={20} className="opacity-80 grayscale" unoptimized />
-                        </div>
-                      </label>
-
-                      <label className={`flex items-center justify-between rounded-xl border p-4 cursor-pointer transition-all ${paymentMethod === "cod" ? 'border-green-600 bg-green-50/50 shadow-sm' : 'border-slate-200 hover:border-slate-300'
-                        }`}>
-                        <div className="flex items-center gap-3">
-                          <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${paymentMethod === 'cod' ? 'border-green-600' : 'border-slate-300'}`}>
-                            {paymentMethod === 'cod' && <div className="w-2.5 h-2.5 bg-green-600 rounded-full" />}
-                          </div>
-                          <input
-                            type="radio"
-                            name="payment"
-                            className="hidden"
-                            checked={paymentMethod === "cod"}
-                            onChange={() => setPaymentMethod("cod")}
-                          />
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">Cash on Delivery</p>
-                            <p className="text-xs text-slate-500">Pay lightly extra for handling</p>
-                          </div>
-                        </div>
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* BILLING ADDRESS */}
-                  <div className="space-y-4 pt-4 border-t">
-                    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+                    <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-slate-50">
                       <input
                         type="checkbox"
-                        checked={billingSame}
-                        onChange={e => setBillingSame(e.target.checked)}
-                        className="rounded border-slate-300 text-green-600 focus:ring-green-500"
+                        checked={useCoins}
+                        onChange={async (e) => {
+                          const isChecked = e.target.checked;
+
+                          if (isChecked) {
+                            if (!cart?.id || cart.id === "buy-now") {
+                              toast.error("Coin discount is available only for cart checkout.");
+                              setUseCoins(false);
+                              setCoinsToUse(0);
+                              setCoinDiscountCode(null);
+                              return;
+                            }
+                            // User wants to use coins
+                            const maxCoins = Math.min(walletBalance, orderTotal, maxRedeemable);
+                            const coinsInMinorUnits = Math.round(maxCoins * 100); // Convert to minor units
+
+                            setApplyingCoinDiscount(true);
+                            try {
+                              // Step 1: Create Medusa discount code
+                              const discountRes = await fetch('/api/store/wallet/create-coin-discount', {
+                                method: 'POST',
+                                headers: { 'content-type': 'application/json' },
+                                body: JSON.stringify({
+                                  customer_id: customer?.id,
+                                  cart_id: cart?.id,
+                                  coin_amount: coinsInMinorUnits
+                                })
+                              });
+
+                              if (!discountRes.ok) {
+                                const error = await discountRes.json();
+                                throw new Error(error.error || 'Failed to create discount');
+                              }
+
+                              const discountData = await discountRes.json();
+                              const { discount_code } = discountData;
+
+                              // Step 2: Apply discount to Medusa cart
+                              const applyRes = await fetch('/api/store/cart/apply-discount', {
+                                method: 'POST',
+                                headers: { 'content-type': 'application/json' },
+                                body: JSON.stringify({
+                                  cart_id: cart?.id,
+                                  discount_code
+                                })
+                              });
+
+                              if (!applyRes.ok) {
+                                let message = 'Failed to apply discount to cart';
+                                try {
+                                  const errorPayload = await applyRes.json();
+                                  if (errorPayload?.error) message = String(errorPayload.error);
+                                  if (errorPayload?.details) {
+                                    const details = typeof errorPayload.details === "string"
+                                      ? errorPayload.details
+                                      : JSON.stringify(errorPayload.details);
+                                    message = `${message}: ${details}`;
+                                  }
+                                } catch {
+                                  // ignore parse errors
+                                }
+                                throw new Error(message);
+                              }
+
+                              // Success! Update state
+                              setUseCoins(true);
+                              setCoinsToUse(maxCoins);
+                              setCoinDiscountCode(discount_code);
+                              toast.success(`₹${maxCoins.toFixed(2)} coin discount applied!`);
+
+                            } catch (error) {
+                              console.error('Coin discount error:', error);
+                              toast.error(error instanceof Error ? error.message : 'Failed to apply coin discount');
+                              setUseCoins(false);
+                              setCoinsToUse(0);
+                              setCoinDiscountCode(null);
+                            } finally {
+                              setApplyingCoinDiscount(false);
+                            }
+
+                          } else {
+                            // User wants to remove coins
+                            if (coinDiscountCode && cart?.id) {
+                              setApplyingCoinDiscount(true);
+                              try {
+                                // Remove discount from cart
+                                await fetch(`/api/store/cart/apply-discount?cart_id=${cart.id}&discount_code=${coinDiscountCode}`, {
+                                  method: 'DELETE'
+                                });
+
+                                // Refund coins back to wallet
+                                await fetch('/api/store/wallet/refund-coin-discount', {
+                                  method: 'POST',
+                                  headers: { 'content-type': 'application/json' },
+                                  body: JSON.stringify({
+                                    customer_id: customer?.id,
+                                    discount_code: coinDiscountCode
+                                  })
+                                });
+
+                                toast.success("Coins refunded to your wallet");
+
+                              } catch (error) {
+                                console.error('Failed to remove discount:', error);
+                              } finally {
+                                setApplyingCoinDiscount(false);
+                              }
+                            }
+
+                            setUseCoins(false);
+                            setCoinsToUse(0);
+                            setCoinDiscountCode(null);
+                          }
+                        }}
+                        className="w-4 h-4 text-green-600"
+                        disabled={applyingCoinDiscount || !walletCanRedeem}
                       />
-                      <span>Billing address is the same as delivery address</span>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-slate-800">
+                          Use {Math.round(Math.min(walletBalance, maxRedeemable))} coins
+                        </p>
+                        <p className="text-xs text-green-600">
+                          Save ₹{Math.round(Math.min(walletBalance, orderTotal, maxRedeemable))}
+                        </p>
+                        {applyingCoinDiscount && (
+                          <p className="text-xs text-slate-500 mt-1">Applying discount...</p>
+                        )}
+                      </div>
                     </label>
 
-                    {!billingSame && (
-                      <div className="grid md:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200 animate-in slide-in-from-top-1">
-                        <div className="md:col-span-2 text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Billing Details</div>
-                        <Input
-                          required
-                          placeholder="First name"
-                          value={billing.firstName}
-                          onChange={(e) => setBilling({ ...billing, firstName: e.target.value })}
-                          className="bg-white"
-                        />
-                        <Input
-                          placeholder="Last name"
-                          value={billing.lastName}
-                          onChange={(e) => setBilling({ ...billing, lastName: e.target.value })}
-                          className="bg-white"
-                        />
-                        <Input
-                          required
-                          type="email"
-                          placeholder="Email"
-                          value={billing.email}
-                          onChange={(e) => setBilling({ ...billing, email: e.target.value })}
-                          className="bg-white"
-                        />
-                        <Input
-                          required
-                          placeholder="Phone"
-                          value={billing.phone}
-                          onChange={(e) => setBilling({ ...billing, phone: e.target.value })}
-                          className="bg-white"
-                        />
-                        <Input
-                          required
-                          placeholder="Address line 1"
-                          className="md:col-span-2 bg-white"
-                          value={billing.address1}
-                          onChange={(e) => setBilling({ ...billing, address1: e.target.value })}
-                        />
-                        <Input
-                          placeholder="Address line 2"
-                          className="md:col-span-2 bg-white"
-                          value={billing.address2}
-                          onChange={(e) => setBilling({ ...billing, address2: e.target.value })}
-                        />
-                        <Input
-                          required
-                          placeholder="City"
-                          value={billing.city}
-                          onChange={(e) => setBilling({ ...billing, city: e.target.value })}
-                          className="bg-white"
-                        />
-                        <Input
-                          required
-                          placeholder="State"
-                          value={billing.state}
-                          onChange={(e) => setBilling({ ...billing, state: e.target.value })}
-                          className="bg-white"
-                        />
-                        <Input
-                          required
-                          placeholder="PIN code"
-                          value={billing.postalCode}
-                          onChange={(e) => setBilling({ ...billing, postalCode: e.target.value })}
-                          className="bg-white"
-                        />
+                    {useCoins && (
+                      <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg p-3">
+                        <span className="text-green-600">✓</span>
+                        <p className="text-sm text-green-800">
+                          Discount of <strong>₹{coinDiscount.toFixed(2)}</strong> will be applied
+                        </p>
                       </div>
                     )}
                   </div>
-
-                </div>
-              )}
-            </div>
+                ) : (
+                  <div className="text-sm text-slate-500 bg-slate-50 rounded-lg p-3">
+                    <p>No coins available yet.</p>
+                    <p className="text-xs mt-1 flex items-center gap-1">Earn 2% coins on every purchase! <img src="/uploads/coin/oweg_bag.png" alt="coins" className="w-4 h-4 inline" /></p>
+                  </div>
+                )}
+              </section>
+            )}
           </div>
 
           <div className="lg:col-span-1 space-y-4">
@@ -1660,7 +1427,6 @@ function CheckoutPageInner() {
                 className="w-full bg-green-600 hover:bg-green-700 text-white py-3"
                 disabled={
                   processing ||
-                  currentStep < 3 ||
                   (!isBuyNow && !cartItems.length) ||
                   (isBuyNow && !buyNowItem && !variantFromQuery)
                 }

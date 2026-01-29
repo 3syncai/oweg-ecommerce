@@ -30,4 +30,11 @@ export const storeCustomerRoutesMiddlewares = baseMiddlewares.map((entry) => {
     ],
   }
 })
+  .concat([
+    {
+      method: ["POST"],
+      matcher: "/store/customers/change-password",
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+  ])
 
