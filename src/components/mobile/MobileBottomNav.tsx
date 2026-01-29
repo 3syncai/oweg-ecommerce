@@ -1099,7 +1099,7 @@ export default function MobileBottomNav() {
             {!selectedSubcategory && (
             <div
               className="flex-shrink-0 space-y-2 overflow-y-auto h-full pr-1 min-h-0 transition-all duration-300 ease-in-out"
-              style={{ width: isOpen ? 240 : 90 }}
+              style={{ width: isOpen ? 240 : 90, paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 280px)' }}
             >
               {categoriesLoading ? (
                 <div className="text-sm text-gray-500">Loading categories…</div>
@@ -1185,7 +1185,10 @@ export default function MobileBottomNav() {
             </div>
             )}
 
-            <div className={`${selectedSubcategory ? 'w-full' : 'flex-1 min-w-0'} h-full min-h-0 overflow-y-auto pr-1 pb-35 transition-all duration-300 ease-in-out`}>
+            <div
+              className={`${selectedSubcategory ? 'w-full' : 'flex-1 min-w-0'} h-full min-h-0 overflow-y-auto pr-1 transition-all duration-300 ease-in-out`}
+              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 280px)' }}
+            >
               <div className="space-y-3">
                 {forYouSelected ? (
                   <div className="space-y-4">

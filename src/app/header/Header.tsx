@@ -10,7 +10,7 @@ import {
   X,
   Bell,
   User,
-  Sparkles,
+  Gift,
   Pencil,
 } from "lucide-react";
 // import UserIcon from "@/components/ui/icons/UserIcon";
@@ -45,6 +45,7 @@ type InternalCategory = {
   handle?: string;
   parentId: string | null;
   children: InternalCategory[];
+  rank?: number;
 };
 
 const normalizeCategoryTitle = (cat: MedusaCategory) =>
@@ -64,6 +65,7 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
       handle: cat.handle || undefined,
       parentId: parentId || null,
       children: [],
+      rank: typeof cat.rank === "number" ? cat.rank : undefined,
     });
   });
 
@@ -78,12 +80,16 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
           handle: child.handle || undefined,
           parentId: cat.id || null,
           children: [],
+          rank: typeof child.rank === "number" ? child.rank : undefined,
         });
       } else {
         const target = nodes.get(child.id)!;
         target.parentId = target.parentId || cat.id || null;
         target.title = target.title || normalizeCategoryTitle(child);
         target.handle = target.handle || child.handle || undefined;
+        if (target.rank === undefined && typeof child.rank === "number") {
+          target.rank = child.rank;
+        }
       }
     });
   });
@@ -99,14 +105,19 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
     title: node.title,
     handle: node.handle,
     children: node.children
+      .sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999))
       .map(stripParent),
   });
 
-  const roots = Array.from(nodes.values()).filter((node) => !node.parentId);
+  const roots = Array.from(nodes.values())
+    .filter((node) => !node.parentId)
+    .sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999));
 
-  const withChildren = roots
+  const withChildren = Array.from(nodes.values())
     .filter((node) => node.children.length > 0)
+    .sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999))
     .map((node) => stripParent(node));
+
   const withoutChildren = roots
     .filter((node) => node.children.length === 0)
     .map((node) => stripParent(node));
@@ -232,6 +243,9 @@ const Header: React.FC = () => {
     try {
       await logout();
       toast.success("You have been signed out.");
+      if (pathname?.startsWith("/account")) {
+        router.push("/login?redirect=/account");
+      }
     } catch (err) {
       console.error("logout failed", err);
       toast.error("Could not sign out. Please try again.");
@@ -239,7 +253,7 @@ const Header: React.FC = () => {
       setProfileMenuOpen(false);
       setMobileProfileOpen(false);
     }
-  }, [logout]);
+  }, [logout, pathname, router]);
 
   // Check if cache is valid
   const isCartPreviewCacheValid = React.useCallback((): boolean => {
@@ -657,6 +671,18 @@ const Header: React.FC = () => {
     [clearAllHideTimer]
   );
 
+  const handleMenuWheel = React.useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const delta = event.deltaY;
+    const canScrollUp = delta < 0 && scrollTop > 0;
+    const canScrollDown = delta > 0 && scrollTop + clientHeight < scrollHeight;
+    if (canScrollUp || canScrollDown) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, []);
+
   // Handle click outside to close dropdowns
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -718,15 +744,19 @@ const Header: React.FC = () => {
             ...style,
             pointerEvents: "auto",
             maxHeight: "420px",
-            overflowY: "auto",
-            overscrollBehavior: "contain",
-            WebkitOverflowScrolling: "touch",
           }}
           className="rounded-xl bg-white shadow-2xl ring-1 ring-black/5 p-3 border border-gray-100 transition-transform duration-160"
           role="menu"
         >
           {/* scrollable area */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-3">
+          <div
+            className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-3 pr-1 scrollbar-hide"
+            style={{
+              maxHeight: "360px",
+              overflowY: "auto",
+            }}
+            onWheel={handleMenuWheel}
+          >
             {active.children.map((sub) => (
               <Link
                 key={sub.id}
@@ -761,9 +791,6 @@ const Header: React.FC = () => {
           style={{
             ...style,
             maxHeight: "420px",
-            overflowY: "auto",
-            overscrollBehavior: "contain",
-            WebkitOverflowScrolling: "touch",
             pointerEvents: "auto",
           }}
           className="rounded-xl bg-white shadow-2xl ring-1 ring-black/5 p-3 border border-gray-100 transition-transform duration-160"
@@ -772,7 +799,14 @@ const Header: React.FC = () => {
           <div style={{ padding: 8 }} className="pb-3">
             <div className="px-2 py-1 text-xs text-gray-500 font-semibold">More Categories</div>
           </div>
-          <div className="divide-y divide-gray-100">
+          <div
+            className="divide-y divide-gray-100 pr-1 scrollbar-hide"
+            style={{
+              maxHeight: "340px",
+              overflowY: "auto",
+            }}
+            onWheel={handleMenuWheel}
+          >
             {navCatsLoading && overflowCategories.length === 0 ? (
               <div className="px-3 py-2 text-sm text-gray-500">Loading categories…</div>
             ) : overflowCategories.length ? (
@@ -1362,7 +1396,7 @@ const Header: React.FC = () => {
                     href="/for-you"
                     className="flex items-center gap-1.5 py-3 px-2 text-sm font-medium text-header-text whitespace-nowrap hover:text-header-accent transition-colors"
                   >
-                    <Sparkles className="w-4 h-4" />
+                    <Gift className="w-4 h-4" />
                     <span>For You</span>
                   </Link>
                 ) : null}
@@ -1394,7 +1428,11 @@ const Header: React.FC = () => {
                           }}
                         >
                           <span className="truncate">{cat.title}</span>
-                          <ChevronDown className="hidden md:inline-block w-3.5 h-3.5 text-header-muted transition group-hover:text-header-accent" />
+                          <ChevronDown
+                            className={`hidden md:inline-block w-3.5 h-3.5 text-header-muted transition-transform duration-200 group-hover:text-header-accent ${
+                              activeCategoryId === cat.id ? "rotate-180" : ""
+                            }`}
+                          />
                         </Link>
 
                         {/* mobile toggle */}
@@ -1423,7 +1461,10 @@ const Header: React.FC = () => {
           {mobileMenuOpen && (
             <div className="fixed inset-0 z-[140] md:hidden">
               <div className="absolute inset-0 bg-black/40" onClick={() => setMobileMenuOpen(false)} />
-              <div className="absolute left-0 top-0 bottom-0 w-[85%] max-w-sm bg-white shadow-2xl p-5 flex flex-col overflow-y-auto">
+              <div
+                className="absolute left-0 top-0 bottom-0 w-[85%] max-w-sm bg-white shadow-2xl p-5 flex flex-col overflow-y-auto"
+                style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 180px)" }}
+              >
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <p className="text-lg font-semibold text-header-text">All categories</p>
