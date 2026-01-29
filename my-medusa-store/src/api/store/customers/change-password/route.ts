@@ -41,8 +41,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   const authData = {
     url: req.url,
-    headers: req.headers,
-    query: req.query,
+    headers: {},
+    query: {},
     body: { email: customer.email, password: currentPassword },
     protocol: req.protocol,
   }
@@ -85,7 +85,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
 
   if (!customer.has_account) {
-    await customerService.updateCustomers(customer.id, { has_account: true })
+    await customerService.updateCustomers(customer.id, { has_account: true } as any)
   }
 
   return res.status(200).json({ success: true })
