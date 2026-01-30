@@ -647,13 +647,13 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
           // Check if this variant should manage inventory and has a quantity
           const manageInventory = originalVariant.manage_inventory !== false // Default to true
-          const inventoryQuantity = typeof originalVariant.inventory_quantity === 'number'
-            ? originalVariant.inventory_quantity
-            : 0
+          const hasInventoryQuantity = typeof originalVariant.inventory_quantity === 'number'
+          const inventoryQuantity = hasInventoryQuantity ? originalVariant.inventory_quantity : 0
 
           if (manageInventory && variant.id) {
             try {
               let inventoryItem
+              let inventoryItemWasCreated = false
 
               // FIRST: Check if variant already has an inventory item linked (created by workflow)
               const query = req.scope.resolve("query")
@@ -708,6 +708,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
                   sku: variant.sku || undefined,
                 }])
                 inventoryItem = inventoryItems[0]
+                inventoryItemWasCreated = true
                 console.log(`📦 Created new inventory item ${inventoryItem.id} for variant ${variant.id}`)
 
                 // Link inventory item to variant
@@ -723,28 +724,37 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
                 console.log(`🔗 Linked inventory item ${inventoryItem.id} to variant ${variant.id}`)
               }
 
-              // Create or update inventory level for the default location
-              const existingLevels = await inventoryModule.listInventoryLevels({
-                inventory_item_id: inventoryItem.id,
-                location_id: defaultLocation.id
-              })
+              // Only create/update inventory levels if quantity was provided OR item was just created
+              if (hasInventoryQuantity || inventoryItemWasCreated) {
+                // Create or update inventory level for the default location
+                const existingLevels = await inventoryModule.listInventoryLevels({
+                  inventory_item_id: inventoryItem.id,
+                  location_id: defaultLocation.id
+                })
 
-              if (existingLevels && existingLevels.length > 0) {
-                // Update existing level
-                await inventoryModule.updateInventoryLevels([{
-                  inventory_item_id: inventoryItem.id,
-                  location_id: defaultLocation.id,
-                  stocked_quantity: inventoryQuantity,
-                }])
-                console.log(`✅ Updated ${inventoryQuantity} units for variant ${variant.id} at location ${defaultLocation.name}`)
+                if (existingLevels && existingLevels.length > 0) {
+                  if (hasInventoryQuantity) {
+                    // Update existing level only if quantity was provided
+                    await inventoryModule.updateInventoryLevels([{
+                      inventory_item_id: inventoryItem.id,
+                      location_id: defaultLocation.id,
+                      stocked_quantity: inventoryQuantity,
+                    }])
+                    console.log(`✅ Updated ${inventoryQuantity} units for variant ${variant.id} at location ${defaultLocation.name}`)
+                  } else {
+                    console.log(`⏭️ Skipping inventory update for variant ${variant.id}; no quantity provided`)
+                  }
+                } else {
+                  // Create new level (for newly created items or when no level exists)
+                  await inventoryModule.createInventoryLevels([{
+                    inventory_item_id: inventoryItem.id,
+                    location_id: defaultLocation.id,
+                    stocked_quantity: inventoryQuantity,
+                  }])
+                  console.log(`✅ Stocked ${inventoryQuantity} units for variant ${variant.id} at location ${defaultLocation.name}`)
+                }
               } else {
-                // Create new level
-                await inventoryModule.createInventoryLevels([{
-                  inventory_item_id: inventoryItem.id,
-                  location_id: defaultLocation.id,
-                  stocked_quantity: inventoryQuantity,
-                }])
-                console.log(`✅ Stocked ${inventoryQuantity} units for variant ${variant.id} at location ${defaultLocation.name}`)
+                console.log(`⏭️ Skipping inventory update for variant ${variant.id}; no quantity provided`)
               }
             } catch (inventoryError: any) {
               console.error(`❌ Failed to create inventory for variant ${variant.id}:`, inventoryError?.message)
