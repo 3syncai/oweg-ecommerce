@@ -214,7 +214,8 @@ const VendorProductsWidget = () => {
           </div>
         )}
 
-        {/* Attributes Section */}
+        {/* Attributes Section - Hidden from product request view */}
+        {/* 
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
             <Heading level="h3" style={{ marginBottom: 0 }}>
@@ -325,6 +326,7 @@ const VendorProductsWidget = () => {
             </div>
           </div>
         </div>
+        */}
 
         <div style={{ marginBottom: 24 }}>
           <Heading level="h3" style={{ marginBottom: 8 }}>
