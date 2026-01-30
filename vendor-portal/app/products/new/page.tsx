@@ -474,7 +474,7 @@ const VendorProductNewPage = () => {
               price_list_id: "pl_1765232034558" // India price list
             }] : [])
           ] : [],
-          inventory_quantity: v.inventoryCount ? parseInt(v.inventoryCount, 10) : 0,
+          inventory_quantity: Math.max(0, Math.floor(Number.parseInt(v.inventoryCount, 10)) || 0),
         }))
         : [
           {
@@ -1489,6 +1489,8 @@ const VendorProductNewPage = () => {
                 <td style={{ padding: "12px 16px" }}>
                   <Input
                     type="number"
+                    min="0"
+                    step="1"
                     value={variant.inventoryCount}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       const newVariants = [...formData.variants]

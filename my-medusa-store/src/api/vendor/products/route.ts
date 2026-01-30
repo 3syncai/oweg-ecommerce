@@ -484,10 +484,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       height: height || null,
       width: width || null,
       length: length || null,
-      // Product codes and origin
-      mid_code: metadata?.mid_code || null,
-      hs_code: metadata?.hs_code || null,
-      origin_country: metadata?.country_of_origin || null,
       status: ProductStatus.DRAFT, // Set to DRAFT, pending admin approval
       shipping_profile_id: finalShippingProfileId,
       metadata: baseMetadata,
@@ -687,6 +683,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
                 inventoryItem = existingItems?.[0]
                 if (inventoryItem) {
                   console.log(`♻️ Found existing inventory item ${inventoryItem.id} for SKU ${variant.sku}`)
+                  
+                  // Link the reused inventory item to variant
+                  const linkModule = req.scope.resolve(ContainerRegistrationKeys.LINK) as any
+                  await linkModule.create({
+                    [Modules.PRODUCT]: {
+                      variant_id: variant.id,
+                    },
+                    [Modules.INVENTORY]: {
+                      inventory_item_id: inventoryItem.id,
+                    },
+                  })
+                  console.log(`🔗 Linked existing inventory item ${inventoryItem.id} to variant ${variant.id}`)
                 }
               }
 
