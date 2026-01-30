@@ -62,6 +62,7 @@ type ProductFormData = {
     managedInventory: boolean
     allowBackorder: boolean
     hasInventoryKit: boolean
+    inventoryCount: string
     price: string
     discountedPrice: string
   }>
@@ -107,6 +108,7 @@ const VendorProductNewPage = () => {
       managedInventory: true,
       allowBackorder: true,
       hasInventoryKit: true,
+      inventoryCount: "",
       price: "",
       discountedPrice: "",
     }],
@@ -472,7 +474,7 @@ const VendorProductNewPage = () => {
               price_list_id: "pl_1765232034558" // India price list
             }] : [])
           ] : [],
-          inventory_quantity: v.managedInventory ? 0 : undefined,
+          inventory_quantity: v.inventoryCount ? parseInt(v.inventoryCount, 10) : 0,
         }))
         : [
           {
@@ -1406,6 +1408,9 @@ const VendorProductNewPage = () => {
                 Has inventory kit
               </th>
               <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
+                Inventory Count
+              </th>
+              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
                 Price INR
               </th>
               <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
@@ -1479,6 +1484,19 @@ const VendorProductNewPage = () => {
                       newVariants[idx].hasInventoryKit = e.target.checked
                       setFormData({ ...formData, variants: newVariants })
                     }}
+                  />
+                </td>
+                <td style={{ padding: "12px 16px" }}>
+                  <Input
+                    type="number"
+                    value={variant.inventoryCount}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      const newVariants = [...formData.variants]
+                      newVariants[idx].inventoryCount = e.target.value
+                      setFormData({ ...formData, variants: newVariants })
+                    }}
+                    placeholder="0"
+                    style={{ width: 100 }}
                   />
                 </td>
                 <td style={{ padding: "12px 16px" }}>
