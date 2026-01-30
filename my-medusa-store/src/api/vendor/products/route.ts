@@ -484,6 +484,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       height: height || null,
       width: width || null,
       length: length || null,
+      // Product codes and origin (for admin Attributes display)
+      mid_code: metadata?.mid_code || null,
+      hs_code: metadata?.hs_code || null,
+      origin_country: metadata?.country_of_origin || null,
       status: ProductStatus.DRAFT, // Set to DRAFT, pending admin approval
       shipping_profile_id: finalShippingProfileId,
       metadata: baseMetadata,
@@ -719,14 +723,29 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
                 console.log(`🔗 Linked inventory item ${inventoryItem.id} to variant ${variant.id}`)
               }
 
-              // Create inventory level for the default location
-              await inventoryModule.createInventoryLevels([{
+              // Create or update inventory level for the default location
+              const existingLevels = await inventoryModule.listInventoryLevels({
                 inventory_item_id: inventoryItem.id,
-                location_id: defaultLocation.id,
-                stocked_quantity: inventoryQuantity,
-              }])
+                location_id: defaultLocation.id
+              })
 
-              console.log(`✅ Stocked ${inventoryQuantity} units for variant ${variant.id} at location ${defaultLocation.name}`)
+              if (existingLevels && existingLevels.length > 0) {
+                // Update existing level
+                await inventoryModule.updateInventoryLevels([{
+                  inventory_item_id: inventoryItem.id,
+                  location_id: defaultLocation.id,
+                  stocked_quantity: inventoryQuantity,
+                }])
+                console.log(`✅ Updated ${inventoryQuantity} units for variant ${variant.id} at location ${defaultLocation.name}`)
+              } else {
+                // Create new level
+                await inventoryModule.createInventoryLevels([{
+                  inventory_item_id: inventoryItem.id,
+                  location_id: defaultLocation.id,
+                  stocked_quantity: inventoryQuantity,
+                }])
+                console.log(`✅ Stocked ${inventoryQuantity} units for variant ${variant.id} at location ${defaultLocation.name}`)
+              }
             } catch (inventoryError: any) {
               console.error(`❌ Failed to create inventory for variant ${variant.id}:`, inventoryError?.message)
               // Continue with other variants even if one fails
