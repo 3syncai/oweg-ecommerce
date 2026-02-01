@@ -51,26 +51,26 @@ const VendorCollectionsPage = () => {
 
   return (
     <VendorShell>
-      <div style={{ padding: "24px 32px" }}>
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+      <div className="p-4 md:p-8">
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
             <Heading level="h1">Collections</Heading>
             <Button variant="secondary" size="small">
               <Plus />
               Create
             </Button>
           </div>
-          <Text size="small" style={{ color: "var(--fg-muted)" }}>
+          <Text size="small" className="text-ui-fg-muted">
             Group products to make them easier to manage and discover.
           </Text>
         </div>
 
-        <div style={{ marginBottom: 16 }}>
+        <div className="mb-4">
           <Input
             placeholder="Search"
             value={searchQuery}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-            style={{ maxWidth: 400 }}
+            className="max-w-[400px]"
           />
         </div>
 
@@ -79,23 +79,16 @@ const VendorCollectionsPage = () => {
             <Text>Loading collections...</Text>
           </Container>
         ) : collections.length === 0 ? (
-          <div
-            style={{
-              background: "var(--bg-base)",
-              border: "1px solid var(--border-base)",
-              borderRadius: 8,
-              padding: "64px 32px",
-              textAlign: "center",
-            }}
-          >
-            <div style={{ marginBottom: 16 }}>
+          <div className="bg-ui-bg-base border border-ui-border-base rounded-lg p-16 text-center">
+            <div className="mb-4">
               <svg
                 width="64"
                 height="64"
                 viewBox="0 0 64 64"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
-                style={{ margin: "0 auto", opacity: 0.3 }}
+                className="mx-auto opacity-30 text-ui-fg-base"
+                style={{ color: "currentColor" }}
               >
                 <rect x="8" y="16" width="48" height="40" rx="4" stroke="currentColor" strokeWidth="2" />
                 <path d="M8 24H56" stroke="currentColor" strokeWidth="2" />
@@ -104,10 +97,10 @@ const VendorCollectionsPage = () => {
                 <circle cx="32" cy="20" r="2" fill="currentColor" />
               </svg>
             </div>
-            <Heading level="h2" style={{ marginBottom: 8 }}>
+            <Heading level="h2" className="mb-2">
               No collections yet
             </Heading>
-            <Text size="small" style={{ color: "var(--fg-muted)", marginBottom: 24 }}>
+            <Text size="small" className="text-ui-fg-muted mb-6">
               Create your first collection to organize your products
             </Text>
             <Button variant="secondary">
@@ -116,8 +109,8 @@ const VendorCollectionsPage = () => {
             </Button>
           </div>
         ) : (
-          <div style={{ background: "var(--bg-base)", border: "1px solid var(--border-base)", borderRadius: 8 }}>
-            <Table>
+          <div className="bg-ui-bg-base border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto">
+            <Table className="min-w-[800px]">
               <Table.Header>
                 <Table.Row>
                   <Table.HeaderCell>Title</Table.HeaderCell>
@@ -129,8 +122,8 @@ const VendorCollectionsPage = () => {
               <Table.Body>
                 {filteredCollections.length === 0 ? (
                   <Table.Row>
-                    <td colSpan={4} style={{ padding: "32px", textAlign: "center" }}>
-                      <Text style={{ color: "var(--fg-muted)" }}>No collections match your search</Text>
+                    <td colSpan={4} className="p-8 text-center">
+                      <Text className="text-ui-fg-muted">No collections match your search</Text>
                     </td>
                   </Table.Row>
                 ) : (
@@ -140,7 +133,7 @@ const VendorCollectionsPage = () => {
                         <Text weight="plus">{collection.title}</Text>
                       </Table.Cell>
                       <Table.Cell>
-                        <Text size="small" style={{ color: "var(--fg-muted)" }}>
+                        <Text size="small" className="text-ui-fg-muted">
                           {collection.handle}
                         </Text>
                       </Table.Cell>
@@ -148,7 +141,7 @@ const VendorCollectionsPage = () => {
                         <Badge color="grey">{collection.products?.length || 0} products</Badge>
                       </Table.Cell>
                       <Table.Cell>
-                        <Text size="small" style={{ color: "var(--fg-muted)" }}>
+                        <Text size="small" className="text-ui-fg-muted">
                           {new Date(collection.created_at).toLocaleDateString()}
                         </Text>
                       </Table.Cell>

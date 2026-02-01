@@ -23,7 +23,7 @@ type Product = {
 const StatusIndicator = ({ status }: { status: string }) => {
   const getStatusConfig = () => {
     const lowerStatus = status.toLowerCase()
-    
+
     // Check for approval status
     if (lowerStatus === "pending") {
       return {
@@ -32,7 +32,7 @@ const StatusIndicator = ({ status }: { status: string }) => {
         textColor: "text-ui-fg-base",
       }
     }
-    
+
     // Check product status
     if (lowerStatus === "published") {
       return {
@@ -41,7 +41,7 @@ const StatusIndicator = ({ status }: { status: string }) => {
         textColor: "text-ui-fg-base",
       }
     }
-    
+
     if (lowerStatus === "rejected") {
       return {
         dotColor: "bg-red-500",
@@ -49,7 +49,7 @@ const StatusIndicator = ({ status }: { status: string }) => {
         textColor: "text-ui-fg-base",
       }
     }
-    
+
     // Default to draft
     return {
       dotColor: "bg-gray-400",
@@ -76,7 +76,7 @@ const VendorProductsPage = () => {
 
   useEffect(() => {
     const vendorToken = localStorage.getItem("vendor_token")
-    
+
     if (!vendorToken) {
       router.push("/login")
       return
@@ -113,99 +113,99 @@ const VendorProductsPage = () => {
 
   if (loading) {
     content = (
-      <Container className="p-6">
+      <Container className="p-4 md:p-6">
         <Text>Loading products...</Text>
       </Container>
     )
   } else if (error) {
     content = (
-      <Container className="p-6">
+      <Container className="p-4 md:p-6">
         <Text className="text-ui-fg-error">{error}</Text>
       </Container>
     )
   } else {
     content = (
-    <Container className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <Heading level="h1">Products</Heading>
-          <Text className="text-ui-fg-subtle">Manage your products</Text>
-        </div>
-        <Button variant="primary" onClick={() => router.push("/products/new")}>
-          Create Product
-        </Button>
-      </div>
-
-      {products.length === 0 ? (
-        <div className="p-8 text-center border border-ui-border-base rounded-lg">
-          <Text className="text-ui-fg-subtle mb-4">No products found</Text>
+      <Container className="p-4 md:p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Heading level="h1">Products</Heading>
+            <Text className="text-ui-fg-subtle">Manage your products</Text>
+          </div>
           <Button variant="primary" onClick={() => router.push("/products/new")}>
-            Create your first product
+            Create Product
           </Button>
         </div>
-      ) : (
-        <div className="border border-ui-border-base rounded-lg overflow-hidden">
-          <Table>
-            <Table.Header>
-              <Table.Row>
-                <Table.HeaderCell>Product</Table.HeaderCell>
-                <Table.HeaderCell>Status</Table.HeaderCell>
-                <Table.HeaderCell>Created</Table.HeaderCell>
-                <Table.HeaderCell className="text-right">Actions</Table.HeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {products.map((product) => (
-                <Table.Row key={product.id}>
-                  <Table.Cell>
-                    <div className="flex items-center gap-3">
-                      {product.thumbnail && (
-                        <img
-                          src={product.thumbnail}
-                          alt={product.title}
-                          className="w-10 h-10 object-cover rounded"
-                        />
-                      )}
-                      <div className="flex flex-col">
-                        <Text className="font-medium">{product.title}</Text>
-                        {product.handle && product.handle !== product.title && (
-                          <Text className="text-ui-fg-subtle text-sm">{product.handle}</Text>
-                        )}
-                      </div>
-                    </div>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <StatusIndicator 
-                      status={
-                        product.metadata?.approval_status === "pending" 
-                          ? "pending"
-                          : product.metadata?.approval_status === "rejected"
-                          ? "rejected"
-                          : product.status === "published" 
-                          ? "published" 
-                          : "draft"
-                      } 
-                    />
-                  </Table.Cell>
-                  <Table.Cell>
-                      <Text className="text-ui-fg-subtle">{formatDate(product.created_at)}</Text>
-                  </Table.Cell>
-                  <Table.Cell className="text-right">
-                    <Button
-                      variant="transparent"
-                        onClick={() => router.push(`/products/${product.id}`)}
-                    >
-                      Edit
-                    </Button>
-                  </Table.Cell>
+
+        {products.length === 0 ? (
+          <div className="p-8 text-center border border-ui-border-base rounded-lg">
+            <Text className="text-ui-fg-subtle mb-4">No products found</Text>
+            <Button variant="primary" onClick={() => router.push("/products/new")}>
+              Create your first product
+            </Button>
+          </div>
+        ) : (
+          <div className="border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto">
+            <Table className="min-w-[700px]">
+              <Table.Header>
+                <Table.Row>
+                  <Table.HeaderCell>Product</Table.HeaderCell>
+                  <Table.HeaderCell>Status</Table.HeaderCell>
+                  <Table.HeaderCell>Created</Table.HeaderCell>
+                  <Table.HeaderCell className="text-right">Actions</Table.HeaderCell>
                 </Table.Row>
-              ))}
-            </Table.Body>
-          </Table>
-        </div>
-      )}
-    </Container>
-  )
+              </Table.Header>
+              <Table.Body>
+                {products.map((product) => (
+                  <Table.Row key={product.id}>
+                    <Table.Cell>
+                      <div className="flex items-center gap-3">
+                        {product.thumbnail && (
+                          <img
+                            src={product.thumbnail}
+                            alt={product.title}
+                            className="w-10 h-10 object-cover rounded"
+                          />
+                        )}
+                        <div className="flex flex-col">
+                          <Text className="font-medium">{product.title}</Text>
+                          {product.handle && product.handle !== product.title && (
+                            <Text className="text-ui-fg-subtle text-sm">{product.handle}</Text>
+                          )}
+                        </div>
+                      </div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <StatusIndicator
+                        status={
+                          product.metadata?.approval_status === "pending"
+                            ? "pending"
+                            : product.metadata?.approval_status === "rejected"
+                              ? "rejected"
+                              : product.status === "published"
+                                ? "published"
+                                : "draft"
+                        }
+                      />
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Text className="text-ui-fg-subtle">{formatDate(product.created_at)}</Text>
+                    </Table.Cell>
+                    <Table.Cell className="text-right">
+                      <Button
+                        variant="transparent"
+                        onClick={() => router.push(`/products/${product.id}`)}
+                      >
+                        Edit
+                      </Button>
+                    </Table.Cell>
+                  </Table.Row>
+                ))}
+              </Table.Body>
+            </Table>
+          </div>
+        )}
+      </Container>
+    )
   }
 
   return <VendorShell>{content}</VendorShell>
