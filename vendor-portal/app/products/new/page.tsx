@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from "react"
-import { Heading, Text, Button, Input, Textarea, Label, Switch, toast } from "@medusajs/ui"
+import { Heading, Text, Button, Input, Textarea, Label, Switch, toast, clx } from "@medusajs/ui"
 import { CheckCircleSolid, CircleMiniSolid } from "@medusajs/icons"
 import VendorShell from "@/components/VendorShell"
 import { useRouter } from "next/navigation"
@@ -540,93 +540,74 @@ const VendorProductNewPage = () => {
     const isOrganizeComplete = currentStep === "variants"
 
     return (
-      <div style={{ display: "flex", gap: 8, marginBottom: 32 }}>
+      <div className="flex flex-col md:flex-row gap-2 md:gap-8 mb-8">
         <button
           onClick={() => setCurrentStep("details")}
-          style={{
-            flex: 1,
-            padding: "12px 20px",
-            background: currentStep === "details" ? "#60a5fa" : "transparent",
-            border: "none",
-            borderRadius: 8,
-            color: currentStep === "details" ? "white" : "var(--fg-base)",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            fontSize: 15,
-          }}
+          className={clx(
+            "flex-1 flex items-center gap-3 p-3 rounded-lg text-sm font-medium transition-colors border md:border-none",
+            currentStep === "details"
+              ? "bg-blue-500 text-white border-blue-500"
+              : "bg-transparent text-ui-fg-base border-ui-border-base hover:bg-ui-bg-base-hover"
+          )}
         >
-          <span style={{ width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span className="flex items-center justify-center w-6 h-6">
             {isDetailsComplete ? (
-              <CheckCircleSolid style={{ color: "#60a5fa" }} />
+              <CheckCircleSolid className="text-blue-500" />
             ) : (
-              <CircleMiniSolid style={{ color: currentStep === "details" ? "white" : "var(--fg-muted)" }} />
+              <CircleMiniSolid className="text-white" />
             )}
           </span>
-          <span style={{ fontWeight: 500 }}>Details</span>
+          <span>Details</span>
         </button>
 
         <button
           onClick={() => formData.title && setCurrentStep("organize")}
           disabled={!formData.title}
-          style={{
-            flex: 1,
-            padding: "12px 20px",
-            background: currentStep === "organize" ? "#60a5fa" : "transparent",
-            border: "none",
-            borderRadius: 8,
-            color: currentStep === "organize" ? "white" : "var(--fg-base)",
-            cursor: formData.title ? "pointer" : "not-allowed",
-            opacity: formData.title ? 1 : 0.5,
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            fontSize: 15,
-          }}
+          className={clx(
+            "flex-1 flex items-center gap-3 p-3 rounded-lg text-sm font-medium transition-colors border md:border-none",
+            currentStep === "organize"
+              ? "bg-blue-500 text-white border-blue-500"
+              : "bg-transparent text-ui-fg-base border-ui-border-base",
+            !formData.title && "opacity-50 cursor-not-allowed",
+            formData.title && currentStep !== "organize" && "hover:bg-ui-bg-base-hover"
+          )}
         >
-          <span style={{ width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span className="flex items-center justify-center w-6 h-6">
             {isOrganizeComplete ? (
-              <CheckCircleSolid style={{ color: "#60a5fa" }} />
+              <CheckCircleSolid className={currentStep === "organize" ? "text-white" : "text-blue-500"} />
             ) : (
-              <CircleMiniSolid style={{ color: currentStep === "organize" ? "white" : "var(--fg-muted)" }} />
+              <CircleMiniSolid className={currentStep === "organize" ? "text-white" : "text-ui-fg-muted"} />
             )}
           </span>
-          <span style={{ fontWeight: 500 }}>Organize</span>
+          <span>Organize</span>
         </button>
 
         <button
           onClick={() => formData.title && setCurrentStep("variants")}
           disabled={!formData.title}
-          style={{
-            flex: 1,
-            padding: "12px 20px",
-            background: currentStep === "variants" ? "#60a5fa" : "transparent",
-            border: "none",
-            borderRadius: 8,
-            color: currentStep === "variants" ? "white" : "var(--fg-base)",
-            cursor: formData.title ? "pointer" : "not-allowed",
-            opacity: formData.title ? 1 : 0.5,
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            fontSize: 15,
-          }}
+          className={clx(
+            "flex-1 flex items-center gap-3 p-3 rounded-lg text-sm font-medium transition-colors border md:border-none",
+            currentStep === "variants"
+              ? "bg-blue-500 text-white border-blue-500"
+              : "bg-transparent text-ui-fg-base border-ui-border-base",
+            !formData.title && "opacity-50 cursor-not-allowed",
+            formData.title && currentStep !== "variants" && "hover:bg-ui-bg-base-hover"
+          )}
         >
-          <span style={{ width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <CircleMiniSolid style={{ color: currentStep === "variants" ? "white" : "var(--fg-muted)" }} />
+          <span className="flex items-center justify-center w-6 h-6">
+            <CircleMiniSolid className={currentStep === "variants" ? "text-white" : "text-ui-fg-muted"} />
           </span>
-          <span style={{ fontWeight: 500 }}>Variants</span>
+          <span>Variants</span>
         </button>
       </div>
     )
   }
 
   const renderDetailsStep = () => (
-    <div style={{ maxWidth: 1200 }}>
-      <Heading level="h2" style={{ marginBottom: 16 }}>General</Heading>
+    <div className="max-w-[1200px]">
+      <Heading level="h2" className="mb-4">General</Heading>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 24 }}>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div>
           <Label>Title</Label>
           <Input
@@ -639,7 +620,7 @@ const VendorProductNewPage = () => {
 
         <div>
           <Label>
-            Subtitle <span style={{ color: "var(--fg-muted)" }}>(Optional)</span>
+            Subtitle <span className="text-ui-fg-muted">(Optional)</span>
           </Label>
           <Input
             value={formData.subtitle}
@@ -650,10 +631,10 @@ const VendorProductNewPage = () => {
 
         <div>
           <Label>
-            Handle <span style={{ color: "var(--fg-muted)" }}>(Optional)</span>
+            Handle <span className="text-ui-fg-muted">(Optional)</span>
           </Label>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ color: "var(--fg-muted)" }}>/</span>
+          <div className="flex items-center gap-2">
+            <span className="text-ui-fg-muted">/</span>
             <Input
               value={formData.handle}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, handle: e.target.value })}
@@ -663,9 +644,9 @@ const VendorProductNewPage = () => {
         </div>
       </div>
 
-      <div style={{ marginBottom: 32 }}>
+      <div className="mb-8">
         <Label>
-          Description <span style={{ color: "var(--fg-muted)" }}>(Optional)</span>
+          Description <span className="text-ui-fg-muted">(Optional)</span>
         </Label>
         <Textarea
           value={formData.description}
@@ -677,7 +658,7 @@ const VendorProductNewPage = () => {
 
       <div>
         <Label>
-          Media <span style={{ color: "var(--fg-muted)" }}>(Optional)</span>
+          Media <span className="text-ui-fg-muted">(Optional)</span>
         </Label>
         <input
           type="file"
@@ -696,22 +677,15 @@ const VendorProductNewPage = () => {
               fileInput.click()
             }
           }}
-          style={{
-            border: "2px dashed var(--border-base)",
-            borderRadius: 8,
-            padding: 48,
-            textAlign: "center",
-            background: "var(--bg-base)",
-            cursor: "pointer",
-          }}
+          className="border-2 border-dashed border-ui-border-base rounded-lg p-12 text-center bg-ui-bg-base cursor-pointer hover:bg-ui-bg-subtle transition-colors"
         >
-          <div style={{ marginBottom: 16 }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ margin: "0 auto", color: "var(--fg-muted)" }}>
+          <div className="mb-4">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="mx-auto text-ui-fg-muted">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
-          <Text weight="plus" style={{ marginBottom: 4 }}>Upload images and videos</Text>
-          <Text size="small" style={{ color: "var(--fg-muted)", marginBottom: 16 }}>
+          <Text weight="plus" className="mb-1">Upload images and videos</Text>
+          <Text size="small" className="text-ui-fg-muted mb-4">
             Drag and drop images or videos here or click to upload. Supported formats: Images (JPG, PNG, etc.) and Videos (MP4, WebM, MOV, AVI)
           </Text>
           <Button
@@ -729,73 +703,38 @@ const VendorProductNewPage = () => {
           </Button>
         </div>
         {(uploadingMedia || uploadingImages || uploadingVideos) && (
-          <div style={{ marginTop: 16, padding: 12, background: "var(--bg-subtle)", borderRadius: 6 }}>
-            <Text size="small" style={{ color: "var(--fg-muted)" }}>
+          <div className="mt-4 p-3 bg-ui-bg-subtle rounded-md">
+            <Text size="small" className="text-ui-fg-muted">
               {uploadingMedia ? "Uploading media..." : uploadingImages ? "Uploading images..." : "Uploading videos..."}
             </Text>
           </div>
         )}
         {(formData.uploadedImages.length > 0 || formData.uploadedVideos.length > 0) && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-              background: "var(--bg-base)",
-              border: "1px solid var(--border-base)",
-              borderRadius: 8,
-              padding: 12,
-            }}>
+          <div className="mt-4">
+            <div className="flex flex-col gap-2 bg-ui-bg-base border border-ui-border-base rounded-lg p-3">
               {/* Display Images */}
               {formData.uploadedImages.map((image, idx) => (
                 <div
                   key={idx}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: 12,
-                    background: image.url === formData.thumbnailUrl ? "var(--bg-subtle)" : "transparent",
-                    border: image.url === formData.thumbnailUrl ? "1px solid var(--border-accent)" : "1px solid transparent",
-                    borderRadius: 6,
-                    position: "relative",
-                  }}
+                  className={clx(
+                    "flex items-center gap-3 p-3 rounded-md relative",
+                    image.url === formData.thumbnailUrl ? "bg-ui-bg-subtle border border-blue-500" : "bg-transparent border border-transparent"
+                  )}
                 >
                   {/* Drag handle */}
                   <div
-                    style={{
-                      cursor: "grab",
-                      color: "var(--fg-muted)",
-                      fontSize: 18,
-                      padding: "4px 8px",
-                    }}
+                    className="cursor-grab text-ui-fg-muted text-lg px-2"
                     title="Drag to reorder"
                   >
                     ⋮⋮
                   </div>
 
                   {/* Image thumbnail */}
-                  <div
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 4,
-                      overflow: "hidden",
-                      background: "var(--bg-subtle)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
+                  <div className="w-12 h-12 rounded overflow-hidden bg-ui-bg-subtle flex items-center justify-center shrink-0">
                     <img
                       src={image.url}
                       alt={image.originalName}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
+                      className="w-full h-full object-cover"
                       onError={(e) => {
                         (e.target as HTMLImageElement).style.display = "none"
                       }}
@@ -803,22 +742,16 @@ const VendorProductNewPage = () => {
                   </div>
 
                   {/* File info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <Text size="small" weight="plus" style={{ display: "block", marginBottom: 4 }}>
+                  <div className="flex-1 min-w-0">
+                    <Text size="small" weight="plus" className="block mb-1">
                       {image.originalName}
                     </Text>
-                    <Text size="xsmall" style={{ color: "var(--fg-muted)" }}>
+                    <Text size="xsmall" className="text-ui-fg-muted">
                       {image.filename}
                     </Text>
                     {image.url === formData.thumbnailUrl && (
-                      <div style={{ marginTop: 4 }}>
-                        <Text size="xsmall" style={{
-                          color: "var(--fg-accent)",
-                          background: "var(--bg-accent)",
-                          padding: "2px 6px",
-                          borderRadius: 4,
-                          display: "inline-block",
-                        }}>
+                      <div className="mt-1">
+                        <Text size="xsmall" className="text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded inline-block">
                           Thumbnail
                         </Text>
                       </div>
@@ -826,18 +759,10 @@ const VendorProductNewPage = () => {
                   </div>
 
                   {/* Actions */}
-                  <div style={{ position: "relative" }}>
+                  <div className="relative">
                     <button
                       onClick={() => setOpenMenuIndex(openMenuIndex === idx ? null : idx)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: "4px 8px",
-                        color: "var(--fg-muted)",
-                        fontSize: 18,
-                        lineHeight: 1,
-                      }}
+                      className="bg-none border-none cursor-pointer px-2 text-ui-fg-muted text-lg leading-none"
                     >
                       ⋮
                     </button>
@@ -848,66 +773,18 @@ const VendorProductNewPage = () => {
                         ref={(el) => {
                           menuRefs.current[idx] = el
                         }}
-                        style={{
-                          position: "absolute",
-                          top: "100%",
-                          right: 0,
-                          marginTop: 4,
-                          background: "var(--bg-base)",
-                          border: "1px solid var(--border-base)",
-                          borderRadius: 6,
-                          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-                          zIndex: 1000,
-                          minWidth: 160,
-                        }}
+                        className="absolute top-full right-0 mt-1 bg-ui-bg-base border border-ui-border-base rounded-md shadow-lg z-50 min-w-[160px]"
                       >
                         <button
                           onClick={() => handleMakeThumbnail(idx)}
-                          style={{
-                            width: "100%",
-                            padding: "8px 12px",
-                            textAlign: "left",
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            color: "var(--fg-base)",
-                            fontSize: 14,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = "var(--bg-subtle)"
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = "transparent"
-                          }}
+                          className="w-full px-3 py-2 text-left bg-none border-none cursor-pointer text-ui-fg-base text-sm flex items-center gap-2 hover:bg-ui-bg-subtle"
                         >
                           <span>🎬</span>
                           <span>Make thumbnail</span>
                         </button>
                         <button
                           onClick={() => handleDeleteImage(idx)}
-                          style={{
-                            width: "100%",
-                            padding: "8px 12px",
-                            textAlign: "left",
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            color: "var(--fg-destructive)",
-                            fontSize: 14,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            borderTop: "1px solid var(--border-base)",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = "var(--bg-subtle)"
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = "transparent"
-                          }}
+                          className="w-full px-3 py-2 text-left bg-none border-none cursor-pointer text-red-500 text-sm flex items-center gap-2 border-t border-ui-border-base hover:bg-ui-bg-subtle"
                         >
                           <span>🗑️</span>
                           <span>Delete</span>
@@ -916,18 +793,10 @@ const VendorProductNewPage = () => {
                     )}
                   </div>
 
-                  {/* Delete button */}
+                  {/* Delete button (X) */}
                   <button
                     onClick={() => handleDeleteImage(idx)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: "4px 8px",
-                      color: "var(--fg-muted)",
-                      fontSize: 18,
-                      lineHeight: 1,
-                    }}
+                    className="bg-none border-none cursor-pointer px-2 text-ui-fg-muted text-lg leading-none"
                     title="Delete"
                   >
                     ×
@@ -939,64 +808,32 @@ const VendorProductNewPage = () => {
               {formData.uploadedVideos.map((video, idx) => (
                 <div
                   key={`video - ${idx}`}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: 12,
-                    background: "transparent",
-                    border: "1px solid transparent",
-                    borderRadius: 6,
-                    position: "relative",
-                  }}
+                  className="flex items-center gap-3 p-3 rounded-md border border-transparent"
                 >
                   {/* Video icon/thumbnail */}
-                  <div
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 4,
-                      overflow: "hidden",
-                      background: "var(--bg-subtle)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ color: "var(--fg-muted)" }}>
+                  <div className="w-12 h-12 rounded overflow-hidden bg-ui-bg-subtle flex items-center justify-center shrink-0">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-ui-fg-muted">
                       <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </div>
 
                   {/* File info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <Text size="small" weight="plus" style={{ display: "block", marginBottom: 4 }}>
+                  <div className="flex-1 min-w-0">
+                    <Text size="small" weight="plus" className="block mb-1">
                       {video.originalName}
                     </Text>
-                    <Text size="xsmall" style={{ color: "var(--fg-muted)" }}>
+                    <Text size="xsmall" className="text-ui-fg-muted">
                       {video.filename}
                     </Text>
-                    <div style={{ marginTop: 4 }}>
-                      <Text size="xsmall" style={{
-                        color: "var(--fg-accent)",
-                        background: "var(--bg-accent)",
-                        padding: "2px 6px",
-                        borderRadius: 4,
-                        display: "inline-block",
-                        marginRight: 8,
-                      }}>
+                    <div className="mt-1">
+                      <Text size="xsmall" className="text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded inline-block mr-2">
                         Video
                       </Text>
                       <a
                         href={video.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{
-                          color: "var(--fg-accent)",
-                          textDecoration: "none",
-                          fontSize: 11,
-                        }}
+                        className="text-blue-600 text-[11px] no-underline"
                         onClick={(e) => e.stopPropagation()}
                       >
                         View video →
@@ -1007,15 +844,7 @@ const VendorProductNewPage = () => {
                   {/* Delete button */}
                   <button
                     onClick={() => handleDeleteVideo(idx)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: "4px 8px",
-                      color: "var(--fg-muted)",
-                      fontSize: 18,
-                      lineHeight: 1,
-                    }}
+                    className="bg-none border-none cursor-pointer px-2 text-ui-fg-muted text-lg leading-none"
                     title="Delete"
                   >
                     ×
@@ -1028,158 +857,100 @@ const VendorProductNewPage = () => {
       </div>
 
       {/* Attributes Section */}
-      <div style={{ marginTop: 32 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+      <div className="mt-8">
+        <div className="flex items-center justify-between mb-4">
           <Label>
-            Attributes <span style={{ color: "var(--fg-muted)" }}>(Optional)</span>
+            Attributes <span className="text-ui-fg-muted">(Optional)</span>
           </Label>
           <button
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "var(--fg-muted)",
-              padding: "4px 8px",
-            }}
+            className="text-ui-fg-muted p-1 hover:text-ui-fg-base transition-colors"
             title="Options"
           >
             ⋮
           </button>
         </div>
 
-        <div style={{
-          background: "var(--bg-base)",
-          border: "1px solid var(--border-base)",
-          borderRadius: 8,
-        }}>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 1,
-            background: "var(--border-base)",
-          }}>
+        <div className="bg-ui-bg-base border border-ui-border-base rounded-lg overflow-hidden">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-ui-border-base">
             {/* Height */}
-            <div style={{
-              padding: "12px 16px",
-              background: "var(--bg-base)",
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-            }}>
-              <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>Height</Text>
+            <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3">
+              <Text size="small" className="min-w-[120px] text-ui-fg-muted">Height</Text>
               <Input
                 value={formData.height}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, height: e.target.value })}
                 placeholder="-"
-                style={{ flex: 1 }}
+                className="flex-1"
               />
             </div>
 
             {/* Width */}
-            <div style={{
-              padding: "12px 16px",
-              background: "var(--bg-base)",
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-            }}>
-              <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>Width</Text>
+            <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3">
+              <Text size="small" className="min-w-[120px] text-ui-fg-muted">Width</Text>
               <Input
                 value={formData.width}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, width: e.target.value })}
                 placeholder="-"
-                style={{ flex: 1 }}
+                className="flex-1"
               />
             </div>
 
             {/* Length */}
-            <div style={{
-              padding: "12px 16px",
-              background: "var(--bg-base)",
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-            }}>
-              <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>Length</Text>
+            <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3">
+              <Text size="small" className="min-w-[120px] text-ui-fg-muted">Length</Text>
               <Input
                 value={formData.length}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, length: e.target.value })}
                 placeholder="-"
-                style={{ flex: 1 }}
+                className="flex-1"
               />
             </div>
 
             {/* Weight */}
-            <div style={{
-              padding: "12px 16px",
-              background: "var(--bg-base)",
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-            }}>
-              <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>Weight</Text>
+            <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3">
+              <Text size="small" className="min-w-[120px] text-ui-fg-muted">Weight</Text>
               <Input
                 value={formData.weight}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, weight: e.target.value })}
                 placeholder="-"
-                style={{ flex: 1 }}
+                className="flex-1"
               />
             </div>
 
             {/* MID code */}
-            <div style={{
-              padding: "12px 16px",
-              background: "var(--bg-base)",
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-            }}>
-              <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>MID code</Text>
+            <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3">
+              <Text size="small" className="min-w-[120px] text-ui-fg-muted">MID code</Text>
               <Input
                 value={formData.midCode}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, midCode: e.target.value })}
                 placeholder="-"
-                style={{ flex: 1 }}
+                className="flex-1"
               />
             </div>
 
             {/* HS code */}
-            <div style={{
-              padding: "12px 16px",
-              background: "var(--bg-base)",
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-            }}>
-              <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>HS code</Text>
+            <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3">
+              <Text size="small" className="min-w-[120px] text-ui-fg-muted">HS code</Text>
               <Input
                 value={formData.hsCode}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, hsCode: e.target.value })}
                 placeholder="-"
-                style={{ flex: 1 }}
+                className="flex-1"
               />
             </div>
 
             {/* Country of origin */}
-            <div style={{
-              padding: "12px 16px",
-              background: "var(--bg-base)",
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              gridColumn: "1 / -1",
-            }}>
-              <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>Country of origin</Text>
+            <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3 col-span-1 md:col-span-2">
+              <Text size="small" className="min-w-[120px] text-ui-fg-muted">Country of origin</Text>
               <Input
                 value={formData.countryOfOrigin}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, countryOfOrigin: e.target.value })}
                 placeholder="-"
-                style={{ flex: 1 }}
+                className="flex-1"
               />
             </div>
 
             {/* Brand with Authorization Check */}
-            <div style={{ gridColumn: "1 / -1" }}>
+            <div className="bg-ui-bg-base col-span-1 md:col-span-2">
               <BrandAuthorizationField
                 brand={formData.brand}
                 onBrandChange={(brand) => setFormData({ ...formData, brand })}
@@ -1197,28 +968,28 @@ const VendorProductNewPage = () => {
   )
 
   const renderOrganizeStep = () => (
-    <div style={{ maxWidth: 1200 }}>
-      <Heading level="h2" style={{ marginBottom: 16 }}>Organize</Heading>
+    <div className="max-w-[1200px]">
+      <Heading level="h2" className="mb-4">Organize</Heading>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 16, background: "var(--bg-base)", borderRadius: 8, marginBottom: 24 }}>
+      <div className="flex items-center gap-3 p-4 bg-ui-bg-base rounded-lg mb-6 border border-ui-border-base">
         <Switch
           checked={formData.discountable}
           onCheckedChange={(checked: boolean) => setFormData({ ...formData, discountable: checked })}
         />
         <div>
           <Text weight="plus">
-            Discountable <span style={{ color: "var(--fg-muted)" }}>(Optional)</span>
+            Discountable <span className="text-ui-fg-muted">(Optional)</span>
           </Text>
-          <Text size="small" style={{ color: "var(--fg-muted)" }}>
+          <Text size="small" className="text-ui-fg-muted">
             When unchecked, discounts will not be applied to this product
           </Text>
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div>
           <Label>
-            Type <span style={{ color: "var(--fg-muted)" }}>(Optional)</span>
+            Type <span className="text-ui-fg-muted">(Optional)</span>
           </Label>
           <Input
             value={formData.type}
@@ -1229,19 +1000,12 @@ const VendorProductNewPage = () => {
 
         <div>
           <Label>
-            Collection <span style={{ color: "var(--fg-muted)" }}>(Optional)</span>
+            Collection <span className="text-ui-fg-muted">(Optional)</span>
           </Label>
           <select
             value={formData.collection}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, collection: e.target.value })}
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              background: "var(--bg-base)",
-              border: "1px solid var(--border-base)",
-              borderRadius: 8,
-              color: "var(--fg-base)",
-            }}
+            className="w-full p-2 bg-ui-bg-base border border-ui-border-base rounded-lg text-ui-fg-base h-10"
           >
             <option value="">Select collection</option>
             {collections.map((col) => (
@@ -1253,25 +1017,17 @@ const VendorProductNewPage = () => {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div>
           <Label>
-            Categories <span style={{ color: "var(--fg-muted)" }}>(Optional)</span>
+            Categories <span className="text-ui-fg-muted">(Optional)</span>
           </Label>
           <select
             value={formData.categories[0] || ""}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
               setFormData({ ...formData, categories: e.target.value ? [e.target.value] : [] })
             }}
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              background: "var(--bg-base)",
-              border: "1px solid var(--border-base)",
-              borderRadius: 8,
-              color: "var(--fg-base)",
-              cursor: "pointer",
-            }}
+            className="w-full p-2 bg-ui-bg-base border border-ui-border-base rounded-lg text-ui-fg-base cursor-pointer h-10"
           >
             <option value="">Select category</option>
             {categories.map((cat) => (
@@ -1284,7 +1040,7 @@ const VendorProductNewPage = () => {
 
         <div>
           <Label>
-            Tags <span style={{ color: "var(--fg-muted)" }}>(Optional)</span>
+            Tags <span className="text-ui-fg-muted">(Optional)</span>
           </Label>
           <Input
             value={formData.tags.join(", ")}
@@ -1294,11 +1050,11 @@ const VendorProductNewPage = () => {
         </div>
       </div>
 
-      <div style={{ marginBottom: 24 }}>
+      <div className="mb-6">
         <Label>
-          Shipping profile <span style={{ color: "var(--fg-muted)" }}>(Optional)</span>
+          Shipping profile <span className="text-ui-fg-muted">(Optional)</span>
         </Label>
-        <Text size="small" style={{ color: "var(--fg-muted)", marginBottom: 8 }}>
+        <Text size="small" className="text-ui-fg-muted mb-2">
           Connect the product to a shipping profile
         </Text>
         <Input
@@ -1309,29 +1065,19 @@ const VendorProductNewPage = () => {
       </div>
 
       <div>
-        <div style={{ marginBottom: 8 }}>
+        <div className="mb-2">
           <Label>
-            Sales channels <span style={{ color: "var(--fg-muted)" }}>(Fixed)</span>
+            Sales channels <span className="text-ui-fg-muted">(Fixed)</span>
           </Label>
-          <Text size="small" style={{ color: "var(--fg-muted)" }}>
+          <Text size="small" className="text-ui-fg-muted">
             Sales channel is automatically set and cannot be modified. Products are assigned to the default sales channel.
           </Text>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="flex gap-2 flex-wrap">
           {formData.salesChannels.map((channel, idx) => (
             <div
               key={idx}
-              style={{
-                padding: "6px 12px",
-                background: "var(--bg-subtle-hover)",
-                border: "1px solid var(--border-base)",
-                borderRadius: 6,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                opacity: 0.7,
-                cursor: "not-allowed",
-              }}
+              className="px-3 py-1.5 bg-ui-bg-subtle-hover border border-ui-border-base rounded-md flex items-center gap-2 opacity-70 cursor-not-allowed"
             >
               <Text size="small">{channel}</Text>
             </div>
@@ -1342,42 +1088,32 @@ const VendorProductNewPage = () => {
   )
 
   const renderVariantsStep = () => (
-    <div style={{ maxWidth: 1200 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+    <div className="max-w-[1200px]">
+      <div className="flex justify-between items-center mb-4">
         <div>
           <Button variant="secondary" size="small">
-            <span style={{ marginRight: 8 }}>☰</span>
+            <span className="mr-2">☰</span>
             View
           </Button>
         </div>
-        <Text size="small" style={{ color: "var(--fg-muted)" }}>
+        <Text size="small" className="text-ui-fg-muted">
           Shortcuts
         </Text>
       </div>
 
       {/* Sales Channels Section - Read Only */}
-      <div style={{ marginBottom: 24, padding: 16, background: "var(--bg-base)", border: "1px solid var(--border-base)", borderRadius: 8 }}>
-        <Label style={{ marginBottom: 8, display: "block" }}>
-          Sales channels <span style={{ color: "var(--fg-muted)" }}>(Fixed)</span>
+      <div className="mb-6 p-4 bg-ui-bg-base border border-ui-border-base rounded-lg">
+        <Label className="mb-2 block">
+          Sales channels <span className="text-ui-fg-muted">(Fixed)</span>
         </Label>
-        <Text size="small" style={{ color: "var(--fg-muted)", marginBottom: 12, display: "block" }}>
+        <Text size="small" className="text-ui-fg-muted mb-3 block">
           Sales channel is automatically set and cannot be modified. Products are assigned to the default sales channel.
         </Text>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="flex gap-2 flex-wrap">
           {formData.salesChannels.map((channel, idx) => (
             <div
               key={idx}
-              style={{
-                padding: "6px 12px",
-                background: "var(--bg-subtle-hover)",
-                border: "1px solid var(--border-base)",
-                borderRadius: 6,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                opacity: 0.7,
-                cursor: "not-allowed",
-              }}
+              className="px-3 py-1.5 bg-ui-bg-subtle-hover border border-ui-border-base rounded-md flex items-center gap-2 opacity-70 cursor-not-allowed"
             >
               <Text size="small">{channel}</Text>
             </div>
@@ -1385,52 +1121,52 @@ const VendorProductNewPage = () => {
         </div>
       </div>
 
-      <div style={{ background: "var(--bg-base)", border: "1px solid var(--border-base)", borderRadius: 8, overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead style={{ background: "var(--bg-subtle)", borderBottom: "1px solid var(--border-base)" }}>
+      <div className="bg-ui-bg-base border border-ui-border-base rounded-lg overflow-hidden shadow-sm overflow-x-auto">
+        <table className="w-full min-w-[1000px] border-collapse">
+          <thead className="bg-ui-bg-subtle border-b border-ui-border-base">
             <tr>
-              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
+              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
                 Default option
               </th>
-              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
+              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
                 Title
               </th>
-              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
+              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
                 SKU
               </th>
-              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
+              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
                 Managed inventory
               </th>
-              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
+              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
                 Allow backorder
               </th>
-              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
+              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
                 Has inventory kit
               </th>
-              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
+              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
                 Inventory Count
               </th>
-              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
+              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
                 Price INR
               </th>
-              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
+              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
                 Discounted Price INR
               </th>
-              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
+              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
                 Discount %
               </th>
-              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--fg-muted)" }}>
+              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
 
               </th>
             </tr>
           </thead>
           <tbody>
             {formData.variants.map((variant, idx) => (
-              <tr key={idx} style={{ borderBottom: "1px solid var(--border-base)" }}>
-                <td style={{ padding: "12px 16px" }}>
+              <tr key={idx} className="border-b border-ui-border-base">
+                <td className="px-4 py-3">
                   <Text size="small">Default option value</Text>
                 </td>
-                <td style={{ padding: "12px 16px" }}>
+                <td className="px-4 py-3">
                   <Input
                     value={variant.title}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1439,10 +1175,10 @@ const VendorProductNewPage = () => {
                       setFormData({ ...formData, variants: newVariants })
                     }}
                     placeholder="Default variant"
-                    style={{ width: "100%" }}
+                    className="w-full"
                   />
                 </td>
-                <td style={{ padding: "12px 16px" }}>
+                <td className="px-4 py-3">
                   <Input
                     value={variant.sku}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1450,10 +1186,10 @@ const VendorProductNewPage = () => {
                       newVariants[idx].sku = e.target.value
                       setFormData({ ...formData, variants: newVariants })
                     }}
-                    style={{ width: "100%" }}
+                    className="w-full"
                   />
                 </td>
-                <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                <td className="px-4 py-3 text-center">
                   <input
                     type="checkbox"
                     checked={variant.managedInventory}
@@ -1464,7 +1200,7 @@ const VendorProductNewPage = () => {
                     }}
                   />
                 </td>
-                <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                <td className="px-4 py-3 text-center">
                   <input
                     type="checkbox"
                     checked={variant.allowBackorder}
@@ -1475,7 +1211,7 @@ const VendorProductNewPage = () => {
                     }}
                   />
                 </td>
-                <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                <td className="px-4 py-3 text-center">
                   <input
                     type="checkbox"
                     checked={variant.hasInventoryKit}
@@ -1486,7 +1222,7 @@ const VendorProductNewPage = () => {
                     }}
                   />
                 </td>
-                <td style={{ padding: "12px 16px" }}>
+                <td className="px-4 py-3">
                   <Input
                     type="number"
                     min="0"
@@ -1501,9 +1237,9 @@ const VendorProductNewPage = () => {
                     style={{ width: 100 }}
                   />
                 </td>
-                <td style={{ padding: "12px 16px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <span style={{ color: "var(--fg-muted)" }}>₹</span>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1">
+                    <span className="text-ui-fg-muted">₹</span>
                     <Input
                       value={variant.price}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1516,9 +1252,9 @@ const VendorProductNewPage = () => {
                     />
                   </div>
                 </td>
-                <td style={{ padding: "12px 16px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <span style={{ color: "var(--fg-muted)" }}>₹</span>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1">
+                    <span className="text-ui-fg-muted">₹</span>
                     <Input
                       value={variant.discountedPrice}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1531,13 +1267,13 @@ const VendorProductNewPage = () => {
                     />
                   </div>
                 </td>
-                <td style={{ padding: "12px 16px" }}>
+                <td className="px-4 py-3">
                   {variant.price && variant.discountedPrice ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <span style={{
-                        color: parseFloat(variant.discountedPrice) < parseFloat(variant.price) ? "#10b981" : "var(--fg-muted)",
-                        fontWeight: 500
-                      }}>
+                    <div className="flex items-center gap-1">
+                      <span className={clx(
+                        "font-medium",
+                        parseFloat(variant.discountedPrice) < parseFloat(variant.price) ? "text-emerald-500" : "text-ui-fg-muted"
+                      )}>
                         {(() => {
                           const basePrice = parseFloat(variant.price)
                           const discountedPrice = parseFloat(variant.discountedPrice)
@@ -1550,17 +1286,12 @@ const VendorProductNewPage = () => {
                       </span>
                     </div>
                   ) : (
-                    <span style={{ color: "var(--fg-muted)" }}>—</span>
+                    <span className="text-ui-fg-muted">—</span>
                   )}
                 </td>
-                <td style={{ padding: "12px 16px" }}>
+                <td className="px-4 py-3">
                   <button
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      color: "var(--fg-muted)",
-                    }}
+                    className="bg-none border-none cursor-pointer text-ui-fg-muted"
                   >
                     ⋮
                   </button>
@@ -1575,22 +1306,15 @@ const VendorProductNewPage = () => {
 
   return (
     <VendorShell>
-      <div style={{ padding: "24px 32px" }}>
-        <div style={{ marginBottom: 24 }}>
+      <div className="p-4 md:p-8">
+        <div className="mb-6">
           <button
             onClick={() => router.push("/products")}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "var(--fg-muted)",
-              fontSize: 24,
-              marginBottom: 16,
-            }}
+            className="bg-none border-none cursor-pointer text-ui-fg-muted text-2xl mb-4"
           >
             ×
           </button>
-          <Text size="small" style={{ color: "var(--fg-muted)" }}>
+          <Text size="small" className="text-ui-fg-muted">
             esc
           </Text>
         </div>
@@ -1601,49 +1325,31 @@ const VendorProductNewPage = () => {
         {currentStep === "organize" && renderOrganizeStep()}
         {currentStep === "variants" && renderVariantsStep()}
 
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 32, paddingTop: 24, borderTop: "1px solid var(--border-base)" }}>
-          <div style={{ display: "flex", gap: 12 }}>
-            {currentStep !== "details" && (
-              <Button variant="secondary" onClick={handleBack}>
-                Back
-              </Button>
-            )}
-            <Button
-              variant="secondary"
-              onClick={() => router.push("/products")}
-            >
-              Cancel
+        <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-ui-border-base">
+          {currentStep !== "details" && (
+            <Button variant="secondary" onClick={handleBack} disabled={loading}>
+              Back
             </Button>
-          </div>
+          )}
 
-          <div style={{ display: "flex", gap: 12 }}>
-            <Button variant="secondary" onClick={() => toast.info("Draft saved")}>
-              Save as draft
+          {currentStep !== "variants" ? (
+            <Button
+              variant="primary"
+              onClick={handleNext}
+              disabled={!formData.title}
+            >
+              Next
             </Button>
-            {currentStep === "variants" ? (
-              <Button variant="primary" onClick={handleSubmit} disabled={loading || !brandIsAuthorized}>
-                {loading ? "Publishing..." : "Publish"}
-              </Button>
-            ) : (
-              <Button 
-                variant="primary" 
-                onClick={handleNext}
-                disabled={
-                  !formData.brand.trim() || // Brand is mandatory
-                  (brandNeedsAuthorization && !brandIsAuthorized) // Authorization required but not uploaded
-                }
-                title={
-                  !formData.brand.trim() 
-                    ? "Please enter a brand name" 
-                    : brandNeedsAuthorization && !brandIsAuthorized 
-                      ? "Please upload brand authorization letter before continuing" 
-                      : ""
-                }
-              >
-                Continue
-              </Button>
-            )}
-          </div>
+          ) : (
+            <Button
+              variant="primary"
+              onClick={handleSubmit}
+              isLoading={loading}
+              disabled={loading}
+            >
+              Publish Product
+            </Button>
+          )}
         </div>
       </div>
     </VendorShell>
@@ -1651,4 +1357,3 @@ const VendorProductNewPage = () => {
 }
 
 export default VendorProductNewPage
-

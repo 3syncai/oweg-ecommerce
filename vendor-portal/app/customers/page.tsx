@@ -78,19 +78,19 @@ const VendorCustomersPage = () => {
 
     if (loading) {
         content = (
-            <Container className="p-6">
+            <Container className="p-4 md:p-6">
                 <Text>Loading customers...</Text>
             </Container>
         )
     } else if (error) {
         content = (
-            <Container className="p-6">
+            <Container className="p-4 md:p-6">
                 <Text className="text-ui-fg-error">{error}</Text>
             </Container>
         )
     } else {
         content = (
-            <Container className="p-6 space-y-6">
+            <Container className="p-4 md:p-6 space-y-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <Heading level="h1">Customers</Heading>
@@ -136,8 +136,8 @@ const VendorCustomersPage = () => {
                         </Text>
                     </div>
                 ) : (
-                    <div className="border border-ui-border-base rounded-lg overflow-hidden">
-                        <Table>
+                    <div className="border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto">
+                        <Table className="min-w-[800px]">
                             <Table.Header>
                                 <Table.Row>
                                     <Table.HeaderCell>Customer</Table.HeaderCell>

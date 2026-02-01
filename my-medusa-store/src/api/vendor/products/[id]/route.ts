@@ -82,13 +82,13 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
     if (images) updateData.images = images
     if (status) updateData.status = status
     if (weight !== undefined) updateData.weight = weight
-    
+
     // Preserve vendor_id in metadata
     updateData.metadata = {
       ...metadata,
       vendor_id: auth.vendor_id,
     }
-    
+
     const updatedProduct = await productModuleService.updateProducts(productId, updateData)
 
     return res.json({ product: updatedProduct })
