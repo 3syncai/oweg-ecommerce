@@ -574,7 +574,7 @@ const VendorProductNewPage = () => {
         >
           <span className="flex items-center justify-center w-6 h-6">
             {isOrganizeComplete ? (
-              <CheckCircleSolid className={currentStep === "organize" ? "text-white" : "text-blue-500"} />
+              <CheckCircleSolid className="text-blue-500" />
             ) : (
               <CircleMiniSolid className={currentStep === "organize" ? "text-white" : "text-ui-fg-muted"} />
             )}
