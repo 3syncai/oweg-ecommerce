@@ -15,15 +15,9 @@ const PAGE_SIZE = 20;
 export default function ForYouPage() {
   const { customer } = useAuth();
   const queryClient = useQueryClient();
-  const { preferences, hasPreferences, shouldPrompt, loading: prefLoading, saving: prefSaving, savePreferences } = usePreferences();
+  const { preferences, hasPreferences, loading: prefLoading, saving: prefSaving, savePreferences } = usePreferences();
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
-
-  useEffect(() => {
-    if (shouldPrompt) {
-      setModalOpen(true);
-    }
-  }, [shouldPrompt]);
 
   const fetchPersonalizedPage = useCallback(
     async (pageToFetch: number) => {
