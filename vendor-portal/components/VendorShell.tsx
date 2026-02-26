@@ -1,7 +1,7 @@
 "use client"
 
 import { PropsWithChildren, useEffect, useMemo, useRef, useState } from "react"
-import { Text } from "@medusajs/ui"
+import { Text, clx } from "@medusajs/ui"
 import Image from "next/image"
 import {
   MagnifyingGlass,
@@ -12,8 +12,8 @@ import {
   ChevronDown,
   ChevronRight,
   EllipsisHorizontal,
-  ChartBar,
   CurrencyDollar,
+  XMark
 } from "@medusajs/icons"
 import { usePathname, useRouter } from "next/navigation"
 import { vendorProfileApi, vendorOrdersApi } from "@/lib/api/client"
@@ -30,8 +30,6 @@ type PayoutData = {
   totalBalance: number
   loading: boolean
 }
-
-const sidebarWidth = 256
 
 const navItems = [
   {
@@ -94,15 +92,6 @@ const navItems = [
     type: "normal",
   },
 ]
-const shellColors = {
-  sidebarBg: "var(--bg-component, #0b1221)",
-  sidebarBorder: "var(--border-base, #1f2937)",
-  sidebarActive: "var(--fg-interactive, #2563eb)",
-  sidebarText: "var(--fg-base, #e5e7eb)",
-  sidebarMuted: "var(--fg-subtle, #94a3b8)",
-  mainBg: "var(--bg-base, #111827)",
-  headerBg: "var(--bg-subtle, #0f172a)",
-}
 
 const VendorShell = ({ children }: PropsWithChildren) => {
   const pathname = usePathname()
@@ -111,6 +100,8 @@ const VendorShell = ({ children }: PropsWithChildren) => {
   const [payoutData, setPayoutData] = useState<PayoutData>({ totalRevenue: 0, totalBalance: 0, loading: true })
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>(["Products"])
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
 
   const toggleExpanded = (label: string) => {
@@ -120,7 +111,6 @@ const VendorShell = ({ children }: PropsWithChildren) => {
   }
 
   useEffect(() => {
-    // Auto-expand Products dropdown if we're on any products route
     if (pathname?.includes("/products")) {
       setExpandedItems((prev) => {
         if (!prev.includes("Products")) {
@@ -129,6 +119,8 @@ const VendorShell = ({ children }: PropsWithChildren) => {
         return prev
       })
     }
+    // Close mobile menu on route change
+    setMobileMenuOpen(false)
   }, [pathname])
 
   useEffect(() => {
@@ -140,7 +132,6 @@ const VendorShell = ({ children }: PropsWithChildren) => {
         console.error("Failed to load vendor info:", error)
       }
     }
-
     loadVendorInfo()
   }, [])
 
@@ -149,22 +140,12 @@ const VendorShell = ({ children }: PropsWithChildren) => {
       try {
         const ordersData = await vendorOrdersApi.list().catch(() => ({ orders: [] }))
         const orders = ordersData?.orders || []
-
-        const totalRevenue = orders.reduce((sum: number, order: any) => {
-          return sum + (order.total || 0)
-        }, 0)
-
-        // For now, total balance equals total revenue
-        // In the future, you can subtract withdrawn amounts
-        const totalBalance = totalRevenue
-
-        setPayoutData({ totalRevenue, totalBalance, loading: false })
+        const totalRevenue = orders.reduce((sum: number, order: any) => sum + (order.total || 0), 0)
+        setPayoutData({ totalRevenue, totalBalance: totalRevenue, loading: false })
       } catch (error) {
         console.error("Failed to load payout data:", error)
-        setPayoutData({ totalRevenue: 0, totalBalance: 0, loading: false })
       }
     }
-
     loadPayoutData()
   }, [])
 
@@ -175,20 +156,15 @@ const VendorShell = ({ children }: PropsWithChildren) => {
         setAccountMenuOpen(false)
       }
     }
-
     document.addEventListener("click", handleClick)
     return () => document.removeEventListener("click", handleClick)
   }, [])
 
   const activePath = useMemo(() => {
     if (!pathname) return ""
-
-    // Check if we're on a child route (collections or categories)
-    if (pathname.includes("/products/collections") ||
-      pathname.includes("/products/categories")) {
+    if (pathname.includes("/products/collections") || pathname.includes("/products/categories")) {
       return "/products"
     }
-
     const activeItem = navItems.find((item) => pathname.startsWith(item.path))
     return activeItem?.path || ""
   }, [pathname])
@@ -201,95 +177,62 @@ const VendorShell = ({ children }: PropsWithChildren) => {
   const handleLogout = () => {
     localStorage.removeItem("vendor_token")
     localStorage.removeItem("vendor_user")
-    // Clear cookie as well
     document.cookie = 'vendor_token=; path=/; max-age=0; SameSite=Lax'
     router.push("/login")
   }
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        display: "flex",
-        backgroundColor: shellColors.mainBg,
-        color: "white",
-        zIndex: 100000,
-        fontFamily: "Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-      }}
-    >
-      <aside
-        style={{
-          width: sidebarWidth,
-          background: shellColors.sidebarBg,
-          borderRight: `1px solid ${shellColors.sidebarBorder}`,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
+    <div className="flex h-screen overflow-hidden bg-ui-bg-base text-ui-fg-base font-sans">
+      {/* Mobile Backdrop */}
+      {mobileMenuOpen && (
         <div
-          style={{
-            padding: "24px 24px 20px",
-            borderBottom: `1px solid ${shellColors.sidebarBorder}`,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={clx(
+          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-ui-border-base bg-ui-bg-component transition-transform duration-300 md:static md:translate-x-0",
+          mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        {/* Sidebar Header */}
+        <div className="flex h-16 shrink-0 items-center justify-between px-6 border-b border-ui-border-base">
+          <div className="flex items-center gap-3">
             {vendorInfo?.store_logo ? (
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 12,
-                  overflow: "hidden",
-                  background: "rgba(255, 255, 255, 0.1)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
+              <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-ui-bg-base/10">
                 <Image
                   src={vendorInfo.store_logo}
                   alt={vendorInfo.store_name || "Store logo"}
-                  width={44}
-                  height={44}
-                  style={{
-                    objectFit: "cover",
-                    width: "100%",
-                    height: "100%",
-                  }}
+                  width={32}
+                  height={32}
+                  className="h-full w-full object-cover"
                   unoptimized
                 />
               </div>
             ) : (
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 12,
-                  background: "rgba(255, 255, 255, 0.1)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 16,
-                  fontWeight: 600,
-                  color: shellColors.sidebarText,
-                  flexShrink: 0,
-                }}
-              >
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-ui-bg-base/10 text-sm font-semibold text-ui-fg-base">
                 {(vendorInfo?.store_name?.[0] || vendorInfo?.name?.[0] || "M").toUpperCase()}
               </div>
             )}
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <Text weight="plus" style={{ color: shellColors.sidebarText, fontSize: 16 }}>
-                {vendorInfo?.store_name ? `${vendorInfo.store_name} Store` : "Medusa Store"}
-              </Text>
-            </div>
+            <span className="text-sm font-semibold text-ui-fg-base truncate max-w-[140px]">
+              {vendorInfo?.store_name ? `${vendorInfo.store_name} Store` : "Medusa Store"}
+            </span>
           </div>
+          <button
+            type="button"
+            className="md:hidden text-ui-fg-subtle"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            <XMark />
+          </button>
         </div>
 
-        <div style={{ padding: "12px 8px", flex: 1, overflowY: "auto" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {/* Navigation */}
+        <div className="flex-1 overflow-y-auto px-2 py-4">
+          <nav className="flex flex-col gap-1">
             {navItems.map((item) => {
               const active = activePath === item.path
               const hasChildren = item.type === "parent" && item.children
@@ -306,84 +249,37 @@ const VendorShell = ({ children }: PropsWithChildren) => {
                         navigate(item.path)
                       }
                     }}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      border: "none",
-                      borderRadius: 8,
-                      padding: "10px 12px",
-                      background: active ? "rgba(255, 255, 255, 0.1)" : "transparent",
-                      cursor: "pointer",
-                      color: shellColors.sidebarText,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      transition: "background 0.1s ease",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!active) {
-                        e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)"
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!active) {
-                        e.currentTarget.style.background = "transparent"
-                      }
-                    }}
+                    className={clx(
+                      "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors",
+                      active ? "bg-ui-bg-base-hover text-ui-fg-base" : "text-ui-fg-subtle hover:bg-ui-bg-base-hover/50 hover:text-ui-fg-base"
+                    )}
                   >
-                    <span
-                      style={{
-                        width: 20,
-                        height: 20,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: shellColors.sidebarMuted,
-                      }}
-                    >
+                    <span className="flex h-5 w-5 items-center justify-center text-ui-fg-muted">
                       <item.icon />
                     </span>
-                    <span style={{ fontWeight: 500, fontSize: 14, flex: 1 }}>{item.label}</span>
+                    <span className="flex-1 font-medium">{item.label}</span>
                     {item.description && (
-                      <span style={{ fontSize: 12, color: shellColors.sidebarMuted }}>{item.description}</span>
+                      <span className="text-xs text-ui-fg-muted">{item.description}</span>
                     )}
                     {hasChildren && (
-                      <span style={{ width: 16, height: 16, color: shellColors.sidebarMuted }}>
+                      <span className="flex h-4 w-4 items-center justify-center text-ui-fg-muted">
                         {isExpanded ? <ChevronDown /> : <ChevronRight />}
                       </span>
                     )}
                   </button>
+
                   {hasChildren && isExpanded && item.children && (
-                    <div style={{ paddingLeft: 44, marginTop: 4, marginBottom: 4 }}>
+                    <div className="mt-1 flex flex-col gap-1 pl-11">
                       {item.children.map((child) => {
                         const isChildActive = pathname?.includes(child.path)
                         return (
                           <button
                             key={child.path}
                             onClick={() => navigate(child.path)}
-                            style={{
-                              width: "100%",
-                              textAlign: "left",
-                              border: "none",
-                              borderRadius: 8,
-                              padding: "8px 12px",
-                              background: isChildActive ? "rgba(255, 255, 255, 0.1)" : "transparent",
-                              cursor: "pointer",
-                              color: isChildActive ? shellColors.sidebarText : shellColors.sidebarMuted,
-                              fontSize: 14,
-                              fontWeight: isChildActive ? 500 : 400,
-                              transition: "background 0.1s ease",
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!isChildActive) {
-                                e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)"
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!isChildActive) {
-                                e.currentTarget.style.background = "transparent"
-                              }
-                            }}
+                            className={clx(
+                              "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
+                              isChildActive ? "bg-ui-bg-base-hover text-ui-fg-base font-medium" : "text-ui-fg-subtle hover:bg-ui-bg-base-hover/50 hover:text-ui-fg-base"
+                            )}
                           >
                             {child.label}
                           </button>
@@ -394,158 +290,58 @@ const VendorShell = ({ children }: PropsWithChildren) => {
                 </div>
               )
             })}
-          </div>
+          </nav>
         </div>
 
-        <div style={{ borderTop: `1px solid ${shellColors.sidebarBorder}` }}>
-          <div style={{ padding: "12px 20px 12px" }}>
-            <button
-              onClick={() => navigate("/settings")}
-              style={{
-                width: "100%",
-                textAlign: "left",
-                border: "none",
-                borderRadius: 8,
-                padding: "10px 12px",
-                background: "transparent",
-                cursor: "pointer",
-                color: shellColors.sidebarText,
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                fontSize: 14,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)"
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent"
-              }}
-            >
-              <span style={{ width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", color: shellColors.sidebarMuted }}>
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M8.5 2H11.5L12 4.5C12.5 4.7 13 5 13.5 5.5L16 4.5L17.5 7L15.5 8.5C15.6 9 15.6 9.5 15.5 10L17.5 11.5L16 14L13.5 13C13 13.5 12.5 13.8 12 14L11.5 16.5H8.5L8 14C7.5 13.8 7 13.5 6.5 13L4 14L2.5 11.5L4.5 10C4.4 9.5 4.4 9 4.5 8.5L2.5 7L4 4.5L6.5 5.5C7 5 7.5 4.7 8 4.5L8.5 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  <circle cx="10" cy="9.5" r="2.5" stroke="currentColor" strokeWidth="1.5" />
-                </svg>
-              </span>
-              <span style={{ fontWeight: 500 }}>Settings</span>
-            </button>
-          </div>
-
-          <div
-            ref={accountMenuRef}
-            style={{
-              padding: "12px 12px",
-              borderTop: `1px solid ${shellColors.sidebarBorder}`,
-              position: "relative",
-            }}
+        {/* User Menu */}
+        <div className="border-t border-ui-border-base p-4">
+          <button
+            onClick={() => navigate("/settings")}
+            className="mb-2 flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm text-ui-fg-subtle hover:bg-ui-bg-base-hover/50 hover:text-ui-fg-base transition-colors"
           >
+            {/* Reusing settings icon SVG for now as not imported specifically */}
+            <span className="flex h-5 w-5 items-center justify-center text-ui-fg-muted">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M8.5 2H11.5L12 4.5C12.5 4.7 13 5 13.5 5.5L16 4.5L17.5 7L15.5 8.5C15.6 9 15.6 9.5 15.5 10L17.5 11.5L16 14L13.5 13C13 13.5 12.5 13.8 12 14L11.5 16.5H8.5L8 14C7.5 13.8 7 13.5 6.5 13L4 14L2.5 11.5L4.5 10C4.4 9.5 4.4 9 4.5 8.5L2.5 7L4 4.5L6.5 5.5C7 5 7.5 4.7 8 4.5L8.5 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="10" cy="9.5" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+              </svg>
+            </span>
+            <span className="font-medium">Settings</span>
+          </button>
+
+          <div ref={accountMenuRef} className="relative">
             <button
               onClick={() => setAccountMenuOpen((prev) => !prev)}
-              style={{
-                width: "100%",
-                border: "none",
-                borderRadius: 8,
-                padding: "10px 12px",
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                background: "transparent",
-                cursor: "pointer",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)"
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent"
-              }}
+              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-ui-bg-base-hover/50 transition-colors"
             >
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "50%",
-                  background: "rgba(255, 255, 255, 0.1)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: shellColors.sidebarText,
-                  fontWeight: 600,
-                  fontSize: 14,
-                }}
-              >
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-ui-bg-base/10 text-sm font-semibold text-ui-fg-base">
                 {vendorInfo?.email?.[0]?.toUpperCase() || "A"}
               </div>
-              <div style={{ textAlign: "left", flex: 1 }}>
-                <Text size="small" weight="plus" style={{ color: shellColors.sidebarText }}>
+              <div className="flex-1 overflow-hidden">
+                <Text size="small" weight="plus" className="truncate text-ui-fg-base">
                   {vendorInfo?.email?.split("@")[0] || "admin"}
                 </Text>
               </div>
-              <span style={{ color: shellColors.sidebarMuted, width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <span className="text-ui-fg-muted">
                 <EllipsisHorizontal />
               </span>
             </button>
+
             {accountMenuOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  left: 20,
-                  right: 20,
-                  bottom: 78,
-                  background: shellColors.headerBg,
-                  border: `1px solid ${shellColors.sidebarBorder}`,
-                  borderRadius: 12,
-                  padding: 8,
-                  boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 4,
-                  zIndex: 10,
-                }}
-              >
+              <div className="absolute bottom-full left-0 right-0 mb-2 flex flex-col gap-1 rounded-lg border border-ui-border-base bg-ui-bg-subtle p-2 shadow-xl z-50">
                 <button
                   onClick={() => {
                     setAccountMenuOpen(false)
                     navigate("/profile")
                   }}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    textAlign: "left",
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    color: shellColors.sidebarText,
-                    cursor: "pointer",
-                    fontSize: 14,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)"
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent"
-                  }}
+                  className="rounded-md px-3 py-2 text-left text-sm text-ui-fg-base hover:bg-ui-bg-base/10 transition-colors"
                 >
                   Profile settings
                 </button>
-                <div style={{ height: 1, background: shellColors.sidebarBorder, margin: "4px 0" }} />
+                <div className="h-px bg-ui-border-base my-1" />
                 <button
                   onClick={handleLogout}
-                  style={{
-                    border: "none",
-                    textAlign: "left",
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    background: "transparent",
-                    color: shellColors.sidebarMuted,
-                    cursor: "pointer",
-                    fontSize: 14,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)"
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent"
-                  }}
+                  className="rounded-md px-3 py-2 text-left text-sm text-ui-fg-subtle hover:bg-ui-bg-base/10 transition-colors"
                 >
                   Log out
                 </button>
@@ -555,20 +351,25 @@ const VendorShell = ({ children }: PropsWithChildren) => {
         </div>
       </aside>
 
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          background: shellColors.mainBg,
-        }}
-      >
-        <main
-          style={{
-            flex: 1,
-            overflowY: "auto",
-          }}
-        >
+      {/* Main Content */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Mobile Header */}
+        <div className="flex h-16 items-center gap-4 border-b border-ui-border-base bg-ui-bg-component px-4 shadow-sm md:hidden">
+          <button
+            type="button"
+            className="text-ui-fg-base"
+            onClick={() => setMobileMenuOpen(true)}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3.75 6.75H20.25M3.75 12H20.25M3.75 17.25H20.25" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <div className="text-sm font-semibold text-ui-fg-base">
+            {vendorInfo?.store_name ? `${vendorInfo.store_name} Store` : "OWEG Vendor Store"}
+          </div>
+        </div>
+
+        <main className="flex-1 overflow-y-auto bg-ui-bg-base">
           {children}
         </main>
       </div>

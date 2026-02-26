@@ -73,19 +73,19 @@ const VendorOrdersPage = () => {
 
   if (loading) {
     content = (
-      <Container className="p-6">
+      <Container className="p-4 md:p-6">
         <Text>Loading orders...</Text>
       </Container>
     )
   } else if (error) {
     content = (
-      <Container className="p-6">
+      <Container className="p-4 md:p-6">
         <Text className="text-ui-fg-error">{error}</Text>
       </Container>
     )
   } else {
     content = (
-      <Container className="p-6 space-y-6">
+      <Container className="p-4 md:p-6 space-y-4 md:space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <Heading level="h1">Orders</Heading>
@@ -98,8 +98,8 @@ const VendorOrdersPage = () => {
             <Text className="text-ui-fg-subtle">No orders found</Text>
           </div>
         ) : (
-          <div className="border border-ui-border-base rounded-lg overflow-hidden">
-            <Table>
+          <div className="border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto">
+            <Table className="min-w-[700px]">
               <Table.Header>
                 <Table.Row>
                   <Table.HeaderCell>Order</Table.HeaderCell>

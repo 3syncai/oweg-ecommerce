@@ -52,10 +52,13 @@ export default async function orderFulfilledSubscriber({
     console.log(`[Coin Activation] 📦 Processing fulfillment for order ${orderId}`)
 
     try {
-        // Get the frontend URL from environment
-        const frontendUrl = process.env.STOREFRONT_URL ||
-            process.env.NEXT_PUBLIC_APP_URL ||
-            "http://localhost:3000"
+        // Get the frontend URL from environment (required)
+        const frontendUrl = process.env.STOREFRONT_URL || process.env.NEXT_PUBLIC_APP_URL;
+
+        if (!frontendUrl) {
+            console.error(`[Coin Activation] ❌ STOREFRONT_URL or NEXT_PUBLIC_APP_URL environment variable not set! Cannot activate coins.`);
+            return;
+        }
 
         console.log(`[Coin Activation] Calling webhook at ${frontendUrl}/api/webhooks/order-delivered`)
 
@@ -80,29 +83,124 @@ export default async function orderFulfilledSubscriber({
             console.error(`[Coin Activation] ❌ Failed to activate coins for order ${orderId}:`, error)
         }
 
-        // 2. Call Affiliate Portal to update commission status
-        const affiliateWebhookUrl = process.env.AFFILIATE_WEBHOOK_URL ?
-            process.env.AFFILIATE_WEBHOOK_URL.replace('/commission', '/commission/update-status') :
-            "http://localhost:3001/api/webhook/commission/update-status"
+        // 2. Call Affiliate Portal to update commission status to CREDITED
+        const affiliateWebhookUrl = process.env.AFFILIATE_WEBHOOK_URL;
 
-        console.log(`[Affiliate Commission] 更新 commission status at ${affiliateWebhookUrl}`)
+        if (!affiliateWebhookUrl) {
+            console.error(`\n❌ CRITICAL ERROR: AFFILIATE_WEBHOOK_URL not set!`);
+            console.error(`[Affiliate Commission] ⚠️ AFFILIATE_WEBHOOK_URL environment variable not set! Skipping commission update.`);
+            return;
+        }
 
-        const affiliateResponse = await fetch(affiliateWebhookUrl, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                order_id: orderId,
-                status: "CREDITED"
-            }),
-        })
+        console.log(`\n${'='.repeat(80)}`);
+        console.log(`🚚 ORDER FULFILLED - Commission Update to CREDITED`);
+        console.log(`${'='.repeat(80)}`);
+        console.log(`📦 Order ID: ${orderId}`);
+        console.log(`🔗 Webhook URL: ${affiliateWebhookUrl}`);
+        console.log(`${'='.repeat(80)}\n`);
 
-        if (affiliateResponse.ok) {
-            console.log(`[Affiliate Commission] ✅ Commission status updated to CREDITED for order ${orderId}`)
-        } else {
-            const error = await affiliateResponse.text()
-            console.error(`[Affiliate Commission] ❌ Failed to update commission status for order ${orderId}:`, error)
+        console.log(`[Affiliate Commission] Updating commission status at ${affiliateWebhookUrl}`)
+
+        // Query database for order details (same as COD/Razorpay routes)
+        try {
+            const { Pool } = await import('pg');
+            const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+            console.log(`📊 Querying database for customer and order details...`);
+
+            // Get customer and referral code
+            const customerResult = await pool.query(
+                `SELECT c.id, c.email, c.first_name || ' ' || c.last_name as name,
+                        c.metadata->>'referral_code' as referral_code
+                 FROM "order" o JOIN customer c ON o.customer_id = c.id
+                 WHERE o.id = $1`,
+                [orderId]
+            );
+
+            const customer = customerResult.rows[0];
+
+            if (!customer?.referral_code) {
+                console.log(`\n⚠️  No referral code found for order ${orderId}`);
+                console.log(`[Affiliate Commission] No referral code found for order ${orderId}, skipping`);
+                await pool.end();
+                return;
+            }
+
+            console.log(`✅ Found customer: ${customer.name}`);
+            console.log(`🏷️  Affiliate Code: ${customer.referral_code}\n`);
+
+            // Get order items
+            const itemsResult = await pool.query(
+                `SELECT oi.id, pv.product_id, oi.quantity, oli.unit_price, p.title as product_name
+                 FROM order_item oi
+                 JOIN order_line_item oli ON oi.item_id = oli.id
+                 LEFT JOIN product_variant pv ON oli.variant_id = pv.id
+                 LEFT JOIN product p ON pv.product_id = p.id
+                 WHERE oi.order_id = $1`,
+                [orderId]
+            );
+
+            console.log(`📦 Found ${itemsResult.rows.length} items in order\n`);
+
+            // Send webhook for each item with status: CREDITED
+            let successCount = 0;
+            let failCount = 0;
+
+            for (const item of itemsResult.rows) {
+                const unitPrice = parseFloat(item.unit_price || 0);
+                const payload = {
+                    order_id: orderId,
+                    affiliate_code: customer.referral_code,
+                    product_id: item.product_id,
+                    product_name: item.product_name,
+                    quantity: item.quantity,
+                    item_price: unitPrice / 100, // Convert to rupees
+                    order_amount: unitPrice * (item.quantity || 1),
+                    status: "CREDITED", // Update to CREDITED on fulfillment
+                    customer_id: customer.id,
+                    customer_name: customer.name,
+                    customer_email: customer.email,
+                };
+
+                console.log(`\n📤 Updating commission to CREDITED for: ${item.product_name}`);
+                console.log(`   Product ID: ${item.product_id}`);
+                console.log(`   Amount: ₹${unitPrice / 100}`);
+                console.log(`   Commission Status: PENDING → CREDITED`);
+
+                const affiliateResponse = await fetch(affiliateWebhookUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                if (affiliateResponse.ok) {
+                    const result = await affiliateResponse.json();
+                    successCount++;
+                    console.log(`✅ Commission updated to CREDITED for ${item.product_name}`);
+                    console.log(`   Response:`, JSON.stringify(result, null, 2));
+                } else {
+                    failCount++;
+                    const error = await affiliateResponse.text();
+                    console.error(`❌ Failed to update ${item.product_name}`);
+                    console.error(`   Status: ${affiliateResponse.status}`);
+                    console.error(`   Error: ${error}`);
+                }
+            }
+
+            console.log(`\n${'='.repeat(80)}`);
+            console.log(`💰 COMMISSION UPDATE SUMMARY`);
+            console.log(`${'='.repeat(80)}`);
+            console.log(`✅ Updated to CREDITED: ${successCount}`);
+            console.log(`❌ Failed: ${failCount}`);
+            console.log(`📝 Wallets should now be credited with commission amounts`);
+            console.log(`${'='.repeat(80)}\n`);
+
+            await pool.end();
+        } catch (dbErr) {
+            console.error(`\n❌ DATABASE ERROR:`, dbErr);
+            console.error(`[Affiliate Commission] ❌ Database query failed:`, dbErr);
         }
 
     } catch (err) {

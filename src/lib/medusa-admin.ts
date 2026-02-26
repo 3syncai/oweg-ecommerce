@@ -37,7 +37,7 @@ function getAdminHeaders(extra?: Record<string, string>): HeadersInit {
     // Medusa v2 Secret Key requires Basic Auth
     // The key itself is the username, password is empty
     headers.Authorization = `Basic ${ADMIN_API_KEY}`;
-    
+
     // Legacy support (optional, can keep or remove based on needs)
     headers["x-medusa-access-token"] = ADMIN_API_KEY;
   } else {

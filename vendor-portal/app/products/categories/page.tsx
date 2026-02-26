@@ -104,7 +104,7 @@ const VendorCategoriesPage = () => {
     const rows: React.ReactElement[] = []
 
     rows.push(
-      <Table.Row 
+      <Table.Row
         key={category.id}
         style={{
           backgroundColor: level > 0 ? "var(--bg-subtle)" : "transparent",
@@ -181,22 +181,22 @@ const VendorCategoriesPage = () => {
 
   return (
     <VendorShell>
-      <div style={{ padding: "24px 32px" }}>
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+      <div className="p-4 md:p-8">
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
             <Heading level="h1">Categories</Heading>
           </div>
-          <Text size="small" style={{ color: "var(--fg-muted)" }}>
+          <Text size="small" className="text-ui-fg-muted">
             Organize products into categories, and manage those categories' ranking and hierarchy.
           </Text>
         </div>
 
-        <div style={{ marginBottom: 16 }}>
+        <div className="mb-4">
           <Input
             placeholder="Search"
             value={searchQuery}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-            style={{ maxWidth: 400 }}
+            className="max-w-[400px]"
           />
         </div>
 
@@ -209,8 +209,8 @@ const VendorCategoriesPage = () => {
             <Text>No categories found.</Text>
           </Container>
         ) : (
-          <div style={{ background: "var(--bg-base)", border: "1px solid var(--border-base)", borderRadius: 8 }}>
-            <Table>
+          <div className="bg-ui-bg-base border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto">
+            <Table className="min-w-[800px]">
               <Table.Header>
                 <Table.Row>
                   <Table.HeaderCell>Name</Table.HeaderCell>

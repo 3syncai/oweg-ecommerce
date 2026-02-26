@@ -24,7 +24,7 @@ const VendorProductDetailPage = () => {
   const router = useRouter()
   const params = useParams()
   const productId = params?.id as string
-  
+
   const [product, setProduct] = useState<Product | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -173,7 +173,7 @@ const VendorProductDetailPage = () => {
             <Text className="text-ui-fg-subtle text-xs mt-1">URL-friendly identifier</Text>
           </div>
 
-        <div>
+          <div>
             <label className="text-ui-fg-subtle text-sm font-medium mb-2 block">
               Description
             </label>
@@ -184,23 +184,23 @@ const VendorProductDetailPage = () => {
             />
           </div>
 
-        <div>
-          <label className="text-ui-fg-subtle text-sm font-medium mb-2 block">
-            Category
-          </label>
-          <select
-            value={formData.category}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, category: e.target.value })}
-            className="bg-ui-bg-base border border-ui-border-base rounded-md px-3 py-2 w-full"
-          >
-            <option value="">Select category</option>
-            {["Apparel", "Electronics", "Home & Living", "Beauty", "Other"].map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
-        </div>
+          <div>
+            <label className="text-ui-fg-subtle text-sm font-medium mb-2 block">
+              Category
+            </label>
+            <select
+              value={formData.category}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, category: e.target.value })}
+              className="bg-ui-bg-base border border-ui-border-base rounded-md px-3 py-2 w-full"
+            >
+              <option value="">Select category</option>
+              {["Apparel", "Electronics", "Home & Living", "Beauty", "Other"].map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {product.images && product.images.length > 0 && (
             <div>

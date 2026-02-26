@@ -484,6 +484,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       height: height || null,
       width: width || null,
       length: length || null,
+      // Product codes and origin (for admin Attributes display)
+      mid_code: metadata?.mid_code || null,
+      hs_code: metadata?.hs_code || null,
+      origin_country: metadata?.country_of_origin || null,
       status: ProductStatus.DRAFT, // Set to DRAFT, pending admin approval
       shipping_profile_id: finalShippingProfileId,
       metadata: baseMetadata,
@@ -643,54 +647,115 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
           // Check if this variant should manage inventory and has a quantity
           const manageInventory = originalVariant.manage_inventory !== false // Default to true
-          const inventoryQuantity = typeof originalVariant.inventory_quantity === 'number'
-            ? originalVariant.inventory_quantity
-            : 0
+          const hasInventoryQuantity = typeof originalVariant.inventory_quantity === 'number'
+          const inventoryQuantity = hasInventoryQuantity ? originalVariant.inventory_quantity : 0
 
           if (manageInventory && variant.id) {
             try {
               let inventoryItem
+              let inventoryItemWasCreated = false
 
-              // Check if inventory item already exists with this SKU
-              if (variant.sku) {
+              // FIRST: Check if variant already has an inventory item linked (created by workflow)
+              const query = req.scope.resolve("query")
+              const { data: variantWithInventory } = await query.graph({
+                entity: "product_variant",
+                fields: [
+                  "id",
+                  "inventory_items.inventory_item_id",
+                  "inventory_items.inventory.id",
+                  "inventory_items.inventory.sku",
+                ],
+                filters: { id: variant.id }
+              })
+
+              const existingInventoryItemId = variantWithInventory?.[0]?.inventory_items?.[0]?.inventory_item_id
+
+              if (existingInventoryItemId) {
+                // Variant already has inventory item linked (likely created by workflow)
+                const existingItems = await inventoryModule.listInventoryItems({
+                  id: existingInventoryItemId
+                })
+                inventoryItem = existingItems?.[0]
+                console.log(`♻️ Using inventory item ${inventoryItem?.id} already linked to variant ${variant.id}`)
+              }
+
+              // SECOND: If no linked inventory item, check by SKU
+              if (!inventoryItem && variant.sku) {
                 const existingItems = await inventoryModule.listInventoryItems({
                   sku: variant.sku
                 })
                 inventoryItem = existingItems?.[0]
+                if (inventoryItem) {
+                  console.log(`♻️ Found existing inventory item ${inventoryItem.id} for SKU ${variant.sku}`)
+                  
+                  // Link the reused inventory item to variant
+                  const linkModule = req.scope.resolve(ContainerRegistrationKeys.LINK) as any
+                  await linkModule.create({
+                    [Modules.PRODUCT]: {
+                      variant_id: variant.id,
+                    },
+                    [Modules.INVENTORY]: {
+                      inventory_item_id: inventoryItem.id,
+                    },
+                  })
+                  console.log(`🔗 Linked existing inventory item ${inventoryItem.id} to variant ${variant.id}`)
+                }
               }
 
-              // Create new inventory item if doesn't exist
+              // THIRD: Create new inventory item only if none exists
               if (!inventoryItem) {
                 const inventoryItems = await inventoryModule.createInventoryItems([{
                   sku: variant.sku || undefined,
                 }])
                 inventoryItem = inventoryItems[0]
-                console.log(`📦 Created inventory item ${inventoryItem.id} for variant ${variant.id}`)
-              } else {
-                console.log(`♻️ Using existing inventory item ${inventoryItem.id} for SKU ${variant.sku}`)
+                inventoryItemWasCreated = true
+                console.log(`📦 Created new inventory item ${inventoryItem.id} for variant ${variant.id}`)
+
+                // Link inventory item to variant
+                const linkModule = req.scope.resolve(ContainerRegistrationKeys.LINK) as any
+                await linkModule.create({
+                  [Modules.PRODUCT]: {
+                    variant_id: variant.id,
+                  },
+                  [Modules.INVENTORY]: {
+                    inventory_item_id: inventoryItem.id,
+                  },
+                })
+                console.log(`🔗 Linked inventory item ${inventoryItem.id} to variant ${variant.id}`)
               }
 
-              // Link inventory item to variant
-              const linkModule = req.scope.resolve(ContainerRegistrationKeys.LINK) as any
-              await linkModule.create({
-                [Modules.PRODUCT]: {
-                  variant_id: variant.id,
-                },
-                [Modules.INVENTORY]: {
+              // Only create/update inventory levels if quantity was provided OR item was just created
+              if (hasInventoryQuantity || inventoryItemWasCreated) {
+                // Create or update inventory level for the default location
+                const existingLevels = await inventoryModule.listInventoryLevels({
                   inventory_item_id: inventoryItem.id,
-                },
-              })
+                  location_id: defaultLocation.id
+                })
 
-              console.log(`🔗 Linked inventory item ${inventoryItem.id} to variant ${variant.id}`)
-
-              // Create inventory level for the default location
-              await inventoryModule.createInventoryLevels([{
-                inventory_item_id: inventoryItem.id,
-                location_id: defaultLocation.id,
-                stocked_quantity: inventoryQuantity,
-              }])
-
-              console.log(`✅ Stocked ${inventoryQuantity} units for variant ${variant.id} at location ${defaultLocation.name}`)
+                if (existingLevels && existingLevels.length > 0) {
+                  if (hasInventoryQuantity) {
+                    // Update existing level only if quantity was provided
+                    await inventoryModule.updateInventoryLevels([{
+                      inventory_item_id: inventoryItem.id,
+                      location_id: defaultLocation.id,
+                      stocked_quantity: inventoryQuantity,
+                    }])
+                    console.log(`✅ Updated ${inventoryQuantity} units for variant ${variant.id} at location ${defaultLocation.name}`)
+                  } else {
+                    console.log(`⏭️ Skipping inventory update for variant ${variant.id}; no quantity provided`)
+                  }
+                } else {
+                  // Create new level (for newly created items or when no level exists)
+                  await inventoryModule.createInventoryLevels([{
+                    inventory_item_id: inventoryItem.id,
+                    location_id: defaultLocation.id,
+                    stocked_quantity: inventoryQuantity,
+                  }])
+                  console.log(`✅ Stocked ${inventoryQuantity} units for variant ${variant.id} at location ${defaultLocation.name}`)
+                }
+              } else {
+                console.log(`⏭️ Skipping inventory update for variant ${variant.id}; no quantity provided`)
+              }
             } catch (inventoryError: any) {
               console.error(`❌ Failed to create inventory for variant ${variant.id}:`, inventoryError?.message)
               // Continue with other variants even if one fails

@@ -6,7 +6,7 @@ import { requireApprovedVendor } from "../../_lib/guards"
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
     try {
         // MANUAL CORS FIX
-        res.setHeader('Access-Control-Allow-Origin', 'http://localhost:4000')
+        res.setHeader('Access-Control-Allow-Origin', process.env.VENDOR_CORS || 'http://localhost:4000')
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
         res.setHeader('Access-Control-Allow-Credentials', 'true')
@@ -128,7 +128,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 }
 
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
-    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:4000')
+    res.setHeader('Access-Control-Allow-Origin', process.env.VENDOR_CORS || 'http://localhost:4000')
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
     res.setHeader('Access-Control-Allow-Credentials', 'true')

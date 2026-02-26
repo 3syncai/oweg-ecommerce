@@ -206,9 +206,9 @@ function extractPaymentContext(order: MedusaOrder) {
     ...(asRecord(order.payment_session) ? [asRecord(order.payment_session)!] : []),
     ...(Array.isArray(order.payment_collections)
       ? asRecordArray(order.payment_collections).flatMap((pc) => [
-          ...asRecordArray(pc.payment_sessions),
-          ...asRecordArray(asRecord(pc.payment_collection)?.payment_sessions),
-        ])
+        ...asRecordArray(pc.payment_sessions),
+        ...asRecordArray(asRecord(pc.payment_collection)?.payment_sessions),
+      ])
       : []),
     ...paymentsArray.map((p) => asRecord(p.payment_session)).filter(Boolean),
   ];
@@ -225,9 +225,9 @@ function extractPaymentContext(order: MedusaOrder) {
     ...paymentsArray.map((p) => asRecord(p)?.id as unknown),
     ...(Array.isArray(order.payment_collections)
       ? asRecordArray(order.payment_collections).flatMap((pc) => [
-          ...asRecordArray(pc.payments).map((p) => asRecord(p)?.id as unknown),
-          ...asRecordArray(asRecord(pc.payment_collection)?.payments).map((p) => asRecord(p)?.id as unknown),
-        ])
+        ...asRecordArray(pc.payments).map((p) => asRecord(p)?.id as unknown),
+        ...asRecordArray(asRecord(pc.payment_collection)?.payments).map((p) => asRecord(p)?.id as unknown),
+      ])
       : []),
     ...paymentSessions.map((ps) => {
       const rec = asRecord(ps);
@@ -466,9 +466,9 @@ export async function POST(req: Request) {
         ...(txRes?.ok
           ? {}
           : {
-              razorpay_capture_error:
-                extractMessage(txRes?.data) || (txRes?.data ? JSON.stringify(txRes.data) : undefined),
-            }),
+            razorpay_capture_error:
+              extractMessage(txRes?.data) || (txRes?.data ? JSON.stringify(txRes.data) : undefined),
+          }),
       };
 
       // Persist metadata
