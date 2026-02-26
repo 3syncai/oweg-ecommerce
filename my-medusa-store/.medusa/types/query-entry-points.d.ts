@@ -843,6 +843,30 @@ export type Invite = {
   deleted_at: Maybe<Scalars['DateTime']['output']>;
 };
 
+export type ViewConfiguration = {
+  __typename?: 'ViewConfiguration';
+  id: Scalars['ID']['output'];
+  entity: Scalars['String']['output'];
+  name: Maybe<Scalars['String']['output']>;
+  user_id: Maybe<Scalars['String']['output']>;
+  is_system_default: Scalars['Boolean']['output'];
+  configuration: Scalars['JSON']['output'];
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+};
+
+export type UserPreference = {
+  __typename?: 'UserPreference';
+  id: Scalars['ID']['output'];
+  user_id: Scalars['String']['output'];
+  key: Scalars['String']['output'];
+  value: Scalars['JSON']['output'];
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+};
+
 export type ChangeActionType =
   | 'CANCEL_RETURN_ITEM'
   | 'FULFILL_ITEM'
@@ -1554,43 +1578,8 @@ export type LineItem = {
   variant: Maybe<ProductVariant>;
 };
 
-export type LineItemAdjustment = {
-  __typename?: 'LineItemAdjustment';
-  id: Scalars['ID']['output'];
-  description: Maybe<Scalars['String']['output']>;
-  code: Maybe<Scalars['String']['output']>;
-  amount: Scalars['Float']['output'];
-  is_tax_inclusive: Scalars['Boolean']['output'];
-  provider_id: Maybe<Scalars['String']['output']>;
-  promotion_id: Maybe<Scalars['String']['output']>;
-  metadata: Maybe<Scalars['JSON']['output']>;
-  item_id: Scalars['String']['output'];
-  item: LineItem;
-  raw_amount: Scalars['JSON']['output'];
-  created_at: Scalars['DateTime']['output'];
-  updated_at: Scalars['DateTime']['output'];
-  deleted_at: Maybe<Scalars['DateTime']['output']>;
-  promotion: Maybe<Promotion>;
-};
-
-export type LineItemTaxLine = {
-  __typename?: 'LineItemTaxLine';
-  id: Scalars['ID']['output'];
-  description: Maybe<Scalars['String']['output']>;
-  code: Scalars['String']['output'];
-  rate: Scalars['Float']['output'];
-  provider_id: Maybe<Scalars['String']['output']>;
-  metadata: Maybe<Scalars['JSON']['output']>;
-  tax_rate_id: Maybe<Scalars['String']['output']>;
-  item_id: Scalars['String']['output'];
-  item: LineItem;
-  created_at: Scalars['DateTime']['output'];
-  updated_at: Scalars['DateTime']['output'];
-  deleted_at: Maybe<Scalars['DateTime']['output']>;
-};
-
-export type ShippingMethod = {
-  __typename?: 'ShippingMethod';
+export type User = {
+  __typename?: 'User';
   id: Scalars['ID']['output'];
   name: Scalars['String']['output'];
   description: Maybe<Scalars['JSON']['output']>;
@@ -2417,16 +2406,10 @@ declare module '@medusajs/framework/types' {
     stores: Store
     store_currency: StoreCurrency
     store_currencies: StoreCurrency
-    api_key: ApiKey
-    api_keys: ApiKey
     view_configuration: ViewConfiguration
     view_configurations: ViewConfiguration
     user_preference: UserPreference
     user_preferences: UserPreference
-    user: User
-    users: User
-    invite: Invite
-    invites: Invite
     order: Order
     orders: Order
     order_address: OrderAddress
@@ -2449,6 +2432,10 @@ declare module '@medusajs/framework/types' {
     returns: Return
     return_reason: any
     return_reasons: any
+    user: User
+    users: User
+    invite: Invite
+    invites: Invite
     workflow_execution: WorkflowExecution
     workflow_executions: WorkflowExecution
     cart: Cart

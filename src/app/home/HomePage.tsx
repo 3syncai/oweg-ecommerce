@@ -554,7 +554,7 @@ function MobileJoinCard() {
 
 export default function HomePage() {
   const { customer } = useAuth();
-  const { preferences, hasPreferences, loading: prefLoading, saving: prefSaving, shouldPrompt, savePreferences } = usePreferences();
+  const { preferences, hasPreferences, loading: prefLoading, saving: prefSaving, savePreferences } = usePreferences();
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [placeName, setPlaceName] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -563,12 +563,6 @@ export default function HomePage() {
   const [placeLoading, setPlaceLoading] = useState(false);
   const [pincode, setPincode] = useState('');
   const [pinInput, setPinInput] = useState('');
-
-  useEffect(() => {
-    if (shouldPrompt) {
-      setPreferencesOpen(true);
-    }
-  }, [shouldPrompt]);
 
   useEffect(() => {
     const hydratePlace = async () => {
