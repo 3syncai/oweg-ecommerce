@@ -235,48 +235,80 @@ export async function POST(req: NextRequest) {
 
     // Insert into customer_referral table if referral code provided
     if (body.referral && customer?.id) {
-      console.error('[[ REGISTRATION ]] Saving referral code:', body.referral, 'for customer:', customer.id)
+      const normalizedCode = body.referral.trim().toUpperCase()
+      console.log('[[ REGISTRATION ]] Saving referral code:', normalizedCode, 'for customer:', customer.id)
 
       if (!process.env.DATABASE_URL) {
         console.error('[[ REGISTRATION ERROR ]] DATABASE_URL is missing in API route environment!')
       } else {
         try {
-          const pool = new Pool({ connectionString: process.env.DATABASE_URL }) // Create new pool for this request to be safe
+          const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 
-          await pool.query(
-            `INSERT INTO customer_referral (customer_id, referral_code, created_at)
-             VALUES ($1, $2, NOW())
-             ON CONFLICT (customer_id) DO UPDATE 
-             SET referral_code = EXCLUDED.referral_code`, // Update if exists to be safe
-            [customer.id, body.referral.trim()]
+          // ✅ IDEMPOTENT LOCK CHECK: If referral already exists, ensure it's synced if it's the same code
+          const existingRef = await pool.query(
+            `SELECT referral_code FROM customer_referral WHERE customer_id = $1`,
+            [customer.id]
           )
 
-          // Also track in affiliate_referrals table for affiliate dashboard
-          const affiliateCode = body.referral.trim()
-          const customerEmail = body.email || customer.email
-          const customerName = `${body.firstName || ''} ${body.lastName || ''}`.trim()
+          let shouldSync = false;
+          if (existingRef.rows.length > 0) {
+            const savedCode = existingRef.rows[0].referral_code;
+            if (savedCode === normalizedCode) {
+              console.log('[[ REGISTRATION ]] Referral already exists for customer. Syncing to ensure dashboard visibility.')
+              shouldSync = true;
+            } else {
+              console.log('[[ REGISTRATION ]] Referral already set for customer with DIFFERENT code. Skipping.')
+              await pool.end()
+              return // End here, don't allow overwrite
+            }
+          }
 
-          // Find affiliate_user_id if exists
-          const affiliateResult = await pool.query(
-            `SELECT id FROM affiliate_user WHERE refer_code = $1`,
-            [affiliateCode]
-          )
-          const affiliateUserId = affiliateResult.rows[0]?.id || null
+          if (existingRef.rows.length === 0 || shouldSync) {
+            // ✅ VALIDATE: make sure the referral code exists before saving
+            const codeCheck = await pool.query(
+              `SELECT id FROM affiliate_user WHERE UPPER(refer_code) = $1 AND is_approved = TRUE
+               UNION
+               SELECT id FROM branch_admin WHERE UPPER(refer_code) = $1
+               LIMIT 1`,
+              [normalizedCode]
+            )
 
-          await pool.query(
-            `INSERT INTO affiliate_referrals 
-               (affiliate_code, affiliate_user_id, customer_id, customer_email, customer_name)
-             VALUES ($1, $2, $3, $4, $5)
-             ON CONFLICT (affiliate_code, customer_id) DO UPDATE 
-             SET customer_email = EXCLUDED.customer_email,
-                 customer_name = EXCLUDED.customer_name`,
-            [affiliateCode, affiliateUserId, customer.id, customerEmail, customerName]
-          )
+            if (codeCheck.rows.length === 0) {
+              console.warn('[[ REGISTRATION ]] Referral code not found in DB, skipping save:', normalizedCode)
+              await pool.end()
+            } else {
+              // ✅ LOCK: ON CONFLICT DO NOTHING — referral cannot be overwritten
+              await pool.query(
+                `INSERT INTO customer_referral (customer_id, referral_code, created_at)
+                 VALUES ($1, $2, NOW())
+                 ON CONFLICT (customer_id) DO NOTHING`,
+                [customer.id, normalizedCode]
+              )
 
-          console.error('[[ REGISTRATION ]] Tracked affiliate referral for:', affiliateCode)
+              // Track in affiliate_referrals table for affiliate dashboard
+              const customerEmail = body.email || customer.email
+              const customerName = `${body.firstName || ''} ${body.lastName || ''}`.trim()
 
-          await pool.end()
-          console.error('[[ REGISTRATION SUCCESS ]] Saved referral code to database automatically.')
+              const affiliateResult = await pool.query(
+                `SELECT id FROM affiliate_user WHERE UPPER(refer_code) = $1`,
+                [normalizedCode]
+              )
+              const affiliateUserId = affiliateResult.rows[0]?.id || null
+
+              // ✅ ON CONFLICT DO NOTHING — don't overwrite once set
+              await pool.query(
+                `INSERT INTO affiliate_referrals 
+                   (affiliate_code, affiliate_user_id, customer_id, customer_email, customer_name)
+                 VALUES ($1, $2, $3, $4, $5)
+                 ON CONFLICT (affiliate_code, customer_id) DO NOTHING`,
+                [normalizedCode, affiliateUserId, customer.id, customerEmail, customerName]
+              )
+
+              console.log('[[ REGISTRATION ]] Tracked affiliate referral for:', normalizedCode)
+              await pool.end()
+              console.log('[[ REGISTRATION SUCCESS ]] Saved referral code to database automatically.')
+            }
+          }
         } catch (dbError) {
           console.error('[[ REGISTRATION ERROR ]] Failed to save referral code to DB:', dbError)
         }

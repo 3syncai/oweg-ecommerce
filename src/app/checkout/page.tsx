@@ -114,6 +114,8 @@ function CheckoutPageInner() {
   const [referralCode, setReferralCode] = useState("");
   const [referralCodeApplied, setReferralCodeApplied] = useState(false); // Track if auto-applied
   const [referralLoading, setReferralLoading] = useState(false);
+  const [referralValidating, setReferralValidating] = useState(false);
+  const [referralAgentName, setReferralAgentName] = useState("");
 
   // Auto-fetch referral code from database for logged in customers
   useEffect(() => {
@@ -145,10 +147,53 @@ function CheckoutPageInner() {
     fetchReferralCode();
   }, [customer?.id]);
 
-  // Handler to cancel/remove the referral code
-  const handleCancelReferral = () => {
-    setReferralCode("");
-    setReferralCodeApplied(false);
+  // Handler to apply the referral code manually
+  const handleApplyReferral = async () => {
+    const trimmed = referralCode.trim();
+    if (!trimmed) return;
+    setReferralValidating(true);
+    try {
+      // 1. Validate the code
+      const validateRes = await fetch(`/api/store/validate-referral?code=${encodeURIComponent(trimmed)}`)
+      const validateData = await validateRes.json();
+      
+      if (!validateData.valid) {
+        toast.error("Invalid referral code.");
+        setReferralValidating(false);
+        return;
+      }
+
+      // 2. If valid, try to save it to the customer profile permanently
+      if (customer?.id) {
+        const saveRes = await fetch('/api/store/save-referral', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_id: customer.id,
+            referral_code: trimmed
+          })
+        });
+
+        const saveData = await saveRes.json();
+        
+        if (!saveRes.ok) {
+           // It might fail if they already have one locked
+           toast.error(saveData.error || "Could not apply referral code.");
+           setReferralValidating(false);
+           return;
+        }
+      }
+
+      // 3. Success! Lock UI.
+      setReferralCodeApplied(true);
+      setReferralAgentName(validateData.agent_name || "");
+      toast.success(`Referral applied: ${validateData.agent_name}`);
+      
+    } catch {
+      toast.error("Error applying referral code.");
+    } finally {
+      setReferralValidating(false);
+    }
   };
 
   // WALLET SYSTEM STATE
@@ -1183,24 +1228,29 @@ function CheckoutPageInner() {
                   <div className="flex items-center gap-2">
                     <span className="text-green-600 text-lg">✓</span>
                     <div>
-                      <p className="text-sm font-medium text-green-800">Referral code applied</p>
-                      <p className="text-xs text-green-600">{referralCode}</p>
+                      <p className="text-sm font-medium text-green-800">Referral code applied and locked</p>
+                      <p className="text-xs text-green-600 font-semibold">{referralCode} {referralAgentName ? `(${referralAgentName})` : ""}</p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleCancelReferral}
-                    className="text-sm text-red-600 hover:text-red-800 underline"
-                  >
-                    Remove
-                  </button>
+                  <span className="text-xs text-green-700 bg-green-100 px-2 py-1 rounded">Locked</span>
                 </div>
               ) : (
-                <Input
-                  placeholder="Enter referral code (optional)"
-                  value={referralCode}
-                  onChange={(e) => setReferralCode(e.target.value)}
-                />
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter referral code (optional)"
+                    value={referralCode}
+                    onChange={(e) => setReferralCode(e.target.value)}
+                    className="uppercase flex-1"
+                  />
+                  <Button 
+                    type="button" 
+                    onClick={handleApplyReferral}
+                    disabled={referralValidating || !referralCode.trim()}
+                    className="bg-slate-900 text-white hover:bg-slate-800"
+                  >
+                    {referralValidating ? "Checking..." : "Apply"}
+                  </Button>
+                </div>
               )}
             </section>
 

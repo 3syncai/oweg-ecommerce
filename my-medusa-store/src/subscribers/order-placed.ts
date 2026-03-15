@@ -11,11 +11,10 @@ export default async function orderPlacedSubscriber({
 
   const orderId = data.id
 
-  // 1. Fetch Order Details with basic relations (avoid deep nesting)
+  // 1. Fetch Order Details with basic relations (avoid deep nesting that causes Mikro-ORM strategy errors in Medusa V2)
   const order = await orderModuleService.retrieveOrder(orderId, {
     relations: [
       "items",
-      "items.variant",
       "shipping_address",
       "billing_address"
     ],
@@ -30,6 +29,29 @@ export default async function orderPlacedSubscriber({
     if (order.customer_id) {
       const customer = await customerModuleService.retrieveCustomer(order.customer_id)
       affiliateCode = (customer?.metadata as any)?.referral_code || null
+      
+      // Fallback: Check our custom database table if metadata is missing
+      if (!affiliateCode) {
+        console.log(`[Webhook] No code in metadata for customer ${order.customer_id}, checking database...`)
+        try {
+          const { Pool } = require('pg')
+          const pool = new Pool({ 
+            connectionString: process.env.DATABASE_URL,
+            ssl: process.env.DATABASE_URL?.includes('rds.amazonaws.com') ? { rejectUnauthorized: false } : false
+          })
+          const res = await pool.query(
+            "SELECT referral_code FROM customer_referral WHERE customer_id = $1",
+            [order.customer_id]
+          )
+          if (res.rows.length > 0) {
+            affiliateCode = res.rows[0].referral_code
+            console.log(`[Webhook] Found affiliate code in DB: ${affiliateCode}`)
+          }
+          await pool.end()
+        } catch (dbError) {
+          console.error('[Webhook] Failed to lookup referral code in DB:', dbError)
+        }
+      }
     }
 
     // If no affiliate code found, skip webhook

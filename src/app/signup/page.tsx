@@ -23,6 +23,38 @@ const Signup = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // Referral code validation state
+  const [referralStatus, setReferralStatus] = useState<"idle" | "checking" | "valid" | "invalid">("idle");
+  const [referralAgentName, setReferralAgentName] = useState<string>("");
+  const [referralError, setReferralError] = useState<string>("");
+
+  const validateReferralCode = async (code: string) => {
+    const trimmed = code.trim();
+    if (!trimmed) {
+      setReferralStatus("idle");
+      setReferralAgentName("");
+      setReferralError("");
+      return;
+    }
+    setReferralStatus("checking");
+    setReferralAgentName("");
+    setReferralError("");
+    try {
+      const res = await fetch(`/api/store/validate-referral?code=${encodeURIComponent(trimmed)}`)
+      const data = await res.json();
+      if (data.valid) {
+        setReferralStatus("valid");
+        setReferralAgentName(data.agent_name || "");
+      } else {
+        setReferralStatus("invalid");
+        setReferralError("Invalid referral code. Please check or leave blank.");
+      }
+    } catch {
+      setReferralStatus("invalid");
+      setReferralError("Could not validate code. Try again or leave blank.");
+    }
+  };
+
   const FORM_KEYS = [
     "referral",
     "firstName",
@@ -220,6 +252,8 @@ const Signup = () => {
     if (userType === "business") {
       if (!form.company || !gstRegex.test(form.gst)) return false;
     }
+    // Block submission if user entered an invalid referral code
+    if (form.referral.trim() && referralStatus === "invalid") return false;
     return true;
   };
 
@@ -422,14 +456,42 @@ const Signup = () => {
                   <Label htmlFor="referral" className="form-label font-footer">
                     Referral code <span className="text-xs text-muted-foreground">(optional)</span>
                   </Label>
-                  <Input
-                    id="referral"
-                    placeholder="Enter referral (if you have one)"
-                    className="mt-2 font-footer form-input"
-                    value={form.referral}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                  />
+                  <div className="relative mt-2">
+                    <Input
+                      id="referral"
+                      placeholder="Enter referral (if you have one)"
+                      className={`font-footer form-input pr-10 ${
+                        referralStatus === "valid" ? "border-green-400" :
+                        referralStatus === "invalid" ? "border-red-400" : ""
+                      }`}
+                      value={form.referral}
+                      onChange={(e) => {
+                        handleChange(e);
+                        setReferralStatus("idle");
+                        setReferralAgentName("");
+                        setReferralError("");
+                      }}
+                      onBlur={(e) => {
+                        handleBlur(e);
+                        validateReferralCode(form.referral);
+                      }}
+                    />
+                    {referralStatus === "checking" && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">Checking...</span>
+                    )}
+                    {referralStatus === "valid" && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500">✓</span>
+                    )}
+                    {referralStatus === "invalid" && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-red-500">✗</span>
+                    )}
+                  </div>
+                  {referralStatus === "valid" && referralAgentName && (
+                    <p className="mt-1 text-xs text-green-600 font-footer">✓ Referred by: <strong>{referralAgentName}</strong></p>
+                  )}
+                  {referralStatus === "invalid" && (
+                    <p className="mt-1 text-xs text-rose-600 font-footer">{referralError}</p>
+                  )}
                 </div>
 
                 {/* First Name */}
