@@ -76,12 +76,6 @@ export function usePreferences() {
     [customer?.id, queryClient, saveMutation]
   );
 
-  const shouldPrompt =
-    Boolean(customer) &&
-    !preferencesQuery.isLoading &&
-    !saveMutation.isPending &&
-    !hasPreferences;
-
   return {
     preferences,
     hasPreferences,
@@ -89,6 +83,5 @@ export function usePreferences() {
     saving: saveMutation.isPending,
     savePreferences,
     refresh: preferencesQuery.refetch,
-    shouldPrompt,
   };
 }
