@@ -117,15 +117,22 @@ export async function POST(req: Request) {
 
       // Get customer and order items
       const customerResult = await pool.query(
-        `SELECT c.id, c.email, c.first_name || ' ' || c.last_name as name,
-                c.metadata->>'referral_code' as referral_code
-         FROM "order" o JOIN customer c ON o.customer_id = c.id
+        `SELECT
+            c.id,
+            c.email,
+            c.first_name || ' ' || c.last_name as name,
+            COALESCE(cr.referral_code, c.metadata->>'referral_code') as referral_code
+         FROM "order" o
+         JOIN customer c ON o.customer_id = c.id
+         LEFT JOIN customer_referral cr ON cr.customer_id = c.id
          WHERE o.id = $1`,
         [finalOrderId]
       );
 
       const customer = customerResult.rows[0];
-      if (customer?.referral_code) {
+      const affiliateCode = customer?.referral_code;
+
+      if (affiliateCode) {
         const itemsResult = await pool.query(
           `SELECT oi.id, pv.product_id, oi.quantity, oli.unit_price, p.title as product_name
            FROM order_item oi
@@ -148,7 +155,7 @@ export async function POST(req: Request) {
           const unitPrice = parseFloat(item.unit_price || 0);
           const payload = {
             order_id: finalOrderId,
-            affiliate_code: customer.referral_code,
+            affiliate_code: affiliateCode,
             product_id: item.product_id,
             product_name: item.product_name,
             quantity: item.quantity,

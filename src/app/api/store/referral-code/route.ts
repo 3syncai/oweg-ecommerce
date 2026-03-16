@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
 
                 return NextResponse.json({
                     referral_code: referralData.referral_code,
+                    locked: true,
                 })
             }
 
@@ -71,6 +72,7 @@ export async function GET(req: NextRequest) {
             // No referral code found for this customer
             return NextResponse.json({
                 referral_code: null,
+                locked: false,
                 message: "No referral code found",
             })
         } catch (dbError) {
