@@ -133,7 +133,7 @@ function CheckoutPageInner() {
           const data = await res.json();
           if (data.referral_code) {
             setReferralCode(data.referral_code);
-            setReferralCodeApplied(true);
+            setReferralCodeApplied(data.locked !== false);
             console.log('Auto-applied referral code:', data.referral_code);
           }
         }
@@ -178,7 +178,12 @@ function CheckoutPageInner() {
         
         if (!saveRes.ok) {
            // It might fail if they already have one locked
-           toast.error(saveData.error || "Could not apply referral code.");
+           const reason = saveData?.message || saveData?.error || "Could not apply referral code.";
+           toast.error(reason);
+           if (saveData?.existing_code) {
+            setReferralCode(saveData.existing_code);
+            setReferralCodeApplied(true);
+           }
            setReferralValidating(false);
            return;
         }

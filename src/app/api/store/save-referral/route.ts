@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Pool } from "pg"
+import { adminFetch } from "@/lib/medusa-admin"
 
 export const dynamic = "force-dynamic"
 
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
                     return NextResponse.json(
                         {
                             success: false,
+                            locked: true,
                             message: "Referral code is already saved and cannot be changed.",
                             existing_code: savedCode
                         },
@@ -147,14 +149,25 @@ export async function POST(req: NextRequest) {
                 [normalizedCode, affiliateUserId, medusaId, customerEmail, customerName]
             )
 
-            // ✅ CRITICAL FIX: Synchronize with Medusa metadata so the order-placed subscriber can find this code
+            // ✅ Keep Medusa customer metadata in sync with the locked code.
             try {
-                // Since this is an API route, we rely on Medusa Admin API or a direct fetch if we have the token
-                // However, the easiest way here is to use the Medusa service if it's available or just log it
-                // For now, let's assume the storefront will try to update its own metadata if we return success
-                console.log(`[SYNC] Referral code ${normalizedCode} should be synced to Medusa for customer ${medusaId}`)
+                const customerResponse = await adminFetch<{ customer?: { metadata?: Record<string, unknown> } }>(
+                    `/admin/customers/${encodeURIComponent(customer_id)}`
+                )
+                const existingMetadata = customerResponse.data?.customer?.metadata || {}
+                const nextMetadata = {
+                    ...existingMetadata,
+                    referral_code: normalizedCode,
+                }
+                const metadataUpdate = await adminFetch(`/admin/customers/${encodeURIComponent(customer_id)}`, {
+                    method: "POST",
+                    body: JSON.stringify({ metadata: nextMetadata }),
+                })
+                if (!metadataUpdate.ok) {
+                    console.warn(`[SYNC WARN] Failed to sync customer metadata for ${customer_id} (status=${metadataUpdate.status})`)
+                }
             } catch (syncError) {
-                console.warn('[SYNC ERROR] Failed to sync referral to Medusa metadata:', syncError)
+                console.warn("[SYNC ERROR] Failed to sync referral to Medusa metadata:", syncError)
             }
 
             console.log(`✅ Tracked affiliate referral for: ${normalizedCode}`)
@@ -162,7 +175,7 @@ export async function POST(req: NextRequest) {
             await pool.end()
             console.log('✅ Referral code saved successfully')
 
-            return NextResponse.json({ success: true, message: "Referral saved" })
+            return NextResponse.json({ success: true, locked: true, referral_code: normalizedCode, message: "Referral saved and locked" })
         } catch (dbError) {
             console.error('❌ Database insert error:', dbError)
             await pool.end().catch(() => { })

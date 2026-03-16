@@ -269,6 +269,10 @@ export async function POST(req: NextRequest) {
               `SELECT id FROM affiliate_user WHERE UPPER(refer_code) = $1 AND is_approved = TRUE
                UNION
                SELECT id FROM branch_admin WHERE UPPER(refer_code) = $1
+               UNION
+               SELECT id FROM area_sales_manager WHERE UPPER(refer_code) = $1
+               UNION
+               SELECT id FROM state_admin WHERE UPPER(refer_code) = $1
                LIMIT 1`,
               [normalizedCode]
             )

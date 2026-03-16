@@ -232,9 +232,10 @@ export async function POST(req: Request) {
              c.id, 
              c.email, 
              c.first_name || ' ' || c.last_name as name,
-             c.metadata->>'referral_code' as referral_code
+             COALESCE(cr.referral_code, c.metadata->>'referral_code') as referral_code
            FROM "order" o
            JOIN customer c ON o.customer_id = c.id
+           LEFT JOIN customer_referral cr ON cr.customer_id = c.id
            WHERE o.id = $1`,
           [medusaOrderId]
         );
