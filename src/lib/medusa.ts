@@ -803,15 +803,18 @@ export function toUiProduct(p: MedusaProduct) {
 }
 
 export async function fetchProductDetail(
-  idOrHandle: string
+  idOrHandle: string,
+  options?: { bypassCache?: boolean }
 ): Promise<DetailedProduct | null> {
   const target = idOrHandle?.trim()
   if (!target) return null
 
   const cacheKey = target.toLowerCase()
-  const cached = PRODUCT_DETAIL_CACHE.get(cacheKey)
-  if (cached && cached.expires > Date.now()) {
-    return cached.value
+  if (!options?.bypassCache) {
+    const cached = PRODUCT_DETAIL_CACHE.get(cacheKey)
+    if (cached && cached.expires > Date.now()) {
+      return cached.value
+    }
   }
 
   // Medusa v2: no expand or currency parameters, but we need fields
@@ -898,20 +901,24 @@ export async function fetchProductDetail(
           detailed.mrp = adminPrice
         }
 
-        PRODUCT_DETAIL_CACHE.set(cacheKey, {
-          expires: Date.now() + DETAIL_CACHE_TTL_MS,
-          value: detailed,
-        })
+        if (!options?.bypassCache) {
+          PRODUCT_DETAIL_CACHE.set(cacheKey, {
+            expires: Date.now() + DETAIL_CACHE_TTL_MS,
+            value: detailed,
+          })
+        }
         return detailed
       }
     } catch {
       // try next path
     }
   }
-  PRODUCT_DETAIL_CACHE.set(cacheKey, {
-    expires: Date.now() + DETAIL_CACHE_TTL_MS,
-    value: null,
-  })
+  if (!options?.bypassCache) {
+    PRODUCT_DETAIL_CACHE.set(cacheKey, {
+      expires: Date.now() + DETAIL_CACHE_TTL_MS,
+      value: null,
+    })
+  }
   return null
 }
 
