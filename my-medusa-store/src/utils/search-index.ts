@@ -42,12 +42,24 @@ function pickBrand(product: AnyRecord): string {
 function pickPrimaryPrice(prices: AnyRecord[] = []): number {
   if (!Array.isArray(prices) || prices.length === 0) return 0
 
-  const inr = prices.find((p) => String(p?.currency_code || "").toLowerCase() === "inr")
-  const inrAmount = toNumber(inr?.amount)
-  if (inrAmount !== undefined) return inrAmount
+  const inrAmounts = prices
+    .filter((p) => String(p?.currency_code || "").toLowerCase() === "inr")
+    .map((p) => toNumber(p?.amount))
+    .filter((v): v is number => typeof v === "number")
 
-  const first = toNumber(prices[0]?.amount)
-  return first ?? 0
+  if (inrAmounts.length > 0) {
+    return Math.min(...inrAmounts)
+  }
+
+  const allAmounts = prices
+    .map((p) => toNumber(p?.amount))
+    .filter((v): v is number => typeof v === "number")
+
+  if (allAmounts.length > 0) {
+    return Math.min(...allAmounts)
+  }
+
+  return 0
 }
 
 function pickMrp(product: AnyRecord, variant: AnyRecord, fallbackPrice: number): number {
@@ -63,8 +75,24 @@ function pickMrp(product: AnyRecord, variant: AnyRecord, fallbackPrice: number):
     toNumber(vMeta.compare_at_price),
   ].filter((n): n is number => typeof n === "number")
 
-  const candidate = candidates.find((n) => n >= fallbackPrice)
-  return candidate ?? fallbackPrice
+  if (candidates.length > 0) {
+    const candidate = Math.max(...candidates.filter((n) => n >= fallbackPrice))
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
+      return candidate
+    }
+  }
+
+  // Fallback from variant prices: use highest available price as MRP.
+  const variantPrices = Array.isArray(variant?.prices) ? variant.prices : []
+  const priceCandidates = variantPrices
+    .map((p: AnyRecord) => toNumber(p?.amount))
+    .filter((n: number | undefined): n is number => typeof n === "number" && n >= fallbackPrice)
+
+  if (priceCandidates.length > 0) {
+    return Math.max(...priceCandidates)
+  }
+
+  return fallbackPrice
 }
 
 function computeStockScore(variants: AnyRecord[] = []): { inStock: boolean; stockScore: number } {

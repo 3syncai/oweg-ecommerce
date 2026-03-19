@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { searchProducts } from "@/services/medusa/searchService"
+import { searchProducts as searchProductsOpenSearch } from "@/services/medusa/searchService"
+import { searchProducts as searchProductsMedusa, toUiProduct } from "@/lib/medusa"
 
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
@@ -15,8 +16,32 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        const results = await searchProducts(query, { limit })
-        return NextResponse.json(results)
+        const normalized = query.trim()
+
+        // Primary: OpenSearch (fast + ranked)
+        const openSearchResults = await searchProductsOpenSearch(normalized, { limit }).catch(() => [])
+        if (Array.isArray(openSearchResults) && openSearchResults.length > 0) {
+            return NextResponse.json(openSearchResults)
+        }
+
+        // Fallback: direct Medusa search (prevents empty results when index is stale)
+        const medusaProducts = await searchProductsMedusa({ q: normalized, limit })
+        const fallbackResults = medusaProducts.map((product) => {
+            const ui = toUiProduct(product)
+            return {
+                id: String(ui.id),
+                handle: ui.handle,
+                title: ui.name,
+                thumbnail: ui.image,
+                brand: undefined as string | undefined,
+                price: ui.price,
+                mrp: ui.mrp,
+                discount: ui.discount,
+                status: "published",
+            }
+        })
+
+        return NextResponse.json(fallbackResults)
     } catch (error) {
         console.error("❌ Search API error:", error)
         return NextResponse.json(
