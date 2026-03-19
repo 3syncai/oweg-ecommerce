@@ -144,7 +144,7 @@ export async function searchProducts(query: string, options: SearchOptions = {})
             size: limit,
             _source: SOURCE_FIELDS,
             body: {
-                query: buildStrictQuery(normalizedQuery),
+                query: buildStrictQuery(normalizedQuery) as any,
                 track_total_hits: false,
             },
         })
@@ -160,7 +160,7 @@ export async function searchProducts(query: string, options: SearchOptions = {})
             size: limit,
             _source: SOURCE_FIELDS,
             body: {
-                query: buildFallbackQuery(normalizedQuery),
+                query: buildFallbackQuery(normalizedQuery) as any,
                 track_total_hits: false,
             },
         })
