@@ -40,6 +40,19 @@ export const StoreCreateCustomer = z
     }
   })
 
+export const StoreCreatePasswordResetToken = z.object({
+  email: z.string().trim().email(),
+})
+
+export const StoreValidatePasswordResetToken = z.object({
+  token: z.string().trim().min(32).max(256),
+})
+
+export const StoreResetPassword = z.object({
+  token: z.string().trim().min(32).max(256),
+  password: z.string().min(10).max(128),
+})
+
 export {
   StoreGetCustomerParams,
   StoreUpdateCustomer,
@@ -52,4 +65,14 @@ export {
 export type StoreCreateCustomerType = z.infer<
   typeof StoreCreateCustomer
 >
+
+export type StoreCreatePasswordResetTokenType = z.infer<
+  typeof StoreCreatePasswordResetToken
+>
+
+export type StoreValidatePasswordResetTokenType = z.infer<
+  typeof StoreValidatePasswordResetToken
+>
+
+export type StoreResetPasswordType = z.infer<typeof StoreResetPassword>
 

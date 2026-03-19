@@ -8,7 +8,10 @@ import * as QueryConfig from "@medusajs/medusa/dist/api/store/customers/query-co
 
 import {
   StoreCreateCustomer,
+  StoreCreatePasswordResetToken,
   StoreGetCustomerParams,
+  StoreResetPassword,
+  StoreValidatePasswordResetToken,
 } from "./validators"
 
 export const storeCustomerRoutesMiddlewares = baseMiddlewares.map((entry) => {
@@ -29,8 +32,23 @@ export const storeCustomerRoutesMiddlewares = baseMiddlewares.map((entry) => {
       ),
     ],
   }
-})
+  })
   .concat([
+    {
+      method: ["POST"],
+      matcher: "/store/customers/password-token",
+      middlewares: [validateAndTransformBody(StoreCreatePasswordResetToken)],
+    },
+    {
+      method: ["POST"],
+      matcher: "/store/customers/reset-password/validate",
+      middlewares: [validateAndTransformBody(StoreValidatePasswordResetToken)],
+    },
+    {
+      method: ["POST"],
+      matcher: "/store/customers/reset-password",
+      middlewares: [validateAndTransformBody(StoreResetPassword)],
+    },
     {
       method: ["POST"],
       matcher: "/store/customers/change-password",
