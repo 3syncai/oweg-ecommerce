@@ -271,6 +271,6 @@ export async function ensureProductsIndex() {
   if (exists.body) return
   await client.indices.create({
     index: PRODUCTS_INDEX,
-    body: createProductsIndexBody(),
+    body: createProductsIndexBody() as any,
   })
 }

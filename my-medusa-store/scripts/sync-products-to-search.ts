@@ -25,7 +25,7 @@ export default async function syncProducts({ container }) {
     // ── Step 2: Create index with richer mappings/analyzers ──
     await client.indices.create({
         index: PRODUCTS_INDEX,
-        body: createProductsIndexBody(),
+        body: createProductsIndexBody() as any,
     })
     console.log(`✅ Created fresh '${PRODUCTS_INDEX}' index`)
 
@@ -90,7 +90,7 @@ export default async function syncProducts({ container }) {
                 body,
             })
 
-            const items = (bulkRes.body?.items || bulkRes.items || []) as any[]
+            const items = ((bulkRes as any).body?.items || (bulkRes as any).items || []) as any[]
             if (!items.length) {
                 count += batch.length
                 continue
