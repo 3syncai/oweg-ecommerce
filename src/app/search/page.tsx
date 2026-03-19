@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { Suspense } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { Heart, SearchX, SlidersHorizontal, Star } from "lucide-react"
 import Image from "next/image"
@@ -68,7 +69,7 @@ function StarRow({ count }: { count: number }) {
   )
 }
 
-export default function SearchPage() {
+function SearchPageContent() {
   const params = useSearchParams()
   const q = params.get("q")?.trim() || ""
 
@@ -383,5 +384,25 @@ export default function SearchPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function SearchPageFallback() {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/20 to-white">
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+        <div className="mb-5 rounded-2xl border border-emerald-100 bg-white/90 p-4 shadow-sm backdrop-blur sm:p-5">
+          <p className="text-sm text-slate-600">Loading search...</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<SearchPageFallback />}>
+      <SearchPageContent />
+    </Suspense>
   )
 }
