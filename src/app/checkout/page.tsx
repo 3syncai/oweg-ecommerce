@@ -549,6 +549,7 @@ function CheckoutPageInner() {
   // Calculate wallet coin values (after serverTotals and clientTotals are defined)
   const orderTotal = (serverTotals || clientTotals).total;
   const maxRedeemable = getMaxRedeemableCoins(orderTotal);
+  const maxUsableCoins = Math.max(0, Math.floor(Math.min(walletBalance, orderTotal, maxRedeemable)));
   // Trust coinsToUse when useCoins is checked, as it was validated at the time of checking.
   // We don't want to re-clamp against walletBalance because it might decrease after deduction on backend.
   const coinDiscount = useCoins ? coinsToUse : 0;
@@ -774,6 +775,18 @@ function CheckoutPageInner() {
     const Razorpay = window.Razorpay;
     if (!Razorpay) throw new Error("Razorpay SDK unavailable");
 
+    const refundCoinsForOrder = async (orderId: string) => {
+      try {
+        await fetch("/api/store/wallet/refund-coin-discount-order", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ order_id: orderId, reason: "failed" }),
+        });
+      } catch (err) {
+        console.warn("Failed to trigger immediate coin refund on dismiss", err);
+      }
+    };
+
     const rzp = new Razorpay({
       key: payload.key,
       amount: payload.amount,
@@ -845,7 +858,8 @@ function CheckoutPageInner() {
         router.push(`${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}`);
       },
       modal: {
-        ondismiss: function () {
+        ondismiss: async function () {
+          await refundCoinsForOrder(draft.medusaOrderId);
           router.push(`${RAZORPAY_FAILED}?orderId=${encodeURIComponent(draft.medusaOrderId)}`);
         },
       },
@@ -1305,18 +1319,27 @@ function CheckoutPageInner() {
                         checked={useCoins}
                         onChange={async (e) => {
                           const isChecked = e.target.checked;
+                          const hasRealCart = Boolean(cart?.id && cart.id !== "buy-now");
 
                           if (isChecked) {
-                            if (!cart?.id || cart.id === "buy-now") {
-                              toast.error("Coin discount is available only for cart checkout.");
+                            if (!customer?.id) {
+                              toast.error("Please sign in to redeem wallet coins.");
                               setUseCoins(false);
                               setCoinsToUse(0);
                               setCoinDiscountCode(null);
                               return;
                             }
+
                             // User wants to use coins
-                            const maxCoins = Math.min(walletBalance, orderTotal, maxRedeemable);
-                            const coinsInMinorUnits = Math.round(maxCoins * 100); // Convert to minor units
+                            const maxCoins = maxUsableCoins;
+                            if (maxCoins <= 0) {
+                              toast.error("Add items to checkout before applying coins.");
+                              setUseCoins(false);
+                              setCoinsToUse(0);
+                              setCoinDiscountCode(null);
+                              return;
+                            }
+                            const coinsInMinorUnits = maxCoins * 100; // Convert coins to minor units
 
                             setApplyingCoinDiscount(true);
                             try {
@@ -1326,7 +1349,7 @@ function CheckoutPageInner() {
                                 headers: { 'content-type': 'application/json' },
                                 body: JSON.stringify({
                                   customer_id: customer?.id,
-                                  cart_id: cart?.id,
+                                  cart_id: hasRealCart ? cart?.id : undefined,
                                   coin_amount: coinsInMinorUnits
                                 })
                               });
@@ -1339,31 +1362,33 @@ function CheckoutPageInner() {
                               const discountData = await discountRes.json();
                               const { discount_code } = discountData;
 
-                              // Step 2: Apply discount to Medusa cart
-                              const applyRes = await fetch('/api/store/cart/apply-discount', {
-                                method: 'POST',
-                                headers: { 'content-type': 'application/json' },
-                                body: JSON.stringify({
-                                  cart_id: cart?.id,
-                                  discount_code
-                                })
-                              });
+                              // Step 2: Apply discount to Medusa cart only for cart checkout
+                              if (hasRealCart) {
+                                const applyRes = await fetch('/api/store/cart/apply-discount', {
+                                  method: 'POST',
+                                  headers: { 'content-type': 'application/json' },
+                                  body: JSON.stringify({
+                                    cart_id: cart?.id,
+                                    discount_code
+                                  })
+                                });
 
-                              if (!applyRes.ok) {
-                                let message = 'Failed to apply discount to cart';
-                                try {
-                                  const errorPayload = await applyRes.json();
-                                  if (errorPayload?.error) message = String(errorPayload.error);
-                                  if (errorPayload?.details) {
-                                    const details = typeof errorPayload.details === "string"
-                                      ? errorPayload.details
-                                      : JSON.stringify(errorPayload.details);
-                                    message = `${message}: ${details}`;
+                                if (!applyRes.ok) {
+                                  let message = 'Failed to apply discount to cart';
+                                  try {
+                                    const errorPayload = await applyRes.json();
+                                    if (errorPayload?.error) message = String(errorPayload.error);
+                                    if (errorPayload?.details) {
+                                      const details = typeof errorPayload.details === "string"
+                                        ? errorPayload.details
+                                        : JSON.stringify(errorPayload.details);
+                                      message = `${message}: ${details}`;
+                                    }
+                                  } catch {
+                                    // ignore parse errors
                                   }
-                                } catch {
-                                  // ignore parse errors
+                                  throw new Error(message);
                                 }
-                                throw new Error(message);
                               }
 
                               // Success! Update state
@@ -1384,13 +1409,15 @@ function CheckoutPageInner() {
 
                           } else {
                             // User wants to remove coins
-                            if (coinDiscountCode && cart?.id) {
+                            if (coinDiscountCode) {
                               setApplyingCoinDiscount(true);
                               try {
-                                // Remove discount from cart
-                                await fetch(`/api/store/cart/apply-discount?cart_id=${cart.id}&discount_code=${coinDiscountCode}`, {
-                                  method: 'DELETE'
-                                });
+                                // Remove discount from cart only for cart checkout
+                                if (hasRealCart) {
+                                  await fetch(`/api/store/cart/apply-discount?cart_id=${cart?.id}&discount_code=${coinDiscountCode}`, {
+                                    method: 'DELETE'
+                                  });
+                                }
 
                                 // Refund coins back to wallet
                                 await fetch('/api/store/wallet/refund-coin-discount', {
@@ -1417,14 +1444,14 @@ function CheckoutPageInner() {
                           }
                         }}
                         className="w-4 h-4 text-green-600"
-                        disabled={applyingCoinDiscount || !walletCanRedeem}
+                        disabled={applyingCoinDiscount || !walletCanRedeem || maxUsableCoins <= 0}
                       />
                       <div className="flex-1">
                         <p className="text-sm font-medium text-slate-800">
-                          Use {Math.round(Math.min(walletBalance, maxRedeemable))} coins
+                          Use {maxUsableCoins} coins
                         </p>
                         <p className="text-xs text-green-600">
-                          Save ₹{Math.round(Math.min(walletBalance, orderTotal, maxRedeemable))}
+                          Save ₹{maxUsableCoins}
                         </p>
                         {applyingCoinDiscount && (
                           <p className="text-xs text-slate-500 mt-1">Applying discount...</p>
