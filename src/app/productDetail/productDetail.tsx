@@ -1036,6 +1036,11 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const detailPairs = useMemo(() => {
     if (!product) return []
     const entries: Array<{ label: string; value: string }> = []
+    const meta = (product.metadata as Record<string, unknown> | null) || null
+    const metaCategory =
+      (typeof meta?.category === 'string' ? meta.category : '') ||
+      (Array.isArray(meta?.categories) ? (meta?.categories as string[]).filter(Boolean).join(', ') : '')
+
     if (product.type) entries.push({ label: 'Type', value: product.type })
     if (product.collection?.title) {
       entries.push({ label: 'Collection', value: product.collection.title })
@@ -1045,6 +1050,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
         label: 'Category',
         value: product.categories.map((c) => c.title).filter(Boolean).join(', '),
       })
+    } else if (metaCategory) {
+      entries.push({ label: 'Category', value: metaCategory })
     }
     if (product.tags?.length) {
       entries.push({ label: 'Tags', value: product.tags.join(', ') })

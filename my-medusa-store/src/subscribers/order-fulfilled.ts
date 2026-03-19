@@ -101,6 +101,56 @@ export default async function orderFulfilledSubscriber({
 
         console.log(`[Affiliate Commission] Updating commission status at ${affiliateWebhookUrl}`)
 
+        // First, try a direct order-level status update endpoint to avoid duplicate inserts.
+        let statusUpdateApplied = false
+        let statusUpdateUrl = process.env.AFFILIATE_COMMISSION_UPDATE_URL
+
+        if (!statusUpdateUrl) {
+            try {
+                const parsed = new URL(affiliateWebhookUrl)
+                statusUpdateUrl = `${parsed.origin}/api/webhook/commission/update-status`
+            } catch (urlErr) {
+                console.log(`[Affiliate Commission] Could not derive update-status URL:`, urlErr)
+            }
+        }
+
+        if (statusUpdateUrl) {
+            try {
+                console.log(`[Affiliate Commission] Trying direct status update at ${statusUpdateUrl}`)
+                const statusResp = await fetch(statusUpdateUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        order_id: orderId,
+                        status: "CREDITED",
+                    }),
+                })
+
+                if (statusResp.ok) {
+                    const statusData = await statusResp.json()
+                    const updatedCount = Number(statusData?.updated_count || 0)
+                    if (updatedCount > 0) {
+                        statusUpdateApplied = true
+                        console.log(`[Affiliate Commission] ✅ Updated ${updatedCount} commission rows via direct status endpoint`)
+                    } else {
+                        console.log(`[Affiliate Commission] No rows updated by direct endpoint, continuing with item-wise fallback`)
+                    }
+                } else {
+                    const statusErr = await statusResp.text()
+                    console.log(`[Affiliate Commission] Direct status update failed: ${statusErr}`)
+                }
+            } catch (statusUpdateErr) {
+                console.log(`[Affiliate Commission] Direct status update error:`, statusUpdateErr)
+            }
+        }
+
+        if (statusUpdateApplied) {
+            console.log(`[Affiliate Commission] Direct status update completed for order ${orderId}; skipping item-wise fallback`)
+            return
+        }
+
         // Query database for order details (same as COD/Razorpay routes)
         try {
             const { Pool } = await import('pg');
