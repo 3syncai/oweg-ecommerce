@@ -1,5 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules, ProductStatus, ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import client from "../../../../../../utils/opensearch"
+import { PRODUCTS_INDEX, buildSearchDocument, ensureProductsIndex } from "../../../../../../utils/search-index"
 
 export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
   try {
@@ -55,6 +57,36 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     } catch (linkError: any) {
       console.warn("⚠️ Failed to link product to sales channel on approval:", linkError?.message)
       // Don't fail approval if sales channel linking fails
+    }
+
+    // Sync immediately to OpenSearch (don't rely only on async subscribers)
+    try {
+      const productService = req.scope.resolve("productService") as any
+      const productForIndex = await productService.retrieve(id, {
+        relations: [
+          "variants",
+          "variants.prices",
+          "variants.options",
+          "collection",
+          "categories",
+          "tags",
+        ],
+      })
+
+      await ensureProductsIndex()
+      const doc = buildSearchDocument(productForIndex as Record<string, any>)
+
+      await client.index({
+        index: PRODUCTS_INDEX,
+        id,
+        refresh: true,
+        body: doc,
+      })
+
+      console.log(`✅ OpenSearch synced on approve for product ${id}`)
+    } catch (indexError: any) {
+      console.error("❌ Failed to sync OpenSearch on approval:", indexError?.message || indexError)
+      // Keep approval successful even if indexing fails temporarily
     }
 
     return res.json({ product: updatedProduct })

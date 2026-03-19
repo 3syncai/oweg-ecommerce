@@ -27,6 +27,14 @@ type VendorProduct = {
     vendor_id?: string
     approval_status?: string
     submitted_at?: string
+    resubmitted_at?: string
+    vendor_edit_remark?: string | null
+    vendor_edit_history?: Array<{
+      remark?: string
+      submitted_at?: string
+      vendor_id?: string
+    }>
+    last_vendor_changed_fields?: string[]
     mid_code?: string
     hs_code?: string
     country_of_origin?: string
@@ -337,7 +345,7 @@ const VendorProductsWidget = () => {
             <Text>{selectedProduct.status}</Text>
 
             <Text weight="plus">Submitted:</Text>
-            <Text>{new Date(selectedProduct.metadata?.submitted_at || selectedProduct.created_at).toLocaleString()}</Text>
+            <Text>{new Date(selectedProduct.metadata?.resubmitted_at || selectedProduct.metadata?.submitted_at || selectedProduct.created_at).toLocaleString()}</Text>
 
             <Text weight="plus">Vendor:</Text>
             <div>
@@ -362,6 +370,31 @@ const VendorProductsWidget = () => {
 
             <Text weight="plus">Sales Channel:</Text>
             <Text>{(selectedProduct as any).sales_channels?.map((sc: any) => sc.name).join(", ") || "Default Sales Channel"}</Text>
+
+            <Text weight="plus">Vendor Remark:</Text>
+            <div>
+              {selectedProduct.metadata?.vendor_edit_remark ? (
+                <Text style={{ whiteSpace: "pre-wrap" }}>{selectedProduct.metadata.vendor_edit_remark}</Text>
+              ) : (
+                <Text style={{ color: "var(--fg-muted)" }}>No remark provided</Text>
+              )}
+            </div>
+
+            <Text weight="plus">Changed Fields:</Text>
+            <div>
+              {Array.isArray(selectedProduct.metadata?.last_vendor_changed_fields) &&
+              selectedProduct.metadata?.last_vendor_changed_fields.length > 0 ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {selectedProduct.metadata.last_vendor_changed_fields.map((field: string) => (
+                    <Badge key={field} color="blue" size="small">
+                      {field}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <Text style={{ color: "var(--fg-muted)" }}>Not specified</Text>
+              )}
+            </div>
           </div>
         </div>
 
@@ -404,6 +437,7 @@ const VendorProductsWidget = () => {
                 <Table.HeaderCell>Vendor</Table.HeaderCell>
                 <Table.HeaderCell>Status</Table.HeaderCell>
                 <Table.HeaderCell>Submitted</Table.HeaderCell>
+                <Table.HeaderCell>Remark</Table.HeaderCell>
                 <Table.HeaderCell>Actions</Table.HeaderCell>
               </Table.Row>
             </Table.Header>
@@ -455,7 +489,12 @@ const VendorProductsWidget = () => {
                   </Table.Cell>
                   <Table.Cell>
                     <Text size="small">
-                      {new Date(product.metadata?.submitted_at || product.created_at).toLocaleDateString()}
+                      {new Date(product.metadata?.resubmitted_at || product.metadata?.submitted_at || product.created_at).toLocaleDateString()}
+                    </Text>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Text size="small" style={{ maxWidth: 260, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {product.metadata?.vendor_edit_remark || "-"}
                     </Text>
                   </Table.Cell>
                   <Table.Cell>

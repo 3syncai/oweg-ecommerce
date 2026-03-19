@@ -20,11 +20,22 @@ export default async function ProductDetailRoute({
   searchParams: Promise<SearchParams>
 }) {
   const [{ id: slug }, query] = await Promise.all([params, searchParams])
-  const preferredId = query.id || slug || ""
-  const productId = decodeURIComponent(preferredId)
-  const initialProduct = await fetchProductDetail(productId)
+  const productIdFromQuery = decodeURIComponent(query.id || "")
+  const slugValue = decodeURIComponent(slug || "")
+
+  let resolvedKey = productIdFromQuery || slugValue
+  let initialProduct = resolvedKey ? await fetchProductDetail(resolvedKey, { bypassCache: true }) : null
+
+  // Fallback: if query `id` is stale (e.g. pending/draft old product) but slug is valid, try slug.
+  if (!initialProduct && productIdFromQuery && slugValue && productIdFromQuery !== slugValue) {
+    initialProduct = await fetchProductDetail(slugValue, { bypassCache: true })
+    if (initialProduct) {
+      resolvedKey = slugValue
+    }
+  }
+
   if (!initialProduct) {
     notFound()
   }
-  return <ProductDetailPage productId={productId} initialProduct={initialProduct} />
+  return <ProductDetailPage productId={resolvedKey} initialProduct={initialProduct} />
 }
