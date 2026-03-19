@@ -3,6 +3,20 @@ import { MEDUSA_CONFIG } from "@/lib/medusa-config";
 import { medusaStoreFetch } from "@/lib/medusa-auth";
 import { adminFetch } from "@/lib/medusa-admin";
 
+function toTimestamp(value: unknown): number {
+  if (typeof value !== "string" || !value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function sortLatestFirst<T>(list: T[]): T[] {
+  return [...list].sort((a, b) => {
+    const aCreated = toTimestamp((a as { created_at?: unknown })?.created_at);
+    const bCreated = toTimestamp((b as { created_at?: unknown })?.created_at);
+    return bCreated - aCreated;
+  });
+}
+
 export async function GET(req: NextRequest) {
   try {
     const cookie = req.headers.get("cookie") || undefined;
@@ -100,11 +114,11 @@ export async function GET(req: NextRequest) {
         const id = (order as { id?: string | number })?.id;
         if (id !== undefined && id !== null) merged.set(String(id), order);
       });
-      const combined = Array.from(merged.values());
+      const combined = sortLatestFirst(Array.from(merged.values()));
       return NextResponse.json({ orders: combined, count: combined.length, limit: rawLimit, offset: rawOffset });
     }
 
-    return NextResponse.json({ orders, count, limit: rawLimit, offset: rawOffset });
+    return NextResponse.json({ orders: sortLatestFirst(orders), count, limit: rawLimit, offset: rawOffset });
   } catch {
     return NextResponse.json({ error: "Unexpected error loading orders" }, { status: 500 });
   }

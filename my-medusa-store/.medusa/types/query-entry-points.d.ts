@@ -17,6 +17,22 @@ export type Scalars = {
   JSON: { input: Record<string, unknown>; output: Record<string, unknown>; }
 };
 
+export type VendorBrandAuthorization = {
+  __typename?: 'VendorBrandAuthorization';
+  id: Scalars['ID']['output'];
+  vendor_id: Scalars['String']['output'];
+  brand_name: Scalars['String']['output'];
+  authorization_file_url: Scalars['String']['output'];
+  authorization_file_key: Scalars['String']['output'];
+  verified: Scalars['Boolean']['output'];
+  verified_at: Maybe<Scalars['DateTime']['output']>;
+  verified_by: Maybe<Scalars['String']['output']>;
+  metadata: Maybe<Scalars['JSON']['output']>;
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+};
+
 export type Vendor = {
   __typename?: 'Vendor';
   id: Scalars['ID']['output'];
@@ -69,22 +85,6 @@ export type VendorUser = {
   must_reset_password: Scalars['Boolean']['output'];
   metadata: Maybe<Scalars['JSON']['output']>;
   vendor_id: Maybe<Scalars['String']['output']>;
-  created_at: Scalars['DateTime']['output'];
-  updated_at: Scalars['DateTime']['output'];
-  deleted_at: Maybe<Scalars['DateTime']['output']>;
-};
-
-export type VendorBrandAuthorization = {
-  __typename?: 'VendorBrandAuthorization';
-  id: Scalars['ID']['output'];
-  vendor_id: Scalars['String']['output'];
-  brand_name: Scalars['String']['output'];
-  authorization_file_url: Scalars['String']['output'];
-  authorization_file_key: Scalars['String']['output'];
-  verified: Scalars['Boolean']['output'];
-  verified_at: Maybe<Scalars['DateTime']['output']>;
-  verified_by: Maybe<Scalars['String']['output']>;
-  metadata: Maybe<Scalars['JSON']['output']>;
   created_at: Scalars['DateTime']['output'];
   updated_at: Scalars['DateTime']['output'];
   deleted_at: Maybe<Scalars['DateTime']['output']>;
@@ -2338,12 +2338,12 @@ export type LinkCustomerAccountHolder = {
 
 declare module '@medusajs/framework/types' {
   interface RemoteQueryEntryPoints {
+    vendor_brand_authorization: VendorBrandAuthorization
+    vendor_brand_authorizations: VendorBrandAuthorization
     vendor: Vendor
     vendors: Vendor
     vendor_user: VendorUser
     vendor_users: VendorUser
-    vendor_brand_authorization: VendorBrandAuthorization
-    vendor_brand_authorizations: VendorBrandAuthorization
     flash_sale_item: FlashSaleItem
     flash_sale_items: FlashSaleItem
     affiliate_admin: AffiliateAdmin

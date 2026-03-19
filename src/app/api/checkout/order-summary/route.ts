@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getOrderById, readStoreCart } from "@/lib/medusa-admin";
+import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 
 export const dynamic = "force-dynamic";
 
@@ -101,25 +102,27 @@ type SummaryBody = {
   mode?: "buy_now" | "cart";
   cartId?: string | null;
   guestCartId?: string | null;
-  shippingMethod?: string;
-  shippingPrice?: number;
+  shippingState?: string;
   itemsOverride?: Array<{ variant_id: string; quantity: number; price_minor?: number }>;
 };
 
-function normalizeTotalsFromCart(cart: Record<string, unknown> | null, shippingPrice?: number) {
+function normalizeSubtotalFromCart(cart: Record<string, unknown> | null) {
+  if (Array.isArray(cart?.items)) {
+    const fromItems = cart.items.reduce((sum, item) => {
+      const record = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
+      const price = typeof record.unit_price === "number" ? record.unit_price : 0;
+      const qty = Math.max(1, Number(record.quantity) || 1);
+      return sum + price * qty;
+    }, 0);
+    if (fromItems > 0) return fromItems;
+  }
   const subtotal =
     typeof cart?.subtotal === "number"
       ? cart.subtotal
       : typeof cart?.total === "number"
         ? cart.total
         : 0;
-  
-  // Use explicit shipping price if provided (optimistic UI), otherwise fallback to cart's shipping_total or 0
-  const shipping = typeof shippingPrice === "number" 
-      ? shippingPrice 
-      : (typeof cart?.shipping_total === "number" ? cart.shipping_total : 0);
-
-  return { subtotal, shipping, total: subtotal + shipping };
+  return subtotal;
 }
 
 export async function POST(req: Request) {
@@ -130,7 +133,13 @@ export async function POST(req: Request) {
     // Try to read cart totals from Medusa Store API
     const cartRes = await readStoreCart(cartId);
     const cart = cartRes?.cart || null;
-    const totals = normalizeTotalsFromCart(cart, body.shippingPrice);
+    const subtotal = normalizeSubtotalFromCart(cart);
+    const totals = {
+      subtotal,
+      shipping: calculateStatewiseShipping(subtotal, body.shippingState),
+      total: 0,
+    };
+    totals.total = totals.subtotal + totals.shipping;
 
     // If buy-now override with explicit prices exists, adjust subtotal
     if (Array.isArray(body.itemsOverride) && body.itemsOverride.length) {
@@ -140,6 +149,7 @@ export async function POST(req: Request) {
         return sum + price * qty;
       }, 0);
       totals.subtotal = overrideSubtotal;
+      totals.shipping = calculateStatewiseShipping(overrideSubtotal, body.shippingState);
       totals.total = overrideSubtotal + totals.shipping;
     }
 

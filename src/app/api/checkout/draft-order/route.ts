@@ -5,6 +5,7 @@
 import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { convertDraftOrder, createDraftOrder, readStoreCart, updateOrderMetadata } from "@/lib/medusa-admin";
+import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 import { findSpendByReference } from "@/lib/wallet-ledger";
 
 export const dynamic = "force-dynamic";
@@ -168,6 +169,19 @@ async function addItemToCart(cartId: string, item: { variant_id: string; quantit
   return res.json();
 }
 
+async function getFirstShippingOptionId(cartId: string): Promise<string | undefined> {
+  try {
+    const res = await backend(`/store/shipping-options?cart_id=${encodeURIComponent(cartId)}`);
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as { shipping_options?: Array<{ id?: string }> };
+    const optionId = data.shipping_options?.find((option) => typeof option?.id === "string")?.id;
+    return optionId;
+  } catch (error) {
+    console.warn("Unable to resolve shipping option for cart", cartId, error);
+    return undefined;
+  }
+}
+
 export async function POST(req: Request) {
   try {
     // parse body safely
@@ -298,34 +312,38 @@ export async function POST(req: Request) {
     const regionId = (typeof cart.region_id === "string" ? cart.region_id : undefined) || fallbackRegion;
     const cartCurrency = (typeof cart.currency_code === "string" ? cart.currency_code : undefined) || "inr";
 
-    // Prepare shipping methods
-    // NOTE: Price passed from frontend is MAJOR (e.g. 150). Convert to MINOR (15000).
-    const shippingPriceMinor = typeof (body as any).shippingPrice === 'number' ? (body as any).shippingPrice! * 100 : 0;
+    const itemsTotal = items.reduce((sum, item) => sum + (item.unit_price || 0) * item.quantity, 0);
+    const shippingCharge = calculateStatewiseShipping(itemsTotal, shipping.state);
 
-    // Clean, standard payload for Medusa
     // Declare coinDiscountRupees early (will be populated from database later)
     let coinDiscountRupees = 0;
 
-    // Clean, standard payload for Medusa
-    const shippingMethodsPayload = Array.isArray(cart.shipping_methods) && cart.shipping_methods.length > 0
-      ? cart.shipping_methods.map((sm: any) => ({
-        shipping_option_id: sm.shipping_option_id,
-        option_id: sm.shipping_option_id, // Compat
-        amount: sm.price || 0,
-        price: sm.price || 0, // Compat
-        name: sm.name || "Shipping",
-        data: sm.data || {},
-      }))
-      : (body.shippingMethod
-        ? [{
-          shipping_option_id: body.shippingMethod,
-          option_id: body.shippingMethod, // Compat
-          amount: shippingPriceMinor || 0,
-          price: shippingPriceMinor || 0, // Compat
-          name: (body as any).shippingMethodName || "Shipping",
-          data: {},
-        }]
-        : undefined);
+    const cartShippingMethods = Array.isArray((cart as Record<string, unknown>).shipping_methods)
+      ? ((cart as Record<string, unknown>).shipping_methods as Array<Record<string, unknown>>)
+      : [];
+    const existingShippingOptionId = cartShippingMethods.find(
+      (method) => typeof method.shipping_option_id === "string"
+    )?.shipping_option_id as string | undefined;
+    const resolvedShippingOptionId =
+      existingShippingOptionId || (cartId ? await getFirstShippingOptionId(cartId) : undefined);
+
+    const shippingMethodPayload: Record<string, unknown> = {
+      amount: shippingCharge,
+      price: shippingCharge,
+      name: shippingCharge === 0 ? "Free Shipping" : "Standard Shipping",
+      data: {
+        pricing_rule: "statewise_subtotal",
+        shipping_state: shipping.state || null,
+        subtotal: itemsTotal,
+      },
+    };
+
+    if (resolvedShippingOptionId) {
+      shippingMethodPayload.shipping_option_id = resolvedShippingOptionId;
+      shippingMethodPayload.option_id = resolvedShippingOptionId;
+    }
+
+    const shippingMethodsPayload = [shippingMethodPayload];
 
     const payload = {
       region_id: regionId,
@@ -337,10 +355,11 @@ export async function POST(req: Request) {
       metadata: {
         cart_id: cartId,
         referral_code: body.referralCode || null,
-        shipping_method: body.shippingMethod || null,
+        shipping_method: resolvedShippingOptionId || "statewise-rule",
         payment_method: paymentMethod,
         mode: body.mode || (itemsOverride ? "buy_now" : "cart"),
-        expected_shipping_price: shippingPriceMinor,
+        expected_shipping_price: shippingCharge,
+        shipping_state: shipping.state || null,
         coin_discount_code: body.coinDiscountCode || null,
         coin_discount_minor: coinDiscountRupees > 0 ? Math.round(coinDiscountRupees * 100) : undefined,
         coin_discount_rupees: coinDiscountRupees > 0 ? coinDiscountRupees : undefined, // Visible in admin
@@ -374,10 +393,9 @@ export async function POST(req: Request) {
     let medusaTotal = draftOrder.total || 0;
 
     // Optimistic Total Calculation
-    const itemsTotal = items.reduce((sum, item) => sum + (item.unit_price || 0) * item.quantity, 0);
-    const expectedTotal = itemsTotal + shippingPriceMinor;
+    const expectedTotal = itemsTotal + shippingCharge;
 
-    if (medusaTotal < expectedTotal && shippingPriceMinor > 0) {
+    if (medusaTotal < expectedTotal && shippingCharge > 0) {
       console.warn(`🛒 [Price Warning] Medusa total (${medusaTotal}) mismatch. Using Optimistic Total (${expectedTotal})`);
       medusaTotal = expectedTotal;
     }
