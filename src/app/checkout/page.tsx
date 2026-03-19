@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthProvider";
-import { useShippingOptions } from "@/hooks/use-shipping-options";
+import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 
 type CartItem = {
   id: string;
@@ -61,6 +61,65 @@ const INR = new Intl.NumberFormat("en-IN", {
   minimumFractionDigits: 0,
 });
 
+const INDIAN_STATES_AND_UTS = [
+  "Andhra Pradesh",
+  "Arunachal Pradesh",
+  "Assam",
+  "Bihar",
+  "Chhattisgarh",
+  "Goa",
+  "Gujarat",
+  "Haryana",
+  "Himachal Pradesh",
+  "Jharkhand",
+  "Karnataka",
+  "Kerala",
+  "Madhya Pradesh",
+  "Maharashtra",
+  "Manipur",
+  "Meghalaya",
+  "Mizoram",
+  "Nagaland",
+  "Odisha",
+  "Punjab",
+  "Rajasthan",
+  "Sikkim",
+  "Tamil Nadu",
+  "Telangana",
+  "Tripura",
+  "Uttar Pradesh",
+  "Uttarakhand",
+  "West Bengal",
+  "Andaman and Nicobar Islands",
+  "Chandigarh",
+  "Dadra and Nagar Haveli and Daman and Diu",
+  "Delhi",
+  "Jammu and Kashmir",
+  "Ladakh",
+  "Lakshadweep",
+  "Puducherry",
+];
+
+function getStateSuggestions(queryValue: string): string[] {
+  const query = queryValue.trim().toLowerCase();
+  if (!query) return INDIAN_STATES_AND_UTS.slice(0, 12);
+
+  const startsWith: string[] = [];
+  const contains: string[] = [];
+
+  for (const stateName of INDIAN_STATES_AND_UTS) {
+    const lowered = stateName.toLowerCase();
+    if (!lowered.includes(query)) continue;
+    if (lowered.startsWith(query)) {
+      startsWith.push(stateName);
+    } else {
+      contains.push(stateName);
+    }
+  }
+
+  return [...startsWith, ...contains].slice(0, 12);
+}
+
 
 const isRazorpayTest =
   process.env.NEXT_PUBLIC_RAZORPAY_TESTMODE === "true" ||
@@ -101,15 +160,6 @@ function CheckoutPageInner() {
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "cod">("razorpay");
-  const [shippingMethod, setShippingMethod] = useState<string | null>(null);
-
-  const { options: shippingMethods, isLoading: shippingMethodsLoading, refetch: refetchShipping } = useShippingOptions(cart?.id);
-
-  useEffect(() => {
-    if (shippingMethods.length > 0 && !shippingMethod) {
-      setShippingMethod(shippingMethods[0].id)
-    }
-  }, [shippingMethods, shippingMethod])
 
   const [referralCode, setReferralCode] = useState("");
   const [referralCodeApplied, setReferralCodeApplied] = useState(false); // Track if auto-applied
@@ -279,7 +329,12 @@ function CheckoutPageInner() {
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [showSaveDefault, setShowSaveDefault] = useState(false);
   const [savingAddress, setSavingAddress] = useState(false);
+  const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
+  const [billingStateDropdownOpen, setBillingStateDropdownOpen] = useState(false);
   const toDigits = (value: string, max: number) => value.replace(/\D/g, "").slice(0, max);
+
+  const shippingStateSuggestions = useMemo(() => getStateSuggestions(shipping.state), [shipping.state]);
+  const billingStateSuggestions = useMemo(() => getStateSuggestions(billing.state), [billing.state]);
 
   // Prefill email and referral code from logged-in customer
   useEffect(() => {
@@ -417,12 +472,6 @@ function CheckoutPageInner() {
   };
 
   useEffect(() => {
-    if (cart?.id) {
-      refetchShipping();
-    }
-  }, [cart?.id, shipping.city, shipping.postalCode, refetchShipping])
-
-  useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = localStorage.getItem("guest_cart_id");
     if (stored) setGuestCartId(stored);
@@ -512,31 +561,14 @@ function CheckoutPageInner() {
     const itemsTotal =
       cart?.items?.reduce((sum, item) => sum + (item.unit_price || 0) * (item.quantity || 1), 0) || 0;
 
-    const selectedMethod = shippingMethods.find((s) => s.id === shippingMethod);
-    const shippingAmountMinor = selectedMethod?.amount || 0;
+    const shippingAmount = calculateStatewiseShipping(itemsTotal, shipping.state);
 
     return {
       subtotal: itemsTotal,
-      shipping: shippingAmountMinor,
-      total: itemsTotal + shippingAmountMinor,
+      shipping: shippingAmount,
+      total: itemsTotal + shippingAmount,
     };
-  }, [cart?.items, shippingMethod, shippingMethods]);
-
-  const handleShippingSelect = async (optionId: string) => {
-    setShippingMethod(optionId)
-    if (!cart?.id || cart.id === "buy-now") return
-
-    try {
-      await fetch("/api/medusa/shipping-methods", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ cartId: cart.id, optionId })
-      })
-    } catch (e) {
-      console.error("Failed to select shipping method", e)
-      toast.error("Failed to update shipping method")
-    }
-  }
+  }, [cart?.items, shipping.state]);
 
   const [serverTotals, setServerTotals] = useState<{
     subtotal: number;
@@ -583,8 +615,6 @@ function CheckoutPageInner() {
           }
           : null);
 
-      const selectedMethod = shippingMethods.find((s) => s.id === shippingMethod);
-
       try {
         setTotalsLoading(true);
         setTotalWarning(null);
@@ -598,8 +628,7 @@ function CheckoutPageInner() {
             mode: isBuyNow ? "buy_now" : "cart",
             cartId: cart?.id,
             guestCartId,
-            shippingMethod,
-            shippingPrice: selectedMethod?.amount, // Pass explicit price (Major units)
+            shippingState: shipping.state,
             coinDiscount: (() => {
               const discountValue = useCoins ? coinsToUse / 100 : 0; // Convert coins (paise) to rupees
               console.log("🔥🔥🔥 [Frontend] Draft Order Coin Discount:", { useCoins, coinsToUse, coinDiscountRupees: discountValue });
@@ -637,7 +666,7 @@ function CheckoutPageInner() {
   }, [
     cart?.id,
     cart?.items,
-    shippingMethod,
+    shipping.state,
     guestCartId,
     isBuyNow,
     buyNowItem,
@@ -648,7 +677,6 @@ function CheckoutPageInner() {
   ]);
 
   const formatInr = (value: number) => INR.format(value);
-  const formatMajor = (minorObj: number) => INR.format(minorObj);
 
   const ensureRazorpay = () =>
     new Promise<void>((resolve, reject) => {
@@ -681,26 +709,20 @@ function CheckoutPageInner() {
       throw new Error("Buy Now session expired");
     }
 
-    const selectedOption = shippingMethods.find((s) => s.id === shippingMethod);
-    const shippingPriceMajor = selectedOption && typeof selectedOption.amount === 'number' ? selectedOption.amount / 100 : 0;
-
-      const requestPayload = {
-        shipping,
-        billing,
-        billingSameAsShipping: billingSame,
-        shippingMethod,
-        shippingPrice: shippingPriceMajor,
-        shippingMethodName: selectedOption?.name,
-        referralCode,
-        paymentMethod,
-        mode: isBuyNow ? "buy_now" : "cart",
-        coinDiscountCode: coinDiscountCode || undefined,
-        coinDiscount: useCoins ? coinsToUse : 0,
-        itemsOverride: isBuyNow && fallbackBuyNow
-          ? [
-            {
-              variant_id: fallbackBuyNow.variantId,
-              quantity: fallbackBuyNow.quantity,
+    const requestPayload = {
+      shipping,
+      billing,
+      billingSameAsShipping: billingSame,
+      referralCode,
+      paymentMethod,
+      mode: isBuyNow ? "buy_now" : "cart",
+      coinDiscountCode: coinDiscountCode || undefined,
+      coinDiscount: useCoins ? coinsToUse : 0,
+      itemsOverride: isBuyNow && fallbackBuyNow
+        ? [
+          {
+            variant_id: fallbackBuyNow.variantId,
+            quantity: fallbackBuyNow.quantity,
             price_minor: fallbackBuyNow.priceMinor,
           },
         ]
@@ -1043,15 +1065,45 @@ function CheckoutPageInner() {
                     setShipping({ ...shipping, city: e.target.value });
                   }}
                 />
-                <Input
-                  required
-                  placeholder="State"
-                  value={shipping.state}
-                  onChange={(e) => {
-                    setAddressTouched(true);
-                    setShipping({ ...shipping, state: e.target.value });
-                  }}
-                />
+                <div className="relative">
+                  <Input
+                    required
+                    placeholder="State"
+                    value={shipping.state}
+                    autoComplete="off"
+                    onFocus={() => setStateDropdownOpen(true)}
+                    onBlur={() => {
+                      setTimeout(() => setStateDropdownOpen(false), 120);
+                    }}
+                    onChange={(e) => {
+                      setAddressTouched(true);
+                      setStateDropdownOpen(true);
+                      setShipping((prev) => ({ ...prev, state: e.target.value }));
+                    }}
+                  />
+                  {stateDropdownOpen && (
+                    <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-white shadow-lg">
+                      {shippingStateSuggestions.length > 0 ? (
+                        shippingStateSuggestions.map((stateName) => (
+                          <button
+                            key={stateName}
+                            type="button"
+                            className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                            onMouseDown={() => {
+                              setAddressTouched(true);
+                              setShipping((prev) => ({ ...prev, state: stateName }));
+                              setStateDropdownOpen(false);
+                            }}
+                          >
+                            {stateName}
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 text-sm text-slate-500">No matching state found</div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <Input
                   required
                   placeholder="PIN code"
@@ -1142,12 +1194,43 @@ function CheckoutPageInner() {
                     value={billing.city}
                     onChange={(e) => setBilling({ ...billing, city: e.target.value })}
                   />
-                  <Input
-                    required
-                    placeholder="State"
-                    value={billing.state}
-                    onChange={(e) => setBilling({ ...billing, state: e.target.value })}
-                  />
+                  <div className="relative">
+                    <Input
+                      required
+                      placeholder="State"
+                      value={billing.state}
+                      autoComplete="off"
+                      onFocus={() => setBillingStateDropdownOpen(true)}
+                      onBlur={() => {
+                        setTimeout(() => setBillingStateDropdownOpen(false), 120);
+                      }}
+                      onChange={(e) => {
+                        setBillingStateDropdownOpen(true);
+                        setBilling((prev) => ({ ...prev, state: e.target.value }));
+                      }}
+                    />
+                    {billingStateDropdownOpen && (
+                      <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-white shadow-lg">
+                        {billingStateSuggestions.length > 0 ? (
+                          billingStateSuggestions.map((stateName) => (
+                            <button
+                              key={stateName}
+                              type="button"
+                              className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                              onMouseDown={() => {
+                                setBilling((prev) => ({ ...prev, state: stateName }));
+                                setBillingStateDropdownOpen(false);
+                              }}
+                            >
+                              {stateName}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-3 py-2 text-sm text-slate-500">No matching state found</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <Input
                     required
                     placeholder="PIN code"
@@ -1163,33 +1246,17 @@ function CheckoutPageInner() {
             </section>
 
             <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
-              <h2 className="text-lg font-semibold text-slate-900">Shipping method</h2>
-              {shippingMethodsLoading && <p className="text-sm text-slate-500">Loading shipping options...</p>}
-              {!shippingMethodsLoading && shippingMethods.length === 0 && (
-                <div className="p-3 bg-yellow-50 text-yellow-800 text-sm rounded-md">
-                  No shipping options available for your address. Please verify your address details.
-                </div>
-              )}
-              <div className="space-y-3">
-                {shippingMethods.map((opt) => (
-                  <label
-                    key={opt.id}
-                    className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:border-green-500"
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="radio"
-                        name="shipping"
-                        checked={shippingMethod === opt.id}
-                        onChange={() => handleShippingSelect(opt.id)}
-                      />
-                      <span className="text-sm font-medium text-slate-800">{opt.name}</span>
-                    </div>
-                    <span className="text-sm font-semibold text-slate-900">
-                      {opt.amount === 0 ? "Free" : formatMajor(opt.amount)}
-                    </span>
-                  </label>
-                ))}
+              <h2 className="text-lg font-semibold text-slate-900">Shipping charges</h2>
+              <div className="rounded-lg border p-3 text-sm text-slate-700 space-y-2">
+                <p>Above Rs 2000: Free shipping for all states.</p>
+                <p>Above Rs 1000: Free only for Maharashtra, otherwise Rs 50.</p>
+                <p>Rs 1000 or below: Rs 50 for all states.</p>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 border px-3 py-2">
+                <span className="text-sm text-slate-600">Current shipping ({shipping.state || "State not entered"})</span>
+                <span className="text-sm font-semibold text-slate-900">
+                  {clientTotals.shipping === 0 ? "Free" : formatInr(clientTotals.shipping)}
+                </span>
               </div>
             </section>
 

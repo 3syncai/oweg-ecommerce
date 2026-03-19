@@ -414,7 +414,7 @@ export default function OrdersPage() {
       )}
 
       <div className="space-y-3">
-        {sortedOrders.map((order) => {
+        {sortedOrders.map((order, index) => {
           const returnStatus =
             returnStatusByOrderId.get(String(order.id)) ||
             (order.display_id !== undefined
@@ -422,21 +422,29 @@ export default function OrdersPage() {
               : undefined);
           const label = resolveOrderStatus(order, returnStatus);
           const firstItem = order.items?.[0];
+          const baseIndex = (scope === "page" ? page * limit : 0) + index;
+          const serialNumber =
+            count !== null && sort === "latest" && statusFilter === "all" && paymentFilter === "all"
+              ? Math.max(1, count - baseIndex)
+              : baseIndex + 1;
           return (
             <Link
               key={order.id}
-              href={`/orders/${encodeURIComponent(order.id)}`}
+              href={`/orders/${encodeURIComponent(order.id)}?orderNo=${serialNumber}`}
               className="block p-4 hover:-translate-y-0.5 transition hover:shadow-[0_16px_36px_-24px_rgba(0,0,0,0.35)]"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="space-y-1">
-                  <p className="text-sm font-semibold text-gray-900">Order #{order.display_id || order.id.slice(-6)}</p>
+                  <p className="text-sm font-semibold text-gray-900">Order {serialNumber}</p>
                   <p className="text-xs text-gray-500">{formatDate(order.created_at)}</p>
                   <p className="text-xs text-emerald-700 font-semibold">{label}</p>
                 </div>
-                <div className="text-sm font-semibold text-gray-900 flex items-center gap-1">
-                  <ReceiptIndianRupee className="w-4 h-4 text-emerald-600" />
-                  {formatCurrency(order.total, order.currency_code)}
+                <div className="text-right space-y-1">
+                  <p className="text-xs text-gray-500">Order ID: <span className="font-medium text-gray-700">{order.id}</span></p>
+                  <div className="text-sm font-semibold text-gray-900 flex items-center justify-end gap-1">
+                    <ReceiptIndianRupee className="w-4 h-4 text-emerald-600" />
+                    {formatCurrency(order.total, order.currency_code)}
+                  </div>
                 </div>
               </div>
               {firstItem && (

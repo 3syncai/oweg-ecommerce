@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { CheckCircle2, ChevronRight, Clock, Loader2, MapPin, Package, Phone, ReceiptIndianRupee, Undo2, User2, XCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthProvider";
 import { Button } from "@/components/ui/button";
@@ -159,7 +159,11 @@ function trackerSteps(order?: OrderDetail, returnRequest?: ReturnRequest | null)
 
 export default function OrderDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const orderId = Array.isArray(params?.id) ? params.id[0] : (params?.id as string | undefined);
+  const orderNoRaw = searchParams.get("orderNo");
+  const parsedOrderNo = Number(orderNoRaw);
+  const orderNumber = Number.isFinite(parsedOrderNo) && parsedOrderNo > 0 ? Math.floor(parsedOrderNo) : null;
   const { customer, refresh } = useAuth();
 
   const [order, setOrder] = useState<OrderDetail | null>(null);
@@ -420,20 +424,28 @@ export default function OrderDetailPage() {
           Orders
         </Link>
         <ChevronRight className="w-4 h-4 text-gray-400" />
-        <span className="font-semibold text-gray-900">#{order?.display_id || order?.id?.slice(-6) || "..."}</span>
+        <span className="font-semibold text-gray-900">
+          {orderNumber ? `Order ${orderNumber}` : "Order details"}
+        </span>
       </div>
 
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Order #{order?.display_id || order?.id?.slice(-6)}</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">
+            {orderNumber ? `Order ${orderNumber}` : "Order details"}
+          </h1>
           <p className="text-sm text-gray-600">Placed on {formatDateTime(order?.created_at)}</p>
         </div>
-        {loading && (
-          <div className="inline-flex items-center gap-2 text-sm text-emerald-700">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Loading
-          </div>
-        )}
+        <div className="text-right space-y-1">
+          <p className="text-xs text-gray-500">Order ID</p>
+          <p className="text-sm font-semibold text-gray-900 break-all">{order?.id || "..."}</p>
+          {loading && (
+            <div className="inline-flex items-center gap-2 text-sm text-emerald-700">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading
+            </div>
+          )}
+        </div>
       </div>
 
       {error && (

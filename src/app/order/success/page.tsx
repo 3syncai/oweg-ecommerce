@@ -293,27 +293,19 @@ function OrderSuccessPageInner() {
         </div>
 
         <div className="flex flex-wrap gap-3 items-center">
-          <Button onClick={() => router.push("/")}>Continue shopping</Button>
-          <Button variant="outline" onClick={() => router.push("/cart")}>
-            View cart
-          </Button>
-          <Button variant="ghost" onClick={() => router.push("/orders")}>
-            View my orders
+          <Button
+            onClick={() => router.push("/")}
+            className="bg-green-600 text-white border border-green-600 hover:bg-white hover:text-green-600 cursor-pointer"
+          >
+            Continue shopping
           </Button>
 
           <div className="ml-auto flex items-center gap-2">
             <Button
-              variant="ghost"
-              onClick={async () => {
-                setPolling(false);
-                pollAttempts.current = 0;
-                setLoading(true);
-                const latest = await fetchOrder();
-                setLoading(false);
-                if (latest) setOrder(latest);
-              }}
+              onClick={() => router.push("/orders")}
+              className="bg-green-600 text-white border border-green-600 hover:bg-white hover:text-green-600 cursor-pointer"
             >
-              Refresh now
+              View my orders
             </Button>
 
             {!isPaid && (
