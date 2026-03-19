@@ -17,8 +17,11 @@ type PageProps = {
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { handle } = await params;
   const { id } = await searchParams;
-  
-  const product = await fetchProductDetail(id || handle);
+
+  let product = await fetchProductDetail(id || handle, { bypassCache: true });
+  if (!product && id && id !== handle) {
+    product = await fetchProductDetail(handle, { bypassCache: true });
+  }
 
   if (!product) {
     return {
@@ -36,7 +39,10 @@ export default async function ProductDetailPage({ params, searchParams }: PagePr
   const { handle } = await params;
   const { id } = await searchParams;
 
-  const product = await fetchProductDetail(id || handle);
+  let product = await fetchProductDetail(id || handle, { bypassCache: true });
+  if (!product && id && id !== handle) {
+    product = await fetchProductDetail(handle, { bypassCache: true });
+  }
 
   if (!product) {
     notFound();

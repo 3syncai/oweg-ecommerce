@@ -144,6 +144,7 @@ const PRODUCT_LIST_FIELDS = [
   "id",
   "title",
   "subtitle",
+  "description",
   "handle",
   "thumbnail",
   "images.url",
@@ -609,12 +610,14 @@ export function toDetailedProduct(
   p: MedusaProduct
 ): DetailedProduct {
   const { amountMajor, originalMajor, discount } = computeUiPrice(p)
+  const placeholderCategoryValues = new Set(["category", "categories", "uncategorized", "default"])
   const categories =
     p.categories?.map((cat) => ({
       id: cat.id,
-      title: (cat.name || cat.title || "").toString() || "Category",
+      title: (cat.title || cat.name || "").toString() || "Category",
       handle: cat.handle,
-    })) || []
+    }))
+      .filter((cat) => !placeholderCategoryValues.has(cat.title.trim().toLowerCase())) || []
 
   const tags = (p.tags || [])
     .map((t) => t.value || t.handle || "")
@@ -736,6 +739,13 @@ function computeUiPrice(p: MedusaProduct) {
   const variantCalculated = firstVariant?.calculated_price?.calculated_amount
   const variantOriginal = firstVariant?.calculated_price?.original_amount
   const rawDbPrice = firstVariant?.prices?.[0]?.amount
+  const variantPriceAmounts = (firstVariant?.prices || [])
+    .map((entry) => Number(entry?.amount))
+    .filter((amount) => Number.isFinite(amount) && amount > 0)
+  const minVariantPrice =
+    variantPriceAmounts.length > 0 ? Math.min(...variantPriceAmounts) : undefined
+  const maxVariantPrice =
+    variantPriceAmounts.length > 0 ? Math.max(...variantPriceAmounts) : undefined
 
   // Determine final Selling Price (Major) - DB is now in Rupees, use directly
   let amountMajor = 0
@@ -744,6 +754,8 @@ function computeUiPrice(p: MedusaProduct) {
       amountMajor = medusaCalculated
   } else if (typeof variantCalculated === 'number') {
       amountMajor = variantCalculated
+  } else if (typeof minVariantPrice === 'number') {
+      amountMajor = minVariantPrice
   } else if (typeof rawDbPrice === 'number') {
       amountMajor = rawDbPrice
   }
@@ -755,6 +767,8 @@ function computeUiPrice(p: MedusaProduct) {
       originalMajor = medusaOriginal
   } else if (typeof variantOriginal === 'number') {
       originalMajor = variantOriginal
+  } else if (typeof maxVariantPrice === 'number') {
+      originalMajor = maxVariantPrice
   }
 
   // Sanity fallback: if original < amount, reset original
@@ -803,15 +817,18 @@ export function toUiProduct(p: MedusaProduct) {
 }
 
 export async function fetchProductDetail(
-  idOrHandle: string
+  idOrHandle: string,
+  options?: { bypassCache?: boolean }
 ): Promise<DetailedProduct | null> {
   const target = idOrHandle?.trim()
   if (!target) return null
 
   const cacheKey = target.toLowerCase()
-  const cached = PRODUCT_DETAIL_CACHE.get(cacheKey)
-  if (cached && cached.expires > Date.now()) {
-    return cached.value
+  if (!options?.bypassCache) {
+    const cached = PRODUCT_DETAIL_CACHE.get(cacheKey)
+    if (cached && cached.expires > Date.now()) {
+      return cached.value
+    }
   }
 
   // Medusa v2: no expand or currency parameters, but we need fields
@@ -898,20 +915,24 @@ export async function fetchProductDetail(
           detailed.mrp = adminPrice
         }
 
-        PRODUCT_DETAIL_CACHE.set(cacheKey, {
-          expires: Date.now() + DETAIL_CACHE_TTL_MS,
-          value: detailed,
-        })
+        if (!options?.bypassCache) {
+          PRODUCT_DETAIL_CACHE.set(cacheKey, {
+            expires: Date.now() + DETAIL_CACHE_TTL_MS,
+            value: detailed,
+          })
+        }
         return detailed
       }
     } catch {
       // try next path
     }
   }
-  PRODUCT_DETAIL_CACHE.set(cacheKey, {
-    expires: Date.now() + DETAIL_CACHE_TTL_MS,
-    value: null,
-  })
+  if (!options?.bypassCache) {
+    PRODUCT_DETAIL_CACHE.set(cacheKey, {
+      expires: Date.now() + DETAIL_CACHE_TTL_MS,
+      value: null,
+    })
+  }
   return null
 }
 

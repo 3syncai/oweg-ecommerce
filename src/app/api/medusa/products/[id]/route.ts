@@ -10,7 +10,7 @@ export async function GET(
   try {
     const { id } = await context.params
     const decoded = decodeURIComponent(id || "")
-    const product = await fetchProductDetail(decoded)
+    const product = await fetchProductDetail(decoded, { bypassCache: true })
     if (!product) {
       return NextResponse.json({ product: null }, { status: 404 })
     }

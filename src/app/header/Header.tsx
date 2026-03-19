@@ -233,6 +233,23 @@ const Header: React.FC = () => {
   const profileMenuRef = React.useRef<HTMLDivElement | null>(null);
   const profileMenuTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const normalizeSuggestionText = React.useCallback((value?: string) => {
+    const raw = (value || "").replace(/\s+/g, " ");
+    let cleaned = "";
+    for (let i = 0; i < raw.length; i++) {
+      const code = raw.charCodeAt(i);
+      cleaned += code < 32 || code === 127 ? " " : raw[i];
+    }
+    return cleaned.replace(/\s+/g, " ").trim();
+  }, []);
+
+  const normalizeSuggestionImage = React.useCallback((value?: string) => {
+    const v = (value || "").trim();
+    if (!v) return undefined;
+    if (v.startsWith("http://") || v.startsWith("https://") || v.startsWith("/")) return v;
+    return undefined;
+  }, []);
+
   React.useEffect(() => {
     if (!preferredCategoryOrder.length) return;
     setNavCategories((prev) => reorderNav(prev));
@@ -596,18 +613,20 @@ const Header: React.FC = () => {
         .then((r) => r.json())
         .then((d) => {
           type S = { id: string; name: string; image?: string; handle?: string };
-          const list: S[] = (d.products as S[] || []).map((p) => ({
-            id: p.id,
-            name: p.name,
-            image: (p as S).image,
-            handle: (p as S).handle,
-          }));
+          const list: S[] = (d.products as S[] || [])
+            .map((p) => ({
+              id: String(p.id || "").trim(),
+              name: normalizeSuggestionText(p.name),
+              image: normalizeSuggestionImage((p as S).image),
+              handle: (p as S).handle,
+            }))
+            .filter((p) => p.id && p.name);
           setSuggestions(list);
         })
         .catch(() => setSuggestions([]));
     }, 250);
     return () => clearTimeout(id);
-  }, [q, selectedFilter]);
+  }, [q, selectedFilter, normalizeSuggestionImage, normalizeSuggestionText]);
 
   // compute dropdown position & size (smaller than before)
   // use position: fixed so portal remains stable during page scroll
@@ -1118,7 +1137,7 @@ const Header: React.FC = () => {
                               ) : (
                                 <div className="w-9 h-9 bg-gray-200 rounded" />
                               )}
-                              <div className="text-sm text-gray-800 truncate">{s.name}</div>
+                              <div className="min-w-0 flex-1 text-sm text-gray-800 truncate">{s.name}</div>
                             </Link>
                           )
                         })}
@@ -1325,7 +1344,7 @@ const Header: React.FC = () => {
                                 ) : (
                                   <div className="w-10 h-10 rounded-md bg-gray-200" />
                                 )}
-                                <span className="text-sm text-header-text truncate">{s.name}</span>
+                                <span className="min-w-0 flex-1 text-sm text-header-text truncate">{s.name}</span>
                               </Link>
                             );
                           })}
