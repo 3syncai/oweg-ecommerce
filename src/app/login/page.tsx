@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Eye, EyeOff, Phone, Loader2, ChevronDown, Lock, KeyRound } from "lucide-react";
 import { FcGoogle } from "react-icons/fc";
 import { toast } from "sonner";
@@ -73,7 +73,17 @@ function LoginPageInner() {
   }, []);
 
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { setCustomer, refresh } = useAuth();
+
+  useEffect(() => {
+    if (searchParams.get("reset") !== "success") {
+      return;
+    }
+
+    toast.success("Password reset successfully. Please log in.");
+    router.replace("/login");
+  }, [router, searchParams]);
 
   // INTELLIGENT INPUT DETECTION
   const detectInputType = (value: string): InputType => {

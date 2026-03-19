@@ -27,15 +27,38 @@ export async function POST(req: NextRequest) {
     if (!upstream.ok) {
       const payload = await extractErrorPayload(upstream)
       const message =
-        (typeof payload === "string" && payload) ||
-        (typeof payload === "object" && (payload?.error || payload?.message)) ||
-        "Unable to start password reset."
-      return NextResponse.json({ error: message }, { status: upstream.status })
+        typeof payload === "object" && payload
+          ? (payload?.message as string | undefined) || (payload?.error as string | undefined)
+          : null
+
+      if (upstream.status === 400 && message) {
+        return NextResponse.json({ error: message }, { status: 400 })
+      }
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: "If an account exists, a reset link has been sent.",
+        },
+        { status: 200 }
+      )
     }
 
-    return NextResponse.json({ success: true }, { status: 200 })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to start password reset."
-    return NextResponse.json({ error: message }, { status: 500 })
+    const data = await upstream.json().catch(() => null)
+
+    return NextResponse.json(
+      {
+        success: true,
+        message:
+          (data as { message?: string } | null)?.message ||
+          "If an account exists, a reset link has been sent.",
+      },
+      { status: 200 }
+    )
+  } catch {
+    return NextResponse.json(
+      { error: "Something went wrong. Please try again." },
+      { status: 500 }
+    )
   }
 }

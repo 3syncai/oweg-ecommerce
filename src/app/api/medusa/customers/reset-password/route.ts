@@ -3,10 +3,7 @@ import { extractErrorPayload, medusaStoreFetch } from "@/lib/medusa-auth"
 
 export const dynamic = "force-dynamic"
 
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
 type ResetBody = {
-  email?: string
   token?: string
   password?: string
 }
@@ -19,41 +16,56 @@ export async function POST(req: NextRequest) {
       referer: req.headers.get("referer") ?? undefined,
       "user-agent": req.headers.get("user-agent") ?? undefined,
     }
-    const email = body.email?.trim().toLowerCase()
     const token = body.token?.trim()
     const password = body.password?.trim()
 
-    if (!email || !emailRegex.test(email)) {
-      return NextResponse.json({ error: "Valid email is required." }, { status: 400 })
-    }
     if (!token) {
-      return NextResponse.json({ error: "Reset token is required." }, { status: 400 })
-    }
-    if (!password || password.length < 8) {
       return NextResponse.json(
-        { error: "New password must be at least 8 characters long." },
+        { error: "This reset link is invalid or has expired." },
+        { status: 400 }
+      )
+    }
+    if (!password || password.length < 10) {
+      return NextResponse.json(
+        {
+          error:
+            "Use at least 10 characters with uppercase, lowercase, number, and special character.",
+        },
         { status: 400 }
       )
     }
 
     const upstream = await medusaStoreFetch("/store/customers/reset-password", {
       method: "POST",
-      body: JSON.stringify({ email, token, password }),
+      body: JSON.stringify({ token, password }),
       forwardedHeaders,
     })
 
     if (!upstream.ok) {
       const payload = await extractErrorPayload(upstream)
       const message =
-        (typeof payload === "string" && payload) ||
-        (typeof payload === "object" && (payload?.error || payload?.message)) ||
-        "Unable to reset password."
+        (typeof payload === "object" &&
+          payload &&
+          (payload?.message || payload?.error)) ||
+        "Something went wrong. Please try again."
       return NextResponse.json({ error: message }, { status: upstream.status })
     }
 
-    return NextResponse.json({ success: true }, { status: 200 })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to reset password."
-    return NextResponse.json({ error: message }, { status: 500 })
+    const data = await upstream.json().catch(() => null)
+
+    return NextResponse.json(
+      {
+        success: true,
+        message:
+          (data as { message?: string } | null)?.message ||
+          "Password reset successfully. Please log in.",
+      },
+      { status: 200 }
+    )
+  } catch {
+    return NextResponse.json(
+      { error: "Something went wrong. Please try again." },
+      { status: 500 }
+    )
   }
 }
