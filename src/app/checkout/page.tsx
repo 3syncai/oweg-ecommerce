@@ -1246,21 +1246,6 @@ function CheckoutPageInner() {
             </section>
 
             <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
-              <h2 className="text-lg font-semibold text-slate-900">Shipping charges</h2>
-              <div className="rounded-lg border p-3 text-sm text-slate-700 space-y-2">
-                <p>Above Rs 2000: Free shipping for all states.</p>
-                <p>Above Rs 1000: Free only for Maharashtra, otherwise Rs 50.</p>
-                <p>Rs 1000 or below: Rs 50 for all states.</p>
-              </div>
-              <div className="flex items-center justify-between rounded-lg bg-slate-50 border px-3 py-2">
-                <span className="text-sm text-slate-600">Current shipping ({shipping.state || "State not entered"})</span>
-                <span className="text-sm font-semibold text-slate-900">
-                  {clientTotals.shipping === 0 ? "Free" : formatInr(clientTotals.shipping)}
-                </span>
-              </div>
-            </section>
-
-            <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-900">Payment</h2>
               </div>
