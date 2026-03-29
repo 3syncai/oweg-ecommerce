@@ -4,6 +4,7 @@ import {
   findCollectionByTitleOrHandle,
   searchProducts,
   toUiProduct,
+  isMedusaProductInStock,
 } from "@/lib/medusa"
 
 export const dynamic = "force-dynamic"
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
     }
 
   const prods = await searchProducts({ q, limit, categoryId: catId, collectionId: colId })
-  const ui = prods.map((p) => toUiProduct(p)).filter((product) => typeof product.inventory_quantity !== 'number' || product.inventory_quantity > 0)
+  const ui = prods.filter(isMedusaProductInStock).map((p) => toUiProduct(p))
     return NextResponse.json({ products: ui })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "failed"

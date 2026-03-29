@@ -726,20 +726,30 @@ export function toDetailedProduct(
 }
 
 
-function computeUiPrice(p: MedusaProduct) {
+// A variant is purchasable when inventory is unmanaged, backorders are allowed, or there is stock.
+function isVariantPurchasable(v: NonNullable<MedusaProduct['variants']>[number]): boolean {
+  if (v.manage_inventory === false) return true
+  if (v.allow_backorder === true) return true
+  return typeof v.inventory_quantity === 'number' && v.inventory_quantity > 0
+}
+
+function computeUiPriceForVariant(
+  p: MedusaProduct,
+  variant?: NonNullable<MedusaProduct['variants']>[number]
+) {
   // LOGIC:
   // User confirms the database stores MAJOR units (Rupees).
   // Medusa API returns these values directly.
   // We should NOT divide by 100. We just use the values as-is.
-  
+
   const medusaCalculated = p.price?.calculated_price
   const medusaOriginal = p.price?.original_price
-  
-  const firstVariant = p.variants?.[0]
-  const variantCalculated = firstVariant?.calculated_price?.calculated_amount
-  const variantOriginal = firstVariant?.calculated_price?.original_amount
-  const rawDbPrice = firstVariant?.prices?.[0]?.amount
-  const variantPriceAmounts = (firstVariant?.prices || [])
+
+  const v = variant ?? p.variants?.[0]
+  const variantCalculated = v?.calculated_price?.calculated_amount
+  const variantOriginal = v?.calculated_price?.original_amount
+  const rawDbPrice = v?.prices?.[0]?.amount
+  const variantPriceAmounts = (v?.prices || [])
     .map((entry) => Number(entry?.amount))
     .filter((amount) => Number.isFinite(amount) && amount > 0)
   const minVariantPrice =
@@ -749,7 +759,7 @@ function computeUiPrice(p: MedusaProduct) {
 
   // Determine final Selling Price (Major) - DB is now in Rupees, use directly
   let amountMajor = 0
-  
+
   if (typeof medusaCalculated === 'number') {
       amountMajor = medusaCalculated
   } else if (typeof variantCalculated === 'number') {
@@ -782,23 +792,34 @@ function computeUiPrice(p: MedusaProduct) {
       ? Math.round(((originalMajor - amountMajor) / originalMajor) * 100)
       : 0
 
-  // Debug logging - Lightweight check
-  if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
-      // console.log('Price Debug:', { amountMajor, originalMajor });
-  }
-
   return { amountMajor, originalMajor, discount }
 }
 
+// Keep backward-compatible wrapper used by toDetailedProduct
+function computeUiPrice(p: MedusaProduct) {
+  return computeUiPriceForVariant(p, undefined)
+}
+
+
+export function isMedusaProductInStock(p: MedusaProduct): boolean {
+  if (!p?.variants || p.variants.length === 0) return false
+  return p.variants.some(isVariantPurchasable)
+}
 
 export function toUiProduct(p: MedusaProduct) {
   if (!p?.id || !p?.title) {
     console.warn("Incomplete product data:", p)
   }
 
-  const { amountMajor, originalMajor, discount } = computeUiPrice(p)
   const image = collectProductImages(p)[0] || "/oweg_logo.png"
   const metadata = (p.metadata || {}) as Record<string, unknown>
+
+  // Pick the best purchasable variant: prefer one that is explicitly purchasable;
+  // fall back to the first variant so we always have a variant_id to show
+  const purchasableVariant = p?.variants?.find(isVariantPurchasable) ?? p?.variants?.[0]
+
+  // Compute price from the chosen variant so price and variant_id always match
+  const { amountMajor, originalMajor, discount } = computeUiPriceForVariant(p, purchasableVariant)
 
   return {
     id: p?.id || "unknown",
@@ -809,10 +830,10 @@ export function toUiProduct(p: MedusaProduct) {
     discount,
     limitedDeal: discount >= 20,
     opencartId: metadata["opencart_id"] as string | number | undefined,
-    variant_id: p?.variants?.[0]?.id,
+    variant_id: purchasableVariant?.id,
     handle: p?.handle,
     category_ids: p?.categories?.map((c) => c.id).filter((id): id is string => !!id) || [],
-    inventory_quantity: p?.variants?.[0]?.inventory_quantity,
+    inventory_quantity: purchasableVariant?.inventory_quantity,
   }
 }
 
