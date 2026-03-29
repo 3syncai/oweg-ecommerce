@@ -791,6 +791,11 @@ function computeUiPrice(p: MedusaProduct) {
 }
 
 
+export function isMedusaProductInStock(p: MedusaProduct): boolean {
+  if (!p?.variants || p.variants.length === 0) return false
+  return p.variants.some((v) => typeof v.inventory_quantity === 'number' && v.inventory_quantity > 0)
+}
+
 export function toUiProduct(p: MedusaProduct) {
   if (!p?.id || !p?.title) {
     console.warn("Incomplete product data:", p)
@@ -799,6 +804,12 @@ export function toUiProduct(p: MedusaProduct) {
   const { amountMajor, originalMajor, discount } = computeUiPrice(p)
   const image = collectProductImages(p)[0] || "/oweg_logo.png"
   const metadata = (p.metadata || {}) as Record<string, unknown>
+
+  let defaultVariant = p?.variants?.[0]
+  if (p?.variants && p.variants.length > 0) {
+    const inStock = p.variants.find((v) => typeof v.inventory_quantity === 'number' && v.inventory_quantity > 0)
+    if (inStock) defaultVariant = inStock
+  }
 
   return {
     id: p?.id || "unknown",
@@ -809,10 +820,10 @@ export function toUiProduct(p: MedusaProduct) {
     discount,
     limitedDeal: discount >= 20,
     opencartId: metadata["opencart_id"] as string | number | undefined,
-    variant_id: p?.variants?.[0]?.id,
+    variant_id: defaultVariant?.id,
     handle: p?.handle,
     category_ids: p?.categories?.map((c) => c.id).filter((id): id is string => !!id) || [],
-    inventory_quantity: p?.variants?.[0]?.inventory_quantity,
+    inventory_quantity: defaultVariant?.inventory_quantity,
   }
 }
 

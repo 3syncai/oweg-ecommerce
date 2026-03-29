@@ -7,6 +7,7 @@ import {
   fetchProductsByTag,
   fetchProductsByType,
   toUiProduct,
+  isMedusaProductInStock,
 } from "@/lib/medusa"
 import { getPriceListPrices } from "@/lib/price-lists"
 // MySQL import removed - using Medusa prices only
@@ -141,7 +142,10 @@ export async function GET(req: NextRequest) {
     // Fetch price list (Special Prices) to apply discounts
     const priceListPrices = await getPriceListPrices()
     
-    let ui = products.map((product) => {
+    // Filter out products that are completely out of stock before mapping
+    const inStockProducts = products.filter(isMedusaProductInStock)
+
+    let ui = inStockProducts.map((product) => {
       // Apply price list discount if available
       const variantId = product.variants?.[0]?.id
       if (variantId && priceListPrices.has(variantId) && product.variants?.[0]) {
@@ -196,8 +200,8 @@ export async function GET(req: NextRequest) {
     }
 
 
-    // Hide out of stock products
-    ui = ui.filter((product) => typeof product.inventory_quantity === 'number' && product.inventory_quantity > 0)
+    // Out of stock products have already been filtered out before mapping
+    
     
     const payload = { products: ui }
     if (cacheKey) {

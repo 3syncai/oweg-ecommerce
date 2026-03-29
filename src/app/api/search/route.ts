@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { searchProducts as searchProductsOpenSearch } from "@/services/medusa/searchService"
-import { searchProducts as searchProductsMedusa, toUiProduct } from "@/lib/medusa"
+import { searchProducts as searchProductsMedusa, toUiProduct, isMedusaProductInStock } from "@/lib/medusa"
 
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
@@ -28,7 +28,8 @@ export async function GET(req: NextRequest) {
 
         // Fallback: direct Medusa search (prevents empty results when index is stale)
         const medusaProducts = await searchProductsMedusa({ q: normalized, limit })
-        const fallbackResults = medusaProducts.map((product) => {
+        const inStockMedusaProducts = medusaProducts.filter(isMedusaProductInStock)
+        const fallbackResults = inStockMedusaProducts.map((product) => {
             const ui = toUiProduct(product)
             return {
                 id: String(ui.id),
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
         })
 
         // Hide out of stock
-        const inStockFallback = fallbackResults.filter(p => typeof p.inventory_quantity === 'number' && p.inventory_quantity > 0);
+        const inStockFallback = fallbackResults;
         return NextResponse.json(inStockFallback)
     } catch (error) {
         console.error("❌ Search API error:", error)
