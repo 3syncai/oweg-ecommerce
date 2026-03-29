@@ -41,6 +41,7 @@ function LoginPageInner() {
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
   const [showPwd, setShowPwd] = useState(false);
+  const [otpRequestedFor, setOtpRequestedFor] = useState<string | null>(null);
 
   // OTP helpers
   const [otpSent, setOtpSent] = useState(false);
@@ -152,7 +153,52 @@ function LoginPageInner() {
     setError(null);
 
     if (authMethod === "otp") {
-      return setError("OTP login will be available soon. Please use your password.");
+      if (!otpRequestedFor) {
+        return setError("Please request an OTP first.");
+      }
+      if (!otp.trim()) {
+        return setError("Please enter the 6-digit OTP.");
+      }
+
+      try {
+        setBusy(true);
+        const res = await fetch("/api/medusa/auth/login-otp/verify", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            email: otpRequestedFor,
+            otp: otp.trim(),
+          }),
+        });
+
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message = data?.error || "Invalid or expired OTP.";
+          setError(message);
+          toast.error(message);
+          return;
+        }
+
+        const nextCustomer = data?.customer ?? null;
+        if (nextCustomer) {
+          setCustomer(nextCustomer);
+        } else {
+          await refresh();
+        }
+
+        toast.success("Welcome back!");
+        router.push("/");
+        return;
+      } catch {
+        setError("Login failed. Please try again.");
+        return;
+      } finally {
+        setBusy(false);
+      }
     }
     if (!password) {
       return setError("Please enter your password");
@@ -202,9 +248,52 @@ function LoginPageInner() {
     }
   }
 
-  function handleSendOtp() {
-    setError("OTP login will be available soon. Please continue with your password.");
-    toast.info("Passwordless login is coming soon. Use your password for now.");
+  async function handleSendOtp() {
+    setError(null);
+
+    if (inputType !== "email" && !identifier.includes("@")) {
+      setError("OTP login is available only for email.");
+      return;
+    }
+
+    const email = identifier.trim().toLowerCase();
+    if (!email.includes("@") || !email.includes(".")) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
+    try {
+      setBusy(true);
+      const res = await fetch("/api/medusa/auth/login-otp/request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        },
+        credentials: "include",
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const message = data?.error || "Something went wrong. Please try again.";
+        setError(message);
+        toast.error(message);
+        return;
+      }
+
+      setOtpSent(true);
+      setOtpRequestedFor(email);
+      setCooldown(30);
+      toast.success(
+        data?.message || "If an account exists, an OTP has been sent to your email."
+      );
+    } catch {
+      setError("Something went wrong. Please try again.");
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function handleBack() {
@@ -546,10 +635,13 @@ function LoginPageInner() {
                           }}
                         />
                         <p className="text-xs text-slate-500 text-center">
-                          OTP sent to {inputType === "phone" ? `${countryCode} ${identifier}` : identifier}
+                          OTP sent to {otpRequestedFor || identifier}
                         </p>
                       </div>
                     )}
+                    <p className="text-xs text-slate-500">
+                      Didn&apos;t receive it? Check your Spam/Junk folder too.
+                    </p>
                   </div>
                 )}
 
