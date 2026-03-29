@@ -1,13 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Facebook, Twitter, Instagram, Linkedin, Send } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 
 const accountLinks = [
   { label: "Brands", href: "/brands" },
-  { label: "Gift Card", href: "/gift-card" },
   { label: "Affiliates", href: "/affiliates" },
   { label: "Specials", href: "/specials" },
   { label: "My Reward", href: "/my-reward" },
@@ -26,7 +23,6 @@ const quickLinks = [
   { label: "FAQ", href: "/faq" },
   { label: "Contact", href: "/contact" },
   { label: "Seller Registration", href: "/seller-registration" },
-  { label: "Agent Registration", href: "/agent-registration" },
 ];
 
 const Footer = () => {
@@ -102,40 +98,19 @@ const Footer = () => {
           {/* Connect With Us Section */}
           <div>
             <h3 className="text-xl font-normal mb-6 section-title">Connect With Us</h3>
-            <div className="space-y-6">
-              <div>
-                <h4 className="text-lg font-normal mb-4">Subscribe</h4>
-                <p className="text-sm mb-4">Get 10% off your first order</p>
-                <div className="relative">
-                  <Input
-                    type="email"
-                    placeholder="Enter your email"
-                    className="email-input"
-                  />
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="send-btn"
-                    aria-label="Send"
-                  >
-                    <Send className="h-5 w-5" />
-                  </Button>
-                </div>
-              </div>
-              <div className="flex gap-6">
-                <a href="#" className="icon-link" aria-label="Facebook">
-                  <Facebook className="h-6 w-6" />
-                </a>
-                <a href="#" className="icon-link" aria-label="Twitter">
-                  <Twitter className="h-6 w-6" />
-                </a>
-                <a href="#" className="icon-link" aria-label="Instagram">
-                  <Instagram className="h-6 w-6" />
-                </a>
-                <a href="#" className="icon-link" aria-label="LinkedIn">
-                  <Linkedin className="h-6 w-6" />
-                </a>
-              </div>
+            <div className="flex gap-6">
+              <a href="#" className="icon-link" aria-label="Facebook">
+                <Facebook className="h-6 w-6" />
+              </a>
+              <a href="#" className="icon-link" aria-label="Twitter">
+                <Twitter className="h-6 w-6" />
+              </a>
+              <a href="#" className="icon-link" aria-label="Instagram">
+                <Instagram className="h-6 w-6" />
+              </a>
+              <a href="#" className="icon-link" aria-label="LinkedIn">
+                <Linkedin className="h-6 w-6" />
+              </a>
             </div>
           </div>
         </div>
