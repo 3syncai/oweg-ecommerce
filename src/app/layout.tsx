@@ -19,6 +19,9 @@ export const metadata: Metadata = {
   description: "Shop home appliances, kitchen utensils, and electronics at OWEG.",
   applicationName: "OWEG",
   manifest: "/manifest",
+  icons: {
+    icon: "/favicon.ico",
+  },
   other: { display: "standalone" },
 };
 

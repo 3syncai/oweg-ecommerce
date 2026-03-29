@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
         const openSearchResults = await searchProductsOpenSearch(normalized, { limit }).catch(() => [])
         if (Array.isArray(openSearchResults) && openSearchResults.length > 0) {
             // Hide out of stock
-            const inStockOS = openSearchResults.filter((p: any) => typeof p.inventory_quantity !== 'number' || p.inventory_quantity > 0);
+            const inStockOS = openSearchResults.filter((p: any) => typeof p.inventory_quantity === 'number' && p.inventory_quantity > 0);
             return NextResponse.json(inStockOS)
         }
 
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
         })
 
         // Hide out of stock
-        const inStockFallback = fallbackResults.filter(p => typeof p.inventory_quantity !== 'number' || p.inventory_quantity > 0);
+        const inStockFallback = fallbackResults.filter(p => typeof p.inventory_quantity === 'number' && p.inventory_quantity > 0);
         return NextResponse.json(inStockFallback)
     } catch (error) {
         console.error("❌ Search API error:", error)
