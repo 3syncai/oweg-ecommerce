@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
 import { applyCoinDiscountToOrder } from "@/lib/order-discount";
+import { OWEG10_CODE } from "@/lib/oweg10-shared";
+import { consumeOweg10Reservation, syncOweg10ConsumedCustomerMetadata } from "@/lib/oweg10";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +14,7 @@ type MedusaOrder = {
   id?: string;
   metadata?: Record<string, unknown>;
   is_draft_order?: boolean;
+  customer_id?: string;
 };
 
 function extractOrder(data: unknown): MedusaOrder | null {
@@ -76,16 +79,63 @@ export async function POST(req: Request) {
       }
     }
 
+    const finalOrderRes = await getOrderById(finalOrderId);
+    const finalOrder = finalOrderRes.ok && finalOrderRes.data ? extractOrder(finalOrderRes.data) || order : order;
+    const finalMetadata = (finalOrder?.metadata || metadata) as Record<string, unknown>;
+    const oweg10ReservationToken =
+      typeof finalMetadata.oweg10_reservation_token === "string"
+        ? finalMetadata.oweg10_reservation_token
+        : undefined;
+    const oweg10CustomerId =
+      typeof finalMetadata.oweg10_customer_id === "string"
+        ? finalMetadata.oweg10_customer_id
+        : typeof finalOrder?.customer_id === "string"
+          ? finalOrder.customer_id
+          : undefined;
+
+    if (oweg10ReservationToken && oweg10CustomerId) {
+      const consumeResult = await consumeOweg10Reservation({
+        customerId: oweg10CustomerId,
+        reservationToken: oweg10ReservationToken,
+        orderId: finalOrderId,
+        metadata: {
+          payment_method: "cod",
+          source: "cod-confirm",
+        },
+      });
+
+      if (!consumeResult.ok) {
+        return NextResponse.json(
+          {
+            error:
+              consumeResult.reason === "consumed"
+                ? `${OWEG10_CODE} has already been used on this account.`
+                : `${OWEG10_CODE} reservation expired. Please retry checkout.`,
+          },
+          { status: 409 }
+        );
+      }
+
+      await syncOweg10ConsumedCustomerMetadata(oweg10CustomerId);
+    }
+
     const razorpayStatus =
-      typeof metadata.razorpay_payment_status === "string"
-        ? metadata.razorpay_payment_status
+      typeof finalMetadata.razorpay_payment_status === "string"
+        ? finalMetadata.razorpay_payment_status
         : undefined;
 
     await updateOrderMetadata(finalOrderId, {
-      ...metadata,
+      ...finalMetadata,
       payment_method: "cod",
       cod_status: "confirmed",
       razorpay_payment_status: razorpayStatus || "cod",
+      oweg10_pending: false,
+      oweg10_consumed:
+        typeof finalMetadata.oweg10_code === "string" && finalMetadata.oweg10_code.toUpperCase() === OWEG10_CODE,
+      oweg10_consumed_at:
+        typeof finalMetadata.oweg10_code === "string" && finalMetadata.oweg10_code.toUpperCase() === OWEG10_CODE
+          ? new Date().toISOString()
+          : undefined,
     });
 
     // 1. UPDATED UPSTREAM: Coin Discount Logic

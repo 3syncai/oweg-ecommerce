@@ -60,6 +60,11 @@ export const notifyCouponApplied = (code: string) =>
     description: code.toUpperCase(),
   });
 
+export const notifyCouponCheckoutOnly = (code: string) =>
+  toast.info(`Use ${code.toUpperCase()} at checkout`, {
+    description: "This one-time offer is verified against your account during checkout.",
+  });
+
 export const notifyCouponInvalid = () =>
   toast.error("Invalid coupon code", {
     description: "Please double-check and try again.",

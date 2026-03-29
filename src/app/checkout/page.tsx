@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthProvider";
+import { calculateOweg10Discount, OWEG10_CODE } from "@/lib/oweg10-shared";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 
 type CartItem = {
@@ -160,6 +161,18 @@ function CheckoutPageInner() {
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "cod">("razorpay");
+  const [oweg10Applied, setOweg10Applied] = useState(false);
+  const [oweg10Status, setOweg10Status] = useState<{
+    loading: boolean;
+    canApply: boolean;
+    consumed: boolean;
+    pending: boolean;
+  }>({
+    loading: true,
+    canApply: false,
+    consumed: false,
+    pending: false,
+  });
 
   const [referralCode, setReferralCode] = useState("");
   const [referralCodeApplied, setReferralCodeApplied] = useState(false); // Track if auto-applied
@@ -195,6 +208,58 @@ function CheckoutPageInner() {
     };
 
     fetchReferralCode();
+  }, [customer?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!customer?.id) {
+      setOweg10Applied(false);
+      setOweg10Status({
+        loading: false,
+        canApply: false,
+        consumed: false,
+        pending: false,
+      });
+      return;
+    }
+
+    const loadOweg10Status = async () => {
+      try {
+        setOweg10Status((prev) => ({ ...prev, loading: true }));
+        const res = await fetch("/api/store/oweg10/status", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
+        const canApply = Boolean(data?.canApply);
+        setOweg10Status({
+          loading: false,
+          canApply,
+          consumed: Boolean(data?.consumed),
+          pending: Boolean(data?.pending),
+        });
+        if (!canApply) {
+          setOweg10Applied(false);
+        }
+      } catch {
+        if (cancelled) return;
+        setOweg10Status({
+          loading: false,
+          canApply: false,
+          consumed: false,
+          pending: false,
+        });
+        setOweg10Applied(false);
+      }
+    };
+
+    void loadOweg10Status();
+
+    return () => {
+      cancelled = true;
+    };
   }, [customer?.id]);
 
   // Handler to apply the referral code manually
@@ -579,12 +644,18 @@ function CheckoutPageInner() {
   const [totalWarning, setTotalWarning] = useState<string | null>(null);
 
   // Calculate wallet coin values (after serverTotals and clientTotals are defined)
-  const orderTotal = (serverTotals || clientTotals).total;
+  const activeTotals = serverTotals || clientTotals;
+  const oweg10Discount =
+    customer?.id && oweg10Applied && oweg10Status.canApply
+      ? calculateOweg10Discount(activeTotals.subtotal)
+      : 0;
+  const orderTotal = activeTotals.total;
   const maxRedeemable = getMaxRedeemableCoins(orderTotal);
   const maxUsableCoins = Math.max(0, Math.floor(Math.min(walletBalance, orderTotal, maxRedeemable)));
   // Trust coinsToUse when useCoins is checked, as it was validated at the time of checking.
   // We don't want to re-clamp against walletBalance because it might decrease after deduction on backend.
   const coinDiscount = useCoins ? coinsToUse : 0;
+  const payableTotal = Math.max(0, activeTotals.total - coinDiscount - oweg10Discount);
 
   useEffect(() => {
     const hasCartItems = (cart?.items?.length || 0) > 0;
@@ -718,6 +789,7 @@ function CheckoutPageInner() {
       mode: isBuyNow ? "buy_now" : "cart",
       coinDiscountCode: coinDiscountCode || undefined,
       coinDiscount: useCoins ? coinsToUse : 0,
+      oweg10Applied: customer?.id ? oweg10Applied && oweg10Status.canApply : false,
       itemsOverride: isBuyNow && fallbackBuyNow
         ? [
           {
@@ -1557,17 +1629,53 @@ function CheckoutPageInner() {
                   <div className="p-4 text-sm text-slate-500 text-center">No items in cart</div>
                 )}
               </div>
+              {customer ? (
+                oweg10Status.canApply ? (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={oweg10Applied}
+                        onChange={(e) => setOweg10Applied(e.target.checked)}
+                        className="mt-1 h-4 w-4 text-emerald-600"
+                      />
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-emerald-900">
+                          Apply {OWEG10_CODE} for 10% off
+                        </p>
+                        <p className="text-xs text-emerald-800">
+                          This account can use {OWEG10_CODE} only once. After successful use, the offer disappears automatically.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                ) : oweg10Status.pending ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                    {OWEG10_CODE} is already being processed for this account. Complete the current checkout or wait a few minutes.
+                  </div>
+                ) : null
+              ) : (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                  Sign in to unlock the one-time {OWEG10_CODE} 10% offer.
+                </div>
+              )}
               <div className="space-y-2 text-sm text-slate-700">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span className="font-semibold">{formatInr((serverTotals || clientTotals).subtotal)}</span>
+                  <span className="font-semibold">{formatInr(activeTotals.subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Shipping</span>
                   <span className="font-semibold">
-                    {(serverTotals || clientTotals).shipping === 0 ? "Free" : formatInr((serverTotals || clientTotals).shipping)}
+                    {activeTotals.shipping === 0 ? "Free" : formatInr(activeTotals.shipping)}
                   </span>
                 </div>
+                {oweg10Discount > 0 && (
+                  <div className="flex justify-between text-emerald-700">
+                    <span>{OWEG10_CODE} discount</span>
+                    <span className="font-semibold">-{formatInr(oweg10Discount)}</span>
+                  </div>
+                )}
                 {/* Coin Discount Line */}
                 {useCoins && coinDiscount > 0 && (
                   <div className="flex justify-between text-green-600">
@@ -1577,7 +1685,7 @@ function CheckoutPageInner() {
                 )}
                 <div className="flex justify-between text-base font-semibold text-slate-900 pt-2 border-t">
                   <span>Total</span>
-                  <span>{formatInr(Math.max(0, (serverTotals || clientTotals).total - coinDiscount))}</span>
+                  <span>{formatInr(payableTotal)}</span>
                 </div>
                 {totalsLoading && <div className="text-xs text-slate-500">Refreshing totals...</div>}
                 {totalWarning && (
@@ -1596,7 +1704,7 @@ function CheckoutPageInner() {
                   (isBuyNow && !buyNowItem && !variantFromQuery)
                 }
               >
-                {processing ? "Processing Payment…" : `Pay securely (${formatInr(Math.max(0, (serverTotals || clientTotals).total - coinDiscount))})`}
+                {processing ? "Processing Payment…" : `Pay securely (${formatInr(payableTotal)})`}
               </Button>
               {isRazorpayTest && (
                 <p className="text-xs text-slate-500 text-center">

@@ -17,7 +17,7 @@ import {
 import {
   notifyActionError,
   notifyCartUpdated,
-  notifyCouponApplied,
+  notifyCouponCheckoutOnly,
   notifyCouponInvalid,
   notifyQuantityUpdated,
   notifyRemoveItem,
@@ -676,8 +676,10 @@ const Cart: React.FC = () => {
     }
     const isDemoValid = trimmed.toUpperCase() === "OWEG10";
     if (isDemoValid) {
-      notifyCouponApplied(trimmed);
-      setCouponCode("");
+      notifyCouponCheckoutOnly(trimmed);
+      if (typeof window !== "undefined") {
+        window.location.href = "/checkout";
+      }
     } else {
       notifyCouponInvalid();
     }

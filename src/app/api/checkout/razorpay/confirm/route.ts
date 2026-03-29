@@ -4,9 +4,12 @@ import {
   updateOrderMetadata,
   registerOrderTransaction,
   captureOrderPayment,
+  getOrderById,
 } from "@/lib/medusa-admin";
 import { createMedusaPayment, createOrderTransaction, updateOrderSummaryTotals, ensureOrderShippingMethod, ensureOrderReservations } from "@/lib/medusa-payment";
 import { applyCoinDiscountToOrder } from "@/lib/order-discount";
+import { OWEG10_CODE } from "@/lib/oweg10-shared";
+import { consumeOweg10Reservation, syncOweg10ConsumedCustomerMetadata } from "@/lib/oweg10";
 import { Pool } from 'pg';
 
 // Shared pool instance at module level to avoid creating multiple connections per request
@@ -86,6 +89,60 @@ export async function POST(req: Request) {
     const metaRes = await updateOrderMetadata(medusaOrderId, metadata);
     if (!metaRes.ok) {
       console.error("razorpay confirm: metadata update failed", { status: metaRes.status, data: metaRes.data });
+    }
+
+    try {
+      const orderRes = await getOrderById(medusaOrderId);
+      const orderData = orderRes.data as
+        | { order?: { metadata?: Record<string, unknown>; customer_id?: string } }
+        | { metadata?: Record<string, unknown>; customer_id?: string }
+        | null;
+      let order: { metadata?: Record<string, unknown>; customer_id?: string } | null = null;
+      if (orderData && typeof orderData === "object") {
+        if ("order" in orderData) {
+          order = orderData.order || null;
+        } else {
+          order = orderData as { metadata?: Record<string, unknown>; customer_id?: string };
+        }
+      }
+      const orderMetadata = (order?.metadata || {}) as Record<string, unknown>;
+      const reservationToken =
+        typeof orderMetadata.oweg10_reservation_token === "string"
+          ? orderMetadata.oweg10_reservation_token
+          : undefined;
+      const customerId =
+        typeof orderMetadata.oweg10_customer_id === "string"
+          ? orderMetadata.oweg10_customer_id
+          : typeof order?.customer_id === "string"
+            ? order.customer_id
+            : undefined;
+
+      if (reservationToken && customerId) {
+        const consumeResult = await consumeOweg10Reservation({
+          customerId,
+          reservationToken,
+          orderId: medusaOrderId,
+          metadata: {
+            payment_method: "razorpay",
+            source: "razorpay-confirm",
+            razorpay_payment_id,
+          },
+        });
+
+        if (consumeResult.ok) {
+          await syncOweg10ConsumedCustomerMetadata(customerId);
+          await updateOrderMetadata(medusaOrderId, {
+            ...orderMetadata,
+            oweg10_pending: false,
+            oweg10_consumed: true,
+            oweg10_consumed_at: new Date().toISOString(),
+            oweg10_code:
+              typeof orderMetadata.oweg10_code === "string" ? orderMetadata.oweg10_code : OWEG10_CODE,
+          });
+        }
+      }
+    } catch (error) {
+      console.warn("razorpay confirm: OWEG10 consume sync failed", error);
     }
 
     // FORCE RESERVATIONS AND SHIPPING METHOD
