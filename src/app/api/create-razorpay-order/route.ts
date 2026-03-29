@@ -53,11 +53,23 @@ export async function POST(req: Request) {
     let order: MedusaOrder | null = null;
 
     const orderRes = await getOrderById(medusaOrderId);
+    if (orderRes.status === 0) {
+      return NextResponse.json(
+        { error: "Medusa admin backend is temporarily unavailable. Please retry." },
+        { status: 503 }
+      );
+    }
     if (orderRes.ok && orderRes.data && extractOrder(orderRes.data)) {
       order = extractOrder(orderRes.data);
     } else {
       // If we only have a draft id, convert it so Razorpay can reference a real order
       const converted = await convertDraftOrder(medusaOrderId);
+      if (converted.status === 0) {
+        return NextResponse.json(
+          { error: "Medusa admin backend is temporarily unavailable. Please retry." },
+          { status: 503 }
+        );
+      }
       if (converted.ok) {
         const convertedOrder = extractOrder(converted.data);
         if (convertedOrder?.id) {

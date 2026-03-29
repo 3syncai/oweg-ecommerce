@@ -420,7 +420,7 @@ export async function POST(req: Request) {
         coin_discount_minor: coinDiscountRupees > 0 ? Math.round(coinDiscountRupees * 100) : undefined,
         coin_discount_rupees: coinDiscountRupees > 0 ? coinDiscountRupees : undefined, // Visible in admin
         coin_discount_applied: coinDiscountRupees > 0 ? `₹${coinDiscountRupees.toFixed(2)} OWEG Coins` : undefined,
-        coins_discountend: coinDiscountRupees > 0 ? coinDiscountRupees : undefined,
+        coins_discounted: coinDiscountRupees > 0 ? coinDiscountRupees : undefined,
         oweg10_code: body.oweg10Applied ? OWEG10_CODE : null,
         oweg10_discount_minor: oweg10DiscountRupees > 0 ? Math.round(oweg10DiscountRupees * 100) : undefined,
         oweg10_discount_rupees: oweg10DiscountRupees > 0 ? oweg10DiscountRupees : undefined,
@@ -531,7 +531,7 @@ export async function POST(req: Request) {
           coin_discount_minor: Math.round(coinDiscountRupees * 100),
           coin_discount_rupees: coinDiscountRupees,
           coin_discount_applied: `₹${coinDiscountRupees.toFixed(2)} OWEG Coins`,
-          coins_discountend: coinDiscountRupees
+          coins_discounted: coinDiscountRupees
         });
       } catch (err) {
         console.warn("Failed to update order metadata for coin discount:", err);

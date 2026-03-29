@@ -54,6 +54,10 @@ function medusaBaseUrl() {
   return DEFAULT_BACKEND.replace(/\/$/, "");
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * adminFetch - wrapper around fetch to call Medusa Admin API
  */
@@ -62,41 +66,58 @@ export async function adminFetch<T = unknown>(
   init?: RequestInit
 ): Promise<{ ok: boolean; status: number; data: T | null; raw: Response | null }> {
   const url = path.startsWith("http") ? path : `${medusaBaseUrl()}${path}`;
+  const method = (init?.method || "GET").toUpperCase();
+  const maxAttempts = method === "GET" || method === "HEAD" ? 2 : 1;
 
-  try {
-    const res = await fetch(url, {
-      cache: "no-store",
-      ...init,
-      // ensure our admin headers are merged with any provided headers (init.headers wins for conflicts)
-      headers: {
-        ...(getAdminHeaders(undefined) as Record<string, string>),
-        ...(init?.headers as Record<string, string> | undefined),
-      },
-    });
-
-    let data: T | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const text = await res.text();
-      // attempt to parse JSON, but if empty or not JSON, keep null
-      if (text && text.trim()) {
-        data = JSON.parse(text) as T;
-      }
-    } catch {
-      // ignore JSON parse errors (data stays null)
-      data = null;
-    }
+      const res = await fetch(url, {
+        cache: "no-store",
+        ...init,
+        // ensure our admin headers are merged with any provided headers (init.headers wins for conflicts)
+        headers: {
+          ...(getAdminHeaders(undefined) as Record<string, string>),
+          ...(init?.headers as Record<string, string> | undefined),
+        },
+      });
 
-    return { ok: res.ok, status: res.status, data, raw: res };
-  } catch (err) {
-    // network/DNS error or other runtime error
-    console.error("medusa-admin: network error when calling", url, err);
-    return {
-      ok: false,
-      status: 0,
-      data: null,
-      raw: null,
-    };
+      let data: T | null = null;
+      try {
+        const text = await res.text();
+        // attempt to parse JSON, but if empty or not JSON, keep null
+        if (text && text.trim()) {
+          data = JSON.parse(text) as T;
+        }
+      } catch {
+        // ignore JSON parse errors (data stays null)
+        data = null;
+      }
+
+      return { ok: res.ok, status: res.status, data, raw: res };
+    } catch (err) {
+      if (attempt < maxAttempts) {
+        console.warn(`medusa-admin: transient fetch failure for ${url}, retrying (${attempt}/${maxAttempts})`, err);
+        await delay(250 * attempt);
+        continue;
+      }
+
+      // network/DNS error or other runtime error
+      console.error("medusa-admin: network error when calling", url, err);
+      return {
+        ok: false,
+        status: 0,
+        data: null,
+        raw: null,
+      };
+    }
   }
+
+  return {
+    ok: false,
+    status: 0,
+    data: null,
+    raw: null,
+  };
 }
 
 export async function getOrderById(orderId: string) {

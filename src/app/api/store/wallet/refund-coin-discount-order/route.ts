@@ -50,8 +50,8 @@ export async function POST(req: NextRequest) {
     }
 
     const coinsDiscounted =
-      typeof metadata?.coins_discountend === "number"
-        ? metadata.coins_discountend
+      typeof metadata?.coins_discounted === "number"
+        ? metadata.coins_discounted
         : typeof metadata?.coin_discount_rupees === "number"
           ? metadata.coin_discount_rupees
           : typeof metadata?.coin_discount_minor === "number"
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
         idempotencyKey: `refund-${reason}:${orderId}`,
         amountMinor,
         reason: `Refund coins for ${reason} ${orderId}`,
-        metadata: { order_id: orderId, coins_discountend: coinsDiscounted, reason },
+        metadata: { order_id: orderId, coins_discounted: coinsDiscounted, reason },
       });
       return NextResponse.json({
         success: true,

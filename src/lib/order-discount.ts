@@ -78,7 +78,7 @@ export async function applyCoinDiscountToOrder(options: {
     const nextMetadata = {
       ...metadata,
       coin_discount_totals_applied: true,
-      coins_discountend: discountMajor,
+      coins_discounted: discountMajor,
       coin_discount_minor: discountMinor,
       coin_discount_rupees: discountMajor,
     };

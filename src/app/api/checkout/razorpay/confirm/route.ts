@@ -35,6 +35,20 @@ function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
 }
 
+function stringifyErrorDetails(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return {
+    message: String(error),
+  };
+}
+
 function verifyCheckoutSignature(payload: {
   razorpay_order_id: string;
   razorpay_payment_id: string;
@@ -118,31 +132,72 @@ export async function POST(req: Request) {
             : undefined;
 
       if (reservationToken && customerId) {
-        const consumeResult = await consumeOweg10Reservation({
-          customerId,
-          reservationToken,
-          orderId: medusaOrderId,
-          metadata: {
-            payment_method: "razorpay",
-            source: "razorpay-confirm",
-            razorpay_payment_id,
-          },
-        });
+        try {
+          const consumeResult = await consumeOweg10Reservation({
+            customerId,
+            reservationToken,
+            orderId: medusaOrderId,
+            metadata: {
+              payment_method: "razorpay",
+              source: "razorpay-confirm",
+              razorpay_payment_id,
+            },
+          });
 
-        if (consumeResult.ok) {
-          await syncOweg10ConsumedCustomerMetadata(customerId);
+          if (!consumeResult.ok) {
+            await updateOrderMetadata(medusaOrderId, {
+              ...orderMetadata,
+              oweg10_pending: true,
+              oweg10_reconcile_required: true,
+              oweg10_reconcile_reason: "consume_rejected",
+              oweg10_reconcile_details: {
+                consumeResult,
+                razorpay_payment_id,
+              },
+            });
+            console.warn("razorpay confirm: OWEG10 consume rejected; reconciliation required", {
+              medusaOrderId,
+              customerId,
+              consumeResult,
+            });
+          } else {
+            await syncOweg10ConsumedCustomerMetadata(customerId);
+            await updateOrderMetadata(medusaOrderId, {
+              ...orderMetadata,
+              oweg10_pending: false,
+              oweg10_consumed: true,
+              oweg10_consumed_at: new Date().toISOString(),
+              oweg10_reconcile_required: false,
+              oweg10_reconcile_reason: undefined,
+              oweg10_reconcile_details: undefined,
+              oweg10_code:
+                typeof orderMetadata.oweg10_code === "string" ? orderMetadata.oweg10_code : OWEG10_CODE,
+            });
+          }
+        } catch (consumeError) {
+          const errorDetails = stringifyErrorDetails(consumeError);
           await updateOrderMetadata(medusaOrderId, {
             ...orderMetadata,
-            oweg10_pending: false,
-            oweg10_consumed: true,
-            oweg10_consumed_at: new Date().toISOString(),
-            oweg10_code:
-              typeof orderMetadata.oweg10_code === "string" ? orderMetadata.oweg10_code : OWEG10_CODE,
+            oweg10_pending: true,
+            oweg10_reconcile_required: true,
+            oweg10_reconcile_reason: "consume_error",
+            oweg10_reconcile_details: {
+              error: errorDetails,
+              razorpay_payment_id,
+            },
+          });
+          console.warn("razorpay confirm: OWEG10 consume failed; reconciliation required", {
+            medusaOrderId,
+            customerId,
+            error: errorDetails,
           });
         }
       }
     } catch (error) {
-      console.warn("razorpay confirm: OWEG10 consume sync failed", error);
+      console.warn("razorpay confirm: OWEG10 consume sync failed", {
+        medusaOrderId,
+        error: stringifyErrorDetails(error),
+      });
     }
 
     // FORCE RESERVATIONS AND SHIPPING METHOD
