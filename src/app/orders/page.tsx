@@ -1,9 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Filter, Loader2, Package, ReceiptIndianRupee } from "lucide-react";
+import { Filter, Package, ReceiptIndianRupee } from "lucide-react";
 import { useAuth } from "@/contexts/AuthProvider";
 import {
   Select,
@@ -103,6 +104,66 @@ const resolvePaymentMethod = (order: Order) => {
   return isCod ? "cod" : "online";
 };
 
+const ORDER_PAGE_SIZE = 12;
+
+const buildPagination = (page: number, totalPages: number) => {
+  if (totalPages <= 1) return [];
+
+  const pages = new Set<number>([0, totalPages - 1, page]);
+  if (page - 1 >= 0) pages.add(page - 1);
+  if (page + 1 < totalPages) pages.add(page + 1);
+  if (page - 2 >= 0) pages.add(page - 2);
+  if (page + 2 < totalPages) pages.add(page + 2);
+
+  const ordered = Array.from(pages).sort((a, b) => a - b);
+  const result: Array<number | "ellipsis"> = [];
+
+  ordered.forEach((value, index) => {
+    if (index > 0 && value - ordered[index - 1] > 1) {
+      result.push("ellipsis");
+    }
+    result.push(value);
+  });
+
+  return result;
+};
+
+function OrdersSkeleton() {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div
+          key={`order-skeleton-${index}`}
+          className="overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-sm animate-pulse"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-3">
+              <div className="h-4 w-24 rounded bg-slate-100" />
+              <div className="h-3 w-20 rounded bg-slate-100" />
+              <div className="h-3 w-28 rounded bg-slate-100" />
+            </div>
+            <div className="space-y-3 text-right">
+              <div className="ml-auto h-3 w-32 rounded bg-slate-100" />
+              <div className="ml-auto h-4 w-24 rounded bg-slate-100" />
+            </div>
+          </div>
+          <div className="mt-5 space-y-3">
+            {Array.from({ length: 2 }).map((__, itemIndex) => (
+              <div key={`order-skeleton-item-${index}-${itemIndex}`} className="flex items-center gap-3">
+                <div className="h-14 w-14 rounded-2xl bg-slate-100" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 w-2/3 rounded bg-slate-100" />
+                  <div className="h-3 w-20 rounded bg-slate-100" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function OrdersPage() {
   const { customer, refresh } = useAuth();
   const router = useRouter();
@@ -112,14 +173,12 @@ export default function OrdersPage() {
   const [count, setCount] = useState<number | null>(null);
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<"latest" | "oldest" | "amount-high" | "amount-low">("latest");
-  const [scope, setScope] = useState<"page" | "all">("page");
   const [statusFilter, setStatusFilter] = useState<
     "all" | "order-placed" | "payment-confirmed" | "shipped" | "return" | "cancel"
   >("all");
   const [paymentFilter, setPaymentFilter] = useState<"all" | "cod" | "online">("all");
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const limit = 20;
 
   useEffect(() => {
     if (!customer) return;
@@ -131,11 +190,10 @@ export default function OrdersPage() {
   const loadOrders = useCallback(
     async (allowRetry = true, showSpinner = true) => {
       if (!customer?.id) return;
-      const fetchLimit = scope === "all" && count ? count : limit;
-      const offset = scope === "all" ? 0 : page * limit;
+      const offset = page * ORDER_PAGE_SIZE;
       if (showSpinner) setLoading(true);
       try {
-        const res = await fetch(`/api/medusa/orders?limit=${fetchLimit}&offset=${offset}`, {
+        const res = await fetch(`/api/medusa/orders?limit=${ORDER_PAGE_SIZE}&offset=${offset}`, {
           cache: "no-store",
           credentials: "include",
         });
@@ -154,7 +212,7 @@ export default function OrdersPage() {
         if (showSpinner) setLoading(false);
       }
     },
-    [customer?.id, scope, count, page, refresh]
+    [customer?.id, page, refresh]
   );
 
   useEffect(() => {
@@ -168,12 +226,6 @@ export default function OrdersPage() {
     };
     window.addEventListener("focus", onFocus);
 
-    if (scope === "all") {
-      return () => {
-        window.removeEventListener("focus", onFocus);
-      };
-    }
-
     const interval = window.setInterval(() => {
       void loadOrders(false, false);
     }, 10000);
@@ -182,7 +234,7 @@ export default function OrdersPage() {
       window.removeEventListener("focus", onFocus);
       window.clearInterval(interval);
     };
-  }, [customer?.id, loadOrders, scope]);
+  }, [customer?.id, loadOrders]);
 
   const loadReturnRequests = useCallback(async (allowRetry = true) => {
     if (!customer?.id) return;
@@ -231,6 +283,8 @@ export default function OrdersPage() {
     () => !loading && (!orders || orders.length === 0),
     [loading, orders]
   );
+  const showSkeleton = loading && orders.length === 0;
+  const isRefreshing = loading && orders.length > 0;
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
@@ -283,14 +337,10 @@ export default function OrdersPage() {
     }
   }, [filteredOrders, sort]);
 
-  const totalPages = count !== null ? Math.max(1, Math.ceil(count / limit)) : null;
-  const hasNext =
-    scope === "all"
-      ? false
-      : count !== null
-        ? (page + 1) * limit < count
-        : orders.length === limit;
-  const hasPrev = scope === "all" ? false : page > 0;
+  const totalPages = count !== null ? Math.max(1, Math.ceil(count / ORDER_PAGE_SIZE)) : null;
+  const hasNext = count !== null ? (page + 1) * ORDER_PAGE_SIZE < count : orders.length === ORDER_PAGE_SIZE;
+  const hasPrev = page > 0;
+  const paginationItems = totalPages ? buildPagination(page, totalPages) : [];
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 space-y-6">
@@ -318,16 +368,15 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {loading && (
-        <div className="inline-flex items-center gap-2 text-sm text-emerald-700">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Loading your orders
-        </div>
-      )}
-
       {error && (
         <div className="rounded-2xl border border-red-100 bg-red-50 text-red-700 px-4 py-3 text-sm font-semibold">
           {error}
+        </div>
+      )}
+
+      {isRefreshing && (
+        <div className="overflow-hidden rounded-full bg-slate-100">
+          <div className="h-1 w-1/3 animate-[pulse_1.4s_ease-in-out_infinite] rounded-full bg-emerald-500" />
         </div>
       )}
 
@@ -345,8 +394,7 @@ export default function OrdersPage() {
 
       {!emptyState && (
         <div
-          className={`grid grid-cols-1 gap-3 sm:grid-cols-2 lg:flex lg:flex-row lg:flex-wrap lg:items-center ${filtersOpen ? "block" : "hidden"
-            } sm:grid`}
+          className={`grid grid-cols-1 gap-3 sm:grid-cols-2 lg:flex lg:flex-row lg:flex-wrap lg:items-center ${filtersOpen ? "block" : "hidden"} sm:grid`}
         >
           <div className="flex flex-col gap-1 text-sm font-semibold text-gray-800 sm:flex-row sm:items-center sm:gap-2">
             <span className="text-xs text-gray-500 sm:text-sm sm:text-gray-800">Sort by</span>
@@ -359,25 +407,6 @@ export default function OrdersPage() {
                 <SelectItem value="oldest">Oldest first</SelectItem>
                 <SelectItem value="amount-high">Amount: high to low</SelectItem>
                 <SelectItem value="amount-low">Amount: low to high</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1 text-sm font-semibold text-gray-800 sm:flex-row sm:items-center sm:gap-2">
-            <span className="text-xs text-gray-500 sm:text-sm sm:text-gray-800">Apply to</span>
-            <Select
-              value={scope}
-              onValueChange={(value) => {
-                const nextScope = value as typeof scope;
-                setScope(nextScope);
-                setPage(0);
-              }}
-            >
-              <SelectTrigger className="min-w-[150px] rounded-lg border-gray-200 bg-white text-sm font-semibold text-gray-800">
-                <SelectValue placeholder="Apply to" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="page">Current page</SelectItem>
-                <SelectItem value="all">All orders</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -413,16 +442,21 @@ export default function OrdersPage() {
         </div>
       )}
 
-      <div className="space-y-3">
-        {sortedOrders.map((order, index) => {
+      {showSkeleton ? (
+        <OrdersSkeleton />
+      ) : (
+        <div className="space-y-4">
+          {sortedOrders.map((order, index) => {
           const returnStatus =
             returnStatusByOrderId.get(String(order.id)) ||
             (order.display_id !== undefined
               ? returnStatusByOrderId.get(String(order.display_id))
               : undefined);
           const label = resolveOrderStatus(order, returnStatus);
-          const firstItem = order.items?.[0];
-          const baseIndex = (scope === "page" ? page * limit : 0) + index;
+          const items = order.items || [];
+          const previewItems = items.slice(0, 3);
+          const remainingItems = Math.max(0, items.length - previewItems.length);
+          const baseIndex = page * ORDER_PAGE_SIZE + index;
           const serialNumber =
             count !== null && sort === "latest" && statusFilter === "all" && paymentFilter === "all"
               ? Math.max(1, count - baseIndex)
@@ -431,7 +465,7 @@ export default function OrdersPage() {
             <Link
               key={order.id}
               href={`/orders/${encodeURIComponent(order.id)}?orderNo=${serialNumber}`}
-              className="block p-4 hover:-translate-y-0.5 transition hover:shadow-[0_16px_36px_-24px_rgba(0,0,0,0.35)]"
+              className="block overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-28px_rgba(15,23,42,0.38)]"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="space-y-1">
@@ -447,37 +481,93 @@ export default function OrdersPage() {
                   </div>
                 </div>
               </div>
-              {firstItem && (
-                <p className="text-sm text-gray-700 mt-2 line-clamp-2">
-                  {firstItem.title} {order.items && order.items.length > 1 ? `+ ${order.items.length - 1} more` : ""}
-                </p>
+              {previewItems.length > 0 ? (
+                <div className="mt-4 space-y-3">
+                  {previewItems.map((item) => {
+                    const imageSrc = item.thumbnail || "/oweg_logo.png";
+                    return (
+                      <div key={item.id} className="flex items-center gap-3">
+                        <div className="relative h-14 w-14 overflow-hidden rounded-2xl bg-slate-100 ring-1 ring-slate-200">
+                          <Image
+                            src={imageSrc}
+                            alt={item.title || "Product"}
+                            fill
+                            className="object-cover"
+                            loading="lazy"
+                            sizes="56px"
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 text-sm font-medium text-slate-900">
+                            {item.title || "Ordered item"}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Qty {item.quantity || 1}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {remainingItems > 0 && (
+                    <p className="text-xs font-medium text-slate-500">
+                      +{remainingItems} more item{remainingItems > 1 ? "s" : ""}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                  Item details are being prepared for this order.
+                </div>
               )}
             </Link>
           );
         })}
-      </div>
+        </div>
+      )}
 
       {!emptyState && (
-        <div className="flex items-center justify-between gap-3 pt-4">
+        <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs text-gray-600">
             {count !== null
-              ? `Page ${page + 1} of ${totalPages}`
+              ? `Showing page ${page + 1} of ${totalPages} · ${count} total orders`
               : `Showing ${orders.length} orders`}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               disabled={!hasPrev || loading}
               onClick={() => setPage((p) => Math.max(0, p - 1))}
-              className="px-3 py-1.5 rounded-lg border text-sm font-semibold disabled:opacity-50"
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Previous
             </button>
+            {paginationItems.map((item, index) =>
+              item === "ellipsis" ? (
+                <span key={`ellipsis-${index}`} className="px-2 text-sm text-slate-400">
+                  ...
+                </span>
+              ) : (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setPage(item)}
+                  disabled={item === page || loading}
+                  className={`min-w-10 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                    item === page
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : "border border-slate-200 text-slate-700 hover:bg-slate-50"
+                  } disabled:cursor-default`}
+                  aria-current={item === page ? "page" : undefined}
+                >
+                  {item + 1}
+                </button>
+              )
+            )}
             <button
               type="button"
               disabled={!hasNext || loading}
               onClick={() => setPage((p) => p + 1)}
-              className="px-3 py-1.5 rounded-lg border text-sm font-semibold disabled:opacity-50"
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Next
             </button>
