@@ -60,49 +60,7 @@ export default function ContactPage() {
           ))}
         </section>
 
-        <section className="rounded-3xl border border-gray-100 bg-white/80 backdrop-blur shadow-sm p-6 sm:p-8 space-y-6">
-          <div className="space-y-2">
-            <h2 className="text-xl font-semibold text-gray-900">Drop us a quick note</h2>
-            <p className="text-sm text-gray-600">We’ll reply in minutes during 9 AM–10 PM IST. For urgent help, call or chat from your profile.</p>
-          </div>
-          <form className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-gray-700">Name</label>
-              <input
-                required
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                placeholder="Your name"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-gray-700">Email / Phone</label>
-              <input
-                required
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                placeholder="you@example.com / +91"
-              />
-            </div>
-            <div className="md:col-span-2 space-y-2">
-              <label className="text-sm font-semibold text-gray-700">How can we help?</label>
-              <textarea
-                rows={4}
-                required
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                placeholder="Order ID, appliance, or question"
-              />
-            </div>
-            <div className="md:col-span-2 flex flex-wrap items-center gap-3">
-              <button
-                type="submit"
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 text-white px-5 py-3 text-sm font-semibold shadow hover:bg-emerald-700"
-              >
-                Send message
-                <Send className="w-4 h-4" />
-              </button>
-              <p className="text-xs text-gray-500">By messaging, you agree to our privacy practices.</p>
-            </div>
-          </form>
-        </section>
+
       </div>
     </div>
   );
