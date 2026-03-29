@@ -256,8 +256,8 @@ async function refundCoinsFromMetadata(options: {
     (metadata?.coin_discount_id as string | undefined);
 
   const coinsDiscounted =
-    typeof metadata?.coins_discountend === "number"
-      ? metadata.coins_discountend
+    typeof metadata?.coins_discounted === "number"
+      ? metadata.coins_discounted
       : typeof metadata?.coin_discount_rupees === "number"
         ? metadata.coin_discount_rupees
         : typeof metadata?.coin_discount_minor === "number"
@@ -287,7 +287,7 @@ async function refundCoinsFromMetadata(options: {
       idempotencyKey: `refund-failed:${orderId}`,
       amountMinor,
       reason: `Refund coins for failed payment ${orderId}`,
-      metadata: { order_id: orderId, coins_discountend: coinsDiscounted },
+      metadata: { order_id: orderId, coins_discounted: coinsDiscounted },
     });
   }
 }
@@ -480,8 +480,8 @@ export async function POST(req: Request) {
             ? metadata.coin_discount_minor
             : typeof metadata?.coin_discount_rupees === "number"
               ? Math.round(metadata.coin_discount_rupees * 100)
-              : typeof metadata?.coins_discountend === "number"
-                ? Math.round(metadata.coins_discountend * 100)
+              : typeof metadata?.coins_discounted === "number"
+                ? Math.round(metadata.coins_discounted * 100)
                 : 0;
         if (coinMinor > 0) {
           await applyCoinDiscountToOrder({

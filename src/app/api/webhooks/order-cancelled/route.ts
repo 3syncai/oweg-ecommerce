@@ -113,8 +113,8 @@ export async function POST(req: NextRequest) {
                 (metadata?.coin_discount_id as string | undefined)
 
             const coinsDiscounted =
-                typeof metadata?.coins_discountend === "number"
-                    ? metadata.coins_discountend
+                typeof metadata?.coins_discounted === "number"
+                    ? metadata.coins_discounted
                     : typeof metadata?.coin_discount_rupees === "number"
                         ? metadata.coin_discount_rupees
                         : typeof metadata?.coin_discount_minor === "number"
@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
                     reason: `Refund coins for order ${orderId}`,
                     metadata: {
                         order_id: orderId,
-                        coins_discountend: coinsDiscounted
+                        coins_discounted: coinsDiscounted
                     }
                 })
                 refundData = {

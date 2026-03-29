@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -173,6 +173,10 @@ function CheckoutPageInner() {
     consumed: false,
     pending: false,
   });
+  const [oweg10StatusCustomerId, setOweg10StatusCustomerId] = useState<string | null>(null);
+  const [pendingLoginCheckout, setPendingLoginCheckout] = useState(false);
+  const autoCheckoutNoticeShownRef = useRef(false);
+  const performCheckoutRef = useRef<(() => Promise<void>) | null>(null);
 
   const [referralCode, setReferralCode] = useState("");
   const [referralCodeApplied, setReferralCodeApplied] = useState(false); // Track if auto-applied
@@ -215,6 +219,7 @@ function CheckoutPageInner() {
 
     if (!customer?.id) {
       setOweg10Applied(false);
+      setOweg10StatusCustomerId(null);
       setOweg10Status({
         loading: false,
         canApply: false,
@@ -226,6 +231,7 @@ function CheckoutPageInner() {
 
     const loadOweg10Status = async () => {
       try {
+        setOweg10StatusCustomerId(null);
         setOweg10Status((prev) => ({ ...prev, loading: true }));
         const res = await fetch("/api/store/oweg10/status", {
           cache: "no-store",
@@ -234,6 +240,7 @@ function CheckoutPageInner() {
         const data = await res.json().catch(() => null);
         if (cancelled) return;
         const canApply = Boolean(data?.canApply);
+        setOweg10StatusCustomerId(customer.id);
         setOweg10Status({
           loading: false,
           canApply,
@@ -245,6 +252,7 @@ function CheckoutPageInner() {
         }
       } catch {
         if (cancelled) return;
+        setOweg10StatusCustomerId(customer.id);
         setOweg10Status({
           loading: false,
           canApply: false,
@@ -261,6 +269,8 @@ function CheckoutPageInner() {
       cancelled = true;
     };
   }, [customer?.id]);
+
+  const isOweg10StatusReady = !customer?.id || (oweg10StatusCustomerId === customer.id && !oweg10Status.loading);
 
   // Handler to apply the referral code manually
   const handleApplyReferral = async () => {
@@ -397,6 +407,7 @@ function CheckoutPageInner() {
   const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
   const [billingStateDropdownOpen, setBillingStateDropdownOpen] = useState(false);
   const toDigits = (value: string, max: number) => value.replace(/\D/g, "").slice(0, max);
+  const normalizeEmail = (value: string) => value.replace(/\s+/g, "").trim();
 
   const shippingStateSuggestions = useMemo(() => getStateSuggestions(shipping.state), [shipping.state]);
   const billingStateSuggestions = useMemo(() => getStateSuggestions(billing.state), [billing.state]);
@@ -404,8 +415,9 @@ function CheckoutPageInner() {
   // Prefill email and referral code from logged-in customer
   useEffect(() => {
     if (customer?.email) {
-      setShipping((prev) => (prev.email ? prev : { ...prev, email: customer.email as string }));
-      setBilling((prev) => (prev.email ? prev : { ...prev, email: customer.email as string }));
+      const normalizedCustomerEmail = normalizeEmail(customer.email as string);
+      setShipping((prev) => (prev.email ? prev : { ...prev, email: normalizedCustomerEmail }));
+      setBilling((prev) => (prev.email ? prev : { ...prev, email: normalizedCustomerEmail }));
     }
     const meta = (customer?.metadata || {}) as { referral_code?: string; referral?: string; referralCode?: string };
     const refCode = meta.referral_code || meta.referral || meta.referralCode;
@@ -780,9 +792,21 @@ function CheckoutPageInner() {
       throw new Error("Buy Now session expired");
     }
 
+    const normalizedShipping = {
+      ...shipping,
+      email: normalizeEmail(shipping.email),
+    };
+    const normalizedBilling = {
+      ...billing,
+      email: normalizeEmail(billing.email),
+    };
+
+    setShipping((prev) => (prev.email === normalizedShipping.email ? prev : { ...prev, email: normalizedShipping.email }));
+    setBilling((prev) => (prev.email === normalizedBilling.email ? prev : { ...prev, email: normalizedBilling.email }));
+
     const requestPayload = {
-      shipping,
-      billing,
+      shipping: normalizedShipping,
+      billing: normalizedBilling,
       billingSameAsShipping: billingSame,
       referralCode,
       paymentMethod,
@@ -963,6 +987,14 @@ function CheckoutPageInner() {
 
   const performCheckout = async () => {
     if (processing) return;
+    if (!isOweg10StatusReady) {
+      if (!autoCheckoutNoticeShownRef.current) {
+        toast.message("Checking OWEG10 eligibility before checkout...");
+        autoCheckoutNoticeShownRef.current = true;
+      }
+      return;
+    }
+    autoCheckoutNoticeShownRef.current = false;
     // Validate presence of items before hitting backend
     const hasCartItems = (cart?.items?.length || 0) > 0;
     const hasBuyNowItem = isBuyNow && (buyNowItem || variantFromQuery);
@@ -1032,7 +1064,7 @@ function CheckoutPageInner() {
       toast.success("Logged in. Continue checkout.");
       setLoginModalOpen(false);
       setLoginPassword("");
-      await performCheckout();
+      setPendingLoginCheckout(true);
     } catch (err) {
       console.error(err);
       setLoginError("Login failed. Please try again.");
@@ -1040,6 +1072,14 @@ function CheckoutPageInner() {
       setLoginBusy(false);
     }
   };
+
+  performCheckoutRef.current = performCheckout;
+
+  useEffect(() => {
+    if (!pendingLoginCheckout || !customer?.id || !isOweg10StatusReady || processing) return;
+    setPendingLoginCheckout(false);
+    void performCheckoutRef.current?.();
+  }, [pendingLoginCheckout, customer?.id, isOweg10StatusReady, processing]);
 
   return (
     <div className="bg-gray-50 min-h-screen">
@@ -1087,9 +1127,9 @@ function CheckoutPageInner() {
                   type="email"
                   placeholder="Email"
                   value={shipping.email}
-                  onChange={(e) => setShipping({ ...shipping, email: e.target.value })}
+                  onChange={(e) => setShipping({ ...shipping, email: normalizeEmail(e.target.value) })}
+                  onBlur={(e) => setShipping((prev) => ({ ...prev, email: normalizeEmail(e.target.value) }))}
                   inputMode="email"
-                  pattern="^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
                   title="Enter a valid email address"
                   readOnly={!!customer?.email}
                   className={customer?.email ? "bg-gray-100 cursor-not-allowed" : undefined}
@@ -1228,9 +1268,9 @@ function CheckoutPageInner() {
                     type="email"
                     placeholder="Email"
                     value={billing.email}
-                    onChange={(e) => setBilling({ ...billing, email: e.target.value })}
+                    onChange={(e) => setBilling({ ...billing, email: normalizeEmail(e.target.value) })}
+                    onBlur={(e) => setBilling((prev) => ({ ...prev, email: normalizeEmail(e.target.value) }))}
                     inputMode="email"
-                    pattern="^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
                     title="Enter a valid email address"
                     readOnly={!!customer?.email}
                     className={customer?.email ? "bg-gray-100 cursor-not-allowed" : undefined}
