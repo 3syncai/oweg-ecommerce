@@ -53,6 +53,15 @@ export const StoreResetPassword = z.object({
   password: z.string().min(10).max(128),
 })
 
+export const StoreRequestLoginOtp = z.object({
+  email: z.string().trim().email(),
+})
+
+export const StoreVerifyLoginOtp = z.object({
+  email: z.string().trim().email(),
+  otp: z.string().trim().regex(/^\d{6}$/),
+})
+
 export {
   StoreGetCustomerParams,
   StoreUpdateCustomer,
@@ -75,4 +84,8 @@ export type StoreValidatePasswordResetTokenType = z.infer<
 >
 
 export type StoreResetPasswordType = z.infer<typeof StoreResetPassword>
+
+export type StoreRequestLoginOtpType = z.infer<typeof StoreRequestLoginOtp>
+
+export type StoreVerifyLoginOtpType = z.infer<typeof StoreVerifyLoginOtp>
 

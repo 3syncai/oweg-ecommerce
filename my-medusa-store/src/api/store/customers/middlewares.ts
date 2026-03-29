@@ -8,8 +8,10 @@ import * as QueryConfig from "@medusajs/medusa/dist/api/store/customers/query-co
 
 import {
   StoreCreateCustomer,
+  StoreRequestLoginOtp,
   StoreCreatePasswordResetToken,
   StoreGetCustomerParams,
+  StoreVerifyLoginOtp,
   StoreResetPassword,
   StoreValidatePasswordResetToken,
 } from "./validators"
@@ -38,6 +40,16 @@ export const storeCustomerRoutesMiddlewares = baseMiddlewares.map((entry) => {
       method: ["POST"],
       matcher: "/store/customers/password-token",
       middlewares: [validateAndTransformBody(StoreCreatePasswordResetToken)],
+    },
+    {
+      method: ["POST"],
+      matcher: "/store/customers/login-otp/request",
+      middlewares: [validateAndTransformBody(StoreRequestLoginOtp)],
+    },
+    {
+      method: ["POST"],
+      matcher: "/store/customers/login-otp/verify",
+      middlewares: [validateAndTransformBody(StoreVerifyLoginOtp)],
     },
     {
       method: ["POST"],
