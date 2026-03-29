@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
+import { Facebook, Twitter, Instagram, Youtube } from "lucide-react";
 
 const accountLinks = [
   { label: "Brands", href: "/brands" },
@@ -99,17 +99,17 @@ const Footer = () => {
           <div>
             <h3 className="text-xl font-normal mb-6 section-title">Connect With Us</h3>
             <div className="flex gap-6">
-              <a href="#" className="icon-link" aria-label="Facebook">
+              <a href="https://www.facebook.com/owegonline/" target="_blank" rel="noopener noreferrer" className="icon-link" aria-label="Facebook">
                 <Facebook className="h-6 w-6" />
               </a>
-              <a href="#" className="icon-link" aria-label="Twitter">
+              <a href="https://x.com/owegonline" target="_blank" rel="noopener noreferrer" className="icon-link" aria-label="X (Twitter)">
                 <Twitter className="h-6 w-6" />
               </a>
-              <a href="#" className="icon-link" aria-label="Instagram">
+              <a href="https://www.instagram.com/owegonline/" target="_blank" rel="noopener noreferrer" className="icon-link" aria-label="Instagram">
                 <Instagram className="h-6 w-6" />
               </a>
-              <a href="#" className="icon-link" aria-label="LinkedIn">
-                <Linkedin className="h-6 w-6" />
+              <a href="https://www.youtube.com/@owegonline" target="_blank" rel="noopener noreferrer" className="icon-link" aria-label="YouTube">
+                <Youtube className="h-6 w-6" />
               </a>
             </div>
           </div>
