@@ -33,7 +33,7 @@ export default function ShippingPolicyPage() {
         <section className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm space-y-4 text-sm text-gray-700 leading-relaxed">
           <h2 className="font-semibold text-lg text-gray-900 block mb-2">Order is not yet shipped</h2>
           <p>
-            You can check the status of your order from ShopClues.com My Account or from Oweg.in.
+            You can check the status of your order from your Oweg.in account.
           </p>
           <p>
             Most orders at Oweg get shipped within 1 to 3 days of confirmation. If your order was placed recently, please allow us time to procure and dispatch.
@@ -88,7 +88,7 @@ export default function ShippingPolicyPage() {
 
         <div className="mt-8 p-4 bg-emerald-50 rounded-2xl border border-emerald-100 text-center">
           <p className="font-semibold text-emerald-800 text-sm">
-            All the Orders on Oweg is to be delievered within 2-3 days, as per their respective Location.
+            All the orders on Oweg are to be delivered within 2-3 days, as per their respective location.
           </p>
         </div>
       </div>

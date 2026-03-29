@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
         })
 
         // Hide out of stock
-        const inStockFallback = fallbackResults.filter(p => typeof p.inventory_quantity === 'number' && p.inventory_quantity > 0);
+        const inStockFallback = fallbackResults.filter(p => typeof p.inventory_quantity !== 'number' || p.inventory_quantity > 0);
         return NextResponse.json(inStockFallback)
     } catch (error) {
         console.error("❌ Search API error:", error)
