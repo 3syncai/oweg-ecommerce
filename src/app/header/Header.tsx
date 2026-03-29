@@ -130,8 +130,9 @@ const getCategoryHref = (handle?: string) =>
 
 const Header: React.FC = () => {
   const { count: cartCount, refresh: refreshCart } = useCartSummary();
-  const { customer, logout } = useAuth();
+  const { customer, logout, initializing } = useAuth();
   const { preferences } = usePreferences();
+  const [oweg10Visible, setOweg10Visible] = React.useState(false);
   const [cartPreviewOpen, setCartPreviewOpen] = React.useState(false);
   const [cartPreviewLoading, setCartPreviewLoading] = React.useState(false);
   const [cartPreviewItems, setCartPreviewItems] = React.useState<
@@ -255,6 +256,39 @@ const Header: React.FC = () => {
     setNavCategories((prev) => reorderNav(prev));
     setOverflowCategories((prev) => reorderNav(prev));
   }, [preferredCategoryOrder, reorderNav]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    if (initializing) return;
+    if (!customer) {
+      setOweg10Visible(true);
+      return;
+    }
+
+    const loadStatus = async () => {
+      try {
+        const res = await fetch("/api/store/oweg10/status", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => null);
+        if (!cancelled) {
+          setOweg10Visible(Boolean(data?.shouldShowBanner));
+        }
+      } catch {
+        if (!cancelled) {
+          setOweg10Visible(true);
+        }
+      }
+    };
+
+    void loadStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [customer, initializing]);
 
   const handleLogout = React.useCallback(async () => {
     try {
@@ -962,13 +996,13 @@ const Header: React.FC = () => {
     <header className="sticky top-0 z-[120] w-full header-root bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       <div className="bg-header-bg">
         {/* Top Bar */}
-        {!isMobile && (
+        {!isMobile && oweg10Visible && (
           <div className="bg-header-top-bg text-header-top-text py-2 text-center text-sm">
             <p>
               Get 10% Extra off! - Use Code <span className="font-semibold">OWEG10</span>{" "}
-              <a href="#" className="underline hover:text-header-accent transition-colors">
+              <Link href="/checkout" className="underline hover:text-header-accent transition-colors">
                 ShopNow
-              </a>
+              </Link>
             </p>
           </div>
         )}

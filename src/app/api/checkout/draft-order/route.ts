@@ -5,8 +5,16 @@
 import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { convertDraftOrder, createDraftOrder, readStoreCart, updateOrderMetadata } from "@/lib/medusa-admin";
+import { medusaStoreFetch } from "@/lib/medusa-auth";
+import { calculateOweg10Discount, OWEG10_CODE } from "@/lib/oweg10-shared";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 import { findSpendByReference } from "@/lib/wallet-ledger";
+import {
+  consumeOweg10Reservation,
+  releaseOweg10Reservation,
+  reserveOweg10,
+  syncOweg10ConsumedCustomerMetadata,
+} from "@/lib/oweg10";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +46,7 @@ type DraftRequestBody = {
   shippingMethodName?: string;
   coinDiscount?: number; // Coin discount in rupees
   coinDiscountCode?: string;
+  oweg10Applied?: boolean;
 };
 
 function mapAddress(input?: AddressInput) {
@@ -182,7 +191,27 @@ async function getFirstShippingOptionId(cartId: string): Promise<string | undefi
   }
 }
 
+async function getAuthenticatedCustomer(cookieHeader?: string) {
+  if (!cookieHeader) return null;
+
+  const res = await medusaStoreFetch("/store/customers/me", {
+    method: "GET",
+    forwardedCookie: cookieHeader,
+    headers: { cookie: cookieHeader },
+    skipContentType: true,
+  });
+
+  if (!res.ok) return null;
+  const data = await res.json().catch(() => ({}));
+  const customer =
+    ((data as { customer?: Record<string, unknown> }).customer || data) as Record<string, unknown>;
+  return typeof customer?.id === "string" ? customer : null;
+}
+
 export async function POST(req: Request) {
+  let oweg10ReservationToken: string | null = null;
+  let oweg10CustomerId: string | null = null;
+  let oweg10Consumed = false;
   try {
     // parse body safely
     const body = (await req.json().catch(() => ({}))) as DraftRequestBody;
@@ -202,6 +231,7 @@ export async function POST(req: Request) {
 
     const headerList = await headers();
     const cookieStore = await cookies();
+    const cookieHeader = headerList.get("cookie") || undefined;
 
     const itemsOverride =
       Array.isArray(body.itemsOverride) && body.itemsOverride.length
@@ -306,6 +336,7 @@ export async function POST(req: Request) {
     const billing = body.billingSameAsShipping || !body.billing ? shipping : body.billing;
 
     const paymentMethod = body.paymentMethod || "razorpay";
+    const authCustomer = body.oweg10Applied ? await getAuthenticatedCustomer(cookieHeader) : null;
 
     // Ensure we have a valid region
     const fallbackRegion = await getFallbackRegionId();
@@ -314,6 +345,7 @@ export async function POST(req: Request) {
 
     const itemsTotal = items.reduce((sum, item) => sum + (item.unit_price || 0) * item.quantity, 0);
     const shippingCharge = calculateStatewiseShipping(itemsTotal, shipping.state);
+    const oweg10DiscountRupees = body.oweg10Applied ? calculateOweg10Discount(itemsTotal) : 0;
 
     // Declare coinDiscountRupees early (will be populated from database later)
     let coinDiscountRupees = 0;
@@ -344,6 +376,30 @@ export async function POST(req: Request) {
     }
 
     const shippingMethodsPayload = [shippingMethodPayload];
+    const cartCustomerId =
+      typeof (cart as Record<string, unknown>)?.customer_id === "string"
+        ? ((cart as Record<string, unknown>).customer_id as string)
+        : undefined;
+    const resolvedCustomerId =
+      (typeof authCustomer?.id === "string" ? authCustomer.id : undefined) || cartCustomerId;
+
+    if (body.oweg10Applied) {
+      if (!resolvedCustomerId) {
+        return NextResponse.json({ error: "Please sign in to use OWEG10." }, { status: 401 });
+      }
+
+      const reservation = await reserveOweg10(resolvedCustomerId);
+      if (!reservation.ok) {
+        const message =
+          reservation.reason === "consumed"
+            ? "OWEG10 has already been used on this account."
+            : "OWEG10 is already being processed for your account. Please complete the current checkout or try again shortly.";
+        return NextResponse.json({ error: message }, { status: 409 });
+      }
+
+      oweg10CustomerId = resolvedCustomerId;
+      oweg10ReservationToken = reservation.reservationToken;
+    }
 
     const payload = {
       region_id: regionId,
@@ -364,7 +420,14 @@ export async function POST(req: Request) {
         coin_discount_minor: coinDiscountRupees > 0 ? Math.round(coinDiscountRupees * 100) : undefined,
         coin_discount_rupees: coinDiscountRupees > 0 ? coinDiscountRupees : undefined, // Visible in admin
         coin_discount_applied: coinDiscountRupees > 0 ? `₹${coinDiscountRupees.toFixed(2)} OWEG Coins` : undefined,
-        coins_discountend: coinDiscountRupees > 0 ? coinDiscountRupees : undefined
+        coins_discountend: coinDiscountRupees > 0 ? coinDiscountRupees : undefined,
+        oweg10_code: body.oweg10Applied ? OWEG10_CODE : null,
+        oweg10_discount_minor: oweg10DiscountRupees > 0 ? Math.round(oweg10DiscountRupees * 100) : undefined,
+        oweg10_discount_rupees: oweg10DiscountRupees > 0 ? oweg10DiscountRupees : undefined,
+        oweg10_applied: body.oweg10Applied ? `${OWEG10_CODE} · 10% off` : undefined,
+        oweg10_customer_id: oweg10CustomerId || undefined,
+        oweg10_reservation_token: oweg10ReservationToken || undefined,
+        oweg10_pending: body.oweg10Applied ? true : undefined,
       },
       shipping_methods: shippingMethodsPayload
     };
@@ -375,6 +438,9 @@ export async function POST(req: Request) {
     if (!draftRes.ok || !draftRes.data) {
       const error = extractMessage(draftRes.data) || "Failed to create draft order";
       console.error("🛒 [Draft Order Debug] Creation Failed:", error);
+      if (oweg10ReservationToken && oweg10CustomerId) {
+        await releaseOweg10Reservation(oweg10CustomerId, oweg10ReservationToken).catch(() => undefined);
+      }
       if ((draftRes.status as number) === 401) {
         return NextResponse.json({ error: "Unauthorized: check MEDUSA_ADMIN_API_KEY on frontend server" }, { status: 401 });
       }
@@ -385,6 +451,9 @@ export async function POST(req: Request) {
     console.log("🛒 [Draft Order Debug] Created Order Total:", draftOrder?.total);
 
     if (!draftOrder?.id) {
+      if (oweg10ReservationToken && oweg10CustomerId) {
+        await releaseOweg10Reservation(oweg10CustomerId, oweg10ReservationToken).catch(() => undefined);
+      }
       return NextResponse.json({ error: "Draft order missing id" }, { status: 500 });
     }
 
@@ -426,11 +495,6 @@ export async function POST(req: Request) {
     }
 
     // Ledger-driven coin discount using discount code
-    const cartCustomerId =
-      typeof (cart as Record<string, unknown>)?.customer_id === "string"
-        ? (cart as Record<string, unknown>).customer_id as string
-        : undefined;
-
     if (body.coinDiscountCode && cartCustomerId) {
       try {
         const spend = await findSpendByReference({
@@ -450,7 +514,7 @@ export async function POST(req: Request) {
     }
 
     // Subtract discount from total
-    const finalTotal = Math.max(0, medusaTotal - coinDiscountRupees);
+    const finalTotal = Math.max(0, medusaTotal - coinDiscountRupees - oweg10DiscountRupees);
 
     console.log("💰 Coin Discount Applied:", {
       coinDiscountRupees,
@@ -474,6 +538,44 @@ export async function POST(req: Request) {
       }
     }
 
+    if (body.oweg10Applied && oweg10ReservationToken && oweg10CustomerId && medusaOrderId && converted) {
+      const consumeResult = await consumeOweg10Reservation({
+        customerId: oweg10CustomerId,
+        reservationToken: oweg10ReservationToken,
+        orderId: medusaOrderId,
+        metadata: {
+          payment_method: paymentMethod,
+          source: "draft-order-convert",
+        },
+      });
+
+      if (!consumeResult.ok) {
+        throw new Error(
+          consumeResult.reason === "consumed"
+            ? "OWEG10 has already been used on this account."
+            : "OWEG10 reservation expired. Please try again."
+        );
+      }
+
+      oweg10Consumed = true;
+
+      try {
+        await updateOrderMetadata(medusaOrderId, {
+          oweg10_code: OWEG10_CODE,
+          oweg10_discount_minor: Math.round(oweg10DiscountRupees * 100),
+          oweg10_discount_rupees: oweg10DiscountRupees,
+          oweg10_applied: `${OWEG10_CODE} · 10% off`,
+          oweg10_pending: false,
+          oweg10_consumed: true,
+          oweg10_consumed_at: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.warn("Failed to persist OWEG10 metadata", error);
+      }
+
+      await syncOweg10ConsumedCustomerMetadata(oweg10CustomerId);
+    }
+
 
     return NextResponse.json({
       medusaOrderId,
@@ -483,9 +585,17 @@ export async function POST(req: Request) {
       draft: !converted,
       conversionWarning: conversionError || undefined,
       coinDiscountApplied: coinDiscountRupees, // For frontend reference
+      oweg10DiscountApplied: oweg10DiscountRupees,
     });
   } catch (err) {
     console.error("draft-order error", err);
-    return NextResponse.json({ error: "Unable to create draft order" }, { status: 500 });
+    if (oweg10ReservationToken && oweg10CustomerId && !oweg10Consumed) {
+      await releaseOweg10Reservation(oweg10CustomerId, oweg10ReservationToken).catch((releaseErr) => {
+        console.warn("Failed to release OWEG10 reservation", releaseErr);
+      });
+    }
+    const message = err instanceof Error && err.message ? err.message : "Unable to create draft order";
+    const status = /OWEG10/i.test(message) ? 409 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
