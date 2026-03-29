@@ -21,7 +21,9 @@ export async function GET(req: NextRequest) {
         // Primary: OpenSearch (fast + ranked)
         const openSearchResults = await searchProductsOpenSearch(normalized, { limit }).catch(() => [])
         if (Array.isArray(openSearchResults) && openSearchResults.length > 0) {
-            return NextResponse.json(openSearchResults)
+            // Hide out of stock
+            const inStockOS = openSearchResults.filter((p: any) => typeof p.inventory_quantity !== 'number' || p.inventory_quantity > 0);
+            return NextResponse.json(inStockOS)
         }
 
         // Fallback: direct Medusa search (prevents empty results when index is stale)
@@ -38,10 +40,13 @@ export async function GET(req: NextRequest) {
                 mrp: ui.mrp,
                 discount: ui.discount,
                 status: "published",
+                inventory_quantity: ui.inventory_quantity,
             }
         })
 
-        return NextResponse.json(fallbackResults)
+        // Hide out of stock
+        const inStockFallback = fallbackResults.filter(p => typeof p.inventory_quantity !== 'number' || p.inventory_quantity > 0);
+        return NextResponse.json(inStockFallback)
     } catch (error) {
         console.error("❌ Search API error:", error)
         return NextResponse.json(

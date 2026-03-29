@@ -414,6 +414,27 @@ function CheckoutPageInner() {
     }
   }, [customer, referralCode]);
 
+  // Prefill PIN code and State from header location selector (localStorage)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const savedPin = window.localStorage.getItem("oweg_pincode") || "";
+    const savedPlace = window.localStorage.getItem("oweg_pincode_place") || "";
+    // Extract state: last segment of "City, District, State" string
+    const statePart = savedPlace ? (savedPlace.split(",").pop() || "").trim() : "";
+    if (savedPin || statePart) {
+      setShipping((prev) => ({
+        ...prev,
+        postalCode: prev.postalCode || savedPin,
+        state: prev.state || statePart,
+      }));
+      setBilling((prev) => ({
+        ...prev,
+        postalCode: prev.postalCode || savedPin,
+        state: prev.state || statePart,
+      }));
+    }
+  }, []);
+
   useEffect(() => {
     const loadAddresses = async () => {
       if (!customer?.id) {

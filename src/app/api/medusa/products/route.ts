@@ -195,6 +195,10 @@ export async function GET(req: NextRequest) {
       ui = ui.filter((product) => product.limitedDeal)
     }
 
+
+    // Hide out of stock products
+    ui = ui.filter((product) => typeof product.inventory_quantity !== 'number' || product.inventory_quantity > 0)
+    
     const payload = { products: ui }
     if (cacheKey) {
       setCachedList(cacheKey, payload)

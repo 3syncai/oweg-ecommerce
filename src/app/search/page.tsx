@@ -206,27 +206,7 @@ function SearchPageContent() {
             </div>
 
             <div className="space-y-5">
-              <section>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Customer Review
-                </h3>
-                <div className="space-y-2">
-                  {[4, 3, 2, 1].map((star) => (
-                    <label key={star} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 hover:bg-slate-50">
-                      <input
-                        type="checkbox"
-                        checked={minRating === star}
-                        onChange={() => setMinRating(minRating === star ? null : star)}
-                        className="h-4 w-4 accent-emerald-600"
-                      />
-                      <span className="inline-flex items-center gap-1 text-sm text-slate-700">
-                        <StarRow count={star} />
-                        <span>& up</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </section>
+
 
               {allBrands.length > 0 ? (
                 <section>
