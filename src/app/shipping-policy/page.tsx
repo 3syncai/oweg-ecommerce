@@ -1,13 +1,3 @@
-import { Clock, MapPin, Package } from "lucide-react";
-
-const RocketIcon = () => <Clock className="w-6 h-6" />;
-
-const highlights = [
-  { title: "Dispatch speed", copy: "Most in-stock items dispatch within 24 hours. Metro express slots open during checkout.", icon: RocketIcon },
-  { title: "Live tracking", copy: "Track from your profile with real-time hand-off updates and installer details when applicable.", icon: MapPin },
-  { title: "Protected transit", copy: "Appliances ship with reinforced packaging and shock indicators where required.", icon: Package },
-];
-
 export default function ShippingPolicyPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/30 to-white text-gray-900">
@@ -16,34 +6,91 @@ export default function ShippingPolicyPage() {
           <div className="inline-flex items-center gap-2 rounded-full bg-emerald-100 text-emerald-700 px-4 py-1 text-xs font-semibold">
             Shipping Policy
           </div>
-          <h1 className="text-3xl sm:text-4xl font-semibold">Fast, predictable, and careful deliveries.</h1>
-          <p className="text-gray-600">
-            We show live ETAs at checkout and keep you updated from dispatch to installation. Here’s how we ship.
-          </p>
+          <h1 className="text-3xl sm:text-4xl font-semibold">Shipment status</h1>
         </header>
 
-        <section className="grid gap-4 sm:grid-cols-3">
-          {highlights.map((item) => (
-            <div key={item.title} className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm space-y-3">
-              <div className="h-12 w-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-100">
-                <item.icon />
-              </div>
-              <h3 className="text-lg font-semibold">{item.title}</h3>
-              <p className="text-sm text-gray-600">{item.copy}</p>
-            </div>
-          ))}
+        <section className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            We send email and SMS to you when the order is confirmed and when the order is shipped.
+          </p>
+          <p>
+            You can check the status of your order from <a href="https://oweg.in/" className="text-emerald-600 hover:underline">https://oweg.in/</a>
+          </p>
+          <p>
+            Most orders at Oweg get shipped within 1 to 3 days of confirmation. If your order was placed recently, please allow us time to procure and dispatch.
+          </p>
+          <div className="space-y-2">
+            <p className="font-medium text-gray-900">If your order is not shipped within 3 days of confirmation, we:</p>
+            <ul className="list-disc list-inside space-y-1 ml-4">
+              <li>Inform you via email and SMS about the delay</li>
+              <li>Work closely with the merchant to speed up the dispatch</li>
+              <li>If it is possible we transfer the order to another merchant on Oweg.in</li>
+              <li>If there are other reasons like your address not serviceable by our courier/delivery partners, we will get in touch with you for additional details.</li>
+            </ul>
+          </div>
         </section>
 
-        <section className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm space-y-2 text-sm text-gray-700 leading-relaxed">
-          <div className="font-semibold text-lg text-gray-900">Key details</div>
-          <ul className="list-disc list-inside space-y-1">
-            <li>Delivery fees depend on pin code, weight, and speed. All costs show before you pay.</li>
-            <li>Some heavy/fragile products need a delivery slot confirmation; we call you to align schedules.</li>
-            <li>Installation-ready: eligible appliances share installer contact + visit window inside order details.</li>
-            <li>Remote pin codes may need extra transit time; we’ll notify you if ETAs change.</li>
-            <li>Refuse delivery if packaging is visibly damaged and inform us immediately for priority resolution.</li>
-          </ul>
+        <section className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm space-y-4 text-sm text-gray-700 leading-relaxed">
+          <h2 className="font-semibold text-lg text-gray-900 block mb-2">Order is not yet shipped</h2>
+          <p>
+            You can check the status of your order from your Oweg.in account.
+          </p>
+          <p>
+            Most orders at Oweg get shipped within 1 to 3 days of confirmation. If your order was placed recently, please allow us time to procure and dispatch.
+          </p>
+          <div className="space-y-2">
+            <p className="font-medium text-gray-900">If your order is not shipped within 3 days of confirmation, we:</p>
+            <ul className="list-disc list-inside space-y-1 ml-4">
+              <li>Inform you via email and SMS about the delay</li>
+              <li>Work closely with the merchant to speed up the procurement and dispatch</li>
+              <li>If it is possible we transfer the order to another merchant on Oweg.in</li>
+              <li>If there are other reasons like your address not serviceable by our courier partners, we will get in touch with you for additional details.</li>
+            </ul>
+          </div>
         </section>
+
+        <section className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm space-y-4 text-sm text-gray-700 leading-relaxed">
+          <h2 className="font-semibold text-lg text-gray-900 block mb-2">Order is in processing for more than 3 days</h2>
+          <p>
+            Please be assured that shipping your order on time is our highest priority. Within 24 hours of receiving the order, we initiate the pick-up process from the merchant.
+          </p>
+          <div className="space-y-2">
+            <p className="font-medium text-gray-900">If the process takes longer, we:</p>
+            <ul className="list-disc list-inside space-y-1 ml-4">
+              <li>Inform you via email and SMS about the delay</li>
+              <li>Work closely with the merchant to speed up the procurement and dispatch</li>
+              <li>Transfer the order to another merchant or offer your alternate product options (from our catalog)</li>
+              <li>If there are other reasons like your address not serviceable by our courier partners, we will get in touch with you for additional details.</li>
+            </ul>
+          </div>
+          <p>
+            In case the merchant is not able to timely fulfill the order and we are not able to find an alternative for you, we will cancel the order and refund your payment. Typically refund in the bank account takes upto 2 weeks after order cancellation.
+          </p>
+        </section>
+
+        <section className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm space-y-5 text-sm text-gray-700 leading-relaxed">
+          <h2 className="font-semibold text-lg text-gray-900 block mb-2">Schedule the delivery</h2>
+          
+          <div className="space-y-2">
+            <h3 className="font-medium text-gray-900">Schedule the day of dispatch:</h3>
+            <p>
+              If the order is not shipped, we can hold the order and ship it at your convenience. However, since Oweg is a marketplace, holding the shipment beyond a time would depend on merchant too.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="font-medium text-gray-900">Schedule the time of delivery:</h3>
+            <p>
+              If the order is shipped, you can check the status at courier website and schedule the delivery by calling them.
+            </p>
+          </div>
+        </section>
+
+        <div className="mt-8 p-4 bg-emerald-50 rounded-2xl border border-emerald-100 text-center">
+          <p className="font-semibold text-emerald-800 text-sm">
+            All the orders on Oweg are to be delivered within 2-3 days, as per their respective location.
+          </p>
+        </div>
       </div>
     </div>
   );

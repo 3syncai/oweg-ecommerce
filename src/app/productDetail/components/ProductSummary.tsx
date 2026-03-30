@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Eye, GitCompare, Heart, Minus, Plus, Share2, ShoppingCart, Star } from 'lucide-react'
+import { GitCompare, Heart, Minus, Plus, Share2, ShoppingCart } from 'lucide-react'
 import type { DetailedProduct as DetailedProductType } from '@/lib/medusa'
 import { FlashSaleBadge } from '@/components/flash-sale/FlashSaleBadge'
 import type { FlashSaleInfo } from '@/hooks/useFlashSale'
@@ -28,9 +28,6 @@ type ProductSummaryProps = {
 const ProductSummary = ({
   product,
   brandName,
-  ratingValue,
-  reviewCount,
-  viewCount,
   hasStock,
   quantity,
   onQuantityChange,
@@ -140,15 +137,6 @@ const ProductSummary = ({
       }
     `}</style>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600">
-        <div className="flex items-center gap-1">
-          <Star className="w-4 h-4 text-yellow-500" />
-          <span className="font-semibold text-slate-900">{ratingValue.toFixed(1)}</span>
-          <span className="text-slate-400">({reviewCount}+ ratings)</span>
-        </div>
-        <div className="flex items-center gap-1 text-slate-600">
-          <Eye className="w-4 h-4 text-slate-500" aria-hidden="true" />
-          <span>{new Intl.NumberFormat('en-IN').format(viewCount)}+ views</span>
-        </div>
         <div className={`text-sm font-medium ${hasStock ? 'text-green-600' : 'text-red-500'}`}>
           {hasStock ? 'In stock' : 'Out of stock'}
         </div>
