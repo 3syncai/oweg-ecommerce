@@ -19,7 +19,7 @@ const Signup = () => {
   const [userType, setUserType] = useState("individual");
   const [newsletter, setNewsletter] = useState("yes");
   const router = useRouter();
-  const { setCustomer, refresh } = useAuth();
+  const { customer, initializing, setCustomer, refresh } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -110,6 +110,13 @@ const Signup = () => {
 
   // inline errors
   const [errors, setErrors] = useState<Partial<Record<FormKeys, string>>>({});
+
+  useEffect(() => {
+    if (initializing) return;
+    if (customer) {
+      router.replace("/");
+    }
+  }, [customer, initializing, router]);
 
   // helpers: regex
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
