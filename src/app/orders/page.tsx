@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Filter, Package, ReceiptIndianRupee } from "lucide-react";
 import { useAuth } from "@/contexts/AuthProvider";
 import {
@@ -166,7 +165,6 @@ function OrdersSkeleton() {
 
 export default function OrdersPage() {
   const { customer, refresh } = useAuth();
-  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -179,13 +177,6 @@ export default function OrdersPage() {
   const [paymentFilter, setPaymentFilter] = useState<"all" | "cod" | "online">("all");
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
-
-  useEffect(() => {
-    if (!customer) return;
-    if (!customer?.id) {
-      router.push("/login?redirect=/orders");
-    }
-  }, [customer, router]);
 
   const loadOrders = useCallback(
     async (allowRetry = true, showSpinner = true) => {
@@ -363,8 +354,17 @@ export default function OrdersPage() {
       </div>
 
       {!customer && (
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-emerald-800 text-sm font-semibold">
-          Please log in to view your orders.
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center">
+          <p className="text-xl font-semibold text-slate-900 mb-2">Sign in to view your orders</p>
+          <p className="text-sm text-slate-500 mb-5">
+            Please log in to check order status, invoices, and delivery updates.
+          </p>
+          <Link
+            href="/login?redirect=/orders"
+            className="inline-flex items-center justify-center rounded-full bg-emerald-600 text-white px-5 py-2.5 text-sm font-semibold hover:bg-emerald-700 transition"
+          >
+            Login
+          </Link>
         </div>
       )}
 
