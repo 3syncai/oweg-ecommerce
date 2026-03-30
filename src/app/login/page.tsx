@@ -5,7 +5,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Eye, EyeOff, Phone, Loader2, ChevronDown, Lock, KeyRound } from "lucide-react";
-import { FcGoogle } from "react-icons/fc";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthProvider";
 
@@ -357,12 +356,6 @@ function LoginPageInner() {
     }
   }
 
-  function onGoogle() {
-    toast.info("Google sign-in coming soon", {
-      description: "We’re working on a seamless one-tap login experience.",
-    });
-  }
-
   function handleBack() {
     setStep(1);
     setError(null);
@@ -521,29 +514,6 @@ function LoginPageInner() {
                   ) : (
                     "Continue →"
                   )}
-                </button>
-
-                {/* Divider */}
-                <div className="relative my-2">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-slate-200"></div>
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="bg-white px-4 text-slate-500">or</span>
-                  </div>
-                </div>
-
-                {/* Social Login */}
-                <button
-                  type="button"
-                  onClick={onGoogle}
-                  disabled={!isOnline}
-                  className="w-full rounded-lg border-2 border-slate-200 bg-white px-6 py-3.5 font-medium text-slate-700 transition-all hover:bg-slate-50 hover:border-slate-300 active:scale-[.98] disabled:opacity-50 cursor-pointer"
-                >
-                  <span className="flex items-center justify-center gap-3">
-                    <FcGoogle className="h-5 w-5" />
-                    Continue with Google
-                  </span>
                 </button>
 
                 {/* Footer Links */}

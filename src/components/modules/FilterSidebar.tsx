@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Star } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import type { MedusaCategory } from "@/services/medusa";
@@ -99,13 +99,7 @@ export function FilterSidebar({
     ? filteredBrandOptions
     : brandOptions.slice(0, 8);
 
-  const handleRatingToggle = (rating: number) => {
-    const currentRatings = filters.ratings || [];
-    const newRatings = currentRatings.includes(rating)
-      ? currentRatings.filter((r) => r !== rating)
-      : [...currentRatings, rating];
-    onFilterChange?.({ ratings: newRatings });
-  };
+
 
   const handleBrandToggle = (brand: string) => {
     const currentBrands = filters.brands || [];
@@ -215,41 +209,7 @@ export function FilterSidebar({
           </div>
         )}
 
-        {/* Customer Review Filter */}
-        <div className="mb-6">
-          <h3 className="font-semibold text-gray-900 mb-3">Customer Review</h3>
-          <ul className="space-y-2">
-            {[4, 3, 2, 1].map((rating) => (
-              <li key={rating}>
-                <label className="flex items-center gap-2 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={(filters.ratings || []).includes(rating)}
-                    onChange={() => handleRatingToggle(rating)}
-                    className="w-4 h-4 accent-[#7AC943]"
-                  />
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: rating }).map((_, i) => (
-                      <Star
-                        key={i}
-                        className="w-4 h-4 fill-[#7AC943] text-[#7AC943]"
-                      />
-                    ))}
-                    {Array.from({ length: 5 - rating }).map((_, i) => (
-                      <Star
-                        key={i + rating}
-                        className="w-4 h-4 text-gray-300"
-                      />
-                    ))}
-                    <span className="text-sm text-gray-700 group-hover:text-[#7AC943]">
-                      & Up
-                    </span>
-                  </div>
-                </label>
-              </li>
-            ))}
-          </ul>
-        </div>
+
 
         {/* Brand Filter */}
         <div className="mb-6">

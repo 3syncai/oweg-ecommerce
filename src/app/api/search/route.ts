@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { searchProducts as searchProductsOpenSearch } from "@/services/medusa/searchService"
-import { searchProducts as searchProductsMedusa, toUiProduct } from "@/lib/medusa"
+import { searchProducts as searchProductsMedusa, toUiProduct, isMedusaProductInStock } from "@/lib/medusa"
 
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
@@ -21,12 +21,15 @@ export async function GET(req: NextRequest) {
         // Primary: OpenSearch (fast + ranked)
         const openSearchResults = await searchProductsOpenSearch(normalized, { limit }).catch(() => [])
         if (Array.isArray(openSearchResults) && openSearchResults.length > 0) {
-            return NextResponse.json(openSearchResults)
+            // Hide out of stock
+            const inStockOS = openSearchResults.filter((p: any) => typeof p.inventory_quantity === 'number' && p.inventory_quantity > 0);
+            return NextResponse.json(inStockOS)
         }
 
         // Fallback: direct Medusa search (prevents empty results when index is stale)
         const medusaProducts = await searchProductsMedusa({ q: normalized, limit })
-        const fallbackResults = medusaProducts.map((product) => {
+        const inStockMedusaProducts = medusaProducts.filter(isMedusaProductInStock)
+        const fallbackResults = inStockMedusaProducts.map((product) => {
             const ui = toUiProduct(product)
             return {
                 id: String(ui.id),
@@ -38,10 +41,13 @@ export async function GET(req: NextRequest) {
                 mrp: ui.mrp,
                 discount: ui.discount,
                 status: "published",
+                inventory_quantity: ui.inventory_quantity,
             }
         })
 
-        return NextResponse.json(fallbackResults)
+        // Hide out of stock
+        const inStockFallback = fallbackResults;
+        return NextResponse.json(inStockFallback)
     } catch (error) {
         console.error("❌ Search API error:", error)
         return NextResponse.json(

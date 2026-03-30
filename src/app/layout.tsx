@@ -20,9 +20,12 @@ export const metadata: Metadata = {
   applicationName: "OWEG",
   manifest: "/manifest",
   icons: {
-    icon: "/oweg_O.png",
-    shortcut: "/oweg_O.png",
-    apple: "/oweg_O.pn g",
+    icon: [
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon.png", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    shortcut: ["/favicon-32x32.png"],
   },
   other: { display: "standalone" },
 };
