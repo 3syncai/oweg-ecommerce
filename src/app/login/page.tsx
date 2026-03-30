@@ -76,7 +76,14 @@ function LoginPageInner() {
 
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { setCustomer, refresh } = useAuth();
+  const { customer, initializing, setCustomer, refresh } = useAuth();
+
+  useEffect(() => {
+    if (initializing) return;
+    if (customer) {
+      router.replace("/");
+    }
+  }, [customer, initializing, router]);
 
   useEffect(() => {
     if (searchParams.get("reset") !== "success") {
