@@ -56,6 +56,8 @@ function LoginPageInner() {
   // UI STATE
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [requiresPasswordReset, setRequiresPasswordReset] = useState(false);
+  const [sendingResetLink, setSendingResetLink] = useState(false);
 
   // ONLINE / OFFLINE (PWA-friendly UX)
   const [isOnline, setIsOnline] = useState(true);
@@ -121,6 +123,9 @@ function LoginPageInner() {
     setIdentifier(value);
     const type = detectInputType(value);
     setInputType(type);
+    if (requiresPasswordReset) {
+      setRequiresPasswordReset(false);
+    }
   };
 
   // ACTIONS
@@ -152,6 +157,7 @@ function LoginPageInner() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setRequiresPasswordReset(false);
 
     if (authMethod === "otp") {
       if (!otpRequestedFor) {
@@ -228,6 +234,19 @@ function LoginPageInner() {
 
       const data = await res.json();
       if (!res.ok) {
+        const resetRequired =
+          data?.code === "PASSWORD_RESET_REQUIRED" ||
+          data?.requires_password_reset === true;
+
+        if (resetRequired) {
+          const resetMessage =
+            "Due to a security update, you'll need to reset your password once. After that, login will work as usual.";
+          setError(data?.error || resetMessage);
+          setRequiresPasswordReset(true);
+          toast.info(resetMessage);
+          return;
+        }
+
         const message = data?.error || "Login failed. Please try again.";
         setError(message);
         toast.error(message);
@@ -240,6 +259,7 @@ function LoginPageInner() {
       } else {
         await refresh();
       }
+      setRequiresPasswordReset(false);
       toast.success("Welcome back!");
       router.push("/");
     } catch {
@@ -297,6 +317,46 @@ function LoginPageInner() {
     }
   }
 
+  async function handleSendPasswordResetLink() {
+    setError(null);
+
+    const email = identifier.trim().toLowerCase();
+    if (!email.includes("@") || !email.includes(".")) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
+    try {
+      setSendingResetLink(true);
+      const res = await fetch("/api/medusa/customers/password-token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        },
+        credentials: "include",
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const message = data?.error || "Unable to send reset link. Please try again.";
+        setError(message);
+        toast.error(message);
+        return;
+      }
+
+      const message =
+        data?.message || "If an account exists, a reset link has been sent.";
+      toast.success(message);
+    } catch {
+      setError("Unable to send reset link. Please try again.");
+      toast.error("Unable to send reset link. Please try again.");
+    } finally {
+      setSendingResetLink(false);
+    }
+  }
+
   function onGoogle() {
     toast.info("Google sign-in coming soon", {
       description: "We’re working on a seamless one-tap login experience.",
@@ -311,11 +371,13 @@ function LoginPageInner() {
     setOtpSent(false);
     setOtpRequestedFor(null);
     setCooldown(0);
+    setRequiresPasswordReset(false);
   }
 
   function handleEditIdentifier() {
     setStep(1);
     setError(null);
+    setRequiresPasswordReset(false);
   }
 
   // Public banner image for preview (replace with your own when ready)
@@ -683,6 +745,25 @@ function LoginPageInner() {
                     <span className="text-rose-500 font-bold">⚠</span>
                     <span>{error}</span>
                   </div>
+                )}
+
+                {requiresPasswordReset && authMethod === "password" && (
+                  <button
+                    type="button"
+                    disabled={sendingResetLink || busy || !isOnline}
+                    onClick={handleSendPasswordResetLink}
+                    className="w-full rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all hover:bg-green-50 disabled:opacity-50 cursor-pointer"
+                    style={{ borderColor: BRAND, color: BRAND }}
+                  >
+                    {sendingResetLink ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Sending reset link...
+                      </span>
+                    ) : (
+                      "Send password reset link"
+                    )}
+                  </button>
                 )}
 
                 {/* Action Buttons */}

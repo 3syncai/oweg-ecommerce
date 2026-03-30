@@ -3,7 +3,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Heart, GitCompare, LogIn, UserPlus } from "lucide-react";
+import { Heart, LogIn, UserPlus } from "lucide-react";
 
 export default function GuestAccountDropdown() {
   return (
@@ -38,13 +38,6 @@ export default function GuestAccountDropdown() {
           <Heart className="w-4 h-4" />
           <span>Your Wish List</span>
         </Link>
-        <Link
-          href="/compare"
-          className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-        >
-          <GitCompare className="w-4 h-4" />
-          <span>Compare Products</span>
-        </Link>
       </div>
 
       <div className="border-t border-gray-200 p-2">
@@ -59,18 +52,6 @@ export default function GuestAccountDropdown() {
           className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
         >
           Your Orders
-        </Link>
-        <Link
-          href="/recommendations"
-          className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-        >
-          Recommendations
-        </Link>
-        <Link
-          href="/browsing-history"
-          className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-        >
-          Browsing History
         </Link>
       </div>
     </div>
