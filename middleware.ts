@@ -15,6 +15,9 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 4000)
+
   try {
     const sessionRes = await fetch(`${origin}/api/medusa/auth/session`, {
       method: "GET",
@@ -22,6 +25,7 @@ export async function middleware(req: NextRequest) {
         cookie,
       },
       cache: "no-store",
+      signal: controller.signal,
     })
 
     if (!sessionRes.ok) {
@@ -34,8 +38,13 @@ export async function middleware(req: NextRequest) {
     if (payload?.customer?.id) {
       return NextResponse.redirect(new URL("/", req.url))
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return NextResponse.next()
+    }
     return NextResponse.next()
+  } finally {
+    clearTimeout(timeoutId)
   }
 
   return NextResponse.next()

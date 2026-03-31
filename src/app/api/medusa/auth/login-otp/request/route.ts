@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { extractErrorPayload, medusaStoreFetch } from "@/lib/medusa-auth"
+import {
+  isPasswordResetRequired,
+  passwordResetRequiredPayload,
+} from "../../_lib/password-recovery"
 
 export const dynamic = "force-dynamic"
 
@@ -17,6 +21,11 @@ export async function POST(req: NextRequest) {
     const normalized = email?.trim().toLowerCase()
     if (!normalized || !emailRegex.test(normalized)) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 })
+    }
+
+    const recoveryRequired = await isPasswordResetRequired(normalized)
+    if (recoveryRequired) {
+      return NextResponse.json(passwordResetRequiredPayload(), { status: 401 })
     }
 
     const upstream = await medusaStoreFetch("/store/customers/login-otp/request", {
