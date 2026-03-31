@@ -190,6 +190,18 @@ function LoginPageInner() {
 
         const data = await res.json().catch(() => null);
         if (!res.ok) {
+          const resetRequired =
+            data?.code === "PASSWORD_RESET_REQUIRED" ||
+            data?.requires_password_reset === true;
+          if (resetRequired) {
+            const resetMessage =
+              "Due to a security update, you'll need to reset your password once. After that, login will work as usual.";
+            setError(data?.error || resetMessage);
+            setRequiresPasswordReset(true);
+            toast.info(resetMessage);
+            return;
+          }
+
           const message = data?.error || "Invalid or expired OTP.";
           setError(message);
           toast.error(message);
@@ -303,6 +315,18 @@ function LoginPageInner() {
 
       const data = await res.json().catch(() => null);
       if (!res.ok) {
+        const resetRequired =
+          data?.code === "PASSWORD_RESET_REQUIRED" ||
+          data?.requires_password_reset === true;
+        if (resetRequired) {
+          const resetMessage =
+            "Due to a security update, you'll need to reset your password once. After that, login will work as usual.";
+          setError(data?.error || resetMessage);
+          setRequiresPasswordReset(true);
+          toast.info(resetMessage);
+          return;
+        }
+
         const message = data?.error || "Something went wrong. Please try again.";
         setError(message);
         toast.error(message);
@@ -724,7 +748,7 @@ function LoginPageInner() {
                   </div>
                 )}
 
-                {requiresPasswordReset && authMethod === "password" && (
+                {requiresPasswordReset && (
                   <button
                     type="button"
                     disabled={sendingResetLink || busy || !isOnline}

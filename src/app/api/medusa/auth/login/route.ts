@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import { Pool } from "pg"
 import {
   appendUpstreamCookies,
   collectSetCookies,
@@ -7,14 +6,15 @@ import {
   extractErrorPayload,
   medusaStoreFetch,
 } from "@/lib/medusa-auth"
+import {
+  isPasswordResetRequired,
+  passwordResetRequiredPayload,
+} from "../_lib/password-recovery"
 
 export const dynamic = "force-dynamic"
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const AUTH_PROVIDER_PATH = "/auth/customer/emailpass"
-const DATABASE_URL = process.env.DATABASE_URL?.trim() || ""
-
-let sharedPool: Pool | null = null
 
 type LoginBody = {
   identifier?: string
@@ -36,52 +36,6 @@ function toErrorMessage(errorPayload: unknown, fallback: string) {
     if (typeof payload.message === "string" && payload.message) return payload.message
   }
   return fallback
-}
-
-function getPool() {
-  if (!DATABASE_URL) {
-    return null
-  }
-
-  if (!sharedPool) {
-    sharedPool = new Pool({ connectionString: DATABASE_URL })
-  }
-
-  return sharedPool
-}
-
-async function isPasswordResetRequired(email: string) {
-  const pool = getPool()
-  if (!pool) {
-    return false
-  }
-
-  try {
-    const { rows } = await pool.query(
-      `
-        SELECT 1
-        FROM customer c
-        JOIN provider_identity pi
-          ON lower(pi.entity_id) = lower(c.email)
-         AND pi.provider = 'emailpass'
-         AND pi.deleted_at IS NULL
-        JOIN auth_identity ai
-          ON ai.id = pi.auth_identity_id
-         AND ai.deleted_at IS NULL
-        WHERE c.deleted_at IS NULL
-          AND COALESCE(c.has_account, false) = true
-          AND lower(c.email) = lower($1)
-          AND COALESCE(ai.app_metadata->>'customer_id', '') = c.id
-          AND (pi.provider_metadata->>'password') IS NULL
-        LIMIT 1
-      `,
-      [email]
-    )
-
-    return rows.length > 0
-  } catch {
-    return false
-  }
 }
 
 export async function POST(req: NextRequest) {
@@ -114,15 +68,7 @@ export async function POST(req: NextRequest) {
     if (!loginRes.ok) {
       const recoveryRequired = await isPasswordResetRequired(email)
       if (recoveryRequired) {
-        return NextResponse.json(
-          {
-            error:
-              "Due to a security update, you'll need to reset your password once. After that, login will work as usual.",
-            code: "PASSWORD_RESET_REQUIRED",
-            requires_password_reset: true,
-          },
-          { status: 401 }
-        )
+        return NextResponse.json(passwordResetRequiredPayload(), { status: 401 })
       }
 
       const errorPayload = await extractErrorPayload(loginRes)

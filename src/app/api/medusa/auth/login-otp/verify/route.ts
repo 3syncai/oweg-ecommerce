@@ -6,6 +6,10 @@ import {
   extractErrorPayload,
   medusaStoreFetch,
 } from "@/lib/medusa-auth"
+import {
+  isPasswordResetRequired,
+  passwordResetRequiredPayload,
+} from "../../_lib/password-recovery"
 
 export const dynamic = "force-dynamic"
 
@@ -29,6 +33,11 @@ export async function POST(req: NextRequest) {
     }
     if (!otp || !otpRegex.test(otp)) {
       return NextResponse.json({ error: "Enter the 6-digit OTP." }, { status: 400 })
+    }
+
+    const recoveryRequired = await isPasswordResetRequired(email)
+    if (recoveryRequired) {
+      return NextResponse.json(passwordResetRequiredPayload(), { status: 401 })
     }
 
     const verifyRes = await medusaStoreFetch("/store/customers/login-otp/verify", {
