@@ -755,9 +755,9 @@ function CheckoutPageInner() {
         const next = normalizeTotals(data);
         setServerTotals(next);
         const delta = Math.abs(next.total - clientTotals.total);
-        if (next.total > 0 && clientTotals.total > 0 && delta >= 100) {
-          setTotalWarning("Order total updated based on server pricing. Please review before paying.");
-        }
+        // if (next.total > 0 && clientTotals.total > 0 && delta >= 100) {
+        //   setTotalWarning("Order total updated based on server pricing. Please review before paying.");
+        // }
       } catch (err) {
         console.warn("order-summary fallback to client totals", err);
         setServerTotals(null);
@@ -972,29 +972,34 @@ function CheckoutPageInner() {
         razorpay_order_id: string;
         razorpay_signature: string;
       }) {
-        toast.info("Payment captured. Finalizing order...");
-        try {
-          const confirmRes = await fetch("/api/checkout/razorpay/confirm", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              medusaOrderId: draft.medusaOrderId,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_signature: response.razorpay_signature,
-              amount_minor: payload.amount,
-              currency: payload.currency,
-            }),
+        const confirmPayload = {
+          medusaOrderId: draft.medusaOrderId,
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_signature: response.razorpay_signature,
+          amount_minor: payload.amount,
+          currency: payload.currency,
+        };
+
+        // Do not block the UI on confirmation. Redirect immediately and let success page poll status.
+        void fetch("/api/checkout/razorpay/confirm", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(confirmPayload),
+          keepalive: true,
+        })
+          .then((confirmRes) => {
+            if (!confirmRes.ok) {
+              console.error("razorpay confirm returned non-OK", { status: confirmRes.status });
+            }
+          })
+          .catch((err) => {
+            console.error("razorpay confirm failed", err);
           });
-          if (!confirmRes.ok) {
-            console.error("razorpay confirm returned non-OK", { status: confirmRes.status });
-            toast.warning("Payment received. Order confirmation in progress...");
-          }
-        } catch (err) {
-          console.error("razorpay confirm failed", err);
-          toast.warning("Payment received. Order confirmation in progress...");
-        }
-        router.push(`${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}`);
+
+        router.push(
+          `${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}&confirming=1`
+        );
       },
       modal: {
         ondismiss: async function () {
@@ -1704,9 +1709,6 @@ function CheckoutPageInner() {
                         <p className="text-sm font-semibold text-emerald-900">
                           Apply {OWEG10_CODE} for 10% off
                         </p>
-                        <p className="text-xs text-emerald-800">
-                          This account can use {OWEG10_CODE} only once. After successful use, the offer disappears automatically.
-                        </p>
                       </div>
                     </label>
                   </div>
@@ -1767,11 +1769,11 @@ function CheckoutPageInner() {
               >
                 {processing ? "Processing Payment…" : `Pay securely (${formatInr(payableTotal)})`}
               </Button>
-              {isRazorpayTest && (
-                <p className="text-xs text-slate-500 text-center">
-                  Payment is processed in Razorpay TEST MODE. Do not use real credentials.
-                </p>
-              )}
+              {/* {isRazorpayTest && (
+                // <p className="text-xs text-slate-500 text-center">
+                //   Payment is processed in Razorpay TEST MODE. Do not use real credentials.
+                // </p>
+              )} */}
             </section>
           </div>
         </form>

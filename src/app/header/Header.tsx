@@ -1000,9 +1000,6 @@ const Header: React.FC = () => {
           <div className="bg-header-top-bg text-header-top-text py-2 text-center text-sm">
             <p>
               Get 10% Extra off! - Use Code <span className="font-semibold">OWEG10</span>{" "}
-              <Link href="/checkout" className="underline hover:text-header-accent transition-colors">
-                ShopNow
-              </Link>
             </p>
           </div>
         )}

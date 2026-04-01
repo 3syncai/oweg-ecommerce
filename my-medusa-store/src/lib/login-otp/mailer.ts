@@ -319,9 +319,7 @@ export async function sendLoginOtpEmail(input: SendLoginOtpMailInput) {
           <p style="margin:18px 0 0;font-size:13px;line-height:1.7;color:#475569">
             This OTP expires in ${input.expiresInMinutes} minutes and can only be used once.
           </p>
-          <p style="margin:10px 0 0;font-size:13px;line-height:1.7;color:#64748b">
-            If you didn't receive it in inbox, check your Spam/Junk folder too.
-          </p>
+          
         </div>
       </div>
     </div>

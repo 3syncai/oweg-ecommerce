@@ -32,13 +32,15 @@ function OrderSuccessPageInner() {
   const params = useSearchParams();
   const router = useRouter();
   const orderId = params.get("orderId") || "";
+  const isConfirmingFlow = params.get("confirming") === "1";
   const [order, setOrder] = useState<OrderSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
+  const [autoPollingStarted, setAutoPollingStarted] = useState(false);
   const [coinsEarned, setCoinsEarned] = useState<number | null>(null);
   const pollAttempts = useRef(0);
   const clearedCartRef = useRef(false);
-  const maxPollAttempts = 12; // 12 * 5s = 60s
+  const maxPollAttempts = 30; // 30 * 2s = 60s
 
   async function fetchOrder() {
     if (!orderId) return null;
@@ -100,7 +102,7 @@ function OrderSuccessPageInner() {
       // schedule next
       timer = setTimeout(() => {
         void tick();
-      }, 5000);
+      }, 2000);
     }
 
     if (polling) {
@@ -123,6 +125,13 @@ function OrderSuccessPageInner() {
   const rawPaymentStatus =
     metadataStatus || (typeof order?.payment_status === "string" ? order.payment_status : undefined);
   const isPaid = rawPaymentStatus === "captured" || rawPaymentStatus === "paid" || rawPaymentStatus === "cod";
+
+  useEffect(() => {
+    if (!orderId || !isConfirmingFlow) return;
+    if (isPaid || polling || autoPollingStarted) return;
+    setAutoPollingStarted(true);
+    setPolling(true);
+  }, [autoPollingStarted, isConfirmingFlow, isPaid, orderId, polling]);
 
   const orderMode =
     typeof order?.metadata?.mode === "string" ? (order?.metadata?.mode as string) : undefined;
@@ -219,6 +228,9 @@ function OrderSuccessPageInner() {
                   ? "Payment received (pending confirmation). We're waiting for Razorpay/Medusa to confirm."
                   : "Payment received. We're waiting for Razorpay to confirm."}
             </p>
+            {!isPaid && isConfirmingFlow && (
+              <p className="text-xs text-slate-500 mt-2">Confirming your payment. This usually takes a few seconds.</p>
+            )}
             {orderId && (
               <p className="text-xs text-slate-500 mt-2">
                 Order reference: <span className="font-semibold">{orderId}</span>
@@ -317,7 +329,7 @@ function OrderSuccessPageInner() {
                 }}
                 disabled={loading || polling}
               >
-                {polling ? "Polling..." : "Poll for status"}
+                {polling ? "Confirming..." : "Refresh payment status"}
               </Button>
             )}
           </div>
