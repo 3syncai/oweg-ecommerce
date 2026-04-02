@@ -6,7 +6,7 @@ import { Facebook, Twitter, Instagram, Youtube } from "lucide-react";
 const accountLinks = [
   { label: "Brands", href: "/brands" },
   { label: "Affiliates", href: "/affiliates" },
-  { label: "Specials", href: "/specials" },
+  // { label: "Specials", href: "/specials" },
   { label: "My Reward", href: "/my-reward" },
 ];
 
