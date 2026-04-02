@@ -755,7 +755,6 @@ function CheckoutPageInner() {
         const next = normalizeTotals(data);
         setServerTotals(next);
         const delta = Math.abs(next.total - clientTotals.total);
-        const _delta = something;
         if (next.total > 0 && clientTotals.total > 0 && delta >= 100) {
           setTotalWarning("Review Before you pay");
         }
