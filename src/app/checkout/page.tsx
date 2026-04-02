@@ -755,9 +755,10 @@ function CheckoutPageInner() {
         const next = normalizeTotals(data);
         setServerTotals(next);
         const delta = Math.abs(next.total - clientTotals.total);
-        // if (next.total > 0 && clientTotals.total > 0 && delta >= 100) {
-        //   setTotalWarning("Order total updated based on server pricing. Please review before paying.");
-        // }
+        const _delta = something;
+        if (next.total > 0 && clientTotals.total > 0 && delta >= 100) {
+          setTotalWarning("Review Before you pay");
+        }
       } catch (err) {
         console.warn("order-summary fallback to client totals", err);
         setServerTotals(null);
@@ -1769,11 +1770,11 @@ function CheckoutPageInner() {
               >
                 {processing ? "Processing Payment…" : `Pay securely (${formatInr(payableTotal)})`}
               </Button>
-              {/* {isRazorpayTest && (
-                // <p className="text-xs text-slate-500 text-center">
-                //   Payment is processed in Razorpay TEST MODE. Do not use real credentials.
-                // </p>
-              )} */}
+              {isRazorpayTest && (
+                <p className="text-xs text-slate-500 text-center">
+                 
+                </p>
+              )}
             </section>
           </div>
         </form>
