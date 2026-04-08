@@ -60,27 +60,56 @@ async function corsMiddleware(
   res: MedusaResponse,
   next: MedusaNextFunction
 ) {
-  // Get allowed origins from environment or use default
-  // Supports comma-separated URLs: "http://localhost:3000,http://localhost:5000,https://oweg-ecommerce.vercel.app"
-  const baseOrigins = process.env.STORE_CORS || process.env.AUTH_CORS || "http://localhost:3000,http://localhost:3001,https://oweg-ecommerce.vercel.app"
+  const normalizeOrigin = (value?: string | null) => value?.trim().replace(/\/$/, "").toLowerCase()
 
-  // ALWAYS include vendor portal to ensure it works
-  const vendorPortalOrigin = process.env.VENDOR_CORS || "http://localhost:4000"
-  const allOrigins = baseOrigins.includes(vendorPortalOrigin)
-    ? baseOrigins
-    : `${baseOrigins},${vendorPortalOrigin}`
+  const getHeaderValue = (headerName: string): string | undefined => {
+    const headers = (req as any).headers
+    if (!headers) return undefined
 
-  const originList = allOrigins.split(',').map(o => o.trim())
+    if (typeof headers.get === "function") {
+      const value = headers.get(headerName)
+      return typeof value === "string" ? value : undefined
+    }
 
-  // Get the origin from the request
-  const origin = (req as any).headers?.origin || (req as any).headers?.referer
+    const direct = headers[headerName] ?? headers[headerName.toLowerCase()] ?? headers[headerName.toUpperCase()]
+    if (Array.isArray(direct)) {
+      return direct[0]
+    }
+    return typeof direct === "string" ? direct : undefined
+  }
 
-  // Check if the origin is allowed
-  const allowedOrigin = origin && originList.includes(origin)
-    ? origin
-    : originList.includes('*')
-      ? '*'
-      : originList[0] // Default to first allowed origin
+  const rawOrigin = getHeaderValue("origin")
+  const rawReferer = getHeaderValue("referer")
+  const requestOrigin = normalizeOrigin(rawOrigin)
+    || (() => {
+      if (!rawReferer) return undefined
+      try {
+        return normalizeOrigin(new URL(rawReferer).origin)
+      } catch {
+        return undefined
+      }
+    })()
+
+  // Merge all possible env-based allowlists instead of picking only one.
+  const configuredOrigins = [
+    process.env.STORE_CORS,
+    process.env.AUTH_CORS,
+    process.env.ADMIN_CORS,
+    process.env.VENDOR_CORS,
+    "http://localhost:3000,http://localhost:3001,http://localhost:4000,https://oweg-ecommerce.vercel.app",
+  ]
+    .filter(Boolean)
+    .flatMap((value) => value!.split(","))
+    .map((value) => value.trim())
+    .filter(Boolean)
+
+  const normalizedOriginList = Array.from(new Set(configuredOrigins.map((value) => normalizeOrigin(value)!).filter(Boolean)))
+
+  const allowedOrigin = requestOrigin && normalizedOriginList.includes(requestOrigin)
+    ? requestOrigin
+    : normalizedOriginList.includes("*")
+      ? "*"
+      : normalizedOriginList[0]
 
   // Set CORS headers for all vendor routes
   res.setHeader('Access-Control-Allow-Origin', allowedOrigin)

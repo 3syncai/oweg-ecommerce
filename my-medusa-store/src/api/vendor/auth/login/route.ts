@@ -3,11 +3,43 @@ import VendorModuleService from "../../../../modules/vendor/service"
 import { VENDOR_MODULE } from "../../../../modules/vendor"
 import { signVendorToken } from "../../_lib/token"
 
+function setLoginCorsHeaders(req: MedusaRequest, res: MedusaResponse) {
+  const normalizeOrigin = (value?: string | null) =>
+    value?.trim().replace(/\/$/, "").toLowerCase()
+
+  const requestOrigin = normalizeOrigin(
+    ((req as any).headers?.origin as string | undefined) ?? null
+  )
+
+  const allowedOrigins = [
+    process.env.VENDOR_CORS,
+    process.env.AUTH_CORS,
+    process.env.STORE_CORS,
+    "http://localhost:4000,http://localhost:3000,http://localhost:3001,https://oweg-ecommerce.vercel.app",
+  ]
+    .filter(Boolean)
+    .flatMap((value) => value!.split(","))
+    .map((value) => normalizeOrigin(value))
+    .filter(Boolean) as string[]
+
+  const allowOrigin =
+    requestOrigin && allowedOrigins.includes(requestOrigin)
+      ? requestOrigin
+      : allowedOrigins[0] || "http://localhost:4000"
+
+  res.setHeader("Access-Control-Allow-Origin", allowOrigin)
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-publishable-api-key")
+  res.setHeader("Access-Control-Allow-Credentials", "true")
+}
+
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
+  setLoginCorsHeaders(req, res)
   return res.status(200).end()
 }
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
+  setLoginCorsHeaders(req, res)
   const vendorService: VendorModuleService = req.scope.resolve(VENDOR_MODULE)
   
   // In Medusa v2 (Express), JSON body is available on req.body
