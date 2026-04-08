@@ -3,23 +3,11 @@ import VendorModuleService from "../../../../modules/vendor/service"
 import { VENDOR_MODULE } from "../../../../modules/vendor"
 import { signVendorToken } from "../../_lib/token"
 
-// CORS headers helper
-function setCorsHeaders(res: MedusaResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
-  res.setHeader('Access-Control-Allow-Credentials', 'true')
-}
-
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
-  setCorsHeaders(res)
   return res.status(200).end()
 }
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
-  // Set CORS headers
-  setCorsHeaders(res)
-
   const vendorService: VendorModuleService = req.scope.resolve(VENDOR_MODULE)
   
   // In Medusa v2 (Express), JSON body is available on req.body
