@@ -139,7 +139,7 @@ export default defineMiddlewares({
       middlewares: [crossOriginCookieMiddleware],
     },
     {
-      matcher: /^\/vendor\/.*/,
+      matcher: /^\/vendor\/(?!auth\/login$).*/,
       middlewares: [corsMiddleware, crossOriginCookieMiddleware],
     },
     {
