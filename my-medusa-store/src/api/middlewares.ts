@@ -60,6 +60,15 @@ async function corsMiddleware(
   res: MedusaResponse,
   next: MedusaNextFunction
 ) {
+  const rawPath = ((req as any).path || (req as any).originalUrl || (req as any).url || "") as string
+  const requestPath = rawPath.split("?")[0]
+
+  // Login route has dedicated CORS handling in its own handler.
+  // Skip global vendor CORS here to avoid duplicate Access-Control-Allow-Origin values.
+  if (/^\/vendor\/auth\/login\/?$/.test(requestPath)) {
+    return next()
+  }
+
   const normalizeOrigin = (value?: string | null) => value?.trim().replace(/\/$/, "").toLowerCase()
 
   const getHeaderValue = (headerName: string): string | undefined => {

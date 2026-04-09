@@ -27,7 +27,11 @@ function setLoginCorsHeaders(req: MedusaRequest, res: MedusaResponse) {
       ? requestOrigin
       : allowedOrigins[0] || "http://localhost:4000"
 
+  if (typeof (res as any).removeHeader === "function") {
+    ;(res as any).removeHeader("Access-Control-Allow-Origin")
+  }
   res.setHeader("Access-Control-Allow-Origin", allowOrigin)
+  res.setHeader("Vary", "Origin")
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-publishable-api-key")
   res.setHeader("Access-Control-Allow-Credentials", "true")
@@ -80,5 +84,4 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     } : null,
   })
 }
-
 
