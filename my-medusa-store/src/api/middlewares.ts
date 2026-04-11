@@ -13,38 +13,24 @@ import type {
  *
  * Solution: Intercept Set-Cookie headers and add SameSite=None; Secure attributes,
  * which tells browsers to allow the cookie in cross-origin requests over HTTPS.
- *
- * NOTE: We intentionally do NOT set Access-Control-Allow-Origin here.
- * Medusa's built-in CORS middleware (driven by STORE_CORS / AUTH_CORS / ADMIN_CORS / VENDOR_CORS
- * in medusa-config.ts) is the single source of truth for that header.
- * Adding a second origin-setting middleware causes duplicate values which browsers reject.
  */
 async function crossOriginCookieMiddleware(
   req: MedusaRequest,
   res: MedusaResponse,
   next: MedusaNextFunction
 ) {
-  // Store the original setHeader function
   const originalSetHeader = res.setHeader.bind(res)
 
-  // Override setHeader to intercept Set-Cookie headers
   res.setHeader = function (name: string, value: string | string[]): any {
     if (name.toLowerCase() === "set-cookie") {
-      // Modify cookies to be cross-origin compatible
       const modifyCookie = (cookie: string): string => {
-        // Remove any existing SameSite attribute to avoid duplicates
         let modifiedCookie = cookie.replace(/;\s*SameSite=[^;]*/gi, "")
-
-        // Add SameSite=None for cross-origin support
         if (!modifiedCookie.toLowerCase().includes("samesite")) {
           modifiedCookie += "; SameSite=None"
         }
-
-        // Add Secure flag (required when SameSite=None)
         if (!modifiedCookie.toLowerCase().includes("secure")) {
           modifiedCookie += "; Secure"
         }
-
         return modifiedCookie
       }
 
@@ -60,25 +46,89 @@ async function crossOriginCookieMiddleware(
   next()
 }
 
+/**
+ * CORS middleware for /vendor/* routes.
+ *
+ * Medusa's built-in CORS only covers /store/*, /admin/*, and /auth/*.
+ * Vendor routes are custom, so we must handle CORS ourselves.
+ *
+ * CRITICAL: We call res.removeHeader before res.setHeader to guarantee
+ * exactly ONE Access-Control-Allow-Origin value. Multiple values cause
+ * browser CORS failures.
+ */
+async function vendorCorsMiddleware(
+  req: MedusaRequest,
+  res: MedusaResponse,
+  next: MedusaNextFunction
+) {
+  const normalizeOrigin = (value?: string | null) =>
+    value?.trim().replace(/\/$/, "").toLowerCase()
+
+  const requestOrigin = normalizeOrigin(
+    (req as any).headers?.origin as string | undefined
+  )
+
+  // Build origin allowlist from env vars
+  const allowedOrigins = [
+    process.env.VENDOR_CORS,
+    process.env.AUTH_CORS,
+    process.env.STORE_CORS,
+    // Hardcoded fallbacks for safety
+    "http://localhost:4000",
+    "http://localhost:3000",
+    "http://localhost:3001",
+  ]
+    .filter(Boolean)
+    .flatMap((v) => v!.split(","))
+    .map((v) => normalizeOrigin(v))
+    .filter((v): v is string => Boolean(v))
+
+  const uniqueOrigins = Array.from(new Set(allowedOrigins))
+
+  // Echo back the exact requesting origin if it's allowed, otherwise use first allowed
+  const allowOrigin =
+    requestOrigin && uniqueOrigins.includes(requestOrigin)
+      ? requestOrigin
+      : uniqueOrigins[0] ?? "http://localhost:4000"
+
+  // Remove any existing header first to prevent duplicates
+  if (typeof (res as any).removeHeader === "function") {
+    ;(res as any).removeHeader("Access-Control-Allow-Origin")
+    ;(res as any).removeHeader("access-control-allow-origin")
+  }
+
+  res.setHeader("Access-Control-Allow-Origin", allowOrigin)
+  res.setHeader("Vary", "Origin")
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-publishable-api-key")
+  res.setHeader("Access-Control-Allow-Credentials", "true")
+  res.setHeader("Access-Control-Max-Age", "86400")
+
+  // Respond immediately to preflight OPTIONS requests
+  if ((req as any).method === "OPTIONS") {
+    return res.status(200).end()
+  }
+
+  next()
+}
+
 export default defineMiddlewares({
   routes: [
-    // Apply cross-origin cookie middleware to all auth routes (for admin login)
+    // Cross-origin cookie shim for Medusa auth/admin routes
     {
       matcher: /^\/auth\/.*/,
       middlewares: [crossOriginCookieMiddleware],
     },
-    // Apply to admin routes as well
     {
       matcher: /^\/admin\/.*/,
       middlewares: [crossOriginCookieMiddleware],
     },
-    // Vendor routes: cookie shim only.
-    // Medusa's native CORS (STORE_CORS / AUTH_CORS / VENDOR_CORS) handles
-    // Access-Control-Allow-Origin. A second CORS middleware would produce
-    // duplicate header values that browsers reject.
+    // All /vendor/* routes (including /vendor/auth/login) go through our
+    // vendor CORS middleware. This is the ONLY place we set CORS headers for
+    // vendor routes — Medusa's built-in CORS does not cover /vendor/.
     {
       matcher: /^\/vendor\/.*/,
-      middlewares: [crossOriginCookieMiddleware],
+      middlewares: [vendorCorsMiddleware, crossOriginCookieMiddleware],
     },
   ],
 })
