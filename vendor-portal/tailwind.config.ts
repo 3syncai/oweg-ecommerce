@@ -1,7 +1,10 @@
 import type { Config } from "tailwindcss";
 
+const medusaPreset = require("@medusajs/ui-preset");
+
 const config: Config = {
-  darkMode: "class",
+  presets: [medusaPreset],
+  darkMode: 'class',
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
