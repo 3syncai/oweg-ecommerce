@@ -120,6 +120,27 @@ async function corsMiddleware(
       ? "*"
       : normalizedOriginList[0]
 
+  // Normalize any later CORS writes so browser never receives multiple origins.
+  const originalSetHeader = res.setHeader.bind(res)
+  res.setHeader = function (name: string, value: string | string[]): any {
+    if (name.toLowerCase() === "access-control-allow-origin") {
+      const raw = Array.isArray(value) ? value.join(",") : value
+      const parsed = raw
+        .split(",")
+        .map((v) => normalizeOrigin(v) || "")
+        .filter(Boolean)
+
+      const normalized =
+        requestOrigin && parsed.includes(requestOrigin)
+          ? requestOrigin
+          : allowedOrigin
+
+      return originalSetHeader(name, normalized)
+    }
+
+    return originalSetHeader(name, value)
+  }
+
   // Set CORS headers for all vendor routes
   res.setHeader('Access-Control-Allow-Origin', allowedOrigin)
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
