@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrderById } from "@/lib/medusa-admin"
 import { creditAdjustment } from "@/lib/wallet-ledger"
+import { cancelOrReverseCoinsForOrder } from "@/lib/customer-affiliate-coins"
 
 export const dynamic = "force-dynamic"
 
@@ -156,12 +157,22 @@ export async function POST(req: NextRequest) {
 
         console.log("Coin reversal result:", reverseData)
 
+        // Customer-affiliate coins (separate from existing wallet reversal above)
+        let customerAffiliateResult: Awaited<ReturnType<typeof cancelOrReverseCoinsForOrder>> | null = null
+        try {
+            customerAffiliateResult = await cancelOrReverseCoinsForOrder(orderId, { event })
+            console.log("[customer-affiliate-coins] cancel/return:", customerAffiliateResult)
+        } catch (err) {
+            console.error("[customer-affiliate-coins] cancel/return failed:", err)
+        }
+
         return NextResponse.json({
             success: true,
             event: event,
             order_id: orderId,
             coin_reversal: reverseData,
-            coin_discount_refund: refundData
+            coin_discount_refund: refundData,
+            customer_affiliate: customerAffiliateResult
         })
     } catch (error) {
         console.error("Order cancellation webhook error:", error)

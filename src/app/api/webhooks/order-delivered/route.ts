@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { earnCoins, creditAdjustment, getPool } from "@/lib/wallet-ledger"
+import { creditPendingCoinsForOrder } from "@/lib/customer-affiliate-coins"
 
 export const dynamic = "force-dynamic"
 
@@ -174,13 +175,23 @@ export async function POST(req: NextRequest) {
                 console.error("Error crediting affiliate commission:", affiliateErr)
             }
 
+            // Customer-affiliate coins (separate from agent affiliate above)
+            let customerAffiliateResult: Awaited<ReturnType<typeof creditPendingCoinsForOrder>> | null = null
+            try {
+                customerAffiliateResult = await creditPendingCoinsForOrder(orderId)
+                console.log("[customer-affiliate-coins] delivered:", customerAffiliateResult)
+            } catch (err) {
+                console.error("[customer-affiliate-coins] credit on delivery failed:", err)
+            }
+
             return NextResponse.json({
                 success: true,
                 message: `Awarded coins for order ${orderId}`,
                 activated: earnResult.applied,
                 amount: coinsMinor / 100,
                 customer_id: customerId,
-                affiliate_commission: affiliateCommissionTotal
+                affiliate_commission: affiliateCommissionTotal,
+                customer_affiliate: customerAffiliateResult
             })
         } catch (dbErr) {
             console.error("Database error in delivery webhook:", dbErr)

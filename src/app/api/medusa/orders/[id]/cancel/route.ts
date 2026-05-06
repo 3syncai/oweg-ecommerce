@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminFetch } from "@/lib/medusa-admin";
 import { medusaStoreFetch } from "@/lib/medusa-auth";
+import { cancelOrReverseCoinsForOrder } from "@/lib/customer-affiliate-coins";
 
 export async function POST(req: NextRequest, ctx: { params: { id: string } | Promise<{ id: string }> }) {
   const awaitedParams = await ctx.params;
@@ -11,6 +12,15 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
   if (!forwardedCookie) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
+
+  const fireCustomerAffiliate = async () => {
+    try {
+      const result = await cancelOrReverseCoinsForOrder(orderId, { event: "order.cancelled" });
+      console.log("[customer-affiliate-coins] order cancel:", result);
+    } catch (err) {
+      console.error("[customer-affiliate-coins] order cancel failed:", err);
+    }
+  };
 
   try {
     const cancelStore = async () => {
@@ -24,6 +34,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
     let res = await cancelStore();
     if (res.ok) {
       const data = await res.json();
+      await fireCustomerAffiliate();
       return NextResponse.json(data);
     }
 
@@ -59,6 +70,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
     }
 
     const data = await res.json();
+    await fireCustomerAffiliate();
     return NextResponse.json(data);
   } catch {
     return NextResponse.json({ error: "Unexpected error cancelling order" }, { status: 500 });

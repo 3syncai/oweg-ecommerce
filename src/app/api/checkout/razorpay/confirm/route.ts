@@ -10,6 +10,7 @@ import { createMedusaPayment, createOrderTransaction, updateOrderSummaryTotals, 
 import { applyCoinDiscountToOrder } from "@/lib/order-discount";
 import { OWEG10_CODE } from "@/lib/oweg10-shared";
 import { consumeOweg10Reservation, syncOweg10ConsumedCustomerMetadata } from "@/lib/oweg10";
+import { logPendingCoinsForOrder } from "@/lib/customer-affiliate-coins";
 import { Pool } from 'pg';
 
 // Shared pool instance at module level to avoid creating multiple connections per request
@@ -424,6 +425,16 @@ export async function POST(req: Request) {
         }
       } catch (affiliateErr) {
         console.error("razorpay confirm: ⚠️ Affiliate webhook failed:", affiliateErr);
+      }
+    }
+
+    // Customer-affiliate coins (separate from agent affiliate above)
+    if (medusaOrderId) {
+      try {
+        const result = await logPendingCoinsForOrder(medusaOrderId);
+        console.log("[customer-affiliate-coins] razorpay confirm:", result);
+      } catch (err) {
+        console.error("[customer-affiliate-coins] razorpay confirm failed:", err);
       }
     }
 
