@@ -164,7 +164,7 @@ export default function ReapplyPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50" style={{ colorScheme: "light" }}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
@@ -175,7 +175,7 @@ export default function ReapplyPage() {
 
   if (!vendor) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50" style={{ colorScheme: "light" }}>
         <div className="max-w-md w-full p-8 bg-white rounded-lg shadow">
           <div className="text-center">
             {error ? (
@@ -200,7 +200,7 @@ export default function ReapplyPage() {
   const missingFields = getMissingFields()
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
+    <div className="min-h-screen bg-gray-50 py-8 px-4" style={{ colorScheme: "light" }}>
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">

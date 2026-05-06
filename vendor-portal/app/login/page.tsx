@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Image from 'next/image'
 import Link from 'next/link'
 import { vendorAuthApi, vendorProfileApi } from '@/lib/api/client'
 
@@ -113,49 +114,124 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex" style={{ colorScheme: "light" }}>
       {/* Left Panel - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-green-600 via-green-700 to-emerald-800 p-12 flex-col justify-between relative overflow-hidden">
-        {/* Animated background pattern */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-20 w-72 h-72 bg-white rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-20 right-20 w-96 h-96 bg-emerald-300 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-green-600 via-green-700 to-emerald-900 p-12 flex-col justify-between relative overflow-hidden">
+        {/* Soft animated blobs */}
+        <div className="absolute inset-0 opacity-25 pointer-events-none">
+          <div className="absolute -top-20 -left-20 w-96 h-96 bg-emerald-300 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute bottom-0 right-0 w-[28rem] h-[28rem] bg-lime-300 rounded-full blur-3xl animate-pulse [animation-delay:1500ms]" />
         </div>
 
+        {/* Subtle grid overlay */}
+        <div
+          aria-hidden
+          className="absolute inset-0 opacity-[0.07] pointer-events-none"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.6) 1px, transparent 1px)",
+            backgroundSize: "40px 40px",
+          }}
+        />
+
+        {/* Hero Oweg 3D logo, large and floating behind the text */}
+        <div
+          aria-hidden
+          className="absolute -right-24 top-1/2 -translate-y-1/2 w-[42rem] h-[42rem] pointer-events-none select-none animate-float"
+        >
+          <div className="absolute inset-0 bg-emerald-400/30 rounded-full blur-[120px]" />
+          <Image
+            src="/Oweg3d-400.png"
+            alt=""
+            fill
+            priority
+            sizes="(min-width: 1024px) 50vw, 100vw"
+            className="object-contain drop-shadow-[0_30px_60px_rgba(0,0,0,0.45)]"
+            unoptimized
+          />
+        </div>
+
+        {/* Smaller decorative copy of the logo, top-right */}
+        <div
+          aria-hidden
+          className="absolute top-12 right-12 w-24 h-24 opacity-30 animate-float-slow pointer-events-none select-none"
+        >
+          <Image
+            src="/Oweg3d-400.png"
+            alt=""
+            fill
+            sizes="96px"
+            className="object-contain"
+            unoptimized
+          />
+        </div>
+
+        {/* Foreground content */}
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-              <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-              </svg>
+            <div className="w-12 h-12 rounded-xl bg-white/15 backdrop-blur-md ring-1 ring-white/30 flex items-center justify-center overflow-hidden">
+              <Image
+                src="/Oweg3d-400.png"
+                alt="OWEG"
+                width={36}
+                height={36}
+                className="object-contain"
+                unoptimized
+              />
             </div>
-            <h1 className="text-2xl font-bold text-white">Vendor Portal</h1>
+            <div>
+              <h1 className="text-2xl font-bold text-white leading-none">OWEG</h1>
+              <p className="text-emerald-100/80 text-xs tracking-widest uppercase mt-1">
+                Vendor Portal
+              </p>
+            </div>
           </div>
 
-          <div className="mt-16">
-            <h2 className="text-4xl font-bold text-white mb-6 leading-tight">
-              Welcome back to<br />your vendor hub
+          <div className="mt-20 max-w-md">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md px-3 py-1 text-xs font-medium text-white ring-1 ring-white/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+              Trusted by sellers across India
+            </span>
+            <h2 className="mt-5 text-4xl font-bold text-white leading-tight tracking-tight">
+              Welcome back to<br />
+              <span className="bg-gradient-to-r from-white to-emerald-200 bg-clip-text text-transparent">
+                your vendor hub
+              </span>
             </h2>
-            <p className="text-green-100 text-lg leading-relaxed max-w-md">
-              Manage your products, track orders, and grow your business with our comprehensive vendor management platform.
+            <p className="mt-5 text-emerald-50/90 text-lg leading-relaxed">
+              Manage products, track orders, and grow your business with our
+              all-in-one vendor management platform.
             </p>
           </div>
         </div>
 
-        <div className="relative z-10">
-          <div className="flex items-center gap-8 text-white/80 text-sm">
-            <div className="flex items-center gap-2">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <span>Secure Access</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <span>24/7 Support</span>
-            </div>
+        {/* Footer pills */}
+        <div className="relative z-10 flex items-center gap-3 text-white/90 text-sm">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md px-3 py-1.5 ring-1 ring-white/15">
+            <svg className="w-4 h-4 text-emerald-200" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>Secure Access</span>
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md px-3 py-1.5 ring-1 ring-white/15">
+            <svg className="w-4 h-4 text-emerald-200" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>24/7 Support</span>
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md px-3 py-1.5 ring-1 ring-white/15">
+            <svg className="w-4 h-4 text-emerald-200" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2.94 6.412A2 2 0 002 8.108V16a2 2 0 002 2h12a2 2 0 002-2V8.108a2 2 0 00-.94-1.696l-6-3.75a2 2 0 00-2.12 0l-6 3.75z" />
+            </svg>
+            <span>Fast Payouts</span>
           </div>
         </div>
       </div>
@@ -207,7 +283,7 @@ function LoginForm() {
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-400"
+                      className="block w-full pl-10 pr-3 py-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-400"
                       placeholder="vendor@example.com"
                     />
                   </div>
@@ -230,7 +306,7 @@ function LoginForm() {
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="block w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-400"
+                      className="block w-full pl-10 pr-12 py-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-400"
                       placeholder="••••••••"
                     />
                     <button
@@ -299,7 +375,7 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50" style={{ colorScheme: "light" }}>
         <div className="text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
             <svg className="animate-spin h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24">
