@@ -4,6 +4,8 @@ import type {
   MedusaResponse,
   MedusaNextFunction,
 } from "@medusajs/framework/http"
+import { parseCorsOrigins } from "@medusajs/framework/utils"
+import cors from "cors"
 
 /**
  * Cross-origin cookie middleware for Chrome/Safari.
@@ -38,109 +40,70 @@ async function crossOriginCookieMiddleware(
 }
 
 /**
+ * Build the allowed origin list for /vendor/* routes from env variables.
+ * Supports VENDOR_CORS, AUTH_CORS, STORE_CORS plus a default localhost set.
+ */
+function getVendorAllowedOrigins(): string[] {
+  const fromEnv = [
+    process.env.VENDOR_CORS,
+    process.env.AUTH_CORS,
+    process.env.STORE_CORS,
+  ]
+    .filter(Boolean)
+    .flatMap((v) => v!.split(","))
+    .map((v) => v.trim())
+    .filter(Boolean)
+
+  const defaults = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:4000",
+    "http://localhost:5000",
+  ]
+
+  return Array.from(new Set([...fromEnv, ...defaults]))
+}
+
+/**
  * CORS middleware for /vendor/* routes.
  *
- * WHY THIS EXISTS:
- * - Medusa's built-in CORS only covers /store/*, /admin/*, and /auth/*.
- * - /vendor/* are custom routes with no built-in CORS protection.
- * - HOWEVER, routes like /vendor/auth/login contain "auth" in the path,
- *   which causes Medusa's authCors middleware to ALSO fire and overwrite
- *   our header with the wrong origin.
- *
- * THE FIX:
- * We set our correct header first, then LOCK it by intercepting res.setHeader
- * so any subsequent framework-level CORS cannot overwrite it.
+ * Medusa's built-in CORS only protects /store, /admin, /auth namespaces.
+ * Custom /vendor routes need their own CORS handling, otherwise the browser
+ * blocks all cross-origin requests with "No 'Access-Control-Allow-Origin'
+ * header is present on the requested resource".
  */
-async function vendorCorsMiddleware(
+function vendorCorsMiddleware(
   req: MedusaRequest,
   res: MedusaResponse,
   next: MedusaNextFunction
 ) {
-  const normalizeOrigin = (value?: string | null) =>
-    value?.trim().replace(/\/$/, "").toLowerCase()
+  const allowed = getVendorAllowedOrigins()
 
-  const requestOrigin = normalizeOrigin(
-    (req as any).headers?.origin as string | undefined
-  )
-
-  // Build origin allowlist from env vars
-  const allowedOrigins = [
-    process.env.VENDOR_CORS,
-    process.env.AUTH_CORS,
-    process.env.STORE_CORS,
-    "http://localhost:4000",
-    "http://localhost:3000",
-    "http://localhost:3001",
-  ]
-    .filter(Boolean)
-    .flatMap((v) => v!.split(","))
-    .map((v) => normalizeOrigin(v))
-    .filter((v): v is string => Boolean(v))
-
-  const uniqueOrigins = Array.from(new Set(allowedOrigins))
-
-  // Echo back the exact requesting origin if allowed, else use first in list
-  const allowOrigin =
-    requestOrigin && uniqueOrigins.includes(requestOrigin)
-      ? requestOrigin
-      : uniqueOrigins[0] ?? "http://localhost:4000"
-
-  // Set the correct CORS headers
-  const setAllCorsHeaders = () => {
-    if (typeof (res as any).removeHeader === "function") {
-      ;(res as any).removeHeader("Access-Control-Allow-Origin")
-      ;(res as any).removeHeader("access-control-allow-origin")
-    }
-    // Use the underlying Node.js method directly to bypass any overrides
-    const proto = Object.getPrototypeOf(res) as any
-    const nativeSetHeader = proto.setHeader
-      ? proto.setHeader.bind(res)
-      : (res as any).__originalSetHeader ?? res.setHeader.bind(res)
-    nativeSetHeader("Access-Control-Allow-Origin", allowOrigin)
-    nativeSetHeader("Vary", "Origin")
-    nativeSetHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
-    nativeSetHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-publishable-api-key")
-    nativeSetHeader("Access-Control-Allow-Credentials", "true")
-    nativeSetHeader("Access-Control-Max-Age", "86400")
-  }
-
-  setAllCorsHeaders()
-
-  // Lock Access-Control-Allow-Origin so Medusa's own CORS cannot overwrite it.
-  // (Medusa's authCors fires for paths containing /auth/ and overwrites the header
-  //  with the first value from AUTH_CORS, which is wrong for vendor routes.)
-  const originalSetHeader = res.setHeader.bind(res)
-  res.setHeader = function (name: string, value: string | string[]): any {
-    if (name.toLowerCase() === "access-control-allow-origin") {
-      // Silently ignore — our value is already correct
-      return res
-    }
-    return originalSetHeader(name, value)
-  }
-
-  // Respond immediately to OPTIONS preflight
-  if ((req as any).method === "OPTIONS") {
-    return res.status(200).end()
-  }
-
-  next()
+  return cors({
+    origin: parseCorsOrigins(allowed.join(",")),
+    credentials: true,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-publishable-api-key",
+      "x-medusa-access-token",
+    ],
+  })(req as any, res as any, next as any)
 }
 
 export default defineMiddlewares({
   routes: [
-    // Cross-origin cookie shim for Medusa auth/admin routes
     {
-      matcher: /^\/auth\/.*/,
+      matcher: "/auth",
       middlewares: [crossOriginCookieMiddleware],
     },
     {
-      matcher: /^\/admin\/.*/,
+      matcher: "/admin",
       middlewares: [crossOriginCookieMiddleware],
     },
-    // /vendor/* — our CORS middleware locks the correct origin header
-    // so Medusa's native authCors cannot overwrite it
     {
-      matcher: /^\/vendor\/.*/,
+      matcher: "/vendor",
       middlewares: [vendorCorsMiddleware, crossOriginCookieMiddleware],
     },
   ],
