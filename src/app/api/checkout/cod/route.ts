@@ -3,6 +3,7 @@ import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medu
 import { applyCoinDiscountToOrder } from "@/lib/order-discount";
 import { OWEG10_CODE } from "@/lib/oweg10-shared";
 import { consumeOweg10Reservation, syncOweg10ConsumedCustomerMetadata } from "@/lib/oweg10";
+import { logPendingCoinsForOrder } from "@/lib/customer-affiliate-coins";
 
 export const dynamic = "force-dynamic";
 
@@ -249,6 +250,14 @@ export async function POST(req: Request) {
       await pool.end();
     } catch (err) {
       console.error("⚠️ COD commission webhook failed:", err);
+    }
+
+    // Customer-affiliate coins (separate from agent affiliate above)
+    try {
+      const result = await logPendingCoinsForOrder(finalOrderId);
+      console.log("[customer-affiliate-coins] cod confirm:", result);
+    } catch (err) {
+      console.error("[customer-affiliate-coins] cod confirm failed:", err);
     }
 
     return NextResponse.json({ ok: true, medusaOrderId: finalOrderId, status: "confirmed" });

@@ -1,5 +1,6 @@
 // app/layout.tsx
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import "./globals.css";
 import ServiceWorkerRegister from "./sw-register";
 import Footer from "./footer/Footer";
@@ -10,6 +11,7 @@ import { Providers } from "./providers";
 import CartProvider from "@/contexts/CartProvider";
 import AuthProvider from "@/contexts/AuthProvider";
 import AppToaster from "@/components/ui/app-toaster";
+import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 
 export const metadata: Metadata = {
   title: {
@@ -50,6 +52,9 @@ export default function RootLayout({
           <AuthProvider>
             <CartProvider>
               <ServiceWorkerRegister />
+              <Suspense fallback={null}>
+                <AffiliateRefCapture />
+              </Suspense>
 
               <div className="min-h-screen flex flex-col">
                 <Header />

@@ -18,6 +18,8 @@ type CartItem = {
   quantity: number;
   unit_price: number;
   thumbnail?: string;
+  product_id?: string;
+  variant?: { product_id?: string } | null;
 };
 
 type CartResponse = {
@@ -184,6 +186,13 @@ function CheckoutPageInner() {
   const [referralValidating, setReferralValidating] = useState(false);
   const [referralAgentName, setReferralAgentName] = useState("");
 
+  // Customer-affiliate (separate, customer-shared "?ref=" code) state
+  const [affiliateCode, setAffiliateCode] = useState("");
+  const [affiliateCodeApplied, setAffiliateCodeApplied] = useState(false);
+  const [affiliateValidating, setAffiliateValidating] = useState(false);
+  const [affiliateName, setAffiliateName] = useState("");
+  const [affiliateError, setAffiliateError] = useState<string | null>(null);
+
   // Auto-fetch referral code from database for logged in customers
   useEffect(() => {
     const fetchReferralCode = async () => {
@@ -213,6 +222,27 @@ function CheckoutPageInner() {
 
     fetchReferralCode();
   }, [customer?.id]);
+
+  // Auto-fill affiliate code from URL ?ref= or localStorage (set on shared product links)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (affiliateCode || affiliateCodeApplied) return;
+
+    const fromUrl = searchParams?.get("ref")?.trim() || "";
+    let stored = "";
+    try {
+      stored = window.localStorage.getItem("oweg_affiliate_ref") || "";
+    } catch {
+      /* ignore */
+    }
+    const code = (fromUrl || stored).trim().toUpperCase();
+    if (code) {
+      setAffiliateCode(code);
+    }
+    // We intentionally only run on first mount; further auto-fills should not
+    // override a user-entered value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -271,6 +301,112 @@ function CheckoutPageInner() {
   }, [customer?.id]);
 
   const isOweg10StatusReady = !customer?.id || (oweg10StatusCustomerId === customer.id && !oweg10Status.loading);
+
+  // Handler to apply the customer-affiliate (?ref=) code. Independent from
+  // the existing referral-code flow above.
+  const handleApplyAffiliate = async () => {
+    const trimmed = affiliateCode.trim().toUpperCase();
+    if (!trimmed) return;
+    setAffiliateValidating(true);
+    setAffiliateError(null);
+    try {
+      const productIds = Array.from(
+        new Set(
+          (cart?.items || [])
+            .map((it) => it.product_id || it.variant?.product_id || "")
+            .filter(Boolean)
+        )
+      );
+
+      const params = new URLSearchParams({ code: trimmed });
+      if (productIds.length > 0) params.set("product_ids", productIds.join(","));
+      const headers: Record<string, string> = {};
+      if (customer?.id) headers["x-customer-id"] = customer.id;
+
+      const res = await fetch(
+        `/api/customer-affiliate/validate?${params.toString()}`,
+        { headers }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.valid) {
+        setAffiliateError(data?.message || data?.error || "Invalid affiliate code.");
+        toast.error(data?.message || "Invalid affiliate code.");
+        setAffiliateCodeApplied(false);
+        return;
+      }
+
+      if (customer?.id && data.affiliate_customer_id === customer.id) {
+        setAffiliateError("You can't use your own affiliate code.");
+        toast.error("You can't use your own affiliate code.");
+        setAffiliateCodeApplied(false);
+        return;
+      }
+
+      setAffiliateName(data.affiliate_name || "");
+
+      if (customer?.id) {
+        try {
+          await fetch("/api/customer-affiliate/track-referral", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              refer_code: trimmed,
+              referred_customer_id: customer.id,
+              referred_email: customer.email || null,
+              referred_name: [customer.first_name, customer.last_name].filter(Boolean).join(" ") || null,
+            }),
+          });
+        } catch (trackErr) {
+          console.warn("[affiliate] track-referral failed", trackErr);
+        }
+      }
+
+      setAffiliateCode(trimmed);
+      setAffiliateCodeApplied(true);
+
+      const usedIds: string[] = Array.isArray(data.already_used_product_ids)
+        ? data.already_used_product_ids
+        : [];
+      const partiallyUsed =
+        productIds.length > 0 &&
+        usedIds.length > 0 &&
+        productIds.some((p) => usedIds.includes(p)) &&
+        !productIds.every((p) => usedIds.includes(p));
+
+      if (partiallyUsed) {
+        toast.success(
+          "Affiliate code applied — some products in your cart already used this code and won't earn coins again."
+        );
+      } else {
+        toast.success(
+          data.affiliate_name
+            ? `Affiliate code applied (${data.affiliate_name})`
+            : "Affiliate code applied"
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      setAffiliateError("Could not validate affiliate code. Please try again.");
+      toast.error("Error applying affiliate code.");
+    } finally {
+      setAffiliateValidating(false);
+    }
+  };
+
+  const handleClearAffiliate = () => {
+    setAffiliateCode("");
+    setAffiliateCodeApplied(false);
+    setAffiliateName("");
+    setAffiliateError(null);
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("oweg_affiliate_ref");
+        document.cookie = "oweg_affiliate_ref=; Max-Age=0; path=/; SameSite=Lax";
+      }
+    } catch {
+      /* ignore */
+    }
+  };
 
   // Handler to apply the referral code manually
   const handleApplyReferral = async () => {
@@ -1460,6 +1596,64 @@ function CheckoutPageInner() {
                     {referralValidating ? "Checking..." : "Apply"}
                   </Button>
                 </div>
+              )}
+            </section>
+
+            {/* AFFILIATE CODE (customer-shared "?ref=") — independent of the
+                referral code section above. */}
+            <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Do you have an affiliate code?</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Got a code from a friend or a shared OWEG product link? Add it here so they get rewarded for the referral.
+                </p>
+              </div>
+
+              {affiliateCodeApplied && affiliateCode ? (
+                <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-600 text-lg">✓</span>
+                    <div>
+                      <p className="text-sm font-medium text-emerald-800">Affiliate code applied</p>
+                      <p className="text-xs text-emerald-700 font-mono font-semibold">
+                        {affiliateCode}{affiliateName ? ` · ${affiliateName}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleClearAffiliate}
+                    className="text-xs text-emerald-700 hover:text-emerald-900 underline"
+                  >
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Enter affiliate code (optional)"
+                      value={affiliateCode}
+                      onChange={(e) => {
+                        setAffiliateCode(e.target.value.toUpperCase());
+                        if (affiliateError) setAffiliateError(null);
+                      }}
+                      className="uppercase flex-1 font-mono tracking-wider"
+                      maxLength={32}
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleApplyAffiliate}
+                      disabled={affiliateValidating || !affiliateCode.trim()}
+                      className="bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                      {affiliateValidating ? "Checking..." : "Apply"}
+                    </Button>
+                  </div>
+                  {affiliateError ? (
+                    <p className="text-xs text-red-600">{affiliateError}</p>
+                  ) : null}
+                </>
               )}
             </section>
 
