@@ -22,6 +22,29 @@ const COUNTRY_CODES = [
 
 type InputType = "email" | "phone" | "unknown";
 
+function getApiMessage(payload: unknown, fallback: string) {
+  if (!payload || typeof payload !== "object") return fallback;
+  const record = payload as Record<string, unknown>;
+
+  const directError = record.error;
+  if (typeof directError === "string" && directError.trim()) return directError;
+  if (directError && typeof directError === "object") {
+    const nested = (directError as Record<string, unknown>).message;
+    if (typeof nested === "string" && nested.trim()) return nested;
+  }
+
+  const directMessage = record.message;
+  if (typeof directMessage === "string" && directMessage.trim()) return directMessage;
+
+  const dataMessage =
+    record.data && typeof record.data === "object"
+      ? (record.data as Record<string, unknown>).message
+      : null;
+  if (typeof dataMessage === "string" && dataMessage.trim()) return dataMessage;
+
+  return fallback;
+}
+
 function LoginPageInner() {
   // THEME
   const BRAND = "#7AC943";
@@ -149,7 +172,6 @@ function LoginPageInner() {
       if (cleaned.length < 10) {
         return setError("Please enter a valid mobile number");
       }
-      return setError("Phone login is coming soon. Please continue with your email address.");
     } else if (inputType === "email") {
       if (!identifier.includes("@") || !identifier.includes(".")) {
         return setError("Please enter a valid email address");
@@ -170,22 +192,30 @@ function LoginPageInner() {
         return setError("Please request an OTP first.");
       }
       if (!otp.trim()) {
-        return setError("Please enter the 6-digit OTP.");
+        return setError(inputType === "phone" ? "Please enter the 4-digit OTP." : "Please enter the 6-digit OTP.");
       }
 
       try {
         setBusy(true);
-        const res = await fetch("/api/medusa/auth/login-otp/verify", {
+        const endpoint = inputType === "phone" ? "/api/auth/verify-otp" : "/api/medusa/auth/login-otp/verify"
+        const payload =
+          inputType === "phone"
+            ? {
+                phone: `${countryCode}${identifier}`,
+                otp: otp.trim(),
+              }
+            : {
+                email: otpRequestedFor,
+                otp: otp.trim(),
+              }
+        const res = await fetch(endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Cache-Control": "no-store",
           },
           credentials: "include",
-          body: JSON.stringify({
-            email: otpRequestedFor,
-            otp: otp.trim(),
-          }),
+          body: JSON.stringify(payload),
         });
 
         const data = await res.json().catch(() => null);
@@ -196,19 +226,19 @@ function LoginPageInner() {
           if (resetRequired) {
             const resetMessage =
               "Due to a security update, you'll need to reset your password once. After that, login will work as usual.";
-            setError(data?.error || resetMessage);
+            setError(getApiMessage(data, resetMessage));
             setRequiresPasswordReset(true);
             toast.info(resetMessage);
             return;
           }
 
-          const message = data?.error || "Invalid or expired OTP.";
+          const message = getApiMessage(data, "Invalid or expired OTP.");
           setError(message);
           toast.error(message);
           return;
         }
 
-        const nextCustomer = data?.customer ?? null;
+        const nextCustomer = data?.customer ?? data?.data?.customer ?? null;
         if (nextCustomer) {
           setCustomer(nextCustomer);
         } else {
@@ -259,13 +289,13 @@ function LoginPageInner() {
         if (resetRequired) {
           const resetMessage =
             "Due to a security update, you'll need to reset your password once. After that, login will work as usual.";
-          setError(data?.error || resetMessage);
+          setError(getApiMessage(data, resetMessage));
           setRequiresPasswordReset(true);
           toast.info(resetMessage);
           return;
         }
 
-        const message = data?.error || "Login failed. Please try again.";
+        const message = getApiMessage(data, "Login failed. Please try again.");
         setError(message);
         toast.error(message);
         return;
@@ -290,27 +320,25 @@ function LoginPageInner() {
   async function handleSendOtp() {
     setError(null);
 
-    if (inputType !== "email" && !identifier.includes("@")) {
-      setError("OTP login is available only for email.");
-      return;
-    }
-
-    const email = identifier.trim().toLowerCase();
-    if (!email.includes("@") || !email.includes(".")) {
-      setError("Please enter a valid email address.");
-      return;
-    }
-
     try {
       setBusy(true);
-      const res = await fetch("/api/medusa/auth/login-otp/request", {
+      const isPhoneFlow = inputType === "phone"
+      const endpoint = isPhoneFlow ? "/api/auth/send-otp" : "/api/medusa/auth/login-otp/request"
+      const email = identifier.trim().toLowerCase()
+      if (!isPhoneFlow && (!email.includes("@") || !email.includes("."))) {
+        setError("Please enter a valid email address.")
+        return
+      }
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Cache-Control": "no-store",
         },
         credentials: "include",
-        body: JSON.stringify({ email }),
+        body: JSON.stringify(
+          isPhoneFlow ? { phone: `${countryCode}${identifier}` } : { email }
+        ),
       });
 
       const data = await res.json().catch(() => null);
@@ -321,23 +349,28 @@ function LoginPageInner() {
         if (resetRequired) {
           const resetMessage =
             "Due to a security update, you'll need to reset your password once. After that, login will work as usual.";
-          setError(data?.error || resetMessage);
+          setError(getApiMessage(data, resetMessage));
           setRequiresPasswordReset(true);
           toast.info(resetMessage);
           return;
         }
 
-        const message = data?.error || "Something went wrong. Please try again.";
+        const message = getApiMessage(data, "Something went wrong. Please try again.");
         setError(message);
         toast.error(message);
         return;
       }
 
       setOtpSent(true);
-      setOtpRequestedFor(email);
+      setOtpRequestedFor(isPhoneFlow ? `${countryCode}${identifier}` : email);
       setCooldown(30);
       toast.success(
-        data?.message || "If an account exists, an OTP has been sent to your email."
+        getApiMessage(
+          data,
+          isPhoneFlow
+            ? "If an account exists, an OTP has been sent to your mobile number."
+            : "If an account exists, an OTP has been sent to your email."
+        )
       );
     } catch {
       setError("Something went wrong. Please try again.");
@@ -370,14 +403,13 @@ function LoginPageInner() {
 
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        const message = data?.error || "Unable to send reset link. Please try again.";
+        const message = getApiMessage(data, "Unable to send reset link. Please try again.");
         setError(message);
         toast.error(message);
         return;
       }
 
-      const message =
-        data?.message || "If an account exists, a reset link has been sent.";
+      const message = getApiMessage(data, "If an account exists, a reset link has been sent.");
       toast.success(message);
     } catch {
       setError("Unable to send reset link. Please try again.");
@@ -715,10 +747,10 @@ function LoginPageInner() {
                           inputMode="numeric"
                           pattern="[0-9]{4,8}"
                           autoComplete="one-time-code"
-                          placeholder="Enter 6-digit code"
+                          placeholder={inputType === "phone" ? "Enter 4-digit code" : "Enter 6-digit code"}
                           value={otp}
                           onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                          maxLength={6}
+                          maxLength={inputType === "phone" ? 4 : 6}
                           className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3.5 text-center text-2xl tracking-widest font-semibold outline-none transition"
                           onFocus={(e) => {
                             e.currentTarget.style.borderColor = BRAND;
@@ -829,3 +861,4 @@ export default function LoginPage() {
     </Suspense>
   )
 }
+

@@ -14,11 +14,21 @@ import {
 export const dynamic = "force-dynamic"
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const otpRegex = /^\d{6}$/
+const emailOtpRegex = /^\d{6}$/
+const phoneOtpRegex = /^\d{4}$/
+const indianPhoneRegex = /^[6-9]\d{9}$/
+
+function normalizeIndianPhone(input?: string) {
+  if (!input) return null
+  const digits = input.replace(/\D/g, "")
+  const local = digits.startsWith("91") && digits.length === 12 ? digits.slice(2) : digits
+  if (!indianPhoneRegex.test(local)) return null
+  return `91${local}`
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as { email?: string; otp?: string }
+    const body = (await req.json()) as { email?: string; phone?: string; otp?: string }
     const forwardedHeaders = {
       origin: req.headers.get("origin") ?? undefined,
       referer: req.headers.get("referer") ?? undefined,
@@ -26,23 +36,28 @@ export async function POST(req: NextRequest) {
     }
 
     const email = body.email?.trim().toLowerCase()
+    const phone = normalizeIndianPhone(body.phone)
     const otp = body.otp?.trim()
 
-    if (!email || !emailRegex.test(email)) {
-      return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 })
+    if ((!email || !emailRegex.test(email)) && !phone) {
+      return NextResponse.json({ error: "Enter a valid email or Indian mobile number." }, { status: 400 })
     }
-    if (!otp || !otpRegex.test(otp)) {
-      return NextResponse.json({ error: "Enter the 6-digit OTP." }, { status: 400 })
+    const otpValid = phone ? phoneOtpRegex.test(otp || "") : emailOtpRegex.test(otp || "")
+    if (!otp || !otpValid) {
+      return NextResponse.json(
+        { error: phone ? "Enter the 4-digit OTP." : "Enter the 6-digit OTP." },
+        { status: 400 }
+      )
     }
 
-    const recoveryRequired = await isPasswordResetRequired(email)
-    if (recoveryRequired) {
+    const recoveryRequired = email ? await isPasswordResetRequired(email) : false
+    if (recoveryRequired && email) {
       return NextResponse.json(passwordResetRequiredPayload(), { status: 401 })
     }
 
     const verifyRes = await medusaStoreFetch("/store/customers/login-otp/verify", {
       method: "POST",
-      body: JSON.stringify({ email, otp }),
+      body: JSON.stringify(email ? { email, otp } : { phone, otp }),
       forwardedHeaders,
     })
 

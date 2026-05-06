@@ -7,6 +7,11 @@ const DEFAULT_MAX_VERIFY_ATTEMPTS_PER_IP = 10
 const DEFAULT_MAX_VERIFY_ATTEMPTS_PER_CODE = 5
 const DEFAULT_AUDIT_RETENTION_DAYS = 30
 const DEFAULT_OTP_RETENTION_HOURS = 48
+const DEFAULT_PHONE_REQUEST_WINDOW_MINUTES = 10
+const DEFAULT_PHONE_MAX_REQUESTS_PER_IP = 3
+const DEFAULT_PHONE_MAX_REQUESTS_PER_PHONE = 3
+const DEFAULT_PHONE_RESEND_COOLDOWN_SECONDS = 30
+const DEFAULT_MSG91_TIMEOUT_MS = 5000
 
 function parsePositiveInt(
   value: string | undefined,
@@ -97,10 +102,40 @@ export const loginOtpConfig = {
     DEFAULT_OTP_RETENTION_HOURS,
     { min: 1, max: 720 }
   ),
+  phoneRequestWindowMinutes: parsePositiveInt(
+    process.env.PHONE_OTP_WINDOW_MINUTES,
+    DEFAULT_PHONE_REQUEST_WINDOW_MINUTES,
+    { min: 1, max: 60 }
+  ),
+  phoneMaxRequestsPerIp: parsePositiveInt(
+    process.env.PHONE_OTP_MAX_REQUESTS_PER_IP,
+    DEFAULT_PHONE_MAX_REQUESTS_PER_IP,
+    { min: 1, max: 20 }
+  ),
+  phoneMaxRequestsPerPhone: parsePositiveInt(
+    process.env.PHONE_OTP_MAX_REQUESTS_PER_PHONE,
+    DEFAULT_PHONE_MAX_REQUESTS_PER_PHONE,
+    { min: 1, max: 20 }
+  ),
+  phoneResendCooldownSeconds: parsePositiveInt(
+    process.env.PHONE_OTP_RESEND_COOLDOWN_SECONDS,
+    DEFAULT_PHONE_RESEND_COOLDOWN_SECONDS,
+    { min: 10, max: 300 }
+  ),
+  msg91TimeoutMs: parsePositiveInt(
+    process.env.MSG91_TIMEOUT_MS,
+    DEFAULT_MSG91_TIMEOUT_MS,
+    { min: 1000, max: 20000 }
+  ),
   requireVerifiedEmail: parseBoolean(
     process.env.LOGIN_OTP_REQUIRE_VERIFIED_EMAIL,
     false
   ),
+  msg91: {
+    authKey: process.env.MSG91_AUTH_KEY?.trim() || "",
+    templateId: process.env.MSG91_TEMPLATE_ID?.trim() || "",
+    senderId: process.env.MSG91_SENDER_ID?.trim() || "",
+  },
   smtp: {
     host: process.env.SMTP_HOST?.trim() || "",
     port: parsePositiveInt(process.env.SMTP_PORT, 465, { min: 1, max: 65535 }),
@@ -118,4 +153,9 @@ export function hasLoginOtpMailerConfig() {
   return Boolean(
     smtp.host && smtp.port && smtp.user && smtp.password && smtp.fromEmail
   )
+}
+
+export function hasMsg91Config() {
+  const { authKey, templateId } = loginOtpConfig.msg91
+  return Boolean(authKey && templateId)
 }
