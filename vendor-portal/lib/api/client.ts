@@ -129,9 +129,9 @@ export const vendorAuthApi = {
   },
 
   changePassword: async (currentPassword: string, newPassword: string) => {
-    return apiRequest('/vendor/auth/change-password', {
+    return apiRequest<{ ok: true }>('/vendor/auth/change-password', {
       method: 'POST',
-      data: { current_password: currentPassword, new_password: newPassword },
+      data: { old_password: currentPassword, new_password: newPassword },
     })
   },
 }
@@ -147,6 +147,33 @@ export const vendorProfileApi = {
       method: 'PUT',
       data,
     })
+  },
+
+  uploadLogo: async (file: File, vendorHint: string) => {
+    const formData = new FormData()
+    formData.append('type', 'logo')
+    formData.append('vendorHint', vendorHint)
+    formData.append('file', file, file.name)
+
+    const headers: Record<string, string> = {}
+    if (PUBLISHABLE_KEY) {
+      headers['x-publishable-api-key'] = PUBLISHABLE_KEY
+    }
+
+    try {
+      const response = await axios.post(`${API_URL}/store/vendor/uploads`, formData, { headers })
+      return response.data as { url?: string; key?: string }
+    } catch (error: any) {
+      if (error instanceof AxiosError) {
+        const errorData = error.response?.data || { message: error.message }
+        throw new ApiError(
+          error.response?.status || 0,
+          errorData.message || 'Upload failed',
+          errorData
+        )
+      }
+      throw new ApiError(0, error?.message || 'Upload failed', error)
+    }
   },
 
   reapply: async (data: {

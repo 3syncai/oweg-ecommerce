@@ -1,7 +1,7 @@
 "use client"
 
 import { PropsWithChildren, useEffect, useMemo, useRef, useState } from "react"
-import { Text, clx } from "@medusajs/ui"
+import { Text, clx, Prompt } from "@medusajs/ui"
 import Image from "next/image"
 import {
   MagnifyingGlass,
@@ -13,10 +13,15 @@ import {
   ChevronRight,
   EllipsisHorizontal,
   CurrencyDollar,
-  XMark
+  XMark,
+  Sun,
+  Moon,
+  ComputerDesktop,
+  CheckMini,
 } from "@medusajs/icons"
 import { usePathname, useRouter } from "next/navigation"
 import { vendorProfileApi, vendorOrdersApi } from "@/lib/api/client"
+import { type ThemeMode, useTheme } from "@/lib/theme"
 
 type VendorInfo = {
   name?: string
@@ -96,13 +101,25 @@ const navItems = [
 const VendorShell = ({ children }: PropsWithChildren) => {
   const pathname = usePathname()
   const router = useRouter()
+  const { theme, setTheme } = useTheme()
   const [vendorInfo, setVendorInfo] = useState<VendorInfo | null>(null)
   const [payoutData, setPayoutData] = useState<PayoutData>({ totalRevenue: 0, totalBalance: 0, loading: true })
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>(["Products"])
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [logoutPromptOpen, setLogoutPromptOpen] = useState(false)
 
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
+
+  const themeOptions: Array<{
+    value: ThemeMode
+    label: string
+    Icon: typeof Sun
+  }> = [
+    { value: "light", label: "Light", Icon: Sun },
+    { value: "dark", label: "Dark", Icon: Moon },
+    { value: "system", label: "System", Icon: ComputerDesktop },
+  ]
 
   const toggleExpanded = (label: string) => {
     setExpandedItems((prev) =>
@@ -328,20 +345,59 @@ const VendorShell = ({ children }: PropsWithChildren) => {
             </button>
 
             {accountMenuOpen && (
-              <div className="absolute bottom-full left-0 right-0 mb-2 flex flex-col gap-1 rounded-lg border border-ui-border-base bg-ui-bg-subtle p-2 shadow-xl z-50">
+              <div className="absolute bottom-full left-0 right-0 mb-2 flex flex-col gap-1 rounded-lg border border-ui-border-base bg-ui-bg-component p-2 shadow-xl z-50">
                 <button
                   onClick={() => {
                     setAccountMenuOpen(false)
                     navigate("/profile")
                   }}
-                  className="rounded-md px-3 py-2 text-left text-sm text-ui-fg-base hover:bg-ui-bg-base/10 transition-colors"
+                  className="rounded-md px-3 py-2 text-left text-sm text-ui-fg-base hover:bg-ui-bg-base-hover transition-colors"
                 >
                   Profile settings
                 </button>
+
                 <div className="h-px bg-ui-border-base my-1" />
+
+                <div className="px-3 pt-1 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-ui-fg-muted">
+                  Theme
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  {themeOptions.map(({ value, label, Icon }) => {
+                    const active = theme === value
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setTheme(value)}
+                        className={clx(
+                          "flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors",
+                          active
+                            ? "bg-ui-bg-base-hover text-ui-fg-base"
+                            : "text-ui-fg-subtle hover:bg-ui-bg-base-hover/60 hover:text-ui-fg-base"
+                        )}
+                      >
+                        <span className="flex h-4 w-4 items-center justify-center text-ui-fg-muted">
+                          <Icon />
+                        </span>
+                        <span className="flex-1">{label}</span>
+                        {active && (
+                          <span className="flex h-4 w-4 items-center justify-center text-ui-fg-interactive">
+                            <CheckMini />
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div className="h-px bg-ui-border-base my-1" />
+
                 <button
-                  onClick={handleLogout}
-                  className="rounded-md px-3 py-2 text-left text-sm text-ui-fg-subtle hover:bg-ui-bg-base/10 transition-colors"
+                  onClick={() => {
+                    setAccountMenuOpen(false)
+                    setLogoutPromptOpen(true)
+                  }}
+                  className="rounded-md px-3 py-2 text-left text-sm text-ui-fg-subtle hover:bg-ui-bg-base-hover transition-colors"
                 >
                   Log out
                 </button>
@@ -373,6 +429,27 @@ const VendorShell = ({ children }: PropsWithChildren) => {
           {children}
         </main>
       </div>
+
+      {/* Logout confirmation prompt */}
+      <Prompt
+        variant="confirmation"
+        open={logoutPromptOpen}
+        onOpenChange={setLogoutPromptOpen}
+      >
+        <Prompt.Content>
+          <Prompt.Header>
+            <Prompt.Title>Log out of vendor portal?</Prompt.Title>
+            <Prompt.Description>
+              You&apos;ll need to sign in again to access your dashboard, products, and
+              orders.
+            </Prompt.Description>
+          </Prompt.Header>
+          <Prompt.Footer>
+            <Prompt.Cancel>Cancel</Prompt.Cancel>
+            <Prompt.Action onClick={handleLogout}>Yes, log out</Prompt.Action>
+          </Prompt.Footer>
+        </Prompt.Content>
+      </Prompt>
     </div>
   )
 }

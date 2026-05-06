@@ -500,7 +500,7 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50" style={{ colorScheme: "light" }}>
         <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
           <div className="text-center">
             <div className="text-green-500 text-5xl mb-4">✓</div>
@@ -515,7 +515,7 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
+    <div className="min-h-screen bg-gray-50 py-12 px-4" style={{ colorScheme: "light" }}>
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-lg shadow-lg p-8">
           {/* Header */}
