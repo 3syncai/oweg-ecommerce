@@ -53,14 +53,48 @@ export const StoreResetPassword = z.object({
   password: z.string().min(10).max(128),
 })
 
-export const StoreRequestLoginOtp = z.object({
-  email: z.string().trim().email(),
-})
+export const StoreRequestLoginOtp = z
+  .object({
+    email: z.string().trim().email().optional(),
+    phone: z.string().trim().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.email && !data.phone) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Either email or phone is required",
+      })
+    }
+  })
 
-export const StoreVerifyLoginOtp = z.object({
-  email: z.string().trim().email(),
-  otp: z.string().trim().regex(/^\d{6}$/),
-})
+export const StoreVerifyLoginOtp = z
+  .object({
+    email: z.string().trim().email().optional(),
+    phone: z.string().trim().optional(),
+    otp: z.string().trim(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.email && !data.phone) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Either email or phone is required",
+      })
+    }
+    if (data.phone && !/^\d{4}$/.test(data.otp)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["otp"],
+        message: "Phone OTP must be 4 digits",
+      })
+    }
+    if (data.email && !/^\d{6}$/.test(data.otp)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["otp"],
+        message: "Email OTP must be 6 digits",
+      })
+    }
+  })
 
 export {
   StoreGetCustomerParams,

@@ -74,20 +74,6 @@ export type VendorUser = {
   deleted_at: Maybe<Scalars['DateTime']['output']>;
 };
 
-export type FlashSaleItem = {
-  __typename?: 'FlashSaleItem';
-  id: Scalars['ID']['output'];
-  product_id: Scalars['String']['output'];
-  variant_id: Scalars['String']['output'];
-  flash_sale_price: Scalars['Int']['output'];
-  original_price: Scalars['Int']['output'];
-  original_price_id: Maybe<Scalars['String']['output']>;
-  expires_at: Scalars['DateTime']['output'];
-  created_at: Scalars['DateTime']['output'];
-  updated_at: Scalars['DateTime']['output'];
-  deleted_at: Maybe<Scalars['DateTime']['output']>;
-};
-
 export type VendorBrandAuthorization = {
   __typename?: 'VendorBrandAuthorization';
   id: Scalars['ID']['output'];
@@ -99,6 +85,20 @@ export type VendorBrandAuthorization = {
   verified_at: Maybe<Scalars['DateTime']['output']>;
   verified_by: Maybe<Scalars['String']['output']>;
   metadata: Maybe<Scalars['JSON']['output']>;
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+};
+
+export type FlashSaleItem = {
+  __typename?: 'FlashSaleItem';
+  id: Scalars['ID']['output'];
+  product_id: Scalars['String']['output'];
+  variant_id: Scalars['String']['output'];
+  flash_sale_price: Scalars['Int']['output'];
+  original_price: Scalars['Int']['output'];
+  original_price_id: Maybe<Scalars['String']['output']>;
+  expires_at: Scalars['DateTime']['output'];
   created_at: Scalars['DateTime']['output'];
   updated_at: Scalars['DateTime']['output'];
   deleted_at: Maybe<Scalars['DateTime']['output']>;
@@ -489,6 +489,73 @@ export type ProductOptionValue = {
   deleted_at: Maybe<Scalars['DateTime']['output']>;
 };
 
+export type PriceSet = {
+  __typename?: 'PriceSet';
+  id: Scalars['ID']['output'];
+  prices: Array<Maybe<Price>>;
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+  variant_link: Maybe<LinkProductVariantPriceSet>;
+  variant: Maybe<ProductVariant>;
+  shipping_option_link: Maybe<LinkShippingOptionPriceSet>;
+  shipping_option: Maybe<ShippingOption>;
+};
+
+export type PriceListStatusEnum =
+  | 'active'
+  | 'draft';
+
+export type PriceListTypeEnum =
+  | 'sale'
+  | 'override';
+
+export type PriceList = {
+  __typename?: 'PriceList';
+  id: Scalars['ID']['output'];
+  title: Scalars['String']['output'];
+  description: Scalars['String']['output'];
+  status: PriceListStatusEnum;
+  type: PriceListTypeEnum;
+  starts_at: Maybe<Scalars['DateTime']['output']>;
+  ends_at: Maybe<Scalars['DateTime']['output']>;
+  rules_count: Maybe<Scalars['Int']['output']>;
+  prices: Array<Maybe<Price>>;
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+};
+
+export type Price = {
+  __typename?: 'Price';
+  id: Scalars['ID']['output'];
+  title: Maybe<Scalars['String']['output']>;
+  currency_code: Scalars['String']['output'];
+  amount: Scalars['Float']['output'];
+  min_quantity: Maybe<Scalars['Int']['output']>;
+  max_quantity: Maybe<Scalars['Int']['output']>;
+  rules_count: Maybe<Scalars['Int']['output']>;
+  price_set_id: Scalars['String']['output'];
+  price_set: PriceSet;
+  price_list_id: Maybe<Scalars['String']['output']>;
+  price_list: Maybe<PriceList>;
+  raw_amount: Scalars['JSON']['output'];
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+};
+
+export type PricePreference = {
+  __typename?: 'PricePreference';
+  id: Scalars['ID']['output'];
+  attribute: Scalars['String']['output'];
+  value: Maybe<Scalars['String']['output']>;
+  is_tax_inclusive: Scalars['Boolean']['output'];
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+};
+
 export type PromotionTypeValues =
   | 'standard'
   | 'buyget';
@@ -674,123 +741,6 @@ export type SalesChannel = {
   publishable_api_keys: Maybe<Array<Maybe<ApiKey>>>;
   locations_link: Maybe<Array<Maybe<LinkSalesChannelStockLocation>>>;
   stock_locations: Maybe<Array<Maybe<StockLocation>>>;
-};
-
-export type ApiKeyTypeEnum =
-  | 'publishable'
-  | 'secret';
-
-export type ApiKey = {
-  __typename?: 'ApiKey';
-  id: Scalars['ID']['output'];
-  token: Scalars['String']['output'];
-  salt: Scalars['String']['output'];
-  redacted: Scalars['String']['output'];
-  title: Scalars['String']['output'];
-  type: ApiKeyTypeEnum;
-  last_used_at: Maybe<Scalars['DateTime']['output']>;
-  created_by: Scalars['String']['output'];
-  revoked_by: Maybe<Scalars['String']['output']>;
-  revoked_at: Maybe<Scalars['DateTime']['output']>;
-  created_at: Scalars['DateTime']['output'];
-  updated_at: Scalars['DateTime']['output'];
-  deleted_at: Maybe<Scalars['DateTime']['output']>;
-  sales_channels_link: Maybe<Array<Maybe<LinkPublishableApiKeySalesChannel>>>;
-  sales_channels: Maybe<Array<Maybe<SalesChannel>>>;
-};
-
-export type Store = {
-  __typename?: 'Store';
-  id: Scalars['ID']['output'];
-  name: Scalars['String']['output'];
-  default_sales_channel_id: Maybe<Scalars['String']['output']>;
-  default_region_id: Maybe<Scalars['String']['output']>;
-  default_location_id: Maybe<Scalars['String']['output']>;
-  metadata: Maybe<Scalars['JSON']['output']>;
-  supported_currencies: Array<Maybe<StoreCurrency>>;
-  created_at: Scalars['DateTime']['output'];
-  updated_at: Scalars['DateTime']['output'];
-  deleted_at: Maybe<Scalars['DateTime']['output']>;
-  currency: Maybe<Currency>;
-};
-
-export type StoreCurrency = {
-  __typename?: 'StoreCurrency';
-  id: Scalars['ID']['output'];
-  currency_code: Scalars['String']['output'];
-  is_default: Scalars['Boolean']['output'];
-  store_id: Maybe<Scalars['String']['output']>;
-  store: Maybe<Store>;
-  created_at: Scalars['DateTime']['output'];
-  updated_at: Scalars['DateTime']['output'];
-  deleted_at: Maybe<Scalars['DateTime']['output']>;
-};
-
-export type PriceSet = {
-  __typename?: 'PriceSet';
-  id: Scalars['ID']['output'];
-  prices: Array<Maybe<Price>>;
-  created_at: Scalars['DateTime']['output'];
-  updated_at: Scalars['DateTime']['output'];
-  deleted_at: Maybe<Scalars['DateTime']['output']>;
-  variant_link: Maybe<LinkProductVariantPriceSet>;
-  variant: Maybe<ProductVariant>;
-  shipping_option_link: Maybe<LinkShippingOptionPriceSet>;
-  shipping_option: Maybe<ShippingOption>;
-};
-
-export type PriceListStatusEnum =
-  | 'active'
-  | 'draft';
-
-export type PriceListTypeEnum =
-  | 'sale'
-  | 'override';
-
-export type PriceList = {
-  __typename?: 'PriceList';
-  id: Scalars['ID']['output'];
-  title: Scalars['String']['output'];
-  description: Scalars['String']['output'];
-  status: PriceListStatusEnum;
-  type: PriceListTypeEnum;
-  starts_at: Maybe<Scalars['DateTime']['output']>;
-  ends_at: Maybe<Scalars['DateTime']['output']>;
-  rules_count: Maybe<Scalars['Int']['output']>;
-  prices: Array<Maybe<Price>>;
-  created_at: Scalars['DateTime']['output'];
-  updated_at: Scalars['DateTime']['output'];
-  deleted_at: Maybe<Scalars['DateTime']['output']>;
-};
-
-export type Price = {
-  __typename?: 'Price';
-  id: Scalars['ID']['output'];
-  title: Maybe<Scalars['String']['output']>;
-  currency_code: Scalars['String']['output'];
-  amount: Scalars['Float']['output'];
-  min_quantity: Maybe<Scalars['Int']['output']>;
-  max_quantity: Maybe<Scalars['Int']['output']>;
-  rules_count: Maybe<Scalars['Int']['output']>;
-  price_set_id: Scalars['String']['output'];
-  price_set: PriceSet;
-  price_list_id: Maybe<Scalars['String']['output']>;
-  price_list: Maybe<PriceList>;
-  raw_amount: Scalars['JSON']['output'];
-  created_at: Scalars['DateTime']['output'];
-  updated_at: Scalars['DateTime']['output'];
-  deleted_at: Maybe<Scalars['DateTime']['output']>;
-};
-
-export type PricePreference = {
-  __typename?: 'PricePreference';
-  id: Scalars['ID']['output'];
-  attribute: Scalars['String']['output'];
-  value: Maybe<Scalars['String']['output']>;
-  is_tax_inclusive: Scalars['Boolean']['output'];
-  created_at: Scalars['DateTime']['output'];
-  updated_at: Scalars['DateTime']['output'];
-  deleted_at: Maybe<Scalars['DateTime']['output']>;
 };
 
 export type Cart = {
@@ -987,25 +937,51 @@ export type ShippingMethodTaxLine = {
   deleted_at: Maybe<Scalars['DateTime']['output']>;
 };
 
-export type ViewConfiguration = {
-  __typename?: 'ViewConfiguration';
+export type ApiKeyTypeEnum =
+  | 'publishable'
+  | 'secret';
+
+export type ApiKey = {
+  __typename?: 'ApiKey';
   id: Scalars['ID']['output'];
-  entity: Scalars['String']['output'];
-  name: Maybe<Scalars['String']['output']>;
-  user_id: Maybe<Scalars['String']['output']>;
-  is_system_default: Scalars['Boolean']['output'];
-  configuration: Scalars['JSON']['output'];
+  token: Scalars['String']['output'];
+  salt: Scalars['String']['output'];
+  redacted: Scalars['String']['output'];
+  title: Scalars['String']['output'];
+  type: ApiKeyTypeEnum;
+  last_used_at: Maybe<Scalars['DateTime']['output']>;
+  created_by: Scalars['String']['output'];
+  revoked_by: Maybe<Scalars['String']['output']>;
+  revoked_at: Maybe<Scalars['DateTime']['output']>;
   created_at: Scalars['DateTime']['output'];
   updated_at: Scalars['DateTime']['output'];
   deleted_at: Maybe<Scalars['DateTime']['output']>;
+  sales_channels_link: Maybe<Array<Maybe<LinkPublishableApiKeySalesChannel>>>;
+  sales_channels: Maybe<Array<Maybe<SalesChannel>>>;
 };
 
-export type UserPreference = {
-  __typename?: 'UserPreference';
+export type Store = {
+  __typename?: 'Store';
   id: Scalars['ID']['output'];
-  user_id: Scalars['String']['output'];
-  key: Scalars['String']['output'];
-  value: Scalars['JSON']['output'];
+  name: Scalars['String']['output'];
+  default_sales_channel_id: Maybe<Scalars['String']['output']>;
+  default_region_id: Maybe<Scalars['String']['output']>;
+  default_location_id: Maybe<Scalars['String']['output']>;
+  metadata: Maybe<Scalars['JSON']['output']>;
+  supported_currencies: Array<Maybe<StoreCurrency>>;
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+  currency: Maybe<Currency>;
+};
+
+export type StoreCurrency = {
+  __typename?: 'StoreCurrency';
+  id: Scalars['ID']['output'];
+  currency_code: Scalars['String']['output'];
+  is_default: Scalars['Boolean']['output'];
+  store_id: Maybe<Scalars['String']['output']>;
+  store: Maybe<Store>;
   created_at: Scalars['DateTime']['output'];
   updated_at: Scalars['DateTime']['output'];
   deleted_at: Maybe<Scalars['DateTime']['output']>;
@@ -1590,6 +1566,30 @@ export type OrderTransaction = {
   metadata: Maybe<Scalars['JSON']['output']>;
   created_at: Scalars['DateTime']['output'];
   updated_at: Scalars['DateTime']['output'];
+};
+
+export type ViewConfiguration = {
+  __typename?: 'ViewConfiguration';
+  id: Scalars['ID']['output'];
+  entity: Scalars['String']['output'];
+  name: Maybe<Scalars['String']['output']>;
+  user_id: Maybe<Scalars['String']['output']>;
+  is_system_default: Scalars['Boolean']['output'];
+  configuration: Scalars['JSON']['output'];
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
+};
+
+export type UserPreference = {
+  __typename?: 'UserPreference';
+  id: Scalars['ID']['output'];
+  user_id: Scalars['String']['output'];
+  key: Scalars['String']['output'];
+  value: Scalars['JSON']['output'];
+  created_at: Scalars['DateTime']['output'];
+  updated_at: Scalars['DateTime']['output'];
+  deleted_at: Maybe<Scalars['DateTime']['output']>;
 };
 
 export type User = {
@@ -2342,10 +2342,10 @@ declare module '@medusajs/framework/types' {
     vendors: Vendor
     vendor_user: VendorUser
     vendor_users: VendorUser
-    flash_sale_item: FlashSaleItem
-    flash_sale_items: FlashSaleItem
     vendor_brand_authorization: VendorBrandAuthorization
     vendor_brand_authorizations: VendorBrandAuthorization
+    flash_sale_item: FlashSaleItem
+    flash_sale_items: FlashSaleItem
     affiliate_admin: AffiliateAdmin
     affiliate_admins: AffiliateAdmin
     affiliate_user: AffiliateUser
@@ -2389,6 +2389,14 @@ declare module '@medusajs/framework/types' {
     product_categories: ProductCategory
     product_image: ProductImage
     product_images: ProductImage
+    price_set: PriceSet
+    price_sets: PriceSet
+    price_list: PriceList
+    price_lists: PriceList
+    price: Price
+    prices: Price
+    price_preference: PricePreference
+    price_preferences: PricePreference
     promotion: Promotion
     promotions: Promotion
     campaign: Campaign
@@ -2405,20 +2413,6 @@ declare module '@medusajs/framework/types' {
     customers: Customer
     sales_channel: SalesChannel
     sales_channels: SalesChannel
-    api_key: ApiKey
-    api_keys: ApiKey
-    store: Store
-    stores: Store
-    store_currency: StoreCurrency
-    store_currencies: StoreCurrency
-    price_set: PriceSet
-    price_sets: PriceSet
-    price_list: PriceList
-    price_lists: PriceList
-    price: Price
-    prices: Price
-    price_preference: PricePreference
-    price_preferences: PricePreference
     cart: Cart
     carts: Cart
     credit_line: CreditLine
@@ -2437,10 +2431,12 @@ declare module '@medusajs/framework/types' {
     shipping_method_adjustments: ShippingMethodAdjustment
     shipping_method_tax_line: ShippingMethodTaxLine
     shipping_method_tax_lines: ShippingMethodTaxLine
-    view_configuration: ViewConfiguration
-    view_configurations: ViewConfiguration
-    user_preference: UserPreference
-    user_preferences: UserPreference
+    api_key: ApiKey
+    api_keys: ApiKey
+    store: Store
+    stores: Store
+    store_currency: StoreCurrency
+    store_currencies: StoreCurrency
     order: Order
     orders: Order
     order_address: OrderAddress
@@ -2463,6 +2459,10 @@ declare module '@medusajs/framework/types' {
     returns: Return
     return_reason: any
     return_reasons: any
+    view_configuration: ViewConfiguration
+    view_configurations: ViewConfiguration
+    user_preference: UserPreference
+    user_preferences: UserPreference
     user: User
     users: User
     invite: Invite
