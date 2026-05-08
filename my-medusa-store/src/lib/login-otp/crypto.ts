@@ -2,6 +2,8 @@ import { createHash, createHmac, randomInt, timingSafeEqual } from "node:crypto"
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const OTP_REGEX = /^\d{6}$/
+const PHONE_OTP_REGEX = /^\d{4}$/
+const INDIAN_PHONE_REGEX = /^[6-9]\d{9}$/
 
 function getHashSecret() {
   const secret =
@@ -49,6 +51,41 @@ export function normalizeOtp(input: unknown) {
   }
 
   return normalized
+}
+
+export function normalizePhoneOtp(input: unknown) {
+  if (typeof input !== "string") {
+    return null
+  }
+
+  const normalized = input.trim()
+  if (!normalized || normalized.includes("\r") || normalized.includes("\n")) {
+    return null
+  }
+
+  if (!PHONE_OTP_REGEX.test(normalized)) {
+    return null
+  }
+
+  return normalized
+}
+
+export function normalizeIndianPhone(input: unknown) {
+  if (typeof input !== "string") {
+    return null
+  }
+
+  const digits = input.replace(/\D/g, "")
+  const normalizedDigits = digits.startsWith("91") && digits.length === 12 ? digits.slice(2) : digits
+
+  if (!INDIAN_PHONE_REGEX.test(normalizedDigits)) {
+    return null
+  }
+
+  return {
+    local: normalizedDigits,
+    e164: `91${normalizedDigits}`,
+  }
 }
 
 export function createOtp() {
