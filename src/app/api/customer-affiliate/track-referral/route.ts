@@ -83,12 +83,21 @@ export async function POST(req: NextRequest) {
             )
         }
 
+        // Insert the (refer_code, referred_customer_id) link if it's new.
+        // If the same customer re-applies the same code, we bump `referred_at`
+        // so `lookupCustomerReferrerForCustomer()` (which does
+        // `ORDER BY referred_at DESC LIMIT 1`) picks the most recently applied
+        // code — this is what makes "switching to a different affiliate code"
+        // actually credit the new affiliate on the next order.
         await pool.query(
             `INSERT INTO customer_referrer_referrals
                 (refer_code, affiliate_customer_id, referred_customer_id,
                  referred_email, referred_name)
              VALUES ($1, $2, $3, $4, $5)
-             ON CONFLICT (refer_code, referred_customer_id) DO NOTHING`,
+             ON CONFLICT (refer_code, referred_customer_id) DO UPDATE
+               SET referred_at    = NOW(),
+                   referred_email = COALESCE(EXCLUDED.referred_email, customer_referrer_referrals.referred_email),
+                   referred_name  = COALESCE(EXCLUDED.referred_name,  customer_referrer_referrals.referred_name)`,
             [
                 referCode,
                 affiliateCustomerId,

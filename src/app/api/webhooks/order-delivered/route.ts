@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { earnCoins, creditAdjustment, getPool } from "@/lib/wallet-ledger"
+import { earnCoins, getPool } from "@/lib/wallet-ledger"
 import { creditPendingCoinsForOrder } from "@/lib/customer-affiliate-coins"
 
 export const dynamic = "force-dynamic"
@@ -99,8 +99,14 @@ export async function POST(req: NextRequest) {
             }
 
             // ============================================
-            // AFFILIATE COMMISSION: Credit to affiliate wallet
+            // AFFILIATE COMMISSION: Start the 5-minute unlock timer.
+            // We DO NOT credit to the wallet yet — the row stays PENDING with
+            // an unlock_at set 5 minutes in the future. The affiliate-portal
+            // sync (`syncAffiliateCommissionStatuses`) promotes the row to
+            // CREDITED once unlock_at <= NOW(), which is when the amount
+            // becomes spendable in the wallet balance.
             // ============================================
+            const COMMISSION_UNLOCK_MINUTES = 5
             let affiliateCommissionTotal = 0
             try {
                 const affiliateCommissionResult = await pool.query(`
@@ -143,36 +149,28 @@ export async function POST(req: NextRequest) {
                             }
                         }
 
-                        if (userId) {
-                            const commissionAmount = parseFloat(row.commission_amount);
-                            if (commissionAmount > 0) {
-                                affiliateCommissionTotal += commissionAmount;
-                                const commissionMinor = Math.round(commissionAmount * 100)
-
-                                await creditAdjustment({
-                                    customerId: userId,
-                                    referenceId: `affiliate:${row.id}`,
-                                    idempotencyKey: `affiliate:${row.id}`,
-                                    amountMinor: commissionMinor,
-                                    reason: `Affiliate commission for order ${orderId}`,
-                                    metadata: { affiliate_code: affiliateCode, order_id: orderId, log_id: row.id }
-                                })
-
-                                const commissionUnlockTime = new Date(Date.now() + 5 * 60 * 1000)
-                                await pool.query(`
-                                    UPDATE affiliate_commission_log
-                                    SET status = 'CREDITED',
-                                        credited_at = NOW(),
-                                        unlock_at = $2,
-                                        affiliate_user_id = $3
-                                    WHERE id = $1
-                                `, [row.id, commissionUnlockTime.toISOString(), userId])
-                            }
+                        const commissionAmount = parseFloat(row.commission_amount);
+                        if (commissionAmount > 0) {
+                            affiliateCommissionTotal += commissionAmount;
                         }
+
+                        // Start the unlock countdown. Status stays PENDING; the
+                        // affiliate-portal sync will flip it to CREDITED once
+                        // the timer elapses.
+                        const commissionUnlockTime = new Date(
+                            Date.now() + COMMISSION_UNLOCK_MINUTES * 60 * 1000
+                        )
+                        await pool.query(`
+                            UPDATE affiliate_commission_log
+                            SET unlock_at = COALESCE(unlock_at, $2),
+                                affiliate_user_id = COALESCE(affiliate_user_id, $3)
+                            WHERE id = $1
+                              AND status = 'PENDING'
+                        `, [row.id, commissionUnlockTime.toISOString(), userId])
                     }
                 }
             } catch (affiliateErr) {
-                console.error("Error crediting affiliate commission:", affiliateErr)
+                console.error("Error scheduling affiliate commission unlock:", affiliateErr)
             }
 
             // Customer-affiliate coins (separate from agent affiliate above)

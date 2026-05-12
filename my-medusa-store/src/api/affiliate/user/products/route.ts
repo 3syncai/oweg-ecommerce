@@ -73,45 +73,87 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         const client = new Client({ connectionString: databaseUrl })
         await client.connect()
 
-        // Use the exact SQL structure provided by the user
+        // Pricing query.
+        //
+        // Earlier versions of this query joined `price` for the discounted side
+        // without filtering out:
+        //   - soft-deleted price rows (`price.deleted_at IS NOT NULL`)
+        //   - price lists in `draft` status
+        //   - soft-deleted price lists
+        // That allowed stale / draft prices to win and made the affiliate portal
+        // display the wrong number (e.g. base ₹1,501.69 instead of an active
+        // ₹1,000 sale price).
+        //
+        // Strategy: for each variant pick the BASE price (no price_list_id) and,
+        // separately, the MIN amount across all *active, non-deleted, in-currency*
+        // price-list prices. Aggregating with MIN also matches what Medusa's
+        // pricing engine does when multiple promo prices are concurrently active.
         const priceQuery = `
       SELECT
         p.id AS product_id,
         pv.id AS variant_id,
-        base_p.amount AS base_price,
-        disc_p.amount AS discounted_price
+        MIN(base_p.amount) AS base_price,
+        MIN(disc_p.amount) AS discounted_price
       FROM product p
       JOIN product_variant pv ON pv.product_id = p.id
       JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id
       JOIN price_set ps ON ps.id = pvps.price_set_id
-      LEFT JOIN price base_p 
+      LEFT JOIN price base_p
         ON base_p.price_set_id = ps.id
         AND base_p.price_list_id IS NULL
+        AND base_p.deleted_at IS NULL
         AND base_p.min_quantity IS NULL
         AND base_p.max_quantity IS NULL
       LEFT JOIN price disc_p
         ON disc_p.price_set_id = ps.id
         AND disc_p.price_list_id IS NOT NULL
+        AND disc_p.deleted_at IS NULL
         AND disc_p.min_quantity IS NULL
         AND disc_p.max_quantity IS NULL
+      LEFT JOIN price_list pl
+        ON pl.id = disc_p.price_list_id
+        AND pl.status = 'active'
+        AND pl.deleted_at IS NULL
+        AND (pl.starts_at IS NULL OR pl.starts_at <= NOW())
+        AND (pl.ends_at IS NULL OR pl.ends_at >= NOW())
       WHERE p.deleted_at IS NULL
         AND pv.deleted_at IS NULL
+        AND (disc_p.id IS NULL OR pl.id IS NOT NULL)
+      GROUP BY p.id, pv.id
     `
 
         const priceResult = await client.query(priceQuery)
         await client.end()
 
-        // Create a map of product -> price data
+        // Create a map of product -> price data. When a product has multiple
+        // variants we keep the cheapest base (most permissive default).
         const productPriceMap = new Map<string, { base: number, discounted: number | null }>()
 
         priceResult.rows.forEach((row: any) => {
             const productId = row.product_id
             const basePrice = Number(row.base_price) || 0
-            const discountedPrice = row.discounted_price ? Number(row.discounted_price) : null
+            const discountedPriceRaw = row.discounted_price
+            const discountedPrice = discountedPriceRaw !== null && discountedPriceRaw !== undefined
+                ? Number(discountedPriceRaw)
+                : null
 
-            if (!productPriceMap.has(productId)) {
+            const existing = productPriceMap.get(productId)
+            if (!existing) {
                 productPriceMap.set(productId, { base: basePrice, discounted: discountedPrice })
+                return
             }
+
+            // Across multiple variants of the same product, pick the lowest
+            // displayable price so the catalog reflects the cheapest option.
+            const nextBase = basePrice > 0 && (existing.base === 0 || basePrice < existing.base)
+                ? basePrice
+                : existing.base
+            const candidates = [existing.discounted, discountedPrice].filter(
+                (v): v is number => typeof v === "number" && v > 0
+            )
+            const nextDiscounted = candidates.length > 0 ? Math.min(...candidates) : null
+
+            productPriceMap.set(productId, { base: nextBase, discounted: nextDiscounted })
         })
 
         console.log(`Loaded pricing for ${productPriceMap.size} products`)
