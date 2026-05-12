@@ -12,6 +12,7 @@ import CartProvider from "@/contexts/CartProvider";
 import AuthProvider from "@/contexts/AuthProvider";
 import AppToaster from "@/components/ui/app-toaster";
 import AffiliateRefCapture from "@/components/AffiliateRefCapture";
+import FloatingWhatsAppWidget from "@/components/common/FloatingWhatsAppWidget";
 
 export const metadata: Metadata = {
   title: {
@@ -63,6 +64,7 @@ export default function RootLayout({
 
                 <Footer />
                 <MobileBottomNav />
+                <FloatingWhatsAppWidget />
               </div>
 
               <AppToaster />
