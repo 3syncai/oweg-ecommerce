@@ -23,12 +23,26 @@ const upload = multer({
         fileSize: 10 * 1024 * 1024, // 10MB max
     },
     fileFilter: (req, file, cb) => {
-        // Allow PDF, JPG, PNG
-        const allowedMimes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png']
-        if (allowedMimes.includes(file.mimetype)) {
+        // Allow PDF, JPG, PNG, DOC, DOCX
+        const allowedMimes = [
+            'application/pdf',
+            'image/jpeg',
+            'image/jpg',
+            'image/png',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ]
+        // Some browsers/OS combinations don't set a mime-type for .doc/.docx
+        // (especially when the file comes from a drag-and-drop in Safari).
+        // Fall back to the file extension in that case.
+        const fallbackByExt = /\.(pdf|jpe?g|png|docx?|DOCX?)$/i.test(
+            file.originalname || ""
+        )
+
+        if (allowedMimes.includes(file.mimetype) || fallbackByExt) {
             cb(null, true)
         } else {
-            cb(new Error('Invalid file type. Only PDF, JPG, and PNG are allowed.'))
+            cb(new Error('Invalid file type. Only PDF, DOC, DOCX, JPG, and PNG are allowed.'))
         }
     },
 })
