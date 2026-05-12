@@ -126,22 +126,38 @@ const VendorProductsPage = () => {
   } else {
     content = (
       <Container className="p-4 md:p-6 space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <Heading level="h1">Products</Heading>
             <Text className="text-ui-fg-subtle">Manage your products</Text>
           </div>
-          <Button variant="primary" onClick={() => router.push("/products/new")}>
-            Create Product
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => router.push("/products/bulk-upload")}
+            >
+              Upload Excel
+            </Button>
+            <Button variant="primary" onClick={() => router.push("/products/new")}>
+              Create Product
+            </Button>
+          </div>
         </div>
 
         {products.length === 0 ? (
           <div className="p-8 text-center border border-ui-border-base rounded-lg">
             <Text className="text-ui-fg-subtle mb-4">No products found</Text>
-            <Button variant="primary" onClick={() => router.push("/products/new")}>
-              Create your first product
-            </Button>
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              <Button
+                variant="secondary"
+                onClick={() => router.push("/products/bulk-upload")}
+              >
+                Upload Excel
+              </Button>
+              <Button variant="primary" onClick={() => router.push("/products/new")}>
+                Create your first product
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto">
