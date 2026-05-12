@@ -10,15 +10,19 @@ const DATABASE_URL = process.env.DATABASE_URL
  *
  * Validates a customer-referrer affiliate code (the `customer_referrer.refer_code`).
  *
- * One-time-per-product enforcement (when caller supplies the customer):
+ * One-time-per-(customer, product, code) enforcement (when caller supplies
+ * the customer):
  *   - Pass the current customer id either via `?customer_id=` or `x-customer-id`
  *     header. The endpoint will check which of the supplied `product_ids` the
  *     customer has already redeemed with this code (status PENDING or EARNED).
  *   - Returns:
- *       valid: false  if EVERY product in `product_ids` has already been used,
- *       valid: true   otherwise (including when no `product_ids` are passed),
- *     and always returns `already_used_product_ids` so the UI can surface a
- *     clear message about which products won't earn a second time.
+ *       valid: false  if ANY product in `product_ids` was already redeemed
+ *                     by this customer with this code,
+ *       valid: true   otherwise (including when no `product_ids` are passed).
+ *     The blocked product titles are returned in `already_used_products` so the
+ *     UI can show a human-readable message ("You've already used this code on
+ *     <Product Name>"). The user can still apply a DIFFERENT affiliate code on
+ *     the same product, or this same code on a DIFFERENT product.
  *
  * Independent from the existing /api/store/validate-referral endpoint — that one
  * checks the agent-side `affiliate_user` / `branch_admin` / etc. tables and is
@@ -101,21 +105,75 @@ export async function GET(req: NextRequest) {
                 .filter(Boolean)
         }
 
+        // Intersect with the cart's product_ids — these are the ones we'll
+        // refuse to apply against. Empty array means cart wasn't supplied or
+        // there's no overlap.
+        const blockedInCart =
+            customerId && productIds.length > 0
+                ? productIds.filter((p) => alreadyUsedProductIds.includes(p))
+                : []
+
+        // Resolve product titles for a friendlier error message. We keep this
+        // best-effort — if the lookup fails we still return the IDs.
+        let blockedProducts: { id: string; title: string | null }[] = []
+        if (blockedInCart.length > 0) {
+            try {
+                const titlesRes = await pool.query(
+                    `SELECT id, title FROM product WHERE id = ANY($1::text[])`,
+                    [blockedInCart]
+                )
+                const titleById = new Map<string, string | null>(
+                    titlesRes.rows.map((r: { id: string; title: string | null }) => [
+                        r.id,
+                        r.title,
+                    ])
+                )
+                blockedProducts = blockedInCart.map((id) => ({
+                    id,
+                    title: titleById.get(id) ?? null,
+                }))
+            } catch (lookupErr) {
+                console.warn(
+                    "[customer-affiliate/validate] product title lookup failed",
+                    lookupErr
+                )
+                blockedProducts = blockedInCart.map((id) => ({ id, title: null }))
+            }
+        }
+
         await pool.end()
 
-        const allBlocked =
-            customerId &&
-            productIds.length > 0 &&
-            productIds.every((p) => alreadyUsedProductIds.includes(p))
+        if (blockedInCart.length > 0) {
+            const namedTitles = blockedProducts
+                .map((p) => p.title)
+                .filter((t): t is string => Boolean(t && t.trim()))
 
-        if (allBlocked) {
+            let message: string
+            if (namedTitles.length === 1) {
+                message = `You've already used this affiliate code on "${namedTitles[0]}". Try a different affiliate code, or remove this product from your cart.`
+            } else if (namedTitles.length > 1) {
+                const list = namedTitles
+                    .slice(0, 3)
+                    .map((t) => `"${t}"`)
+                    .join(", ")
+                const more =
+                    namedTitles.length > 3
+                        ? ` and ${namedTitles.length - 3} more`
+                        : ""
+                message = `You've already used this affiliate code on ${list}${more}. Try a different affiliate code, or remove these products from your cart.`
+            } else {
+                message =
+                    blockedInCart.length === 1
+                        ? "You've already used this affiliate code on this product. Try a different affiliate code, or remove the product from your cart."
+                        : "You've already used this affiliate code on some products in your cart. Try a different affiliate code, or remove those products from your cart."
+            }
+
             return NextResponse.json({
                 valid: false,
-                message:
-                    productIds.length === 1
-                        ? "You've already used this affiliate code on this product."
-                        : "You've already used this affiliate code on every product in your cart.",
+                message,
                 already_used_product_ids: alreadyUsedProductIds,
+                blocked_product_ids: blockedInCart,
+                blocked_products: blockedProducts,
                 refer_code: row.refer_code,
                 affiliate_customer_id: row.customer_id,
             })
@@ -127,6 +185,8 @@ export async function GET(req: NextRequest) {
             affiliate_name: row.name || "OWEG Affiliate",
             affiliate_customer_id: row.customer_id,
             already_used_product_ids: alreadyUsedProductIds,
+            blocked_product_ids: [],
+            blocked_products: [],
         })
     } catch (error) {
         await pool.end().catch(() => { })
