@@ -364,26 +364,14 @@ function CheckoutPageInner() {
       setAffiliateCode(trimmed);
       setAffiliateCodeApplied(true);
 
-      const usedIds: string[] = Array.isArray(data.already_used_product_ids)
-        ? data.already_used_product_ids
-        : [];
-      const partiallyUsed =
-        productIds.length > 0 &&
-        usedIds.length > 0 &&
-        productIds.some((p) => usedIds.includes(p)) &&
-        !productIds.every((p) => usedIds.includes(p));
-
-      if (partiallyUsed) {
-        toast.success(
-          "Affiliate code applied — some products in your cart already used this code and won't earn coins again."
-        );
-      } else {
-        toast.success(
-          data.affiliate_name
-            ? `Affiliate code applied (${data.affiliate_name})`
-            : "Affiliate code applied"
-        );
-      }
+      // The validate endpoint refuses any cart that contains a product the
+      // customer has already used with this same code, so by the time we get
+      // here every product in the cart is eligible. Nothing extra to flag.
+      toast.success(
+        data.affiliate_name
+          ? `Affiliate code applied (${data.affiliate_name})`
+          : "Affiliate code applied"
+      );
     } catch (err) {
       console.error(err);
       setAffiliateError("Could not validate affiliate code. Please try again.");
