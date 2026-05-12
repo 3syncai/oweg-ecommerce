@@ -233,6 +233,7 @@ const Header: React.FC = () => {
   const mobileProfileRef = React.useRef<HTMLDivElement | null>(null);
   const profileMenuRef = React.useRef<HTMLDivElement | null>(null);
   const profileMenuTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const headerRootRef = React.useRef<HTMLElement | null>(null);
 
   const normalizeSuggestionText = React.useCallback((value?: string) => {
     const raw = (value || "").replace(/\s+/g, " ");
@@ -256,6 +257,31 @@ const Header: React.FC = () => {
     setNavCategories((prev) => reorderNav(prev));
     setOverflowCategories((prev) => reorderNav(prev));
   }, [preferredCategoryOrder, reorderNav]);
+
+  React.useEffect(() => {
+    const headerEl = headerRootRef.current;
+    if (!headerEl) return;
+
+    const syncHeaderHeight = () => {
+      const height = headerEl.getBoundingClientRect().height || 0;
+      document.documentElement.style.setProperty("--app-header-height", `${height}px`);
+    };
+
+    syncHeaderHeight();
+    window.addEventListener("resize", syncHeaderHeight);
+
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(syncHeaderHeight);
+      observer.observe(headerEl);
+    }
+
+    return () => {
+      window.removeEventListener("resize", syncHeaderHeight);
+      if (observer) observer.disconnect();
+      document.documentElement.style.removeProperty("--app-header-height");
+    };
+  }, [isMobile, oweg10Visible]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -993,7 +1019,7 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header className="sticky top-0 z-[120] w-full header-root bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+    <header ref={headerRootRef} className="fixed top-0 left-0 right-0 z-[120] w-full header-root bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       <div className="bg-header-bg">
         {/* Top Bar */}
         {!isMobile && oweg10Visible && (
@@ -1705,6 +1731,10 @@ const Header: React.FC = () => {
           --header-muted: #6b7280;
         }
         .header-root {
+          position: fixed !important;
+          top: 0;
+          left: 0;
+          right: 0;
           font-family: "OPTIHandelGothic-Light", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
             Roboto, "Helvetica Neue", Arial;
           -webkit-font-smoothing: antialiased;
@@ -1812,9 +1842,6 @@ const Header: React.FC = () => {
           }
           body.category-overlay-open .mobile-search-bar {
             display: none;
-          }
-          body.category-overlay-open .mobile-header-spacer {
-            height: 20px !important;
           }
         }
       `}</style>

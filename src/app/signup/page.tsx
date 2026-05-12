@@ -13,6 +13,36 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthProvider";
 
+type ShowcaseProduct = {
+  title: string;
+  image: string;
+};
+
+const LEFT_PRODUCTS: ShowcaseProduct[] = [
+  { title: "Buy Best Kitchen Appliances", image: "/Kitchen Appliances.png" },
+  { title: "Best Mixer Grinders in Best Price", image: "/Mixer_banner.png" },
+  { title: "Water Bottle", image: "/Bottles_&_Flasks.jpg" },
+  { title: "Get Best Mobile & Computer Accessories", image: "/Computer & Mobile v1.png" },
+];
+
+const RIGHT_PRODUCTS: ShowcaseProduct[] = [
+  { title: "Shop Inductions & Cooktops Now ", image: "/Inductions_Cooktops_banner.png" },
+  { title: "Cutleries", image: "/Cutlery_Sets.jpg" },
+  { title: "Air Cooler", image: "/Air_Coolers.jpg" },
+  { title: "Kettles", image: "/Kettles.jpg" },
+];
+
+const ProductShowcaseCard = ({ title, image }: ShowcaseProduct) => {
+  return (
+    <article className="showcase-card">
+      <div className="showcase-media">
+        <Image src={image} alt={title} width={260} height={220} className="showcase-image" />
+      </div>
+      <p className="showcase-title font-footer">{title}</p>
+    </article>
+  );
+};
+
 const Signup = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -180,7 +210,7 @@ const Signup = () => {
     }
     if (field === "gst" && userType === "business") {
       if (value && !gstRegex.test(value)) {
-        msg = "GSTIN must be 15 characters (A–Z, 0–9)";
+        msg = "GSTIN must be 15 characters (A-Z, 0-9)";
       }
     }
 
@@ -349,26 +379,24 @@ const Signup = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <main className="flex-1 bg-background py-8">
-        <div className="container max-w-3xl mx-auto px-4">
-          <div className="bg-card rounded-lg shadow-lg overflow-hidden">
-            {/* Banner */}
-            <div className="bg-gray-100">
-              <Image
-                src="/HeroBaneer_3.png"
-                alt="OWEG"
-                width={1200}
-                height={420}
-                className="w-full h-56 md:h-72 lg:h-80 object-cover rounded-t-lg"
-              />
-            </div>
+    <div className="signup-page">
+      <main className="signup-main flex-1 py-6 md:py-10">
+        <div className="mx-auto w-full max-w-[1600px] px-8">
+          <div className="auth-shell">
+            <aside className="gallery-column gallery-left" aria-hidden="true">
+              {LEFT_PRODUCTS.map((product) => (
+                <ProductShowcaseCard key={product.title} {...product} />
+              ))}
+            </aside>
 
-            {/* Form */}
-            <div className="p-8">
-              <h1 className="text-3xl font-bold text-center mb-8 text-foreground font-footer">
-                Register for free to start shopping
-              </h1>
+            <section className="form-column">
+              <div className="form-panel">
+                <div className="mb-8 text-center">
+                  <h1 className="text-3xl font-bold text-foreground font-footer">Create your account</h1>
+                  <p className="mt-2 text-sm text-muted-foreground font-footer">
+                    Register for free to start shopping
+                  </p>
+                </div>
 
               {submitError && (
                 <div className="mb-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -487,14 +515,14 @@ const Signup = () => {
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">Checking...</span>
                     )}
                     {referralStatus === "valid" && (
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500">✓</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500">OK</span>
                     )}
                     {referralStatus === "invalid" && (
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-red-500">✗</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-red-500">X</span>
                     )}
                   </div>
                   {referralStatus === "valid" && referralAgentName && (
-                    <p className="mt-1 text-xs text-green-600 font-footer">✓ Referred by: <strong>{referralAgentName}</strong></p>
+                    <p className="mt-1 text-xs text-green-600 font-footer">Referred by: <strong>{referralAgentName}</strong></p>
                   )}
                   {referralStatus === "invalid" && (
                     <p className="mt-1 text-xs text-rose-600 font-footer">{referralError}</p>
@@ -711,7 +739,14 @@ const Signup = () => {
                   </Link>
                 </p>
               </form>
-            </div>
+              </div>
+            </section>
+
+            <aside className="gallery-column gallery-right" aria-hidden="true">
+              {RIGHT_PRODUCTS.map((product) => (
+                <ProductShowcaseCard key={product.title} {...product} />
+              ))}
+            </aside>
           </div>
         </div>
       </main>
@@ -732,6 +767,98 @@ const Signup = () => {
           --form-text: #111827;
           --muted: #6b7280;
           --danger: #ef4444;
+        }
+
+        .signup-page {
+          background: #f6f7f9;
+          overflow-x: hidden;
+          overflow-y: visible;
+        }
+
+        .signup-main {
+          overflow: visible !important;
+        }
+
+        .auth-shell {
+          display: grid;
+          grid-template-columns: minmax(140px, 0.8fr) minmax(560px, 680px) minmax(140px, 0.8fr);
+          gap: 24px;
+          align-items: start;
+          overflow: visible !important;
+        }
+
+        .gallery-column {
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-start;
+          gap: 14px;
+          padding: 0 4px;
+          overflow: visible !important;
+        }
+
+        .gallery-left {
+          border-right: 1px solid #e6e9ef;
+          padding-right: 18px;
+        }
+
+        .gallery-right {
+          border-left: 1px solid #e6e9ef;
+          padding-left: 18px;
+        }
+
+        .showcase-card {
+          background: transparent;
+          border: none;
+          box-shadow: none;
+          padding: 0 0 8px;
+          transition: transform 180ms ease;
+        }
+
+        .showcase-card:hover {
+          transform: translateY(-2px) scale(1.005);
+        }
+
+        .showcase-media {
+          position: relative;
+          width: 100%;
+          height: 140px;
+          border-radius: 0;
+          background: transparent;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: visible;
+        }
+
+        .showcase-image {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          object-position: center top;
+          transform: translateY(-6px);
+          mix-blend-mode: normal;
+        }
+
+        .showcase-title {
+          margin-top: 10px;
+          text-align: center;
+          font-size: 0.95rem;
+          color: #111827;
+        }
+
+        .form-column {
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+        }
+
+        .form-panel {
+          width: 100%;
+          border-radius: 16px;
+          background: #ffffff;
+          border: 1px solid #e8ebf1;
+          box-shadow: 0 14px 38px rgba(17, 24, 39, 0.08);
+          padding: 30px;
         }
 
         .font-footer {
@@ -831,7 +958,42 @@ const Signup = () => {
         /* helper text color */
         .text-muted-foreground { color: var(--muted); }
 
+        @media (max-width: 1279px) {
+          .auth-shell {
+            grid-template-columns: minmax(110px, 0.55fr) minmax(500px, 620px) minmax(110px, 0.55fr);
+            gap: 16px;
+          }
+
+          .showcase-media {
+            height: 120px;
+          }
+
+          .showcase-title {
+            font-size: 0.85rem;
+          }
+        }
+
+        @media (max-width: 1024px) {
+          .auth-shell {
+            grid-template-columns: 1fr;
+          }
+
+          .gallery-column {
+            display: none;
+          }
+
+          .form-panel {
+            max-width: 560px;
+            margin-inline: auto;
+          }
+        }
+
         @media (max-width: 640px) {
+          .form-panel {
+            padding: 22px 16px;
+            border-radius: 12px;
+          }
+
           .eye-btn { right: 8px; gap:6px; }
         }
       `}</style>
