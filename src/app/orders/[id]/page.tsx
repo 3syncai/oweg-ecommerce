@@ -62,6 +62,24 @@ type ReturnItemForm = {
   selected: boolean;
 };
 
+function sanitizeTextInput(value: string, maxLength: number) {
+  const withoutControlChars = [...value]
+    .filter((ch) => {
+      const code = ch.charCodeAt(0)
+      return (code >= 32 && code !== 127) || ch === "\n" || ch === "\t"
+    })
+    .join("")
+
+  return withoutControlChars
+    .replace(/\r/g, " ")
+    .replace(/\n/g, " ")
+    .replace(/\t/g, " ")
+    .replace(/ +/g, " ")
+    .replace(/[<>]/g, "")
+    .trim()
+    .slice(0, maxLength)
+}
+
 const formatDateTime = (value?: string) => {
   if (!value) return "";
   const d = new Date(value);
@@ -179,6 +197,7 @@ export default function OrderDetailPage() {
   const [returnError, setReturnError] = useState<string | null>(null);
   const [returnSuccess, setReturnSuccess] = useState<string | null>(null);
   const [returnSubmitting, setReturnSubmitting] = useState(false);
+  const [showReturnSubmitConfirm, setShowReturnSubmitConfirm] = useState(false);
   const [bankDetails, setBankDetails] = useState({
     account_name: "",
     account_number: "",
@@ -346,8 +365,14 @@ export default function OrderDetailPage() {
     setReturnSuccess(null);
 
     const selected = returnItems.filter((item) => item.selected && item.quantity > 0);
+    const safeReason = returnReason ? sanitizeTextInput(returnReason, 180) : "";
+    const safeNotes = returnNotes ? sanitizeTextInput(returnNotes, 1000) : "";
     if (!selected.length) {
       setReturnError("Please select at least one item.");
+      return;
+    }
+    if (safeReason.length > 0 && safeReason.length < 3) {
+      setReturnError("Please enter a clearer return reason.");
       return;
     }
 
@@ -367,8 +392,8 @@ export default function OrderDetailPage() {
         body: JSON.stringify({
           order_id: order.id,
           type: returnType,
-          reason: returnReason || undefined,
-          notes: returnNotes || undefined,
+          reason: safeReason || undefined,
+          notes: safeNotes || undefined,
           items: selected.map((item) => ({
             order_item_id: item.order_item_id,
             quantity: item.quantity,
@@ -595,9 +620,10 @@ export default function OrderDetailPage() {
                   <label className="text-xs font-semibold text-gray-700">Reason</label>
                   <input
                     value={returnReason}
-                    onChange={(event) => setReturnReason(event.target.value)}
+                    onChange={(event) => setReturnReason(sanitizeTextInput(event.target.value, 180))}
                     className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
                     placeholder="Share a short reason"
+                    maxLength={180}
                   />
                 </div>
               </div>
@@ -681,15 +707,20 @@ export default function OrderDetailPage() {
                 <label className="text-xs font-semibold text-gray-700">Notes (optional)</label>
                 <textarea
                   value={returnNotes}
-                  onChange={(event) => setReturnNotes(event.target.value)}
+                  onChange={(event) => setReturnNotes(sanitizeTextInput(event.target.value, 1000))}
                   className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
                   rows={3}
                   placeholder="Add extra context"
+                  maxLength={1000}
                 />
               </div>
 
               <div className="flex flex-wrap gap-3">
-                <Button onClick={submitReturnRequest} disabled={returnSubmitting}>
+                <Button
+                  onClick={() => setShowReturnSubmitConfirm(true)}
+                  disabled={returnSubmitting}
+                  className="bg-green-600 text-white border border-green-600 hover:bg-white hover:text-green-600"
+                >
                   {returnSubmitting ? "Submitting..." : "Submit request"}
                 </Button>
                 <Button variant="secondary" onClick={() => setReturnFormOpen(false)} disabled={returnSubmitting}>
@@ -730,6 +761,36 @@ export default function OrderDetailPage() {
             Need help? Call +91 89281 02299 or email support@oweg.in
           </div>
         </div>
+
+        {showReturnSubmitConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+              <h3 className="text-base font-semibold text-gray-900">Confirm submission</h3>
+              <p className="mt-2 text-sm text-gray-600">
+                Are you sure you want to submit this return/replacement request?
+              </p>
+              <div className="mt-5 flex justify-end gap-3">
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowReturnSubmitConfirm(false)}
+                  disabled={returnSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowReturnSubmitConfirm(false);
+                    void submitReturnRequest();
+                  }}
+                  disabled={returnSubmitting}
+                  className="bg-green-600 text-white border border-green-600 hover:bg-white hover:text-green-600"
+                >
+                  Confirm
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
