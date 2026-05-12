@@ -79,12 +79,49 @@ const VendorPayoutPage = () => {
 
     if (loading) {
         content = (
-            <Container className="p-6">
-                <div className="flex items-center justify-center min-h-[400px]">
-                    <div className="text-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-ui-fg-base mx-auto mb-4"></div>
-                        <Text className="text-ui-fg-subtle">Loading payout data...</Text>
+            <Container className="p-6 space-y-6 max-w-6xl mx-auto">
+                {/* Header skeleton */}
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="space-y-2">
+                        <div className="h-6 w-32 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                        <div className="h-4 w-64 rounded-md bg-ui-bg-base-hover/70 animate-pulse" />
                     </div>
+                    <div className="h-9 w-44 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                </div>
+
+                {/* Summary cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <div
+                            key={i}
+                            className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base space-y-3"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="h-9 w-9 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                                <div className="h-3 w-24 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                            </div>
+                            <div className="h-7 w-32 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                        </div>
+                    ))}
+                </div>
+
+                {/* Detail panel */}
+                <div className="border border-ui-border-base rounded-lg p-6 space-y-4">
+                    <div className="h-5 w-48 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <div
+                            key={i}
+                            className="flex items-center justify-between"
+                        >
+                            <div className="h-3 w-40 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                            <div className="h-3 w-20 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                        </div>
+                    ))}
+                </div>
+
+                <div className="flex items-center justify-center gap-2 pt-2 text-ui-fg-subtle">
+                    <span className="h-2 w-2 rounded-full bg-ui-fg-muted animate-pulse" />
+                    <Text size="small">Loading payout data…</Text>
                 </div>
             </Container>
         )

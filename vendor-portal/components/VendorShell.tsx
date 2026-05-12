@@ -219,7 +219,7 @@ const VendorShell = ({ children }: PropsWithChildren) => {
         <div className="flex h-16 shrink-0 items-center justify-between px-6 border-b border-ui-border-base">
           <div className="flex items-center gap-3">
             {vendorInfo?.store_logo ? (
-              <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-ui-bg-base/10">
+              <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-ui-border-strong bg-ui-bg-base/10 shadow-sm">
                 <Image
                   src={vendorInfo.store_logo}
                   alt={vendorInfo.store_name || "Store logo"}
@@ -230,7 +230,7 @@ const VendorShell = ({ children }: PropsWithChildren) => {
                 />
               </div>
             ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-ui-bg-base/10 text-sm font-semibold text-ui-fg-base">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-ui-border-strong bg-ui-bg-base/10 text-sm font-semibold text-ui-fg-base shadow-sm">
                 {(vendorInfo?.store_name?.[0] || vendorInfo?.name?.[0] || "M").toUpperCase()}
               </div>
             )}
@@ -331,7 +331,7 @@ const VendorShell = ({ children }: PropsWithChildren) => {
               onClick={() => setAccountMenuOpen((prev) => !prev)}
               className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-ui-bg-base-hover/50 transition-colors"
             >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-ui-bg-base/10 text-sm font-semibold text-ui-fg-base">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-ui-border-strong bg-ui-bg-base/10 text-sm font-semibold text-ui-fg-base shadow-sm">
                 {vendorInfo?.email?.[0]?.toUpperCase() || "A"}
               </div>
               <div className="flex-1 overflow-hidden">
