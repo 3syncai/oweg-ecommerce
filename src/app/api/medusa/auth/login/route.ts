@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { Pool } from "pg"
 import {
   appendUpstreamCookies,
   collectSetCookies,
@@ -14,18 +15,65 @@ import {
 export const dynamic = "force-dynamic"
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const indianPhoneRegex = /^[6-9]\d{9}$/
 const AUTH_PROVIDER_PATH = "/auth/customer/emailpass"
+const DATABASE_URL = process.env.DATABASE_URL?.trim() || ""
+
+let sharedPool: Pool | null = null
+
+function getPool() {
+  if (!DATABASE_URL) return null
+  if (!sharedPool) {
+    sharedPool = new Pool({ connectionString: DATABASE_URL })
+  }
+  return sharedPool
+}
 
 type LoginBody = {
   identifier?: string
   password?: string
 }
 
-function deriveEmail(identifier?: string | null): string | null {
+function normalizeIndianPhone(input: string) {
+  const digits = input.replace(/\D/g, "")
+  const local = digits.startsWith("91") && digits.length === 12 ? digits.slice(2) : digits
+  if (!indianPhoneRegex.test(local)) return null
+  return {
+    local,
+    withCountry: `91${local}`,
+    plusCountry: `+91${local}`,
+  }
+}
+
+async function resolveEmailFromIdentifier(identifier?: string | null): Promise<string | null> {
   if (!identifier) return null
   const trimmed = identifier.trim().toLowerCase()
   if (emailRegex.test(trimmed)) return trimmed
-  return null
+
+  const phone = normalizeIndianPhone(trimmed)
+  if (!phone) return null
+
+  const pool = getPool()
+  if (!pool) return null
+
+  try {
+    const { rows } = await pool.query(
+      `
+        SELECT email
+        FROM customer
+        WHERE deleted_at IS NULL
+          AND COALESCE(has_account, false) = true
+          AND phone = ANY($1::text[])
+        LIMIT 1
+      `,
+      [[phone.local, phone.withCountry, phone.plusCountry]]
+    )
+
+    const email = rows[0]?.email
+    return typeof email === "string" ? email.trim().toLowerCase() : null
+  } catch {
+    return null
+  }
 }
 
 function toErrorMessage(errorPayload: unknown, fallback: string) {
@@ -46,12 +94,12 @@ export async function POST(req: NextRequest) {
       referer: req.headers.get("referer") ?? undefined,
       "user-agent": req.headers.get("user-agent") ?? undefined,
     }
-    const email = deriveEmail(body.identifier)
+    const email = await resolveEmailFromIdentifier(body.identifier)
     const password = body.password?.trim() || ""
 
     if (!email) {
       return NextResponse.json(
-        { error: "Please sign in with the email used during registration." },
+        { error: "Please enter a registered email or mobile number." },
         { status: 400 }
       )
     }
