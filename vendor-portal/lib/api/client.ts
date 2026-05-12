@@ -5,10 +5,13 @@
 
 import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 
-// Get API URL - in Next.js, NEXT_PUBLIC_* vars are available on client
-const API_URL = typeof window !== 'undefined'
+// Use same-origin proxy by default to avoid browser CORS issues.
+// Can be overridden with NEXT_PUBLIC_USE_DIRECT_MEDUSA=true for debugging.
+const USE_DIRECT_MEDUSA = process.env.NEXT_PUBLIC_USE_DIRECT_MEDUSA === "true"
+
+const API_URL = USE_DIRECT_MEDUSA
   ? (process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000')
-  : (process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000')
+  : '/api/medusa'
 
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY || ''
 
