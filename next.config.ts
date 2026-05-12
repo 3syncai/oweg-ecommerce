@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["evasive-laverne-semipaganish.ngrok-free.dev"],
   turbopack: {
     root: process.cwd(),
   },
