@@ -60,7 +60,12 @@ export default function RootLayout({
               <div className="min-h-screen flex flex-col">
                 <Header />
 
-                <main className="flex-1 pb-24 md:pb-0">{children}</main>
+                <main
+                  className="flex-1 pb-24 md:pb-0"
+                  style={{ paddingTop: "var(--app-header-height, 136px)" }}
+                >
+                  {children}
+                </main>
 
                 <Footer />
                 <MobileBottomNav />
