@@ -4,8 +4,10 @@ import React, { useState, useRef } from 'react'
 import { Star, X, Camera, Upload, LogIn } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthProvider'
+import { buildLoginUrl } from '@/lib/auth-redirect'
 
 type ReviewFormProps = {
   productId: string
@@ -16,6 +18,7 @@ type ReviewFormProps = {
 
 const ReviewForm = ({ productId, productName, productImage, onSubmitSuccess }: ReviewFormProps) => {
   const { customer } = useAuth()
+  const pathname = usePathname()
   const [rating, setRating] = useState<number>(0)
   const [hoveredRating, setHoveredRating] = useState<number>(0)
   const [reviewText, setReviewText] = useState('')
@@ -190,7 +193,7 @@ const ReviewForm = ({ productId, productName, productImage, onSubmitSuccess }: R
               You need to be signed in to share your experience with this product.
             </p>
             <Link
-              href="/login"
+              href={buildLoginUrl(pathname)}
               className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors"
             >
               <LogIn className="w-4 h-4" />

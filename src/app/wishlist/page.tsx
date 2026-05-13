@@ -183,10 +183,10 @@ export default function WishlistPage() {
           <p className="text-lg font-semibold text-slate-800 mb-2">Sign in to view your wishlist</p>
           <p className="text-sm text-slate-500 mb-4">Login to see items you&apos;ve saved for later.</p>
           <div className="flex items-center justify-center gap-3">
-            <Link href="/login" className="px-4 py-2 rounded-full bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition">
+            <Link href="/login?redirect=/wishlist" className="px-4 py-2 rounded-full bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition">
               Login
             </Link>
-            <Link href="/signup" className="px-4 py-2 rounded-full border border-emerald-200 text-emerald-700 text-sm font-medium hover:bg-emerald-50 transition">
+            <Link href="/signup?redirect=/wishlist" className="px-4 py-2 rounded-full border border-emerald-200 text-emerald-700 text-sm font-medium hover:bg-emerald-50 transition">
               Create account
             </Link>
           </div>

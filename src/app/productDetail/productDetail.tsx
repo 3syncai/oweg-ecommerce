@@ -5,8 +5,9 @@ import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 import Image from 'next/image'
 import { ChevronRight, Heart, Plus, X } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { useSearchParams } from 'next/navigation'
+import { buildLoginUrl } from '@/lib/auth-redirect'
 import { toast } from 'sonner'
 import type { DetailedProduct as DetailedProductType, MedusaCategory } from '@/lib/medusa'
 import Breadcrumbs from './components/Breadcrumbs'
@@ -110,6 +111,7 @@ function buildSummaryFromDetail(detail?: DetailedProductType | null, item?: Rela
 
 export default function ProductDetailPage({ productId, initialProduct }: ProductDetailProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const [quantity, setQuantity] = useState(1)
   const [selectedImage, setSelectedImage] = useState(0)
@@ -1276,7 +1278,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       return
     }
     if (!customer) {
-      notifyWishlistLogin(() => router.push('/login'))
+      notifyWishlistLogin(() => router.push(buildLoginUrl(pathname)))
       return
     }
     const existing = (customer.metadata as Record<string, unknown> | undefined)?.wishlist

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import { isSafeRedirect } from "@/lib/auth-redirect"
 
 const GUARDED_AUTH_ROUTES = new Set(["/login", "/signup"])
 
 export async function middleware(req: NextRequest) {
-  const { pathname, origin } = req.nextUrl
+  const { pathname, origin, searchParams } = req.nextUrl
 
   if (!GUARDED_AUTH_ROUTES.has(pathname)) {
     return NextResponse.next()
@@ -36,7 +37,9 @@ export async function middleware(req: NextRequest) {
       | { customer?: { id?: string } | null }
       | null
     if (payload?.customer?.id) {
-      return NextResponse.redirect(new URL("/", req.url))
+      const requested = searchParams.get("redirect")
+      const target = isSafeRedirect(requested) ? requested : "/"
+      return NextResponse.redirect(new URL(target, req.url))
     }
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {

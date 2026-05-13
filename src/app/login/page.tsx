@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Eye, EyeOff, Phone, Loader2, ChevronDown, Lock, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthProvider";
+import { getSafeRedirect } from "@/lib/auth-redirect";
 
 // OWEG Modern Login -- Simplified two-step flow with intelligent detection
 // File: app/login/page.tsx (Next.js App Router)
@@ -101,12 +102,17 @@ function LoginPageInner() {
   const searchParams = useSearchParams();
   const { customer, initializing, setCustomer, refresh } = useAuth();
 
+  // Where to send the user after a successful sign-in. Comes from the
+  // `?redirect=...` query param when present (and validated as same-origin
+  // by getSafeRedirect), otherwise defaults to the homepage.
+  const redirectTarget = getSafeRedirect(searchParams.get("redirect"));
+
   useEffect(() => {
     if (initializing) return;
     if (customer) {
-      router.replace("/");
+      router.replace(redirectTarget);
     }
-  }, [customer, initializing, router]);
+  }, [customer, initializing, router, redirectTarget]);
 
   useEffect(() => {
     if (searchParams.get("reset") !== "success") {
@@ -246,7 +252,7 @@ function LoginPageInner() {
         }
 
         toast.success("Welcome back!");
-        router.push("/");
+        router.push(redirectTarget);
         return;
       } catch {
         setError("Login failed. Please try again.");
@@ -309,7 +315,7 @@ function LoginPageInner() {
       }
       setRequiresPasswordReset(false);
       toast.success("Welcome back!");
-      router.push("/");
+      router.push(redirectTarget);
     } catch {
       setError("Login failed. Please try again.");
     } finally {
@@ -583,7 +589,15 @@ function LoginPageInner() {
                 <div className="text-center space-y-3 pt-4">
                   <p className="text-sm text-slate-600">
                     New to OWEG?{" "}
-                    <Link href="/signup" className="font-semibold hover:underline cursor-pointer" style={{ color: BRAND }}>
+                    <Link
+                      href={
+                        redirectTarget && redirectTarget !== "/"
+                          ? `/signup?redirect=${encodeURIComponent(redirectTarget)}`
+                          : "/signup"
+                      }
+                      className="font-semibold hover:underline cursor-pointer"
+                      style={{ color: BRAND }}
+                    >
                       Create an account
                     </Link>
                   </p>

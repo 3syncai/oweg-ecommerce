@@ -3,26 +3,32 @@
 
 import React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Heart, LogIn, UserPlus } from "lucide-react";
+import { buildLoginUrl, buildSignupUrl } from "@/lib/auth-redirect";
 
 export default function GuestAccountDropdown() {
+  const pathname = usePathname();
+  const loginHref = buildLoginUrl(pathname);
+  const signupHref = buildSignupUrl(pathname);
+
   return (
     <div className="w-64 bg-white shadow-2xl border border-gray-200 z-[9999] rounded-lg overflow-hidden" style={{ backgroundColor: '#ffffff', opacity: 1 }}>
       <div className="p-4 border-b border-gray-200">
         <p className="text-sm font-semibold text-gray-900 mb-1">Welcome</p>
         <p className="text-xs text-gray-600">Sign in to access your account</p>
       </div>
-      
+
       <div className="p-2">
         <Link
-          href="/login"
+          href={loginHref}
           className="flex items-center gap-3 px-3 py-2.5 text-sm text-blue-600 hover:bg-blue-50 rounded transition-colors"
         >
           <LogIn className="w-4 h-4" />
           <span>Sign in</span>
         </Link>
         <Link
-          href="/signup"
+          href={signupHref}
           className="flex items-center gap-3 px-3 py-2.5 text-sm text-blue-600 hover:bg-blue-50 rounded transition-colors"
         >
           <UserPlus className="w-4 h-4" />
