@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import type { ChangeEvent, FocusEvent } from "react";
 import Link from "next/link";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
@@ -1012,4 +1012,21 @@ const Signup = () => {
   );
 };
 
-export default Signup;
+// useSearchParams() inside <Signup/> requires a Suspense boundary so Next.js
+// can statically prerender the page shell. Without this wrapper the build
+// fails with "useSearchParams() should be wrapped in a suspense boundary".
+const SignupPage = () => {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center text-slate-600">
+          Loading sign up...
+        </div>
+      }
+    >
+      <Signup />
+    </Suspense>
+  );
+};
+
+export default SignupPage;
