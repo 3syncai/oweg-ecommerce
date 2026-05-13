@@ -141,13 +141,6 @@ const Footer = () => {
           --footer-border: rgba(230, 230, 230, 0.06);
         }
 
-        html, body, #__next {
-          height: 100%;
-        }
-        body {
-          margin: 0;
-        }
-
         .footer-root {
           background: var(--footer-bg);
           color: var(--footer-text);
