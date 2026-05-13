@@ -38,6 +38,7 @@ import { useAuth } from '@/contexts/AuthProvider';
 import { getOriginalImageUrl } from '@/lib/image-utils';
 import { usePreferences } from '@/hooks/usePreferences';
 import { buildPreferenceSlug } from '@/lib/personalization';
+import { buildLoginUrl, buildSignupUrl } from '@/lib/auth-redirect';
 
 type MobileCategory = {
   id: string;
@@ -1537,7 +1538,7 @@ export default function MobileBottomNav() {
                   className="flex-1 bg-emerald-600 text-white px-4 py-2.5 text-center font-semibold hover:bg-emerald-700"
                   onClick={() => {
                     closeProfile();
-                    router.push('/login');
+                    router.push(buildLoginUrl(pathname));
                   }}
                 >
                   Login
@@ -1547,7 +1548,7 @@ export default function MobileBottomNav() {
                   className="flex-1 border border-gray-300 text-emerald-700 px-4 py-2.5 text-center font-semibold hover:bg-gray-50"
                   onClick={() => {
                     closeProfile();
-                    router.replace('/signup');
+                    router.replace(buildSignupUrl(pathname));
                   }}
                 >
                   Sign up

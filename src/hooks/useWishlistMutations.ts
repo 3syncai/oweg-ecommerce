@@ -9,7 +9,8 @@ import {
   notifyWishlistLogin,
   notifyWishlistSuccess,
 } from "@/lib/notifications";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { buildLoginUrl } from "@/lib/auth-redirect";
 
 type WishlistResponse = {
   wishlist?: string[];
@@ -68,10 +69,11 @@ export function useAddToWishlistWithNotification(productName?: string) {
   const toggleWishlist = useToggleWishlist();
   const { customer } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   const addToWishlist = async (productId: string | number) => {
     if (!customer) {
-      notifyWishlistLogin(() => router.push("/login"));
+      notifyWishlistLogin(() => router.push(buildLoginUrl(pathname)));
       return;
     }
 

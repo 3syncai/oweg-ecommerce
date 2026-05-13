@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthProvider";
+import { buildSignupUrl } from "@/lib/auth-redirect";
 import { calculateOweg10Discount, OWEG10_CODE } from "@/lib/oweg10-shared";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 
@@ -2007,7 +2008,12 @@ function CheckoutPageInner() {
               </Button>
               <p className="text-xs text-gray-500">
                 New here?{" "}
-                <Link href="/signup" className="text-emerald-700 font-semibold">
+                <Link
+                  href={buildSignupUrl(
+                    `/checkout${searchParams?.toString() ? `?${searchParams.toString()}` : ""}`
+                  )}
+                  className="text-emerald-700 font-semibold"
+                >
                   Create an account
                 </Link>
               </p>

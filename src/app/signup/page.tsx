@@ -9,9 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthProvider";
+import { getSafeRedirect } from "@/lib/auth-redirect";
 
 type ShowcaseProduct = {
   title: string;
@@ -49,8 +50,14 @@ const Signup = () => {
   const [userType, setUserType] = useState("individual");
   const [newsletter, setNewsletter] = useState("yes");
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { customer, initializing, setCustomer, refresh } = useAuth();
   const [submitting, setSubmitting] = useState(false);
+
+  // Where to send the user after a successful sign-up. Defaults to "/" but
+  // when the user came from a guarded page (e.g. /checkout) we honour the
+  // ?redirect=... param so they land back where they were.
+  const redirectTarget = getSafeRedirect(searchParams.get("redirect"));
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Referral code validation state
@@ -144,9 +151,9 @@ const Signup = () => {
   useEffect(() => {
     if (initializing) return;
     if (customer) {
-      router.replace("/");
+      router.replace(redirectTarget);
     }
-  }, [customer, initializing, router]);
+  }, [customer, initializing, router, redirectTarget]);
 
   // helpers: regex
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -369,7 +376,7 @@ const Signup = () => {
         await refresh();
       }
       toast.success("Welcome to OWEG! Your account is ready.");
-      router.push("/");
+      router.push(redirectTarget);
     } catch (err) {
       console.error("Registration failed", err);
       setSubmitError("Something went wrong. Please try again.");
@@ -732,7 +739,11 @@ const Signup = () => {
                 <p className="text-center text-sm text-muted-foreground font-footer">
                   Already have an account?{" "}
                   <Link
-                    href="/login"
+                    href={
+                      redirectTarget && redirectTarget !== "/"
+                        ? `/login?redirect=${encodeURIComponent(redirectTarget)}`
+                        : "/login"
+                    }
                     className="text-foreground hover:text-footer-hover transition-colors font-medium link-like"
                   >
                     Log in
