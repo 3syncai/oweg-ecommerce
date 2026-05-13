@@ -36,6 +36,10 @@ export function isSafeRedirect(value: string | null | undefined): value is strin
   if (!value.startsWith("/")) return false
   // Reject protocol-relative URLs ("//evil.com", "/\\evil.com")
   if (value.startsWith("//") || value.startsWith("/\\")) return false
+  // Intentional: we want to reject any URL containing whitespace OR ASCII
+  // control characters (NUL...US). Such characters in a path are almost always
+  // either an attack (header/log injection, bypassing parsers) or a bug.
+  // eslint-disable-next-line no-control-regex
   if (/[\s\x00-\x1f]/.test(value)) return false
 
   // Strip query/hash before comparing to AUTH_PAGES so /login?reset=success is
