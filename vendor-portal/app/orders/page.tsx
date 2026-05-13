@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react"
 import { Container, Heading, Text, Badge, Table } from "@medusajs/ui"
+import { ShoppingCart } from "@medusajs/icons"
 import VendorShell from "@/components/VendorShell"
+import PageSkeleton from "@/components/PageSkeleton"
+import EmptyState from "@/components/EmptyState"
 import { vendorOrdersApi } from "@/lib/api/client"
 import { useRouter } from "next/navigation"
 
@@ -73,9 +76,12 @@ const VendorOrdersPage = () => {
 
   if (loading) {
     content = (
-      <Container className="p-4 md:p-6">
-        <Text>Loading orders...</Text>
-      </Container>
+      <PageSkeleton
+        label="Loading orders…"
+        rows={6}
+        cols={4}
+        showAction={false}
+      />
     )
   } else if (error) {
     content = (
@@ -94,9 +100,20 @@ const VendorOrdersPage = () => {
         </div>
 
         {orders.length === 0 ? (
-          <div className="p-8 text-center border border-ui-border-base rounded-lg">
-            <Text className="text-ui-fg-subtle">No orders found</Text>
-          </div>
+          <EmptyState
+            accent="blue"
+            icon={<ShoppingCart />}
+            title="No orders yet"
+            description="When customers place an order for one of your products, it will show up here. Make sure your products are published to start selling."
+            primaryAction={{
+              label: "View products",
+              onClick: () => router.push("/products"),
+            }}
+            secondaryAction={{
+              label: "Go to dashboard",
+              onClick: () => router.push("/dashboard"),
+            }}
+          />
         ) : (
           <div className="border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto">
             <Table className="min-w-[700px]">

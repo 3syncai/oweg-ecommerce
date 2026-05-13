@@ -4,8 +4,10 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Container, Heading, Text, Table, Input, Badge } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
+import PageSkeleton from "@/components/PageSkeleton"
+import EmptyState from "@/components/EmptyState"
 import { vendorCustomersApi } from "@/lib/api/client"
-import { MagnifyingGlass } from "@medusajs/icons"
+import { MagnifyingGlass, Users } from "@medusajs/icons"
 
 type Customer = {
     id: string
@@ -78,9 +80,12 @@ const VendorCustomersPage = () => {
 
     if (loading) {
         content = (
-            <Container className="p-4 md:p-6">
-                <Text>Loading customers...</Text>
-            </Container>
+            <PageSkeleton
+                label="Loading customers…"
+                rows={6}
+                cols={4}
+                showAction={false}
+            />
         )
     } else if (error) {
         content = (
@@ -130,11 +135,33 @@ const VendorCustomersPage = () => {
                 )}
 
                 {filteredCustomers.length === 0 ? (
-                    <div className="p-8 text-center border border-ui-border-base rounded-lg border-dashed">
-                        <Text className="text-ui-fg-subtle">
-                            {searchQuery ? "No customers found matching your search" : "No customers yet"}
-                        </Text>
-                    </div>
+                    searchQuery ? (
+                        <EmptyState
+                            accent="gray"
+                            icon={<MagnifyingGlass />}
+                            title="No customers found"
+                            description={`No customers match "${searchQuery}". Try a different name, email, or phone number.`}
+                            primaryAction={{
+                                label: "Clear search",
+                                onClick: () => setSearchQuery(""),
+                            }}
+                        />
+                    ) : (
+                        <EmptyState
+                            accent="purple"
+                            icon={<Users />}
+                            title="No customers yet"
+                            description="Customers will appear here once they place an order for one of your products. Publish more products to attract your first buyers."
+                            primaryAction={{
+                                label: "View products",
+                                onClick: () => router.push("/products"),
+                            }}
+                            secondaryAction={{
+                                label: "Go to dashboard",
+                                onClick: () => router.push("/dashboard"),
+                            }}
+                        />
+                    )
                 ) : (
                     <div className="border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto">
                         <Table className="min-w-[800px]">

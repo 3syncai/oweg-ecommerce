@@ -202,8 +202,63 @@ const VendorDashboardPage = () => {
 
   if (loading) {
     content = (
-      <Container className="p-4 md:p-6">
-        <Text>Loading dashboard...</Text>
+      <Container className="p-4 md:p-6 space-y-4 md:space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="h-6 w-40 rounded-md bg-ui-bg-base-hover animate-pulse" />
+            <div className="h-4 w-64 rounded-md bg-ui-bg-base-hover/70 animate-pulse" />
+          </div>
+          <div className="h-9 w-32 rounded-md bg-ui-bg-base-hover animate-pulse" />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base space-y-3"
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                <div className="h-3 w-24 rounded-md bg-ui-bg-base-hover animate-pulse" />
+              </div>
+              <div className="h-7 w-32 rounded-md bg-ui-bg-base-hover animate-pulse" />
+              <div className="h-3 w-40 rounded-md bg-ui-bg-base-hover/70 animate-pulse" />
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div
+              key={i}
+              className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base space-y-4"
+            >
+              <div className="h-5 w-40 rounded-md bg-ui-bg-base-hover animate-pulse" />
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((__, j) => (
+                  <div
+                    key={j}
+                    className="flex items-center justify-between gap-3"
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className="h-10 w-10 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                      <div className="space-y-2 flex-1">
+                        <div className="h-3 w-3/4 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                        <div className="h-3 w-1/2 rounded-md bg-ui-bg-base-hover/70 animate-pulse" />
+                      </div>
+                    </div>
+                    <div className="h-3 w-16 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-center gap-2 pt-2 text-ui-fg-subtle">
+          <span className="h-2 w-2 rounded-full bg-ui-fg-muted animate-pulse" />
+          <Text size="small">Loading dashboard…</Text>
+        </div>
       </Container>
     )
   } else if (error) {

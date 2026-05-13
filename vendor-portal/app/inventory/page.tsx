@@ -4,8 +4,9 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Container, Heading, Text, Table, Button, Input, StatusBadge, Badge } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
+import EmptyState from "@/components/EmptyState"
 import { vendorInventoryApi } from "@/lib/api/client"
-import { MagnifyingGlass, PencilSquare, Check, XMark } from "@medusajs/icons"
+import { MagnifyingGlass, PencilSquare, Check, XMark, Buildings } from "@medusajs/icons"
 
 type InventoryItem = {
     product_id: string
@@ -159,13 +160,76 @@ export default function InventoryPage() {
             </div>
 
             {loading ? (
-                <div className="flex items-center justify-center p-12 text-ui-fg-subtle">
-                    Loading inventory...
+                <div className="border border-ui-border-base rounded-lg overflow-hidden">
+                    <div className="grid grid-cols-12 gap-4 border-b border-ui-border-base bg-ui-bg-subtle/40 px-4 py-3">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                            <div
+                                key={i}
+                                className="h-3 col-span-2 rounded-md bg-ui-bg-base-hover animate-pulse"
+                            />
+                        ))}
+                    </div>
+                    <div>
+                        {Array.from({ length: 6 }).map((_, r) => (
+                            <div
+                                key={r}
+                                className="grid grid-cols-12 gap-4 px-4 py-4 border-b border-ui-border-base last:border-b-0 items-center"
+                            >
+                                <div className="col-span-1">
+                                    <div className="h-9 w-9 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                                </div>
+                                <div className="col-span-3 space-y-2">
+                                    <div className="h-3 w-3/4 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                                    <div className="h-3 w-1/2 rounded-md bg-ui-bg-base-hover/70 animate-pulse" />
+                                </div>
+                                <div className="col-span-2">
+                                    <div className="h-3 w-2/3 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                                </div>
+                                <div className="col-span-2">
+                                    <div className="h-5 w-20 rounded-full bg-ui-bg-base-hover animate-pulse" />
+                                </div>
+                                <div className="col-span-2">
+                                    <div className="h-3 w-12 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                                </div>
+                                <div className="col-span-2 flex justify-end">
+                                    <div className="h-7 w-7 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="flex items-center justify-center gap-2 py-3 text-ui-fg-subtle border-t border-ui-border-base">
+                        <span className="h-2 w-2 rounded-full bg-ui-fg-muted animate-pulse" />
+                        <Text size="small">Loading inventory…</Text>
+                    </div>
                 </div>
             ) : filteredInventory.length === 0 ? (
-                <div className="p-12 text-center border border-ui-border-base rounded-lg border-dashed">
-                    <Text className="text-ui-fg-subtle mb-4">No inventory items found</Text>
-                </div>
+                searchQuery ? (
+                    <EmptyState
+                        accent="gray"
+                        icon={<MagnifyingGlass />}
+                        title="No matching inventory"
+                        description={`No products or variants match "${searchQuery}". Try a different name or SKU.`}
+                        primaryAction={{
+                            label: "Clear search",
+                            onClick: () => setSearchQuery(""),
+                        }}
+                    />
+                ) : (
+                    <EmptyState
+                        accent="orange"
+                        icon={<Buildings />}
+                        title="No inventory items yet"
+                        description="Once you publish products with variants, their stock levels will appear here so you can track and update quantities."
+                        primaryAction={{
+                            label: "Add product",
+                            onClick: () => router.push("/products/new"),
+                        }}
+                        secondaryAction={{
+                            label: "View products",
+                            onClick: () => router.push("/products"),
+                        }}
+                    />
+                )
             ) : (
                 <div className="border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto">
                     <Table className="min-w-[800px]">

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Container, Heading, Text, Badge, Table, Button } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
+import PageSkeleton from "@/components/PageSkeleton"
 import { vendorProductsApi } from "@/lib/api/client"
 import { useRouter } from "next/navigation"
 
@@ -113,9 +114,12 @@ const VendorProductsPage = () => {
 
   if (loading) {
     content = (
-      <Container className="p-4 md:p-6">
-        <Text>Loading products...</Text>
-      </Container>
+      <PageSkeleton
+        label="Loading products…"
+        rows={6}
+        cols={5}
+        showAction
+      />
     )
   } else if (error) {
     content = (
