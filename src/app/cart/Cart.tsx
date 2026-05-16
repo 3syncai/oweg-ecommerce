@@ -419,42 +419,12 @@ const Cart: React.FC = () => {
   const [removingIds, setRemovingIds] = useState<Record<string, boolean>>({});
   const [updatingIds, setUpdatingIds] = useState<Record<string, boolean>>({});
 
-  // Auto-apply referral code from customer_referral table
-  useEffect(() => {
-    const fetchReferralCode = async () => {
-      if (!customer?.id) {
-        console.log('No customer logged in');
-        return;
-      }
-
-      try {
-        console.log('Fetching referral code for customer:', customer.id);
-
-        const res = await fetch('/api/store/referral-code', {
-          headers: {
-            'x-customer-id': customer.id,
-          },
-          credentials: 'include',
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          console.log('Referral code response:', data);
-
-          if (data.referral_code) {
-            console.log('Auto-applying referral code:', data.referral_code);
-            setCouponCode(data.referral_code);
-          } else {
-            console.log('No referral code found for this customer');
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch referral code:', error);
-      }
-    };
-
-    fetchReferralCode();
-  }, [customer?.id]);
+  // Note: the referral code is intentionally NOT auto-filled into the Coupon
+  // input on the cart page anymore. A referral code is not a coupon, and
+  // pre-filling it here confused customers. The /checkout page still fetches
+  // and applies the referral code silently at order time
+  // (see src/app/checkout/page.tsx :: fetchReferralCode), so attribution to
+  // the referrer is unaffected.
 
   const deriveErrorMessage = useCallback((payload: unknown, fallback: string): string => {
     if (payload && typeof payload === "object") {
