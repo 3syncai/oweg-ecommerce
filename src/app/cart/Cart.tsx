@@ -22,8 +22,6 @@ import {
   notifyQuantityUpdated,
   notifyRemoveItem,
 } from "@/lib/notifications";
-import { useAuth } from "@/contexts/AuthProvider";
-
 interface CartItemUI {
   id: string;
   name: string;
@@ -412,7 +410,6 @@ const mapCartPayloadToItems = (payload?: CartApiPayload): CartItemUI[] => {
 
 const Cart: React.FC = () => {
   const { syncFromCartPayload } = useCartSummary();
-  const { customer } = useAuth();
   const [cartItems, setCartItems] = useState<CartItemUI[]>([]);
   const [couponCode, setCouponCode] = useState<string>("");
   const [mounted, setMounted] = useState<boolean>(false);
