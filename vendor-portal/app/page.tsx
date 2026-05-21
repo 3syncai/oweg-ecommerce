@@ -3,51 +3,15 @@
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
+import LandingHeader from '@/components/LandingHeader'
+import LandingFooter from '@/components/LandingFooter'
 
 export default function HomePage() {
   const router = useRouter()
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Header/Navigation */}
-      <header className="border-b border-gray-100 bg-white/80 backdrop-blur-md sticky top-0 z-50 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-20">
-            <div className="flex items-center">
-              <Link href="http://localhost:3000">
-                <Image
-                  src="/Oweg.png"
-                  alt="OWEG Logo"
-                  width={140}
-                  height={48}
-                  className="h-12 w-auto cursor-pointer"
-                  priority
-                />
-              </Link>
-            </div>
-            <nav className="flex items-center gap-8">
-              <Link
-                href="http://localhost:3000"
-                className="text-gray-700 hover:text-[#00D26A] font-medium transition-colors"
-              >
-                Home
-              </Link>
-              <Link
-                href="/about"
-                className="text-gray-700 hover:text-[#00D26A] font-medium transition-colors"
-              >
-                About
-              </Link>
-              <Link
-                href="/blog"
-                className="text-gray-700 hover:text-[#00D26A] font-medium transition-colors"
-              >
-                Blog
-              </Link>
-            </nav>
-          </div>
-        </div>
-      </header>
+      <LandingHeader />
 
       {/* Hero Section */}
       <section className="relative bg-gradient-to-br from-[#00D26A] via-[#00BD5F] to-[#00A551] text-white pt-16 pb-24 md:pt-24 md:pb-32 overflow-hidden">
@@ -292,52 +256,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-gray-900 text-gray-400 py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
-            <div>
-              <Image
-                src="/Oweg.png"
-                alt="OWEG Logo"
-                width={140}
-                height={48}
-                className="h-10 w-auto mb-6 brightness-0 invert"
-              />
-              <p className="text-sm leading-relaxed">
-                India's fastest-growing e-commerce platform for sellers. Start selling today!
-              </p>
-            </div>
-            <div>
-              <h4 className="text-white font-semibold mb-5 text-lg">For Sellers</h4>
-              <ul className="space-y-3 text-sm">
-                <li><Link href="/signup" className="hover:text-white transition-colors hover:translate-x-1 inline-block">Become a Seller</Link></li>
-                <li><Link href="/login" className="hover:text-white transition-colors hover:translate-x-1 inline-block">Seller Login</Link></li>
-                <li><a href="#" className="hover:text-white transition-colors hover:translate-x-1 inline-block">Seller Resources</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="text-white font-semibold mb-5 text-lg">Support</h4>
-              <ul className="space-y-3 text-sm">
-                <li><a href="#" className="hover:text-white transition-colors hover:translate-x-1 inline-block">Help Center</a></li>
-                <li><a href="#" className="hover:text-white transition-colors hover:translate-x-1 inline-block">Contact Us</a></li>
-                <li><a href="#" className="hover:text-white transition-colors hover:translate-x-1 inline-block">FAQs</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="text-white font-semibold mb-5 text-lg">Legal</h4>
-              <ul className="space-y-3 text-sm">
-                <li><a href="#" className="hover:text-white transition-colors hover:translate-x-1 inline-block">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-white transition-colors hover:translate-x-1 inline-block">Terms of Service</a></li>
-                <li><a href="#" className="hover:text-white transition-colors hover:translate-x-1 inline-block">Seller Agreement</a></li>
-              </ul>
-            </div>
-          </div>
-          <div className="border-t border-gray-800 pt-8 text-center text-sm">
-            <p>&copy; {new Date().getFullYear()} OWEG. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
+      <LandingFooter />
     </div>
   )
 }
