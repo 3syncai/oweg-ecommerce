@@ -13,15 +13,20 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
     const { category, collection, type, search, limit = "100" } = queryParams
     const limitNum = parseInt(limit as string) || 100
     
-    // Fetch all products (or use search if provided)
+    // Fetch all products (or use search if provided). We hard-filter to
+    // status=published so admins can only pick live products into a flash
+    // sale; draft / proposed / rejected products never appear in the picker.
     let allProducts: any[] = []
-    
+
     if (search) {
       allProducts = await productModuleService.listProducts({
         q: search as string,
+        status: ["published"],
       })
     } else {
-      allProducts = await productModuleService.listProducts({})
+      allProducts = await productModuleService.listProducts({
+        status: ["published"],
+      })
     }
     
     // Filter products in memory based on category, collection, and type

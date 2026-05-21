@@ -45,6 +45,7 @@ import {
 } from '@/lib/notifications'
 import { useAuth } from '@/contexts/AuthProvider'
 import { useCartSummary } from '@/contexts/CartProvider'
+import { useFlashSale } from '@/hooks/useFlashSale'
 
 const ProductSavingsExplorer = dynamic(() => import('./components/ProductSavingsExplorer'), {
   ssr: false,
@@ -201,6 +202,11 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const error =
     productQueryError instanceof Error ? productQueryError.message : productQueryError ? 'Unable to load product' : null
   const currentProductId = product?.id
+
+  // Pull the live flash-sale info for this product so the price block in
+  // ProductSummary shows the flash price + countdown when one is active.
+  // Without this the PDP silently shows the regular catalogue price.
+  const { flashSaleInfo } = useFlashSale(currentProductId)
   const categoryIds = useMemo(
     () => Array.from(new Set((product?.categories || []).map((cat) => cat.id).filter((id): id is string => !!id))),
     [product?.categories]
@@ -1239,6 +1245,24 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       notifyOutOfStock()
       return
     }
+    // If a flash sale is active for this product, the price we ship to the
+    // checkout snapshot (both in localStorage and the ?price= URL param)
+    // MUST be the flash sale price, otherwise the buyer is shown — and
+    // charged — the regular catalogue price even though the PDP/buy-box
+    // advertised the discount. The regular Add-to-Cart path is unaffected
+    // because the cart endpoints apply flash prices server-side via
+    // flash-sale-cart-mapper.
+    const flashPrice =
+      flashSaleInfo?.active && typeof flashSaleInfo.flash_sale_price === "number"
+        ? flashSaleInfo.flash_sale_price
+        : undefined
+    const effectivePrice =
+      flashPrice !== undefined
+        ? flashPrice
+        : typeof product.price === "number"
+          ? product.price
+          : undefined
+
     try {
       if (typeof window !== "undefined") {
         const payload = {
@@ -1246,7 +1270,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           quantity: Math.max(1, quantity),
           title: product.title,
           thumbnail: product.images?.[0] || product.thumbnail,
-          priceMinor: typeof product.price === "number" ? product.price : undefined,
+          priceMinor: effectivePrice,
         }
         localStorage.setItem("buy_now_item", JSON.stringify(payload))
       }
@@ -1258,8 +1282,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       variant_id: product.variant_id,
       qty: String(Math.max(1, quantity)),
     })
-    if (typeof product.price === "number") {
-      params.set("price", String(product.price))
+    if (effectivePrice !== undefined) {
+      params.set("price", String(effectivePrice))
     }
     router.push(`/checkout?${params.toString()}`)
   }
@@ -1458,6 +1482,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   isWishlisted={isWishlisted}
                   onOpenCompare={() => setCompareModalOpen(true)}
                   formatPrice={(value) => inr.format(value)}
+                  flashSaleInfo={flashSaleInfo}
                 />
                 <DeliveryInfo
                   pinCode={pinCode}

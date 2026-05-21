@@ -64,26 +64,35 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
     
     console.log(`[Flash Sale API] Found ${flashSaleItems.length} flash sale items for ${productIds.length} products:`, productIds)
     
-    // Fetch products - try with id filter
+    // Fetch products — hard-filtered to status=published. This is the live
+    // sync mechanism: if an admin flips a product to draft, it's silently
+    // hidden from the storefront flash sale; flip it back to published and
+    // it returns. No DB writes needed, no cron, fully idempotent.
     let products: any[] = []
     try {
       products = await productModuleService.listProducts({
         id: productIds,
+        status: ["published"],
       })
-      console.log(`[Flash Sale API] Fetched ${products.length} products from productModuleService`)
+      console.log(`[Flash Sale API] Fetched ${products.length} published products from productModuleService`)
     } catch (error: any) {
       console.error('[Flash Sale API] Error fetching products:', error.message)
-      // Try fetching one by one as fallback
+      // Fallback: fetch one by one and filter by status manually.
       products = []
       for (const productId of productIds) {
         try {
           const product = await productModuleService.retrieveProduct(productId)
-          if (product) products.push(product)
+          if (product && (product as any).status === "published") products.push(product)
         } catch (e) {
           console.error(`[Flash Sale API] Failed to fetch product ${productId}:`, e)
         }
       }
-      console.log(`[Flash Sale API] Fetched ${products.length} products using fallback method`)
+      console.log(`[Flash Sale API] Fetched ${products.length} published products using fallback method`)
+    }
+
+    const skippedDraftCount = productIds.length - products.length
+    if (skippedDraftCount > 0) {
+      console.log(`[Flash Sale API] Hid ${skippedDraftCount} flash sale item(s) whose product is not published`)
     }
     
     // Create flash sale item map by product_id
@@ -111,11 +120,18 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
       // Get variant_id from product or flash sale item
       const variantId = flashSaleItem.variant_id || product.variants?.[0]?.id || null
       
+      // Postgres returns NUMERIC columns as strings ("900.00"), which breaks
+      // downstream comparisons like `mrp > price` (string-compare bug that
+      // makes some flash-sale cards show "0% off"). Always hand the
+      // storefront real numbers so every consumer can compare/render safely.
+      const flashSalePriceNum = Number(flashSaleItem.flash_sale_price)
+      const originalPriceNum = Number(flashSaleItem.original_price)
+
       return {
         ...product,
         variant_id: variantId, // Include variant_id for add to cart
-        flash_sale_price: flashSaleItem.flash_sale_price, // Already in rupees
-        original_price: flashSaleItem.original_price,     // Already in rupees
+        flash_sale_price: Number.isFinite(flashSalePriceNum) ? flashSalePriceNum : 0,
+        original_price: Number.isFinite(originalPriceNum) ? originalPriceNum : 0,
         flash_sale: {
           expires_at: expiresAt.toISOString(),
           time_remaining_ms: timeRemaining,

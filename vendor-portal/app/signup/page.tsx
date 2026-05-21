@@ -593,8 +593,23 @@ export default function SignupPage() {
           {/* Form */}
           <form onSubmit={handleSubmit}>
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
-                {error}
+              <div
+                role="alert"
+                className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6 shadow-sm"
+              >
+                <svg
+                  className="w-5 h-5 mt-0.5 shrink-0"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span className="text-sm leading-relaxed">{error}</span>
               </div>
             )}
 
@@ -614,7 +629,7 @@ export default function SignupPage() {
                       value={personalData.firstName}
                       onChange={handlePersonalChange}
                       placeholder="First Name"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 focus:bg-white hover:border-slate-300 transition"
                     />
                   </div>
                   <div>
@@ -629,7 +644,7 @@ export default function SignupPage() {
                       value={personalData.lastName}
                       onChange={handlePersonalChange}
                       placeholder="Last Name"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 focus:bg-white hover:border-slate-300 transition"
                     />
                   </div>
                   <div>
@@ -645,10 +660,10 @@ export default function SignupPage() {
                       value={personalData.telephone}
                       onChange={handlePersonalChange}
                       placeholder="10 digit phone number"
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                      className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:bg-white hover:border-slate-300 transition ${
                         fieldErrors.telephone
                           ? 'border-red-500 focus:border-red-500'
-                          : 'border-gray-300 focus:border-green-500'
+                          : 'border-slate-200 focus:border-green-500'
                       }`}
                     />
                     {fieldErrors.telephone && (
@@ -667,10 +682,10 @@ export default function SignupPage() {
                       value={personalData.email}
                       onChange={handlePersonalChange}
                       placeholder="E-Mail"
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                      className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:bg-white hover:border-slate-300 transition ${
                         fieldErrors.email
                           ? 'border-red-500 focus:border-red-500'
-                          : 'border-gray-300 focus:border-green-500'
+                          : 'border-slate-200 focus:border-green-500'
                       }`}
                     />
                     {fieldErrors.email && (
@@ -689,7 +704,7 @@ export default function SignupPage() {
                       value={personalData.password}
                       onChange={handlePersonalChange}
                       placeholder="Password"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 focus:bg-white hover:border-slate-300 transition"
                     />
                   </div>
                   <div>
@@ -704,7 +719,7 @@ export default function SignupPage() {
                       value={personalData.passwordConfirm}
                       onChange={handlePersonalChange}
                       placeholder="Password Confirm"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 focus:bg-white hover:border-slate-300 transition"
                     />
                   </div>
                 </div>
@@ -736,10 +751,10 @@ export default function SignupPage() {
                       value={sellerData.storeName}
                       onChange={handleSellerChange}
                       placeholder="Store Name"
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                      className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:bg-white hover:border-slate-300 transition ${
                         fieldErrors.storeName
                           ? 'border-red-500 focus:border-red-500'
-                          : 'border-gray-300 focus:border-green-500'
+                          : 'border-slate-200 focus:border-green-500'
                       }`}
                     />
                     {fieldErrors.storeName && (
@@ -764,10 +779,10 @@ export default function SignupPage() {
                         }
                       }}
                       placeholder="10 digit phone number"
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                      className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:bg-white hover:border-slate-300 transition ${
                         fieldErrors.storePhone || fieldErrors.store_phone
                           ? 'border-red-500 focus:border-red-500'
-                          : 'border-gray-300 focus:border-green-500'
+                          : 'border-slate-200 focus:border-green-500'
                       }`}
                     />
                     {fieldErrors.storePhone && (
@@ -792,7 +807,7 @@ export default function SignupPage() {
                       />
                       <label
                         htmlFor="storeLogo"
-                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md cursor-pointer hover:bg-gray-200"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg font-medium shadow-sm cursor-pointer hover:bg-green-50 hover:border-green-300 hover:text-green-700 transition"
                       >
                         Choose File
                       </label>
@@ -817,7 +832,7 @@ export default function SignupPage() {
                       />
                       <label
                         htmlFor="storeBanner"
-                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md cursor-pointer hover:bg-gray-200"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg font-medium shadow-sm cursor-pointer hover:bg-green-50 hover:border-green-300 hover:text-green-700 transition"
                       >
                         Choose File
                       </label>
@@ -838,7 +853,7 @@ export default function SignupPage() {
                       onChange={handleSellerChange}
                       placeholder="Store Address"
                       rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 focus:bg-white hover:border-slate-300 transition"
                     />
                   </div>
                   <div>
@@ -852,7 +867,7 @@ export default function SignupPage() {
                       value={sellerData.storeCountry}
                       onChange={handleSellerChange}
                       placeholder="Store Country"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 focus:bg-white hover:border-slate-300 transition"
                     />
                   </div>
                   <div>
@@ -866,7 +881,7 @@ export default function SignupPage() {
                       value={sellerData.storeRegion}
                       onChange={handleSellerChange}
                       placeholder="Store Region / State"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 focus:bg-white hover:border-slate-300 transition"
                     />
                   </div>
                   <div>
@@ -880,7 +895,7 @@ export default function SignupPage() {
                       value={sellerData.storeCity}
                       onChange={handleSellerChange}
                       placeholder="Store City"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 focus:bg-white hover:border-slate-300 transition"
                     />
                   </div>
                   <div>
@@ -894,7 +909,7 @@ export default function SignupPage() {
                       value={sellerData.pincode}
                       onChange={handleSellerChange}
                       placeholder="Pincode"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 focus:bg-white hover:border-slate-300 transition"
                     />
                   </div>
                   <div className="md:col-span-2">
@@ -908,7 +923,7 @@ export default function SignupPage() {
                       onChange={handleSellerChange}
                       placeholder="Store Shipping Policy"
                       rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 focus:bg-white hover:border-slate-300 transition"
                     />
                   </div>
                   <div className="md:col-span-2">
@@ -922,7 +937,7 @@ export default function SignupPage() {
                       onChange={handleSellerChange}
                       placeholder="Store Return Policy"
                       rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 focus:bg-white hover:border-slate-300 transition"
                     />
                   </div>
                   <div>
@@ -943,10 +958,10 @@ export default function SignupPage() {
                         }
                       }}
                       placeholder="10 digit phone number"
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                      className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:bg-white hover:border-slate-300 transition ${
                         fieldErrors.whatsappNumber
                           ? 'border-red-500 focus:border-red-500'
-                          : 'border-gray-300 focus:border-green-500'
+                          : 'border-slate-200 focus:border-green-500'
                       }`}
                     />
                     {fieldErrors.whatsappNumber && (
@@ -988,7 +1003,7 @@ export default function SignupPage() {
                       value={paymentData.bankName}
                       onChange={handlePaymentChange}
                       placeholder="Bank Name"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 focus:bg-white hover:border-slate-300 transition"
                     />
                   </div>
                   <div>
@@ -1002,7 +1017,7 @@ export default function SignupPage() {
                       value={paymentData.accountNo}
                       onChange={handlePaymentChange}
                       placeholder="Bank No"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 focus:bg-white hover:border-slate-300 transition"
                     />
                   </div>
                   <div>
@@ -1016,7 +1031,7 @@ export default function SignupPage() {
                       value={paymentData.ifscCode}
                       onChange={handlePaymentChange}
                       placeholder="IFSC Code"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 focus:bg-white hover:border-slate-300 transition"
                     />
                   </div>
                   <div>
@@ -1032,10 +1047,10 @@ export default function SignupPage() {
                       placeholder="15 character GST number"
                       maxLength={15}
                       style={{ textTransform: 'uppercase' }}
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                      className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:bg-white hover:border-slate-300 transition ${
                         fieldErrors.gstNo
                           ? 'border-red-500 focus:border-red-500'
-                          : 'border-gray-300 focus:border-green-500'
+                          : 'border-slate-200 focus:border-green-500'
                       }`}
                     />
                     {fieldErrors.gstNo && (
@@ -1054,10 +1069,10 @@ export default function SignupPage() {
                       onChange={handlePaymentChange}
                       placeholder="ABCDE1234F"
                       maxLength={10}
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 uppercase ${
+                      className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-lg text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:bg-white hover:border-slate-300 transition uppercase ${
                         fieldErrors.panNo
                           ? 'border-red-500 focus:border-red-500'
-                          : 'border-gray-300 focus:border-green-500'
+                          : 'border-slate-200 focus:border-green-500'
                       }`}
                       style={{ textTransform: 'uppercase' }}
                     />
@@ -1080,7 +1095,7 @@ export default function SignupPage() {
                       />
                       <label
                         htmlFor="cancelCheque"
-                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md cursor-pointer hover:bg-gray-200"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg font-medium shadow-sm cursor-pointer hover:bg-green-50 hover:border-green-300 hover:text-green-700 transition"
                       >
                         Choose File
                       </label>
@@ -1105,7 +1120,7 @@ export default function SignupPage() {
                       />
                       <label
                         htmlFor="additionalDocuments"
-                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md cursor-pointer hover:bg-gray-200"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg font-medium shadow-sm cursor-pointer hover:bg-green-50 hover:border-green-300 hover:text-green-700 transition"
                       >
                         Choose Files
                       </label>

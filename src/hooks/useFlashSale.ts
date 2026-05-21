@@ -40,10 +40,21 @@ export function useFlashSale(productId: string | undefined) {
             const product = data.products.find((p: { id: string; flash_sale_price?: number; original_price?: number; flash_sale?: { expires_at: string; time_remaining_ms: number } }) => p.id === productId)
             
             if (product && product.flash_sale) {
+              // Belt-and-braces: coerce numeric prices in case the upstream
+              // API serializes Postgres NUMERICs as strings. Comparing
+              // strings ("1000" vs "900") gives the wrong answer.
+              const toNum = (v: unknown): number | undefined => {
+                if (typeof v === "number" && Number.isFinite(v)) return v
+                if (typeof v === "string" && v.trim() !== "") {
+                  const n = Number(v)
+                  return Number.isFinite(n) ? n : undefined
+                }
+                return undefined
+              }
               setFlashSaleInfo({
                 active: true,
-                flash_sale_price: product.flash_sale_price,
-                original_price: product.original_price,
+                flash_sale_price: toNum(product.flash_sale_price),
+                original_price: toNum(product.original_price),
                 expires_at: product.flash_sale.expires_at,
                 time_remaining_ms: product.flash_sale.time_remaining_ms,
               })

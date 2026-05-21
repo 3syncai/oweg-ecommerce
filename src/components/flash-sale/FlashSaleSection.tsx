@@ -210,27 +210,41 @@ function FlashSaleProductCard({ product }: { product: FlashSaleProduct }) {
   // Get variant_id from product
   const variantId = product.variant_id || product.variants?.[0]?.id || null
 
+  // Defensive coercion: Postgres NUMERIC columns serialize as strings
+  // ("900.00"), so `flash_sale_price` / `original_price` may arrive as
+  // strings depending on upstream. We must always return real numbers,
+  // otherwise `mrp > price` does a *string* comparison ("1000" < "900" by
+  // first-char) and the discount badge silently reads 0%.
+  const toNumber = (value: unknown): number => {
+    if (typeof value === "number") return Number.isFinite(value) ? value : 0
+    if (typeof value === "string" && value.trim() !== "") {
+      const n = Number(value)
+      return Number.isFinite(n) ? n : 0
+    }
+    return 0
+  }
+
   const calculatePrice = () => {
-    if (product.flash_sale_price !== undefined) {
-      return product.flash_sale_price
+    if (product.flash_sale_price !== undefined && product.flash_sale_price !== null) {
+      return toNumber(product.flash_sale_price)
     }
     if (product.metadata?.price) {
-      return product.metadata.price
+      return toNumber(product.metadata.price)
     }
     const variant = product.variants?.[0]
     const price = variant?.prices?.[0]?.amount
     if (price) {
-      return price / 100 // Convert from cents
+      return toNumber(price) / 100 // Convert from cents
     }
     return 0
   }
 
   const calculateMRP = () => {
-    if (product.original_price !== undefined) {
-      return product.original_price
+    if (product.original_price !== undefined && product.original_price !== null) {
+      return toNumber(product.original_price)
     }
     if (product.metadata?.mrp) {
-      return product.metadata.mrp
+      return toNumber(product.metadata.mrp)
     }
     return calculatePrice()
   }

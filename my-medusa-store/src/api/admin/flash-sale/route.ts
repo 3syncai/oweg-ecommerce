@@ -18,45 +18,59 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
     // Get unique product IDs
     const productIds = Array.from(new Set(activeItems.map((item: any) => item.product_id)))
     
-    // Fetch products for display
+    // Fetch products for display — include ALL statuses (draft + published)
+    // here so the admin can see flash sale items that are currently hidden
+    // from the storefront because their product is in draft.
     const productsMap = new Map()
     if (productIds.length > 0) {
       try {
         const products = await productModuleService.listProducts({
           id: productIds,
         })
-        
+
         products.forEach((product: any) => {
           productsMap.set(product.id, {
             id: product.id,
             title: product.title,
             thumbnail: product.thumbnail,
+            status: product.status, // 'draft' | 'proposed' | 'published' | 'rejected'
           })
         })
       } catch (productErr: any) {
         console.error("Error fetching products for flash sales:", productErr)
       }
     }
-    
+
     // Group items by expiration time and enrich with product data
     const now = new Date()
     const enrichedItems = activeItems.map((item: any) => {
       const expiresAt = item.expires_at instanceof Date ? item.expires_at : new Date(item.expires_at)
       const isActive = expiresAt > now
-      const product = productsMap.get(item.product_id) || { id: item.product_id, title: "Unknown Product" }
-      
+      const product = productsMap.get(item.product_id) || {
+        id: item.product_id,
+        title: "Unknown Product",
+        status: "deleted",
+      }
+      // "Live" = timer still running AND product is currently published in
+      // the catalogue. This is the exact same condition the storefront uses,
+      // so the admin can see at-a-glance what the customer sees.
+      const isPublished = product.status === "published"
+      const isLive = isActive && isPublished
+
       return {
         id: item.id,
         product_id: item.product_id,
         variant_id: item.variant_id,
         product_title: product.title,
         product_thumbnail: product.thumbnail,
+        product_status: product.status,
         flash_sale_price: item.flash_sale_price,
         original_price: item.original_price,
         expires_at: item.expires_at,
         created_at: item.created_at,
         updated_at: item.updated_at,
         is_active: isActive,
+        is_live: isLive,
         time_remaining_ms: isActive ? Math.max(0, expiresAt.getTime() - now.getTime()) : 0,
       }
     })
@@ -74,9 +88,11 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
       return bExpires - aExpires // Expired: most recent first
     })
     
-    return res.json({ 
+    return res.json({
       flash_sale_items: enrichedItems,
       active_count: enrichedItems.filter((item: any) => item.is_active).length,
+      live_count: enrichedItems.filter((item: any) => item.is_live).length,
+      hidden_count: enrichedItems.filter((item: any) => item.is_active && !item.is_live).length,
       total_count: enrichedItems.length,
     })
   } catch (error: any) {
