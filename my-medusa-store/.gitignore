@@ -48,6 +48,14 @@ dump.rdb
 uploads/
 storage/
 
+# The `uploads/` pattern above is meant for runtime user-uploaded files,
+# but it also matches our source-code route directory at
+# src/api/store/vendor/uploads/ — which has to be committed and deployed,
+# otherwise the vendor-signup form gets 404 on POST /store/vendor/uploads.
+# Whitelist that specific source path back in.
+!src/api/store/vendor/uploads/
+!src/api/store/vendor/uploads/**
+
 # Misc
 coverage/
 .nyc_output/
