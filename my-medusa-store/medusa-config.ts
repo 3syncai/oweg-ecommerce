@@ -6,12 +6,42 @@ export default defineConfig({
   projectConfig: {
     databaseUrl: process.env.DATABASE_URL,
     http: {
-      // CORS configuration - supports comma-separated URLs or single URL
-      // Frontend URL: https://oweg-ecommerce.vercel.app/
-      // Affiliate Portal: http://localhost:5000
-      storeCors: process.env.STORE_CORS || `http://localhost:3000,http://localhost:3001,${process.env.VENDOR_CORS || "http://localhost:4000"},https://oweg-ecommerce.vercel.app`,
+      // CORS configuration — list every first-party origin that the browser
+      // is allowed to hit /store, /admin, /auth from. Supports plain origins
+      // OR regex literals wrapped in slashes (e.g. /^https:\/\/foo-.*$/).
+      //
+      // We include the production storefront, vendor portal, and their
+      // Vercel preview deployments so PR previews work too. Any *_CORS env
+      // var on the host *replaces* the matching default — when you set
+      // STORE_CORS make sure it contains every URL listed below or things
+      // will break in production.
+      //
+      //   Storefront:    https://oweg-ecommerce.vercel.app + previews
+      //   Vendor portal: https://oweg-vendor-portal.vercel.app + previews
+      //   Affiliate:     http://localhost:5000
+      storeCors:
+        process.env.STORE_CORS ||
+        [
+          "http://localhost:3000",
+          "http://localhost:3001",
+          process.env.VENDOR_CORS || "http://localhost:4000",
+          "https://oweg-ecommerce.vercel.app",
+          "https://oweg-vendor-portal.vercel.app",
+          "/^https:\\/\\/oweg-ecommerce-[a-z0-9-]+\\.vercel\\.app$/",
+          "/^https:\\/\\/oweg-vendor-portal-[a-z0-9-]+\\.vercel\\.app$/",
+        ].join(","),
       adminCors: process.env.ADMIN_CORS || "http://localhost:7001",
-      authCors: process.env.AUTH_CORS || `http://localhost:3000,http://localhost:3001,${process.env.VENDOR_CORS || "http://localhost:4000"},https://oweg-ecommerce.vercel.app`,
+      authCors:
+        process.env.AUTH_CORS ||
+        [
+          "http://localhost:3000",
+          "http://localhost:3001",
+          process.env.VENDOR_CORS || "http://localhost:4000",
+          "https://oweg-ecommerce.vercel.app",
+          "https://oweg-vendor-portal.vercel.app",
+          "/^https:\\/\\/oweg-ecommerce-[a-z0-9-]+\\.vercel\\.app$/",
+          "/^https:\\/\\/oweg-vendor-portal-[a-z0-9-]+\\.vercel\\.app$/",
+        ].join(","),
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     },
