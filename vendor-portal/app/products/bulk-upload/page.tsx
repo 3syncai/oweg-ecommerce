@@ -19,6 +19,11 @@ import {
   vendorProductsApi,
 } from "@/lib/api/client"
 import { generateSku, isValidSkuFormat } from "@/lib/sku"
+import {
+  extractEmbeddedImages,
+  indexToColumnLetter,
+  splitCellAddress,
+} from "@/lib/xlsx-embedded-images"
 
 type RawRow = Record<string, unknown>
 
@@ -120,10 +125,31 @@ const TEMPLATE_HEADERS: Array<{ key: string; example: string; required?: boolean
   { key: "Price INR", example: "1999", required: true },
   { key: "Discounted Price INR", example: "1499" },
   { key: "Discount %", example: "(auto)" },
+  // Image columns — one image per cell.
+  // You can either:
+  //   (a) Use Excel's Insert → Picture in Cell (Excel 2021 / M365) — the
+  //       portal extracts the binary directly from the .xlsx and uploads it.
+  //   (b) Type a filename and drop the matching file in the portal's image
+  //       dropzone — filenames are matched case-insensitively.
+  // The Image 1..Image 5 columns each hold ONE image; add more by editing
+  // TEMPLATE_HEADERS and IMAGE_COLUMN_PATTERN.
   { key: "Thumbnail", example: "winter-jacket-1.jpg" },
-  { key: "Images", example: "winter-jacket-2.jpg, winter-jacket-3.jpg" },
+  { key: "Image 1", example: "winter-jacket-2.jpg" },
+  { key: "Image 2", example: "winter-jacket-3.jpg" },
+  { key: "Image 3", example: "" },
+  { key: "Image 4", example: "" },
+  { key: "Image 5", example: "" },
   { key: "Brand Letter", example: "nike-letter.pdf" },
 ]
+
+// Matches "Image 1", "Image 2", ..., "Image10", "image_1", etc. Used by both
+// the row parser (legacy filename-based flow) and the embedded-image cell
+// resolver. Keeping this in one place means adding/removing image columns is
+// a one-line edit above. We also accept the legacy "Images" (plural) column
+// as a synonym for backwards compatibility with templates the user already
+// downloaded — that one holds comma-separated filenames.
+const IMAGE_COLUMN_PATTERN = /^image\s*\d*$/i
+const LEGACY_IMAGES_COLUMN = "Images"
 
 const normalizeImageKey = (name: string): string =>
   name.trim().toLowerCase()
@@ -443,13 +469,24 @@ const VendorProductsBulkUploadPage = () => {
       ["7. Category and Collection must match an existing entry by name."],
       ["8. Brand authorization must be approved by admin before products can be created."],
       [],
-      ["Images:"],
-      ["• 'Thumbnail' column: filename of the main image (e.g. winter-jacket-1.jpg)."],
-      ["• 'Images' column: comma-separated filenames of additional photos."],
-      ["  Example: winter-jacket-2.jpg, winter-jacket-3.jpg, winter-jacket-4.jpg"],
-      ["• After uploading the Excel file in the portal, you'll be prompted to drop"],
-      ["  the matching image files. The portal uploads them to S3 and links each"],
-      ["  filename to the right product. Filenames are matched case-insensitively."],
+      ["Images — two ways to add them:"],
+      [""],
+      ["  Method A — Embed images directly in cells (recommended, Excel 2021 / M365 only):"],
+      ["  • Click the cell (Thumbnail, Image 1, Image 2, ...), then Insert → Picture in Cell."],
+      ["  • One image per cell. Use as many Image columns as you have photos."],
+      ["  • Need more than 5 images per product? Duplicate columns Image 6, Image 7, ..."],
+      ["  • The portal extracts the image bytes from the .xlsx and uploads them to S3."],
+      ["  • No separate dropzone step needed."],
+      [""],
+      ["  Method B — Type filenames + drop files separately (works in any Excel version):"],
+      ["  • Type the filename of each image in its cell (e.g. winter-jacket-1.jpg)."],
+      ["  • After uploading the .xlsx, the portal shows an image dropzone — drop all the"],
+      ["    matching image files there. Filenames are matched case-insensitively."],
+      [""],
+      ["  You can mix and match — some cells embedded, some by filename, in the same row."],
+      [""],
+      ["  Legacy: the old single 'Images' column with comma-separated filenames is still"],
+      ["  supported, so templates downloaded earlier keep working."],
       [],
       ["Brand authorization letters:"],
       ["• Use the 'Brand Letter' column to reference the letter file for that"],
@@ -560,10 +597,25 @@ const VendorProductsBulkUploadPage = () => {
         : []
 
       const thumbnailRef = toStr(get("Thumbnail"))
-      const imagesRaw = toStr(get("Images"))
-      const imageRefs = imagesRaw
-        ? imagesRaw.split(",").map((t) => t.trim()).filter(Boolean)
-        : []
+
+      // Collect image filenames from:
+      //   - Image 1, Image 2, ... Image N columns (one filename each)
+      //   - Legacy "Images" column (comma-separated, kept for older templates)
+      // Both produce strings of filenames the user is expected to upload via
+      // the dropzone unless they used embedded images (handled separately).
+      const imageRefs: string[] = []
+      for (const headerKey of Object.keys(r)) {
+        if (!IMAGE_COLUMN_PATTERN.test(headerKey)) continue
+        const v = toStr(get(headerKey))
+        if (v) imageRefs.push(v)
+      }
+      const legacyImagesRaw = toStr(get(LEGACY_IMAGES_COLUMN))
+      if (legacyImagesRaw) {
+        for (const piece of legacyImagesRaw.split(",")) {
+          const t = piece.trim()
+          if (t) imageRefs.push(t)
+        }
+      }
       const brandLetterRef = toStr(get("Brand Letter"))
 
       return {
@@ -626,20 +678,168 @@ const VendorProductsBulkUploadPage = () => {
         return
       }
       const parsed = parseRows(json)
+
+      // -------- Embedded "Images in Cells" support (Excel 2021+ / M365) --------
+      //
+      // When a user uses Excel's "Insert Picture in Cell" feature instead of
+      // typing filenames, the cells look empty to SheetJS but actually carry
+      // a vm="N" rich-data reference. We extract those binaries out of the
+      // .xlsx ZIP, figure out which row + column each one belongs to, and
+      // inject them into the parsed rows so they behave exactly like images
+      // the user uploaded manually via the dropzone.
+      //
+      // Mapping rules:
+      //   Thumbnail column → row.thumbnailRef (overwrites blank or appends)
+      //   Images column    → row.imageRefs (appended)
+      //   Brand Letter     → silently ignored here; the brand-letter flow has
+      //                      its own UI dropzone and doesn't go through ImageMap.
+      //
+      // Synthetic filename format keeps embedded images isolated from any
+      // filename-based refs in the same row, so we never collide.
+      let embeddedImageSeed: ImageMap = {}
+      let embeddedCount = 0
+      try {
+        const embedded = await extractEmbeddedImages(file)
+        if (embedded.length > 0) {
+          // Build "header text -> column letter" map by reading row 1.
+          const headerRows = XLSX.utils.sheet_to_json<RawRow>(sheet, {
+            header: 1,
+            defval: "",
+            raw: false,
+          }) as unknown as unknown[][]
+          const headerRow = (headerRows[0] as string[]) || []
+          const headerToColumn = new Map<string, string>()
+          headerRow.forEach((label, idx) => {
+            if (typeof label === "string" && label.trim()) {
+              headerToColumn.set(label.trim(), indexToColumnLetter(idx + 1))
+            }
+          })
+
+          const thumbnailColumn = headerToColumn.get("Thumbnail")
+          // Collect every column letter that holds product images:
+          //   - Image 1, Image 2, ... Image N  (current template, 1 image each)
+          //   - Images                          (legacy template, one cell only)
+          // Embedded images in any of these columns funnel into row.imageRefs.
+          const imagesColumnLetters = new Set<string>()
+          headerRow.forEach((label, idx) => {
+            if (typeof label !== "string") return
+            const trimmed = label.trim()
+            if (IMAGE_COLUMN_PATTERN.test(trimmed) || trimmed === LEGACY_IMAGES_COLUMN) {
+              imagesColumnLetters.add(indexToColumnLetter(idx + 1))
+            }
+          })
+          // Only consider this sheet's embeddings; sheet name from SheetJS
+          // matches what extractEmbeddedImages reports because both read
+          // it from workbook.xml.
+          const embeddedThisSheet = embedded.filter(
+            (e) => e.sheetName === sheetName
+          )
+
+          // Group cells by row so multiple Images-column embeddings (rare but
+          // possible if the user duplicates the column) all land in the same
+          // row's imageRefs.
+          const byRow = new Map<number, typeof embedded>()
+          for (const e of embeddedThisSheet) {
+            const addr = splitCellAddress(e.cellAddress)
+            if (!addr) continue
+            const list = byRow.get(addr.row) || []
+            list.push(e)
+            byRow.set(addr.row, list)
+          }
+
+          parsed.forEach((row) => {
+            // ParsedRow.rowNumber is the sheet row number (1-based, with
+            // row 1 being headers), so data rows start at 2. parseRows()
+            // already sets rowNumber correctly so we trust it here.
+            const sheetRow = row.rowNumber
+            const cells = byRow.get(sheetRow) || []
+
+            for (const e of cells) {
+              const addr = splitCellAddress(e.cellAddress)
+              if (!addr) continue
+
+              if (thumbnailColumn && addr.column === thumbnailColumn) {
+                const synthName = `__embedded_r${sheetRow}_thumbnail_${e.file.name}`
+                // Wrap the original File with the synthetic name so the
+                // matching code in handleImagesPicked stays happy.
+                const namedFile = new File([e.file], synthName, {
+                  type: e.file.type,
+                })
+                row.thumbnailRef = synthName
+                embeddedImageSeed[normalizeImageKey(synthName)] = {
+                  status: "selected",
+                  file: namedFile,
+                }
+                embeddedCount++
+              } else if (imagesColumnLetters.has(addr.column)) {
+                // Each Image-N column carries one image (Excel's Images-in-
+                // Cells feature is one-image-per-cell). We append every match
+                // to the row's image list, so a product can carry as many
+                // photos as the template has Image columns.
+                const synthName = `__embedded_r${sheetRow}_image_${row.imageRefs.length + 1}_${e.file.name}`
+                const namedFile = new File([e.file], synthName, {
+                  type: e.file.type,
+                })
+                row.imageRefs.push(synthName)
+                embeddedImageSeed[normalizeImageKey(synthName)] = {
+                  status: "selected",
+                  file: namedFile,
+                }
+                embeddedCount++
+              }
+              // Anything in other columns (Brand Letter etc.) is ignored —
+              // brand letters have their own dedicated dropzone & flow.
+            }
+          })
+        }
+      } catch (embedErr) {
+        // Don't block parsing if rich-data extraction fails — fall back to
+        // the legacy filename-based flow which still works fine.
+        console.warn("Embedded image extraction failed:", embedErr)
+      }
+      // ----------------------------------------------------------------------
+
       setRows(parsed)
-      const seeded: ImageMap = {}
+      const seeded: ImageMap = { ...embeddedImageSeed }
       parsed.forEach((r) => {
         const allRefs = [r.thumbnailRef, ...r.imageRefs].filter(Boolean)
         allRefs.forEach((name) => {
           const key = normalizeImageKey(name)
+          // Don't downgrade an already-seeded embedded image to "missing".
           if (!seeded[key]) seeded[key] = { status: "missing" }
         })
       })
       setImageMap(seeded)
       setPhase("preview")
       toast.success("File parsed", {
-        description: `${parsed.length} row(s) loaded — review and fix any errors before publishing.`,
+        description:
+          embeddedCount > 0
+            ? `${parsed.length} row(s) loaded — ${embeddedCount} image(s) extracted from cells.`
+            : `${parsed.length} row(s) loaded — review and fix any errors before publishing.`,
       })
+
+      // Auto-upload extracted embedded images to S3 so they show up as
+      // "ready" without the user having to drag them into the dropzone.
+      // We pass the explicit key/file pairs we already built during
+      // extraction — bypassing handleImagesPicked's filename-matching
+      // step which doesn't apply here (the files have synthetic names
+      // that intentionally don't match any user-typed filename).
+      const embeddedToUpload = Object.entries(embeddedImageSeed)
+        .filter(([, v]) => v.status === "selected" && (v as { file?: File }).file)
+        .map(([key, v]) => ({ key, file: (v as { file: File }).file }))
+
+      if (embeddedToUpload.length > 0) {
+        const { ok, failed } = await uploadMatchedFiles(embeddedToUpload)
+        if (failed === 0) {
+          toast.success("Embedded images uploaded", {
+            description: `${ok}/${embeddedToUpload.length} image(s) ready`,
+          })
+        } else {
+          toast.error("Some embedded images failed", {
+            description: `${ok}/${embeddedToUpload.length} uploaded, ${failed} failed — check the rows in red`,
+          })
+        }
+      }
     } catch (err: any) {
       console.error("Excel parse error", err)
       toast.error("Failed to read Excel", {
@@ -658,6 +858,91 @@ const VendorProductsBulkUploadPage = () => {
     e.preventDefault()
     const file = e.dataTransfer.files?.[0]
     if (file) await handleFile(file)
+  }
+
+  /**
+   * Pure S3 uploader: take a list of pre-matched {key, file} pairs and POST
+   * each one to the vendor image endpoint, transitioning the imageMap entry
+   * through "uploading" → "uploaded"/"error".
+   *
+   * Extracted from handleImagesPicked so embedded-image extraction in
+   * handleFile can call it directly without going through the filename-
+   * matching step (those files don't have user-typed filenames to match
+   * against — we already know which imageMap key each one belongs to).
+   *
+   * Returns the count of successes & failures so callers can show their
+   * own toast.
+   */
+  const uploadMatchedFiles = async (
+    matched: Array<{ key: string; file: File }>
+  ): Promise<{ ok: number; failed: number }> => {
+    if (!matched.length) return { ok: 0, failed: 0 }
+
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("vendor_token") : null
+    if (!token) {
+      toast.error("Not authenticated", { description: "Please sign in again" })
+      return { ok: 0, failed: matched.length }
+    }
+
+    setUploadingImages(true)
+    setImageMap((prev) => {
+      const next = { ...prev }
+      matched.forEach(({ key, file }) => {
+        next[key] = { status: "uploading", file }
+      })
+      return next
+    })
+
+    const API_URL =
+      process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000"
+
+    // Track per-call success/failure rather than relying on the post-await
+    // imageMap closure (which can be stale from a still-batched setState).
+    let okCount = 0
+    let failedCount = 0
+
+    await Promise.all(
+      matched.map(async ({ key, file }) => {
+        try {
+          const fd = new FormData()
+          fd.append("productName", "bulk-upload")
+          fd.append("files", file)
+
+          const res = await axios.post(
+            `${API_URL}/vendor/products/upload-image`,
+            fd,
+            { headers: { Authorization: `Bearer ${token}` } }
+          )
+          const uploaded = res.data?.files?.[0]
+          if (!uploaded?.url) throw new Error("Upload returned no URL")
+
+          setImageMap((prev) => ({
+            ...prev,
+            [key]: {
+              status: "uploaded",
+              url: uploaded.url,
+              key: uploaded.key,
+              originalName: uploaded.originalName || file.name,
+            },
+          }))
+          okCount++
+        } catch (err: any) {
+          const message =
+            err?.response?.data?.message ||
+            err?.message ||
+            "Failed to upload image"
+          setImageMap((prev) => ({
+            ...prev,
+            [key]: { status: "error", file, message },
+          }))
+          failedCount++
+        }
+      })
+    )
+
+    setUploadingImages(false)
+    return { ok: okCount, failed: failedCount }
   }
 
   const handleImagesPicked = async (files: File[]) => {
@@ -712,70 +997,9 @@ const VendorProductsBulkUploadPage = () => {
 
     if (!matched.length) return
 
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("vendor_token") : null
-    if (!token) {
-      toast.error("Not authenticated", { description: "Please sign in again" })
-      return
-    }
-
-    setUploadingImages(true)
-    setImageMap((prev) => {
-      const next = { ...prev }
-      matched.forEach(({ key, file }) => {
-        next[key] = { status: "uploading", file }
-      })
-      return next
-    })
-
-    const API_URL =
-      process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000"
-
-    await Promise.all(
-      matched.map(async ({ key, file }) => {
-        try {
-          const fd = new FormData()
-          fd.append("productName", "bulk-upload")
-          fd.append("files", file)
-
-          const res = await axios.post(
-            `${API_URL}/vendor/products/upload-image`,
-            fd,
-            { headers: { Authorization: `Bearer ${token}` } }
-          )
-          const uploaded = res.data?.files?.[0]
-          if (!uploaded?.url) throw new Error("Upload returned no URL")
-
-          setImageMap((prev) => ({
-            ...prev,
-            [key]: {
-              status: "uploaded",
-              url: uploaded.url,
-              key: uploaded.key,
-              originalName: uploaded.originalName || file.name,
-            },
-          }))
-        } catch (err: any) {
-          const message =
-            err?.response?.data?.message ||
-            err?.message ||
-            "Failed to upload image"
-          setImageMap((prev) => ({
-            ...prev,
-            [key]: { status: "error", file, message },
-          }))
-        }
-      })
-    )
-
-    setUploadingImages(false)
-
-    const failed = matched.filter((m) => {
-      const s = imageMap[m.key]
-      return s && s.status === "error"
-    }).length
+    const { ok, failed } = await uploadMatchedFiles(matched)
     toast.success("Images uploaded", {
-      description: `${matched.length - failed}/${matched.length} image(s) ready${
+      description: `${ok}/${matched.length} image(s) ready${
         failed ? `, ${failed} failed` : ""
       }`,
     })
