@@ -1,6 +1,18 @@
 {
     "rewrites": [
         {
+            "source": "/admin/:path*",
+            "destination": "https://api.oweg.itshover.com/admin/:path*"
+        },
+        {
+            "source": "/store/:path*",
+            "destination": "https://api.oweg.itshover.com/store/:path*"
+        },
+        {
+            "source": "/auth/:path*",
+            "destination": "https://api.oweg.itshover.com/auth/:path*"
+        },
+        {
             "source": "/api/:path*",
             "destination": "https://api.oweg.itshover.com/:path*"
         },
