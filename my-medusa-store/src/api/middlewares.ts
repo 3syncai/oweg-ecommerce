@@ -65,16 +65,12 @@ const VENDOR_ALLOWED_LITERAL_ORIGINS = new Set<string>([
   "http://localhost:3000",
   "http://localhost:3001",
   "http://localhost:4000",
-  "http://localhost:5000",
-  "http://localhost:7001",
-  "http://localhost:8000",
   "http://localhost:9000",
-  "http://127.0.0.1:3000",
-  "http://127.0.0.1:9000",
   "https://oweg-ecommerce.vercel.app",
   "https://oweg-vendor-portal.vercel.app",
-  "https://www.oweg.in",
-  "https://oweg.in",
+  "https://www.0weg.in",
+  "https://0weg.in",
+  "https://oweg-ecommerce-o3lv.vercel.app"
 ])
 
 // Anything matching these regexes is also allowed. Covers Vercel preview

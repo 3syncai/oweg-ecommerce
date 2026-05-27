@@ -70,12 +70,12 @@ const AffiliateAdminsPage = () => {
       const data = await response.json()
 
       if (response.ok) {
-        setSuccess("Affiliate admin created successfully!")
+        setSuccess("Partner admin created successfully!")
         setFormData({ name: "", email: "", password: "" })
         setShowCreateForm(false)
         loadAffiliateAdmins()
       } else {
-        setError(data.message || "Failed to create affiliate admin")
+        setError(data.message || "Failed to create partner admin")
       }
     } catch (error: any) {
       setError(error.message || "An error occurred")
@@ -102,7 +102,7 @@ const AffiliateAdminsPage = () => {
   if (loading) {
     return (
       <Container style={{ padding: 24 }}>
-        <Text>Loading affiliate admins...</Text>
+        <Text>Loading partner admins...</Text>
       </Container>
     )
   }
@@ -112,15 +112,15 @@ const AffiliateAdminsPage = () => {
       <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <Heading level="h1" style={{ marginBottom: 8 }}>
-            Affiliate Admins
+            Partner Admins
           </Heading>
           <Text size="small" style={{ color: "var(--fg-muted)" }}>
-            Manage affiliate administrators
+            Manage partner administrators
           </Text>
         </div>
         <Button onClick={() => setShowCreateForm(!showCreateForm)}>
           <Plus style={{ width: 16, height: 16, marginRight: 8 }} />
-          Create Affiliate Admin
+          Create Partner Admin
         </Button>
       </div>
 
@@ -165,7 +165,7 @@ const AffiliateAdminsPage = () => {
           }}
         >
           <Heading level="h2" style={{ marginBottom: 16 }}>
-            Create New Affiliate Admin
+            Create New Partner Admin
           </Heading>
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom: 16 }}>
@@ -224,7 +224,7 @@ const AffiliateAdminsPage = () => {
 
       {affiliateAdmins.length === 0 ? (
         <div style={{ textAlign: "center", padding: 48 }}>
-          <Text style={{ color: "var(--fg-muted)" }}>No affiliate admins found</Text>
+          <Text style={{ color: "var(--fg-muted)" }}>No partner admins found</Text>
         </div>
       ) : (
         <Table>
@@ -271,7 +271,7 @@ const AffiliateAdminsPage = () => {
 }
 
 export const config = defineRouteConfig({
-  label: "Affiliate Admins",
+  label: "Partner Admins",
 })
 
 export default AffiliateAdminsPage

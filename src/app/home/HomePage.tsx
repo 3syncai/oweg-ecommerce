@@ -158,7 +158,7 @@ const HERO_SLIDES = [
   { src: '/HeroBaneer_2.png', href: '/c/home-appliances', label: 'Shop Home Appliances' },
   { src: '/HeroBaneer_3.png', href: '/c/kitchen-appliances', label: 'Shop Kitchen Appliances' },
   { src: '/HeroBaneer_4.png', href: '/c/computer-and-mobile-accessories', label: 'Shop Computer & Mobile Accessories' },
-  { src: '/HeroBaneer_5.png', href: '/c/computer-&-mobile-accessories', label: 'Shop Mobile Accessories' },
+  { src: '/HeroBaneer_5.png', href: '/c/mobile-accessories', label: 'Shop Mobile Accessories' },
   { src: '/HeroBaneer_6.png', href: '/c/surveillance-and-security', label: 'Shop Surveillance & Security' },
   { src: '/HeroBaneer_7.png', href: '/c/clothing', label: 'Shop Clothing' },
   { src: '/HeroBaneer_8.png', href: '/c/bags', label: 'Shop Bags' },
