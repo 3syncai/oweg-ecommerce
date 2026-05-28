@@ -53,6 +53,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       subtitle,
       description,
       handle,
+      type,
+      type_id,
       category_ids,
       collection_id,
       tags,
@@ -370,6 +372,63 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       normalizedCategoryIds = category_ids.filter((id: any) => id && typeof id === "string")
     }
 
+    // Resolve the product type. Vendors can pass either a known `type_id`
+    // (from the picker), a free-text `type` value (from the bulk-upload
+    // combobox, may or may not exist yet), or both. We try to find an
+    // existing product_type by value; if none exists we create one so
+    // the vendor doesn't have to pre-create it in admin.
+    let resolvedTypeId: string | undefined
+    if (type_id && typeof type_id === "string" && type_id.trim()) {
+      resolvedTypeId = type_id.trim()
+    } else if (type && typeof type === "string" && type.trim()) {
+      const productModuleService = req.scope.resolve(Modules.PRODUCT) as any
+      const wantedValue = type.trim()
+      const wantedKey = wantedValue.toLowerCase()
+      try {
+        let existingTypes: any[] = []
+        if (typeof productModuleService.listProductTypes === "function") {
+          existingTypes = await productModuleService.listProductTypes({})
+        } else if (typeof productModuleService.listTypes === "function") {
+          existingTypes = await productModuleService.listTypes({})
+        }
+        const match = (Array.isArray(existingTypes) ? existingTypes : []).find(
+          (t: any) =>
+            typeof t?.value === "string" &&
+            t.value.toLowerCase().trim() === wantedKey
+        )
+        if (match?.id) {
+          resolvedTypeId = match.id
+        } else {
+          // Create a fresh product_type for this value.
+          let created: any = null
+          if (typeof productModuleService.createProductTypes === "function") {
+            const result = await productModuleService.createProductTypes([
+              { value: wantedValue },
+            ])
+            created = Array.isArray(result) ? result[0] : result
+          } else if (typeof productModuleService.createTypes === "function") {
+            const result = await productModuleService.createTypes([
+              { value: wantedValue },
+            ])
+            created = Array.isArray(result) ? result[0] : result
+          }
+          if (created?.id) {
+            resolvedTypeId = created.id
+            console.log(
+              `Auto-created product_type "${wantedValue}" with id ${created.id}`
+            )
+          }
+        }
+      } catch (typeError: any) {
+        // Don't block product creation on type resolution failures —
+        // we just log and skip the type assignment.
+        console.warn(
+          "Could not resolve/create product type:",
+          typeError?.message || typeError
+        )
+      }
+    }
+
     // Normalize collection_id - convert empty string to undefined (Medusa expects undefined, not null)
     const normalizedCollectionId = collection_id && typeof collection_id === "string" && collection_id.trim()
       ? collection_id.trim()
@@ -475,6 +534,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       discountable: discountable !== false,
       category_ids: normalizedCategoryIds,
       collection_id: normalizedCollectionId,
+      type_id: resolvedTypeId,
       tags: normalizedTags,
       images: normalizedImages,
       options: finalOptions,

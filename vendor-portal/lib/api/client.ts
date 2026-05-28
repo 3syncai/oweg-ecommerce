@@ -432,6 +432,37 @@ export const vendorCollectionsApi = {
   },
 }
 
+// Vendor Product Types API — used by the bulk-upload combobox.
+// Vendors can also send a brand-new value when creating a product;
+// the products POST endpoint will auto-create the type.
+export const vendorTypesApi = {
+  list: async (params?: { limit?: number; offset?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.limit) query.append('limit', params.limit.toString())
+    if (params?.offset) query.append('offset', params.offset.toString())
+
+    const queryString = query.toString()
+    return apiRequest<{ product_types: any[]; count: number }>(
+      `/vendor/types${queryString ? `?${queryString}` : ''}`
+    )
+  },
+}
+
+// Vendor Product Tags API — used by the bulk-upload tag chip editor.
+// New tag values typed by the vendor are auto-created server-side.
+export const vendorTagsApi = {
+  list: async (params?: { limit?: number; offset?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.limit) query.append('limit', params.limit.toString())
+    if (params?.offset) query.append('offset', params.offset.toString())
+
+    const queryString = query.toString()
+    return apiRequest<{ product_tags: any[]; count: number }>(
+      `/vendor/tags${queryString ? `?${queryString}` : ''}`
+    )
+  },
+}
+
 // Vendor Stats API
 export const vendorStatsApi = {
   get: async () => {
