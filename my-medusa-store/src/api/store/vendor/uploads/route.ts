@@ -12,7 +12,7 @@ import { randomUUID } from "crypto"
  *
  * Contract (set by `vendorSignupApi.uploadFile` in vendor-portal/lib/api/client.ts):
  *   FormData:
- *     - type:        'logo' | 'banner' | 'cancelcheque' | 'doc'
+ *     - type:        'logo' | 'banner' | 'cancelcheque' | 'doc' | 'pancard'
  *     - vendorHint:  sanitized store name (used to namespace the S3 key)
  *     - file:        the binary file
  *   Response:
@@ -55,7 +55,7 @@ function sanitizeForPath(str: string): string {
   )
 }
 
-const ALLOWED_TYPES = new Set(["logo", "banner", "cancelcheque", "doc"])
+const ALLOWED_TYPES = new Set(["logo", "banner", "cancelcheque", "doc", "pancard"])
 
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res, req)

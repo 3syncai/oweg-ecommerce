@@ -188,11 +188,13 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
                 gap: 4,
             }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>Brand</Text>
+                    <Text size="small" style={{ minWidth: 120, color: "var(--fg-muted)" }}>
+                        Brand <span style={{ color: "var(--fg-error)" }}>*</span>
+                    </Text>
                     <Input
                         value={brand}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => onBrandChange(e.target.value)}
-                        placeholder="Nike, Adidas, etc. (or leave empty for unbranded)"
+                        placeholder="Nike, Adidas, etc."
                         style={{ flex: 1 }}
                     />
                 </div>

@@ -525,7 +525,13 @@ export default function SignupPage() {
     try {
       let store_logo: string | undefined
       let store_banner: string | undefined
-      const uploadedDocuments: Array<{ key: string; url: string; name?: string; type?: string }> = []
+      const uploadedDocuments: Array<{
+        key: string
+        url: string
+        name?: string
+        type?: string
+        category?: string
+      }> = []
 
       const storeName = sellerData.storeName
         ? sellerData.storeName.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase()
@@ -545,6 +551,7 @@ export default function SignupPage() {
             url: store_banner,
             name: storeBanner.name,
             type: storeBanner.type,
+            category: 'store_banner',
           })
         }
       }
@@ -558,13 +565,14 @@ export default function SignupPage() {
             url: file.url,
             name: cancelCheque.name,
             type: cancelCheque.type,
+            category: 'cancel_cheque',
           })
         }
       }
 
       for (const doc of additionalDocuments) {
         if (doc) {
-          const docData = await vendorSignupApi.uploadFile(doc, 'doc', storeName)
+          const docData = await vendorSignupApi.uploadFile(doc, 'pancard', storeName)
           const file = docData.files?.[0]
           if (file) {
             uploadedDocuments.push({
@@ -572,6 +580,7 @@ export default function SignupPage() {
               url: file.url,
               name: doc.name,
               type: doc.type,
+              category: 'pan_card',
             })
           }
         }

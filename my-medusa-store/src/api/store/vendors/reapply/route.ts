@@ -42,6 +42,7 @@ const ReapplySchema = z.object({
     url: z.string(),
     name: z.string().optional(),
     type: z.string().optional(),
+    category: z.string().optional(),
   })).optional().nullable(),
 })
 

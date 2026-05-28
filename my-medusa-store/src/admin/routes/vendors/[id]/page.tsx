@@ -60,6 +60,7 @@ type VendorDocument = {
     signed_url?: string
     name?: string
     type?: string
+    category?: string
 }
 
 type VendorProduct = {
@@ -115,6 +116,28 @@ type Vendor = {
 }
 
 type TabType = "overview" | "documents" | "brands" | "banking" | "products" | "payouts"
+
+// Map a document's category (or a key-path fallback for legacy records) to a
+// human-friendly label that's shown on the documents tab.
+const DOCUMENT_LABELS: Record<string, string> = {
+    pan_card: "PAN Card",
+    cancel_cheque: "Cancel Cheque",
+    store_banner: "Store Banner",
+    store_logo: "Store Logo",
+}
+
+const getDocumentLabel = (doc: VendorDocument): string => {
+    if (doc.category && DOCUMENT_LABELS[doc.category]) {
+        return DOCUMENT_LABELS[doc.category]
+    }
+    const key = (doc.key || "").toLowerCase()
+    if (key.includes("/pancard/") || key.includes("/pan_card/")) return "PAN Card"
+    if (key.includes("/cancelcheque/") || key.includes("/cancel_cheque/")) return "Cancel Cheque"
+    if (key.includes("/banner/")) return "Store Banner"
+    if (key.includes("/logo/")) return "Store Logo"
+    if (key.includes("/doc/") || key.includes("/docs/")) return "PAN Card"
+    return "Document"
+}
 
 const VendorDetailPage = () => {
     const [loading, setLoading] = useState(true)
@@ -512,9 +535,14 @@ const VendorDetailPage = () => {
                                 >
                                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                         <DocumentTextSolid style={{ width: 20, height: 20, color: "var(--fg-muted)" }} />
-                                        <Text weight="plus" style={{ flex: 1, wordBreak: "break-word" }}>
-                                            {doc.name || `Document ${index + 1}`}
-                                        </Text>
+                                        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+                                            <Text weight="plus" style={{ wordBreak: "break-word" }}>
+                                                {getDocumentLabel(doc)}
+                                            </Text>
+                                            <Text size="small" style={{ color: "var(--fg-muted)", wordBreak: "break-word" }}>
+                                                {doc.name || `Document ${index + 1}`}
+                                            </Text>
+                                        </div>
                                     </div>
                                     {doc.type && (
                                         <Badge color="grey" size="small">{doc.type}</Badge>
