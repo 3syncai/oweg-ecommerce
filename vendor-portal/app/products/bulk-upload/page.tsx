@@ -17,6 +17,8 @@ import {
   vendorCategoriesApi,
   vendorCollectionsApi,
   vendorProductsApi,
+  vendorTagsApi,
+  vendorTypesApi,
 } from "@/lib/api/client"
 import { generateSku, isValidSkuFormat } from "@/lib/sku"
 import {
@@ -57,6 +59,17 @@ type ParsedRow = {
   thumbnailRef: string
   imageRefs: string[]
   brandLetterRef: string
+  // User can override the parsed category by picking from the existing
+  // category list, or request a brand-new one via a free-text remark that
+  // gets surfaced to admins on the resulting product. Both can coexist —
+  // selectedCategoryId wins for the actual category assignment, the remark
+  // is stored in product.metadata.category_request for admin review.
+  selectedCategoryId?: string
+  categoryRequest?: string
+  // Same dual-track pattern for collection: pick one of the existing
+  // collections from the dropdown, or leave a remark requesting a new one.
+  selectedCollectionId?: string
+  collectionRequest?: string
   errors: string[]
   warnings: string[]
   status: "pending" | "uploading" | "success" | "failed"
@@ -195,6 +208,8 @@ const VendorProductsBulkUploadPage = () => {
   const [fileName, setFileName] = useState<string>("")
   const [categories, setCategories] = useState<any[]>([])
   const [collections, setCollections] = useState<any[]>([])
+  const [productTypes, setProductTypes] = useState<any[]>([])
+  const [productTags, setProductTags] = useState<any[]>([])
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null)
   const [imageMap, setImageMap] = useState<ImageMap>({})
   const [uploadingImages, setUploadingImages] = useState(false)
@@ -202,6 +217,18 @@ const VendorProductsBulkUploadPage = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const brandInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  // Per-row hidden file inputs so the user can add images directly to a
+  // single row via the "+" button next to that row's thumbnail.
+  const rowImageInputRefs = useRef<Record<number, HTMLInputElement | null>>({})
+  // Tracks which rows have the "Request new category" remark editor open
+  // (independent of whether the user has typed anything yet, so deleting
+  // the remark text doesn't auto-collapse the editor).
+  const [openCategoryRequestRows, setOpenCategoryRequestRows] = useState<
+    Set<number>
+  >(new Set())
+  const [openCollectionRequestRows, setOpenCollectionRequestRows] = useState<
+    Set<number>
+  >(new Set())
   // Tracks brands whose authorization status has already been requested or
   // resolved in the current upload session so we don't re-fire the request
   // (and don't end up cancelling our own in-flight check).
@@ -215,12 +242,24 @@ const VendorProductsBulkUploadPage = () => {
     }
     ;(async () => {
       try {
-        const [catData, colData] = await Promise.all([
+        // We don't await all four in lockstep — types & tags are nice-to-have
+        // and shouldn't block category/collection loading on their failures.
+        const [catData, colData, typesRes, tagsRes] = await Promise.all([
           vendorCategoriesApi.list({ limit: 200 }),
           vendorCollectionsApi.list({ limit: 200 }),
+          vendorTypesApi.list({ limit: 200 }).catch((e) => {
+            console.warn("Failed to load product types", e)
+            return { product_types: [] as any[] }
+          }),
+          vendorTagsApi.list({ limit: 500 }).catch((e) => {
+            console.warn("Failed to load product tags", e)
+            return { product_tags: [] as any[] }
+          }),
         ])
         setCategories(catData.product_categories || [])
         setCollections(colData.collections || [])
+        setProductTypes((typesRes as any).product_types || [])
+        setProductTags((tagsRes as any).product_tags || [])
       } catch (err: any) {
         if (err?.status === 403) {
           router.push("/pending")
@@ -467,7 +506,13 @@ const VendorProductsBulkUploadPage = () => {
       ["5. Boolean columns accept Yes/No, True/False, 1/0."],
       ["6. Tags should be comma-separated (e.g. 'winter, jacket, outdoor')."],
       ["7. Category and Collection must match an existing entry by name."],
-      ["8. Brand authorization must be approved by admin before products can be created."],
+      ["   If they don't match, you can pick a real one (or request a new"],
+      ["   one with a remark) directly in the portal — no need to fix the"],
+      ["   Excel before re-uploading."],
+      ["8. Type and Tags don't need to pre-exist — leaving a brand-new value"],
+      ["   in those columns will auto-create the matching entry in Medusa"],
+      ["   on publish."],
+      ["9. Brand authorization must be approved by admin before products can be created."],
       [],
       ["Images — two ways to add them:"],
       [""],
@@ -557,10 +602,16 @@ const VendorProductsBulkUploadPage = () => {
 
       const categoryName = toStr(get("Category"))
       const collectionName = toStr(get("Collection"))
-      if (categoryName && !categoryByName.has(categoryName.toLowerCase())) {
+      const matchedCategoryId = categoryName
+        ? categoryByName.get(categoryName.toLowerCase())
+        : undefined
+      const matchedCollectionId = collectionName
+        ? collectionByName.get(collectionName.toLowerCase())
+        : undefined
+      if (categoryName && !matchedCategoryId) {
         warnings.push(`Category "${categoryName}" not found — will be ignored`)
       }
-      if (collectionName && !collectionByName.has(collectionName.toLowerCase())) {
+      if (collectionName && !matchedCollectionId) {
         warnings.push(`Collection "${collectionName}" not found — will be ignored`)
       }
 
@@ -648,6 +699,10 @@ const VendorProductsBulkUploadPage = () => {
         thumbnailRef,
         imageRefs,
         brandLetterRef,
+        selectedCategoryId: matchedCategoryId,
+        categoryRequest: "",
+        selectedCollectionId: matchedCollectionId,
+        collectionRequest: "",
         errors,
         warnings,
         status: errors.length > 0 ? "failed" : "pending",
@@ -1005,6 +1060,222 @@ const VendorProductsBulkUploadPage = () => {
     })
   }
 
+  /**
+   * Inline title edit. Updates the row's title and recomputes the
+   * "Title is required" error so the row's status badge and validRows
+   * counter update in real time.
+   */
+  const handleTitleEdit = (rowIdx: number, newTitle: string) => {
+    setRows((prev) => {
+      const next = [...prev]
+      const row = { ...next[rowIdx] }
+      row.title = newTitle
+
+      const otherErrors = row.errors.filter((e) => e !== "Title is required")
+      if (!newTitle.trim()) {
+        row.errors = ["Title is required", ...otherErrors]
+      } else {
+        row.errors = otherErrors
+      }
+
+      // Reset pre-publish "failed" status to "pending" once the row becomes
+      // valid again, so it gets picked up on the next publish click.
+      if (row.errors.length === 0 && row.status === "failed" && !row.errorMessage) {
+        row.status = "pending"
+      } else if (row.errors.length > 0 && row.status !== "uploading" && row.status !== "success") {
+        row.status = "failed"
+        row.errorMessage = undefined
+      }
+
+      next[rowIdx] = row
+      return next
+    })
+  }
+
+  /**
+   * Per-row image upload — invoked from the "+" button next to a row's
+   * thumbnail. Each picked file gets a synthetic filename so it never
+   * collides with anything else in imageMap, and is wired into either
+   * `thumbnailRef` (for the first image of an empty row) or appended to
+   * `imageRefs`.
+   */
+  const handleRowImagePicked = async (rowIdx: number, files: File[]) => {
+    if (!files.length) return
+    const acceptedExts = /\.(jpe?g|png|gif|webp|avif|svg)$/i
+    const accepted = files.filter(
+      (f) => acceptedExts.test(f.name) || f.type.startsWith("image/")
+    )
+    if (!accepted.length) {
+      toast.error("Not an image", {
+        description: "Pick a JPG, PNG, WebP, GIF, AVIF, or SVG file",
+      })
+      return
+    }
+
+    const row = rows[rowIdx]
+    if (!row) return
+
+    const matched: Array<{ key: string; file: File }> = []
+    const newRefs: Array<{ name: string; isThumbnail: boolean }> = []
+
+    accepted.forEach((file, i) => {
+      const synthName = `__row${row.rowNumber}_inline_${Date.now()}_${i}_${file.name}`
+      const namedFile = new File([file], synthName, { type: file.type })
+      matched.push({ key: normalizeImageKey(synthName), file: namedFile })
+      // First file fills the thumbnail slot if the row is missing one.
+      const isThumbnail = i === 0 && !row.thumbnailRef
+      newRefs.push({ name: synthName, isThumbnail })
+    })
+
+    setRows((prev) => {
+      const next = [...prev]
+      const r = { ...next[rowIdx] }
+      newRefs.forEach(({ name, isThumbnail }) => {
+        if (isThumbnail) {
+          r.thumbnailRef = name
+        } else {
+          r.imageRefs = [...r.imageRefs, name]
+        }
+      })
+      next[rowIdx] = r
+      return next
+    })
+
+    setImageMap((prev) => {
+      const nextMap = { ...prev }
+      matched.forEach(({ key, file }) => {
+        nextMap[key] = { status: "selected", file }
+      })
+      return nextMap
+    })
+
+    const { ok, failed } = await uploadMatchedFiles(matched)
+    if (failed === 0) {
+      toast.success("Image added", {
+        description: `${ok} image${ok === 1 ? "" : "s"} attached to row #${row.rowNumber}`,
+      })
+    } else {
+      toast.error("Some images failed", {
+        description: `${ok}/${matched.length} uploaded, ${failed} failed`,
+      })
+    }
+  }
+
+  /**
+   * Inline category override. The picker bypasses the warning when the
+   * Excel cell didn't resolve, so we strip that specific warning when the
+   * row gets a valid category id.
+   */
+  const handleCategorySelect = (rowIdx: number, categoryId: string) => {
+    setRows((prev) => {
+      const next = [...prev]
+      const row = { ...next[rowIdx] }
+      row.selectedCategoryId = categoryId || undefined
+      // Once the user picks (or unsets) a real category, the legacy
+      // "Category … not found — will be ignored" warning is no longer
+      // accurate, so drop it. It'll be re-evaluated automatically next
+      // time we publish the row.
+      if (categoryId) {
+        row.warnings = row.warnings.filter(
+          (w) => !/^Category ".*" not found/.test(w)
+        )
+      }
+      next[rowIdx] = row
+      return next
+    })
+  }
+
+  /**
+   * Free-text remark requesting a brand-new category. We keep this
+   * separate from selectedCategoryId — both can coexist (e.g. user picks
+   * the closest existing match AND leaves a note for admin to create the
+   * exact category later). The remark is persisted onto the product as
+   * metadata.category_request for admins to action.
+   */
+  const handleCategoryRequest = (rowIdx: number, remark: string) => {
+    setRows((prev) => {
+      const next = [...prev]
+      const row = { ...next[rowIdx] }
+      row.categoryRequest = remark
+      if (remark.trim()) {
+        // A non-empty remark also resolves the not-found warning — admin
+        // will see the request and create the category.
+        row.warnings = row.warnings.filter(
+          (w) => !/^Category ".*" not found/.test(w)
+        )
+      }
+      next[rowIdx] = row
+      return next
+    })
+  }
+
+  /**
+   * Inline collection override — same semantics as category. The user
+   * can pick from the existing collections list or, for a missing one,
+   * leave a remark via handleCollectionRequest.
+   */
+  const handleCollectionSelect = (rowIdx: number, collectionId: string) => {
+    setRows((prev) => {
+      const next = [...prev]
+      const row = { ...next[rowIdx] }
+      row.selectedCollectionId = collectionId || undefined
+      if (collectionId) {
+        row.warnings = row.warnings.filter(
+          (w) => !/^Collection ".*" not found/.test(w)
+        )
+      }
+      next[rowIdx] = row
+      return next
+    })
+  }
+
+  const handleCollectionRequest = (rowIdx: number, remark: string) => {
+    setRows((prev) => {
+      const next = [...prev]
+      const row = { ...next[rowIdx] }
+      row.collectionRequest = remark
+      if (remark.trim()) {
+        row.warnings = row.warnings.filter(
+          (w) => !/^Collection ".*" not found/.test(w)
+        )
+      }
+      next[rowIdx] = row
+      return next
+    })
+  }
+
+  /**
+   * Inline product type editor. The Type column is a free-text combobox:
+   * existing types get suggested as a datalist, but the vendor can also
+   * type a brand-new value. New values are auto-created server-side at
+   * publish time, so we don't need a separate "request" mechanism.
+   */
+  const handleTypeChange = (rowIdx: number, value: string) => {
+    setRows((prev) => {
+      const next = [...prev]
+      const row = { ...next[rowIdx] }
+      row.type = value
+      next[rowIdx] = row
+      return next
+    })
+  }
+
+  /**
+   * Inline tag editor — replaces the row's full tag list. Values can be
+   * existing tags from the suggestion list or brand-new strings; the
+   * backend dedupes against existing product_tag entities and creates
+   * any that don't exist.
+   */
+  const handleTagsChange = (rowIdx: number, tags: string[]) => {
+    setRows((prev) => {
+      const next = [...prev]
+      const row = { ...next[rowIdx] }
+      row.tags = tags
+      next[rowIdx] = row
+      return next
+    })
+  }
+
   const handleImageInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length) await handleImagesPicked(files)
@@ -1042,12 +1313,22 @@ const VendorProductsBulkUploadPage = () => {
       setRows([...updated])
 
       try {
-        const collectionId = row.collection
-          ? collectionByName.get(row.collection.toLowerCase()) || null
-          : null
-        const categoryId = row.category
-          ? categoryByName.get(row.category.toLowerCase())
-          : undefined
+        // Prefer the user-picked collection from the inline editor; fall
+        // back to the Excel-resolved one if they didn't touch it.
+        const collectionId =
+          row.selectedCollectionId ||
+          (row.collection
+            ? collectionByName.get(row.collection.toLowerCase())
+            : undefined) ||
+          null
+        const collectionRequest = (row.collectionRequest || "").trim()
+        // Same dual-track for category.
+        const categoryId =
+          row.selectedCategoryId ||
+          (row.category
+            ? categoryByName.get(row.category.toLowerCase())
+            : undefined)
+        const categoryRequest = (row.categoryRequest || "").trim()
 
         const parseNumber = (value: string): number | null => {
           if (!value) return null
@@ -1088,6 +1369,17 @@ const VendorProductsBulkUploadPage = () => {
           if (url && !allImageUrls.includes(url)) allImageUrls.push(url)
         })
 
+        const variantsPayload = [
+          {
+            title: row.variantTitle || "Default variant",
+            sku: row.sku || undefined,
+            manage_inventory: row.managedInventory,
+            allow_backorder: row.allowBackorder,
+            inventory_quantity: inventoryQuantity,
+            prices,
+          },
+        ]
+
         await vendorProductsApi.create({
           title: row.title,
           subtitle: row.subtitle || null,
@@ -1097,20 +1389,15 @@ const VendorProductsBulkUploadPage = () => {
           discountable: row.discountable,
           category_ids: categoryId ? [categoryId] : [],
           collection_id: collectionId,
-          tags: row.tags,
+          // Free-text type. The backend finds an existing product_type by
+          // value or creates a new one, then assigns its id to the product.
+          type: row.type ? row.type.trim() : undefined,
+          // Tags as values — backend resolves/creates them and links by id.
+          tags: row.tags.map((value) => ({ value })),
           images: allImageUrls.map((url) => ({ url })),
           thumbnail: thumbnailUrl || allImageUrls[0] || null,
           options: [],
-          variants: [
-            {
-              title: row.variantTitle || "Default variant",
-              sku: row.sku || undefined,
-              manage_inventory: row.managedInventory,
-              allow_backorder: row.allowBackorder,
-              inventory_quantity: inventoryQuantity,
-              prices,
-            },
-          ],
+          variants: variantsPayload,
           height: parseNumber(row.height),
           width: parseNumber(row.width),
           length: parseNumber(row.length),
@@ -1123,6 +1410,27 @@ const VendorProductsBulkUploadPage = () => {
             hs_code: row.hsCode || null,
             country_of_origin: row.countryOfOrigin || null,
             videos: null,
+            // Free-text remark from the bulk-upload UI requesting a new
+            // category (or providing context for the admin). Surfaced on
+            // the admin product detail page via a widget. Includes the
+            // raw Excel value when it didn't resolve, for context.
+            ...(categoryRequest
+              ? {
+                  category_request: categoryRequest,
+                  category_request_excel_value: row.category || null,
+                  category_request_status: "pending",
+                  category_request_submitted_at: new Date().toISOString(),
+                }
+              : {}),
+            // Same pattern for collection requests.
+            ...(collectionRequest
+              ? {
+                  collection_request: collectionRequest,
+                  collection_request_excel_value: row.collection || null,
+                  collection_request_status: "pending",
+                  collection_request_submitted_at: new Date().toISOString(),
+                }
+              : {}),
           },
         })
 
@@ -1168,7 +1476,10 @@ const VendorProductsBulkUploadPage = () => {
     setUploadingImages(false)
     setBrandAuthMap({})
     brandInputRefs.current = {}
+    rowImageInputRefs.current = {}
     brandsCheckedRef.current = new Set()
+    setOpenCategoryRequestRows(new Set())
+    setOpenCollectionRequestRows(new Set())
   }
 
   return (
@@ -1519,10 +1830,13 @@ const VendorProductsBulkUploadPage = () => {
               <div className="border border-ui-border-base rounded-lg p-4 bg-ui-bg-base space-y-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
-                    <Text weight="plus">Product images</Text>
+                    <Text weight="plus">Product images (bulk drop)</Text>
                     <Text size="small" className="text-ui-fg-subtle">
-                      Drop the image files referenced in your Excel sheet. Filenames
-                      are matched case-insensitively.
+                      Drop the image files referenced in your Excel sheet, or
+                      add images directly to a single product using the{" "}
+                      <span className="font-mono">+</span> button next to that
+                      row in the table below. Filenames are matched
+                      case-insensitively.
                     </Text>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1565,14 +1879,49 @@ const VendorProductsBulkUploadPage = () => {
               </div>
             )}
 
+            {phase === "preview" && (
+              <div className="border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 flex items-start gap-3">
+                <div className="shrink-0 mt-0.5 text-blue-600 dark:text-blue-400">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 16v-4M12 8h.01" />
+                  </svg>
+                </div>
+                <Text size="small" className="text-blue-900 dark:text-blue-200">
+                  <span className="font-medium">Edit rows in place.</span>{" "}
+                  Click the title to rename, the{" "}
+                  <span className="font-mono">+</span> next to a row to
+                  add an image, and use the inline editors to change the
+                  category, collection, type, or tags. New types and tags
+                  are auto-created in Medusa on publish; missing
+                  categories/collections can be requested via{" "}
+                  <span className="italic">Request new</span> for admin
+                  review. Changes are saved here and applied when you publish.
+                </Text>
+              </div>
+            )}
+
             <div className="border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto bg-ui-bg-base">
-              <table className="w-full min-w-[1200px] border-collapse text-sm">
+              <table className="w-full min-w-[1500px] border-collapse text-sm">
                 <thead className="bg-ui-bg-subtle border-b border-ui-border-base">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">#</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Status</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Title</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Brand</th>
+                    <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Category</th>
+                    <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Collection</th>
+                    <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Type</th>
+                    <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Tags</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">SKU</th>
                     <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">Price</th>
                     <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">Discounted</th>
@@ -1607,13 +1956,495 @@ const VendorProductsBulkUploadPage = () => {
                       >
                         <td className="px-3 py-2 text-ui-fg-muted">{row.rowNumber}</td>
                         <td className="px-3 py-2">{statusBadge}</td>
-                        <td className="px-3 py-2">
-                          <div className="font-medium">{row.title || <span className="text-ui-fg-muted">—</span>}</div>
+                        <td className="px-3 py-2 min-w-[220px]">
+                          <input
+                            type="text"
+                            value={row.title}
+                            onChange={(e) => handleTitleEdit(idx, e.target.value)}
+                            placeholder="Product title"
+                            disabled={
+                              phase === "uploading" ||
+                              row.status === "uploading" ||
+                              row.status === "success"
+                            }
+                            className={clx(
+                              "w-full bg-transparent border-0 border-b border-transparent hover:border-ui-border-base focus:border-blue-500 focus:outline-none text-sm font-medium px-0 py-1 transition-colors disabled:opacity-70 disabled:cursor-not-allowed",
+                              !row.title.trim() &&
+                                "text-ui-fg-muted placeholder:italic"
+                            )}
+                            aria-label={`Title for row ${row.rowNumber}`}
+                          />
                           {row.handle && (
                             <div className="text-xs text-ui-fg-subtle">/{row.handle}</div>
                           )}
                         </td>
                         <td className="px-3 py-2">{row.brand || <span className="text-ui-fg-muted">—</span>}</td>
+                        <td className="px-3 py-2 min-w-[220px] align-top">
+                          {(() => {
+                            const canEditCat =
+                              phase !== "uploading" &&
+                              row.status !== "uploading" &&
+                              row.status !== "success"
+                            const remark = row.categoryRequest || ""
+                            const showRequest =
+                              openCategoryRequestRows.has(idx) ||
+                              remark.length > 0
+                            const noCategoriesLoaded = categories.length === 0
+                            const excelMissing =
+                              !noCategoriesLoaded &&
+                              !!row.category &&
+                              !categoryByName.has(row.category.toLowerCase())
+                            const openRequestEditor = () => {
+                              setOpenCategoryRequestRows((prev) => {
+                                const next = new Set(prev)
+                                next.add(idx)
+                                return next
+                              })
+                              // If the Excel cell had a value the admin should
+                              // know about, prefill the remark with it so the
+                              // user doesn't have to retype the missing name.
+                              if (
+                                !row.categoryRequest &&
+                                row.category &&
+                                excelMissing
+                              ) {
+                                handleCategoryRequest(idx, row.category)
+                              }
+                            }
+                            const closeRequestEditor = () => {
+                              setOpenCategoryRequestRows((prev) => {
+                                const next = new Set(prev)
+                                next.delete(idx)
+                                return next
+                              })
+                              handleCategoryRequest(idx, "")
+                            }
+                            return (
+                              <div className="flex flex-col gap-1.5">
+                                <select
+                                  value={row.selectedCategoryId || ""}
+                                  onChange={(e) =>
+                                    handleCategorySelect(idx, e.target.value)
+                                  }
+                                  disabled={!canEditCat || noCategoriesLoaded}
+                                  className={clx(
+                                    "w-full text-xs rounded border bg-ui-bg-base text-ui-fg-base px-2 py-1 focus:border-blue-500 focus:outline-none transition-colors disabled:opacity-60 disabled:cursor-not-allowed",
+                                    !row.selectedCategoryId &&
+                                      excelMissing &&
+                                      !showRequest
+                                      ? "border-amber-400"
+                                      : "border-ui-border-base"
+                                  )}
+                                  aria-label={`Category for row ${row.rowNumber}`}
+                                >
+                                  <option value="">
+                                    {noCategoriesLoaded
+                                      ? "Loading categories…"
+                                      : "— No category —"}
+                                  </option>
+                                  {categories.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                {excelMissing && !row.selectedCategoryId && (
+                                  <Text
+                                    size="xsmall"
+                                    className="text-amber-600 leading-tight"
+                                  >
+                                    Excel said{" "}
+                                    <span className="font-mono">
+                                      {row.category}
+                                    </span>{" "}
+                                    — pick a match or request below.
+                                  </Text>
+                                )}
+
+                                {showRequest ? (
+                                  <div className="flex flex-col gap-1">
+                                    <label className="text-[10px] uppercase tracking-wide text-ui-fg-subtle font-medium flex items-center justify-between">
+                                      <span>Request new category</span>
+                                      {canEditCat && (
+                                        <button
+                                          type="button"
+                                          onClick={closeRequestEditor}
+                                          className="text-ui-fg-interactive normal-case font-normal text-xs hover:underline"
+                                        >
+                                          Cancel
+                                        </button>
+                                      )}
+                                    </label>
+                                    <textarea
+                                      value={remark}
+                                      onChange={(e) =>
+                                        handleCategoryRequest(
+                                          idx,
+                                          e.target.value
+                                        )
+                                      }
+                                      disabled={!canEditCat}
+                                      rows={2}
+                                      placeholder="e.g. Smart home devices — please create"
+                                      className="w-full text-xs rounded border border-ui-border-base bg-ui-bg-base text-ui-fg-base px-2 py-1 focus:border-blue-500 focus:outline-none transition-colors resize-y disabled:opacity-60"
+                                    />
+                                    <Text
+                                      size="xsmall"
+                                      className="text-ui-fg-subtle leading-tight"
+                                    >
+                                      Admin will see this request on the product
+                                      page.
+                                    </Text>
+                                  </div>
+                                ) : (
+                                  canEditCat && (
+                                    <button
+                                      type="button"
+                                      onClick={openRequestEditor}
+                                      className="text-xs text-ui-fg-interactive hover:underline self-start flex items-center gap-1"
+                                    >
+                                      <svg
+                                        width="12"
+                                        height="12"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <path d="M12 5v14M5 12h14" />
+                                      </svg>
+                                      Request new category
+                                    </button>
+                                  )
+                                )}
+                              </div>
+                            )
+                          })()}
+                        </td>
+                        <td className="px-3 py-2 min-w-[220px] align-top">
+                          {(() => {
+                            const canEditCol =
+                              phase !== "uploading" &&
+                              row.status !== "uploading" &&
+                              row.status !== "success"
+                            const remark = row.collectionRequest || ""
+                            const showRequest =
+                              openCollectionRequestRows.has(idx) ||
+                              remark.length > 0
+                            const noCollectionsLoaded = collections.length === 0
+                            const excelMissing =
+                              !noCollectionsLoaded &&
+                              !!row.collection &&
+                              !collectionByName.has(
+                                row.collection.toLowerCase()
+                              )
+                            const openRequestEditor = () => {
+                              setOpenCollectionRequestRows((prev) => {
+                                const next = new Set(prev)
+                                next.add(idx)
+                                return next
+                              })
+                              if (
+                                !row.collectionRequest &&
+                                row.collection &&
+                                excelMissing
+                              ) {
+                                handleCollectionRequest(idx, row.collection)
+                              }
+                            }
+                            const closeRequestEditor = () => {
+                              setOpenCollectionRequestRows((prev) => {
+                                const next = new Set(prev)
+                                next.delete(idx)
+                                return next
+                              })
+                              handleCollectionRequest(idx, "")
+                            }
+                            return (
+                              <div className="flex flex-col gap-1.5">
+                                <select
+                                  value={row.selectedCollectionId || ""}
+                                  onChange={(e) =>
+                                    handleCollectionSelect(
+                                      idx,
+                                      e.target.value
+                                    )
+                                  }
+                                  disabled={
+                                    !canEditCol || noCollectionsLoaded
+                                  }
+                                  className={clx(
+                                    "w-full text-xs rounded border bg-ui-bg-base text-ui-fg-base px-2 py-1 focus:border-blue-500 focus:outline-none transition-colors disabled:opacity-60 disabled:cursor-not-allowed",
+                                    !row.selectedCollectionId &&
+                                      excelMissing &&
+                                      !showRequest
+                                      ? "border-amber-400"
+                                      : "border-ui-border-base"
+                                  )}
+                                  aria-label={`Collection for row ${row.rowNumber}`}
+                                >
+                                  <option value="">
+                                    {noCollectionsLoaded
+                                      ? "Loading collections…"
+                                      : "— No collection —"}
+                                  </option>
+                                  {collections.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.title}
+                                    </option>
+                                  ))}
+                                </select>
+                                {excelMissing && !row.selectedCollectionId && (
+                                  <Text
+                                    size="xsmall"
+                                    className="text-amber-600 leading-tight"
+                                  >
+                                    Excel said{" "}
+                                    <span className="font-mono">
+                                      {row.collection}
+                                    </span>{" "}
+                                    — pick a match or request below.
+                                  </Text>
+                                )}
+                                {showRequest ? (
+                                  <div className="flex flex-col gap-1">
+                                    <label className="text-[10px] uppercase tracking-wide text-ui-fg-subtle font-medium flex items-center justify-between">
+                                      <span>Request new collection</span>
+                                      {canEditCol && (
+                                        <button
+                                          type="button"
+                                          onClick={closeRequestEditor}
+                                          className="text-ui-fg-interactive normal-case font-normal text-xs hover:underline"
+                                        >
+                                          Cancel
+                                        </button>
+                                      )}
+                                    </label>
+                                    <textarea
+                                      value={remark}
+                                      onChange={(e) =>
+                                        handleCollectionRequest(
+                                          idx,
+                                          e.target.value
+                                        )
+                                      }
+                                      disabled={!canEditCol}
+                                      rows={2}
+                                      placeholder="e.g. Summer 2026 — please create"
+                                      className="w-full text-xs rounded border border-ui-border-base bg-ui-bg-base text-ui-fg-base px-2 py-1 focus:border-blue-500 focus:outline-none transition-colors resize-y disabled:opacity-60"
+                                    />
+                                  </div>
+                                ) : (
+                                  canEditCol && (
+                                    <button
+                                      type="button"
+                                      onClick={openRequestEditor}
+                                      className="text-xs text-ui-fg-interactive hover:underline self-start flex items-center gap-1"
+                                    >
+                                      <svg
+                                        width="12"
+                                        height="12"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <path d="M12 5v14M5 12h14" />
+                                      </svg>
+                                      Request new collection
+                                    </button>
+                                  )
+                                )}
+                              </div>
+                            )
+                          })()}
+                        </td>
+                        <td className="px-3 py-2 min-w-[170px] align-top">
+                          {(() => {
+                            const canEditType =
+                              phase !== "uploading" &&
+                              row.status !== "uploading" &&
+                              row.status !== "success"
+                            const datalistId = `vendor-types-list-${idx}`
+                            return (
+                              <>
+                                <input
+                                  list={datalistId}
+                                  type="text"
+                                  value={row.type}
+                                  onChange={(e) =>
+                                    handleTypeChange(idx, e.target.value)
+                                  }
+                                  disabled={!canEditType}
+                                  placeholder="e.g. Apparel"
+                                  className="w-full text-xs rounded border border-ui-border-base bg-ui-bg-base text-ui-fg-base px-2 py-1 focus:border-blue-500 focus:outline-none transition-colors disabled:opacity-60"
+                                  aria-label={`Type for row ${row.rowNumber}`}
+                                />
+                                <datalist id={datalistId}>
+                                  {productTypes.map((t) => (
+                                    <option key={t.id} value={t.value} />
+                                  ))}
+                                </datalist>
+                                {row.type &&
+                                  !productTypes.some(
+                                    (t) =>
+                                      typeof t?.value === "string" &&
+                                      t.value.toLowerCase().trim() ===
+                                        row.type.toLowerCase().trim()
+                                  ) && (
+                                    <Text
+                                      size="xsmall"
+                                      className="text-emerald-600 leading-tight mt-1"
+                                    >
+                                      New — will be created on publish
+                                    </Text>
+                                  )}
+                              </>
+                            )
+                          })()}
+                        </td>
+                        <td className="px-3 py-2 min-w-[220px] align-top">
+                          {(() => {
+                            const canEditTags =
+                              phase !== "uploading" &&
+                              row.status !== "uploading" &&
+                              row.status !== "success"
+                            const tagsListId = `vendor-tags-list-${idx}`
+                            const removeTag = (tagToRemove: string) => {
+                              handleTagsChange(
+                                idx,
+                                row.tags.filter((t) => t !== tagToRemove)
+                              )
+                            }
+                            const addTagFromInput = (
+                              ev: React.KeyboardEvent<HTMLInputElement>
+                            ) => {
+                              if (
+                                ev.key === "Enter" ||
+                                ev.key === "," ||
+                                ev.key === "Tab"
+                              ) {
+                                const target = ev.currentTarget
+                                const value = target.value.trim()
+                                if (value) {
+                                  ev.preventDefault()
+                                  if (
+                                    !row.tags.some(
+                                      (t) =>
+                                        t.toLowerCase() === value.toLowerCase()
+                                    )
+                                  ) {
+                                    handleTagsChange(idx, [...row.tags, value])
+                                  }
+                                  target.value = ""
+                                }
+                              } else if (
+                                ev.key === "Backspace" &&
+                                ev.currentTarget.value === "" &&
+                                row.tags.length > 0
+                              ) {
+                                handleTagsChange(idx, row.tags.slice(0, -1))
+                              }
+                            }
+                            const onBlurAdd = (
+                              ev: React.FocusEvent<HTMLInputElement>
+                            ) => {
+                              const value = ev.currentTarget.value.trim()
+                              if (value) {
+                                if (
+                                  !row.tags.some(
+                                    (t) =>
+                                      t.toLowerCase() === value.toLowerCase()
+                                  )
+                                ) {
+                                  handleTagsChange(idx, [...row.tags, value])
+                                }
+                                ev.currentTarget.value = ""
+                              }
+                            }
+                            return (
+                              <div
+                                className={clx(
+                                  "flex flex-wrap items-center gap-1 rounded border border-ui-border-base bg-ui-bg-base px-1.5 py-1 focus-within:border-blue-500 transition-colors",
+                                  !canEditTags && "opacity-60"
+                                )}
+                              >
+                                {row.tags.map((tag) => {
+                                  const isExisting = productTags.some(
+                                    (t) =>
+                                      typeof t?.value === "string" &&
+                                      t.value.toLowerCase().trim() ===
+                                        tag.toLowerCase().trim()
+                                  )
+                                  return (
+                                    <span
+                                      key={tag}
+                                      className={clx(
+                                        "inline-flex items-center gap-1 rounded-full text-xs px-2 py-0.5 border",
+                                        isExisting
+                                          ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900"
+                                          : "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900"
+                                      )}
+                                      title={
+                                        isExisting
+                                          ? "Existing tag"
+                                          : "New — will be created on publish"
+                                      }
+                                    >
+                                      {tag}
+                                      {canEditTags && (
+                                        <button
+                                          type="button"
+                                          onClick={() => removeTag(tag)}
+                                          className="opacity-70 hover:opacity-100"
+                                          aria-label={`Remove tag ${tag}`}
+                                        >
+                                          <svg
+                                            width="10"
+                                            height="10"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="3"
+                                            strokeLinecap="round"
+                                          >
+                                            <path d="M6 6l12 12M18 6L6 18" />
+                                          </svg>
+                                        </button>
+                                      )}
+                                    </span>
+                                  )
+                                })}
+                                {canEditTags && (
+                                  <>
+                                    <input
+                                      list={tagsListId}
+                                      type="text"
+                                      onKeyDown={addTagFromInput}
+                                      onBlur={onBlurAdd}
+                                      placeholder={
+                                        row.tags.length === 0
+                                          ? "Type tag, press Enter"
+                                          : "+ tag"
+                                      }
+                                      className="flex-1 min-w-[80px] text-xs bg-transparent outline-none border-none px-1 py-0.5"
+                                      aria-label={`Add tag for row ${row.rowNumber}`}
+                                    />
+                                    <datalist id={tagsListId}>
+                                      {productTags.map((t) => (
+                                        <option key={t.id} value={t.value} />
+                                      ))}
+                                    </datalist>
+                                  </>
+                                )}
+                              </div>
+                            )
+                          })()}
+                        </td>
                         <td className="px-3 py-2 font-mono text-xs">
                           {row.sku || <span className="text-ui-fg-muted">—</span>}
                         </td>
@@ -1641,17 +2472,12 @@ const VendorProductsBulkUploadPage = () => {
                         <td className="px-3 py-2 text-right">
                           {row.inventoryCount || <span className="text-ui-fg-muted">0</span>}
                         </td>
-                        <td className="px-3 py-2 min-w-[160px]">
+                        <td className="px-3 py-2 min-w-[200px]">
                           {(() => {
                             const refs = [
                               ...(row.thumbnailRef ? [row.thumbnailRef] : []),
                               ...row.imageRefs,
                             ]
-                            if (refs.length === 0) {
-                              return (
-                                <span className="text-ui-fg-muted text-xs">No images</span>
-                              )
-                            }
                             const states = refs.map((name) => ({
                               name,
                               state: imageMap[normalizeImageKey(name)],
@@ -1659,6 +2485,9 @@ const VendorProductsBulkUploadPage = () => {
                             const ready = states.filter(
                               (s) => s.state?.status === "uploaded"
                             ).length
+                            const uploadingThis = states.some(
+                              (s) => s.state?.status === "uploading"
+                            )
                             const thumbState = row.thumbnailRef
                               ? imageMap[normalizeImageKey(row.thumbnailRef)]
                               : undefined
@@ -1666,39 +2495,114 @@ const VendorProductsBulkUploadPage = () => {
                               thumbState?.status === "uploaded"
                                 ? thumbState.url
                                 : null
-                            const allReady = ready === refs.length
+
+                            const canEdit =
+                              phase !== "uploading" &&
+                              row.status !== "uploading" &&
+                              row.status !== "success"
+
+                            const triggerPicker = () => {
+                              if (!canEdit) return
+                              rowImageInputRefs.current[idx]?.click()
+                            }
+
                             return (
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-start gap-2">
+                                {/* Thumbnail / + button */}
                                 {thumbUrl ? (
-                                  <img
-                                    src={thumbUrl}
-                                    alt={row.thumbnailRef}
-                                    className="w-10 h-10 rounded object-cover border border-ui-border-base"
-                                  />
-                                ) : (
-                                  <div className="w-10 h-10 rounded border border-dashed border-ui-border-base flex items-center justify-center text-ui-fg-muted text-[10px]">
-                                    {row.thumbnailRef ? "?" : "—"}
-                                  </div>
-                                )}
-                                <div className="flex flex-col text-xs">
-                                  <span
-                                    className={
-                                      allReady
-                                        ? "text-emerald-600 font-medium"
-                                        : "text-amber-600 font-medium"
-                                    }
+                                  <button
+                                    type="button"
+                                    onClick={triggerPicker}
+                                    disabled={!canEdit}
+                                    className="relative w-12 h-12 rounded overflow-hidden border border-ui-border-base group disabled:cursor-not-allowed"
+                                    title={canEdit ? "Add another image" : ""}
                                   >
-                                    {ready}/{refs.length} ready
-                                  </span>
-                                  {row.thumbnailRef && (
-                                    <span
-                                      className="text-ui-fg-subtle truncate max-w-[140px]"
-                                      title={row.thumbnailRef}
+                                    <img
+                                      src={thumbUrl}
+                                      alt={row.thumbnailRef}
+                                      className="w-full h-full object-cover"
+                                    />
+                                    {canEdit && (
+                                      <span className="absolute inset-0 flex items-center justify-center bg-black/60 text-white text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                                        + Add
+                                      </span>
+                                    )}
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={triggerPicker}
+                                    disabled={!canEdit}
+                                    className={clx(
+                                      "w-12 h-12 rounded border-2 border-dashed flex flex-col items-center justify-center transition-colors",
+                                      canEdit
+                                        ? "border-ui-border-base text-ui-fg-muted hover:border-blue-500 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/30"
+                                        : "border-ui-border-base text-ui-fg-muted opacity-60 cursor-not-allowed"
+                                    )}
+                                    title="Add image"
+                                    aria-label={`Add image for row ${row.rowNumber}`}
+                                  >
+                                    <svg
+                                      width="18"
+                                      height="18"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
                                     >
-                                      ★ {row.thumbnailRef}
+                                      <path d="M12 5v14M5 12h14" />
+                                    </svg>
+                                  </button>
+                                )}
+
+                                {/* Status & extra add link */}
+                                <div className="flex flex-col gap-0.5 text-xs min-w-0 flex-1">
+                                  {refs.length > 0 ? (
+                                    <span
+                                      className={
+                                        ready === refs.length
+                                          ? "text-emerald-600 font-medium"
+                                          : uploadingThis
+                                            ? "text-blue-600 font-medium"
+                                            : "text-amber-600 font-medium"
+                                      }
+                                    >
+                                      {ready}/{refs.length} ready
+                                    </span>
+                                  ) : (
+                                    <span className="text-ui-fg-muted italic">
+                                      No image yet
                                     </span>
                                   )}
+                                  {canEdit && refs.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={triggerPicker}
+                                      className="text-ui-fg-interactive hover:underline text-left text-xs"
+                                    >
+                                      + Add more
+                                    </button>
+                                  )}
                                 </div>
+
+                                <input
+                                  ref={(el) => {
+                                    rowImageInputRefs.current[idx] = el
+                                  }}
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const files = Array.from(e.target.files || [])
+                                    if (files.length > 0) {
+                                      handleRowImagePicked(idx, files)
+                                    }
+                                    e.target.value = ""
+                                  }}
+                                />
                               </div>
                             )
                           })()}
