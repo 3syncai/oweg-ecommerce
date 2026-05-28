@@ -398,6 +398,21 @@ const VendorProductNewPage = () => {
         toast.error("Error", { description: "Title is required" })
         return
       }
+      if (!formData.brand || !formData.brand.trim()) {
+        toast.error("Error", { description: "Brand is required" })
+        return
+      }
+      // brandIsAuthorized is true when the brand is approved OR when a file is
+      // selected and ready to upload. brandNeedsAuthorization stays true until
+      // the brand is approved, but we allow proceeding once a file is selected.
+      if (!brandIsAuthorized) {
+        toast.error("Error", {
+          description: brandNeedsAuthorization
+            ? "Please upload the brand authorization letter to continue"
+            : "Please verify the brand before continuing",
+        })
+        return
+      }
       setCurrentStep("organize")
     } else if (currentStep === "organize") {
       setCurrentStep("variants")
@@ -413,6 +428,25 @@ const VendorProductNewPage = () => {
   }
 
   const handleSubmit = async () => {
+    // Final brand-gate so users can't bypass via direct Publish click after
+    // editing form state.
+    if (!formData.title) {
+      toast.error("Error", { description: "Title is required" })
+      return
+    }
+    if (!formData.brand || !formData.brand.trim()) {
+      toast.error("Error", { description: "Brand is required" })
+      return
+    }
+    if (!brandIsAuthorized) {
+      toast.error("Error", {
+        description: brandNeedsAuthorization
+          ? "Please upload the brand authorization letter before publishing"
+          : "Please verify the brand before publishing",
+      })
+      return
+    }
+
     setLoading(true)
 
     const vendorToken = localStorage.getItem("vendor_token")
@@ -1336,7 +1370,11 @@ const VendorProductNewPage = () => {
             <Button
               variant="primary"
               onClick={handleNext}
-              disabled={!formData.title}
+              disabled={
+                currentStep === "details"
+                  ? !formData.title || !formData.brand?.trim() || !brandIsAuthorized
+                  : false
+              }
             >
               Next
             </Button>

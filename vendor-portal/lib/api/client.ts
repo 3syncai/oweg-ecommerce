@@ -204,7 +204,7 @@ export const vendorProfileApi = {
     account_no?: string | null
     ifsc_code?: string | null
     cancel_cheque_url?: string | null
-    documents?: Array<{ key: string; url: string; name?: string; type?: string }> | null
+    documents?: Array<{ key: string; url: string; name?: string; type?: string; category?: string }> | null
   }) => {
     return apiRequest<{ message: string; vendor: any }>('/store/vendors/reapply', {
       method: 'POST',
@@ -250,7 +250,7 @@ export const vendorSignupApi = {
     cancel_cheque_url?: string
 
     // Documents
-    documents?: Array<{ key: string; url: string; name?: string; type?: string }>
+    documents?: Array<{ key: string; url: string; name?: string; type?: string; category?: string }>
 
     // Password
     password?: string
@@ -279,7 +279,7 @@ export const vendorSignupApi = {
     }
   },
 
-  uploadFile: async (file: File, type: 'logo' | 'banner' | 'cancelcheque' | 'doc', vendorHint: string) => {
+  uploadFile: async (file: File, type: 'logo' | 'banner' | 'cancelcheque' | 'doc' | 'pancard', vendorHint: string) => {
     const formData = new FormData()
     formData.append('type', type)
     formData.append('vendorHint', vendorHint)

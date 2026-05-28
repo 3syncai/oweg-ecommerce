@@ -45,6 +45,7 @@ const SignupSchema = z.object({
         url: z.string().url(),
         name: z.string().optional(),
         type: z.string().optional(),
+        category: z.string().optional(),
       })
     )
     .optional(),
