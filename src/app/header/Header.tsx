@@ -164,6 +164,8 @@ const Header: React.FC = () => {
   const [overflowCategories, setOverflowCategories] = React.useState<NavCategory[]>([]);
   const [navCatsLoading, setNavCatsLoading] = React.useState(true);
   const [isMobile, setIsMobile] = React.useState(false);
+  const [viewportWidth, setViewportWidth] = React.useState(1280);
+  const [desktopNavWidth, setDesktopNavWidth] = React.useState(0);
   const [, setShowTopBarMobile] = React.useState(true);
   const [mobilePincode, setMobilePincode] = React.useState("");
   const [mobilePlace, setMobilePlace] = React.useState<string | null>(null);
@@ -228,8 +230,50 @@ const Header: React.FC = () => {
   const [, setMobileProfileOpen] = React.useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
   const moreMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const desktopNavRef = React.useRef<HTMLDivElement | null>(null);
   const mountedRef = React.useRef(false);
   const mobileCategories = React.useMemo(() => [...navCategories, ...overflowCategories], [navCategories, overflowCategories]);
+  const allDesktopCategories = React.useMemo(() => [...navCategories, ...overflowCategories], [navCategories, overflowCategories]);
+  const desktopMinColumnWidth = React.useMemo(() => (viewportWidth >= 1280 ? 180 : 170), [viewportWidth]);
+  const desktopGridColumnGap = React.useMemo(() => 40, []);
+  const desktopMaxColumnsFit = React.useMemo(() => {
+    const available = Math.max(0, desktopNavWidth || viewportWidth);
+    return Math.max(1, Math.floor((available + desktopGridColumnGap) / (desktopMinColumnWidth + desktopGridColumnGap)));
+  }, [desktopNavWidth, viewportWidth, desktopMinColumnWidth, desktopGridColumnGap]);
+  const desktopVisibleCapacity = React.useMemo(() => {
+    const reserved = customer ? 1 : 0; // For You
+    const totalSlots = desktopMaxColumnsFit * 2;
+    return Math.max(0, totalSlots - reserved);
+  }, [desktopMaxColumnsFit, customer]);
+  const desktopCategoryLimit = React.useMemo(() => {
+    if (allDesktopCategories.length > desktopVisibleCapacity) {
+      return Math.max(0, desktopVisibleCapacity - 1); // reserve one slot for More
+    }
+    return desktopVisibleCapacity;
+  }, [allDesktopCategories.length, desktopVisibleCapacity]);
+  const desktopVisibleCategories = React.useMemo(
+    () => allDesktopCategories.slice(0, desktopCategoryLimit),
+    [allDesktopCategories, desktopCategoryLimit]
+  );
+  const desktopMoreCategories = React.useMemo(
+    () => allDesktopCategories.slice(desktopCategoryLimit),
+    [allDesktopCategories, desktopCategoryLimit]
+  );
+  const desktopGridItems = React.useMemo(() => {
+    const items: NavCategory[] = [];
+    if (customer) {
+      items.push({ id: "__for_you__", title: "For You", handle: "" } as NavCategory);
+    }
+    items.push(...desktopVisibleCategories);
+    if (desktopMoreCategories.length > 0) {
+      items.push({ id: "__more__", title: "More", handle: "" } as NavCategory);
+    }
+    return items;
+  }, [customer, desktopVisibleCategories, desktopMoreCategories.length]);
+  const desktopGridColumns = React.useMemo(
+    () => Math.max(1, Math.min(desktopMaxColumnsFit, Math.ceil(desktopGridItems.length / 2))),
+    [desktopGridItems.length, desktopMaxColumnsFit]
+  );
   const mobileProfileRef = React.useRef<HTMLDivElement | null>(null);
   const profileMenuRef = React.useRef<HTMLDivElement | null>(null);
   const profileMenuTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -282,6 +326,26 @@ const Header: React.FC = () => {
       document.documentElement.style.removeProperty("--app-header-height");
     };
   }, [isMobile, oweg10Visible]);
+
+  React.useEffect(() => {
+    const navEl = desktopNavRef.current;
+    if (!navEl) return;
+    const syncNavWidth = () => {
+      const width = navEl.getBoundingClientRect().width || 0;
+      setDesktopNavWidth(width);
+    };
+    syncNavWidth();
+    window.addEventListener("resize", syncNavWidth);
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(syncNavWidth);
+      observer.observe(navEl);
+    }
+    return () => {
+      window.removeEventListener("resize", syncNavWidth);
+      if (observer) observer.disconnect();
+    };
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -560,10 +624,17 @@ const Header: React.FC = () => {
 
   React.useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
-    const update = () => setIsMobile(mq.matches);
+    const update = () => {
+      setIsMobile(mq.matches);
+      setViewportWidth(window.innerWidth || 1280);
+    };
     update();
     mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
+    window.addEventListener("resize", update);
+    return () => {
+      mq.removeEventListener("change", update);
+      window.removeEventListener("resize", update);
+    };
   }, []);
 
   React.useEffect(() => {
@@ -888,10 +959,10 @@ const Header: React.FC = () => {
             }}
             onWheel={handleMenuWheel}
           >
-            {navCatsLoading && overflowCategories.length === 0 ? (
+            {navCatsLoading && desktopMoreCategories.length === 0 ? (
               <div className="px-3 py-2 text-sm text-gray-500">Loading categories…</div>
-            ) : overflowCategories.length ? (
-              overflowCategories.map((cat) => (
+             ) : desktopMoreCategories.length ? (
+              desktopMoreCategories.map((cat) => (
                 <Link
                   key={cat.id}
                   href={getCategoryHref(cat.handle)}
@@ -1441,94 +1512,94 @@ const Header: React.FC = () => {
 
           {/* Navigation Bar */}
           <nav className="bg-header-nav-bg hidden md:block">
-            <div className="w-full px-4 sm:px-6 lg:px-8">
-              {/* make this container overflow-x but allow dropdowns via portal (portal prevents clipping) */}
-              <div
-                className="flex items-center gap-4 md:gap-6 overflow-x-auto overflow-y-visible py-1 relative"
-                data-nav-scroll
-              >
-                {/* All + overflow */}
-                <div
-                  ref={moreMenuRef}
-                  className="relative flex-shrink-0"
-                  onMouseEnter={() => { clearAllHideTimer(); setAllOpen(true); }}
-                  onMouseLeave={() => startAllHideTimer()}
-                >
-                  <button
-                    ref={(el) => {
-                      allTriggerRef.current = el;
-                    }}
-                    className="flex items-center gap-2 py-3 px-2 text-header-text hover:text-header-accent transition-colors whitespace-nowrap"
-                    onClick={() => { setAllOpen((v) => !v); }}
-                    aria-haspopup="menu"
-                    aria-expanded={allOpen}
-                    type="button"
-                  >
-                    <Menu className="w-5 h-5" />
-                    <span className="font-medium">All</span>
-                  </button>
-                </div>
-
-                {customer ? (
-                  <Link
-                    href="/for-you"
-                    className="flex items-center gap-1.5 py-3 px-2 text-sm font-medium text-header-text whitespace-nowrap hover:text-header-accent transition-colors"
-                  >
-                    <Gift className="w-4 h-4" />
-                    <span>For You</span>
-                  </Link>
-                ) : null}
-
-                {/* Primary categories with dropdown triggers */}
+            <div ref={desktopNavRef} className="w-full px-4 sm:px-6 lg:px-8">
+              <div className="py-1 relative" data-nav-scroll>
+                {/* Desktop categories in balanced 2-row grid */}
                 {navCatsLoading ? (
-                  <div className="py-3 text-sm text-gray-500">Loading categories…</div>
-                ) : navCategories.length > 0 ? (
-                  navCategories.map((cat) => {
-                    const categoryHref = getCategoryHref(cat.handle);
-                    return (
-                      <div
-                        key={cat.id}
-                        data-nav-category
-                        className="relative flex-shrink-0 group"
-                        onMouseEnter={() => {
-                          clearHideTimer();
-                          setAllOpen(false);
-                          setActiveCategoryId(cat.id);
-                        }}
-                        onMouseLeave={() => startHideTimer()}
-                      >
-                        <Link
-                          href={categoryHref}
-                          ref={(el: HTMLAnchorElement | null) => { triggersRef.current[cat.id] = el; }}
-                          className="nav-link relative py-3 px-2 pr-6 md:pr-2 text-sm text-header-text font-medium whitespace-nowrap transition-colors hover:text-header-accent flex items-center gap-1.5"
-                          onClick={() => {
-                            setSelectedFilter({ type: "category", title: cat.title, handle: cat.handle });
-                          }}
-                        >
-                          <span className="truncate">{cat.title}</span>
-                          <ChevronDown
-                            className={`hidden md:inline-block w-3.5 h-3.5 text-header-muted transition-transform duration-200 group-hover:text-header-accent ${
-                              activeCategoryId === cat.id ? "rotate-180" : ""
-                            }`}
-                          />
-                        </Link>
+                  <div className="py-3 text-sm text-gray-500">Loading categories...</div>
+                ) : desktopGridItems.length > 0 ? (
+                  <div className="w-full">
+                    <div
+                      className="grid w-full items-center justify-items-center gap-y-1"
+                      style={{
+                        gridTemplateRows: "repeat(2, minmax(0, 1fr))",
+                        gridTemplateColumns: `repeat(${desktopGridColumns}, minmax(${desktopMinColumnWidth}px, 1fr))`,
+                        gridAutoFlow: "column",
+                        columnGap: `${desktopGridColumnGap}px`,
+                      }}
+                    >
+                      {desktopGridItems.map((cat) => {
+                        if (cat.id === "__for_you__") {
+                          return (
+                            <Link
+                              key={cat.id}
+                              href="/for-you"
+                              className="flex items-center gap-1.5 py-3 px-2 text-sm font-medium text-header-text whitespace-nowrap hover:text-header-accent transition-colors"
+                            >
+                              <Gift className="w-4 h-4" />
+                              <span>For You</span>
+                            </Link>
+                          );
+                        }
+                        if (cat.id === "__more__") {
+                          return (
+                            <div
+                              key={cat.id}
+                              ref={moreMenuRef}
+                              className="relative"
+                              onMouseEnter={() => { clearAllHideTimer(); setAllOpen(true); }}
+                              onMouseLeave={() => startAllHideTimer()}
+                            >
+                              <button
+                                ref={(el) => {
+                                  allTriggerRef.current = el;
+                                }}
+                                className="flex items-center gap-2 py-3 px-2 text-header-text hover:text-header-accent transition-colors whitespace-nowrap text-sm font-medium"
+                                onClick={() => { setAllOpen((v) => !v); }}
+                                aria-haspopup="menu"
+                                aria-expanded={allOpen}
+                                type="button"
+                              >
+                                <Menu className="w-4 h-4" />
+                                <span>More</span>
+                              </button>
+                            </div>
+                          );
+                        }
 
-                        {/* mobile toggle */}
-                        <button
-                          className="md:hidden absolute right-0 top-1/2 -translate-y-1/2 p-1 text-header-text"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setActiveCategoryId((prev) => (prev === cat.id ? null : cat.id));
-                          }}
-                          aria-label={`Toggle ${cat.title} menu`}
-                          type="button"
-                        >
-                          <ChevronDown className={`w-4 h-4 transition-transform ${activeCategoryId === cat.id ? "rotate-180" : ""}`} />
-                        </button>
-                      </div>
-                    );
-                  })
+                        const categoryHref = getCategoryHref(cat.handle);
+                        return (
+                          <div
+                            key={cat.id}
+                            data-nav-category
+                            className="relative group"
+                            onMouseEnter={() => {
+                              clearHideTimer();
+                              setAllOpen(false);
+                              setActiveCategoryId(cat.id);
+                            }}
+                            onMouseLeave={() => startHideTimer()}
+                          >
+                            <Link
+                              href={categoryHref}
+                              ref={(el: HTMLAnchorElement | null) => { triggersRef.current[cat.id] = el; }}
+                              className="nav-link relative py-3 px-2 pr-6 md:pr-2 text-sm text-header-text font-medium whitespace-nowrap transition-colors hover:text-header-accent flex items-center gap-1.5"
+                              onClick={() => {
+                                setSelectedFilter({ type: "category", title: cat.title, handle: cat.handle });
+                              }}
+                            >
+                              <span className="truncate">{cat.title}</span>
+                              <ChevronDown
+                                className={`hidden md:inline-block w-3.5 h-3.5 text-header-muted transition-transform duration-200 group-hover:text-header-accent ${
+                                  activeCategoryId === cat.id ? "rotate-180" : ""
+                                }`}
+                              />
+                            </Link>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 ) : (
                   <div className="py-3 text-sm text-gray-500">No categories found.</div>
                 )}
@@ -1850,3 +1921,4 @@ const Header: React.FC = () => {
 };
 
 export default Header;
+
