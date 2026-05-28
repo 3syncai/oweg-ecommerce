@@ -178,6 +178,7 @@ function CheckoutPageInner() {
   });
   const [oweg10StatusCustomerId, setOweg10StatusCustomerId] = useState<string | null>(null);
   const [pendingLoginCheckout, setPendingLoginCheckout] = useState(false);
+  const [checkoutAfterLoginIntent, setCheckoutAfterLoginIntent] = useState(false);
   const autoCheckoutNoticeShownRef = useRef(false);
   const performCheckoutRef = useRef<(() => Promise<void>) | null>(null);
 
@@ -1177,6 +1178,7 @@ function CheckoutPageInner() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customer) {
+      setCheckoutAfterLoginIntent(true);
       setLoginModalOpen(true);
       return;
     }
@@ -1215,7 +1217,12 @@ function CheckoutPageInner() {
       toast.success("Logged in. Continue checkout.");
       setLoginModalOpen(false);
       setLoginPassword("");
-      setPendingLoginCheckout(true);
+      if (checkoutAfterLoginIntent) {
+        setPendingLoginCheckout(true);
+      } else {
+        setPendingLoginCheckout(false);
+      }
+      setCheckoutAfterLoginIntent(false);
     } catch (err) {
       console.error(err);
       setLoginError("Login failed. Please try again.");
@@ -1238,6 +1245,25 @@ function CheckoutPageInner() {
         <h1 className="text-2xl font-semibold text-slate-900 mb-6">Checkout</h1>
         <form onSubmit={handleSubmit} className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
+            {!customer ? (
+              <section className="bg-white rounded-xl shadow-sm border p-5 md:p-6 space-y-4">
+                <h2 className="text-lg font-semibold text-slate-900">Login required to continue checkout</h2>
+                <p className="text-sm text-slate-600">
+                  Please sign in first.
+                </p>
+                <Button
+                  type="button"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => {
+                    setCheckoutAfterLoginIntent(false);
+                    setLoginModalOpen(true);
+                  }}
+                >
+                  Login to continue
+                </Button>
+              </section>
+            ) : (
+              <>
             <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-900">Shipping details</h2>
@@ -1849,6 +1875,8 @@ function CheckoutPageInner() {
                 )}
               </section>
             )}
+              </>
+            )}
           </div>
 
           <div className="lg:col-span-1 space-y-4">
@@ -1942,8 +1970,16 @@ function CheckoutPageInner() {
               </div>
 
               <Button
-                type="submit"
+                type={customer ? "submit" : "button"}
                 className="w-full bg-green-600 hover:bg-green-700 text-white py-3"
+                onClick={
+                  customer
+                    ? undefined
+                    : () => {
+                        setCheckoutAfterLoginIntent(true);
+                        setLoginModalOpen(true);
+                      }
+                }
                 disabled={
                   processing ||
                   (!isBuyNow && !cartItems.length) ||
@@ -1974,6 +2010,7 @@ function CheckoutPageInner() {
                 className="text-sm text-gray-500 hover:text-gray-800"
                 onClick={() => {
                   setLoginModalOpen(false);
+                  setCheckoutAfterLoginIntent(false);
                 }}
               >
                 Close
