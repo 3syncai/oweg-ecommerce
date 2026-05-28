@@ -195,6 +195,11 @@ function CheckoutPageInner() {
   const [affiliateName, setAffiliateName] = useState("");
   const [affiliateError, setAffiliateError] = useState<string | null>(null);
 
+  // Tracks whether the inbound ?ref=CODE has been routed to the correct
+  // section (Referral vs. Affiliate) so we don't re-run the routing logic
+  // after state updates.
+  const inboundRefRoutedRef = useRef(false);
+
   // Auto-fetch referral code from database for logged in customers
   useEffect(() => {
     const fetchReferralCode = async () => {
@@ -225,10 +230,19 @@ function CheckoutPageInner() {
     fetchReferralCode();
   }, [customer?.id]);
 
-  // Auto-fill affiliate code from URL ?ref= or localStorage (set on shared product links)
+  // Auto-route an inbound ?ref=CODE (from URL or persisted localStorage) to
+  // the correct section:
+  //   - Agent codes (sales executive, branch_admin, ASM, state_admin,
+  //     affiliate_user) → Referral code section. For logged-in customers we
+  //     also lock the code on their profile so it survives the session.
+  //   - Customer-shared affiliate codes → Affiliate code section (existing
+  //     behavior, validated when the user proceeds or via the Apply button).
+  // For logged-in users we wait for the customer's saved-referral lookup to
+  // finish before routing, so an already-locked code is never overridden.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (affiliateCode || affiliateCodeApplied) return;
+    if (inboundRefRoutedRef.current) return;
+    if (customer?.id && referralLoading) return;
 
     const fromUrl = searchParams?.get("ref")?.trim() || "";
     let stored = "";
@@ -238,13 +252,102 @@ function CheckoutPageInner() {
       /* ignore */
     }
     const code = (fromUrl || stored).trim().toUpperCase();
-    if (code) {
-      setAffiliateCode(code);
+
+    inboundRefRoutedRef.current = true;
+    if (!code) return;
+
+    // If the customer already has a locked referral code, keep it and just
+    // clear the inbound storage so the affiliate field doesn't pick it up.
+    if (referralCodeApplied) {
+      try {
+        window.localStorage.removeItem("oweg_affiliate_ref");
+        document.cookie = "oweg_affiliate_ref=; Max-Age=0; path=/; SameSite=Lax";
+      } catch {
+        /* ignore */
+      }
+      return;
     }
-    // We intentionally only run on first mount; further auto-fills should not
-    // override a user-entered value.
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const referralRes = await fetch(
+          `/api/store/validate-referral?code=${encodeURIComponent(code)}`,
+          { cache: "no-store" }
+        );
+        const referralData = await referralRes.json().catch(() => ({} as { valid?: boolean; agent_name?: string }));
+        if (cancelled) return;
+
+        if (referralData?.valid) {
+          // Agent referral code → populate the Referral code section.
+          setReferralCode(code);
+          setReferralAgentName(referralData.agent_name || "");
+
+          if (customer?.id) {
+            try {
+              const saveRes = await fetch("/api/store/save-referral", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ customer_id: customer.id, referral_code: code }),
+              });
+              if (cancelled) return;
+              const saveData = await saveRes.json().catch(() => ({} as { existing_code?: string }));
+              if (saveRes.ok) {
+                setReferralCodeApplied(true);
+                toast.success(
+                  referralData.agent_name
+                    ? `Referral applied: ${referralData.agent_name}`
+                    : "Referral code applied"
+                );
+              } else if (saveData?.existing_code) {
+                // Customer already had a different locked code — surface that.
+                setReferralCode(saveData.existing_code);
+                setReferralCodeApplied(true);
+              }
+            } catch (saveErr) {
+              console.warn("[checkout] save-referral failed", saveErr);
+            }
+          } else {
+            // Guest checkout — lock the field visually so the code travels
+            // with the order when they finish checkout.
+            setReferralCodeApplied(true);
+            toast.success(
+              referralData.agent_name
+                ? `Referral applied: ${referralData.agent_name}`
+                : "Referral code applied"
+            );
+          }
+
+          // Clear the affiliate storage so the Affiliate code section
+          // doesn't also pick this same code up.
+          try {
+            window.localStorage.removeItem("oweg_affiliate_ref");
+            document.cookie = "oweg_affiliate_ref=; Max-Age=0; path=/; SameSite=Lax";
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
+
+        // Not an agent code → fall back to the customer-affiliate section.
+        if (!affiliateCode && !affiliateCodeApplied) {
+          setAffiliateCode(code);
+        }
+      } catch (err) {
+        console.warn("[checkout] inbound ref validation failed", err);
+        if (cancelled) return;
+        if (!affiliateCode && !affiliateCodeApplied) {
+          setAffiliateCode(code);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [customer?.id, referralLoading]);
 
   useEffect(() => {
     let cancelled = false;
