@@ -1,28 +1,34 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { Modules } from "@medusajs/framework/utils"
 import VendorModuleService from "../../../../../modules/vendor/service"
 import { VENDOR_MODULE } from "../../../../../modules/vendor"
 
 export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
   try {
-    const productModuleService = req.scope.resolve(Modules.PRODUCT)
+    const query = req.scope.resolve("query")
     const vendorService: VendorModuleService = req.scope.resolve(VENDOR_MODULE)
-    
-    // Get all products
-    const allProducts = await productModuleService.listProducts({})
+
+    // Fetch products with categories and collection included
+    const { data: allProducts } = await query.graph({
+      entity: "product",
+      fields: [
+        "id", "title", "subtitle", "description", "status",
+        "thumbnail", "created_at", "height", "width", "length", "weight",
+        "metadata",
+        "categories.id", "categories.name", "categories.handle",
+        "categories.parent_category_id",
+        "collection.id", "collection.title", "collection.handle",
+      ],
+    })
 
     console.log("Total products fetched:", allProducts?.length || 0)
-    
+
     // Filter products with pending approval status
     const pendingProducts = (allProducts || []).filter((p: any) => {
       const metadata = p.metadata || {}
       const hasPendingStatus = metadata.approval_status === "pending"
-      
-      // Log for debugging
       if (metadata.vendor_id) {
         console.log(`Product ${p.id}: vendor_id=${metadata.vendor_id}, approval_status=${metadata.approval_status}, status=${p.status}`)
       }
-      
       return hasPendingStatus
     })
 
