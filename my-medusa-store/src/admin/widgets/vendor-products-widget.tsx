@@ -17,6 +17,17 @@ type VendorProduct = {
   width?: number | null
   length?: number | null
   weight?: number | null
+  categories?: Array<{
+    id: string
+    name: string
+    handle?: string
+    parent_category_id?: string | null
+  }>
+  collection?: {
+    id: string
+    title: string
+    handle?: string
+  } | null
   vendor?: {
     id: string
     name: string
@@ -43,14 +54,22 @@ type VendorProduct = {
       key: string
       filename: string
     }>
+    category_request?: string
+    category_request_status?: string
+    collection_request?: string
+    collection_request_status?: string
     [key: string]: any
   }
 }
+
+const toTitleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
 
 const VendorProductsWidget = () => {
   const [products, setProducts] = useState<VendorProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedProduct, setSelectedProduct] = useState<VendorProduct | null>(null)
+  const [creatingCategory, setCreatingCategory] = useState(false)
+  const [creatingCollection, setCreatingCollection] = useState(false)
 
   useEffect(() => {
     fetchPendingProducts()
@@ -116,6 +135,162 @@ const VendorProductsWidget = () => {
 
   const handleEdit = (productId: string) => {
     window.location.href = `/app/products/${productId}`
+  }
+
+  // Creates the requested category (and parent if needed), assigns it to the
+  // product, and marks the request resolved.
+  const handleCreateCategory = async (product: VendorProduct) => {
+    const request = product.metadata?.category_request?.trim()
+    if (!request || !product.id) return
+    setCreatingCategory(true)
+    try {
+      const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
+
+      // Parse "Parent > Sub" or plain "Name"
+      const parts = request.split(">").map((p) => p.trim()).filter(Boolean)
+      const parentName = parts.length > 1 ? parts[0] : null
+      const categoryName = parts[parts.length - 1]
+
+      const toHandle = (s: string) =>
+        s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+
+      let parentId: string | null = null
+
+      if (parentName) {
+        // Try to find an existing category with that name
+        const listRes = await fetch(
+          `${backend}/admin/product-categories?q=${encodeURIComponent(parentName)}&limit=20`,
+          { credentials: "include" }
+        )
+        if (listRes.ok) {
+          const listData = await listRes.json()
+          const match = (listData.product_categories || []).find(
+            (c: any) => c.name.toLowerCase() === parentName.toLowerCase()
+          )
+          parentId = match?.id ?? null
+        }
+
+        // Create parent if not found
+        if (!parentId) {
+          const createParentRes = await fetch(`${backend}/admin/product-categories`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: parentName, handle: toHandle(parentName), is_active: true }),
+          })
+          if (!createParentRes.ok) throw new Error("Failed to create parent category")
+          const createParentData = await createParentRes.json()
+          parentId = createParentData.product_category?.id ?? null
+        }
+      }
+
+      // Create the category (or subcategory under parent)
+      const createRes = await fetch(`${backend}/admin/product-categories`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: categoryName,
+          handle: toHandle(categoryName),
+          is_active: true,
+          ...(parentId ? { parent_category_id: parentId } : {}),
+        }),
+      })
+      if (!createRes.ok) throw new Error("Failed to create category")
+      const createData = await createRes.json()
+      const newCatId = createData.product_category?.id
+      if (!newCatId) throw new Error("No category id returned")
+
+      // Assign the new category to the product
+      const existingCatIds = (product.categories || []).map((c) => ({ id: c.id }))
+      const updateRes = await fetch(`${backend}/admin/products/${product.id}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categories: [...existingCatIds, { id: newCatId }],
+          metadata: {
+            ...product.metadata,
+            category_request_status: "resolved",
+            category_request_resolved_at: new Date().toISOString(),
+          },
+        }),
+      })
+      if (!updateRes.ok) throw new Error("Failed to assign category to product")
+
+      // Refresh the list and re-select the updated product
+      await fetchPendingProducts()
+      setSelectedProduct((prev) =>
+        prev?.id === product.id
+          ? {
+              ...prev,
+              categories: [...(prev.categories || []), { id: newCatId, name: categoryName, parent_category_id: parentId }],
+              metadata: { ...prev.metadata, category_request_status: "resolved" },
+            }
+          : prev
+      )
+    } catch (err) {
+      console.error("Create category failed:", err)
+      alert((err as Error).message || "Failed to create category")
+    } finally {
+      setCreatingCategory(false)
+    }
+  }
+
+  // Creates the requested collection, assigns it to the product, marks resolved.
+  const handleCreateCollection = async (product: VendorProduct) => {
+    const request = product.metadata?.collection_request?.trim()
+    if (!request || !product.id) return
+    setCreatingCollection(true)
+    try {
+      const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const toHandle = (s: string) =>
+        s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+
+      // Create the collection
+      const createRes = await fetch(`${backend}/admin/collections`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: request, handle: toHandle(request) }),
+      })
+      if (!createRes.ok) throw new Error("Failed to create collection")
+      const createData = await createRes.json()
+      const newColId = createData.collection?.id
+      if (!newColId) throw new Error("No collection id returned")
+
+      // Assign the new collection to the product
+      const updateRes = await fetch(`${backend}/admin/products/${product.id}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          collection_id: newColId,
+          metadata: {
+            ...product.metadata,
+            collection_request_status: "resolved",
+            collection_request_resolved_at: new Date().toISOString(),
+          },
+        }),
+      })
+      if (!updateRes.ok) throw new Error("Failed to assign collection to product")
+
+      await fetchPendingProducts()
+      setSelectedProduct((prev) =>
+        prev?.id === product.id
+          ? {
+              ...prev,
+              collection: { id: newColId, title: request },
+              metadata: { ...prev.metadata, collection_request_status: "resolved" },
+            }
+          : prev
+      )
+    } catch (err) {
+      console.error("Create collection failed:", err)
+      alert((err as Error).message || "Failed to create collection")
+    } finally {
+      setCreatingCollection(false)
+    }
   }
 
   if (loading) {
@@ -221,6 +396,109 @@ const VendorProductsWidget = () => {
             <Text>{selectedProduct.description}</Text>
           </div>
         )}
+
+        {/* Category row */}
+        <div style={{ marginBottom: 16, padding: "12px 16px", background: "var(--bg-subtle)", borderRadius: 8, border: "1px solid var(--border-base)" }}>
+          <Text weight="plus" size="small" style={{ marginBottom: 6, display: "block" }}>Category</Text>
+          {(() => {
+            const cats = selectedProduct.categories || []
+            const catRequest = selectedProduct.metadata?.category_request
+            const catRequestStatus = selectedProduct.metadata?.category_request_status
+
+            if (cats.length > 0) {
+              // Build path: find parent then child
+              const cat = cats[0]
+              const parentId = cat.parent_category_id
+              const parent = parentId ? cats.find((c) => c.id === parentId) : null
+              const path = parent
+                ? `${toTitleCase(parent.name)} › ${toTitleCase(cat.name)}`
+                : toTitleCase(cat.name)
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <Text size="small" style={{ color: "var(--fg-base)" }}>{path}</Text>
+                  {catRequest && catRequestStatus === "pending" && (
+                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}>
+                      Also requested: &ldquo;{catRequest}&rdquo;
+                    </span>
+                  )}
+                </div>
+              )
+            }
+
+            if (catRequest && catRequestStatus === "pending") {
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}>
+                    Pending: &ldquo;{catRequest}&rdquo;
+                  </span>
+                  <button
+                    onClick={() => handleCreateCategory(selectedProduct)}
+                    disabled={creatingCategory}
+                    style={{
+                      fontSize: 11, padding: "3px 10px", borderRadius: 6,
+                      background: creatingCategory ? "#e5e7eb" : "#1d4ed8",
+                      color: creatingCategory ? "#6b7280" : "#fff",
+                      border: "none", cursor: creatingCategory ? "not-allowed" : "pointer",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {creatingCategory ? "Creating…" : "✚ Create & Assign"}
+                  </button>
+                </div>
+              )
+            }
+
+            return <Text size="small" style={{ color: "var(--fg-muted)", fontStyle: "italic" }}>No category assigned</Text>
+          })()}
+        </div>
+
+        {/* Collection row */}
+        <div style={{ marginBottom: 24, padding: "12px 16px", background: "var(--bg-subtle)", borderRadius: 8, border: "1px solid var(--border-base)" }}>
+          <Text weight="plus" size="small" style={{ marginBottom: 6, display: "block" }}>Collection</Text>
+          {(() => {
+            const col = selectedProduct.collection
+            const colRequest = selectedProduct.metadata?.collection_request
+            const colRequestStatus = selectedProduct.metadata?.collection_request_status
+
+            if (col) {
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <Text size="small">{toTitleCase(col.title)}</Text>
+                  {colRequest && colRequestStatus === "pending" && (
+                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}>
+                      Also requested: &ldquo;{colRequest}&rdquo;
+                    </span>
+                  )}
+                </div>
+              )
+            }
+
+            if (colRequest && colRequestStatus === "pending") {
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}>
+                    Pending: &ldquo;{colRequest}&rdquo;
+                  </span>
+                  <button
+                    onClick={() => handleCreateCollection(selectedProduct)}
+                    disabled={creatingCollection}
+                    style={{
+                      fontSize: 11, padding: "3px 10px", borderRadius: 6,
+                      background: creatingCollection ? "#e5e7eb" : "#1d4ed8",
+                      color: creatingCollection ? "#6b7280" : "#fff",
+                      border: "none", cursor: creatingCollection ? "not-allowed" : "pointer",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {creatingCollection ? "Creating…" : "✚ Create & Assign"}
+                  </button>
+                </div>
+              )
+            }
+
+            return <Text size="small" style={{ color: "var(--fg-muted)", fontStyle: "italic" }}>No collection assigned</Text>
+          })()}
+        </div>
 
         {/* Attributes Section - Hidden from product request view */}
         {/* 

@@ -229,6 +229,11 @@ const VendorProductsBulkUploadPage = () => {
   const [openCollectionRequestRows, setOpenCollectionRequestRows] = useState<
     Set<number>
   >(new Set())
+  // Per-row selected parent category ID for the two-level category picker
+  const [rowParentCatIds, setRowParentCatIds] = useState<Record<number, string>>({})
+
+  // Title-case helper for category/collection display names
+  const toTitleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
   // Tracks brands whose authorization status has already been requested or
   // resolved in the current upload session so we don't re-fire the request
   // (and don't end up cancelling our own in-flight check).
@@ -2019,45 +2024,76 @@ const VendorProductsBulkUploadPage = () => {
                               })
                               handleCategoryRequest(idx, "")
                             }
+                            const rootCats = categories.filter((c) => !c.parent_category_id)
+                            const parentCatId = rowParentCatIds[idx] || ""
+                            const subCats = parentCatId
+                              ? categories.filter((c) => c.parent_category_id === parentCatId)
+                              : []
+                            const selectedSubId = subCats.length > 0
+                              ? (row.selectedCategoryId && subCats.some((s) => s.id === row.selectedCategoryId)
+                                  ? row.selectedCategoryId
+                                  : "")
+                              : ""
+
                             return (
                               <div className="flex flex-col gap-1.5">
+                                {/* Parent category */}
                                 <select
-                                  value={row.selectedCategoryId || ""}
-                                  onChange={(e) =>
-                                    handleCategorySelect(idx, e.target.value)
-                                  }
+                                  value={parentCatId}
+                                  onChange={(e) => {
+                                    const pid = e.target.value
+                                    setRowParentCatIds((prev) => ({ ...prev, [idx]: pid }))
+                                    const hasChildren = categories.some((c) => c.parent_category_id === pid)
+                                    if (pid && !hasChildren) {
+                                      handleCategorySelect(idx, pid)
+                                    } else {
+                                      handleCategorySelect(idx, "")
+                                    }
+                                  }}
                                   disabled={!canEditCat || noCategoriesLoaded}
                                   className={clx(
                                     "w-full text-xs rounded border bg-ui-bg-base text-ui-fg-base px-2 py-1 focus:border-blue-500 focus:outline-none transition-colors disabled:opacity-60 disabled:cursor-not-allowed",
-                                    !row.selectedCategoryId &&
-                                      excelMissing &&
-                                      !showRequest
+                                    !parentCatId && excelMissing && !showRequest
                                       ? "border-amber-400"
                                       : "border-ui-border-base"
                                   )}
-                                  aria-label={`Category for row ${row.rowNumber}`}
+                                  aria-label={`Parent category for row ${row.rowNumber}`}
                                 >
                                   <option value="">
-                                    {noCategoriesLoaded
-                                      ? "Loading categories…"
-                                      : "— No category —"}
+                                    {noCategoriesLoaded ? "Loading…" : "— Parent category —"}
                                   </option>
-                                  {categories.map((c) => (
+                                  {rootCats.map((c) => (
                                     <option key={c.id} value={c.id}>
-                                      {c.name}
+                                      {toTitleCase(c.name)}
                                     </option>
                                   ))}
                                 </select>
-                                {excelMissing && !row.selectedCategoryId && (
-                                  <Text
-                                    size="xsmall"
-                                    className="text-amber-600 leading-tight"
+
+                                {/* Subcategory — always shown once a parent is chosen */}
+                                {parentCatId && (
+                                  <select
+                                    value={selectedSubId}
+                                    onChange={(e) => handleCategorySelect(idx, e.target.value || parentCatId)}
+                                    disabled={!canEditCat}
+                                    className="w-full text-xs rounded border border-ui-border-base bg-ui-bg-base text-ui-fg-base px-2 py-1 focus:border-blue-500 focus:outline-none transition-colors disabled:opacity-60"
+                                    aria-label={`Subcategory for row ${row.rowNumber}`}
                                   >
-                                    Excel said{" "}
-                                    <span className="font-mono">
-                                      {row.category}
-                                    </span>{" "}
-                                    — pick a match or request below.
+                                    <option value="">
+                                      {subCats.length === 0
+                                        ? "— No subcategories yet (or request below) —"
+                                        : "— No subcategory (use parent) —"}
+                                    </option>
+                                    {subCats.map((c) => (
+                                      <option key={c.id} value={c.id}>
+                                        {toTitleCase(c.name)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+
+                                {excelMissing && !row.selectedCategoryId && (
+                                  <Text size="xsmall" className="text-amber-600 leading-tight">
+                                    Excel said <span className="font-mono">{row.category}</span> — pick a match or request below.
                                   </Text>
                                 )}
 
@@ -2077,23 +2113,14 @@ const VendorProductsBulkUploadPage = () => {
                                     </label>
                                     <textarea
                                       value={remark}
-                                      onChange={(e) =>
-                                        handleCategoryRequest(
-                                          idx,
-                                          e.target.value
-                                        )
-                                      }
+                                      onChange={(e) => handleCategoryRequest(idx, e.target.value)}
                                       disabled={!canEditCat}
                                       rows={2}
                                       placeholder="e.g. Smart home devices — please create"
                                       className="w-full text-xs rounded border border-ui-border-base bg-ui-bg-base text-ui-fg-base px-2 py-1 focus:border-blue-500 focus:outline-none transition-colors resize-y disabled:opacity-60"
                                     />
-                                    <Text
-                                      size="xsmall"
-                                      className="text-ui-fg-subtle leading-tight"
-                                    >
-                                      Admin will see this request on the product
-                                      page.
+                                    <Text size="xsmall" className="text-ui-fg-subtle leading-tight">
+                                      Admin will see this request on the product page.
                                     </Text>
                                   </div>
                                 ) : (
@@ -2103,16 +2130,7 @@ const VendorProductsBulkUploadPage = () => {
                                       onClick={openRequestEditor}
                                       className="text-xs text-ui-fg-interactive hover:underline self-start flex items-center gap-1"
                                     >
-                                      <svg
-                                        width="12"
-                                        height="12"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      >
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M12 5v14M5 12h14" />
                                       </svg>
                                       Request new category
@@ -2192,7 +2210,7 @@ const VendorProductsBulkUploadPage = () => {
                                   </option>
                                   {collections.map((c) => (
                                     <option key={c.id} value={c.id}>
-                                      {c.title}
+                                      {toTitleCase(c.title || "")}
                                     </option>
                                   ))}
                                 </select>
