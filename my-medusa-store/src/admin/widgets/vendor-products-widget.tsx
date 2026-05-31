@@ -184,21 +184,48 @@ const VendorProductsWidget = () => {
         }
       }
 
+      // Build a globally-unique handle. Medusa v2 enforces handle uniqueness
+      // across the entire category tree, so prefix sub-categories with their
+      // parent handle to avoid collisions (e.g. "home-appliances-test").
+      const categoryHandle = parentId
+        ? `${toHandle(parentName ?? categoryName)}-${toHandle(categoryName)}`
+        : toHandle(categoryName)
+
+      // Check if a category with this handle already exists — reuse it
+      // instead of trying to create a duplicate (which returns 400).
+      let newCatIdEarly: string | null = null
+      const existingRes = await fetch(
+        `${backend}/admin/product-categories?q=${encodeURIComponent(categoryName)}&limit=20`,
+        { credentials: "include" }
+      )
+      if (existingRes.ok) {
+        const existingData = await existingRes.json()
+        const existing = (existingData.product_categories || []).find(
+          (c: any) =>
+            c.handle === categoryHandle ||
+            (c.name.toLowerCase() === categoryName.toLowerCase() &&
+              c.parent_category_id === parentId)
+        )
+        if (existing) newCatIdEarly = existing.id
+      }
+
       // Create the category (or subcategory under parent)
-      const createRes = await fetch(`${backend}/admin/product-categories`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: categoryName,
-          handle: toHandle(categoryName),
-          is_active: true,
-          ...(parentId ? { parent_category_id: parentId } : {}),
-        }),
-      })
-      if (!createRes.ok) throw new Error("Failed to create category")
-      const createData = await createRes.json()
-      const newCatId = createData.product_category?.id
+      const createRes = newCatIdEarly
+        ? null
+        : await fetch(`${backend}/admin/product-categories`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: categoryName,
+              handle: categoryHandle,
+              is_active: true,
+              ...(parentId ? { parent_category_id: parentId } : {}),
+            }),
+          })
+      if (createRes && !createRes.ok) throw new Error("Failed to create category")
+      const createData = createRes ? await createRes.json() : null
+      const newCatId = newCatIdEarly ?? createData?.product_category?.id
       if (!newCatId) throw new Error("No category id returned")
 
       // Assign the new category to the product
