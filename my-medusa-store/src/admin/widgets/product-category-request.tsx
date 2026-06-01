@@ -11,8 +11,10 @@ import { useEffect, useState } from "react"
  *
  * The widget lets the admin:
  *   - see each request alongside the original Excel value (for context),
- *   - link out to the right admin section (Categories / Collections),
- *   - mark each request as resolved once the entity exists / is assigned.
+ *   - one-click "Create & Assign" to create the category/collection and
+ *     assign it to the product automatically,
+ *   - manually mark each request as resolved if they prefer to handle it
+ *     themselves in the respective admin section.
  */
 
 type Kind = "category" | "collection"
@@ -38,6 +40,8 @@ type ProductMetadata = {
 type Product = {
   id: string
   title?: string
+  categories?: Array<{ id: string; name?: string; parent_category_id?: string | null }>
+  collection?: { id: string; title?: string } | null
   metadata?: ProductMetadata | null
 }
 
@@ -82,6 +86,9 @@ const KIND_CONFIG: Record<
   },
 }
 
+const toHandle = (s: string) =>
+  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+
 const formatTimestamp = (iso?: string): string => {
   if (!iso) return ""
   try {
@@ -102,6 +109,13 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
   const [product, setProduct] = useState<Product | null>(null)
   const [loading, setLoading] = useState(true)
   const [updatingKind, setUpdatingKind] = useState<Kind | null>(null)
+  const [creatingKind, setCreatingKind] = useState<Kind | null>(null)
+
+  const backend = (
+    typeof window !== "undefined"
+      ? (process.env.BACKEND_URL || window.location.origin)
+      : ""
+  ).replace(/\/$/, "")
 
   const fetchProduct = async () => {
     setLoading(true)
@@ -132,16 +146,189 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
     return !!remark
   })
 
-  // Don't render anything when there are no requests — keeps the product
-  // page clean for products that came in through the regular flow.
-  if (!loading && requests.length === 0) {
-    return null
+  if (!loading && requests.length === 0) return null
+
+  // ── One-click: Create & Assign category (subcategory-aware) ──────────────
+  const handleCreateCategory = async () => {
+    if (!product) return
+    const request = meta.category_request?.trim()
+    if (!request) return
+    setCreatingKind("category")
+    try {
+      // Parse "Parent > Sub" format written by the bulk-upload flow
+      const parts = request.split(">").map((p) => p.trim()).filter(Boolean)
+      // Also handle "Sub (under Parent)" format
+      const underMatch = parts[0]?.match(/^(.+?)\s*\(under\s+(.+?)\)$/)
+      let parentName: string | null = null
+      let categoryName: string
+
+      if (underMatch) {
+        categoryName = underMatch[1].trim()
+        parentName = underMatch[2].trim()
+      } else if (parts.length > 1) {
+        parentName = parts[0]
+        categoryName = parts[parts.length - 1]
+      } else {
+        categoryName = parts[0]
+      }
+
+      let parentId: string | null = null
+
+      if (parentName) {
+        // Try to find an existing parent category
+        const listRes = await fetch(
+          `${backend}/admin/product-categories?q=${encodeURIComponent(parentName)}&limit=20`,
+          { credentials: "include" }
+        )
+        if (listRes.ok) {
+          const listData = await listRes.json()
+          const match = (listData.product_categories || []).find(
+            (c: any) => c.name.toLowerCase() === parentName!.toLowerCase()
+          )
+          parentId = match?.id ?? null
+        }
+        // Create parent if not found
+        if (!parentId) {
+          const createParentRes = await fetch(`${backend}/admin/product-categories`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: parentName,
+              handle: toHandle(parentName),
+              is_active: true,
+            }),
+          })
+          if (!createParentRes.ok) throw new Error("Failed to create parent category")
+          const createParentData = await createParentRes.json()
+          parentId = createParentData.product_category?.id ?? null
+        }
+      }
+
+      // Build a unique handle; prefix subcategories with the parent handle
+      const categoryHandle = parentId
+        ? `${toHandle(parentName ?? categoryName)}-${toHandle(categoryName)}`
+        : toHandle(categoryName)
+
+      // Check if this category already exists — reuse it to avoid 400s
+      let newCatId: string | null = null
+      const existingRes = await fetch(
+        `${backend}/admin/product-categories?q=${encodeURIComponent(categoryName)}&limit=20`,
+        { credentials: "include" }
+      )
+      if (existingRes.ok) {
+        const existingData = await existingRes.json()
+        const existing = (existingData.product_categories || []).find(
+          (c: any) =>
+            c.handle === categoryHandle ||
+            (c.name.toLowerCase() === categoryName.toLowerCase() &&
+              c.parent_category_id === parentId)
+        )
+        if (existing) newCatId = existing.id
+      }
+
+      // Create subcategory if it doesn't already exist
+      if (!newCatId) {
+        const createRes = await fetch(`${backend}/admin/product-categories`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: categoryName,
+            handle: categoryHandle,
+            is_active: true,
+            ...(parentId ? { parent_category_id: parentId } : {}),
+          }),
+        })
+        if (!createRes.ok) throw new Error("Failed to create category")
+        const createData = await createRes.json()
+        newCatId = createData.product_category?.id ?? null
+      }
+
+      if (!newCatId) throw new Error("No category id returned")
+
+      // Assign new category to the product + mark resolved
+      const existingCatIds = (product.categories || []).map((c) => ({ id: c.id }))
+      const updateRes = await fetch(`${backend}/admin/products/${product.id}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categories: [...existingCatIds, { id: newCatId }],
+          metadata: {
+            ...meta,
+            category_request_status: "resolved",
+            category_request_resolved_at: new Date().toISOString(),
+          },
+        }),
+      })
+      if (!updateRes.ok) throw new Error("Failed to assign category to product")
+
+      toast.success("Category created & assigned", {
+        description: parentName
+          ? `"${categoryName}" created under "${parentName}" and assigned to this product.`
+          : `"${categoryName}" created and assigned to this product.`,
+      })
+      fetchProduct()
+    } catch (err: any) {
+      console.error("Create category failed:", err)
+      toast.error("Failed to create category", {
+        description: err?.message || "Please try again.",
+      })
+    } finally {
+      setCreatingKind(null)
+    }
   }
 
-  const updateRequestStatus = async (
-    kind: Kind,
-    status: "pending" | "resolved"
-  ) => {
+  // ── One-click: Create & Assign collection ────────────────────────────────
+  const handleCreateCollection = async () => {
+    if (!product) return
+    const request = meta.collection_request?.trim()
+    if (!request) return
+    setCreatingKind("collection")
+    try {
+      const createRes = await fetch(`${backend}/admin/collections`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: request, handle: toHandle(request) }),
+      })
+      if (!createRes.ok) throw new Error("Failed to create collection")
+      const createData = await createRes.json()
+      const newColId = createData.collection?.id
+      if (!newColId) throw new Error("No collection id returned")
+
+      const updateRes = await fetch(`${backend}/admin/products/${product.id}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          collection_id: newColId,
+          metadata: {
+            ...meta,
+            collection_request_status: "resolved",
+            collection_request_resolved_at: new Date().toISOString(),
+          },
+        }),
+      })
+      if (!updateRes.ok) throw new Error("Failed to assign collection to product")
+
+      toast.success("Collection created & assigned", {
+        description: `"${request}" created and assigned to this product.`,
+      })
+      fetchProduct()
+    } catch (err: any) {
+      console.error("Create collection failed:", err)
+      toast.error("Failed to create collection", {
+        description: err?.message || "Please try again.",
+      })
+    } finally {
+      setCreatingKind(null)
+    }
+  }
+
+  // ── Mark resolved / reopen ────────────────────────────────────────────────
+  const updateRequestStatus = async (kind: Kind, status: "pending" | "resolved") => {
     if (!product) return
     if (
       status === "resolved" &&
@@ -171,15 +358,12 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
         const errBody = await res.json().catch(() => null)
         throw new Error(errBody?.message || "Failed to update request")
       }
-      toast.success(
-        status === "resolved" ? "Marked resolved" : "Reopened",
-        {
-          description:
-            status === "resolved"
-              ? `The ${KIND_CONFIG[kind].label} request is now hidden from the pending list.`
-              : `The ${KIND_CONFIG[kind].label} request is back in pending state.`,
-        }
-      )
+      toast.success(status === "resolved" ? "Marked resolved" : "Reopened", {
+        description:
+          status === "resolved"
+            ? `The ${KIND_CONFIG[kind].label} request is now hidden from the pending list.`
+            : `The ${KIND_CONFIG[kind].label} request is back in pending state.`,
+      })
       fetchProduct()
     } catch (error: any) {
       console.error(`Failed to update ${kind} request:`, error)
@@ -222,6 +406,7 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
           meta[cfg.metaKeys.resolvedAt] as string | undefined
         )
         const updating = updatingKind === kind
+        const creating = creatingKind === kind
 
         return (
           <div key={kind} className={i > 0 ? "border-t" : ""}>
@@ -291,14 +476,35 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
 
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 {!isResolved ? (
-                  <Button
-                    variant="primary"
-                    size="small"
-                    onClick={() => updateRequestStatus(kind, "resolved")}
-                    disabled={updating}
-                  >
-                    {updating ? "Saving…" : "Mark as resolved"}
-                  </Button>
+                  <>
+                    {/* Primary action: create the entity and assign it instantly */}
+                    <Button
+                      variant="primary"
+                      size="small"
+                      disabled={creating || updating}
+                      onClick={
+                        kind === "category"
+                          ? handleCreateCategory
+                          : handleCreateCollection
+                      }
+                    >
+                      {creating
+                        ? "Creating…"
+                        : kind === "category"
+                        ? "✚ Create & Assign Category"
+                        : "✚ Create & Assign Collection"}
+                    </Button>
+
+                    {/* Secondary: manual resolve (e.g. if admin handled it elsewhere) */}
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      onClick={() => updateRequestStatus(kind, "resolved")}
+                      disabled={updating || creating}
+                    >
+                      {updating ? "Saving…" : "Mark as resolved"}
+                    </Button>
+                  </>
                 ) : (
                   <Button
                     variant="secondary"
@@ -310,13 +516,6 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
                   </Button>
                 )}
               </div>
-
-              <Text size="xsmall" className="text-ui-fg-subtle">
-                Tip: create the requested {cfg.label} in{" "}
-                <span className="font-medium">{cfg.hint}</span> and then
-                assign it to this product, before marking the request
-                resolved.
-              </Text>
             </div>
           </div>
         )

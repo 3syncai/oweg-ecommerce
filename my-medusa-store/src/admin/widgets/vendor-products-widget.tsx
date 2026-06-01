@@ -146,10 +146,22 @@ const VendorProductsWidget = () => {
     try {
       const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
 
-      // Parse "Parent > Sub" or plain "Name"
-      const parts = request.split(">").map((p) => p.trim()).filter(Boolean)
-      const parentName = parts.length > 1 ? parts[0] : null
-      const categoryName = parts[parts.length - 1]
+      // Parse all formats produced by the bulk-upload flow:
+      //   "Jackets (under Clothing)"  →  parent=Clothing, child=Jackets
+      //   "Clothing > Jackets"        →  parent=Clothing, child=Jackets
+      //   "Jackets"                   →  top-level category
+      let parentName: string | null = null
+      let categoryName: string
+
+      const underMatch = request.match(/^(.+?)\s*\(under\s+(.+?)\)$/i)
+      if (underMatch) {
+        categoryName = underMatch[1].trim()
+        parentName = underMatch[2].trim()
+      } else {
+        const parts = request.split(">").map((p: string) => p.trim()).filter(Boolean)
+        parentName = parts.length > 1 ? parts[0] : null
+        categoryName = parts[parts.length - 1]
+      }
 
       const toHandle = (s: string) =>
         s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
@@ -444,9 +456,24 @@ const VendorProductsWidget = () => {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <Text size="small" style={{ color: "var(--fg-base)" }}>{path}</Text>
                   {catRequest && catRequestStatus === "pending" && (
-                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}>
-                      Also requested: &ldquo;{catRequest}&rdquo;
-                    </span>
+                    <>
+                      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}>
+                        Also requested: &ldquo;{catRequest}&rdquo;
+                      </span>
+                      <button
+                        onClick={() => handleCreateCategory(selectedProduct)}
+                        disabled={creatingCategory}
+                        style={{
+                          fontSize: 11, padding: "3px 10px", borderRadius: 6,
+                          background: creatingCategory ? "#e5e7eb" : "#1d4ed8",
+                          color: creatingCategory ? "#6b7280" : "#fff",
+                          border: "none", cursor: creatingCategory ? "not-allowed" : "pointer",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {creatingCategory ? "Creating…" : "✚ Create & Assign"}
+                      </button>
+                    </>
                   )}
                 </div>
               )
@@ -492,9 +519,24 @@ const VendorProductsWidget = () => {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <Text size="small">{toTitleCase(col.title)}</Text>
                   {colRequest && colRequestStatus === "pending" && (
-                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}>
-                      Also requested: &ldquo;{colRequest}&rdquo;
-                    </span>
+                    <>
+                      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}>
+                        Also requested: &ldquo;{colRequest}&rdquo;
+                      </span>
+                      <button
+                        onClick={() => handleCreateCollection(selectedProduct)}
+                        disabled={creatingCollection}
+                        style={{
+                          fontSize: 11, padding: "3px 10px", borderRadius: 6,
+                          background: creatingCollection ? "#e5e7eb" : "#1d4ed8",
+                          color: creatingCollection ? "#6b7280" : "#fff",
+                          border: "none", cursor: creatingCollection ? "not-allowed" : "pointer",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {creatingCollection ? "Creating…" : "✚ Create & Assign"}
+                      </button>
+                    </>
                   )}
                 </div>
               )
