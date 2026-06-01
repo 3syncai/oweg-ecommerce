@@ -303,8 +303,6 @@ const Header: React.FC = () => {
 
   React.useEffect(() => {
     const headerEl = headerRootRef.current;
-  React.useEffect(() => {
-    const headerEl = headerRootRef.current;
     if (!headerEl) return;
 
     const syncHeaderHeight = () => {
@@ -326,7 +324,6 @@ const Header: React.FC = () => {
       if (observer) observer.disconnect();
       document.documentElement.style.removeProperty("--app-header-height");
     };
-  }, [isMobile, oweg10Visible]);
   }, [isMobile, oweg10Visible]);
 
   React.useEffect(() => {
