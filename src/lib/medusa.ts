@@ -483,8 +483,8 @@ export async function fetchProductsByTag(tagValue: string, limit = 20) {
     console.warn("fetchProductsByTag tag lookup failed", err)
   }
 
-  // 3) Fallback: fetch without expand and return first page (UI will still show products)
-  return await fetchStoreProducts(createBaseSearchParams(limit))
+  // No products found for this tag — return empty rather than leaking unfiltered results
+  return []
 }
 
 export type MedusaProductType = {

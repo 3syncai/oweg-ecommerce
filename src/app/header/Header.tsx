@@ -113,14 +113,13 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
     .filter((node) => !node.parentId)
     .sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999));
 
-  const withChildren = Array.from(nodes.values())
-    .filter((node) => node.children.length > 0)
+  // Show all root categories in the primary nav (with or without subcategories).
+  // Categories that do have children will render a dropdown; leaf categories link directly.
+  const withChildren = roots
     .sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999))
     .map((node) => stripParent(node));
 
-  const withoutChildren = roots
-    .filter((node) => node.children.length === 0)
-    .map((node) => stripParent(node));
+  const withoutChildren: NavCategory[] = [];
 
   return { withChildren, withoutChildren };
 };
