@@ -37,6 +37,7 @@ type ParsedRow = {
   description: string
   brand: string
   category: string
+  subcategory: string
   collection: string
   tags: string[]
   type: string
@@ -65,6 +66,7 @@ type ParsedRow = {
   // selectedCategoryId wins for the actual category assignment, the remark
   // is stored in product.metadata.category_request for admin review.
   selectedCategoryId?: string
+  resolvedParentCategoryId?: string
   categoryRequest?: string
   // Same dual-track pattern for collection: pick one of the existing
   // collections from the dropdown, or leave a remark requesting a new one.
@@ -118,7 +120,8 @@ const TEMPLATE_HEADERS: Array<{ key: string; example: string; required?: boolean
   { key: "Handle", example: "winter-jacket" },
   { key: "Description", example: "A warm and cozy jacket" },
   { key: "Brand", example: "Nike", required: true },
-  { key: "Category", example: "Jackets" },
+  { key: "Category", example: "Clothing" },
+  { key: "Subcategory", example: "Jackets" },
   { key: "Collection", example: "Winter Collection" },
   { key: "Tags", example: "winter, jacket, outdoor" },
   { key: "Type", example: "" },
@@ -510,10 +513,13 @@ const VendorProductsBulkUploadPage = () => {
       ["   You can leave the Discount % column blank — the system will compute it."],
       ["5. Boolean columns accept Yes/No, True/False, 1/0."],
       ["6. Tags should be comma-separated (e.g. 'winter, jacket, outdoor')."],
-      ["7. Category and Collection must match an existing entry by name."],
-      ["   If they don't match, you can pick a real one (or request a new"],
-      ["   one with a remark) directly in the portal — no need to fix the"],
-      ["   Excel before re-uploading."],
+      ["7. Category and Subcategory: use Category for the top-level category name"],
+      ["   (e.g. 'Home Appliances') and Subcategory for the child category"],
+      ["   (e.g. 'Kettles'). Both must match existing entries by name."],
+      ["   You can leave Subcategory blank — the product will be placed in"],
+      ["   the parent category. If a value doesn't match you can fix it"],
+      ["   directly in the portal without re-uploading."],
+      ["   Collection must also match an existing entry by name."],
       ["8. Type and Tags don't need to pre-exist — leaving a brand-new value"],
       ["   in those columns will auto-create the matching entry in Medusa"],
       ["   on publish."],
@@ -606,18 +612,70 @@ const VendorProductsBulkUploadPage = () => {
       }
 
       const categoryName = toStr(get("Category"))
+      const subcategoryName = toStr(get("Subcategory"))
       const collectionName = toStr(get("Collection"))
-      const matchedCategoryId = categoryName
+
+      // Resolve parent category (Category column)
+      const matchedParentId = categoryName
         ? categoryByName.get(categoryName.toLowerCase())
         : undefined
+      if (categoryName && !matchedParentId) {
+        warnings.push(`Category "${categoryName}" not found — request auto-submitted for admin review`)
+      }
+
+      // Resolve subcategory, then determine the final category ID to assign
+      let finalCategoryId: string | undefined = matchedParentId
+      let resolvedParentCategoryId: string | undefined = matchedParentId
+      // Tracks what to pre-fill in the "Request new category" remark
+      let autoCategoryRequest = ""
+
+      if (!matchedParentId && categoryName) {
+        // The whole parent category is new — request it
+        autoCategoryRequest = categoryName
+      }
+
+      if (subcategoryName) {
+        if (matchedParentId) {
+          // Look for a subcategory whose parent is the matched parent
+          const subcat = categories.find(
+            (c) =>
+              (c.name || "").toLowerCase().trim() === subcategoryName.toLowerCase().trim() &&
+              c.parent_category_id === matchedParentId
+          )
+          if (subcat) {
+            finalCategoryId = subcat.id
+          } else {
+            warnings.push(
+              `Subcategory "${subcategoryName}" not found under "${categoryName}" — request auto-submitted for admin review`
+            )
+            // Request the subcategory under the known parent
+            autoCategoryRequest = `${subcategoryName} (under ${categoryName})`
+          }
+        } else {
+          // No parent given — try to find subcategory anywhere in the tree
+          const subcat = categories.find(
+            (c) =>
+              (c.name || "").toLowerCase().trim() === subcategoryName.toLowerCase().trim() &&
+              !!c.parent_category_id
+          )
+          if (subcat) {
+            finalCategoryId = subcat.id
+            resolvedParentCategoryId = subcat.parent_category_id || undefined
+          } else {
+            warnings.push(`Subcategory "${subcategoryName}" not found — request auto-submitted for admin review`)
+            autoCategoryRequest = autoCategoryRequest
+              ? `${autoCategoryRequest} > ${subcategoryName}`
+              : subcategoryName
+          }
+        }
+      }
+
       const matchedCollectionId = collectionName
         ? collectionByName.get(collectionName.toLowerCase())
         : undefined
-      if (categoryName && !matchedCategoryId) {
-        warnings.push(`Category "${categoryName}" not found — will be ignored`)
-      }
+      const autoCollectionRequest = collectionName && !matchedCollectionId ? collectionName : ""
       if (collectionName && !matchedCollectionId) {
-        warnings.push(`Collection "${collectionName}" not found — will be ignored`)
+        warnings.push(`Collection "${collectionName}" not found — request auto-submitted for admin review`)
       }
 
       let sku = toStr(get("SKU"))
@@ -682,6 +740,7 @@ const VendorProductsBulkUploadPage = () => {
         description: toStr(get("Description")),
         brand,
         category: categoryName,
+        subcategory: subcategoryName,
         collection: collectionName,
         tags,
         type: toStr(get("Type")),
@@ -704,10 +763,11 @@ const VendorProductsBulkUploadPage = () => {
         thumbnailRef,
         imageRefs,
         brandLetterRef,
-        selectedCategoryId: matchedCategoryId,
-        categoryRequest: "",
+        selectedCategoryId: finalCategoryId,
+        resolvedParentCategoryId,
+        categoryRequest: autoCategoryRequest,
         selectedCollectionId: matchedCollectionId,
-        collectionRequest: "",
+        collectionRequest: autoCollectionRequest,
         errors,
         warnings,
         status: errors.length > 0 ? "failed" : "pending",
@@ -860,6 +920,23 @@ const VendorProductsBulkUploadPage = () => {
       // ----------------------------------------------------------------------
 
       setRows(parsed)
+
+      // Pre-populate the two-level category picker's parent state from parsed data
+      const initialParentIds: Record<number, string> = {}
+      const initialOpenCatReqs = new Set<number>()
+      const initialOpenColReqs = new Set<number>()
+      parsed.forEach((row, idx) => {
+        if (row.resolvedParentCategoryId) {
+          initialParentIds[idx] = row.resolvedParentCategoryId
+        }
+        // Auto-open request editors for rows that have unresolved Excel values
+        if (row.categoryRequest) initialOpenCatReqs.add(idx)
+        if (row.collectionRequest) initialOpenColReqs.add(idx)
+      })
+      setRowParentCatIds(initialParentIds)
+      setOpenCategoryRequestRows(initialOpenCatReqs)
+      setOpenCollectionRequestRows(initialOpenColReqs)
+
       const seeded: ImageMap = { ...embeddedImageSeed }
       parsed.forEach((r) => {
         const allRefs = [r.thumbnailRef, ...r.imageRefs].filter(Boolean)
@@ -1906,9 +1983,9 @@ const VendorProductsBulkUploadPage = () => {
                   Click the title to rename, the{" "}
                   <span className="font-mono">+</span> next to a row to
                   add an image, and use the inline editors to change the
-                  category, collection, type, or tags. New types and tags
-                  are auto-created in Medusa on publish; missing
-                  categories/collections can be requested via{" "}
+                  category, subcategory, collection, type, or tags. New
+                  types and tags are auto-created in Medusa on publish;
+                  missing categories/collections can be requested via{" "}
                   <span className="italic">Request new</span> for admin
                   review. Changes are saved here and applied when you publish.
                 </Text>
