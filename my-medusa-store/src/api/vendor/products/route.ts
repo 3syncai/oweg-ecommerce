@@ -484,17 +484,26 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       console.log(`Added ${videoImageObjects.length} video(s) to images array for database storage`)
     }
 
-    // Generate handle from title if not provided
-    // Handle must be unique, so we'll append a timestamp if it already exists
-    const generateHandle = (title: string): string => {
-      return title
+    // Generate handle from title if not provided.
+    // Medusa rejects handles with consecutive hyphens or trailing hyphens.
+    const sanitizeHandle = (raw: string, maxLen = 100): string => {
+      return raw
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .substring(0, 100)
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .substring(0, maxLen)
+        .replace(/-+$/, "")
     }
 
-    let finalHandle = handle || generateHandle(title)
+    const appendUniqueSuffix = (base: string): string => {
+      const suffix = Date.now().toString().slice(-6)
+      const maxBaseLen = Math.max(1, 100 - suffix.length - 1)
+      const cleaned = sanitizeHandle(base, maxBaseLen)
+      return cleaned ? `${cleaned}-${suffix}` : suffix
+    }
+
+    let finalHandle = handle ? sanitizeHandle(handle) : sanitizeHandle(title, 93)
 
     // If handle is provided but might be duplicate, append timestamp to make it unique
     if (handle) {
@@ -506,21 +515,21 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         })
 
         if (existingProducts && existingProducts.length > 0) {
-          // Handle exists, append timestamp to make it unique
-          const timestamp = Date.now().toString().slice(-6) // Last 6 digits of timestamp
-          finalHandle = `${finalHandle}-${timestamp}`
+          finalHandle = appendUniqueSuffix(finalHandle)
           console.log(`Handle "${handle}" already exists, using unique handle: "${finalHandle}"`)
         }
       } catch (checkError: any) {
         // If check fails, append timestamp anyway to be safe
-        const timestamp = Date.now().toString().slice(-6)
-        finalHandle = `${finalHandle}-${timestamp}`
+        finalHandle = appendUniqueSuffix(finalHandle)
         console.log(`Could not check handle uniqueness, using unique handle: "${finalHandle}"`)
       }
     } else {
-      // No handle provided, generate from title and append timestamp for uniqueness
-      const timestamp = Date.now().toString().slice(-6)
-      finalHandle = `${finalHandle}-${timestamp}`
+      // No handle provided — generate from title and append timestamp for uniqueness
+      finalHandle = appendUniqueSuffix(title)
+    }
+
+    if (!finalHandle) {
+      return res.status(400).json({ message: "Could not generate a valid product handle from title" })
     }
 
     // Prepare product data
@@ -859,6 +868,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         message: "A product with this handle already exists. The system will automatically generate a unique handle. Please try again.",
         error: "duplicate_handle",
         details: error?.message,
+      })
+    }
+
+    // Invalid handle or other validation errors from Medusa
+    if (error?.type === "invalid_data" || (error?.message && error.message.includes("Invalid product handle"))) {
+      return res.status(400).json({
+        message: error?.message || "Invalid product data",
+        error: "invalid_data",
       })
     }
 

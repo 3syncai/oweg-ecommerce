@@ -470,6 +470,15 @@ const VendorProductNewPage = () => {
       return
     }
 
+    const hasValidPrice = formData.variants.some((v) => {
+      const price = parseFloat(v.price)
+      return Number.isFinite(price) && price > 0
+    })
+    if (!hasValidPrice) {
+      toast.error("Error", { description: "At least one variant must have a price greater than 0" })
+      return
+    }
+
     setLoading(true)
 
     const vendorToken = localStorage.getItem("vendor_token")
@@ -596,7 +605,10 @@ const VendorProductNewPage = () => {
       toast.success("Success", { description: "Product created successfully" })
       router.push("/products")
     } catch (e: any) {
-      toast.error("Error", { description: e?.message || "Failed to create product" })
+      const backendMessage =
+        e?.data?.message || e?.data?.details || e?.message || "Failed to create product"
+      console.error("Product create failed:", e?.data || e)
+      toast.error("Error", { description: backendMessage })
     } finally {
       setLoading(false)
     }
