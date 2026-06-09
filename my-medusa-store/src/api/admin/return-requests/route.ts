@@ -94,5 +94,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     }
   })
 
-  return res.json({ return_requests: enriched })
+  const sorted = [...enriched].sort((a, b) => {
+    const aTime = new Date(a.created_at || 0).getTime()
+    const bTime = new Date(b.created_at || 0).getTime()
+    return bTime - aTime
+  })
+
+  return res.json({ return_requests: sorted })
 }
