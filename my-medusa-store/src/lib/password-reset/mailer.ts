@@ -270,6 +270,10 @@ type SendResetMailInput = {
   to: string
   resetUrl: string
   expiresInMinutes: number
+  subject?: string
+  heading?: string
+  intro?: string
+  buttonLabel?: string
 }
 
 export async function sendPasswordResetEmail(input: SendResetMailInput) {
@@ -284,15 +288,22 @@ export async function sendPasswordResetEmail(input: SendResetMailInput) {
     throw new Error("Invalid email address")
   }
 
-  const subject = sanitizeHeaderValue("Reset your OWEG password")
+  const subject = sanitizeHeaderValue(
+    input.subject || "Reset your OWEG password"
+  )
   const fromName = sanitizeHeaderValue(passwordResetConfig.smtp.fromName || "OWEG")
+  const heading = input.heading || "Reset your password"
+  const intro =
+    input.intro ||
+    "We received a request to reset your OWEG password. Use the button below to continue."
+  const buttonLabel = input.buttonLabel || "Reset Password"
   const previewText = `Reset your password. This link expires in ${input.expiresInMinutes} minutes.`
   const escapedResetUrl = escapeHtml(input.resetUrl)
 
   const text = [
-    "OWEG password reset",
+    subject,
     "",
-    "We received a request to reset your password.",
+    intro,
     `Reset link: ${input.resetUrl}`,
     "",
     `This link expires in ${input.expiresInMinutes} minutes and can only be used once.`,
@@ -307,10 +318,10 @@ export async function sendPasswordResetEmail(input: SendResetMailInput) {
             Password Reset
           </div>
           <h1 style="margin:16px 0 10px;font-size:28px;line-height:1.2;color:#0f172a">
-            Reset your password
+            ${escapeHtml(heading)}
           </h1>
           <p style="margin:0;font-size:14px;line-height:1.6;color:#475569">
-            We received a request to reset your OWEG password. Use the button below to continue.
+            ${escapeHtml(intro)}
           </p>
         </div>
         <div style="padding:24px 28px 28px">
@@ -318,7 +329,7 @@ export async function sendPasswordResetEmail(input: SendResetMailInput) {
             href="${escapedResetUrl}"
             style="display:inline-block;background:#16a34a;color:#ffffff;text-decoration:none;padding:13px 22px;border-radius:999px;font-size:14px;font-weight:700"
           >
-            Reset Password
+            ${escapeHtml(buttonLabel)}
           </a>
           <p style="margin:18px 0 0;font-size:13px;line-height:1.7;color:#475569">
             This link expires in ${input.expiresInMinutes} minutes and can only be used once.
