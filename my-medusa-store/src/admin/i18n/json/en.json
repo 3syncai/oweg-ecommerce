@@ -1,11 +1,27 @@
 {
     "login": {
-        "title": "Welcome to OWEG Admin",
-        "hint": "Sign in to access the admin dashboard",
-        "forgotPassword": "Forgot password? - <0>Reset</0>"
+        "title": "Sign in to OWEG Admin",
+        "hint": "Use your admin credentials to access the dashboard",
+        "forgotPassword": "Forgot password? <0>Reset it here</0>"
     },
     "invite": {
         "title": "Welcome to OWEG Admin",
         "hint": "Create your account below"
+    },
+    "resetPassword": {
+        "resetPassword": "Reset password",
+        "hint": "Enter your admin email and we will send reset instructions.",
+        "sendResetInstructions": "Send reset instructions",
+        "successfulRequestTitle": "Check your email",
+        "successfulRequest": "If an account exists for that email, reset instructions are on the way.",
+        "backToLogin": "Back to <0>login</0>",
+        "newPasswordHint": "Choose a new password for your OWEG Admin account.",
+        "newPassword": "New password",
+        "repeatNewPassword": "Repeat new password",
+        "successfulResetTitle": "Password updated",
+        "successfulReset": "Your password has been reset. You can now sign in.",
+        "invalidLinkTitle": "Invalid reset link",
+        "invalidLinkHint": "This reset link is invalid or has expired.",
+        "goToResetPassword": "Request a new reset link"
     }
 }
