@@ -3,6 +3,7 @@
 import React from 'react'
 import { GitCompare, Heart, Minus, Plus, Share2, ShoppingCart } from 'lucide-react'
 import type { DetailedProduct as DetailedProductType } from '@/lib/medusa'
+import { isVariantPurchasable } from '@/lib/medusa'
 import { FlashSaleBadge } from '@/components/flash-sale/FlashSaleBadge'
 import type { FlashSaleInfo } from '@/hooks/useFlashSale'
 
@@ -14,6 +15,8 @@ type ProductSummaryProps = {
   viewCount: number
   hasStock: boolean
   quantity: number
+  selectedOptions: Record<string, string>
+  onOptionChange: (optionTitle: string, value: string) => void
   onQuantityChange: (delta: number) => void
   onAddToCart: () => void
   onBuyNow: () => void
@@ -25,11 +28,48 @@ type ProductSummaryProps = {
   flashSaleInfo?: FlashSaleInfo
 }
 
+function isOptionValueAvailable(
+  product: DetailedProductType,
+  selectedOptions: Record<string, string>,
+  optionTitle: string,
+  value: string
+) {
+  return product.variants.some((variant) => {
+    if (variant.options[optionTitle] !== value) return false
+    return product.options.every((opt) => {
+      if (opt.title === optionTitle) return true
+      const selected = selectedOptions[opt.title]
+      if (!selected) return true
+      return variant.options[opt.title] === selected
+    })
+  })
+}
+
+function isOptionValuePurchasable(
+  product: DetailedProductType,
+  selectedOptions: Record<string, string>,
+  optionTitle: string,
+  value: string
+) {
+  return product.variants.some((variant) => {
+    if (variant.options[optionTitle] !== value) return false
+    const matchesOtherOptions = product.options.every((opt) => {
+      if (opt.title === optionTitle) return true
+      const selected = selectedOptions[opt.title]
+      if (!selected) return true
+      return variant.options[opt.title] === selected
+    })
+    return matchesOtherOptions && isVariantPurchasable(variant)
+  })
+}
+
 const ProductSummary = ({
   product,
   brandName,
   hasStock,
   quantity,
+  selectedOptions,
+  onOptionChange,
   onQuantityChange,
   onAddToCart,
   onBuyNow,
@@ -131,6 +171,60 @@ const ProductSummary = ({
         <span className="text-xs text-slate-400">1 coin = ₹1</span>
       </div>
       <div className="text-sm text-slate-500">Inclusive of all taxes | Prices shown in {product.currency}</div>
+      {product.options.length > 0 && (
+        <div className="space-y-4">
+          {product.options.map((option) => (
+            <div key={option.id} className="space-y-2">
+              <p className="text-sm font-semibold text-slate-800">
+                {option.title}
+                {selectedOptions[option.title] ? (
+                  <span className="ml-2 font-normal text-slate-500">
+                    : {selectedOptions[option.title]}
+                  </span>
+                ) : null}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {option.values.map((value) => {
+                  const isSelected = selectedOptions[option.title] === value
+                  const isAvailable = isOptionValueAvailable(
+                    product,
+                    selectedOptions,
+                    option.title,
+                    value
+                  )
+                  const isPurchasable = isOptionValuePurchasable(
+                    product,
+                    selectedOptions,
+                    option.title,
+                    value
+                  )
+                  return (
+                    <button
+                      key={`${option.id}-${value}`}
+                      type="button"
+                      disabled={!isAvailable}
+                      onClick={() => onOptionChange(option.title, value)}
+                      className={`min-w-[3rem] rounded-full border px-4 py-2 text-sm font-medium transition ${
+                        isSelected
+                          ? 'border-green-600 bg-green-600 text-white shadow-sm'
+                          : isAvailable
+                            ? isPurchasable
+                              ? 'border-slate-200 bg-white text-slate-800 hover:border-green-400 hover:text-green-700'
+                              : 'border-slate-200 bg-slate-50 text-slate-400 line-through'
+                            : 'border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed'
+                      }`}
+                      aria-pressed={isSelected}
+                      aria-label={`${option.title} ${value}`}
+                    >
+                      {value}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <style jsx global>{`
       body.lens-open .save-banner {
         display: none !important;

@@ -24,6 +24,23 @@ type UploadedVideo = {
   originalName: string
 }
 
+type ProductOption = {
+  title: string
+  values: string[]
+}
+
+type VariantFormRow = {
+  title: string
+  sku: string
+  managedInventory: boolean
+  allowBackorder: boolean
+  hasInventoryKit: boolean
+  inventoryCount: string
+  price: string
+  discountedPrice: string
+  optionValues: Record<string, string>
+}
+
 type ProductFormData = {
   // Details
   title: string
@@ -57,20 +74,102 @@ type ProductFormData = {
   shippingProfile: string
   salesChannels: string[]
 
-  // Variants
-  variants: Array<{
-    title: string
-    sku: string
-    managedInventory: boolean
-    allowBackorder: boolean
-    hasInventoryKit: boolean
-    inventoryCount: string
-    price: string
-    discountedPrice: string
-  }>
+  // Options & variants
+  productOptions: ProductOption[]
+  variantSizesInput: string
+  variants: VariantFormRow[]
 }
 
 type Step = "details" | "organize" | "variants"
+
+const createDefaultVariantRow = (): VariantFormRow => ({
+  title: "Default variant",
+  sku: "",
+  managedInventory: true,
+  allowBackorder: true,
+  hasInventoryKit: true,
+  inventoryCount: "",
+  price: "",
+  discountedPrice: "",
+  optionValues: {},
+})
+
+
+const MAX_AUTO_VARIANTS = 100
+
+const resolveProductOptionsFromVariants = (
+  productOptions: ProductOption[],
+  variants: VariantFormRow[]
+): ProductOption[] =>
+  productOptions
+    .filter((opt) => opt.title.trim())
+    .map((opt) => {
+      const title = opt.title.trim()
+      const fromForm = opt.values.map((v) => v.trim()).filter(Boolean)
+      const fromVariants = variants
+        .map((v) => v.optionValues[title]?.trim())
+        .filter((v): v is string => Boolean(v))
+      return {
+        title,
+        values: Array.from(new Set([...fromForm, ...fromVariants])),
+      }
+    })
+
+const variantOptionComboKey = (
+  optionTitles: string[],
+  optionValues: Record<string, string>
+): string => optionTitles.map((title) => optionValues[title]?.trim() || "").join("|")
+
+const getPrimaryOptionName = (productOptions: ProductOption[]): string =>
+  productOptions.find((o) => o.title.trim())?.title.trim() || "Size"
+
+const readVariantOptionValue = (variant: VariantFormRow, optionName: string): string => {
+  if (!optionName) return ""
+  if (variant.optionValues[optionName]) return variant.optionValues[optionName]
+  const lower = optionName.toLowerCase()
+  const match = Object.entries(variant.optionValues).find(([key]) => key.toLowerCase() === lower)
+  return match?.[1] || ""
+}
+
+const normalizeVariantOptionValues = (
+  variants: VariantFormRow[],
+  optionName: string
+): VariantFormRow[] =>
+  variants.map((variant) => {
+    const value = readVariantOptionValue(variant, optionName)
+    return {
+      ...variant,
+      optionValues: value ? { [optionName]: value } : {},
+    }
+  })
+
+const computeDiscountPercent = (
+  price: string,
+  discountedPrice: string
+): number | null => {
+  const basePrice = parseFloat(price)
+  const salePrice = parseFloat(discountedPrice)
+  if (!Number.isFinite(basePrice) || !Number.isFinite(salePrice)) return null
+  if (basePrice <= 0 || salePrice <= 0) return null
+  if (salePrice >= basePrice) return null
+  return Math.round(((basePrice - salePrice) / basePrice) * 1000) / 10
+}
+
+const VariantDiscountCell = ({
+  price,
+  discountedPrice,
+}: {
+  price: string
+  discountedPrice: string
+}) => {
+  const discountPercent = computeDiscountPercent(price, discountedPrice)
+  if (discountPercent === null) {
+    return <span className="text-ui-fg-muted">—</span>
+  }
+  return (
+    <span className="font-medium text-emerald-500">{discountPercent}%</span>
+  )
+}
 
 const VendorProductNewPage = () => {
   const router = useRouter()
@@ -123,16 +222,9 @@ const VendorProductNewPage = () => {
     tags: [],
     shippingProfile: "",
     salesChannels: ["Default Sales Channel"],
-    variants: [{
-      title: "Default variant",
-      sku: "",
-      managedInventory: true,
-      allowBackorder: true,
-      hasInventoryKit: true,
-      inventoryCount: "",
-      price: "",
-      discountedPrice: "",
-    }],
+    productOptions: [],
+    variantSizesInput: "",
+    variants: [createDefaultVariantRow()],
   })
 
   const [uploadingImages, setUploadingImages] = useState(false)
@@ -165,6 +257,117 @@ const VendorProductNewPage = () => {
     } catch (error) {
       console.error("Failed to fetch data:", error)
     }
+  }
+
+  const createVariantRowsFromSizes = () => {
+    const optionName = getPrimaryOptionName(formData.productOptions)
+    const sizes = formData.variantSizesInput
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+
+    if (!optionName) {
+      toast.error("Enter what varies", { description: 'e.g. "Size" or "Color"' })
+      return
+    }
+    if (!sizes.length) {
+      toast.error("Enter sizes/values", { description: "Example: 28, 29, 30, 31" })
+      return
+    }
+    if (sizes.length > MAX_AUTO_VARIANTS) {
+      toast.error("Too many variants", { description: `Maximum ${MAX_AUTO_VARIANTS} at once` })
+      return
+    }
+
+    const uniqueSizes = Array.from(new Set(sizes))
+    const variants: VariantFormRow[] = uniqueSizes.map((size) => ({
+      ...createDefaultVariantRow(),
+      title: size,
+      optionValues: { [optionName]: size },
+    }))
+
+    setFormData((prev) => ({
+      ...prev,
+      productOptions: [{ title: optionName, values: uniqueSizes }],
+      variants,
+    }))
+    toast.success("Variant rows ready", { description: `${uniqueSizes.length} row(s) — fill price & stock below` })
+  }
+
+  const updatePrimaryOptionName = (name: string) => {
+    setFormData((prev) => {
+      const oldName = getPrimaryOptionName(prev.productOptions)
+      const newName = name.trim() || "Size"
+      const variants = prev.variants.map((variant) => {
+        const value = readVariantOptionValue(variant, oldName)
+        return {
+          ...variant,
+          optionValues: value ? { [newName]: value } : {},
+        }
+      })
+      return {
+        ...prev,
+        productOptions: [{ title: newName, values: prev.productOptions[0]?.values || [] }],
+        variants,
+      }
+    })
+  }
+
+  const addVariantRow = () => {
+    const optionName = getPrimaryOptionName(formData.productOptions)
+    setFormData((prev) => ({
+      ...prev,
+      variants: [
+        ...prev.variants,
+        {
+          ...createDefaultVariantRow(),
+          title: "",
+          optionValues: optionName ? { [optionName]: "" } : {},
+        },
+      ],
+    }))
+  }
+
+  const removeVariantRow = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      variants: prev.variants.filter((_, i) => i !== index),
+    }))
+  }
+
+  const updateVariantOptionValue = (variantIdx: number, value: string) => {
+    const optionName = getPrimaryOptionName(formData.productOptions)
+    setFormData((prev) => {
+      const newVariants = [...prev.variants]
+      newVariants[variantIdx] = {
+        ...newVariants[variantIdx],
+        optionValues: optionName ? { [optionName]: value } : {},
+        title: value,
+      }
+      return { ...prev, variants: newVariants }
+    })
+  }
+
+  const updateVariantField = <K extends keyof VariantFormRow>(
+    variantIdx: number,
+    field: K,
+    value: VariantFormRow[K]
+  ) => {
+    setFormData((prev) => {
+      const newVariants = [...prev.variants]
+      newVariants[variantIdx] = { ...newVariants[variantIdx], [field]: value }
+      return { ...prev, variants: newVariants }
+    })
+  }
+
+  const handleHasVariantsToggle = (enabled: boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      hasVariants: enabled,
+      productOptions: enabled ? [{ title: "Size", values: [] }] : [],
+      variantSizesInput: "",
+      variants: enabled ? [] : [createDefaultVariantRow()],
+    }))
   }
 
   const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -479,6 +682,50 @@ const VendorProductNewPage = () => {
       return
     }
 
+    if (formData.hasVariants) {
+      const optionName = getPrimaryOptionName(formData.productOptions)
+      const normalizedVariants = normalizeVariantOptionValues(formData.variants, optionName)
+
+      if (!normalizedVariants.length) {
+        toast.error("No variants yet", {
+          description: 'Enter sizes like "28, 29, 30" above and click Create variant rows',
+        })
+        return
+      }
+
+      const resolvedOptions = resolveProductOptionsFromVariants(
+        [{ title: optionName, values: [] }],
+        normalizedVariants
+      ).filter((opt) => opt.title && opt.values.length > 0)
+
+      if (!resolvedOptions.length) {
+        toast.error("Missing size/value", { description: "Fill the size column on each row" })
+        return
+      }
+
+      const optionTitles = resolvedOptions.map((opt) => opt.title)
+      const comboKeys = new Set<string>()
+      for (const variant of normalizedVariants) {
+        const value = readVariantOptionValue(variant, optionName)
+        if (!value.trim()) {
+          toast.error("Missing size/value", { description: "Every row needs a size (or color, etc.)" })
+          return
+        }
+        const comboKey = variantOptionComboKey(optionTitles, variant.optionValues)
+        if (comboKeys.has(comboKey)) {
+          toast.error("Duplicate size", { description: `"${value}" appears on more than one row` })
+          return
+        }
+        comboKeys.add(comboKey)
+      }
+
+      const skus = normalizedVariants.map((v) => v.sku.trim()).filter(Boolean)
+      if (skus.length !== new Set(skus).size) {
+        toast.error("Duplicate SKU", { description: "Each variant needs a different SKU (or leave all blank)" })
+        return
+      }
+    }
+
     setLoading(true)
 
     const vendorToken = localStorage.getItem("vendor_token")
@@ -520,34 +767,45 @@ const VendorProductNewPage = () => {
       // Use already uploaded images
       const imageUrls = formData.uploadedImages.map(img => img.url)
 
-      // Prepare variant data - create a default variant if no variants specified
-      const variants = formData.variants && formData.variants.length > 0
-        ? formData.variants.map((v) => ({
-          title: v.title || "Default variant",
-          sku: v.sku || undefined,
-          manage_inventory: v.managedInventory,
-          allow_backorder: v.allowBackorder,
-          prices: v.price ? [
-            // Base price (no price_list_id)
-            {
-              amount: parseFloat(v.price),
-              currency_code: "inr",
-            },
-            // Discounted price (with price_list_id) - only if provided
-            ...(v.discountedPrice ? [{
-              amount: parseFloat(v.discountedPrice),
-              currency_code: "inr",
-              price_list_id: "pl_1765232034558" // India price list
-            }] : [])
-          ] : [],
-          inventory_quantity: Math.max(0, Math.floor(Number.parseInt(v.inventoryCount, 10)) || 0),
-        }))
-        : [
-          {
-            title: "Default variant",
-            prices: [],
-          }
-        ]
+      // Prepare variant data
+      const optionName = getPrimaryOptionName(formData.productOptions)
+      const normalizedVariants = formData.hasVariants
+        ? normalizeVariantOptionValues(formData.variants, optionName)
+        : formData.variants
+
+      const variants = normalizedVariants.map((v) => ({
+        title: formData.hasVariants
+          ? readVariantOptionValue(v, optionName) || v.title.trim() || "Variant"
+          : v.title || "Default variant",
+        sku: v.sku || undefined,
+        manage_inventory: v.managedInventory,
+        allow_backorder: v.allowBackorder,
+        prices: v.price
+          ? [
+              { amount: parseFloat(v.price), currency_code: "inr" },
+              ...(v.discountedPrice
+                ? [
+                    {
+                      amount: parseFloat(v.discountedPrice),
+                      currency_code: "inr",
+                      price_list_id: "pl_1765232034558",
+                    },
+                  ]
+                : []),
+            ]
+          : [],
+        inventory_quantity: Math.max(0, Math.floor(Number.parseInt(v.inventoryCount, 10)) || 0),
+        ...(formData.hasVariants
+          ? { options: v.optionValues }
+          : {}),
+      }))
+
+      const productOptions = formData.hasVariants
+        ? resolveProductOptionsFromVariants(
+            [{ title: optionName, values: [] }],
+            normalizedVariants
+          )
+        : []
 
       // Prepare attributes - convert strings to numbers where applicable
       const parseNumber = (value: string): number | null => {
@@ -569,7 +827,7 @@ const VendorProductNewPage = () => {
         tags: formData.tags || [],
         images: imageUrls.map((url) => ({ url })),
         thumbnail: formData.thumbnailUrl || imageUrls[0] || null,
-        options: [], // No product options for simple products
+        options: productOptions,
         variants: variants,
         shipping_profile_id: formData.shippingProfile || null,
         // Physical attributes
@@ -604,10 +862,14 @@ const VendorProductNewPage = () => {
 
       toast.success("Success", { description: "Product created successfully" })
       router.push("/products")
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const err = e as { message?: string; data?: { message?: string; details?: string } }
       const backendMessage =
-        e?.data?.message || e?.data?.details || e?.message || "Failed to create product"
-      console.error("Product create failed:", e?.data || e)
+        err?.data?.message ||
+        err?.data?.details ||
+        err?.message ||
+        "Failed to create product"
+      console.error("Product create failed:", err?.data || err)
       toast.error("Error", { description: backendMessage })
     } finally {
       setLoading(false)
@@ -1453,222 +1715,243 @@ const VendorProductNewPage = () => {
     </div>
   )
 
-  const renderVariantsStep = () => (
-    <div className="max-w-[1200px]">
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          <Button variant="secondary" size="small">
-            <span className="mr-2">☰</span>
-            View
-          </Button>
-        </div>
-        <Text size="small" className="text-ui-fg-muted">
-          Shortcuts
-        </Text>
-      </div>
+  const renderVariantsStep = () => {
+    const optionName = getPrimaryOptionName(formData.productOptions)
 
-      {/* Sales Channels Section - Read Only */}
-      <div className="mb-6 p-4 bg-ui-bg-base border border-ui-border-base rounded-lg">
-        <Label className="mb-2 block">
-          Sales channels <span className="text-ui-fg-muted">(Fixed)</span>
-        </Label>
-        <Text size="small" className="text-ui-fg-muted mb-3 block">
-          Sales channel is automatically set and cannot be modified. Products are assigned to the default sales channel.
-        </Text>
-        <div className="flex gap-2 flex-wrap">
-          {formData.salesChannels.map((channel, idx) => (
-            <div
-              key={idx}
-              className="px-3 py-1.5 bg-ui-bg-subtle-hover border border-ui-border-base rounded-md flex items-center gap-2 opacity-70 cursor-not-allowed"
-            >
-              <Text size="small">{channel}</Text>
+    return (
+      <div className="max-w-[1200px]">
+        <div className="mb-6 p-4 bg-ui-bg-base border border-ui-border-base rounded-lg">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label className="mb-1 block">This product has sizes / colors / variants</Label>
+              <Text size="small" className="text-ui-fg-muted">
+                Turn on for jeans sizes, bulb colors, etc. Leave off for a single simple product.
+              </Text>
             </div>
-          ))}
+            <Switch checked={formData.hasVariants} onCheckedChange={handleHasVariantsToggle} />
+          </div>
         </div>
-      </div>
 
-      <div className="bg-ui-bg-base border border-ui-border-base rounded-lg overflow-hidden shadow-sm overflow-x-auto">
-        <table className="w-full min-w-[1000px] border-collapse">
-          <thead className="bg-ui-bg-subtle border-b border-ui-border-base">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
-                Default option
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
-                Title
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
-                SKU
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
-                Managed inventory
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
-                Allow backorder
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
-                Has inventory kit
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
-                Inventory Count
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
-                Price INR
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
-                Discounted Price INR
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
-                Discount %
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase tracking-wider">
+        {formData.hasVariants && (
+          <div className="mb-6 p-4 bg-ui-bg-base border border-ui-border-base rounded-lg space-y-4">
+            <Heading level="h3">Step 1 — List all sizes</Heading>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+              <div>
+                <Label>What varies?</Label>
+                <Input
+                  value={optionName}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    updatePrimaryOptionName(e.target.value)
+                  }
+                  placeholder="Size"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <Label>All values (comma-separated)</Label>
+                <Input
+                  value={formData.variantSizesInput}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setFormData({ ...formData, variantSizesInput: e.target.value })
+                  }
+                  placeholder="28, 29, 30, 31, 32"
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="primary" size="small" onClick={createVariantRowsFromSizes}>
+                Create variant rows
+              </Button>
+              <Button variant="secondary" size="small" onClick={addVariantRow}>
+                Add one row manually
+              </Button>
+            </div>
+            <Text size="small" className="text-ui-fg-muted">
+              Example: type <span className="font-mono">28, 29, 30, 31</span> then click Create variant rows.
+            </Text>
+          </div>
+        )}
 
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {formData.variants.map((variant, idx) => (
-              <tr key={idx} className="border-b border-ui-border-base">
-                <td className="px-4 py-3">
-                  <Text size="small">Default option value</Text>
-                </td>
-                <td className="px-4 py-3">
-                  <Input
-                    value={variant.title}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const newVariants = [...formData.variants]
-                      newVariants[idx].title = e.target.value
-                      setFormData({ ...formData, variants: newVariants })
-                    }}
-                    placeholder="Default variant"
-                    className="w-full"
-                  />
-                </td>
-                <td className="px-4 py-3">
-                  <Input
-                    value={variant.sku}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const newVariants = [...formData.variants]
-                      newVariants[idx].sku = e.target.value
-                      setFormData({ ...formData, variants: newVariants })
-                    }}
-                    className="w-full"
-                  />
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <input
-                    type="checkbox"
-                    checked={variant.managedInventory}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const newVariants = [...formData.variants]
-                      newVariants[idx].managedInventory = e.target.checked
-                      setFormData({ ...formData, variants: newVariants })
-                    }}
-                  />
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <input
-                    type="checkbox"
-                    checked={variant.allowBackorder}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const newVariants = [...formData.variants]
-                      newVariants[idx].allowBackorder = e.target.checked
-                      setFormData({ ...formData, variants: newVariants })
-                    }}
-                  />
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <input
-                    type="checkbox"
-                    checked={variant.hasInventoryKit}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const newVariants = [...formData.variants]
-                      newVariants[idx].hasInventoryKit = e.target.checked
-                      setFormData({ ...formData, variants: newVariants })
-                    }}
-                  />
-                </td>
-                <td className="px-4 py-3">
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={variant.inventoryCount}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const newVariants = [...formData.variants]
-                      newVariants[idx].inventoryCount = e.target.value
-                      setFormData({ ...formData, variants: newVariants })
-                    }}
-                    placeholder="0"
-                    style={{ width: 100 }}
-                  />
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-1">
-                    <span className="text-ui-fg-muted">₹</span>
-                    <Input
-                      value={variant.price}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        const newVariants = [...formData.variants]
-                        newVariants[idx].price = e.target.value
-                        setFormData({ ...formData, variants: newVariants })
-                      }}
-                      placeholder="0.00"
-                      style={{ width: 100 }}
-                    />
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-1">
-                    <span className="text-ui-fg-muted">₹</span>
-                    <Input
-                      value={variant.discountedPrice}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        const newVariants = [...formData.variants]
-                        newVariants[idx].discountedPrice = e.target.value
-                        setFormData({ ...formData, variants: newVariants })
-                      }}
-                      placeholder="0.00"
-                      style={{ width: 100 }}
-                    />
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  {variant.price && variant.discountedPrice ? (
-                    <div className="flex items-center gap-1">
-                      <span className={clx(
-                        "font-medium",
-                        parseFloat(variant.discountedPrice) < parseFloat(variant.price) ? "text-emerald-500" : "text-ui-fg-muted"
-                      )}>
-                        {(() => {
-                          const basePrice = parseFloat(variant.price)
-                          const discountedPrice = parseFloat(variant.discountedPrice)
-                          if (basePrice > 0 && discountedPrice < basePrice) {
-                            const discount = ((basePrice - discountedPrice) / basePrice * 100).toFixed(1)
-                            return `${discount}%`
-                          }
-                          return "—"
-                        })()}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-ui-fg-muted">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <button
-                    className="bg-none border-none cursor-pointer text-ui-fg-muted"
-                  >
-                    ⋮
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {formData.hasVariants ? (
+          <>
+            <Heading level="h3" className="mb-3">
+              Step 2 — Price & stock per {optionName.toLowerCase()}
+            </Heading>
+            {formData.variants.length === 0 ? (
+              <div className="p-6 border border-dashed border-ui-border-base rounded-lg text-center">
+                <Text className="text-ui-fg-muted">
+                  No rows yet. Enter sizes above and click Create variant rows.
+                </Text>
+              </div>
+            ) : (
+              <div className="bg-ui-bg-base border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto">
+                <table className="w-full min-w-[820px] border-collapse">
+                  <thead className="bg-ui-bg-subtle border-b border-ui-border-base">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">
+                        {optionName}
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">
+                        SKU
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">
+                        Stock
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">
+                        Price ₹
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">
+                        Sale price ₹
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">
+                        Discount %
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formData.variants.map((variant, idx) => (
+                      <tr key={idx} className="border-b border-ui-border-base">
+                        <td className="px-4 py-3">
+                          <Input
+                            value={readVariantOptionValue(variant, optionName)}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                              updateVariantOptionValue(idx, e.target.value)
+                            }
+                            placeholder="e.g. 32"
+                            className="w-24"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Input
+                            value={variant.sku}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                              updateVariantField(idx, "sku", e.target.value)
+                            }
+                            placeholder="Optional"
+                            className="w-full min-w-[100px]"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Input
+                            type="number"
+                            min="0"
+                            value={variant.inventoryCount}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                              updateVariantField(idx, "inventoryCount", e.target.value)
+                            }
+                            placeholder="0"
+                            className="w-20"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Input
+                            value={variant.price}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                              updateVariantField(idx, "price", e.target.value)
+                            }
+                            placeholder="1000"
+                            className="w-24"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Input
+                            value={variant.discountedPrice}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                              updateVariantField(idx, "discountedPrice", e.target.value)
+                            }
+                            placeholder="Optional"
+                            className="w-24"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <VariantDiscountCell
+                            price={variant.price}
+                            discountedPrice={variant.discountedPrice}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Button variant="secondary" size="small" onClick={() => removeVariantRow(idx)}>
+                            Remove
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="bg-ui-bg-base border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto">
+            <table className="w-full min-w-[900px] border-collapse">
+              <thead className="bg-ui-bg-subtle border-b border-ui-border-base">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">SKU</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">Stock</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">Price ₹</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">Sale price ₹</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">Discount %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {formData.variants.map((variant, idx) => (
+                  <tr key={idx} className="border-b border-ui-border-base">
+                    <td className="px-4 py-3">
+                      <Input
+                        value={variant.sku}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          updateVariantField(idx, "sku", e.target.value)
+                        }
+                        className="w-full"
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Input
+                        type="number"
+                        min="0"
+                        value={variant.inventoryCount}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          updateVariantField(idx, "inventoryCount", e.target.value)
+                        }
+                        placeholder="0"
+                        className="w-24"
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Input
+                        value={variant.price}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          updateVariantField(idx, "price", e.target.value)
+                        }
+                        placeholder="0.00"
+                        className="w-28"
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Input
+                        value={variant.discountedPrice}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          updateVariantField(idx, "discountedPrice", e.target.value)
+                        }
+                        placeholder="0.00"
+                        className="w-28"
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <VariantDiscountCell
+                        price={variant.price}
+                        discountedPrice={variant.discountedPrice}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <VendorShell>
