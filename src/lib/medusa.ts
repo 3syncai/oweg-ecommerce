@@ -29,13 +29,23 @@ export type MedusaProduct = {
   length?: number | null
   height?: number | null
   width?: number | null
+  options?: Array<{
+    id: string
+    title?: string
+    values?: Array<{ id?: string; value?: string }>
+  }>
   variants?: Array<{
     id: string
     title?: string
     inventory_quantity?: number
     manage_inventory?: boolean
     allow_backorder?: boolean
-    options?: Array<{ id: string; value?: string; option_id?: string }>
+    options?: Array<{
+      id: string
+      value?: string
+      option_id?: string
+      option?: { id?: string; title?: string }
+    }>
     prices?: Array<{ amount: number; currency_code: string }>
     calculated_price?: {
       calculated_amount?: number
@@ -68,6 +78,11 @@ export type DetailedProduct = {
   images: string[]
   thumbnail?: string
   variant_id?: string
+  options: Array<{
+    id: string
+    title: string
+    values: string[]
+  }>
   variants: Array<{
     id: string
     title?: string
@@ -79,6 +94,10 @@ export type DetailedProduct = {
     height?: number | null
     width?: number | null
     metadata?: Record<string, unknown> | null
+    options: Record<string, string>
+    price: number
+    mrp: number
+    discount: number
   }>
   categories: Array<{ id: string; title: string; handle?: string }>
   tags: string[]
@@ -157,11 +176,20 @@ const PRODUCT_LIST_FIELDS = [
   "type.id",
   "type.value",
   "variants.id",
+  "variants.title",
   "variants.prices.amount",
   "variants.calculated_price",
   "variants.inventory_quantity",
   "variants.manage_inventory",
   "variants.allow_backorder",
+  "variants.metadata",
+  "variants.options.id",
+  "variants.options.value",
+  "variants.options.option_id",
+  "variants.options.option.title",
+  "options.id",
+  "options.title",
+  "options.values.value",
   "metadata",
   "price",
 ].join(",")
@@ -682,32 +710,85 @@ export function toDetailedProduct(
 
   mergeMetadata(primaryVariant?.metadata || null)
 
+  const productOptions =
+    p.options?.map((opt) => ({
+      id: opt.id,
+      title: (opt.title || "Option").trim(),
+      values: Array.from(
+        new Set(
+          (opt.values || [])
+            .map((entry) => (entry.value || "").trim())
+            .filter(Boolean)
+        )
+      ),
+    })) || []
+
+  const optionTitleById = new Map(
+    productOptions.map((opt) => [opt.id, opt.title])
+  )
+
+  const mappedVariants =
+    p.variants?.map((variant) => {
+      const optionValues: Record<string, string> = {}
+      for (const entry of variant.options || []) {
+        const title =
+          entry.option?.title ||
+          (entry.option_id ? optionTitleById.get(entry.option_id) : undefined) ||
+          "Option"
+        const value = (entry.value || "").trim()
+        if (value) optionValues[title] = value
+      }
+
+      const { amountMajor, originalMajor, discount: variantDiscount } =
+        computeUiPriceForVariant(p, variant)
+
+      return {
+        id: variant.id,
+        title: variant.title,
+        inventory_quantity: variant.inventory_quantity,
+        manage_inventory: variant.manage_inventory,
+        allow_backorder: variant.allow_backorder,
+        weight: variant.weight ?? null,
+        length: variant.length ?? null,
+        height: variant.height ?? null,
+        width: variant.width ?? null,
+        metadata: variant.metadata || null,
+        options: optionValues,
+        price: amountMajor ?? 0,
+        mrp: originalMajor ?? amountMajor ?? 0,
+        discount: variantDiscount,
+      }
+    }) || []
+
+  const defaultVariant =
+    mappedVariants.find((variant) => {
+      const source = p.variants?.find((entry) => entry.id === variant.id)
+      return source ? isVariantPurchasable(source) : false
+    }) ?? mappedVariants[0]
+
+  const defaultPricing = defaultVariant
+    ? {
+        price: defaultVariant.price,
+        mrp: defaultVariant.mrp,
+        discount: defaultVariant.discount,
+      }
+    : { amountMajor, originalMajor, discount }
+
   return {
     id: p.id,
     title: p.title,
     subtitle: p.subtitle,
     description: p.description,
     handle: p.handle,
-    price: amountMajor ?? 0,
-    mrp: originalMajor ?? amountMajor ?? 0,
-    discount,
+    price: defaultPricing.price ?? amountMajor ?? 0,
+    mrp: defaultPricing.mrp ?? originalMajor ?? amountMajor ?? 0,
+    discount: defaultPricing.discount ?? discount,
     currency: DEFAULT_CURRENCY_CODE.toUpperCase(),
     images: collectProductImages(p),
     thumbnail: p.thumbnail || undefined,
-    variant_id: p.variants?.[0]?.id,
-    variants:
-      p.variants?.map((v) => ({
-        id: v.id,
-        title: v.title,
-        inventory_quantity: v.inventory_quantity,
-        manage_inventory: v.manage_inventory,
-        allow_backorder: v.allow_backorder,
-        weight: v.weight ?? null,
-        length: v.length ?? null,
-        height: v.height ?? null,
-        width: v.width ?? null,
-        metadata: v.metadata || null,
-      })) || [],
+    variant_id: defaultVariant?.id,
+    options: productOptions,
+    variants: mappedVariants,
     categories,
     tags,
     type: p.type?.value || p.type?.handle,
@@ -727,7 +808,11 @@ export function toDetailedProduct(
 
 
 // A variant is purchasable when inventory is unmanaged, backorders are allowed, or there is stock.
-function isVariantPurchasable(v: NonNullable<MedusaProduct['variants']>[number]): boolean {
+export function isVariantPurchasable(v: {
+  manage_inventory?: boolean
+  allow_backorder?: boolean
+  inventory_quantity?: number
+}): boolean {
   if (v.manage_inventory === false) return true
   if (v.allow_backorder === true) return true
   return typeof v.inventory_quantity === 'number' && v.inventory_quantity > 0
@@ -749,6 +834,12 @@ function computeUiPriceForVariant(
   const variantCalculated = v?.calculated_price?.calculated_amount
   const variantOriginal = v?.calculated_price?.original_amount
   const rawDbPrice = v?.prices?.[0]?.amount
+  const metaPriceList = (v?.metadata as Record<string, unknown> | undefined)?._price_list_prices
+  const priceListEntry = Array.isArray(metaPriceList) ? metaPriceList[0] : undefined
+  const priceListAmount =
+    priceListEntry && typeof priceListEntry === "object" && priceListEntry !== null
+      ? Number((priceListEntry as { amount?: unknown }).amount)
+      : undefined
   const variantPriceAmounts = (v?.prices || [])
     .map((entry) => Number(entry?.amount))
     .filter((amount) => Number.isFinite(amount) && amount > 0)
@@ -760,24 +851,42 @@ function computeUiPriceForVariant(
   // Determine final Selling Price (Major) - DB is now in Rupees, use directly
   let amountMajor = 0
 
-  if (typeof medusaCalculated === 'number') {
-      amountMajor = medusaCalculated
-  } else if (typeof variantCalculated === 'number') {
+  if (variant) {
+    if (typeof variantCalculated === "number") {
       amountMajor = variantCalculated
-  } else if (typeof minVariantPrice === 'number') {
+    } else if (typeof priceListAmount === "number" && priceListAmount > 0) {
+      amountMajor = priceListAmount
+    } else if (typeof minVariantPrice === "number") {
       amountMajor = minVariantPrice
-  } else if (typeof rawDbPrice === 'number') {
+    } else if (typeof rawDbPrice === "number") {
+      amountMajor = rawDbPrice
+    }
+  } else if (typeof medusaCalculated === "number") {
+      amountMajor = medusaCalculated
+  } else if (typeof variantCalculated === "number") {
+      amountMajor = variantCalculated
+  } else if (typeof priceListAmount === "number" && priceListAmount > 0) {
+      amountMajor = priceListAmount
+  } else if (typeof minVariantPrice === "number") {
+      amountMajor = minVariantPrice
+  } else if (typeof rawDbPrice === "number") {
       amountMajor = rawDbPrice
   }
 
   // Determine final MRP (Major) - DB is now in Rupees, use directly
   let originalMajor = amountMajor // Default to selling price
 
-  if (typeof medusaOriginal === 'number') {
-      originalMajor = medusaOriginal
-  } else if (typeof variantOriginal === 'number') {
+  if (variant) {
+    if (typeof variantOriginal === "number") {
       originalMajor = variantOriginal
-  } else if (typeof maxVariantPrice === 'number') {
+    } else if (typeof maxVariantPrice === "number") {
+      originalMajor = maxVariantPrice
+    }
+  } else if (typeof medusaOriginal === "number") {
+      originalMajor = medusaOriginal
+  } else if (typeof variantOriginal === "number") {
+      originalMajor = variantOriginal
+  } else if (typeof maxVariantPrice === "number") {
       originalMajor = maxVariantPrice
   }
 
@@ -916,11 +1025,23 @@ export async function fetchProductDetail(
 
         // Apply "Special Prices" price list if applicable (similar to listing route)
         const priceListPrices = await getPriceListPrices()
-        const variantId = product.variants?.[0]?.id
-        if (variantId && priceListPrices.has(variantId)) {
-          const discountedPrice = priceListPrices.get(variantId)!
+        for (const variant of product.variants || []) {
+          const discountedPrice = priceListPrices.get(variant.id)
+          if (discountedPrice === undefined) continue
+
+          const originalPrice = variant.prices?.[0]?.amount || discountedPrice
+          variant.calculated_price = {
+            calculated_amount: discountedPrice,
+            original_amount: originalPrice,
+            currency_code: DEFAULT_CURRENCY_CODE,
+          }
+        }
+
+        const firstVariantId = product.variants?.[0]?.id
+        if (firstVariantId && priceListPrices.has(firstVariantId)) {
+          const discountedPrice = priceListPrices.get(firstVariantId)!
           const originalPrice = product.variants?.[0]?.prices?.[0]?.amount || discountedPrice
-          
+
           if (!product.price) product.price = {}
           product.price.calculated_price = discountedPrice
           product.price.original_price = originalPrice

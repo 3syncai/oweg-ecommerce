@@ -2,6 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
 import { Modules, ProductStatus, ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { createProductsWorkflow } from "@medusajs/core-flows"
+import { normalizeOptionsAndVariants } from "../../../lib/vendor-product-options"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
@@ -110,154 +111,20 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       }
     }
 
-    // Medusa v2 REQUIRES: If variants exist, at least one product option MUST exist
-    // Even for simple products with one variant, we need a default option
-    let finalVariants = variants || []
-    let finalOptions = options || []
+    console.log("Received variants:", JSON.stringify(variants, null, 2))
+    console.log("Received options:", JSON.stringify(options, null, 2))
 
-    console.log("Received variants:", JSON.stringify(finalVariants, null, 2))
-    console.log("Received options:", JSON.stringify(finalOptions, null, 2))
+    const normalized = normalizeOptionsAndVariants(options, variants)
+    if (normalized.error) {
+      return res.status(400).json({ message: normalized.error })
+    }
 
-    // If no variants provided, create a default one
-    // Note: Default variant will have empty prices - vendor must provide variants with prices
+    const finalOptions = normalized.options
+    const finalVariants = normalized.variants
+
     if (finalVariants.length === 0) {
-      console.warn('⚠️ No variants provided - creating default variant with empty prices. Vendor should provide variants with prices.')
-      finalVariants = [
-        {
-          title: "Default variant",
-          prices: [],
-        },
-      ]
+      console.warn("⚠️ No variants provided - creating default variant with empty prices.")
     }
-
-    // CRITICAL FIX: Medusa v2 requires options when variants exist
-    // If no options provided, automatically create a default option
-    if (finalOptions.length === 0 && finalVariants.length > 0) {
-      // Create default product option
-      finalOptions = [
-        {
-          title: "Default",
-          values: ["Default"],
-        },
-      ]
-
-      // Update all variants to reference the default option
-      finalVariants = finalVariants.map((v: any) => {
-        const cleaned: any = {
-          title: v.title || "Default variant",
-        }
-
-        // Preserve existing fields
-        // SKU is optional - if provided and conflicts, we'll handle it in error handling
-        if (v.sku && typeof v.sku === "string" && v.sku.trim()) {
-          cleaned.sku = v.sku.trim()
-        }
-        // If SKU is empty string, don't include it (Medusa treats empty string differently)
-        else if (v.sku === "" || v.sku === null || v.sku === undefined) {
-          // Don't set SKU - let Medusa auto-generate or leave it empty
-        }
-
-        // Process prices: separate base prices from price list prices
-        if (v.prices && Array.isArray(v.prices) && v.prices.length > 0) {
-          const allPrices = v.prices
-            .map((p: any) => {
-              // Ensure price has amount and currency_code
-              if (!p || typeof p !== 'object') return null
-
-              // Convert amount to number if it's a string
-              let amount = p.amount
-              if (typeof amount === 'string') {
-                amount = parseFloat(amount)
-              }
-
-              // Ensure amount is a valid number
-              if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) {
-                return null
-              }
-
-              // Ensure currency_code exists, default to 'inr'
-              const currency_code = p.currency_code || 'inr'
-
-              return {
-                amount: Math.round(amount), // Ensure integer (paise/cents)
-                currency_code: currency_code.toLowerCase(),
-                price_list_id: p.price_list_id || null
-              }
-            })
-            .filter((p: any) => p !== null)
-
-          // Separate base prices (no price_list_id) from price list prices
-          cleaned.prices = allPrices
-            .filter((p: any) => !p.price_list_id)
-            .map((p: any) => ({
-              amount: p.amount,
-              currency_code: p.currency_code
-            }))
-
-          // Store price list prices separately for later (we'll add them after product creation)
-          const priceListPrices = allPrices.filter((p: any) => p.price_list_id)
-          if (priceListPrices.length > 0) {
-            // Store in variant's metadata temporarily so we can access it after creation
-            if (!cleaned.metadata) cleaned.metadata = {}
-            cleaned.metadata._price_list_prices = priceListPrices
-          }
-
-          // If no valid prices after filtering, log a warning
-          if (cleaned.prices.length === 0 && v.prices.length > 0) {
-            console.warn('⚠️ No valid base prices found for variant:', v.title, 'Original prices:', v.prices)
-          }
-        } else {
-          cleaned.prices = []
-          // Log warning if variant has no prices
-          if (v.title) {
-            console.warn('⚠️ Variant has no prices:', v.title)
-          }
-        }
-
-        if (typeof v.manage_inventory === "boolean") {
-          cleaned.manage_inventory = v.manage_inventory
-        }
-
-        if (typeof v.allow_backorder === "boolean") {
-          cleaned.allow_backorder = v.allow_backorder
-        }
-
-        if (typeof v.inventory_quantity === "number") {
-          cleaned.inventory_quantity = v.inventory_quantity
-        }
-
-        // CRITICAL: Medusa v2 expects option_values with option reference
-        // The option_value must reference the product option by title
-        cleaned.options = {
-          Default: "Default"
-        }
-
-        return cleaned
-      })
-    }
-
-    // CRITICAL: Convert any existing 'options' to 'option_values' for all variants
-    // Medusa v2 internally merges 'options' with 'prices', causing corruption
-    finalVariants = finalVariants.map((v: any) => {
-      // If variant has 'options', convert to 'option_values' and remove 'options'
-      if (v.options && Array.isArray(v.options)) {
-        const cleaned: any = { ...v }
-        cleaned.option_values = v.options.map((opt: any) => {
-          // Handle both { value: "..." } and string formats
-          if (typeof opt === "string") {
-            return { value: opt }
-          }
-          if (typeof opt === "object" && opt.value) {
-            return { value: opt.value }
-          }
-          return null
-        }).filter((opt: any) => opt !== null)
-        delete cleaned.options
-        return cleaned
-      }
-      // If variant already has 'option_values', keep it
-      return v
-    })
 
     console.log("Final options:", JSON.stringify(finalOptions, null, 2))
     console.log("Final variants:", JSON.stringify(finalVariants, null, 2))

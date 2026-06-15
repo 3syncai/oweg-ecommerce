@@ -72,6 +72,10 @@ type ParsedRow = {
   // collections from the dropdown, or leave a remark requesting a new one.
   selectedCollectionId?: string
   collectionRequest?: string
+  option1Name: string
+  option1Value: string
+  option2Name: string
+  option2Value: string
   errors: string[]
   warnings: string[]
   status: "pending" | "uploading" | "success" | "failed"
@@ -133,6 +137,10 @@ const TEMPLATE_HEADERS: Array<{ key: string; example: string; required?: boolean
   { key: "MID Code", example: "" },
   { key: "HS Code", example: "" },
   { key: "Country of Origin", example: "" },
+  { key: "Option 1 Name", example: "Size" },
+  { key: "Option 1 Value", example: "M" },
+  { key: "Option 2 Name", example: "" },
+  { key: "Option 2 Value", example: "" },
   { key: "Variant Title", example: "Default variant" },
   { key: "SKU", example: "(auto)" },
   { key: "Managed Inventory", example: "Yes" },
@@ -202,6 +210,127 @@ const computeDiscountPercent = (
   if (p <= 0 || d <= 0) return null
   if (d >= p) return 0
   return Math.round(((p - d) / p) * 1000) / 10
+}
+
+const productGroupKey = (row: Pick<ParsedRow, "title" | "handle" | "rowNumber">): string => {
+  const title = row.title.trim().toLowerCase()
+  const handle = row.handle.trim().toLowerCase()
+  if (title) return `title:${title}`
+  if (handle) return `handle:${handle}`
+  return `row:${row.rowNumber}`
+}
+
+const rowOptionValues = (row: Pick<ParsedRow, "option1Name" | "option1Value" | "option2Name" | "option2Value">): Record<string, string> => {
+  const map: Record<string, string> = {}
+  if (row.option1Name.trim() && row.option1Value.trim()) {
+    map[row.option1Name.trim()] = row.option1Value.trim()
+  }
+  if (row.option2Name.trim() && row.option2Value.trim()) {
+    map[row.option2Name.trim()] = row.option2Value.trim()
+  }
+  return map
+}
+
+const buildOptionsFromGroup = (groupRows: ParsedRow[]): Array<{ title: string; values: string[] }> => {
+  const optionValuesMap = new Map<string, Set<string>>()
+  groupRows.forEach((row) => {
+    Object.entries(rowOptionValues(row)).forEach(([name, value]) => {
+      if (!optionValuesMap.has(name)) optionValuesMap.set(name, new Set())
+      optionValuesMap.get(name)!.add(value)
+    })
+  })
+  return Array.from(optionValuesMap.entries()).map(([title, values]) => ({
+    title,
+    values: Array.from(values),
+  }))
+}
+
+const applyGroupValidation = (rows: ParsedRow[]): ParsedRow[] => {
+  const groups = new Map<string, ParsedRow[]>()
+  rows.forEach((row) => {
+    const key = productGroupKey(row)
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(row)
+  })
+
+  const rowExtraErrors = new Map<number, string[]>()
+  const rowExtraWarnings = new Map<number, string[]>()
+
+  groups.forEach((groupRows) => {
+    if (groupRows.length <= 1) return
+
+    const optionNamesByRow = groupRows.map((row) => {
+      const names: string[] = []
+      if (row.option1Name.trim()) names.push(row.option1Name.trim())
+      if (row.option2Name.trim()) names.push(row.option2Name.trim())
+      return names.sort().join("|")
+    })
+
+    const firstNames = optionNamesByRow[0]
+    if (optionNamesByRow.some((n) => n !== firstNames)) {
+      groupRows.forEach((row) => {
+        rowExtraErrors.set(row.rowNumber, [
+          ...(rowExtraErrors.get(row.rowNumber) || []),
+          "Rows with the same title must use the same option names",
+        ])
+      })
+    }
+
+    const combos = new Set<string>()
+    groupRows.forEach((row) => {
+      const optionMap = rowOptionValues(row)
+      const keys = Object.keys(optionMap).sort()
+      if (keys.length === 0) {
+        rowExtraErrors.set(row.rowNumber, [
+          ...(rowExtraErrors.get(row.rowNumber) || []),
+          "Multi-variant products need option values on each row",
+        ])
+        return
+      }
+      const comboKey = keys.map((k) => `${k}=${optionMap[k]}`).join("|")
+      if (combos.has(comboKey)) {
+        rowExtraErrors.set(row.rowNumber, [
+          ...(rowExtraErrors.get(row.rowNumber) || []),
+          `Duplicate variant option combination in this product group`,
+        ])
+      }
+      combos.add(comboKey)
+    })
+
+    const first = groupRows[0]
+    groupRows.slice(1).forEach((row) => {
+      if (
+        row.brand !== first.brand ||
+        row.description !== first.description ||
+        row.subtitle !== first.subtitle
+      ) {
+        rowExtraWarnings.set(row.rowNumber, [
+          ...(rowExtraWarnings.get(row.rowNumber) || []),
+          "Product-level fields differ within group — first row will be used",
+        ])
+      }
+    })
+  })
+
+  return rows.map((row) => {
+    const extraErrors = rowExtraErrors.get(row.rowNumber) || []
+    const extraWarnings = rowExtraWarnings.get(row.rowNumber) || []
+    const errors = [...row.errors]
+    extraErrors.forEach((err) => {
+      if (!errors.includes(err)) errors.push(err)
+    })
+    const warnings = [...row.warnings]
+    extraWarnings.forEach((warn) => {
+      if (!warnings.includes(warn)) warnings.push(warn)
+    })
+    return {
+      ...row,
+      errors,
+      warnings,
+      status: errors.length > 0 ? ("failed" as const) : row.status,
+      errorMessage: errors[0],
+    }
+  })
 }
 
 const VendorProductsBulkUploadPage = () => {
@@ -752,6 +881,10 @@ const VendorProductsBulkUploadPage = () => {
         midCode: toStr(get("MID Code")),
         hsCode: toStr(get("HS Code")),
         countryOfOrigin: toStr(get("Country of Origin")),
+        option1Name: toStr(get("Option 1 Name")),
+        option1Value: toStr(get("Option 1 Value")),
+        option2Name: toStr(get("Option 2 Name")),
+        option2Value: toStr(get("Option 2 Value")),
         variantTitle: toStr(get("Variant Title")) || "Default variant",
         sku,
         managedInventory,
@@ -797,7 +930,7 @@ const VendorProductsBulkUploadPage = () => {
         toast.error("Empty sheet", { description: "No product rows found in the sheet" })
         return
       }
-      const parsed = parseRows(json)
+      const parsed = applyGroupValidation(parseRows(json))
 
       // -------- Embedded "Images in Cells" support (Excel 2021+ / M365) --------
       //
@@ -1149,28 +1282,25 @@ const VendorProductsBulkUploadPage = () => {
    */
   const handleTitleEdit = (rowIdx: number, newTitle: string) => {
     setRows((prev) => {
-      const next = [...prev]
-      const row = { ...next[rowIdx] }
-      row.title = newTitle
-
-      const otherErrors = row.errors.filter((e) => e !== "Title is required")
-      if (!newTitle.trim()) {
-        row.errors = ["Title is required", ...otherErrors]
-      } else {
-        row.errors = otherErrors
-      }
-
-      // Reset pre-publish "failed" status to "pending" once the row becomes
-      // valid again, so it gets picked up on the next publish click.
-      if (row.errors.length === 0 && row.status === "failed" && !row.errorMessage) {
-        row.status = "pending"
-      } else if (row.errors.length > 0 && row.status !== "uploading" && row.status !== "success") {
-        row.status = "failed"
-        row.errorMessage = undefined
-      }
-
-      next[rowIdx] = row
-      return next
+      const next = prev.map((row, i) => {
+        if (i !== rowIdx) return row
+        const otherErrors = row.errors.filter((e) => e !== "Title is required")
+        const errors = !newTitle.trim() ? ["Title is required", ...otherErrors] : otherErrors
+        let status = row.status
+        if (errors.length === 0 && row.status === "failed" && !row.errorMessage) {
+          status = "pending"
+        } else if (errors.length > 0 && row.status !== "uploading" && row.status !== "success") {
+          status = "failed"
+        }
+        return {
+          ...row,
+          title: newTitle,
+          errors,
+          status,
+          errorMessage: errors.length > 0 ? errors[0] : undefined,
+        }
+      })
+      return applyGroupValidation(next)
     })
   }
 
@@ -1377,6 +1507,149 @@ const VendorProductsBulkUploadPage = () => {
     (r) => r.status === "failed" && r.errorMessage && r.errors.length === 0
   ).length
 
+  const rowGroupCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    rows.forEach((row) => {
+      const key = productGroupKey(row)
+      counts.set(key, (counts.get(key) || 0) + 1)
+    })
+    return counts
+  }, [rows])
+
+  const productGroupCount = useMemo(() => {
+    const keys = new Set<string>()
+    validRows.forEach((row) => keys.add(productGroupKey(row)))
+    return keys.size
+  }, [validRows])
+
+  const buildProductPayloadFromGroup = (groupRows: ParsedRow[]) => {
+    const row = groupRows[0]
+
+    const collectionId =
+      row.selectedCollectionId ||
+      (row.collection ? collectionByName.get(row.collection.toLowerCase()) : undefined) ||
+      null
+    const collectionRequest = (row.collectionRequest || "").trim()
+    const categoryId =
+      row.selectedCategoryId ||
+      (row.category ? categoryByName.get(row.category.toLowerCase()) : undefined)
+    const categoryRequest = (row.categoryRequest || "").trim()
+
+    const parseNumber = (value: string): number | null => {
+      if (!value) return null
+      const num = parseFloat(value)
+      return Number.isFinite(num) ? num : null
+    }
+
+    const lookupUrl = (name: string): string | null => {
+      if (!name) return null
+      const s = imageMap[normalizeImageKey(name)]
+      return s && s.status === "uploaded" ? s.url : null
+    }
+
+    const allImageUrls: string[] = []
+    groupRows.forEach((groupRow) => {
+      const thumbnailUrl = lookupUrl(groupRow.thumbnailRef)
+      if (thumbnailUrl && !allImageUrls.includes(thumbnailUrl)) {
+        allImageUrls.push(thumbnailUrl)
+      }
+      groupRow.imageRefs.forEach((name) => {
+        const url = lookupUrl(name)
+        if (url && !allImageUrls.includes(url)) allImageUrls.push(url)
+      })
+    })
+
+    const thumbnailUrl = lookupUrl(row.thumbnailRef) || allImageUrls[0] || null
+    const optionMap = rowOptionValues(row)
+    const hasOptions = Object.keys(optionMap).length > 0 || groupRows.some((r) => Object.keys(rowOptionValues(r)).length > 0)
+
+    const variantsPayload = groupRows.map((groupRow) => {
+      const inventoryQuantity = Math.max(
+        0,
+        Math.floor(Number.parseInt(groupRow.inventoryCount, 10)) || 0
+      )
+
+      const numPrice = parseFloat(groupRow.price)
+      const numDiscount = parseFloat(groupRow.discountedPrice)
+      const prices: any[] = []
+      if (Number.isFinite(numPrice)) {
+        prices.push({ amount: numPrice, currency_code: "inr" })
+      }
+      if (Number.isFinite(numDiscount) && numDiscount > 0 && numDiscount < numPrice) {
+        prices.push({
+          amount: numDiscount,
+          currency_code: "inr",
+          price_list_id: "pl_1765232034558",
+        })
+      }
+
+      const variantOptions = rowOptionValues(groupRow)
+      const variantTitle =
+        groupRow.variantTitle ||
+        (Object.keys(variantOptions).length > 0
+          ? Object.values(variantOptions).join(" / ")
+          : "Default variant")
+
+      return {
+        title: variantTitle,
+        sku: groupRow.sku || undefined,
+        manage_inventory: groupRow.managedInventory,
+        allow_backorder: groupRow.allowBackorder,
+        inventory_quantity: inventoryQuantity,
+        prices,
+        ...(Object.keys(variantOptions).length > 0 ? { options: variantOptions } : {}),
+      }
+    })
+
+    const productOptions = hasOptions ? buildOptionsFromGroup(groupRows) : []
+
+    return {
+      title: row.title,
+      subtitle: row.subtitle || null,
+      description: row.description || null,
+      handle: row.handle || null,
+      is_giftcard: false,
+      discountable: row.discountable,
+      category_ids: categoryId ? [categoryId] : [],
+      collection_id: collectionId,
+      type: row.type ? row.type.trim() : undefined,
+      tags: row.tags.map((value) => ({ value })),
+      images: allImageUrls.map((url) => ({ url })),
+      thumbnail: thumbnailUrl,
+      options: productOptions,
+      variants: variantsPayload,
+      height: parseNumber(row.height),
+      width: parseNumber(row.width),
+      length: parseNumber(row.length),
+      weight: parseNumber(row.weight),
+      metadata: {
+        categories: categoryId ? [categoryId] : [],
+        tags: row.tags,
+        brand: row.brand || null,
+        mid_code: row.midCode || null,
+        hs_code: row.hsCode || null,
+        country_of_origin: row.countryOfOrigin || null,
+        videos: null,
+        ...(categoryRequest
+          ? {
+              category_request: categoryRequest,
+              category_request_excel_value: row.category || null,
+              category_request_status: "pending",
+              category_request_submitted_at: new Date().toISOString(),
+            }
+          : {}),
+        ...(collectionRequest
+          ? {
+              collection_request: collectionRequest,
+              collection_request_excel_value: row.collection || null,
+              collection_request_status: "pending",
+              collection_request_submitted_at: new Date().toISOString(),
+            }
+          : {}),
+      },
+    }
+  }
+
   const handlePublish = async () => {
     if (!validRows.length) {
       toast.error("Nothing to upload", {
@@ -1387,144 +1660,47 @@ const VendorProductsBulkUploadPage = () => {
     setPhase("uploading")
 
     const updated = [...rows]
-    for (let i = 0; i < updated.length; i++) {
-      const row = updated[i]
-      if (row.errors.length > 0) continue
-      setUploadingIndex(i)
-      updated[i] = { ...row, status: "uploading", errorMessage: undefined }
+    const groups = new Map<string, { rowIndices: number[]; rows: ParsedRow[] }>()
+
+    updated.forEach((row, index) => {
+      if (row.errors.length > 0 || row.status === "success") return
+      const key = productGroupKey(row)
+      if (!groups.has(key)) {
+        groups.set(key, { rowIndices: [], rows: [] })
+      }
+      const group = groups.get(key)!
+      group.rowIndices.push(index)
+      group.rows.push(row)
+    })
+
+    for (const [, group] of groups) {
+      const firstIndex = group.rowIndices[0]
+      setUploadingIndex(firstIndex)
+
+      group.rowIndices.forEach((index) => {
+        updated[index] = {
+          ...updated[index],
+          status: "uploading",
+          errorMessage: undefined,
+        }
+      })
       setRows([...updated])
 
       try {
-        // Prefer the user-picked collection from the inline editor; fall
-        // back to the Excel-resolved one if they didn't touch it.
-        const collectionId =
-          row.selectedCollectionId ||
-          (row.collection
-            ? collectionByName.get(row.collection.toLowerCase())
-            : undefined) ||
-          null
-        const collectionRequest = (row.collectionRequest || "").trim()
-        // Same dual-track for category.
-        const categoryId =
-          row.selectedCategoryId ||
-          (row.category
-            ? categoryByName.get(row.category.toLowerCase())
-            : undefined)
-        const categoryRequest = (row.categoryRequest || "").trim()
-
-        const parseNumber = (value: string): number | null => {
-          if (!value) return null
-          const num = parseFloat(value)
-          return Number.isFinite(num) ? num : null
-        }
-
-        const inventoryQuantity = Math.max(
-          0,
-          Math.floor(Number.parseInt(row.inventoryCount, 10)) || 0
-        )
-
-        const numPrice = parseFloat(row.price)
-        const numDiscount = parseFloat(row.discountedPrice)
-        const prices: any[] = []
-        if (Number.isFinite(numPrice)) {
-          prices.push({ amount: numPrice, currency_code: "inr" })
-        }
-        if (Number.isFinite(numDiscount) && numDiscount > 0 && numDiscount < numPrice) {
-          prices.push({
-            amount: numDiscount,
-            currency_code: "inr",
-            price_list_id: "pl_1765232034558",
-          })
-        }
-
-        const lookupUrl = (name: string): string | null => {
-          if (!name) return null
-          const s = imageMap[normalizeImageKey(name)]
-          return s && s.status === "uploaded" ? s.url : null
-        }
-
-        const thumbnailUrl = lookupUrl(row.thumbnailRef)
-        const allImageUrls: string[] = []
-        if (thumbnailUrl) allImageUrls.push(thumbnailUrl)
-        row.imageRefs.forEach((name) => {
-          const url = lookupUrl(name)
-          if (url && !allImageUrls.includes(url)) allImageUrls.push(url)
+        await vendorProductsApi.create(buildProductPayloadFromGroup(group.rows))
+        group.rowIndices.forEach((index) => {
+          updated[index] = { ...updated[index], status: "success" }
         })
-
-        const variantsPayload = [
-          {
-            title: row.variantTitle || "Default variant",
-            sku: row.sku || undefined,
-            manage_inventory: row.managedInventory,
-            allow_backorder: row.allowBackorder,
-            inventory_quantity: inventoryQuantity,
-            prices,
-          },
-        ]
-
-        await vendorProductsApi.create({
-          title: row.title,
-          subtitle: row.subtitle || null,
-          description: row.description || null,
-          handle: row.handle || null,
-          is_giftcard: false,
-          discountable: row.discountable,
-          category_ids: categoryId ? [categoryId] : [],
-          collection_id: collectionId,
-          // Free-text type. The backend finds an existing product_type by
-          // value or creates a new one, then assigns its id to the product.
-          type: row.type ? row.type.trim() : undefined,
-          // Tags as values — backend resolves/creates them and links by id.
-          tags: row.tags.map((value) => ({ value })),
-          images: allImageUrls.map((url) => ({ url })),
-          thumbnail: thumbnailUrl || allImageUrls[0] || null,
-          options: [],
-          variants: variantsPayload,
-          height: parseNumber(row.height),
-          width: parseNumber(row.width),
-          length: parseNumber(row.length),
-          weight: parseNumber(row.weight),
-          metadata: {
-            categories: categoryId ? [categoryId] : [],
-            tags: row.tags,
-            brand: row.brand || null,
-            mid_code: row.midCode || null,
-            hs_code: row.hsCode || null,
-            country_of_origin: row.countryOfOrigin || null,
-            videos: null,
-            // Free-text remark from the bulk-upload UI requesting a new
-            // category (or providing context for the admin). Surfaced on
-            // the admin product detail page via a widget. Includes the
-            // raw Excel value when it didn't resolve, for context.
-            ...(categoryRequest
-              ? {
-                  category_request: categoryRequest,
-                  category_request_excel_value: row.category || null,
-                  category_request_status: "pending",
-                  category_request_submitted_at: new Date().toISOString(),
-                }
-              : {}),
-            // Same pattern for collection requests.
-            ...(collectionRequest
-              ? {
-                  collection_request: collectionRequest,
-                  collection_request_excel_value: row.collection || null,
-                  collection_request_status: "pending",
-                  collection_request_submitted_at: new Date().toISOString(),
-                }
-              : {}),
-          },
-        })
-
-        updated[i] = { ...updated[i], status: "success" }
       } catch (err: any) {
         const message =
           err?.data?.message || err?.message || "Failed to create product"
-        updated[i] = {
-          ...updated[i],
-          status: "failed",
-          errorMessage: message,
-        }
+        group.rowIndices.forEach((index) => {
+          updated[index] = {
+            ...updated[index],
+            status: "failed",
+            errorMessage: message,
+          }
+        })
       }
       setRows([...updated])
     }
@@ -1532,8 +1708,16 @@ const VendorProductsBulkUploadPage = () => {
     setUploadingIndex(null)
     setPhase("done")
 
-    const created = updated.filter((r) => r.status === "success").length
-    const failed = updated.filter((r) => r.status === "failed").length
+    const createdProducts = new Set<string>()
+    const failedProducts = new Set<string>()
+    updated.forEach((row) => {
+      const key = productGroupKey(row)
+      if (row.status === "success") createdProducts.add(key)
+      if (row.status === "failed") failedProducts.add(key)
+    })
+
+    const created = createdProducts.size
+    const failed = failedProducts.size
     if (created > 0 && failed === 0) {
       toast.success("Bulk upload complete", {
         description: `${created} product(s) created successfully`,
@@ -1654,6 +1838,17 @@ const VendorProductsBulkUploadPage = () => {
             </div>
 
             <div className="md:col-span-2 border border-ui-border-base rounded-lg p-6 bg-ui-bg-base space-y-2">
+              <Text weight="plus">Multi-variant products (sizes, colors, etc.)</Text>
+              <Text size="small" className="text-ui-fg-subtle">
+                Rows with the same <span className="font-mono">Title</span> are grouped into
+                one product with multiple variants. Use{" "}
+                <span className="font-mono">Option 1 Name</span> /{" "}
+                <span className="font-mono">Option 1 Value</span> (and optionally Option 2)
+                on each row — for example Size = M, L, XL on three rows with the same title.
+              </Text>
+            </div>
+
+            <div className="md:col-span-2 border border-ui-border-base rounded-lg p-6 bg-ui-bg-base space-y-2">
               <Text weight="plus">Brand authorization letters</Text>
               <Text size="small" className="text-ui-fg-subtle">
                 The Excel template has a <span className="font-mono">Brand
@@ -1701,8 +1896,9 @@ const VendorProductsBulkUploadPage = () => {
                 <Text weight="plus">{fileName}</Text>
               </div>
               <div className="flex gap-2 flex-wrap">
-                <Badge color="grey">Total: {rows.length}</Badge>
-                <Badge color="green">Valid: {validRows.length}</Badge>
+                <Badge color="grey">Rows: {rows.length}</Badge>
+                <Badge color="blue">Products: {productGroupCount}</Badge>
+                <Badge color="green">Valid rows: {validRows.length}</Badge>
                 {invalidRows.length > 0 && (
                   <Badge color="red">Errors: {invalidRows.length}</Badge>
                 )}
@@ -1726,8 +1922,11 @@ const VendorProductsBulkUploadPage = () => {
                       !allBrandsReady
                     }
                   >
-                    Publish {validRows.length} product
-                    {validRows.length === 1 ? "" : "s"}
+                    Publish {productGroupCount} product
+                    {productGroupCount === 1 ? "" : "s"}
+                    {productGroupCount !== validRows.length && (
+                      <span className="opacity-80"> ({validRows.length} rows)</span>
+                    )}
                   </Button>
                 )}
                 {phase === "done" && (
@@ -2004,6 +2203,7 @@ const VendorProductsBulkUploadPage = () => {
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Collection</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Type</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Tags</th>
+                    <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Options</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">SKU</th>
                     <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">Price</th>
                     <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">Discounted</th>
@@ -2015,8 +2215,11 @@ const VendorProductsBulkUploadPage = () => {
                 </thead>
                 <tbody>
                   {rows.map((row, idx) => {
-                    const isUploading =
-                      phase === "uploading" && uploadingIndex === idx
+                    const isUploading = phase === "uploading" && row.status === "uploading"
+                    const groupCount = rowGroupCounts.get(productGroupKey(row)) || 1
+                    const optionSummary = Object.entries(rowOptionValues(row))
+                      .map(([name, value]) => `${name}: ${value}`)
+                      .join(", ")
                     const statusBadge = (() => {
                       if (row.errors.length > 0)
                         return <Badge color="red">Invalid</Badge>
@@ -2058,6 +2261,11 @@ const VendorProductsBulkUploadPage = () => {
                           />
                           {row.handle && (
                             <div className="text-xs text-ui-fg-subtle">/{row.handle}</div>
+                          )}
+                          {groupCount > 1 && (
+                            <Badge color="blue" size="2xsmall" className="mt-1">
+                              {groupCount} variants
+                            </Badge>
                           )}
                         </td>
                         <td className="px-3 py-2">{row.brand || <span className="text-ui-fg-muted">—</span>}</td>
@@ -2539,6 +2747,9 @@ const VendorProductsBulkUploadPage = () => {
                               </div>
                             )
                           })()}
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          {optionSummary || <span className="text-ui-fg-muted">Default</span>}
                         </td>
                         <td className="px-3 py-2 font-mono text-xs">
                           {row.sku || <span className="text-ui-fg-muted">—</span>}

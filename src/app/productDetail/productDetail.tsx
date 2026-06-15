@@ -10,6 +10,7 @@ import { useSearchParams } from 'next/navigation'
 import { buildLoginUrl } from '@/lib/auth-redirect'
 import { toast } from 'sonner'
 import type { DetailedProduct as DetailedProductType, MedusaCategory } from '@/lib/medusa'
+import { isVariantPurchasable } from '@/lib/medusa'
 import Breadcrumbs from './components/Breadcrumbs'
 import CompareTable from './components/CompareTable'
 import DeliveryInfo from './components/DeliveryInfo'
@@ -115,6 +116,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [quantity, setQuantity] = useState(1)
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({})
   const [selectedImage, setSelectedImage] = useState(0)
   const [activeTab, setActiveTab] = useState<DescriptionTab>('description')
   const [pinCode, setPinCode] = useState('')
@@ -194,6 +196,66 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     staleTime: 1000 * 60 * 3,
   })
   const product = productResponse?.product ?? null
+
+  useEffect(() => {
+    if (!product?.options?.length) {
+      setSelectedOptions({})
+      return
+    }
+
+    const preferredVariant =
+      product.variants.find((variant) => variant.id === product.variant_id) ??
+      product.variants[0]
+
+    const defaults: Record<string, string> = {}
+    for (const option of product.options) {
+      defaults[option.title] =
+        preferredVariant?.options[option.title] ?? option.values[0] ?? ''
+    }
+
+    setSelectedOptions(defaults)
+    setQuantity(1)
+  }, [product?.id])
+
+  const selectedVariant = useMemo(() => {
+    if (!product?.variants?.length) return null
+    if (!product.options?.length) {
+      return (
+        product.variants.find((variant) => variant.id === product.variant_id) ??
+        product.variants[0]
+      )
+    }
+
+    const match = product.variants.find((variant) =>
+      product.options.every(
+        (option) => variant.options[option.title] === selectedOptions[option.title]
+      )
+    )
+
+    return match ?? product.variants[0]
+  }, [product, selectedOptions])
+
+  const displayProduct = useMemo(() => {
+    if (!product) return null
+    if (!selectedVariant) return product
+
+    return {
+      ...product,
+      variant_id: selectedVariant.id,
+      price: selectedVariant.price,
+      mrp: selectedVariant.mrp,
+      discount: selectedVariant.discount,
+    }
+  }, [product, selectedVariant])
+
+  const handleOptionChange = useCallback((optionTitle: string, value: string) => {
+    setSelectedOptions((prev) => ({
+      ...prev,
+      [optionTitle]: value,
+    }))
+    setQuantity(1)
+  }, [])
+
   const isWishlisted = useMemo(() => {
     const list = (customer?.metadata as Record<string, unknown> | undefined)?.wishlist
     if (!Array.isArray(list)) return false
@@ -1103,14 +1165,18 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   )
 
   const stockInfo = useMemo(
-    () => resolveStockInfo(product, product?.variant_id),
-    [product, resolveStockInfo]
+    () => resolveStockInfo(product, selectedVariant?.id ?? product?.variant_id),
+    [product, selectedVariant?.id, resolveStockInfo]
   )
 
   // expose quantity for other usages if needed, mapping back to old simple variable
   const resolvedInventory = stockInfo.quantity
 
   const hasStock = useMemo(() => {
+    if (selectedVariant) {
+      return isVariantPurchasable(selectedVariant)
+    }
+
     // If we don't manage inventory, it's always in stock
     if (!stockInfo.manage) return true
     // If backorders are allowed, it's always in stock
@@ -1125,24 +1191,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     if (!product?.variants?.length) return false
 
     // Try to find ANY variant in stock (fallback logic)
-    return product.variants.some((variant) => {
-      const vRec = variant as unknown as Record<string, unknown>
-      const vManage = (variant.manage_inventory as boolean | undefined) ?? (vRec.manage_inventory as boolean | undefined) ?? true
-      const vBack = (variant.allow_backorder as boolean | undefined) ?? (vRec.allow_backorder as boolean | undefined) ?? false
-
-      if (!vManage || vBack) return true
-
-      const candidates = [
-        variant.inventory_quantity,
-        vRec.available_quantity,
-        vRec.quantity,
-      ]
-      for (const cand of candidates) {
-        if (typeof cand === 'number' && !Number.isNaN(cand) && cand > 0) return true
-      }
-      return false
-    })
-  }, [product, stockInfo])
+    return product.variants.some((variant) => isVariantPurchasable(variant))
+  }, [product, stockInfo, selectedVariant])
 
   useEffect(() => {
     if (!product?.id) return
@@ -1225,11 +1275,16 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       notifyOutOfStock()
       return
     }
-    await addVariantToCart(product?.variant_id, quantity, product?.title)
+    await addVariantToCart(selectedVariant?.id ?? product?.variant_id, quantity, product?.title)
   }
 
   const handleBuyNow = () => {
-    if (!product?.variant_id) {
+    if (!product) {
+      notifyCartUnavailable()
+      return
+    }
+    const variantId = selectedVariant?.id ?? product.variant_id
+    if (!variantId) {
       notifyCartUnavailable()
       return
     }
@@ -1259,14 +1314,16 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     const effectivePrice =
       flashPrice !== undefined
         ? flashPrice
-        : typeof product.price === "number"
-          ? product.price
-          : undefined
+        : typeof displayProduct?.price === "number"
+          ? displayProduct.price
+          : typeof product.price === "number"
+            ? product.price
+            : undefined
 
     try {
       if (typeof window !== "undefined") {
         const payload = {
-          variantId: product.variant_id,
+          variantId,
           quantity: Math.max(1, quantity),
           title: product.title,
           thumbnail: product.images?.[0] || product.thumbnail,
@@ -1279,7 +1336,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     }
     const params = new URLSearchParams({
       buyNow: "1",
-      variant_id: product.variant_id,
+      variant_id: variantId,
       qty: String(Math.max(1, quantity)),
     })
     if (effectivePrice !== undefined) {
@@ -1467,13 +1524,15 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                 style={{ scrollbarWidth: 'none' }}
               >
                 <ProductSummary
-                  product={product}
+                  product={displayProduct ?? product}
                   brandName={brandName}
                   ratingValue={ratingValue}
                   reviewCount={reviewCount}
                   viewCount={viewCount}
                   hasStock={hasStock}
                   quantity={quantity}
+                  selectedOptions={selectedOptions}
+                  onOptionChange={handleOptionChange}
                   onQuantityChange={handleQuantityChange}
                   onAddToCart={handleAddToCart}
                   onBuyNow={handleBuyNow}
