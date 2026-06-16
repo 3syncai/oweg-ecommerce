@@ -22,9 +22,9 @@ CREATE TABLE IF NOT EXISTS wallet_ledger (
 );
 
 -- Idempotency & correctness
-CREATE UNIQUE INDEX IF NOT EXISTS wallet_ledger_order_type_uq
-  ON wallet_ledger (order_id, type)
-  WHERE order_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS wallet_ledger_order_earn_uq
+  ON wallet_ledger (order_id)
+  WHERE type = 'EARN' AND order_id IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS wallet_ledger_idempotency_uq
   ON wallet_ledger (idempotency_key)

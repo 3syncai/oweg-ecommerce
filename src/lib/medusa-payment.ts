@@ -2,6 +2,23 @@
 import { Pool } from 'pg';
 
 import crypto from "crypto";
+import {
+    captureOrderPayment,
+    setOrderPaidTotal,
+    setOrderPaymentStatus,
+} from "@/lib/medusa-admin";
+
+function createPaymentPool(): Pool {
+    if (!process.env.DATABASE_URL) {
+        throw new Error("DATABASE_URL not configured");
+    }
+    return new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: process.env.DATABASE_URL.includes("amazonaws.com")
+            ? { rejectUnauthorized: false }
+            : undefined,
+    });
+}
 
 /**
  * Create complete payment record chain in Medusa's payment tables
@@ -24,9 +41,7 @@ export async function createMedusaPayment(payment: {
         return { success: false, error: 'DATABASE_URL not configured' };
     }
 
-    const pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
-    });
+    const pool = createPaymentPool();
 
     // Convert paise to rupees for Medusa storage (Medusa uses major units)
     const amountRupees = payment.amount / 100;
@@ -182,9 +197,7 @@ export async function createOrderTransaction(transaction: {
         return { success: false, error: 'DATABASE_URL not configured' };
     }
 
-    const pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
-    });
+    const pool = createPaymentPool();
 
     try {
         console.log('💳 Creating OrderTransaction for order:', transaction.order_id);
@@ -249,9 +262,7 @@ export async function updateOrderSummaryTotals(orderId: string) {
         return { success: false, error: 'DATABASE_URL not configured' };
     }
 
-    const pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
-    });
+    const pool = createPaymentPool();
 
     try {
         console.log('📊 Updating order_summary totals for order:', orderId);
@@ -475,4 +486,143 @@ export async function ensureOrderReservations(orderId: string) {
         await pool.end();
         return { success: false, error: String(err) };
     }
+}
+
+export type FinalizeRazorpayPaymentInput = {
+    orderId: string;
+    amountMinor: number;
+    currencyCode: string;
+    razorpayPaymentId: string;
+    razorpayOrderId?: string;
+    razorpaySignature?: string;
+};
+
+/**
+ * Record Razorpay capture in Medusa payment tables + order_transaction + admin payment status.
+ */
+export async function finalizeRazorpayOrderPayment(input: FinalizeRazorpayPaymentInput) {
+    const amountMinor = Math.round(input.amountMinor);
+    const currencyCode = (input.currencyCode || "inr").toLowerCase();
+    const amountRupees = amountMinor / 100;
+
+    if (!input.orderId || amountMinor <= 0 || !input.razorpayPaymentId) {
+        return { ok: false, error: "invalid_finalize_input" };
+    }
+
+    let pool: Pool | null = null;
+    try {
+        pool = createPaymentPool();
+        const summaryRes = await pool.query(
+            `SELECT totals FROM order_summary WHERE order_id = $1 LIMIT 1`,
+            [input.orderId]
+        );
+        const totals = (summaryRes.rows[0]?.totals || {}) as Record<string, unknown>;
+        const orderTotal = Number(totals.current_order_total ?? totals.original_order_total ?? 0);
+        const paidTotal = Number(totals.paid_total ?? 0);
+        if (orderTotal > 0 && paidTotal >= orderTotal) {
+            await pool.end();
+            return { ok: true, skipped: true, reason: "already_paid" };
+        }
+    } catch (err) {
+        console.warn("finalizeRazorpayOrderPayment: summary pre-check failed", err);
+    }
+
+    let paymentCreated = false;
+    const paymentResult = await createMedusaPayment({
+        order_id: input.orderId,
+        amount: amountMinor,
+        currency_code: currencyCode,
+        provider_id: "razorpay",
+        data: {
+            status: "captured",
+            captured: true,
+            amount_in_paise: amountMinor,
+            razorpay_payment_id: input.razorpayPaymentId,
+            razorpay_order_id: input.razorpayOrderId,
+            razorpay_signature: input.razorpaySignature,
+            captured_at: new Date().toISOString(),
+        },
+    });
+    paymentCreated = paymentResult.success;
+
+    if (!paymentCreated) {
+        const captureRes = await captureOrderPayment(input.orderId, {
+            amount: amountMinor,
+            currency_code: currencyCode,
+            payment_id: input.razorpayPaymentId,
+            metadata: {
+                razorpay_payment_id: input.razorpayPaymentId,
+                razorpay_order_id: input.razorpayOrderId,
+                provider: "razorpay",
+            },
+        });
+        paymentCreated = captureRes.ok;
+    }
+
+    let transactionCreated = false;
+    const txResult = await createOrderTransaction({
+        order_id: input.orderId,
+        amount: amountRupees,
+        currency_code: currencyCode,
+        reference: "capture",
+        reference_id: input.razorpayPaymentId,
+    });
+    transactionCreated = txResult.success;
+
+    if (transactionCreated) {
+        await updateOrderSummaryTotals(input.orderId);
+    }
+
+    try {
+        await setOrderPaidTotal(input.orderId, amountRupees);
+        await setOrderPaymentStatus(input.orderId, "captured");
+    } catch (statusErr) {
+        console.warn("finalizeRazorpayOrderPayment: admin status sync failed", statusErr);
+    }
+
+    if (pool) {
+        try {
+            await pool.end();
+        } catch {
+            // ignore
+        }
+    }
+
+    return {
+        ok: paymentCreated || transactionCreated,
+        paymentCreated,
+        transactionCreated,
+    };
+}
+
+export async function resolveOrderPayableAmountMinor(orderId: string): Promise<number | null> {
+    if (!process.env.DATABASE_URL) return null;
+
+    const pool = createPaymentPool();
+
+    try {
+        const orderRes = await pool.query(`SELECT metadata FROM "order" WHERE id = $1`, [orderId]);
+        const metadata = (orderRes.rows[0]?.metadata || {}) as Record<string, unknown>;
+
+        if (typeof metadata.razorpay_amount_minor === "number" && metadata.razorpay_amount_minor > 0) {
+            return Math.round(metadata.razorpay_amount_minor);
+        }
+        if (typeof metadata.medusa_total_minor === "number" && metadata.medusa_total_minor > 0) {
+            return Math.round(metadata.medusa_total_minor);
+        }
+
+        const summaryRes = await pool.query(
+            `SELECT totals FROM order_summary WHERE order_id = $1 LIMIT 1`,
+            [orderId]
+        );
+        const totals = (summaryRes.rows[0]?.totals || {}) as Record<string, unknown>;
+        const orderTotal = Number(totals.current_order_total ?? totals.original_order_total ?? 0);
+        if (orderTotal > 0) {
+            return Math.round(orderTotal * 100);
+        }
+    } finally {
+        await pool.end();
+    }
+
+    return null;
 }

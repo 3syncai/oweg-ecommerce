@@ -21,41 +21,34 @@ type AddToCartParams = {
 type AddToCartResponse = {
   cart?: unknown;
   id?: string;
+  guestCartId?: string;
   [key: string]: unknown;
 };
+
+function buildCartHeaders(customer: unknown): Record<string, string> {
+  const guestCartId = getGuestCartId();
+  if (guestCartId && !customer) {
+    return { "x-guest-cart-id": guestCartId };
+  }
+  return {};
+}
 
 /**
  * Hook for adding items to cart using React Query
  */
 export function useAddToCart() {
   const queryClient = useQueryClient();
-  const { syncFromCartPayload } = useCartSummary();
+  const { count, syncFromCartPayload, bumpCount, restoreCount } = useCartSummary();
   const { customer } = useAuth();
 
   return useMutation({
     mutationFn: async ({ variant_id, quantity = 1 }: AddToCartParams) => {
-      // Ensure cart exists
-      const cartRes = await fetch("/api/medusa/cart", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          ...(getGuestCartId() && !customer ? { "x-guest-cart-id": getGuestCartId()! } : {}),
-        },
-      });
-
-      const cartData = await cartRes.json();
-      
-      // If guest cart ID is returned, store it in localStorage
-      if (cartData.guestCartId && !customer) {
-        setGuestCartId(cartData.guestCartId);
-      }
-
-      // Add line item
+      // Single request — line-items route ensures cart exists (no separate cart POST).
       const response = await fetch("/api/medusa/cart/line-items", {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          ...(getGuestCartId() && !customer ? { "x-guest-cart-id": getGuestCartId()! } : {}),
+          ...buildCartHeaders(customer),
         },
         body: JSON.stringify({ variant_id, quantity }),
         credentials: "include",
@@ -70,23 +63,28 @@ export function useAddToCart() {
       }
 
       const payload = (await response.json()) as AddToCartResponse;
-      
-      // If guest cart ID is returned, store it in localStorage
+
       if (payload.guestCartId && !customer && typeof payload.guestCartId === "string") {
         setGuestCartId(payload.guestCartId);
       }
 
       return payload;
     },
+    onMutate: async ({ quantity = 1 }) => {
+      await queryClient.cancelQueries({ queryKey: ["cart"] });
+      const previousCount = count;
+      bumpCount(quantity);
+      return { previousCount };
+    },
     onSuccess: (data) => {
-      // Sync cart count
       if (data) {
-        syncFromCartPayload(data as unknown as Parameters<
-          typeof syncFromCartPayload
-        >[0]);
+        syncFromCartPayload(data as unknown as Parameters<typeof syncFromCartPayload>[0]);
       }
-      // Invalidate cart queries
-      queryClient.invalidateQueries({ queryKey: ["cart"] });
+    },
+    onError: (_error, _variables, context) => {
+      if (context && typeof context.previousCount === "number") {
+        restoreCount(context.previousCount);
+      }
     },
   });
 }
@@ -104,12 +102,11 @@ export function useAddToCartWithNotification(productName?: string) {
       return;
     }
 
+    const label = productName || "Product";
+    notifyCartAddSuccess(label, 1, () => router.push("/cart"));
+
     try {
-      const result = await addToCart.mutateAsync({ variant_id, quantity: 1 });
-      notifyCartAddSuccess(productName || "Product", 1, () =>
-        router.push("/cart")
-      );
-      return result;
+      return await addToCart.mutateAsync({ variant_id, quantity: 1 });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Could not add to cart";
@@ -124,4 +121,3 @@ export function useAddToCartWithNotification(productName?: string) {
     error: addToCart.error,
   };
 }
-

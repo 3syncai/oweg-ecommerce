@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getOrderById } from "@/lib/medusa-admin"
-import { creditAdjustment } from "@/lib/wallet-ledger"
 import { cancelOrReverseCoinsForOrder } from "@/lib/customer-affiliate-coins"
+import { refundCoinSpendForOrder } from "@/lib/wallet-coin-order"
+import { getOrderById } from "@/lib/medusa-admin"
 
 export const dynamic = "force-dynamic"
 
@@ -90,65 +90,46 @@ export async function POST(req: NextRequest) {
         const reverseData = await reverseRes.json()
         let refundData: unknown = null
 
-        // If coins were spent on this order, refund them back to the wallet
+        // Refund spent wallet coins (ledger-backed; no credit unless coins were actually spent)
         try {
-            const orderRes = await getOrderById(orderId)
-            const orderPayload = orderRes?.data as Record<string, unknown> | null
-            const order =
-                (orderPayload && typeof orderPayload === "object" && "order" in orderPayload
-                    ? (orderPayload as Record<string, unknown>).order
-                    : orderPayload) as Record<string, unknown> | null
+            refundData = await refundCoinSpendForOrder({
+                orderId,
+                reason: event === "order.return_approved" ? "return" : "cancelled",
+            });
 
-            const customerId =
-                (order && typeof order === "object" && (order as Record<string, unknown>).customer_id) ||
-                (data && typeof data === "object" && (data as Record<string, unknown>).customer_id)
+            // Legacy promotion-code spend path
+            if (!refundData || (refundData as { message?: string }).message === "No coin spend to refund") {
+                const orderRes = await getOrderById(orderId)
+                const orderPayload = orderRes?.data as Record<string, unknown> | null
+                const order =
+                    (orderPayload && typeof orderPayload === "object" && "order" in orderPayload
+                        ? (orderPayload as Record<string, unknown>).order
+                        : orderPayload) as Record<string, unknown> | null
 
-            const metadata =
-                order && typeof order === "object"
-                    ? ((order as Record<string, unknown>).metadata as Record<string, unknown> | undefined)
-                    : undefined
+                const customerId =
+                    (order && typeof order === "object" && (order as Record<string, unknown>).customer_id) ||
+                    (data && typeof data === "object" && (data as Record<string, unknown>).customer_id)
 
-            const discountCode =
-                (metadata?.coin_discount_code as string | undefined) ||
-                (metadata?.coin_discount as string | undefined) ||
-                (metadata?.coin_discount_id as string | undefined)
+                const metadata =
+                    order && typeof order === "object"
+                        ? ((order as Record<string, unknown>).metadata as Record<string, unknown> | undefined)
+                        : undefined
 
-            const coinsDiscounted =
-                typeof metadata?.coins_discounted === "number"
-                    ? metadata.coins_discounted
-                    : typeof metadata?.coin_discount_rupees === "number"
-                        ? metadata.coin_discount_rupees
-                        : typeof metadata?.coin_discount_minor === "number"
-                            ? metadata.coin_discount_minor / 100
-                            : 0
+                const discountCode =
+                    (metadata?.coin_discount_code as string | undefined) ||
+                    (metadata?.coin_discount as string | undefined) ||
+                    (metadata?.coin_discount_id as string | undefined)
 
-            if (customerId && discountCode) {
-                const refundRes = await fetch(`${baseUrl}/api/store/wallet/refund-coin-discount`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        customer_id: customerId,
-                        discount_code: discountCode
+                if (customerId && discountCode) {
+                    const refundRes = await fetch(`${baseUrl}/api/store/wallet/refund-coin-discount`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            customer_id: customerId,
+                            discount_code: discountCode
+                        })
                     })
-                })
-                refundData = await refundRes.json()
-            } else if (customerId && coinsDiscounted > 0) {
-                const amountMinor = Math.round(coinsDiscounted * 100)
-                await creditAdjustment({
-                    customerId: String(customerId),
-                    referenceId: `refund-order:${orderId}`,
-                    idempotencyKey: `refund-order:${orderId}`,
-                    amountMinor,
-                    reason: `Refund coins for order ${orderId}`,
-                    metadata: {
-                        order_id: orderId,
-                        coins_discounted: coinsDiscounted
-                    }
-                })
-                refundData = {
-                    success: true,
-                    refunded_amount: amountMinor / 100,
-                    message: "Coins refunded via order metadata"
+                    refundData = await refundRes.json()
                 }
             }
         } catch (err) {

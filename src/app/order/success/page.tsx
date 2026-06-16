@@ -147,6 +147,31 @@ function OrderSuccessPageInner() {
   }, [orderId, isConfirmingFlow, router]);
 
   useEffect(() => {
+    if (!orderId || !isConfirmingFlow || isCodCheckout) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await fetch("/api/checkout/razorpay/reconcile", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ medusaOrderId: orderId }),
+        });
+        if (!cancelled) {
+          const o = await fetchOrder();
+          if (o) setOrder(o);
+        }
+      } catch (err) {
+        console.error("razorpay reconcile failed", err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId, isConfirmingFlow, isCodCheckout]);
+
+  useEffect(() => {
     if (!orderId) return;
     let mounted = true;
     (async () => {

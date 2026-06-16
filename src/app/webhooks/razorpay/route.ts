@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { verifyRazorpaySignature } from "@/lib/razorpay";
-import { creditAdjustment } from "@/lib/wallet-ledger";
+import { finalizeCoinSpendForOrder, refundCoinSpendForOrder } from "@/lib/wallet-coin-order";
 import {
   convertDraftOrder,
   deleteDraftOrder,
@@ -14,7 +14,6 @@ import {
   updateOrderMetadata,
   registerOrderPaymentV2,
 } from "@/lib/medusa-admin";
-import { applyCoinDiscountToOrder } from "@/lib/order-discount";
 
 type RazorpayPaymentEntity = {
   id?: string;
@@ -250,19 +249,16 @@ async function refundCoinsFromMetadata(options: {
   metadata: Record<string, unknown>;
 }) {
   const { orderId, customerId, metadata } = options;
+
+  const ledgerRefund = await refundCoinSpendForOrder({ orderId, reason: "failed" });
+  if (ledgerRefund.refunded_amount) {
+    return;
+  }
+
   const discountCode =
     (metadata?.coin_discount_code as string | undefined) ||
     (metadata?.coin_discount as string | undefined) ||
     (metadata?.coin_discount_id as string | undefined);
-
-  const coinsDiscounted =
-    typeof metadata?.coins_discounted === "number"
-      ? metadata.coins_discounted
-      : typeof metadata?.coin_discount_rupees === "number"
-        ? metadata.coin_discount_rupees
-        : typeof metadata?.coin_discount_minor === "number"
-          ? metadata.coin_discount_minor / 100
-          : 0;
 
   if (discountCode) {
     const baseUrl =
@@ -275,19 +271,6 @@ async function refundCoinsFromMetadata(options: {
         customer_id: customerId || undefined,
         discount_code: discountCode,
       }),
-    });
-    return;
-  }
-
-  if (customerId && coinsDiscounted > 0) {
-    const amountMinor = Math.round(coinsDiscounted * 100);
-    await creditAdjustment({
-      customerId: String(customerId),
-      referenceId: `refund-failed:${orderId}`,
-      idempotencyKey: `refund-failed:${orderId}`,
-      amountMinor,
-      reason: `Refund coins for failed payment ${orderId}`,
-      metadata: { order_id: orderId, coins_discounted: coinsDiscounted },
     });
   }
 }
@@ -484,10 +467,19 @@ export async function POST(req: Request) {
                 ? Math.round(metadata.coins_discounted * 100)
                 : 0;
         if (coinMinor > 0) {
-          await applyCoinDiscountToOrder({
-            orderId: medusaOrderId,
-            discountMinor: coinMinor,
-          });
+          const customerId =
+            typeof (order as { customer_id?: string })?.customer_id === "string"
+              ? (order as { customer_id: string }).customer_id
+              : typeof (order as { customer?: { id?: string } })?.customer?.id === "string"
+                ? (order as { customer: { id: string } }).customer.id
+                : undefined;
+          if (customerId) {
+            await finalizeCoinSpendForOrder({
+              customerId,
+              orderId: medusaOrderId,
+              amountMinor: coinMinor,
+            });
+          }
         }
       } catch (coinErr) {
         console.error("razorpay webhook: coin discount apply failed", coinErr);

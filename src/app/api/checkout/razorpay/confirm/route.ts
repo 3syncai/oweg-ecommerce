@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import {
   updateOrderMetadata,
-  registerOrderTransaction,
-  captureOrderPayment,
   getOrderById,
 } from "@/lib/medusa-admin";
-import { createMedusaPayment, createOrderTransaction, updateOrderSummaryTotals, ensureOrderShippingMethod, ensureOrderReservations } from "@/lib/medusa-payment";
-import { applyCoinDiscountToOrder } from "@/lib/order-discount";
+import {
+  ensureOrderShippingMethod,
+  ensureOrderReservations,
+  finalizeRazorpayOrderPayment,
+  resolveOrderPayableAmountMinor,
+} from "@/lib/medusa-payment";
+import { finalizeCoinSpendForOrder } from "@/lib/wallet-coin-order";
 import { OWEG10_CODE } from "@/lib/oweg10-shared";
 import { consumeOweg10Reservation, syncOweg10ConsumedCustomerMetadata } from "@/lib/oweg10";
 import { logPendingCoinsForOrder } from "@/lib/customer-affiliate-coins";
@@ -210,101 +213,39 @@ export async function POST(req: Request) {
       await ensureOrderReservations(medusaOrderId);
     }
 
-    // Create payment record in Medusa payment tables (payment_collection, payment_session, payment)
+    // Create payment records + sync Medusa admin "Captured" status
     let paymentCreated = false;
-    if (amountMinor !== undefined) {
-      console.log("razorpay confirm: creating Medusa payment record...");
-      const paymentResult = await createMedusaPayment({
-        order_id: medusaOrderId,
-        amount: amountMinor, // Already in paise from checkout
-        currency_code: currencyCode,
-        provider_id: "razorpay",
-        data: {
-          status: "captured",
-          captured: true,
-          amount_in_paise: amountMinor,
-          razorpay_payment_id,
-          razorpay_order_id,
-          razorpay_signature,
-          captured_at: new Date().toISOString(),
-        },
-      });
+    const resolvedAmountMinor =
+      typeof amountMinor === "number" && amountMinor > 0
+        ? amountMinor
+        : await resolveOrderPayableAmountMinor(medusaOrderId);
 
-      if (paymentResult.success) {
-        paymentCreated = true;
-        console.log("razorpay confirm: ✅ Medusa payment record created");
-      } else {
-        console.error("razorpay confirm: ❌ Failed to create Medusa payment:", paymentResult.error);
+    if (resolvedAmountMinor && resolvedAmountMinor > 0) {
+      const finalizeResult = await finalizeRazorpayOrderPayment({
+        orderId: medusaOrderId,
+        amountMinor: resolvedAmountMinor,
+        currencyCode,
+        razorpayPaymentId: razorpay_payment_id,
+        razorpayOrderId: razorpay_order_id,
+        razorpaySignature: razorpay_signature,
+      });
+      paymentCreated = finalizeResult.paymentCreated || finalizeResult.transactionCreated || finalizeResult.skipped === true;
+
+      if (!finalizeResult.ok) {
+        console.error("razorpay confirm: finalize payment failed", finalizeResult);
       }
+    } else {
+      console.error("razorpay confirm: missing payable amount for order", medusaOrderId);
     }
 
-    // Also try API-based capture methods (fallback)
-    if (!paymentCreated && amountMinor !== undefined) {
-      const captureRes = await captureOrderPayment(medusaOrderId, {
-        amount: amountMinor,
-        currency_code: currencyCode,
-        payment_id: razorpay_payment_id,
-        metadata: {
-          razorpay_payment_id,
-          razorpay_order_id,
-          provider: "razorpay",
-        },
-      });
-      if (captureRes.ok) {
-        paymentCreated = true;
-        console.log("razorpay confirm: payment captured via API");
-      }
-    }
+    await updateOrderMetadata(medusaOrderId, {
+      payment_method: "razorpay",
+      razorpay_capture_status: paymentCreated ? "captured" : "failed",
+      cod_status: null,
+      cod_post_process_done: null,
+    });
 
-    // CRITICAL: Create OrderTransaction record for proper paid_total tracking
-    // This fixes the "Refund" bar issue in Medusa Admin
-    if (typeof amountMinor === "number") {
-      // Convert Paise (minor units) to Rupees (major units) for Medusa v2
-      const amountRupees = amountMinor / 100;
-
-      console.log("razorpay confirm: creating OrderTransaction...");
-      console.log(`  Amount: ₹${amountRupees} (from ${amountMinor} paise)`);
-
-      const txResult = await createOrderTransaction({
-        order_id: medusaOrderId,
-        amount: amountRupees,  // RUPEES (major units)
-        currency_code: currencyCode,
-        reference: "capture",
-        reference_id: razorpay_payment_id,
-        // NOTE: order_transaction table does not have metadata column
-      });
-
-      if (txResult.success) {
-        console.log("razorpay confirm: ✅ OrderTransaction created");
-
-        // Sync order_summary.totals with the new transaction
-        const summaryResult = await updateOrderSummaryTotals(medusaOrderId);
-        if (summaryResult.success) {
-          console.log("razorpay confirm: ✅ Order summary synced - paid_total updated");
-        } else {
-          console.warn("razorpay confirm: ⚠️ Order summary sync failed:", summaryResult.error);
-        }
-      } else {
-        console.error("razorpay confirm: ❌ Failed to create OrderTransaction:", txResult.error);
-        // Also try the old API method as fallback
-        const txRes = await registerOrderTransaction(medusaOrderId, {
-          amount: amountRupees,  // Use Rupees here too
-          currency_code: currencyCode,
-          reference: "capture",
-          provider: "razorpay",
-          metadata: {
-            razorpay_payment_id,
-            razorpay_order_id,
-          },
-        });
-        if (txRes.ok) {
-          console.log("razorpay confirm: ✅ OrderTransaction created via API fallback");
-        }
-      }
-    }
-
-    // COIN DISCOUNT: apply as order discount (not as payment transaction)
-    // Uses order metadata set during draft-order creation.
+    // Spend wallet coins after successful payment (discount already on order from draft-order).
     try {
       const pool = getPool();
       if (!pool) throw new Error("Database not configured");
@@ -322,13 +263,23 @@ export async function POST(req: Request) {
             : 0;
 
       if (coinMinor > 0) {
-        await applyCoinDiscountToOrder({
-          orderId: medusaOrderId,
-          discountMinor: coinMinor
-        });
+        const customerId =
+          typeof dbMetadata?.customer_id === "string"
+            ? dbMetadata.customer_id
+            : (
+                await pool.query(`SELECT customer_id FROM "order" WHERE id = $1`, [medusaOrderId])
+              ).rows[0]?.customer_id;
+
+        if (customerId) {
+          await finalizeCoinSpendForOrder({
+            customerId: String(customerId),
+            orderId: medusaOrderId,
+            amountMinor: coinMinor,
+          });
+        }
       }
     } catch (coinError) {
-      console.error("Coin discount update error:", coinError);
+      console.error("Coin spend error:", coinError);
     }
 
     // AFFILIATE COMMISSION: Call the commission webhook for hierarchy support

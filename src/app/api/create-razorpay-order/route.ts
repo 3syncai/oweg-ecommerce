@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createRazorpayOrder, getPublicRazorpayKey } from "@/lib/razorpay";
 import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
+import { getPool } from "@/lib/wallet-ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,25 @@ function extractOrder(data: unknown): MedusaOrder | null {
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
+}
+
+async function readOrderPayableRupees(orderId: string, fallback: number): Promise<number> {
+  if (!process.env.DATABASE_URL) return fallback;
+  try {
+    const pool = getPool();
+    const res = await pool.query(
+      `SELECT totals FROM order_summary WHERE order_id = $1 LIMIT 1`,
+      [orderId]
+    );
+    const totals = (res.rows[0]?.totals || {}) as Record<string, unknown>;
+    const current = Number(totals.current_order_total ?? 0);
+    const pending = Number(totals.pending_difference ?? 0);
+    if (current > 0) return current;
+    if (pending > 0) return pending;
+  } catch (err) {
+    console.warn("readOrderPayableRupees failed", err);
+  }
+  return fallback;
 }
 
 export async function POST(req: Request) {
@@ -84,15 +104,13 @@ export async function POST(req: Request) {
     }
 
     const currency = (order.currency_code || DEFAULT_CURRENCY).toString().toUpperCase();
-    // order.total is in rupees - pass as-is to razorpay helper which will convert to paise
-    const totalRupees = Number.isFinite(Number(order.total ?? 0)) ? Number(order.total ?? 0) : 0;
+    const orderTotalRupees = Number.isFinite(Number(order.total ?? 0)) ? Number(order.total ?? 0) : 0;
+    const summaryPayable = await readOrderPayableRupees(medusaOrderId, orderTotalRupees);
+    const totalRupees = summaryPayable > 0 ? summaryPayable : orderTotalRupees;
     if (totalRupees <= 0) {
       return badRequest("Order total is invalid");
     }
 
-    // FORCE OVERRIDE: If frontend sends an amount, USE IT.
-    // The frontend has the most up-to-date calculation including coin discounts.
-    // FORCE OVERRIDE: If frontend sends an amount, USE IT.
     let finalAmount = totalRupees;
     const requestedAmount = Number(body.amount);
 
@@ -100,7 +118,7 @@ export async function POST(req: Request) {
       console.log(`💰 [Razorpay Force] Override: Order says ${totalRupees}, Frontend says ${requestedAmount}`);
       finalAmount = requestedAmount;
     } else {
-      console.log(`⚠️ [Razorpay Debug] No valid amount override provided. Using calculated total: ${totalRupees}`);
+      console.log(`⚠️ [Razorpay Debug] No valid amount override provided. Using payable total: ${totalRupees}`);
     }
 
     const metadata = (order.metadata || {}) as Record<string, unknown>;
@@ -117,7 +135,7 @@ export async function POST(req: Request) {
         return NextResponse.json({
           orderId: metadata.razorpay_order_id,
           key: getPublicRazorpayKey(),
-          amount: totalRupees,
+          amount: Math.round(finalAmount * 100),
           currency,
         });
       }

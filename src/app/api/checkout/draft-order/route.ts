@@ -8,6 +8,9 @@ import { convertDraftOrder, createDraftOrder, readStoreCart, updateOrderMetadata
 import { medusaStoreFetch } from "@/lib/medusa-auth";
 import { calculateOweg10Discount, OWEG10_CODE } from "@/lib/oweg10-shared";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
+import { cartLineAmountRupees } from "@/lib/cart-helpers";
+import { applyFlashSalePricesToCart } from "@/lib/flash-sale-cart-mapper";
+import { applyCoinDiscountToOrder, syncOrderShippingAmount } from "@/lib/order-discount";
 import { findSpendByReference } from "@/lib/wallet-ledger";
 import {
   consumeOweg10Reservation,
@@ -67,6 +70,24 @@ function mapAddress(input?: AddressInput) {
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
+}
+
+function cartItemLineTotalRupees(record: Record<string, unknown>, currencyCode: string): number {
+  return cartLineAmountRupees(record, currencyCode);
+}
+
+async function enrichCartWithFlashSale(cart: Record<string, unknown>): Promise<Record<string, unknown>> {
+  try {
+    const flashRes = await backend("/store/flash-sale/products");
+    if (!flashRes.ok) return cart;
+    const flashSaleData = await flashRes.json();
+    return applyFlashSalePricesToCart(
+      cart as Parameters<typeof applyFlashSalePricesToCart>[0],
+      flashSaleData as Parameters<typeof applyFlashSalePricesToCart>[1]
+    ) as Record<string, unknown>;
+  } catch {
+    return cart;
+  }
 }
 
 type DraftOrder = {
@@ -286,9 +307,11 @@ export async function POST(req: Request) {
         const refreshed = await backend(`/store/carts/${encodeURIComponent(temp.id)}`);
         if (refreshed.ok) {
           const data = await refreshed.json();
-          cart = (data.cart as Record<string, unknown>) || (data as Record<string, unknown>);
+          cart = await enrichCartWithFlashSale(
+            (data.cart as Record<string, unknown>) || (data as Record<string, unknown>)
+          );
         } else {
-          cart = temp.cart;
+          cart = temp.cart ? await enrichCartWithFlashSale(temp.cart as Record<string, unknown>) : null;
         }
       } catch (err) {
         console.error("buy-now cart build failed", err);
@@ -308,7 +331,7 @@ export async function POST(req: Request) {
       if (!cartData?.cart) {
         return badRequest("Cart is empty or unavailable");
       }
-      cart = cartData.cart as Record<string, unknown>;
+      cart = await enrichCartWithFlashSale(cartData.cart as Record<string, unknown>);
     }
 
     if (!cart) {
@@ -374,7 +397,13 @@ export async function POST(req: Request) {
       (await getFallbackRegionId());
     const cartCurrency = (typeof cart.currency_code === "string" ? cart.currency_code : undefined) || "inr";
 
-    const itemsTotal = items.reduce((sum, item) => sum + (item.unit_price || 0) * item.quantity, 0);
+    const cartItemRecords = Array.isArray(cart.items)
+      ? (cart.items as Array<Record<string, unknown>>)
+      : [];
+    const itemsTotal = cartItemRecords.reduce(
+      (sum, record) => sum + cartItemLineTotalRupees(record, cartCurrency),
+      0
+    );
     const shippingCharge = calculateStatewiseShipping(itemsTotal, shipping.state);
     const oweg10DiscountRupees = body.oweg10Applied ? calculateOweg10Discount(itemsTotal) : 0;
 
@@ -504,7 +533,7 @@ export async function POST(req: Request) {
       medusaTotal = expectedTotal;
     }
 
-    const finalTotal = Math.max(0, medusaTotal - coinDiscountRupees - oweg10DiscountRupees);
+    const finalTotal = Math.max(0, itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees);
 
     // COD fast path: return after draft creation (~1 API call). Convert + confirm runs on success page.
     if (paymentMethod === "cod") {
@@ -573,15 +602,29 @@ export async function POST(req: Request) {
       }
     }
 
-    const finalTotalAfterLookup = Math.max(0, medusaTotal - coinDiscountRupees - oweg10DiscountRupees);
+    const payableRupees = Math.max(
+      0,
+      itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees
+    );
+    const finalTotalAfterLookup =
+      itemsTotal > 0 ? payableRupees : Math.max(0, medusaTotal - coinDiscountRupees - oweg10DiscountRupees);
 
-    console.log("💰 Coin Discount Applied:", {
+    console.log("💰 Order payable:", {
+      itemsTotal,
+      shippingCharge,
       coinDiscountRupees,
-      originalTotal: medusaTotal,
-      finalTotal: finalTotalAfterLookup,
-      reduction: medusaTotal - finalTotalAfterLookup,
-      source: coinDiscountRupees > 0 ? "request-or-ledger" : "none",
+      oweg10DiscountRupees,
+      medusaTotal,
+      payableRupees: finalTotalAfterLookup,
     });
+
+    if (medusaOrderId) {
+      try {
+        await syncOrderShippingAmount(medusaOrderId, shippingCharge);
+      } catch (err) {
+        console.warn("Failed to sync shipping amount on order:", err);
+      }
+    }
 
     if (coinDiscountRupees > 0 && medusaOrderId) {
       try {
@@ -590,10 +633,14 @@ export async function POST(req: Request) {
           coin_discount_minor: Math.round(coinDiscountRupees * 100),
           coin_discount_rupees: coinDiscountRupees,
           coin_discount_applied: `₹${coinDiscountRupees.toFixed(2)} OWEG Coins`,
-          coins_discounted: coinDiscountRupees
+          coins_discounted: coinDiscountRupees,
+        });
+        await applyCoinDiscountToOrder({
+          orderId: medusaOrderId,
+          discountMinor: Math.round(coinDiscountRupees * 100),
         });
       } catch (err) {
-        console.warn("Failed to update order metadata for coin discount:", err);
+        console.warn("Failed to apply coin discount on order:", err);
       }
     }
 

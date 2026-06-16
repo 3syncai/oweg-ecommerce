@@ -52,16 +52,21 @@ export async function POST(req: Request) {
   }
 
   if (medusaOrderId) {
-    void fetch(`${origin}/api/checkout/razorpay/confirm`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        medusaOrderId,
-        razorpay_payment_id,
-        razorpay_order_id,
-        razorpay_signature,
-      }),
-    }).catch((err) => console.error("razorpay callback confirm failed", err));
+    const origin = getSiteOrigin(url.origin);
+    try {
+      await fetch(`${origin}/api/checkout/razorpay/confirm`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          medusaOrderId,
+          razorpay_payment_id,
+          razorpay_order_id,
+          razorpay_signature,
+        }),
+      });
+    } catch (err) {
+      console.error("razorpay callback confirm failed", err);
+    }
   }
 
   const successTarget = `${origin}${SUCCESS_URL}?orderId=${encodeURIComponent(

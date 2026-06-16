@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
-import { applyCoinDiscountToOrder } from "@/lib/order-discount";
+import { applyCoinDiscountToOrder, syncOrderShippingAmount } from "@/lib/order-discount";
+import { finalizeCoinSpendForOrder } from "@/lib/wallet-coin-order";
 import { OWEG10_CODE } from "@/lib/oweg10-shared";
 import { consumeOweg10Reservation, syncOweg10ConsumedCustomerMetadata } from "@/lib/oweg10";
 import { logPendingCoinsForOrder } from "@/lib/customer-affiliate-coins";
@@ -78,6 +79,21 @@ async function runCodSideEffects(finalOrderId: string, metadata: Record<string, 
           ? Math.round(metadata.coin_discount_rupees * 100)
           : 0;
     if (coinMinor > 0) {
+      const expectedShipping =
+        typeof metadata.expected_shipping_price === "number" ? metadata.expected_shipping_price : undefined;
+      if (typeof expectedShipping === "number") {
+        await syncOrderShippingAmount(finalOrderId, expectedShipping);
+      }
+      const pool = getPool();
+      const orderRow = await pool.query(`SELECT customer_id FROM "order" WHERE id = $1`, [finalOrderId]);
+      const customerId = orderRow.rows[0]?.customer_id as string | undefined;
+      if (customerId) {
+        await finalizeCoinSpendForOrder({
+          customerId,
+          orderId: finalOrderId,
+          amountMinor: coinMinor,
+        });
+      }
       await applyCoinDiscountToOrder({
         orderId: finalOrderId,
         discountMinor: coinMinor,
