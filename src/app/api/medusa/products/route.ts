@@ -8,6 +8,7 @@ import {
   fetchProductsByType,
   toUiProduct,
   isMedusaProductInStock,
+  type MedusaProduct,
 } from "@/lib/medusa"
 import { getPriceListPrices } from "@/lib/price-lists"
 // MySQL import removed - using Medusa prices only
@@ -79,7 +80,7 @@ export async function GET(req: NextRequest) {
       searchParams.get("debug") === "1"
     if (!category && !categoryId && !collection && !collectionId && !tag && !type) return NextResponse.json({ products: [] })
 
-    let products
+    let products: MedusaProduct[] = []
     if (type) {
       products = await fetchProductsByType(type, normalizedLimit)
       // Fallback: if no products by type, try category with same label
@@ -146,7 +147,7 @@ export async function GET(req: NextRequest) {
     // Filter out products that are completely out of stock before mapping
     const inStockProducts = products.filter(isMedusaProductInStock)
 
-    let ui = inStockProducts.map((product) => {
+    let ui: ReturnType<typeof toUiProduct>[] = inStockProducts.map((product: MedusaProduct) => {
       // Apply price list discount if available
       const variantId = product.variants?.[0]?.id
       if (variantId && priceListPrices.has(variantId) && product.variants?.[0]) {

@@ -516,7 +516,10 @@ export async function fetchCategoryById(categoryId: string): Promise<MedusaCateg
   return Array.isArray(arr) && arr.length ? arr[0] : undefined
 }
 
-export async function fetchProductsByCategoryIds(categoryIds: string[], limit = 20) {
+export async function fetchProductsByCategoryIds(
+  categoryIds: string[],
+  limit = 20
+): Promise<MedusaProduct[]> {
   const uniqueIds = Array.from(new Set(categoryIds.filter(Boolean)))
   if (uniqueIds.length === 0) return []
   if (uniqueIds.length === 1) return fetchProductsByCategoryId(uniqueIds[0], limit)
@@ -551,7 +554,7 @@ export async function fetchProductsByCategoryId(
   categoryId: string,
   limit = 20,
   options?: { includeSubcategories?: boolean }
-) {
+): Promise<MedusaProduct[]> {
   if (options?.includeSubcategories) {
     const category = (await fetchCategoryById(categoryId)) || undefined
     const categoryIds = category ? collectDescendantCategoryIds(category) : [categoryId]
