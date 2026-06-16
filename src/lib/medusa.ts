@@ -78,6 +78,8 @@ export type DetailedProduct = {
   images: string[]
   thumbnail?: string
   variant_id?: string
+  colorImages?: Record<string, string[]>
+  primaryVisualOption?: string
   options: Array<{
     id: string
     title: string
@@ -634,6 +636,20 @@ function collectProductImages(p: MedusaProduct) {
   return Array.from(new Set(urls))
 }
 
+export function resolveColorImageUrls(
+  colorValue: string,
+  colorImages?: Record<string, string[]>
+): string[] | undefined {
+  if (!colorValue?.trim() || !colorImages) return undefined
+  const trimmed = colorValue.trim()
+  if (colorImages[trimmed]?.length) return colorImages[trimmed]
+  const lower = trimmed.toLowerCase()
+  for (const [key, urls] of Object.entries(colorImages)) {
+    if (key.toLowerCase() === lower && urls.length) return urls
+  }
+  return undefined
+}
+
 export function toDetailedProduct(
   p: MedusaProduct
 ): DetailedProduct {
@@ -710,6 +726,19 @@ export function toDetailedProduct(
 
   mergeMetadata(primaryVariant?.metadata || null)
 
+  const metaRecord = normalizedMetadata as Record<string, unknown>
+  const colorImages: Record<string, string[]> = {}
+  const rawColorImages = metaRecord.color_images
+  if (rawColorImages && typeof rawColorImages === "object" && !Array.isArray(rawColorImages)) {
+    for (const [key, value] of Object.entries(rawColorImages as Record<string, unknown>)) {
+      if (!Array.isArray(value)) continue
+      const urls = value.filter(
+        (url): url is string => typeof url === "string" && url.trim().length > 0
+      )
+      if (urls.length) colorImages[key] = urls
+    }
+  }
+
   const productOptions =
     p.options?.map((opt) => ({
       id: opt.id,
@@ -774,6 +803,24 @@ export function toDetailedProduct(
       }
     : { amountMajor, originalMajor, discount }
 
+  const optionTitles = productOptions.map((opt) => opt.title)
+  const primaryVisualOption =
+    typeof metaRecord.primary_visual_option === "string" && metaRecord.primary_visual_option.trim()
+      ? metaRecord.primary_visual_option.trim()
+      : optionTitles.find((title) => /color|colour|pattern|finish|shade|style/i.test(title)) ||
+        optionTitles[0]
+
+  const visualOptionValues =
+    productOptions.find((opt) => opt.title === primaryVisualOption)?.values || []
+  const normalizedColorImages: Record<string, string[]> = {}
+  for (const [key, urls] of Object.entries(colorImages)) {
+    const canonical =
+      visualOptionValues.find((v) => v.toLowerCase() === key.toLowerCase()) || key
+    normalizedColorImages[canonical] = normalizedColorImages[canonical]
+      ? Array.from(new Set([...normalizedColorImages[canonical], ...urls]))
+      : urls
+  }
+
   return {
     id: p.id,
     title: p.title,
@@ -787,6 +834,8 @@ export function toDetailedProduct(
     images: collectProductImages(p),
     thumbnail: p.thumbnail || undefined,
     variant_id: defaultVariant?.id,
+    colorImages: Object.keys(normalizedColorImages).length > 0 ? normalizedColorImages : undefined,
+    primaryVisualOption,
     options: productOptions,
     variants: mappedVariants,
     categories,

@@ -76,6 +76,9 @@ type ParsedRow = {
   option1Value: string
   option2Name: string
   option2Value: string
+  visualOptionName: string
+  visualOptionValue: string
+  visualImageRefs: string[]
   errors: string[]
   warnings: string[]
   status: "pending" | "uploading" | "success" | "failed"
@@ -141,6 +144,9 @@ const TEMPLATE_HEADERS: Array<{ key: string; example: string; required?: boolean
   { key: "Option 1 Value", example: "M" },
   { key: "Option 2 Name", example: "" },
   { key: "Option 2 Value", example: "" },
+  { key: "Visual Option Name", example: "Color" },
+  { key: "Visual Option Value", example: "Black" },
+  { key: "Visual Image Refs", example: "black-1.jpg, black-2.jpg" },
   { key: "Variant Title", example: "Default variant" },
   { key: "SKU", example: "(auto)" },
   { key: "Managed Inventory", example: "Yes" },
@@ -885,6 +891,12 @@ const VendorProductsBulkUploadPage = () => {
         option1Value: toStr(get("Option 1 Value")),
         option2Name: toStr(get("Option 2 Name")),
         option2Value: toStr(get("Option 2 Value")),
+        visualOptionName: toStr(get("Visual Option Name")),
+        visualOptionValue: toStr(get("Visual Option Value")),
+        visualImageRefs: toStr(get("Visual Image Refs"))
+          .split(",")
+          .map((piece) => piece.trim())
+          .filter(Boolean),
         variantTitle: toStr(get("Variant Title")) || "Default variant",
         sku,
         managedInventory,
@@ -1603,6 +1615,23 @@ const VendorProductsBulkUploadPage = () => {
 
     const productOptions = hasOptions ? buildOptionsFromGroup(groupRows) : []
 
+    const colorImages: Record<string, string[]> = {}
+    let primaryVisualOption = ""
+    groupRows.forEach((groupRow) => {
+      const visualName = groupRow.visualOptionName.trim()
+      const visualValue = groupRow.visualOptionValue.trim()
+      if (!visualName || !visualValue) return
+      if (!primaryVisualOption) primaryVisualOption = visualName
+      const refs = groupRow.visualImageRefs.length
+        ? groupRow.visualImageRefs
+        : groupRow.imageRefs
+      const urls = refs
+        .map((name) => lookupUrl(name))
+        .filter((url): url is string => Boolean(url))
+      if (!urls.length) return
+      colorImages[visualValue] = Array.from(new Set([...(colorImages[visualValue] || []), ...urls]))
+    })
+
     return {
       title: row.title,
       subtitle: row.subtitle || null,
@@ -1630,6 +1659,12 @@ const VendorProductsBulkUploadPage = () => {
         hs_code: row.hsCode || null,
         country_of_origin: row.countryOfOrigin || null,
         videos: null,
+        ...(Object.keys(colorImages).length > 0
+          ? {
+              color_images: colorImages,
+              primary_visual_option: primaryVisualOption || null,
+            }
+          : {}),
         ...(categoryRequest
           ? {
               category_request: categoryRequest,

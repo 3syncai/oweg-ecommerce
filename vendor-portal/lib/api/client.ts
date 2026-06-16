@@ -358,6 +358,16 @@ export const vendorProductsApi = {
     })
   },
 
+  updateVariants: async (id: string, data: any) => {
+    return apiRequest<{ product_id: string; variant_matrix: any; metadata: any }>(
+      `/vendor/products/${id}/variants`,
+      {
+        method: 'PATCH',
+        data,
+      }
+    )
+  },
+
   delete: async (id: string) => {
     return apiRequest(`/vendor/products/${id}`, {
       method: 'DELETE',
