@@ -57,9 +57,7 @@ export function ProductCard({
   const router = useRouter();
   const cardRef = useRef<HTMLAnchorElement | null>(null);
 
-  // Check if product is out of stock
-  // Check if product is out of stock (undefined/null or <= 0 is considered out of stock)
-  const isOutOfStock = typeof inventory_quantity !== 'number' || inventory_quantity <= 0;
+  const isOutOfStock = typeof inventory_quantity !== "number" || inventory_quantity <= 0;
 
   const params = new URLSearchParams();
   params.set("id", String(id));
@@ -93,9 +91,7 @@ export function ProductCard({
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting && !prefetched) {
-            // Prefetch page route
             router.prefetch(productHref);
-            // Prefetch product detail into React Query cache
             void queryClient.prefetchQuery({
               queryKey: ["product-detail", String(id)],
               queryFn: async () => {
@@ -139,7 +135,6 @@ export function ProductCard({
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
           />
         </div>
-        {/* Out of Stock Overlay */}
         {isOutOfStock && (
           <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-t-lg z-20">
             <div className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-lg">
@@ -203,4 +198,3 @@ export function ProductCard({
     </Link>
   );
 }
-
