@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ChevronLeft, ChevronRight, Loader2, MapPin, UserRound } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MapPin, UserRound } from 'lucide-react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { ProductCard } from '@/components/modules/ProductCard';
 import type { MedusaCategory } from '@/lib/medusa';
@@ -11,7 +11,8 @@ import { useAuth } from '@/contexts/AuthProvider';
 import PreferenceModal from '@/components/modules/PreferenceModal';
 import { usePreferences } from '@/hooks/usePreferences';
 import { buildPreferenceSlug } from '@/lib/personalization';
-import { getBrandLogoPath, getBrandLogoScale, normalizeBrandKey } from '@/lib/brand-logos';
+import { normalizeBrandKey, resolveBrandLogo, getCollectionLogoUrl, getCollectionLogoScale } from '@/lib/brand-logos';
+import { BrandLogoImage, brandLogoFallbackHandler } from '@/components/modules/BrandLogoImage';
 import FlashSaleSection from '@/components/flash-sale/FlashSaleSection';
 
 // UI product type (used by carousel/cards)
@@ -696,14 +697,19 @@ export default function HomePage() {
   );
 
   const brandCollectionsQuery = useQuery({
-    queryKey: ['home-brand-collections'],
+    queryKey: ['home-featured-brands'],
     queryFn: async () => {
-      const res = await fetch('/api/medusa/collections', { cache: 'no-store' });
-      if (!res.ok) throw new Error('Unable to load brands');
+      const res = await fetch('/api/medusa/featured-brands', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Unable to load featured brands');
       const data = await res.json();
-      return (data.collections || []) as Array<{ id: string; title?: string; handle?: string }>;
+      return (data.collections || []) as Array<{
+        id: string;
+        title?: string;
+        handle?: string;
+        metadata?: Record<string, unknown> | null;
+      }>;
     },
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 60,
   });
   const brandCollections = brandCollectionsQuery.data ?? [];
 
@@ -1017,57 +1023,56 @@ export default function HomePage() {
             paddingClass="px-2 md:px-4"
           />
         </div>
-        <div className="px-4 mt-10">
-          <div className="p-4 sm:p-6 space-y-4">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Top brands we carry</h1>
+        {brandCollectionsQuery.isLoading ? (
+          <div className="px-4 mt-10">
+            <div className="p-4 sm:p-6 space-y-4">
+              <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Top brands we carry</h1>
+              <div className="flex gap-4 overflow-x-auto scrollbar-hidden pb-3">
+                {Array.from({ length: 8 }).map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="min-w-[170px] h-24 rounded-2xl border border-gray-100 bg-gray-50 animate-pulse"
+                  />
+                ))}
               </div>
-              {brandCollectionsQuery.isLoading && (
-                <div className="inline-flex items-center gap-2 text-sm text-emerald-700">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Loading
-                </div>
-              )}
-            </div>
-            <div className="flex gap-4 overflow-x-auto scrollbar-hidden pb-3">
-              {brandCollectionsQuery.isLoading
-                ? Array.from({ length: 8 }).map((_, idx) => (
-                    <div
-                      key={idx}
-                      className="min-w-[170px] h-24 rounded-2xl border border-gray-100 bg-gray-50 animate-pulse"
-                    />
-                  ))
-                : brandCollections.map((brand) => {
-                    const logo = getBrandLogoPath(brand.title, brand.handle);
-                    const scale = getBrandLogoScale(brand.title, brand.handle);
-                    const slug = brand.handle || normalizeBrandKey(brand.title) || brand.id;
-                    return (
-                      <Link
-                        key={brand.id}
-                        href={`/brands/${encodeURIComponent(slug)}?from=home`}
-                        className="group min-w-[170px] h-24 rounded-2xl border border-gray-100 bg-white shadow-sm flex items-center justify-center px-4 hover:-translate-y-1 transition hover:shadow-[0_15px_36px_-24px_rgba(0,0,0,0.35)]"
-                      >
-                        <Image
-                          src={logo}
-                          alt={brand.title || 'Brand logo'}
-                          width={160}
-                          height={80}
-                          className="object-contain"
-                          style={{ transform: `scale(${scale})` }}
-                          unoptimized
-                          onError={(e) => {
-                            const img = e.currentTarget;
-                            if (img.src.includes('oweg_logo')) return;
-                            img.src = '/oweg_logo.png';
-                          }}
-                        />
-                      </Link>
-                    );
-                  })}
             </div>
           </div>
-        </div>
+        ) : brandCollections.length > 0 ? (
+          <div className="px-4 mt-10">
+            <div className="p-4 sm:p-6 space-y-4">
+              <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Top brands we carry</h1>
+              <div className="flex gap-4 overflow-x-auto scrollbar-hidden pb-3">
+                {brandCollections.map((brand) => {
+                  const logo = resolveBrandLogo({
+                    title: brand.title,
+                    handle: brand.handle,
+                    logoUrl: getCollectionLogoUrl(brand.metadata),
+                    logoScale: getCollectionLogoScale(brand.metadata),
+                  });
+                  const slug = brand.handle || normalizeBrandKey(brand.title) || brand.id;
+                  return (
+                    <Link
+                      key={brand.id}
+                      href={`/brands/${encodeURIComponent(slug)}?from=home`}
+                      className="group min-w-[170px] h-24 rounded-2xl border border-gray-100 bg-white shadow-sm flex items-center justify-center px-3 py-2 overflow-hidden hover:-translate-y-1 transition hover:shadow-[0_15px_36px_-24px_rgba(0,0,0,0.35)]"
+                    >
+                      <BrandLogoImage
+                        src={logo.src}
+                        alt={brand.title || 'Brand logo'}
+                        scale={logo.scale}
+                        maxWidth={136}
+                        maxHeight={64}
+                        parentMaxWidth={144}
+                        parentMaxHeight={72}
+                        onError={brandLogoFallbackHandler}
+                      />
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : null}
         <div className="md:hidden px-4 mb-8">
           <MobileBanner src="/App_Banner-9.png" href="/c/kitchen-appliances" alt="Shop kitchen appliances" />
         </div>

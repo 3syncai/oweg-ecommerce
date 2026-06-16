@@ -70,6 +70,65 @@ export class S3Service {
     }
 
     /**
+     * Upload storefront brand logo to S3 (public path for homepage carousel)
+     */
+    async uploadBrandLogo(
+        brandName: string,
+        file: Buffer,
+        fileName: string,
+        mimeType: string
+    ): Promise<{ url: string; key: string }> {
+        const sanitizedBrand = this.sanitizeForPath(brandName)
+        const ext = this.extensionFromMime(mimeType, fileName)
+        const key = `Collections/Brands/${sanitizedBrand}/logo.${ext}`
+
+        const command = new PutObjectCommand({
+            Bucket: this.bucketName,
+            Key: key,
+            Body: file,
+            ContentType: mimeType,
+            CacheControl: "public, max-age=31536000, immutable",
+            Metadata: {
+                brandName,
+                uploadedAt: new Date().toISOString(),
+            },
+        })
+
+        await this.s3Client.send(command)
+
+        const url = this.buildPublicUrl(key)
+        return { url, key }
+    }
+
+    /**
+     * Delete storefront brand logo from S3
+     */
+    async deleteBrandLogo(key: string): Promise<void> {
+        if (!key) return
+        const command = new DeleteObjectCommand({
+            Bucket: this.bucketName,
+            Key: key,
+        })
+        await this.s3Client.send(command)
+    }
+
+    private extensionFromMime(mimeType: string, fileName: string): string {
+        if (mimeType.includes("png")) return "png"
+        if (mimeType.includes("webp")) return "webp"
+        if (mimeType.includes("jpeg") || mimeType.includes("jpg")) return "jpg"
+        if (mimeType.includes("svg")) return "svg"
+        const match = fileName.match(/\.([a-z0-9]+)$/i)
+        return match?.[1]?.toLowerCase() || "png"
+    }
+
+    private buildPublicUrl(key: string): string {
+        const base = process.env.S3_FILE_URL?.replace(/\/$/, "")
+        if (base) return `${base}/${key}`
+        const region = process.env.S3_REGION || "us-east-1"
+        return `https://${this.bucketName}.s3.${region}.amazonaws.com/${key}`
+    }
+
+    /**
      * Delete brand authorization file from S3
      */
     async deleteBrandAuthorization(key: string): Promise<void> {

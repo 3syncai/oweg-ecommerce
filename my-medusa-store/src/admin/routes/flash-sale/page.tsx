@@ -5,12 +5,6 @@ import { useEffect, useMemo, useState } from "react"
 import { Container, Heading, Text, Button, Badge, Input, Label, Checkbox, IconButton } from "@medusajs/ui"
 import { Plus, ClockSolid, MagnifyingGlass, XMark, Trash, Bolt, Funnel } from "@medusajs/icons"
 
-type FlashSaleProduct = {
-  product_id: string
-  flash_sale_price: number
-  original_price: number
-}
-
 type FlashSaleItem = {
   id: string
   product_id: string

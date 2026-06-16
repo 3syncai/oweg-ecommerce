@@ -1,9 +1,7 @@
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 
 const VendorBadgeGlobal = () => {
-  const [count, setCount] = useState(0)
-
   useEffect(() => {
     const updateBadge = async () => {
       try {
@@ -15,8 +13,7 @@ const VendorBadgeGlobal = () => {
         if (res.ok) {
           const data = await res.json()
           const pendingCount = data?.vendors?.length || 0
-          setCount(pendingCount)
-          
+
           const styleId = "vendor-badge-global-style"
           let styleEl = document.getElementById(styleId) as HTMLStyleElement
           

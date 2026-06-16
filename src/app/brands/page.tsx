@@ -1,12 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
+
 import Link from "next/link";
 import {Filter, Loader2 } from "lucide-react";
-import { getBrandLogoPath, normalizeBrandKey } from "@/lib/brand-logos";
+import {
+  getCollectionLogoScale,
+  getCollectionLogoUrl,
+  normalizeBrandKey,
+  resolveBrandLogo,
+} from "@/lib/brand-logos";
+import { BrandLogoImage, brandLogoFallbackHandler } from "@/components/modules/BrandLogoImage";
 
-type Collection = { id: string; title?: string; handle?: string };
+type Collection = {
+  id: string;
+  title?: string;
+  handle?: string;
+  metadata?: Record<string, unknown> | null;
+};
 
 const getSlug = (col: Collection) =>
   col.handle || normalizeBrandKey(col.title) || col.id;
@@ -72,7 +83,12 @@ export default function BrandsPage() {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {collections.map((col) => {
-                const logo = getBrandLogoPath(col.title, col.handle);
+                const logo = resolveBrandLogo({
+                  title: col.title,
+                  handle: col.handle,
+                  logoUrl: getCollectionLogoUrl(col.metadata),
+                  logoScale: getCollectionLogoScale(col.metadata),
+                });
                 const slug = getSlug(col);
                 return (
                   <Link
@@ -80,19 +96,13 @@ export default function BrandsPage() {
                     href={`/brands/${encodeURIComponent(slug)}`}
                     className="group  p-5  flex items-center gap-4 transition hover:-translate-y-1 hover:shadow-[0_22px_48px_-28px_rgba(0,0,0,0.45)]"
                   >
-                    <div className="h-14 w-14 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center overflow-hidden">
-                      <Image
-                        src={logo}
+                    <div className="h-14 w-14 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center overflow-hidden p-1.5">
+                      <BrandLogoImage
+                        src={logo.src}
                         alt={col.title || "Brand logo"}
-                        width={56}
-                        height={56}
-                        className="object-contain"
-                        unoptimized
-                        onError={(e) => {
-                          const img = e.currentTarget;
-                          if (img.src.includes("oweg_logo")) return;
-                          img.src = "/oweg_logo.png";
-                        }}
+                        scale={logo.scale}
+                        fillParent
+                        onError={brandLogoFallbackHandler}
                       />
                     </div>
                     <div className="flex-1 space-y-1">

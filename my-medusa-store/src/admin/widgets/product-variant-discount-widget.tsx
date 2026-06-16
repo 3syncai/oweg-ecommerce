@@ -1,7 +1,6 @@
 "use client"
 
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
-import type { DetailWidgetProps } from "@medusajs/framework/types"
 import { Container, Heading, Text, Badge, Table, IconButton, Input, Button } from "@medusajs/ui"
 import { useEffect, useState } from "react"
 import { PencilSquare, XMark, Check } from "@medusajs/icons"
@@ -30,7 +29,7 @@ type DiscountItem = {
     price_list_title: string
 }
 
-const ProductVariantDiscountWidget = ({ data }: DetailWidgetProps<AdminProductVariant>) => {
+const ProductVariantDiscountWidget = ({ data }: { data: AdminProductVariant }) => {
     const [discounts, setDiscounts] = useState<DiscountItem[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)

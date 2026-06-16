@@ -127,6 +127,7 @@ export type MedusaCollection = {
   title?: string
   handle?: string
   created_at?: string
+  metadata?: Record<string, unknown> | null
 }
 
 const MEDUSA_URL =
@@ -304,10 +305,59 @@ export async function fetchCategories(): Promise<MedusaCategory[]> {
 }
 
 export async function fetchCollections(): Promise<MedusaCollection[]> {
-  const res = await api("/store/collections?limit=200")
-  if (!res.ok) throw new Error(`Failed collections: ${res.status}`)
+  const res = await api("/store/brand-collections")
+  if (!res.ok) {
+    const fallback = await api("/store/collections?limit=200")
+    if (!fallback.ok) throw new Error(`Failed collections: ${fallback.status}`)
+    const fallbackData = await fallback.json()
+    return (fallbackData.collections || fallbackData || []) as MedusaCollection[]
+  }
   const data = await res.json()
-  return (data.collections || data || []) as MedusaCollection[]
+  const rows = (data.collections || []) as Array<{
+    id: string
+    title?: string
+    handle?: string
+    brand_logo_url?: string
+    brand_logo_scale?: number
+    metadata?: Record<string, unknown>
+  }>
+
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    handle: row.handle,
+    metadata: {
+      ...(row.metadata || {}),
+      brand_logo_url: row.brand_logo_url || row.metadata?.brand_logo_url,
+      brand_logo_scale: row.brand_logo_scale ?? row.metadata?.brand_logo_scale,
+    },
+  }))
+}
+
+export async function fetchFeaturedBrands(): Promise<MedusaCollection[]> {
+  const res = await api("/store/featured-brands")
+  if (!res.ok) throw new Error(`Failed featured brands: ${res.status}`)
+  const data = await res.json()
+  const rows = (data.collections || []) as Array<{
+    id: string
+    title?: string
+    handle?: string
+    brand_logo_url?: string
+    brand_logo_scale?: number
+    metadata?: Record<string, unknown>
+  }>
+
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    handle: row.handle,
+    metadata: {
+      ...(row.metadata || {}),
+      brand_logo_url: row.brand_logo_url || row.metadata?.brand_logo_url,
+      brand_logo_scale: row.brand_logo_scale ?? row.metadata?.brand_logo_scale,
+      featured_on_homepage: true,
+    },
+  }))
 }
 
 export async function fetchProductTypes(): Promise<MedusaProductType[]> {

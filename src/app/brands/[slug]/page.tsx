@@ -1,14 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
+
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { ArrowLeft, ChevronRight, Loader2} from "lucide-react";
 import { ProductCard } from "@/components/modules/ProductCard";
-import { getBrandLogoPath, getBrandLogoScale, normalizeBrandKey } from "@/lib/brand-logos";
+import {
+  getCollectionLogoScale,
+  getCollectionLogoUrl,
+  normalizeBrandKey,
+  resolveBrandLogo,
+} from "@/lib/brand-logos";
+import { BrandLogoImage, brandLogoFallbackHandler } from "@/components/modules/BrandLogoImage";
 
-type Collection = { id: string; title?: string; handle?: string };
+type Collection = {
+  id: string;
+  title?: string;
+  handle?: string;
+  metadata?: Record<string, unknown> | null;
+};
 type UiProduct = {
   id: string;
   name: string;
@@ -100,8 +111,16 @@ export default function BrandDetailPage() {
     loadProducts();
   }, [collection?.id]);
 
-  const logo = useMemo(() => getBrandLogoPath(collection?.title, collection?.handle), [collection?.title, collection?.handle]);
-  const logoScale = useMemo(() => getBrandLogoScale(collection?.title, collection?.handle), [collection?.title, collection?.handle]);
+  const logo = useMemo(
+    () =>
+      resolveBrandLogo({
+        title: collection?.title,
+        handle: collection?.handle,
+        logoUrl: getCollectionLogoUrl(collection?.metadata),
+        logoScale: getCollectionLogoScale(collection?.metadata),
+      }),
+    [collection?.title, collection?.handle, collection?.metadata]
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/30 to-white text-gray-900">
@@ -128,20 +147,13 @@ export default function BrandDetailPage() {
 
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-3xl bg-white border border-gray-100 flex items-center justify-center overflow-hidden shadow-sm">
-              <Image
-                src={logo}
+            <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-3xl bg-white border border-gray-100 flex items-center justify-center overflow-hidden shadow-sm p-2">
+              <BrandLogoImage
+                src={logo.src}
                 alt={collection?.title || "Brand logo"}
-                width={96}
-                height={96}
-                className="object-contain"
-                style={{ transform: `scale(${logoScale})` }}
-                unoptimized
-                onError={(e) => {
-                  const img = e.currentTarget;
-                  if (img.src.includes("oweg_logo")) return;
-                  img.src = "/oweg_logo.png";
-                }}
+                scale={logo.scale}
+                fillParent
+                onError={brandLogoFallbackHandler}
               />
             </div>
             <div className="space-y-1">
