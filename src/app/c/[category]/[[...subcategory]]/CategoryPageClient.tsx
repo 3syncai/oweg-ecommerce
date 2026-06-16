@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CategoryHeader } from "@/components/modules/CategoryHeader";
+import { CategoryPagination } from "@/components/modules/CategoryPagination";
 import {
   DealPreview,
   FilterSidebar,
@@ -13,17 +14,17 @@ import { useCategoryProducts } from "@/hooks/useCategoryProducts";
 import type { MedusaCategory } from "@/services/medusa";
 import { SectionHeading } from "@/components/ui/section-heading";
 
+const PRODUCTS_PER_PAGE = 20;
+
 function extractBrandFromName(name: string) {
   if (!name) return undefined;
   const normalized = name.trim();
   if (!normalized) return undefined;
-  // Take first one or two tokens depending on uppercase pattern
   const tokens = normalized.split(/\s+/);
   if (tokens.length === 0) return undefined;
   const first = tokens[0]?.replace(/[^A-Za-z0-9&]/g, "");
   if (!first || first.length < 2) return undefined;
 
-  // If the second token is uppercase (likely part of brand), include it
   const second = tokens[1]?.replace(/[^A-Za-z0-9&]/g, "");
   if (second && /^[A-Z]/.test(second) && second.length > 1) {
     return `${first} ${second}`.trim();
@@ -79,7 +80,6 @@ export function CategoryPageClient({
   const [dealPreview, setDealPreview] = useState<DealPreview[]>([]);
   const [dealCount, setDealCount] = useState(0);
 
-  // Determine which category ID to use for fetching products
   const activeCategoryId = selectedSubcategory?.id || category.id;
   const categoryTitle =
     selectedSubcategory?.title ||
@@ -88,7 +88,6 @@ export function CategoryPageClient({
     category.name ||
     "Products";
 
-  // Fetch products for the active category (parent includes all subcategories)
   const includeSubcategories = !selectedSubcategory;
   const queryFilters = useMemo(
     () => ({
@@ -106,7 +105,6 @@ export function CategoryPageClient({
     queryFilters
   );
 
-  // Apply client-side filters
   const derivedBrandOptions = useMemo(() => {
     const counts = new Map<string, number>();
     products.forEach((product) => {
@@ -141,6 +139,15 @@ export function CategoryPageClient({
     return filtered;
   }, [products, filters.brands]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE));
+  const requestedPage = Math.max(1, parseInt(searchParams?.get("page") || "1", 10) || 1);
+  const currentPage = Math.min(requestedPage, totalPages);
+
+  const paginatedProducts = useMemo(() => {
+    const start = (currentPage - 1) * PRODUCTS_PER_PAGE;
+    return filteredProducts.slice(start, start + PRODUCTS_PER_PAGE);
+  }, [filteredProducts, currentPage]);
+
   const activeSourceHandle =
     selectedSubcategory?.handle ||
     subcategoryHandle ||
@@ -153,19 +160,45 @@ export function CategoryPageClient({
     : undefined;
 
   const enrichedProducts = useMemo(() => {
-    return filteredProducts.map((product) => ({
+    return paginatedProducts.map((product) => ({
       ...product,
       sourceCategoryId: activeCategoryId,
       sourceCategoryHandle: normalizedHandle,
     }));
-  }, [filteredProducts, activeCategoryId, normalizedHandle]);
+  }, [paginatedProducts, activeCategoryId, normalizedHandle]);
 
-  const handleFilterChange = useCallback((partial: Partial<FilterState>) => {
-    setFilters((prev) => ({
-      ...prev,
-      ...partial,
-    }));
-  }, []);
+  const handleFilterChange = useCallback(
+    (partial: Partial<FilterState>) => {
+      setFilters((prev) => ({
+        ...prev,
+        ...partial,
+      }));
+
+      if (!router || !pathname) return;
+      const nextParams = new URLSearchParams(searchParams?.toString());
+      nextParams.delete("page");
+      const next = nextParams.toString();
+      router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  const goToPage = useCallback(
+    (page: number) => {
+      if (!router || !pathname) return;
+      const safePage = Math.max(1, Math.min(page, totalPages));
+      const nextParams = new URLSearchParams(searchParams?.toString());
+      if (safePage <= 1) {
+        nextParams.delete("page");
+      } else {
+        nextParams.set("page", String(safePage));
+      }
+      const next = nextParams.toString();
+      router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [pathname, router, searchParams, totalPages]
+  );
 
   useEffect(() => {
     if (!router || !pathname) return;
@@ -256,13 +289,17 @@ export function CategoryPageClient({
     ? "Loading products…"
     : `${filteredProducts.length} products available`;
 
+  const resultsRangeStart =
+    filteredProducts.length === 0 ? 0 : (currentPage - 1) * PRODUCTS_PER_PAGE + 1;
+  const resultsRangeEnd = Math.min(currentPage * PRODUCTS_PER_PAGE, filteredProducts.length);
+
   return (
     <div className="bg-gray-50 min-h-screen">
-      {/* Main Content Area */}
       <div className="container mx-auto px-4 py-6">
         <div className="flex gap-6">
-          {/* Left Sidebar - Filters */}
-          <aside className="hidden lg:block flex-shrink-0">
+          <aside
+            className="hidden lg:block flex-shrink-0 w-80 sticky self-start z-10 top-[calc(var(--app-header-height,136px)+1rem)] max-h-[calc(100vh-var(--app-header-height,136px)-2rem)] overflow-y-auto overscroll-contain"
+          >
             <FilterSidebar
               categoryHandle={categoryHandle}
               subcategories={subcategories}
@@ -275,9 +312,7 @@ export function CategoryPageClient({
             />
           </aside>
 
-          {/* Main Product Area */}
           <main className="flex-1 min-w-0">
-            {/* Category Header with Subcategories (only show if no subcategory selected) */}
             {!selectedSubcategory && subcategories.length > 0 && (
               <div className="mb-6 w-full">
                 <SectionHeading title="Categories" className="mb-4" />
@@ -288,21 +323,33 @@ export function CategoryPageClient({
               </div>
             )}
 
-            {/* Page Title */}
             <div className="mb-6">
               <h1 className="sr-only">{categoryTitle}</h1>
               <SectionHeading title={categoryTitle} className="mb-2" />
               <p className="text-gray-600 mt-1 text-sm">
                 {headingDescription}
+                {!isLoading && filteredProducts.length > 0 && (
+                  <span className="text-gray-500">
+                    {" "}
+                    · Showing {resultsRangeStart}–{resultsRangeEnd}
+                  </span>
+                )}
               </p>
             </div>
 
-            {/* Product Grid */}
             <ProductGrid
               products={enrichedProducts}
               isLoading={isLoading}
               showEmpty={!isLoading && filteredProducts.length === 0}
             />
+
+            {!isLoading && filteredProducts.length > 0 && (
+              <CategoryPagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={goToPage}
+              />
+            )}
           </main>
         </div>
       </div>

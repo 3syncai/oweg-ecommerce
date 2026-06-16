@@ -51,6 +51,7 @@ export type UIProduct = {
   variant_id?: string;
   handle?: string;
   opencartId?: string | number;
+  inventory_quantity?: number;
 };
 
 export type CategoryProductQueryParams = {

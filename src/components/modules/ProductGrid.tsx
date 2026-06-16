@@ -53,17 +53,15 @@ export function ProductGrid({
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
       {[...products]
         .sort((a, b) => {
-          // Sort in-stock products first, out-of-stock last
-          const aInStock = typeof a.inventory_quantity === 'number' && a.inventory_quantity > 0;
-          const bInStock = typeof b.inventory_quantity === 'number' && b.inventory_quantity > 0;
+          const aInStock = typeof a.inventory_quantity === "number" && a.inventory_quantity > 0;
+          const bInStock = typeof b.inventory_quantity === "number" && b.inventory_quantity > 0;
           if (aInStock && !bInStock) return -1;
           if (!aInStock && bInStock) return 1;
           return 0;
         })
         .map((product) => (
-        <ProductCard key={product.id} {...product} />
-      ))}
+          <ProductCard key={product.id} {...product} />
+        ))}
     </div>
   );
 }
-
