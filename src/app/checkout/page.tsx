@@ -11,7 +11,17 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthProvider";
 import { buildSignupUrl } from "@/lib/auth-redirect";
 import { calculateOweg10Discount, OWEG10_CODE } from "@/lib/oweg10-shared";
-import { loadRazorpayScript, prefetchRazorpayConnections } from "@/lib/razorpay-client";
+import {
+  OwegPaymentForm,
+  type OwegPaymentFormHandle,
+} from "@/components/checkout/OwegPaymentForm";
+import {
+  loadRazorpayCustomScript,
+  prefetchRazorpayConnections,
+  submitCustomRazorpayPayment,
+  type RazorpaySuccessResponse,
+} from "@/lib/razorpay-custom-client";
+import { getSiteOrigin } from "@/lib/razorpay";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 
 type CartItem = {
@@ -134,16 +144,6 @@ function getStateSuggestions(queryValue: string): string[] {
 }
 
 
-const isRazorpayTest =
-  process.env.NEXT_PUBLIC_RAZORPAY_TESTMODE === "true" ||
-  process.env.NEXT_PUBLIC_VERCEL_ENV !== "production";
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open: () => void; close?: () => void };
-  }
-}
-
 function CheckoutPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -190,6 +190,7 @@ function CheckoutPageInner() {
   const [checkoutAfterLoginIntent, setCheckoutAfterLoginIntent] = useState(false);
   const autoCheckoutNoticeShownRef = useRef(false);
   const performCheckoutRef = useRef<(() => Promise<void>) | null>(null);
+  const paymentFormRef = useRef<OwegPaymentFormHandle>(null);
 
   const [referralCode, setReferralCode] = useState("");
   const [referralCodeApplied, setReferralCodeApplied] = useState(false); // Track if auto-applied
@@ -1021,7 +1022,7 @@ function CheckoutPageInner() {
   useEffect(() => {
     if (paymentMethod !== "razorpay") return;
     prefetchRazorpayConnections();
-    void loadRazorpayScript().catch(() => undefined);
+    void loadRazorpayCustomScript().catch(() => undefined);
   }, [paymentMethod]);
 
   const formatInr = (value: number) => INR.format(value);
@@ -1119,8 +1120,45 @@ function CheckoutPageInner() {
     );
   };
 
-  const handleRazorpay = async (draft: DraftOrderResponse) => {
-    await loadRazorpayScript();
+  const refundCoinsForOrder = async (orderId: string) => {
+    try {
+      await fetch("/api/store/wallet/refund-coin-discount-order", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ order_id: orderId, reason: "failed" }),
+      });
+    } catch (err) {
+      console.warn("Failed to trigger coin refund on payment failure", err);
+    }
+  };
+
+  const confirmRazorpayPayment = (
+    draft: DraftOrderResponse,
+    response: RazorpaySuccessResponse,
+    amountMinor: number,
+    currency: string
+  ) => {
+    void fetch("/api/checkout/razorpay/confirm", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        medusaOrderId: draft.medusaOrderId,
+        razorpay_payment_id: response.razorpay_payment_id,
+        razorpay_order_id: response.razorpay_order_id,
+        razorpay_signature: response.razorpay_signature,
+        amount_minor: amountMinor,
+        currency,
+      }),
+      keepalive: true,
+    }).catch((err) => console.error("razorpay confirm failed", err));
+  };
+
+  const handleCustomRazorpay = async (draft: DraftOrderResponse) => {
+    const paymentPayload = paymentFormRef.current?.getPaymentPayload();
+    const validationError = paymentFormRef.current?.getValidationError();
+    if (!paymentPayload || validationError) {
+      throw new Error(validationError || "Complete payment details before paying");
+    }
 
     let createData: {
       key: string;
@@ -1149,118 +1187,38 @@ function CheckoutPageInner() {
       createData = await createRes.json();
     }
 
-    // DB now stores Rupees (Major Units). Razorpay expects Paise (Minor Units).
-    // Convert: Rupees * 100 = Paise
     const amountMinor = Math.round(draft.total * 100);
+    const origin = getSiteOrigin(typeof window !== "undefined" ? window.location.origin : undefined);
+    const callbackUrl = `${origin}/api/checkout/razorpay/callback?orderId=${encodeURIComponent(
+      draft.medusaOrderId
+    )}`;
 
-    const payload = {
+    const email = shipping.email || billing.email;
+    const contact = shipping.phone || billing.phone;
+
+    await submitCustomRazorpayPayment({
       key: createData.key,
-      amount: amountMinor,
+      amountMinor,
       currency: createData.currency,
       orderId: createData.orderId,
-    };
-
-    console.log("💳 [Razorpay Init] Converting Rupees to Paise:", { totalRupees: draft.total, amountPaise: amountMinor });
-
-    const Razorpay = window.Razorpay;
-    if (!Razorpay) throw new Error("Razorpay SDK unavailable");
-
-    const refundCoinsForOrder = async (orderId: string) => {
-      try {
-        await fetch("/api/store/wallet/refund-coin-discount-order", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ order_id: orderId, reason: "failed" }),
-        });
-      } catch (err) {
-        console.warn("Failed to trigger immediate coin refund on dismiss", err);
-      }
-    };
-
-    const rzp = new Razorpay({
-      key: payload.key,
-      amount: payload.amount,
-      currency: payload.currency,
-      name: "OWEG",
-      description: "Order Payment",
-      order_id: payload.orderId,
-      method: ["upi", "card", "netbanking", "wallet"],
-      prefill: {
-        name: `${shipping.firstName} ${shipping.lastName}`.trim(),
-        email: shipping.email,
-        contact: shipping.phone,
-      },
-      // Highlight UPI and keep other options available
-      config: {
-        display: {
-          blocks: {
-            upi: {
-              name: "UPI",
-              instruments: [{ method: "upi" }],
-            },
-            wallet: {
-              name: "Wallets",
-              instruments: [{ method: "wallet" }],
-            },
-          },
-          sequence: ["upi", "wallet", "card", "netbanking"],
-          preferences: {
-            show_default_blocks: true,
-          },
-        },
-        upi: {
-          flow: "collect",
-        },
-        wallet: {
-          enabled: true,
-        },
-      },
-      notes: {
-        medusa_order_id: draft.medusaOrderId,
-      },
-      handler: async function (response: {
-        razorpay_payment_id: string;
-        razorpay_order_id: string;
-        razorpay_signature: string;
-      }) {
-        const confirmPayload = {
-          medusaOrderId: draft.medusaOrderId,
-          razorpay_payment_id: response.razorpay_payment_id,
-          razorpay_order_id: response.razorpay_order_id,
-          razorpay_signature: response.razorpay_signature,
-          amount_minor: payload.amount,
-          currency: payload.currency,
-        };
-
-        // Do not block the UI on confirmation. Redirect immediately and let success page poll status.
-        void fetch("/api/checkout/razorpay/confirm", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(confirmPayload),
-          keepalive: true,
-        })
-          .then((confirmRes) => {
-            if (!confirmRes.ok) {
-              console.error("razorpay confirm returned non-OK", { status: confirmRes.status });
-            }
-          })
-          .catch((err) => {
-            console.error("razorpay confirm failed", err);
-          });
-
+      medusaOrderId: draft.medusaOrderId,
+      email,
+      contact,
+      callbackUrl,
+      payload: paymentPayload,
+      onSuccess: (response) => {
+        confirmRazorpayPayment(draft, response, amountMinor, createData.currency);
         router.push(
           `${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}&confirming=1`
         );
       },
-      modal: {
-        ondismiss: async function () {
-          await refundCoinsForOrder(draft.medusaOrderId);
-          router.push(`${RAZORPAY_FAILED}?orderId=${encodeURIComponent(draft.medusaOrderId)}`);
-        },
+      onFailure: async () => {
+        await refundCoinsForOrder(draft.medusaOrderId);
+        router.push(`${RAZORPAY_FAILED}?orderId=${encodeURIComponent(draft.medusaOrderId)}`);
       },
     });
+
     setProcessing(false);
-    rzp.open();
   };
 
   const performCheckout = async () => {
@@ -1289,14 +1247,13 @@ function CheckoutPageInner() {
 
       const [draft] = await Promise.all([
         createDraftOrder(),
-        paymentMethod === "razorpay" ? loadRazorpayScript() : Promise.resolve(),
+        paymentMethod === "razorpay" ? loadRazorpayCustomScript() : Promise.resolve(),
       ]);
       if (paymentMethod === "cod") {
         finalizeCodCheckout(draft);
         return;
-      } else {
-        await handleRazorpay(draft);
       }
+      await handleCustomRazorpay(draft);
     } catch (err) {
       console.error(err);
       toast.error(err instanceof Error ? err.message : "Checkout failed");
@@ -1664,48 +1621,52 @@ function CheckoutPageInner() {
             </section>
 
             <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-slate-900">Payment</h2>
+                <Image
+                  src="/razorpay_logo.png"
+                  alt="Secured by Razorpay"
+                  width={88}
+                  height={24}
+                  unoptimized
+                  className="opacity-80"
+                />
               </div>
-              <div className="space-y-3">
-                <label className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:border-green-500">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="radio"
-                      name="payment"
-                      checked={paymentMethod === "razorpay"}
-                      onChange={() => setPaymentMethod("razorpay")}
-                    />
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                        <span className="sr-only">Razorpay</span>
-                        <Image
-                          src="/razorpay_logo.png"
-                          alt="Razorpay"
-                          width={110}
-                          height={30}
-                          unoptimized
-                        />
-                      </p>
-                      <p className="text-xs text-slate-500">UPI, Cards, Netbanking</p>
-                    </div>
-                  </div>
-                </label>
-                <label className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:border-green-500">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="radio"
-                      name="payment"
-                      checked={paymentMethod === "cod"}
-                      onChange={() => setPaymentMethod("cod")}
-                    />
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Cash on Delivery</p>
-                      <p className="text-xs text-slate-500">Pay when the order arrives</p>
-                    </div>
-                  </div>
-                </label>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("razorpay")}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                    paymentMethod === "razorpay"
+                      ? "border-green-600 bg-green-50 text-green-800"
+                      : "border-slate-200 text-slate-700 hover:border-green-400"
+                  }`}
+                >
+                  Pay online
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("cod")}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                    paymentMethod === "cod"
+                      ? "border-green-600 bg-green-50 text-green-800"
+                      : "border-slate-200 text-slate-700 hover:border-green-400"
+                  }`}
+                >
+                  Cash on delivery
+                </button>
               </div>
+
+              <OwegPaymentForm
+                ref={paymentFormRef}
+                enabled={paymentMethod === "razorpay"}
+                prefill={{
+                  name: `${shipping.firstName} ${shipping.lastName}`.trim(),
+                  email: shipping.email,
+                  contact: shipping.phone,
+                }}
+              />
             </section>
 
             <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
@@ -2117,11 +2078,6 @@ function CheckoutPageInner() {
               >
                 {processing ? "Processing Payment…" : `Pay securely (${formatInr(payableTotal)})`}
               </Button>
-              {isRazorpayTest && (
-                <p className="text-xs text-slate-500 text-center">
-                 
-                </p>
-              )}
             </section>
           </div>
         </form>
