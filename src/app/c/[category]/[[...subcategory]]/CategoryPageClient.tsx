@@ -88,14 +88,17 @@ export function CategoryPageClient({
     category.name ||
     "Products";
 
-  // Fetch products for the active category
+  // Fetch products for the active category (parent includes all subcategories)
+  const includeSubcategories = !selectedSubcategory;
   const queryFilters = useMemo(
     () => ({
       priceMin: filters.priceMin,
       priceMax: filters.priceMax,
       dealsOnly: filters.dealsOnly,
+      includeSubcategories,
+      limit: includeSubcategories ? 60 : 50,
     }),
-    [filters.priceMin, filters.priceMax, filters.dealsOnly]
+    [filters.priceMin, filters.priceMax, filters.dealsOnly, includeSubcategories]
   );
 
   const { data: products = [], isLoading } = useCategoryProducts(
@@ -215,6 +218,9 @@ export function CategoryPageClient({
           categoryId: activeCategoryId,
           limit: "6",
         });
+        if (includeSubcategories) {
+          params.set("includeSubcategories", "1");
+        }
         const res = await fetch(
           `/api/medusa/deal-of-the-day?${params.toString()}`,
           { cache: "no-store" }
@@ -244,7 +250,7 @@ export function CategoryPageClient({
     return () => {
       cancelled = true;
     };
-  }, [activeCategoryId]);
+  }, [activeCategoryId, includeSubcategories]);
 
   const headingDescription = isLoading
     ? "Loading products…"

@@ -21,7 +21,7 @@ const listCache = new Map<string, CachedList>()
 
 function buildCacheKey(searchParams: URLSearchParams) {
   const normalized = new URLSearchParams()
-  ;["category", "categoryId", "collection", "collectionId", "tag", "type", "limit", "priceMin", "priceMax", "dealsOnly"].forEach((key) => {
+  ;["category", "categoryId", "collection", "collectionId", "tag", "type", "limit", "priceMin", "priceMax", "dealsOnly", "includeSubcategories"].forEach((key) => {
     const value = searchParams.get(key)
     if (value !== null && value !== undefined && value !== "") {
       normalized.set(key, value)
@@ -73,6 +73,7 @@ export async function GET(req: NextRequest) {
     const priceMin = priceMinParam !== null ? Number(priceMinParam) : undefined
     const priceMax = priceMaxParam !== null ? Number(priceMaxParam) : undefined
     const dealsOnly = searchParams.get("dealsOnly") === "1"
+    const includeSubcategories = searchParams.get("includeSubcategories") === "1"
     const debugRaw =
       process.env.NODE_ENV !== "production" &&
       searchParams.get("debug") === "1"
@@ -124,7 +125,7 @@ export async function GET(req: NextRequest) {
           return cat?.id
         })())
       if (!catId) return NextResponse.json({ products: [] })
-      products = await fetchProductsByCategoryId(catId, normalizedLimit)
+      products = await fetchProductsByCategoryId(catId, normalizedLimit, { includeSubcategories })
     }
     if (debugRaw) {
       return NextResponse.json({ products })

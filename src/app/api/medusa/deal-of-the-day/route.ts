@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
     const categoryId = searchParams.get("categoryId")
     const category = searchParams.get("category")
     const limit = searchParams.get("limit") || "20"
+    const includeSubcategories = searchParams.get("includeSubcategories")
 
     if (!categoryId && !category) {
       return NextResponse.json({ products: [], total: 0 })
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest) {
     const proxyParams = new URLSearchParams()
     if (categoryId) proxyParams.set("categoryId", categoryId)
     if (category) proxyParams.set("category", category)
+    if (includeSubcategories) proxyParams.set("includeSubcategories", includeSubcategories)
     proxyParams.set("dealsOnly", "1")
     proxyParams.set("limit", limit)
     proxyUrl.search = proxyParams.toString()
