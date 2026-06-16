@@ -13,6 +13,7 @@ import AuthProvider from "@/contexts/AuthProvider";
 import AppToaster from "@/components/ui/app-toaster";
 import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 import FloatingWhatsAppWidget from "@/components/common/FloatingWhatsAppWidget";
+import SmoothScroll from "@/components/SmoothScroll";
 
 export const metadata: Metadata = {
   title: {
@@ -44,14 +45,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="scroll-smooth" suppressHydrationWarning>
       <body
-        className="antialiased"
+        className="min-h-full antialiased scroll-smooth"
         suppressHydrationWarning
       >
         <Providers>
           <AuthProvider>
             <CartProvider>
+              <SmoothScroll />
               <ServiceWorkerRegister />
               <Suspense fallback={null}>
                 <AffiliateRefCapture />

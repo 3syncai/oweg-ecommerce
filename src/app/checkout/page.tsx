@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthProvider";
 import { buildSignupUrl } from "@/lib/auth-redirect";
 import { calculateOweg10Discount, OWEG10_CODE } from "@/lib/oweg10-shared";
+import { loadRazorpayScript, prefetchRazorpayConnections } from "@/lib/razorpay-client";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 
 type CartItem = {
@@ -39,6 +40,14 @@ type DraftOrderResponse = {
   total: number;
   currency_code: string;
   cartId: string;
+  razorpay?: {
+    orderId: string;
+    key: string;
+    amount: number;
+    currency: string;
+  };
+  codConfirmed?: boolean;
+  codFast?: boolean;
 };
 
 type CustomerAddress = {
@@ -1009,19 +1018,13 @@ function CheckoutPageInner() {
     clientTotals.total,
   ]);
 
-  const formatInr = (value: number) => INR.format(value);
+  useEffect(() => {
+    if (paymentMethod !== "razorpay") return;
+    prefetchRazorpayConnections();
+    void loadRazorpayScript().catch(() => undefined);
+  }, [paymentMethod]);
 
-  const ensureRazorpay = () =>
-    new Promise<void>((resolve, reject) => {
-      if (typeof window === "undefined") return reject(new Error("No window"));
-      if (window.Razorpay) return resolve();
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.async = true;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Failed to load Razorpay SDK"));
-      document.body.appendChild(script);
-    });
+  const formatInr = (value: number) => INR.format(value);
 
   const createDraftOrder = async () => {
     const fallbackBuyNow =
@@ -1078,7 +1081,7 @@ function CheckoutPageInner() {
     console.log('🛒 [Frontend Debug] createDraftOrder Payload:', requestPayload);
 
     if (saveAsDefault) {
-      await saveDefaultAddress();
+      void saveDefaultAddress();
     }
 
     const res = await fetch("/api/checkout/draft-order", {
@@ -1101,31 +1104,50 @@ function CheckoutPageInner() {
     return (await res.json()) as DraftOrderResponse;
   };
 
-  const handleCod = async (draft: DraftOrderResponse) => {
-    const res = await fetch("/api/checkout/cod", {
+  const finalizeCodCheckout = (draft: DraftOrderResponse) => {
+    void fetch("/api/checkout/cod", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ medusaOrderId: draft.medusaOrderId }),
+      keepalive: true,
+    }).catch((err) => {
+      console.error("cod background confirm failed", err);
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || "COD confirmation failed");
-    }
-    router.push(`${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}`);
+    setProcessing(false);
+    router.push(
+      `${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}&confirming=1&cod=1`
+    );
   };
 
   const handleRazorpay = async (draft: DraftOrderResponse) => {
-    await ensureRazorpay();
-    const createRes = await fetch("/api/create-razorpay-order", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ medusaOrderId: draft.medusaOrderId, amount: draft.total }),
-    });
-    if (!createRes.ok) {
-      const err = await createRes.json().catch(() => ({}));
-      throw new Error(err.error || "Unable to create payment");
+    await loadRazorpayScript();
+
+    let createData: {
+      key: string;
+      amount: number;
+      currency: string;
+      orderId: string;
+    };
+
+    if (draft.razorpay?.orderId && draft.razorpay.key) {
+      createData = {
+        key: draft.razorpay.key,
+        amount: draft.razorpay.amount,
+        currency: draft.razorpay.currency,
+        orderId: draft.razorpay.orderId,
+      };
+    } else {
+      const createRes = await fetch("/api/create-razorpay-order", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ medusaOrderId: draft.medusaOrderId, amount: draft.total }),
+      });
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({}));
+        throw new Error(err.error || "Unable to create payment");
+      }
+      createData = await createRes.json();
     }
-    const createData = await createRes.json();
 
     // DB now stores Rupees (Major Units). Razorpay expects Paise (Minor Units).
     // Convert: Rupees * 100 = Paise
@@ -1237,6 +1259,7 @@ function CheckoutPageInner() {
         },
       },
     });
+    setProcessing(false);
     rzp.open();
   };
 
@@ -1264,16 +1287,19 @@ function CheckoutPageInner() {
         throw new Error("Selected item unavailable. Please try again.");
       }
 
-      const draft = await createDraftOrder();
+      const [draft] = await Promise.all([
+        createDraftOrder(),
+        paymentMethod === "razorpay" ? loadRazorpayScript() : Promise.resolve(),
+      ]);
       if (paymentMethod === "cod") {
-        await handleCod(draft);
+        finalizeCodCheckout(draft);
+        return;
       } else {
         await handleRazorpay(draft);
       }
     } catch (err) {
       console.error(err);
       toast.error(err instanceof Error ? err.message : "Checkout failed");
-    } finally {
       setProcessing(false);
     }
   };
