@@ -68,6 +68,20 @@ function buildCartCreateBody(): RequestInit["body"] {
 
 export const dynamic = "force-dynamic"
 
+const FLASH_SALE_CACHE_TTL_MS = 60_000
+let flashSaleCache: { data: unknown; expires: number } | null = null
+
+async function getFlashSaleData() {
+  if (flashSaleCache && flashSaleCache.expires > Date.now()) {
+    return flashSaleCache.data
+  }
+  const flashSaleRes = await backend("/store/flash-sale/products")
+  if (!flashSaleRes.ok) return null
+  const flashSaleData = await flashSaleRes.json()
+  flashSaleCache = { data: flashSaleData, expires: Date.now() + FLASH_SALE_CACHE_TTL_MS }
+  return flashSaleData
+}
+
 type EnsureCartResult = {
   cartId: string
   shouldSetCookie: boolean
@@ -165,9 +179,8 @@ export async function POST(req: NextRequest) {
     
     // Map cart prices using flash_sale_item table after adding item
     try {
-      const flashSaleRes = await backend('/store/flash-sale/products')
-      if (flashSaleRes.ok) {
-        const flashSaleData = await flashSaleRes.json()
+      const flashSaleData = await getFlashSaleData()
+      if (flashSaleData) {
         const cart = data.cart || data
         if (cart) {
           const updatedCart = applyFlashSalePricesToCart(cart, flashSaleData)
@@ -179,8 +192,7 @@ export async function POST(req: NextRequest) {
         }
       }
     } catch (error) {
-      // If flash sale mapping fails, return cart as-is
-      console.error('Failed to map flash sale prices in cart:', error)
+      console.error("Failed to map flash sale prices in cart:", error)
     }
     
     const response = NextResponse.json(data)

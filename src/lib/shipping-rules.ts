@@ -24,11 +24,8 @@ export function isMaharashtra(state?: string | null): boolean {
   return normalized.includes("maharashtra");
 }
 
-export function calculateStatewiseShipping(subtotal: number, state?: string | null): number {
-  if (subtotal > 2000) return 0;
-  if (subtotal > 1000) {
-    return isMaharashtra(state) ? 0 : SHIPPING_CHARGE_RUPEES;
-  }
+export function calculateStatewiseShipping(subtotal: number, _state?: string | null): number {
+  if (subtotal > 1000) return 0;
   return SHIPPING_CHARGE_RUPEES;
 }
 

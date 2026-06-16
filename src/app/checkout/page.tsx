@@ -78,6 +78,15 @@ type CustomerAddress = {
 const RAZORPAY_SUCCESS = process.env.NEXT_PUBLIC_PAYMENT_SUCCESS_URL || "/order/success";
 const RAZORPAY_FAILED = process.env.NEXT_PUBLIC_PAYMENT_FAILED_URL || "/order/failed";
 
+function razorpayAmountToMinor(amount: number, fallbackRupees: number): number {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return Math.round(Math.max(0, fallbackRupees) * 100);
+  }
+  // Razorpay API returns paise; draft-order embeds rupees when amount < 10000
+  if (amount >= 10000) return Math.round(amount);
+  return Math.round(amount * 100);
+}
+
 const INR = new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",
@@ -575,8 +584,6 @@ function CheckoutPageInner() {
   const [walletLoading, setWalletLoading] = useState(false);
   const [useCoins, setUseCoins] = useState(false);
   const [coinsToUse, setCoinsToUse] = useState(0);
-  const [coinDiscountCode, setCoinDiscountCode] = useState<string | null>(null);
-  const [applyingCoinDiscount, setApplyingCoinDiscount] = useState(false);
 
   // Fetch wallet balance when customer loads
   useEffect(() => {
@@ -924,8 +931,7 @@ function CheckoutPageInner() {
   const orderTotal = activeTotals.total;
   const maxRedeemable = getMaxRedeemableCoins(orderTotal);
   const maxUsableCoins = Math.max(0, Math.floor(Math.min(walletBalance, orderTotal, maxRedeemable)));
-  // Trust coinsToUse when useCoins is checked, as it was validated at the time of checking.
-  // We don't want to re-clamp against walletBalance because it might decrease after deduction on backend.
+  // Trust coinsToUse when useCoins is checked (coins are only deducted after payment succeeds).
   const coinDiscount = useCoins ? coinsToUse : 0;
   const payableTotal = Math.max(0, activeTotals.total - coinDiscount - oweg10Discount);
 
@@ -972,11 +978,7 @@ function CheckoutPageInner() {
             cartId: cart?.id,
             guestCartId,
             shippingState: shipping.state,
-            coinDiscount: (() => {
-              const discountValue = useCoins ? coinsToUse / 100 : 0; // Convert coins (paise) to rupees
-              console.log("🔥🔥🔥 [Frontend] Draft Order Coin Discount:", { useCoins, coinsToUse, coinDiscountRupees: discountValue });
-              return discountValue;
-            })(),
+            coinDiscount: useCoins ? coinsToUse : 0,
             itemsOverride: isBuyNow && fallbackBuyNow
               ? [
                 {
@@ -1065,7 +1067,6 @@ function CheckoutPageInner() {
       referralCode,
       paymentMethod,
       mode: isBuyNow ? "buy_now" : "cart",
-      coinDiscountCode: coinDiscountCode || undefined,
       coinDiscount: useCoins ? coinsToUse : 0,
       oweg10Applied: customer?.id ? oweg10Applied && oweg10Status.canApply : false,
       itemsOverride: isBuyNow && fallbackBuyNow
@@ -1132,13 +1133,13 @@ function CheckoutPageInner() {
     }
   };
 
-  const confirmRazorpayPayment = (
+  const confirmRazorpayPayment = async (
     draft: DraftOrderResponse,
     response: RazorpaySuccessResponse,
     amountMinor: number,
     currency: string
   ) => {
-    void fetch("/api/checkout/razorpay/confirm", {
+    const res = await fetch("/api/checkout/razorpay/confirm", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -1149,11 +1150,13 @@ function CheckoutPageInner() {
         amount_minor: amountMinor,
         currency,
       }),
-      keepalive: true,
-    }).catch((err) => console.error("razorpay confirm failed", err));
+    });
+    if (!res.ok) {
+      console.error("razorpay confirm failed", await res.text().catch(() => ""));
+    }
   };
 
-  const handleCustomRazorpay = async (draft: DraftOrderResponse) => {
+  const handleCustomRazorpay = async (draft: DraftOrderResponse, payableRupees: number) => {
     const paymentPayload = paymentFormRef.current?.getPaymentPayload();
     const validationError = paymentFormRef.current?.getValidationError();
     if (!paymentPayload || validationError) {
@@ -1178,7 +1181,10 @@ function CheckoutPageInner() {
       const createRes = await fetch("/api/create-razorpay-order", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ medusaOrderId: draft.medusaOrderId, amount: draft.total }),
+        body: JSON.stringify({
+          medusaOrderId: draft.medusaOrderId,
+          amount: payableRupees > 0 ? payableRupees : draft.total,
+        }),
       });
       if (!createRes.ok) {
         const err = await createRes.json().catch(() => ({}));
@@ -1187,7 +1193,13 @@ function CheckoutPageInner() {
       createData = await createRes.json();
     }
 
-    const amountMinor = Math.round(draft.total * 100);
+    const amountMinor = razorpayAmountToMinor(
+      createData.amount,
+      payableRupees > 0 ? payableRupees : draft.total
+    );
+    if (amountMinor <= 0) {
+      throw new Error("Invalid payment amount. Please refresh and try again.");
+    }
     const origin = getSiteOrigin(typeof window !== "undefined" ? window.location.origin : undefined);
     const callbackUrl = `${origin}/api/checkout/razorpay/callback?orderId=${encodeURIComponent(
       draft.medusaOrderId
@@ -1206,8 +1218,8 @@ function CheckoutPageInner() {
       contact,
       callbackUrl,
       payload: paymentPayload,
-      onSuccess: (response) => {
-        confirmRazorpayPayment(draft, response, amountMinor, createData.currency);
+      onSuccess: async (response) => {
+        await confirmRazorpayPayment(draft, response, amountMinor, createData.currency);
         router.push(
           `${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}&confirming=1`
         );
@@ -1253,7 +1265,7 @@ function CheckoutPageInner() {
         finalizeCodCheckout(draft);
         return;
       }
-      await handleCustomRazorpay(draft);
+      await handleCustomRazorpay(draft, payableTotal);
     } catch (err) {
       console.error(err);
       toast.error(err instanceof Error ? err.message : "Checkout failed");
@@ -1806,134 +1818,28 @@ function CheckoutPageInner() {
                       <input
                         type="checkbox"
                         checked={useCoins}
-                        onChange={async (e) => {
+                        onChange={(e) => {
                           const isChecked = e.target.checked;
-                          const hasRealCart = Boolean(cart?.id && cart.id !== "buy-now");
 
                           if (isChecked) {
                             if (!customer?.id) {
                               toast.error("Please sign in to redeem wallet coins.");
-                              setUseCoins(false);
-                              setCoinsToUse(0);
-                              setCoinDiscountCode(null);
                               return;
                             }
-
-                            // User wants to use coins
                             const maxCoins = maxUsableCoins;
                             if (maxCoins <= 0) {
                               toast.error("Add items to checkout before applying coins.");
-                              setUseCoins(false);
-                              setCoinsToUse(0);
-                              setCoinDiscountCode(null);
                               return;
                             }
-                            const coinsInMinorUnits = maxCoins * 100; // Convert coins to minor units
-
-                            setApplyingCoinDiscount(true);
-                            try {
-                              // Step 1: Create Medusa discount code
-                              const discountRes = await fetch('/api/store/wallet/create-coin-discount', {
-                                method: 'POST',
-                                headers: { 'content-type': 'application/json' },
-                                body: JSON.stringify({
-                                  customer_id: customer?.id,
-                                  cart_id: hasRealCart ? cart?.id : undefined,
-                                  coin_amount: coinsInMinorUnits
-                                })
-                              });
-
-                              if (!discountRes.ok) {
-                                const error = await discountRes.json();
-                                throw new Error(error.error || 'Failed to create discount');
-                              }
-
-                              const discountData = await discountRes.json();
-                              const { discount_code } = discountData;
-
-                              // Step 2: Apply discount to Medusa cart only for cart checkout
-                              if (hasRealCart) {
-                                const applyRes = await fetch('/api/store/cart/apply-discount', {
-                                  method: 'POST',
-                                  headers: { 'content-type': 'application/json' },
-                                  body: JSON.stringify({
-                                    cart_id: cart?.id,
-                                    discount_code
-                                  })
-                                });
-
-                                if (!applyRes.ok) {
-                                  let message = 'Failed to apply discount to cart';
-                                  try {
-                                    const errorPayload = await applyRes.json();
-                                    if (errorPayload?.error) message = String(errorPayload.error);
-                                    if (errorPayload?.details) {
-                                      const details = typeof errorPayload.details === "string"
-                                        ? errorPayload.details
-                                        : JSON.stringify(errorPayload.details);
-                                      message = `${message}: ${details}`;
-                                    }
-                                  } catch {
-                                    // ignore parse errors
-                                  }
-                                  throw new Error(message);
-                                }
-                              }
-
-                              // Success! Update state
-                              setUseCoins(true);
-                              setCoinsToUse(maxCoins);
-                              setCoinDiscountCode(discount_code);
-                              toast.success(`₹${maxCoins.toFixed(2)} coin discount applied!`);
-
-                            } catch (error) {
-                              console.error('Coin discount error:', error);
-                              toast.error(error instanceof Error ? error.message : 'Failed to apply coin discount');
-                              setUseCoins(false);
-                              setCoinsToUse(0);
-                              setCoinDiscountCode(null);
-                            } finally {
-                              setApplyingCoinDiscount(false);
-                            }
-
+                            setUseCoins(true);
+                            setCoinsToUse(maxCoins);
                           } else {
-                            // User wants to remove coins
-                            if (coinDiscountCode) {
-                              setApplyingCoinDiscount(true);
-                              try {
-                                // Remove discount from cart only for cart checkout
-                                if (hasRealCart) {
-                                  await fetch(`/api/store/cart/apply-discount?cart_id=${cart?.id}&discount_code=${coinDiscountCode}`, {
-                                    method: 'DELETE'
-                                  });
-                                }
-
-                                // Refund coins back to wallet
-                                await fetch('/api/store/wallet/refund-coin-discount', {
-                                  method: 'POST',
-                                  headers: { 'content-type': 'application/json' },
-                                  body: JSON.stringify({
-                                    customer_id: customer?.id,
-                                    discount_code: coinDiscountCode
-                                  })
-                                });
-
-                                toast.success("Coins refunded to your wallet");
-
-                              } catch (error) {
-                                console.error('Failed to remove discount:', error);
-                              } finally {
-                                setApplyingCoinDiscount(false);
-                              }
-                            }
-
                             setUseCoins(false);
                             setCoinsToUse(0);
-                            setCoinDiscountCode(null);
                           }
                         }}
                         className="w-4 h-4 text-green-600"
-                        disabled={applyingCoinDiscount || !walletCanRedeem || maxUsableCoins <= 0}
+                        disabled={!walletCanRedeem || maxUsableCoins <= 0}
                       />
                       <div className="flex-1">
                         <p className="text-sm font-medium text-slate-800">
@@ -1942,9 +1848,6 @@ function CheckoutPageInner() {
                         <p className="text-xs text-green-600">
                           Save ₹{maxUsableCoins}
                         </p>
-                        {applyingCoinDiscount && (
-                          <p className="text-xs text-slate-500 mt-1">Applying discount...</p>
-                        )}
                       </div>
                     </label>
 
@@ -1952,7 +1855,7 @@ function CheckoutPageInner() {
                       <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg p-3">
                         <span className="text-green-600">✓</span>
                         <p className="text-sm text-green-800">
-                          Discount of <strong>₹{coinDiscount.toFixed(2)}</strong> will be applied
+                          <strong>₹{coinDiscount.toFixed(2)}</strong> will be deducted from your wallet after payment succeeds
                         </p>
                       </div>
                     )}

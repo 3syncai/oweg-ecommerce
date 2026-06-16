@@ -34,15 +34,22 @@ export async function GET(req: NextRequest) {
         const actualBalance = snapshot.actual_balance_minor / 100
         const displayBalance = snapshot.display_balance_minor / 100
         const pendingAdjustment = snapshot.pending_adjustment_minor / 100
+        const lifetimeEarned = snapshot.lifetime_earned_minor / 100
+        const lifetimeSpent = snapshot.lifetime_spent_minor / 100
+
+        const adjustmentMessage =
+            pendingAdjustment > 0
+                ? `${pendingAdjustment.toFixed(0)} coins used above your earned balance. New rewards (like your +${(snapshot.recent_earn_minor / 100).toFixed(0)} delivery coins) apply toward this first.`
+                : null
 
         return NextResponse.json({
             balance: displayBalance,
             display_balance: displayBalance,
             actual_balance: actualBalance,
             pending_adjustment: pendingAdjustment,
-            adjustment_message: pendingAdjustment > 0
-                ? `${pendingAdjustment.toFixed(0)} coins pending adjustment due to a returned order.`
-                : null,
+            lifetime_earned: lifetimeEarned,
+            lifetime_spent: lifetimeSpent,
+            adjustment_message: adjustmentMessage,
             can_redeem: actualBalance >= 0 && displayBalance > 0,
             expiring_soon: 0,
             pending_coins: 0,

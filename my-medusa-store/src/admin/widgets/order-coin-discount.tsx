@@ -59,13 +59,15 @@ const OrderCoinDiscountWidget = () => {
 
   const metadata = (order?.metadata || {}) as Record<string, unknown>
   const coinDiscount =
-    typeof metadata.coins_discountend === "number"
-      ? metadata.coins_discountend
-      : typeof metadata.coin_discount_rupees === "number"
-        ? metadata.coin_discount_rupees
-        : typeof metadata.coin_discount_minor === "number"
-          ? metadata.coin_discount_minor / 100
-          : 0
+    typeof metadata.coins_discounted === "number"
+      ? metadata.coins_discounted
+      : typeof metadata.coins_discountend === "number"
+        ? metadata.coins_discountend
+        : typeof metadata.coin_discount_rupees === "number"
+          ? metadata.coin_discount_rupees
+          : typeof metadata.coin_discount_minor === "number"
+            ? metadata.coin_discount_minor / 100
+            : 0
 
   const discountCode =
     typeof metadata.coin_discount_code === "string" ? metadata.coin_discount_code : null
@@ -94,7 +96,7 @@ const OrderCoinDiscountWidget = () => {
 }
 
 export const config = defineWidgetConfig({
-  zone: "order.details.before",
+  zone: "order.details.side.after",
 })
 
 export default OrderCoinDiscountWidget

@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -127,7 +127,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const [compareSelection, setCompareSelection] = useState<RelatedProduct[]>([])
   const [compareDetails, setCompareDetails] = useState<Record<string, DetailedProductType | null>>({})
   const [compareDetailsLoading, setCompareDetailsLoading] = useState<Record<string, boolean>>({})
-  const { syncFromCartPayload, refresh: refreshCart } = useCartSummary()
+  const { count, syncFromCartPayload, bumpCount, restoreCount } = useCartSummary()
   const summaryScrollRef = useRef<HTMLDivElement | null>(null)
   const outOfStockToastRef = useRef<string | null>(null)
   const [wishlistBusy, setWishlistBusy] = useState(false)
@@ -1272,56 +1272,45 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       notifyCartUnavailable()
       return
     }
+
+    const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
+    const itemLabel = label ?? product?.title ?? "Item";
+
+    notifyCartAddSuccess(itemLabel, qty, goToCart);
+    const previousCount = count;
+    bumpCount(qty);
+
     try {
-      // Get guest cart ID if available
-      const guestCartId = typeof window !== 'undefined' ? localStorage.getItem('guest_cart_id') : null
-
-      // Ensure cart exists
-      await fetch('/api/medusa/cart', {
-        method: 'POST',
-        credentials: 'include',
+      const res = await fetch("/api/medusa/cart/line-items", {
+        method: "POST",
         headers: {
-          ...(guestCartId ? { 'x-guest-cart-id': guestCartId } : {}),
-        },
-      })
-
-      // Add item to cart
-      const res = await fetch('/api/medusa/cart/line-items', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...(guestCartId ? { 'x-guest-cart-id': guestCartId } : {}),
+          "content-type": "application/json",
+          ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
         },
         body: JSON.stringify({ variant_id: variantId, quantity: qty }),
-        credentials: 'include',
-      })
-      const payload = await res.json().catch(() => null)
+        credentials: "include",
+      });
+      const payload = await res.json().catch(() => null);
       if (!res.ok) {
         const message =
-          (payload && (payload.error || payload.message)) || 'Unable to add to cart right now.'
-        throw new Error(message)
+          (payload && (payload.error || payload.message)) || "Unable to add to cart right now.";
+        throw new Error(message);
       }
 
-      // Store guest cart ID if returned
-      if (payload?.guestCartId && typeof window !== 'undefined' && typeof payload.guestCartId === 'string') {
-        localStorage.setItem('guest_cart_id', payload.guestCartId)
+      if (payload?.guestCartId && typeof window !== "undefined" && typeof payload.guestCartId === "string") {
+        localStorage.setItem("guest_cart_id", payload.guestCartId);
       }
 
-      // Sync cart count
       if (payload) {
-        syncFromCartPayload(payload)
+        syncFromCartPayload(payload);
       }
-
-      // Refresh cart to ensure count is up to date
-      await refreshCart()
-
-      notifyCartAddSuccess(label ?? product?.title ?? 'Item', qty, goToCart)
     } catch (err) {
-      console.warn('addVariantToCart failed', err)
-      const message = err instanceof Error ? err.message : undefined
-      notifyCartAddError(message)
+      restoreCount(previousCount);
+      console.warn("addVariantToCart failed", err);
+      const message = err instanceof Error ? err.message : undefined;
+      notifyCartAddError(message);
     }
-  }
+  };
 
   const handleAddToCart = async () => {
     if (!hasStock) {
