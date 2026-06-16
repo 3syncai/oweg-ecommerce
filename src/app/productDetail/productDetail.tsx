@@ -10,7 +10,7 @@ import { useSearchParams } from 'next/navigation'
 import { buildLoginUrl } from '@/lib/auth-redirect'
 import { toast } from 'sonner'
 import type { DetailedProduct as DetailedProductType, MedusaCategory } from '@/lib/medusa'
-import { isVariantPurchasable } from '@/lib/medusa'
+import { isVariantPurchasable, resolveColorImageUrls } from '@/lib/medusa'
 import Breadcrumbs from './components/Breadcrumbs'
 import CompareTable from './components/CompareTable'
 import DeliveryInfo from './components/DeliveryInfo'
@@ -249,12 +249,51 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   }, [product, selectedVariant])
 
   const handleOptionChange = useCallback((optionTitle: string, value: string) => {
-    setSelectedOptions((prev) => ({
-      ...prev,
-      [optionTitle]: value,
-    }))
+    if (!product?.variants?.length || !product.options?.length) {
+      setSelectedOptions((prev) => ({ ...prev, [optionTitle]: value }))
+      setQuantity(1)
+      return
+    }
+
+    setSelectedOptions((prev) => {
+      const next = { ...prev, [optionTitle]: value }
+
+      const variantMatchesSelection = (candidate: Record<string, string>) =>
+        product.variants.some((variant) =>
+          product.options.every((opt) => {
+            const selected = candidate[opt.title]
+            if (!selected) return true
+            return variant.options[opt.title] === selected
+          })
+        )
+
+      for (const opt of product.options) {
+        if (opt.title === optionTitle) continue
+        const current = next[opt.title]
+        if (!current) {
+          const firstValid = opt.values.find((val) =>
+            variantMatchesSelection({ ...next, [opt.title]: val })
+          )
+          if (firstValid) next[opt.title] = firstValid
+          continue
+        }
+
+        if (!variantMatchesSelection(next)) {
+          const replacement = opt.values.find((val) =>
+            variantMatchesSelection({ ...next, [opt.title]: val })
+          )
+          if (replacement) {
+            next[opt.title] = replacement
+          } else {
+            delete next[opt.title]
+          }
+        }
+      }
+
+      return next
+    })
     setQuantity(1)
-  }, [])
+  }, [product])
 
   const isWishlisted = useMemo(() => {
     const list = (customer?.metadata as Record<string, unknown> | undefined)?.wishlist
@@ -513,17 +552,35 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   }, [product])
 
   const galleryImages = useMemo(() => {
-    if (product?.images?.length) {
+    if (!product) return [FALLBACK_IMAGE]
+
+    const visualOption =
+      product.primaryVisualOption ||
+      product.options?.find((opt) =>
+        /color|colour|pattern|finish|shade|style/i.test(opt.title)
+      )?.title
+
+    const selectedVisual = visualOption ? selectedOptions[visualOption] : undefined
+    const colorSpecificImages = selectedVisual
+      ? resolveColorImageUrls(selectedVisual, product.colorImages)
+      : null
+
+    if (colorSpecificImages?.length) {
+      return colorSpecificImages
+    }
+
+    if (product.images?.length) {
       return product.images
     }
+
     return [FALLBACK_IMAGE]
-  }, [product])
+  }, [product, selectedOptions])
 
   const galleryKey = useMemo(() => galleryImages.join('|'), [galleryImages])
 
   useEffect(() => {
     setSelectedImage(0)
-  }, [galleryKey])
+  }, [galleryKey, selectedOptions])
   useEffect(() => {
     setQuantity(1)
   }, [productId])

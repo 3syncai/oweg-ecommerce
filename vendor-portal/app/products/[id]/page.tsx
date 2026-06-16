@@ -3,7 +3,16 @@
 import { useEffect, useMemo, useState } from "react"
 import { Badge, Button, Container, Heading, Input, Label, Text, Textarea, toast } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
+import VariantMatrixEditor from "@/components/VariantMatrixEditor"
 import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi } from "@/lib/api/client"
+import {
+  collectAllImageUrls,
+  detectVisualOption,
+  serializeColorImages,
+  type ProductOptionDef,
+  type UploadedImageRef,
+  type VariantMatrixRow,
+} from "@/lib/variant-matrix"
 import { useParams, useRouter } from "next/navigation"
 
 type Product = {
@@ -78,6 +87,13 @@ const VendorProductEditPage = () => {
   const [collections, setCollections] = useState<CatalogCollection[]>([])
   const [formData, setFormData] = useState<EditFormData>(EMPTY_FORM)
   const [initialFormData, setInitialFormData] = useState<EditFormData>(EMPTY_FORM)
+  const [hasVariants, setHasVariants] = useState(false)
+  const [productOptions, setProductOptions] = useState<ProductOptionDef[]>([])
+  const [variantRows, setVariantRows] = useState<VariantMatrixRow[]>([])
+  const [initialVariantRows, setInitialVariantRows] = useState<VariantMatrixRow[]>([])
+  const [colorImages, setColorImages] = useState<Record<string, UploadedImageRef[]>>({})
+  const [initialColorImages, setInitialColorImages] = useState<Record<string, UploadedImageRef[]>>({})
+  const [primaryVisualOption, setPrimaryVisualOption] = useState("")
 
   useEffect(() => {
     if (!productId) {
@@ -101,6 +117,25 @@ const VendorProductEditPage = () => {
 
         const prod = (productResponse as any)?.product as Product
         const summary = (productResponse as any)?.variant_summary as VariantSummary | null
+        const matrix = (productResponse as any)?.variant_matrix as {
+          options?: Array<{ title: string; values: string[] }>
+          variants?: Array<{
+            id: string
+            title: string | null
+            sku: string | null
+            manage_inventory: boolean
+            allow_backorder: boolean
+            inventory_quantity: number | null
+            price: number | null
+            discounted_price: number | null
+            option_values: Record<string, string>
+          }>
+        } | null
+        const loadedColorImages = ((productResponse as any)?.color_images || {}) as Record<
+          string,
+          string[]
+        >
+        const loadedPrimaryVisual = (productResponse as any)?.primary_visual_option as string | undefined
 
         if (!prod) {
           setLoading(false)
@@ -138,6 +173,45 @@ const VendorProductEditPage = () => {
 
         setFormData(nextForm)
         setInitialFormData(nextForm)
+
+        const optionDefs: ProductOptionDef[] = (matrix?.options || []).map((opt) => ({
+          title: opt.title,
+          values: opt.values,
+          valuesInput: opt.values.join(", "),
+        }))
+        const rows: VariantMatrixRow[] = (matrix?.variants || []).map((variant) => ({
+          id: variant.id,
+          title: variant.title || Object.values(variant.option_values).join(" / "),
+          sku: variant.sku || "",
+          managedInventory: variant.manage_inventory,
+          allowBackorder: variant.allow_backorder,
+          inventoryCount:
+            variant.inventory_quantity != null ? String(variant.inventory_quantity) : "",
+          price: variant.price != null ? String(variant.price) : "",
+          discountedPrice:
+            variant.discounted_price != null ? String(variant.discounted_price) : "",
+          optionValues: variant.option_values || {},
+        }))
+
+        const mappedColorImages: Record<string, UploadedImageRef[]> = {}
+        for (const [key, urls] of Object.entries(loadedColorImages)) {
+          mappedColorImages[key] = urls.map((url, index) => ({
+            url,
+            filename: `${key}-${index + 1}`,
+            originalName: `${key}-${index + 1}`,
+          }))
+        }
+
+        const productHasVariants = rows.length > 1 || optionDefs.length > 0
+        setHasVariants(productHasVariants)
+        setProductOptions(optionDefs)
+        setVariantRows(rows)
+        setInitialVariantRows(rows)
+        setColorImages(mappedColorImages)
+        setInitialColorImages(mappedColorImages)
+        setPrimaryVisualOption(
+          loadedPrimaryVisual || detectVisualOption(optionDefs.map((o) => o.title)) || ""
+        )
       } catch (e: any) {
         if (e?.status === 403) {
           router.push("/pending")
@@ -169,7 +243,15 @@ const VendorProductEditPage = () => {
     return changes
   }, [formData, initialFormData])
 
-  const hasChanges = changedFields.length > 0
+  const variantRowsChanged = useMemo(() => {
+    return JSON.stringify(variantRows) !== JSON.stringify(initialVariantRows)
+  }, [variantRows, initialVariantRows])
+
+  const colorImagesChanged = useMemo(() => {
+    return JSON.stringify(serializeColorImages(colorImages)) !== JSON.stringify(serializeColorImages(initialColorImages))
+  }, [colorImages, initialColorImages])
+
+  const hasChanges = changedFields.length > 0 || variantRowsChanged || colorImagesChanged
 
   const selectedCategoryName = useMemo(() => {
     return categories.find((c) => c.id === formData.categoryId)?.name || ""
@@ -199,7 +281,7 @@ const VendorProductEditPage = () => {
     }
 
     const parsedPrice = Number(formData.price)
-    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+    if (!hasVariants && (!Number.isFinite(parsedPrice) || parsedPrice <= 0)) {
       toast.error("Invalid price", { description: "Enter a valid price greater than 0." })
       return
     }
@@ -219,14 +301,45 @@ const VendorProductEditPage = () => {
     setSaving(true)
 
     try {
+      if (hasVariants && (variantRowsChanged || colorImagesChanged)) {
+        const serializedColorImages = serializeColorImages(colorImages)
+        const allImageUrls = collectAllImageUrls([], colorImages)
+
+        await vendorProductsApi.updateVariants(productId, {
+          variants: variantRows.map((row) => ({
+            id: row.id,
+            sku: row.sku || null,
+            manage_inventory: row.managedInventory,
+            inventory_quantity: Math.max(
+              0,
+              Math.floor(Number.parseInt(row.inventoryCount, 10)) || 0
+            ),
+            price: row.price ? Number(row.price) : undefined,
+            discounted_price: row.discountedPrice ? Number(row.discountedPrice) : undefined,
+          })),
+          color_images: serializedColorImages,
+          primary_visual_option: primaryVisualOption || undefined,
+          images: allImageUrls.map((url) => ({ url })),
+          vendor_edit_remark: formData.vendorRemark.trim(),
+        })
+
+        setInitialVariantRows(variantRows)
+        setInitialColorImages(colorImages)
+      }
+
+      if (changedFields.length > 0) {
       const payload = {
         title: formData.title.trim(),
         description: formData.description.trim() || null,
         handle: formData.handle.trim() || null,
         category_ids: formData.categoryId ? [formData.categoryId] : [],
         collection_id: formData.collectionId || null,
-        price: parsedPrice,
-        discounted_price: hasDiscountedValue ? parsedDiscountedPrice : undefined,
+        ...(hasVariants
+          ? {}
+          : {
+              price: parsedPrice,
+              discounted_price: hasDiscountedValue ? parsedDiscountedPrice : undefined,
+            }),
         vendor_edit_remark: formData.vendorRemark.trim(),
         metadata: {
           category: selectedCategoryName || null,
@@ -243,12 +356,17 @@ const VendorProductEditPage = () => {
       if (updatedProduct) {
         setProduct(updatedProduct)
       }
+      }
 
       const resetFormData = { ...formData, vendorRemark: "" }
       setInitialFormData({
         ...resetFormData,
-        price: String(parsedPrice),
-        discountedPrice: hasDiscountedValue ? String(parsedDiscountedPrice) : "",
+        price: hasVariants ? initialFormData.price : String(parsedPrice),
+        discountedPrice: hasVariants
+          ? initialFormData.discountedPrice
+          : hasDiscountedValue
+            ? String(parsedDiscountedPrice)
+            : "",
       })
       setFormData(resetFormData)
 
@@ -334,6 +452,8 @@ const VendorProductEditPage = () => {
                 />
               </div>
 
+              {!hasVariants && (
+                <>
               <div className="space-y-2">
                 <Label>Price (INR) *</Label>
                 <Input
@@ -361,6 +481,16 @@ const VendorProductEditPage = () => {
                   placeholder="e.g. 899"
                 />
               </div>
+                </>
+              )}
+
+              {hasVariants && (
+                <div className="space-y-2 md:col-span-2">
+                  <Text className="text-sm text-ui-fg-subtle">
+                    This product uses a variant matrix. Edit prices and stock in the section below.
+                  </Text>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label>Handle</Label>
@@ -427,6 +557,24 @@ const VendorProductEditPage = () => {
                 </Text>
               </div>
             </div>
+
+            {hasVariants && (
+              <div className="border-t border-ui-border-base pt-5">
+                <VariantMatrixEditor
+                  hasVariants={hasVariants}
+                  onHasVariantsChange={setHasVariants}
+                  productOptions={productOptions}
+                  onProductOptionsChange={setProductOptions}
+                  variants={variantRows}
+                  onVariantsChange={setVariantRows}
+                  colorImages={colorImages}
+                  onColorImagesChange={setColorImages}
+                  primaryVisualOption={primaryVisualOption}
+                  onPrimaryVisualOptionChange={setPrimaryVisualOption}
+                  optionsReadOnly
+                />
+              </div>
+            )}
 
             <div className="flex flex-col gap-3 border-t border-ui-border-base pt-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-2">

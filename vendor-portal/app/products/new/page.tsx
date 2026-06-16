@@ -2,11 +2,22 @@
 
 import React, { useState, useEffect, useRef } from "react"
 import { Heading, Text, Button, Input, Textarea, Label, Switch, toast, clx } from "@medusajs/ui"
-import { CheckCircleSolid, CircleMiniSolid } from "@medusajs/icons"
 import VendorShell from "@/components/VendorShell"
 import { useRouter } from "next/navigation"
 import { BrandAuthorizationField } from "@/components/BrandAuthorizationField"
+import VariantMatrixEditor from "@/components/VariantMatrixEditor"
 import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorTypesApi } from "@/lib/api/client"
+import {
+  collectAllImageUrls,
+  createDefaultVariantRow,
+  detectVisualOption,
+  resolveProductOptionsFromRows,
+  serializeColorImages,
+  variantComboKey,
+  type ProductOptionDef,
+  type UploadedImageRef,
+  type VariantMatrixRow,
+} from "@/lib/variant-matrix"
 import axios from "axios"
 
 type UploadedImage = {
@@ -22,23 +33,6 @@ type UploadedVideo = {
   key: string
   filename: string
   originalName: string
-}
-
-type ProductOption = {
-  title: string
-  values: string[]
-}
-
-type VariantFormRow = {
-  title: string
-  sku: string
-  managedInventory: boolean
-  allowBackorder: boolean
-  hasInventoryKit: boolean
-  inventoryCount: string
-  price: string
-  discountedPrice: string
-  optionValues: Record<string, string>
 }
 
 type ProductFormData = {
@@ -75,105 +69,14 @@ type ProductFormData = {
   salesChannels: string[]
 
   // Options & variants
-  productOptions: ProductOption[]
-  variantSizesInput: string
-  variants: VariantFormRow[]
-}
-
-type Step = "details" | "organize" | "variants"
-
-const createDefaultVariantRow = (): VariantFormRow => ({
-  title: "Default variant",
-  sku: "",
-  managedInventory: true,
-  allowBackorder: true,
-  hasInventoryKit: true,
-  inventoryCount: "",
-  price: "",
-  discountedPrice: "",
-  optionValues: {},
-})
-
-
-const MAX_AUTO_VARIANTS = 100
-
-const resolveProductOptionsFromVariants = (
-  productOptions: ProductOption[],
-  variants: VariantFormRow[]
-): ProductOption[] =>
-  productOptions
-    .filter((opt) => opt.title.trim())
-    .map((opt) => {
-      const title = opt.title.trim()
-      const fromForm = opt.values.map((v) => v.trim()).filter(Boolean)
-      const fromVariants = variants
-        .map((v) => v.optionValues[title]?.trim())
-        .filter((v): v is string => Boolean(v))
-      return {
-        title,
-        values: Array.from(new Set([...fromForm, ...fromVariants])),
-      }
-    })
-
-const variantOptionComboKey = (
-  optionTitles: string[],
-  optionValues: Record<string, string>
-): string => optionTitles.map((title) => optionValues[title]?.trim() || "").join("|")
-
-const getPrimaryOptionName = (productOptions: ProductOption[]): string =>
-  productOptions.find((o) => o.title.trim())?.title.trim() || "Size"
-
-const readVariantOptionValue = (variant: VariantFormRow, optionName: string): string => {
-  if (!optionName) return ""
-  if (variant.optionValues[optionName]) return variant.optionValues[optionName]
-  const lower = optionName.toLowerCase()
-  const match = Object.entries(variant.optionValues).find(([key]) => key.toLowerCase() === lower)
-  return match?.[1] || ""
-}
-
-const normalizeVariantOptionValues = (
-  variants: VariantFormRow[],
-  optionName: string
-): VariantFormRow[] =>
-  variants.map((variant) => {
-    const value = readVariantOptionValue(variant, optionName)
-    return {
-      ...variant,
-      optionValues: value ? { [optionName]: value } : {},
-    }
-  })
-
-const computeDiscountPercent = (
-  price: string,
-  discountedPrice: string
-): number | null => {
-  const basePrice = parseFloat(price)
-  const salePrice = parseFloat(discountedPrice)
-  if (!Number.isFinite(basePrice) || !Number.isFinite(salePrice)) return null
-  if (basePrice <= 0 || salePrice <= 0) return null
-  if (salePrice >= basePrice) return null
-  return Math.round(((basePrice - salePrice) / basePrice) * 1000) / 10
-}
-
-const VariantDiscountCell = ({
-  price,
-  discountedPrice,
-}: {
-  price: string
-  discountedPrice: string
-}) => {
-  const discountPercent = computeDiscountPercent(price, discountedPrice)
-  if (discountPercent === null) {
-    return <span className="text-ui-fg-muted">—</span>
-  }
-  return (
-    <span className="font-medium text-emerald-500">{discountPercent}%</span>
-  )
+  productOptions: ProductOptionDef[]
+  variants: VariantMatrixRow[]
+  colorImages: Record<string, UploadedImageRef[]>
+  primaryVisualOption: string
 }
 
 const VendorProductNewPage = () => {
   const router = useRouter()
-  const [currentStep, setCurrentStep] = useState<Step>("details")
   const [loading, setLoading] = useState(false)
   const [categories, setCategories] = useState<any[]>([])
   const [collections, setCollections] = useState<any[]>([])
@@ -223,8 +126,9 @@ const VendorProductNewPage = () => {
     shippingProfile: "",
     salesChannels: ["Default Sales Channel"],
     productOptions: [],
-    variantSizesInput: "",
     variants: [createDefaultVariantRow()],
+    colorImages: {},
+    primaryVisualOption: "",
   })
 
   const [uploadingImages, setUploadingImages] = useState(false)
@@ -257,117 +161,6 @@ const VendorProductNewPage = () => {
     } catch (error) {
       console.error("Failed to fetch data:", error)
     }
-  }
-
-  const createVariantRowsFromSizes = () => {
-    const optionName = getPrimaryOptionName(formData.productOptions)
-    const sizes = formData.variantSizesInput
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-
-    if (!optionName) {
-      toast.error("Enter what varies", { description: 'e.g. "Size" or "Color"' })
-      return
-    }
-    if (!sizes.length) {
-      toast.error("Enter sizes/values", { description: "Example: 28, 29, 30, 31" })
-      return
-    }
-    if (sizes.length > MAX_AUTO_VARIANTS) {
-      toast.error("Too many variants", { description: `Maximum ${MAX_AUTO_VARIANTS} at once` })
-      return
-    }
-
-    const uniqueSizes = Array.from(new Set(sizes))
-    const variants: VariantFormRow[] = uniqueSizes.map((size) => ({
-      ...createDefaultVariantRow(),
-      title: size,
-      optionValues: { [optionName]: size },
-    }))
-
-    setFormData((prev) => ({
-      ...prev,
-      productOptions: [{ title: optionName, values: uniqueSizes }],
-      variants,
-    }))
-    toast.success("Variant rows ready", { description: `${uniqueSizes.length} row(s) — fill price & stock below` })
-  }
-
-  const updatePrimaryOptionName = (name: string) => {
-    setFormData((prev) => {
-      const oldName = getPrimaryOptionName(prev.productOptions)
-      const newName = name.trim() || "Size"
-      const variants = prev.variants.map((variant) => {
-        const value = readVariantOptionValue(variant, oldName)
-        return {
-          ...variant,
-          optionValues: value ? { [newName]: value } : {},
-        }
-      })
-      return {
-        ...prev,
-        productOptions: [{ title: newName, values: prev.productOptions[0]?.values || [] }],
-        variants,
-      }
-    })
-  }
-
-  const addVariantRow = () => {
-    const optionName = getPrimaryOptionName(formData.productOptions)
-    setFormData((prev) => ({
-      ...prev,
-      variants: [
-        ...prev.variants,
-        {
-          ...createDefaultVariantRow(),
-          title: "",
-          optionValues: optionName ? { [optionName]: "" } : {},
-        },
-      ],
-    }))
-  }
-
-  const removeVariantRow = (index: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      variants: prev.variants.filter((_, i) => i !== index),
-    }))
-  }
-
-  const updateVariantOptionValue = (variantIdx: number, value: string) => {
-    const optionName = getPrimaryOptionName(formData.productOptions)
-    setFormData((prev) => {
-      const newVariants = [...prev.variants]
-      newVariants[variantIdx] = {
-        ...newVariants[variantIdx],
-        optionValues: optionName ? { [optionName]: value } : {},
-        title: value,
-      }
-      return { ...prev, variants: newVariants }
-    })
-  }
-
-  const updateVariantField = <K extends keyof VariantFormRow>(
-    variantIdx: number,
-    field: K,
-    value: VariantFormRow[K]
-  ) => {
-    setFormData((prev) => {
-      const newVariants = [...prev.variants]
-      newVariants[variantIdx] = { ...newVariants[variantIdx], [field]: value }
-      return { ...prev, variants: newVariants }
-    })
-  }
-
-  const handleHasVariantsToggle = (enabled: boolean) => {
-    setFormData((prev) => ({
-      ...prev,
-      hasVariants: enabled,
-      productOptions: enabled ? [{ title: "Size", values: [] }] : [],
-      variantSizesInput: "",
-      variants: enabled ? [] : [createDefaultVariantRow()],
-    }))
   }
 
   const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -618,41 +411,6 @@ const VendorProductNewPage = () => {
     e.preventDefault()
   }
 
-  const handleNext = () => {
-    if (currentStep === "details") {
-      if (!formData.title) {
-        toast.error("Error", { description: "Title is required" })
-        return
-      }
-      if (!formData.brand || !formData.brand.trim()) {
-        toast.error("Error", { description: "Brand is required" })
-        return
-      }
-      // brandIsAuthorized is true when the brand is approved OR when a file is
-      // selected and ready to upload. brandNeedsAuthorization stays true until
-      // the brand is approved, but we allow proceeding once a file is selected.
-      if (!brandIsAuthorized) {
-        toast.error("Error", {
-          description: brandNeedsAuthorization
-            ? "Please upload the brand authorization letter to continue"
-            : "Please verify the brand before continuing",
-        })
-        return
-      }
-      setCurrentStep("organize")
-    } else if (currentStep === "organize") {
-      setCurrentStep("variants")
-    }
-  }
-
-  const handleBack = () => {
-    if (currentStep === "organize") {
-      setCurrentStep("details")
-    } else if (currentStep === "variants") {
-      setCurrentStep("organize")
-    }
-  }
-
   const handleSubmit = async () => {
     // Final brand-gate so users can't bypass via direct Publish click after
     // editing form state.
@@ -683,43 +441,45 @@ const VendorProductNewPage = () => {
     }
 
     if (formData.hasVariants) {
-      const optionName = getPrimaryOptionName(formData.productOptions)
-      const normalizedVariants = normalizeVariantOptionValues(formData.variants, optionName)
-
-      if (!normalizedVariants.length) {
+      if (!formData.variants.length) {
         toast.error("No variants yet", {
-          description: 'Enter sizes like "28, 29, 30" above and click Create variant rows',
+          description: "Define options and click Generate variant matrix",
         })
         return
       }
 
-      const resolvedOptions = resolveProductOptionsFromVariants(
-        [{ title: optionName, values: [] }],
-        normalizedVariants
+      const resolvedOptions = resolveProductOptionsFromRows(
+        formData.productOptions,
+        formData.variants
       ).filter((opt) => opt.title && opt.values.length > 0)
 
       if (!resolvedOptions.length) {
-        toast.error("Missing size/value", { description: "Fill the size column on each row" })
+        toast.error("Missing options", { description: "Add option names and values, then generate the matrix" })
         return
       }
 
       const optionTitles = resolvedOptions.map((opt) => opt.title)
       const comboKeys = new Set<string>()
-      for (const variant of normalizedVariants) {
-        const value = readVariantOptionValue(variant, optionName)
-        if (!value.trim()) {
-          toast.error("Missing size/value", { description: "Every row needs a size (or color, etc.)" })
-          return
+      for (const variant of formData.variants) {
+        for (const title of optionTitles) {
+          if (!variant.optionValues[title]?.trim()) {
+            toast.error("Incomplete variant row", {
+              description: `Every row needs a value for "${title}"`,
+            })
+            return
+          }
         }
-        const comboKey = variantOptionComboKey(optionTitles, variant.optionValues)
+        const comboKey = variantComboKey(optionTitles, variant.optionValues)
         if (comboKeys.has(comboKey)) {
-          toast.error("Duplicate size", { description: `"${value}" appears on more than one row` })
+          toast.error("Duplicate combination", {
+            description: `"${comboKey.replace(/\|/g, ", ")}" appears more than once`,
+          })
           return
         }
         comboKeys.add(comboKey)
       }
 
-      const skus = normalizedVariants.map((v) => v.sku.trim()).filter(Boolean)
+      const skus = formData.variants.map((v) => v.sku.trim()).filter(Boolean)
       if (skus.length !== new Set(skus).size) {
         toast.error("Duplicate SKU", { description: "Each variant needs a different SKU (or leave all blank)" })
         return
@@ -764,18 +524,15 @@ const VendorProductNewPage = () => {
         }
       }
 
-      // Use already uploaded images
-      const imageUrls = formData.uploadedImages.map(img => img.url)
+      const allImageUrls = collectAllImageUrls(formData.uploadedImages, formData.colorImages)
+      const serializedColorImages = serializeColorImages(formData.colorImages)
+      const primaryVisualOption =
+        formData.primaryVisualOption ||
+        detectVisualOption(formData.productOptions.map((o) => o.title).filter(Boolean))
 
-      // Prepare variant data
-      const optionName = getPrimaryOptionName(formData.productOptions)
-      const normalizedVariants = formData.hasVariants
-        ? normalizeVariantOptionValues(formData.variants, optionName)
-        : formData.variants
-
-      const variants = normalizedVariants.map((v) => ({
+      const variants = formData.variants.map((v) => ({
         title: formData.hasVariants
-          ? readVariantOptionValue(v, optionName) || v.title.trim() || "Variant"
+          ? Object.values(v.optionValues).join(" / ") || v.title.trim() || "Variant"
           : v.title || "Default variant",
         sku: v.sku || undefined,
         manage_inventory: v.managedInventory,
@@ -795,17 +552,17 @@ const VendorProductNewPage = () => {
             ]
           : [],
         inventory_quantity: Math.max(0, Math.floor(Number.parseInt(v.inventoryCount, 10)) || 0),
-        ...(formData.hasVariants
-          ? { options: v.optionValues }
-          : {}),
+        ...(formData.hasVariants ? { options: v.optionValues } : {}),
       }))
 
       const productOptions = formData.hasVariants
-        ? resolveProductOptionsFromVariants(
-            [{ title: optionName, values: [] }],
-            normalizedVariants
-          )
+        ? resolveProductOptionsFromRows(formData.productOptions, formData.variants)
         : []
+
+      const firstVisualImages =
+        primaryVisualOption && serializedColorImages
+          ? Object.values(serializedColorImages)[0]
+          : undefined
 
       // Prepare attributes - convert strings to numbers where applicable
       const parseNumber = (value: string): number | null => {
@@ -825,8 +582,12 @@ const VendorProductNewPage = () => {
         category_ids: formData.categories || [],
         collection_id: formData.collection || null,
         tags: formData.tags || [],
-        images: imageUrls.map((url) => ({ url })),
-        thumbnail: formData.thumbnailUrl || imageUrls[0] || null,
+        images: allImageUrls.map((url) => ({ url })),
+        thumbnail:
+          formData.thumbnailUrl ||
+          firstVisualImages?.[0] ||
+          allImageUrls[0] ||
+          null,
         options: productOptions,
         variants: variants,
         shipping_profile_id: formData.shippingProfile || null,
@@ -842,6 +603,12 @@ const VendorProductNewPage = () => {
           mid_code: formData.midCode || null,
           hs_code: formData.hsCode || null,
           country_of_origin: formData.countryOfOrigin || null,
+          ...(Object.keys(serializedColorImages).length > 0
+            ? {
+                color_images: serializedColorImages,
+                primary_visual_option: primaryVisualOption || null,
+              }
+            : {}),
           videos: formData.uploadedVideos.length > 0
             ? formData.uploadedVideos.map(v => ({ url: v.url, key: v.key, filename: v.filename }))
             : null,
@@ -876,77 +643,192 @@ const VendorProductNewPage = () => {
     }
   }
 
-  const renderStepIndicator = () => {
-    const isDetailsComplete = currentStep === "organize" || currentStep === "variants"
-    const isOrganizeComplete = currentStep === "variants"
-
-    return (
-      <div className="flex flex-col md:flex-row gap-2 md:gap-8 mb-8">
-        <button
-          onClick={() => setCurrentStep("details")}
-          className={clx(
-            "flex-1 flex items-center gap-3 p-3 rounded-lg text-sm font-medium transition-colors border md:border-none",
-            currentStep === "details"
-              ? "bg-blue-500 text-white border-blue-500"
-              : "bg-transparent text-ui-fg-base border-ui-border-base hover:bg-ui-bg-base-hover"
-          )}
+  const renderSimpleProductMedia = () => (
+    <div>
+      <Label>
+        Photos & videos <span className="text-ui-fg-muted">(Optional)</span>
+      </Label>
+      <input
+        type="file"
+        multiple
+        accept="image/*,video/*"
+        onChange={handleMediaUpload}
+        style={{ display: "none" }}
+        id="media-upload"
+      />
+      <div
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onClick={() => {
+          const fileInput = document.getElementById("media-upload")
+          if (fileInput) {
+            fileInput.click()
+          }
+        }}
+        className="border-2 border-dashed border-ui-border-base rounded-lg p-8 text-center bg-ui-bg-base cursor-pointer hover:bg-ui-bg-subtle transition-colors"
+      >
+        <div className="mb-3">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="mx-auto text-ui-fg-muted">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+        <Text weight="plus" className="mb-1">Upload images and videos</Text>
+        <Text size="small" className="text-ui-fg-muted mb-3">
+          Drag and drop or click to upload. JPG, PNG, MP4, WebM, MOV, AVI
+        </Text>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+            e.stopPropagation()
+            const fileInput = document.getElementById("media-upload")
+            if (fileInput) {
+              fileInput.click()
+            }
+          }}
         >
-          <span className="flex items-center justify-center w-6 h-6">
-            {isDetailsComplete ? (
-              <CheckCircleSolid className="text-blue-500" />
-            ) : (
-              <CircleMiniSolid className="text-white" />
-            )}
-          </span>
-          <span>Details</span>
-        </button>
-
-        <button
-          onClick={() => formData.title && setCurrentStep("organize")}
-          disabled={!formData.title}
-          className={clx(
-            "flex-1 flex items-center gap-3 p-3 rounded-lg text-sm font-medium transition-colors border md:border-none",
-            currentStep === "organize"
-              ? "bg-blue-500 text-white border-blue-500"
-              : "bg-transparent text-ui-fg-base border-ui-border-base",
-            !formData.title && "opacity-50 cursor-not-allowed",
-            formData.title && currentStep !== "organize" && "hover:bg-ui-bg-base-hover"
-          )}
-        >
-          <span className="flex items-center justify-center w-6 h-6">
-            {isOrganizeComplete ? (
-              <CheckCircleSolid className="text-blue-500" />
-            ) : (
-              <CircleMiniSolid className={currentStep === "organize" ? "text-white" : "text-ui-fg-muted"} />
-            )}
-          </span>
-          <span>Organize</span>
-        </button>
-
-        <button
-          onClick={() => formData.title && setCurrentStep("variants")}
-          disabled={!formData.title}
-          className={clx(
-            "flex-1 flex items-center gap-3 p-3 rounded-lg text-sm font-medium transition-colors border md:border-none",
-            currentStep === "variants"
-              ? "bg-blue-500 text-white border-blue-500"
-              : "bg-transparent text-ui-fg-base border-ui-border-base",
-            !formData.title && "opacity-50 cursor-not-allowed",
-            formData.title && currentStep !== "variants" && "hover:bg-ui-bg-base-hover"
-          )}
-        >
-          <span className="flex items-center justify-center w-6 h-6">
-            <CircleMiniSolid className={currentStep === "variants" ? "text-white" : "text-ui-fg-muted"} />
-          </span>
-          <span>Variants</span>
-        </button>
+          Choose files
+        </Button>
       </div>
-    )
-  }
+      {(uploadingMedia || uploadingImages || uploadingVideos) && (
+        <div className="mt-3 p-3 bg-ui-bg-subtle rounded-md">
+          <Text size="small" className="text-ui-fg-muted">
+            {uploadingMedia ? "Uploading media..." : uploadingImages ? "Uploading images..." : "Uploading videos..."}
+          </Text>
+        </div>
+      )}
+      {(formData.uploadedImages.length > 0 || formData.uploadedVideos.length > 0) && (
+        <div className="mt-3">
+          <div className="flex flex-col gap-2 bg-ui-bg-base border border-ui-border-base rounded-lg p-3">
+            {formData.uploadedImages.map((image, idx) => (
+              <div
+                key={idx}
+                className={clx(
+                  "flex items-center gap-3 p-3 rounded-md relative",
+                  image.url === formData.thumbnailUrl ? "bg-ui-bg-subtle border border-blue-500" : "bg-transparent border border-transparent"
+                )}
+              >
+                <div className="cursor-grab text-ui-fg-muted text-lg px-2" title="Drag to reorder">
+                  ⋮⋮
+                </div>
+                <div className="w-12 h-12 rounded overflow-hidden bg-ui-bg-subtle flex items-center justify-center shrink-0">
+                  <img
+                    src={image.url}
+                    alt={image.originalName}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none"
+                    }}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <Text size="small" weight="plus" className="block mb-1">
+                    {image.originalName}
+                  </Text>
+                  <Text size="xsmall" className="text-ui-fg-muted">
+                    {image.filename}
+                  </Text>
+                  {image.url === formData.thumbnailUrl && (
+                    <div className="mt-1">
+                      <Text size="xsmall" className="text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded inline-block">
+                        Thumbnail
+                      </Text>
+                    </div>
+                  )}
+                </div>
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenMenuIndex(openMenuIndex === idx ? null : idx)}
+                    className="bg-none border-none cursor-pointer px-2 text-ui-fg-muted text-lg leading-none"
+                  >
+                    ⋮
+                  </button>
+                  {openMenuIndex === idx && (
+                    <div
+                      ref={(el) => {
+                        menuRefs.current[idx] = el
+                      }}
+                      className="absolute top-full right-0 mt-1 bg-ui-bg-base border border-ui-border-base rounded-md shadow-lg z-50 min-w-[160px]"
+                    >
+                      <button
+                        onClick={() => handleMakeThumbnail(idx)}
+                        className="w-full px-3 py-2 text-left bg-none border-none cursor-pointer text-ui-fg-base text-sm flex items-center gap-2 hover:bg-ui-bg-subtle"
+                      >
+                        <span>🎬</span>
+                        <span>Make thumbnail</span>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteImage(idx)}
+                        className="w-full px-3 py-2 text-left bg-none border-none cursor-pointer text-red-500 text-sm flex items-center gap-2 border-t border-ui-border-base hover:bg-ui-bg-subtle"
+                      >
+                        <span>🗑️</span>
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleDeleteImage(idx)}
+                  className="bg-none border-none cursor-pointer px-2 text-ui-fg-muted text-lg leading-none"
+                  title="Delete"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {formData.uploadedVideos.map((video, idx) => (
+              <div
+                key={`video-${idx}`}
+                className="flex items-center gap-3 p-3 rounded-md border border-transparent"
+              >
+                <div className="w-12 h-12 rounded overflow-hidden bg-ui-bg-subtle flex items-center justify-center shrink-0">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-ui-fg-muted">
+                    <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <Text size="small" weight="plus" className="block mb-1">
+                    {video.originalName}
+                  </Text>
+                  <Text size="xsmall" className="text-ui-fg-muted">
+                    {video.filename}
+                  </Text>
+                  <div className="mt-1">
+                    <Text size="xsmall" className="text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded inline-block mr-2">
+                      Video
+                    </Text>
+                    <a
+                      href={video.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 text-[11px] no-underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      View video →
+                    </a>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleDeleteVideo(idx)}
+                  className="bg-none border-none cursor-pointer px-2 text-ui-fg-muted text-lg leading-none"
+                  title="Delete"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 
-  const renderDetailsStep = () => (
-    <div className="max-w-[1200px]">
-      <Heading level="h2" className="mb-4">General</Heading>
+  const renderBasicsSection = () => (
+    <section className="bg-ui-bg-base border border-ui-border-base rounded-xl p-6 mb-6">
+      <Heading level="h2" className="mb-1">Product information</Heading>
+      <Text size="small" className="text-ui-fg-muted mb-6">
+        Name, description, and brand — everything customers see first
+      </Text>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div>
@@ -997,204 +879,16 @@ const VendorProductNewPage = () => {
         />
       </div>
 
-      <div>
-        <Label>
-          Media <span className="text-ui-fg-muted">(Optional)</span>
-        </Label>
-        <input
-          type="file"
-          multiple
-          accept="image/*,video/*"
-          onChange={handleMediaUpload}
-          style={{ display: "none" }}
-          id="media-upload"
-        />
-        <div
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onClick={() => {
-            const fileInput = document.getElementById("media-upload")
-            if (fileInput) {
-              fileInput.click()
-            }
+      <div className="mb-6">
+        <BrandAuthorizationField
+          brand={formData.brand}
+          onBrandChange={(brand) => setFormData({ ...formData, brand })}
+          onAuthorizationStatusChange={(isAuthorized, needsAuthorization) => {
+            setBrandIsAuthorized(isAuthorized)
+            setBrandNeedsAuthorization(needsAuthorization)
           }}
-          className="border-2 border-dashed border-ui-border-base rounded-lg p-12 text-center bg-ui-bg-base cursor-pointer hover:bg-ui-bg-subtle transition-colors"
-        >
-          <div className="mb-4">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="mx-auto text-ui-fg-muted">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <Text weight="plus" className="mb-1">Upload images and videos</Text>
-          <Text size="small" className="text-ui-fg-muted mb-4">
-            Drag and drop images or videos here or click to upload. Supported formats: Images (JPG, PNG, etc.) and Videos (MP4, WebM, MOV, AVI)
-          </Text>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-              e.stopPropagation()
-              const fileInput = document.getElementById("media-upload")
-              if (fileInput) {
-                fileInput.click()
-              }
-            }}
-          >
-            Choose files
-          </Button>
-        </div>
-        {(uploadingMedia || uploadingImages || uploadingVideos) && (
-          <div className="mt-4 p-3 bg-ui-bg-subtle rounded-md">
-            <Text size="small" className="text-ui-fg-muted">
-              {uploadingMedia ? "Uploading media..." : uploadingImages ? "Uploading images..." : "Uploading videos..."}
-            </Text>
-          </div>
-        )}
-        {(formData.uploadedImages.length > 0 || formData.uploadedVideos.length > 0) && (
-          <div className="mt-4">
-            <div className="flex flex-col gap-2 bg-ui-bg-base border border-ui-border-base rounded-lg p-3">
-              {/* Display Images */}
-              {formData.uploadedImages.map((image, idx) => (
-                <div
-                  key={idx}
-                  className={clx(
-                    "flex items-center gap-3 p-3 rounded-md relative",
-                    image.url === formData.thumbnailUrl ? "bg-ui-bg-subtle border border-blue-500" : "bg-transparent border border-transparent"
-                  )}
-                >
-                  {/* Drag handle */}
-                  <div
-                    className="cursor-grab text-ui-fg-muted text-lg px-2"
-                    title="Drag to reorder"
-                  >
-                    ⋮⋮
-                  </div>
-
-                  {/* Image thumbnail */}
-                  <div className="w-12 h-12 rounded overflow-hidden bg-ui-bg-subtle flex items-center justify-center shrink-0">
-                    <img
-                      src={image.url}
-                      alt={image.originalName}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none"
-                      }}
-                    />
-                  </div>
-
-                  {/* File info */}
-                  <div className="flex-1 min-w-0">
-                    <Text size="small" weight="plus" className="block mb-1">
-                      {image.originalName}
-                    </Text>
-                    <Text size="xsmall" className="text-ui-fg-muted">
-                      {image.filename}
-                    </Text>
-                    {image.url === formData.thumbnailUrl && (
-                      <div className="mt-1">
-                        <Text size="xsmall" className="text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded inline-block">
-                          Thumbnail
-                        </Text>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="relative">
-                    <button
-                      onClick={() => setOpenMenuIndex(openMenuIndex === idx ? null : idx)}
-                      className="bg-none border-none cursor-pointer px-2 text-ui-fg-muted text-lg leading-none"
-                    >
-                      ⋮
-                    </button>
-
-                    {/* Context menu */}
-                    {openMenuIndex === idx && (
-                      <div
-                        ref={(el) => {
-                          menuRefs.current[idx] = el
-                        }}
-                        className="absolute top-full right-0 mt-1 bg-ui-bg-base border border-ui-border-base rounded-md shadow-lg z-50 min-w-[160px]"
-                      >
-                        <button
-                          onClick={() => handleMakeThumbnail(idx)}
-                          className="w-full px-3 py-2 text-left bg-none border-none cursor-pointer text-ui-fg-base text-sm flex items-center gap-2 hover:bg-ui-bg-subtle"
-                        >
-                          <span>🎬</span>
-                          <span>Make thumbnail</span>
-                        </button>
-                        <button
-                          onClick={() => handleDeleteImage(idx)}
-                          className="w-full px-3 py-2 text-left bg-none border-none cursor-pointer text-red-500 text-sm flex items-center gap-2 border-t border-ui-border-base hover:bg-ui-bg-subtle"
-                        >
-                          <span>🗑️</span>
-                          <span>Delete</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Delete button (X) */}
-                  <button
-                    onClick={() => handleDeleteImage(idx)}
-                    className="bg-none border-none cursor-pointer px-2 text-ui-fg-muted text-lg leading-none"
-                    title="Delete"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-
-              {/* Display Videos */}
-              {formData.uploadedVideos.map((video, idx) => (
-                <div
-                  key={`video - ${idx}`}
-                  className="flex items-center gap-3 p-3 rounded-md border border-transparent"
-                >
-                  {/* Video icon/thumbnail */}
-                  <div className="w-12 h-12 rounded overflow-hidden bg-ui-bg-subtle flex items-center justify-center shrink-0">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-ui-fg-muted">
-                      <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
-
-                  {/* File info */}
-                  <div className="flex-1 min-w-0">
-                    <Text size="small" weight="plus" className="block mb-1">
-                      {video.originalName}
-                    </Text>
-                    <Text size="xsmall" className="text-ui-fg-muted">
-                      {video.filename}
-                    </Text>
-                    <div className="mt-1">
-                      <Text size="xsmall" className="text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded inline-block mr-2">
-                        Video
-                      </Text>
-                      <a
-                        href={video.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 text-[11px] no-underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        View video →
-                      </a>
-                    </div>
-                  </div>
-
-                  {/* Delete button */}
-                  <button
-                    onClick={() => handleDeleteVideo(idx)}
-                    className="bg-none border-none cursor-pointer px-2 text-ui-fg-muted text-lg leading-none"
-                    title="Delete"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+          onFileSelect={(file) => setBrandAuthorizationFile(file)}
+        />
       </div>
 
       {/* Attributes Section */}
@@ -1290,27 +984,18 @@ const VendorProductNewPage = () => {
               />
             </div>
 
-            {/* Brand with Authorization Check */}
-            <div className="bg-ui-bg-base col-span-1 md:col-span-2">
-              <BrandAuthorizationField
-                brand={formData.brand}
-                onBrandChange={(brand) => setFormData({ ...formData, brand })}
-                onAuthorizationStatusChange={(isAuthorized, needsAuthorization) => {
-                  setBrandIsAuthorized(isAuthorized)
-                  setBrandNeedsAuthorization(needsAuthorization)
-                }}
-                onFileSelect={(file) => setBrandAuthorizationFile(file)}
-              />
-            </div>
           </div>
         </div>
       </div>
-    </div>
+    </section>
   )
 
-  const renderOrganizeStep = () => (
-    <div className="max-w-[1200px]">
-      <Heading level="h2" className="mb-4">Organize</Heading>
+  const renderOrganizeSection = () => (
+    <section className="bg-ui-bg-base border border-ui-border-base rounded-xl p-6 mb-6">
+      <Heading level="h2" className="mb-1">Category & organization</Heading>
+      <Text size="small" className="text-ui-fg-muted mb-6">
+        Where this product lives in your catalog
+      </Text>
 
       <div className="flex items-center gap-3 p-4 bg-ui-bg-base rounded-lg mb-6 border border-ui-border-base">
         <Switch
@@ -1712,297 +1397,99 @@ const VendorProductNewPage = () => {
           ))}
         </div>
       </div>
-    </div>
+    </section>
   )
 
-  const renderVariantsStep = () => {
-    const optionName = getPrimaryOptionName(formData.productOptions)
+  const renderVariantsSection = () => (
+    <VariantMatrixEditor
+      hasVariants={formData.hasVariants}
+      onHasVariantsChange={(enabled) =>
+        setFormData((prev) => ({
+          ...prev,
+          hasVariants: enabled,
+          productOptions: enabled
+            ? [
+                { title: "Color", values: [], valuesInput: "" },
+                { title: "Size", values: [], valuesInput: "" },
+              ]
+            : [],
+          variants: enabled ? [] : [createDefaultVariantRow()],
+          colorImages: enabled ? prev.colorImages : {},
+          uploadedImages: enabled ? [] : prev.uploadedImages,
+          uploadedVideos: enabled ? [] : prev.uploadedVideos,
+          thumbnailUrl: enabled ? null : prev.thumbnailUrl,
+        }))
+      }
+      productOptions={formData.productOptions}
+      onProductOptionsChange={(productOptions) =>
+        setFormData((prev) => ({ ...prev, productOptions }))
+      }
+      variants={formData.variants}
+      onVariantsChange={(variants) => setFormData((prev) => ({ ...prev, variants }))}
+      colorImages={formData.colorImages}
+      onColorImagesChange={(colorImages) =>
+        setFormData((prev) => ({ ...prev, colorImages }))
+      }
+      primaryVisualOption={formData.primaryVisualOption}
+      onPrimaryVisualOptionChange={(primaryVisualOption) =>
+        setFormData((prev) => ({ ...prev, primaryVisualOption }))
+      }
+      simpleProductExtras={!formData.hasVariants ? renderSimpleProductMedia() : undefined}
+    />
+  )
 
-    return (
-      <div className="max-w-[1200px]">
-        <div className="mb-6 p-4 bg-ui-bg-base border border-ui-border-base rounded-lg">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <Label className="mb-1 block">This product has sizes / colors / variants</Label>
-              <Text size="small" className="text-ui-fg-muted">
-                Turn on for jeans sizes, bulb colors, etc. Leave off for a single simple product.
-              </Text>
-            </div>
-            <Switch checked={formData.hasVariants} onCheckedChange={handleHasVariantsToggle} />
-          </div>
-        </div>
-
-        {formData.hasVariants && (
-          <div className="mb-6 p-4 bg-ui-bg-base border border-ui-border-base rounded-lg space-y-4">
-            <Heading level="h3">Step 1 — List all sizes</Heading>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-              <div>
-                <Label>What varies?</Label>
-                <Input
-                  value={optionName}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    updatePrimaryOptionName(e.target.value)
-                  }
-                  placeholder="Size"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <Label>All values (comma-separated)</Label>
-                <Input
-                  value={formData.variantSizesInput}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setFormData({ ...formData, variantSizesInput: e.target.value })
-                  }
-                  placeholder="28, 29, 30, 31, 32"
-                />
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="primary" size="small" onClick={createVariantRowsFromSizes}>
-                Create variant rows
-              </Button>
-              <Button variant="secondary" size="small" onClick={addVariantRow}>
-                Add one row manually
-              </Button>
-            </div>
-            <Text size="small" className="text-ui-fg-muted">
-              Example: type <span className="font-mono">28, 29, 30, 31</span> then click Create variant rows.
-            </Text>
-          </div>
-        )}
-
-        {formData.hasVariants ? (
-          <>
-            <Heading level="h3" className="mb-3">
-              Step 2 — Price & stock per {optionName.toLowerCase()}
-            </Heading>
-            {formData.variants.length === 0 ? (
-              <div className="p-6 border border-dashed border-ui-border-base rounded-lg text-center">
-                <Text className="text-ui-fg-muted">
-                  No rows yet. Enter sizes above and click Create variant rows.
-                </Text>
-              </div>
-            ) : (
-              <div className="bg-ui-bg-base border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto">
-                <table className="w-full min-w-[820px] border-collapse">
-                  <thead className="bg-ui-bg-subtle border-b border-ui-border-base">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">
-                        {optionName}
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">
-                        SKU
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">
-                        Stock
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">
-                        Price ₹
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">
-                        Sale price ₹
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">
-                        Discount %
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {formData.variants.map((variant, idx) => (
-                      <tr key={idx} className="border-b border-ui-border-base">
-                        <td className="px-4 py-3">
-                          <Input
-                            value={readVariantOptionValue(variant, optionName)}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                              updateVariantOptionValue(idx, e.target.value)
-                            }
-                            placeholder="e.g. 32"
-                            className="w-24"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <Input
-                            value={variant.sku}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                              updateVariantField(idx, "sku", e.target.value)
-                            }
-                            placeholder="Optional"
-                            className="w-full min-w-[100px]"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <Input
-                            type="number"
-                            min="0"
-                            value={variant.inventoryCount}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                              updateVariantField(idx, "inventoryCount", e.target.value)
-                            }
-                            placeholder="0"
-                            className="w-20"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <Input
-                            value={variant.price}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                              updateVariantField(idx, "price", e.target.value)
-                            }
-                            placeholder="1000"
-                            className="w-24"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <Input
-                            value={variant.discountedPrice}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                              updateVariantField(idx, "discountedPrice", e.target.value)
-                            }
-                            placeholder="Optional"
-                            className="w-24"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <VariantDiscountCell
-                            price={variant.price}
-                            discountedPrice={variant.discountedPrice}
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <Button variant="secondary" size="small" onClick={() => removeVariantRow(idx)}>
-                            Remove
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="bg-ui-bg-base border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto">
-            <table className="w-full min-w-[900px] border-collapse">
-              <thead className="bg-ui-bg-subtle border-b border-ui-border-base">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">SKU</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">Stock</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">Price ₹</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">Sale price ₹</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-ui-fg-muted uppercase">Discount %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {formData.variants.map((variant, idx) => (
-                  <tr key={idx} className="border-b border-ui-border-base">
-                    <td className="px-4 py-3">
-                      <Input
-                        value={variant.sku}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                          updateVariantField(idx, "sku", e.target.value)
-                        }
-                        className="w-full"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <Input
-                        type="number"
-                        min="0"
-                        value={variant.inventoryCount}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                          updateVariantField(idx, "inventoryCount", e.target.value)
-                        }
-                        placeholder="0"
-                        className="w-24"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <Input
-                        value={variant.price}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                          updateVariantField(idx, "price", e.target.value)
-                        }
-                        placeholder="0.00"
-                        className="w-28"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <Input
-                        value={variant.discountedPrice}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                          updateVariantField(idx, "discountedPrice", e.target.value)
-                        }
-                        placeholder="0.00"
-                        className="w-28"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <VariantDiscountCell
-                        price={variant.price}
-                        discountedPrice={variant.discountedPrice}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    )
-  }
+  const canPublish =
+    Boolean(formData.title?.trim()) &&
+    Boolean(formData.brand?.trim()) &&
+    brandIsAuthorized &&
+    !loading
 
   return (
     <VendorShell>
-      <div className="p-4 md:p-8">
-        <div className="mb-6">
-          <button
-            onClick={() => router.push("/products")}
-            className="bg-none border-none cursor-pointer text-ui-fg-muted text-2xl mb-4"
+      <div className="p-4 md:p-8 max-w-[1200px] mx-auto">
+        <div className="sticky top-0 z-20 -mx-4 md:-mx-8 px-4 md:px-8 py-4 mb-6 bg-ui-bg-base/95 backdrop-blur border-b border-ui-border-base flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 min-w-0">
+            <button
+              onClick={() => router.push("/products")}
+              className="bg-none border-none cursor-pointer text-ui-fg-muted text-2xl shrink-0 hover:text-ui-fg-base"
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <div className="min-w-0">
+              <Heading level="h1" className="truncate">Add product</Heading>
+              <Text size="small" className="text-ui-fg-muted hidden sm:block">
+                One page — info, category, photos, and pricing together
+              </Text>
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            onClick={handleSubmit}
+            isLoading={loading}
+            disabled={!canPublish}
+            className="shrink-0"
           >
-            ×
-          </button>
-          <Text size="small" className="text-ui-fg-muted">
-            esc
-          </Text>
+            Publish
+          </Button>
         </div>
 
-        {renderStepIndicator()}
+        {renderBasicsSection()}
+        {renderOrganizeSection()}
+        {renderVariantsSection()}
 
-        {currentStep === "details" && renderDetailsStep()}
-        {currentStep === "organize" && renderOrganizeStep()}
-        {currentStep === "variants" && renderVariantsStep()}
-
-        <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-ui-border-base">
-          {currentStep !== "details" && (
-            <Button variant="secondary" onClick={handleBack} disabled={loading}>
-              Back
-            </Button>
-          )}
-
-          {currentStep !== "variants" ? (
-            <Button
-              variant="primary"
-              onClick={handleNext}
-              disabled={
-                currentStep === "details"
-                  ? !formData.title || !formData.brand?.trim() || !brandIsAuthorized
-                  : false
-              }
-            >
-              Next
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              onClick={handleSubmit}
-              isLoading={loading}
-              disabled={loading}
-            >
-              Publish Product
-            </Button>
-          )}
+        <div className="flex justify-end gap-3 mt-4 pb-8">
+          <Button variant="secondary" onClick={() => router.push("/products")} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleSubmit}
+            isLoading={loading}
+            disabled={!canPublish}
+          >
+            Publish product
+          </Button>
         </div>
       </div>
     </VendorShell>

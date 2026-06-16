@@ -3,6 +3,13 @@ import { requireApprovedVendor } from "../_lib/guards"
 import { Modules, ProductStatus, ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { createProductsWorkflow } from "@medusajs/core-flows"
 import { normalizeOptionsAndVariants } from "../../../lib/vendor-product-options"
+import {
+  collectOptionValuesFromProductOptions,
+  detectVisualOption,
+  sanitizeColorImages,
+  attachVariantThumbnails,
+} from "../../../lib/variant-matrix"
+import { syncVariantThumbnailsFromColorImages } from "../../../lib/vendor-product-variants"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
@@ -324,9 +331,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       submitted_at: new Date().toISOString(),
     }
 
-    // Merge user-provided metadata (MID code, HS code, country of origin, etc.)
+    // Merge user-provided metadata (MID code, HS code, country of origin, color_images, etc.)
     if (metadata && typeof metadata === "object") {
       Object.assign(baseMetadata, metadata)
+    }
+
+    if (baseMetadata.color_images) {
+      const visualValues = collectOptionValuesFromProductOptions(finalOptions)
+      baseMetadata.color_images = sanitizeColorImages(baseMetadata.color_images, visualValues)
+      if (!baseMetadata.primary_visual_option) {
+        const visual = detectVisualOption(finalOptions.map((opt) => opt.title))
+        if (visual) baseMetadata.primary_visual_option = visual
+      }
     }
 
     // Add videos to images array (same structure as images) for database storage
@@ -399,6 +415,17 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       return res.status(400).json({ message: "Could not generate a valid product handle from title" })
     }
 
+    const visualOption = detectVisualOption(finalOptions.map((opt) => opt.title))
+    const colorImagesForVariants =
+      baseMetadata.color_images && typeof baseMetadata.color_images === "object"
+        ? (baseMetadata.color_images as Record<string, string[]>)
+        : {}
+    const variantsWithThumbnails = attachVariantThumbnails(
+      finalVariants,
+      colorImagesForVariants,
+      visualOption
+    )
+
     // Prepare product data
     const productData = {
       title,
@@ -414,7 +441,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       tags: normalizedTags,
       images: normalizedImages,
       options: finalOptions,
-      variants: finalVariants,
+      variants: variantsWithThumbnails,
       // Physical attributes
       weight: weight || null,
       height: height || null,
@@ -457,6 +484,22 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     })
 
     const product = result[0]
+
+    if (visualOption && colorImagesForVariants && Object.keys(colorImagesForVariants).length > 0) {
+      try {
+        await syncVariantThumbnailsFromColorImages(
+          req,
+          product.id,
+          colorImagesForVariants,
+          visualOption
+        )
+      } catch (thumbError: unknown) {
+        console.warn(
+          "Variant thumbnail sync failed:",
+          thumbError instanceof Error ? thumbError.message : thumbError
+        )
+      }
+    }
 
     // Link product to default sales channel
     try {

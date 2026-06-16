@@ -3,6 +3,11 @@ import { requireApprovedVendor } from "../../_lib/guards"
 import { Modules, ProductStatus } from "@medusajs/framework/utils"
 import client from "../../../../utils/opensearch"
 import { PRODUCTS_INDEX } from "../../../../utils/search-index"
+import {
+  parseColorImagesFromMetadata,
+  parsePrimaryVisualOptionFromMetadata,
+} from "../../../../lib/variant-matrix"
+import { fetchProductVariantMatrix, type ProductVariantMatrix } from "../../../../lib/vendor-product-variants"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
@@ -85,7 +90,26 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       console.warn("Failed to fetch variant summary for vendor product:", variantReadError?.message)
     }
 
-    return res.json({ product, variant_summary: variantSummary })
+    let variantMatrix: ProductVariantMatrix | null = null
+    try {
+      variantMatrix = await fetchProductVariantMatrix(req, productId)
+    } catch (matrixError: any) {
+      console.warn("Failed to fetch variant matrix for vendor product:", matrixError?.message)
+    }
+
+    const colorImages = parseColorImagesFromMetadata(metadata)
+    const primaryVisualOption = parsePrimaryVisualOptionFromMetadata(
+      metadata,
+      variantMatrix?.options.map((opt) => opt.title) || []
+    )
+
+    return res.json({
+      product,
+      variant_summary: variantSummary,
+      variant_matrix: variantMatrix,
+      color_images: colorImages,
+      primary_visual_option: primaryVisualOption,
+    })
   } catch (error: any) {
     console.error("Vendor product retrieve error:", error)
     return res.status(500).json({ message: error?.message || "Failed to retrieve product" })

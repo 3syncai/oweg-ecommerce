@@ -3,7 +3,7 @@
 import React from 'react'
 import { GitCompare, Heart, Minus, Plus, Share2, ShoppingCart } from 'lucide-react'
 import type { DetailedProduct as DetailedProductType } from '@/lib/medusa'
-import { isVariantPurchasable } from '@/lib/medusa'
+import { isVariantPurchasable, resolveColorImageUrls } from '@/lib/medusa'
 import { FlashSaleBadge } from '@/components/flash-sale/FlashSaleBadge'
 import type { FlashSaleInfo } from '@/hooks/useFlashSale'
 
@@ -63,6 +63,21 @@ function isOptionValuePurchasable(
   })
 }
 
+function getVisualOptionTitle(product: DetailedProductType): string | undefined {
+  if (product.primaryVisualOption) return product.primaryVisualOption
+  return product.options.find((opt) =>
+    /color|colour|pattern|finish|shade|style/i.test(opt.title)
+  )?.title
+}
+
+function getSwatchImage(
+  product: DetailedProductType,
+  _visualOptionTitle: string,
+  value: string
+): string | undefined {
+  return resolveColorImageUrls(value, product.colorImages)?.[0] || product.images?.[0]
+}
+
 const ProductSummary = ({
   product,
   brandName,
@@ -91,6 +106,7 @@ const ProductSummary = ({
     : (typeof product.mrp === 'number' ? product.mrp : displayPrice)
 
   const rawSavings = displayMRP > displayPrice ? displayMRP - displayPrice : 0
+  const visualOptionTitle = getVisualOptionTitle(product)
 
   return (
     <div className="space-y-5 lg:pl-4">
@@ -173,7 +189,9 @@ const ProductSummary = ({
       <div className="text-sm text-slate-500">Inclusive of all taxes | Prices shown in {product.currency}</div>
       {product.options.length > 0 && (
         <div className="space-y-4">
-          {product.options.map((option) => (
+          {product.options.map((option) => {
+            const isVisualOption = visualOptionTitle === option.title
+            return (
             <div key={option.id} className="space-y-2">
               <p className="text-sm font-semibold text-slate-800">
                 {option.title}
@@ -183,6 +201,51 @@ const ProductSummary = ({
                   </span>
                 ) : null}
               </p>
+              {isVisualOption && product.colorImages && Object.keys(product.colorImages).length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {option.values.map((value) => {
+                    const isSelected = selectedOptions[option.title] === value
+                    const isAvailable = isOptionValueAvailable(
+                      product,
+                      selectedOptions,
+                      option.title,
+                      value
+                    )
+                    const swatchImage = getSwatchImage(product, option.title, value)
+                    return (
+                      <button
+                        key={`${option.id}-${value}`}
+                        type="button"
+                        disabled={!isAvailable}
+                        onClick={() => onOptionChange(option.title, value)}
+                        className={`relative h-16 w-16 overflow-hidden rounded-lg border-2 transition ${
+                          isSelected
+                            ? 'border-green-600 ring-2 ring-green-200'
+                            : isAvailable
+                              ? 'border-slate-200 hover:border-green-400'
+                              : 'border-slate-100 opacity-40 cursor-not-allowed'
+                        }`}
+                        aria-pressed={isSelected}
+                        aria-label={`${option.title} ${value}`}
+                        title={value}
+                      >
+                        {swatchImage ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={swatchImage}
+                            alt={value}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span className="flex h-full w-full items-center justify-center bg-slate-100 text-[10px] font-medium text-slate-600 px-1 text-center">
+                            {value}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
               <div className="flex flex-wrap gap-2">
                 {option.values.map((value) => {
                   const isSelected = selectedOptions[option.title] === value
@@ -221,8 +284,9 @@ const ProductSummary = ({
                   )
                 })}
               </div>
+              )}
             </div>
-          ))}
+          )})}
         </div>
       )}
       <style jsx global>{`

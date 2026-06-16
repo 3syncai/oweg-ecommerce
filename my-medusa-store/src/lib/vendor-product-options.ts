@@ -144,6 +144,11 @@ function cleanVariantFields(v: VariantInput, optionMap: Record<string, string>):
     cleaned.inventory_quantity = v.inventory_quantity
   }
 
+  if (typeof (v as { thumbnail?: string }).thumbnail === "string") {
+    const thumb = (v as { thumbnail?: string }).thumbnail?.trim()
+    if (thumb) cleaned.thumbnail = thumb
+  }
+
   return cleaned
 }
 
