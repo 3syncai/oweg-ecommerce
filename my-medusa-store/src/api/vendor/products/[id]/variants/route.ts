@@ -139,7 +139,7 @@ export async function PATCH(req: MedusaRequest, res: MedusaResponse) {
               if (!priceListId && typeof pricingModule.listPriceLists === "function") {
                 const activePriceLists = await pricingModule
                   .listPriceLists({ status: ["active"] })
-                  .catch(() => [])
+                  .catch((): Array<{ id: string; title?: string }> => [])
                 const preferred =
                   activePriceLists.find((pl) =>
                     (pl.title || "").toLowerCase().includes("india")

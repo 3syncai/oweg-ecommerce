@@ -9,6 +9,21 @@ export type VariantInventoryInput = {
   inventory_quantity?: number
 }
 
+export type ProductVariantMatrix = {
+  options: Array<{ title: string; values: string[] }>
+  variants: Array<{
+    id: string
+    title: string | null
+    sku: string | null
+    manage_inventory: boolean
+    allow_backorder: boolean
+    inventory_quantity: number | null
+    price: number | null
+    discounted_price: number | null
+    option_values: Record<string, string>
+  }>
+}
+
 export async function syncVariantInventoryLevels(
   req: MedusaRequest,
   variants: VariantInventoryInput[]
@@ -130,33 +145,8 @@ export async function syncVariantInventoryLevels(
 export async function fetchProductVariantMatrix(
   req: MedusaRequest,
   productId: string
-): Promise<{
-  options: Array<{ title: string; values: string[] }>
-  variants: Array<{
-    id: string
-    title: string | null
-    sku: string | null
-    manage_inventory: boolean
-    allow_backorder: boolean
-    inventory_quantity: number | null
-    price: number | null
-    discounted_price: number | null
-    option_values: Record<string, string>
-  }>
-}> {
-  const knex = req.scope.resolve("__pg_connection__") as {
-    (table: string): {
-      where: (criteria: Record<string, unknown>) => {
-        orderBy: (col: string, dir: string) => {
-          select: (...cols: string[]) => Promise<Array<Record<string, unknown>>>
-        }
-        first: (...cols: string[]) => Promise<Record<string, unknown> | undefined>
-      }
-      select: (...cols: string[]) => {
-        where: (criteria: Record<string, unknown>) => Promise<Array<Record<string, unknown>>>
-      }
-    }
-  }
+): Promise<ProductVariantMatrix> {
+  const knex = req.scope.resolve("__pg_connection__") as any
 
   const query = req.scope.resolve("query") as {
     graph: (args: {
@@ -209,7 +199,7 @@ export async function fetchProductVariantMatrix(
       options?: Array<{ value?: string; option?: { title?: string } }>
     }> | undefined) || []
 
-  const variants = []
+  const variants: ProductVariantMatrix["variants"] = []
 
   for (const variant of rawVariants) {
     if (!variant.id) continue
@@ -289,13 +279,7 @@ export async function syncVariantThumbnailsFromColorImages(
 ): Promise<void> {
   if (!productId || !visualOption || !Object.keys(colorImages).length) return
 
-  const knex = req.scope.resolve("__pg_connection__") as {
-    (table: string): {
-      where: (filter: Record<string, string>) => {
-        update: (data: Record<string, unknown>) => Promise<unknown>
-      }
-    }
-  }
+  const knex = req.scope.resolve("__pg_connection__") as any
 
   const query = req.scope.resolve("query")
   const { data: variants } = await query.graph({

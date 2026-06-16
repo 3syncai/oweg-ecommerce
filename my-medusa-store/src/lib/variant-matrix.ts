@@ -89,7 +89,9 @@ export function parseColorImagesFromMetadata(
   const result: Record<string, string[]> = {}
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!Array.isArray(value)) continue
-    const urls = value.filter((url): url is string => typeof url === "string" && url.trim())
+    const urls = value.filter(
+      (url): url is string => typeof url === "string" && url.trim().length > 0
+    )
     if (urls.length) result[key] = urls
   }
   return result

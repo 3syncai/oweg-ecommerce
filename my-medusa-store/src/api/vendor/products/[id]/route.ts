@@ -7,7 +7,7 @@ import {
   parseColorImagesFromMetadata,
   parsePrimaryVisualOptionFromMetadata,
 } from "../../../../lib/variant-matrix"
-import { fetchProductVariantMatrix } from "../../../../lib/vendor-product-variants"
+import { fetchProductVariantMatrix, type ProductVariantMatrix } from "../../../../lib/vendor-product-variants"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
@@ -90,7 +90,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       console.warn("Failed to fetch variant summary for vendor product:", variantReadError?.message)
     }
 
-    let variantMatrix = null
+    let variantMatrix: ProductVariantMatrix | null = null
     try {
       variantMatrix = await fetchProductVariantMatrix(req, productId)
     } catch (matrixError: any) {
