@@ -15,6 +15,7 @@ import {
   toast,
 } from "@medusajs/ui"
 import { Plus, Trash } from "@medusajs/icons"
+import { getAdminBackendUrl, readAdminApiError } from "../../lib/admin-backend"
 
 type FeaturedBrandRow = {
   id: string
@@ -26,11 +27,6 @@ type FeaturedBrandRow = {
   brand_logo_s3_key: string
   brand_logo_scale: number
 }
-
-const backend =
-  typeof window !== "undefined"
-    ? process.env.MEDUSA_BACKEND_URL || window.location.origin
-    : ""
 
 const clampBrandLogoScale = (scale?: number) => {
   const parsed = typeof scale === "number" && Number.isFinite(scale) ? scale : 1
@@ -93,10 +89,13 @@ const FeaturedBrandsPage = () => {
   const loadCollections = useCallback(async () => {
     setLoading(true)
     try {
+      const backend = getAdminBackendUrl()
       const res = await fetch(`${backend}/admin/featured-brands`, {
         credentials: "include",
       })
-      if (!res.ok) throw new Error("Failed to load collections")
+      if (!res.ok) {
+        throw new Error(await readAdminApiError(res, "Failed to load collections"))
+      }
       const data = await res.json()
       const rows = (data.collections || []) as FeaturedBrandRow[]
       syncPersistedRows(rows)
@@ -134,13 +133,16 @@ const FeaturedBrandsPage = () => {
   ) => {
     setSavingId(id)
     try {
+      const backend = getAdminBackendUrl()
       const res = await fetch(`${backend}/admin/featured-brands/${id}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       })
-      if (!res.ok) throw new Error("Failed to save changes")
+      if (!res.ok) {
+        throw new Error(await readAdminApiError(res, "Failed to save changes"))
+      }
       const data = await res.json()
       const updated = data.collection as FeaturedBrandRow
       persistedRef.current[id] = {
@@ -203,6 +205,7 @@ const FeaturedBrandsPage = () => {
   const handleUpload = async (row: FeaturedBrandRow, file: File) => {
     setUploadingId(row.id)
     try {
+      const backend = getAdminBackendUrl()
       const form = new FormData()
       form.append("file", file)
       const res = await fetch(`${backend}/admin/featured-brands/${row.id}/logo`, {
@@ -211,8 +214,7 @@ const FeaturedBrandsPage = () => {
         body: form,
       })
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.message || "Upload failed")
+        throw new Error(await readAdminApiError(res, "Upload failed"))
       }
       const data = await res.json()
       const updated = data.collection as FeaturedBrandRow
@@ -229,11 +231,14 @@ const FeaturedBrandsPage = () => {
   const handleRemoveLogo = async (row: FeaturedBrandRow) => {
     setUploadingId(row.id)
     try {
+      const backend = getAdminBackendUrl()
       const res = await fetch(`${backend}/admin/featured-brands/${row.id}/logo`, {
         method: "DELETE",
         credentials: "include",
       })
-      if (!res.ok) throw new Error("Failed to remove logo")
+      if (!res.ok) {
+        throw new Error(await readAdminApiError(res, "Failed to remove logo"))
+      }
       const data = await res.json()
       const updated = data.collection as FeaturedBrandRow
       setCollections((prev) => prev.map((item) => (item.id === row.id ? updated : item)))
