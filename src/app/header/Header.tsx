@@ -17,6 +17,7 @@ import {
 import OrderIcon from "@/components/ui/icons/OrderIcon";
 import CartIcon from "@/components/ui/icons/CartIcon";
 import LocationIcon from "@/components/ui/icons/LocationIcon";
+import CategoryIcon from "@/components/ui/icons/CategoryIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { MedusaCategory } from "@/lib/medusa";
@@ -126,6 +127,12 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
 
 const getCategoryHref = (handle?: string) =>
   handle ? `/c/${encodeURIComponent(handle)}` : "#";
+
+const isCategoryActive = (pathname: string | null, handle?: string) => {
+  if (!pathname || !handle) return false;
+  const href = getCategoryHref(handle);
+  return pathname === href || pathname.startsWith(`${href}/`);
+};
 
 const Header: React.FC = () => {
   const { count: cartCount, refresh: refreshCart } = useCartSummary();
@@ -1177,7 +1184,10 @@ const Header: React.FC = () => {
                                   className="w-full flex items-center justify-between px-2 py-2 text-sm hover:bg-gray-100 rounded"
                                   type="button"
                                 >
-                                  <span className="truncate text-left">{cat.title}</span>
+                                  <span className="flex items-center gap-2 min-w-0">
+                                    <CategoryIcon handle={cat.handle} title={cat.title} className="w-4 h-4" />
+                                    <span className="truncate text-left">{cat.title}</span>
+                                  </span>
                                   <ChevronRight className={`w-4 h-4 transition-transform ${expandedCol === cat.id ? "rotate-90" : ""}`} />
                                 </button>
                                 {expandedCol === cat.id && cat.children.length > 0 && (
@@ -1209,10 +1219,11 @@ const Header: React.FC = () => {
                                   setBrowseOpen(false);
                                   setExpandedCol(null);
                                 }}
-                                className="w-full text-left px-2 py-2 text-sm hover:bg-gray-100 rounded"
+                                className="w-full text-left px-2 py-2 text-sm hover:bg-gray-100 rounded flex items-center gap-2"
                                 type="button"
                               >
-                                {cat.title}
+                                <CategoryIcon handle={cat.handle} title={cat.title} className="w-4 h-4" />
+                                <span>{cat.title}</span>
                               </button>
                             ))}
                           </>
@@ -1567,6 +1578,7 @@ const Header: React.FC = () => {
                         }
 
                         const categoryHref = getCategoryHref(cat.handle);
+                        const categoryActive = isCategoryActive(pathname, cat.handle);
                         return (
                           <div
                             key={cat.id}
@@ -1582,15 +1594,25 @@ const Header: React.FC = () => {
                             <Link
                               href={categoryHref}
                               ref={(el: HTMLAnchorElement | null) => { triggersRef.current[cat.id] = el; }}
-                              className="nav-link relative py-3 px-2 pr-6 md:pr-2 text-sm text-header-text font-medium whitespace-nowrap transition-colors hover:text-header-accent flex items-center gap-1.5"
+                              className={`nav-link relative py-2.5 px-2 pr-6 md:pr-2 text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                                categoryActive
+                                  ? "text-header-accent nav-link-active"
+                                  : "text-header-text hover:text-header-accent"
+                              }`}
                               onClick={() => {
                                 setSelectedFilter({ type: "category", title: cat.title, handle: cat.handle });
                               }}
                             >
+                              <CategoryIcon
+                                handle={cat.handle}
+                                title={cat.title}
+                                active={categoryActive || activeCategoryId === cat.id}
+                                className="w-[18px] h-[18px]"
+                              />
                               <span className="truncate">{cat.title}</span>
                               <ChevronDown
                                 className={`hidden md:inline-block w-3.5 h-3.5 text-header-muted transition-transform duration-200 group-hover:text-header-accent ${
-                                  activeCategoryId === cat.id ? "rotate-180" : ""
+                                  activeCategoryId === cat.id ? "rotate-180 text-header-accent" : ""
                                 }`}
                               />
                             </Link>
@@ -1665,8 +1687,16 @@ const Header: React.FC = () => {
                               className="flex items-center justify-between py-3 px-3 text-sm text-header-text hover:bg-white"
                               onClick={() => setMobileMenuOpen(false)}
                             >
-                              <span>{cat.title}</span>
-                              <ChevronRight className="w-4 h-4 text-header-muted" />
+                              <span className="flex items-center gap-2.5 min-w-0">
+                                <CategoryIcon
+                                  handle={cat.handle}
+                                  title={cat.title}
+                                  active={isCategoryActive(pathname, cat.handle)}
+                                  className="w-5 h-5"
+                                />
+                                <span className="truncate">{cat.title}</span>
+                              </span>
+                              <ChevronRight className="w-4 h-4 text-header-muted shrink-0" />
                             </Link>
                           );
                         }
@@ -1677,8 +1707,16 @@ const Header: React.FC = () => {
                               className="w-full flex items-center justify-between py-3 text-sm font-semibold text-header-text"
                               onClick={() => setMobileExpandedCat(isOpen ? null : cat.id)}
                             >
-                              <span>{cat.title}</span>
-                              <ChevronDown className={`w-4 h-4 text-header-muted transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                              <span className="flex items-center gap-2.5 min-w-0">
+                                <CategoryIcon
+                                  handle={cat.handle}
+                                  title={cat.title}
+                                  active={isCategoryActive(pathname, cat.handle) || isOpen}
+                                  className="w-5 h-5"
+                                />
+                                <span className="truncate">{cat.title}</span>
+                              </span>
+                              <ChevronDown className={`w-4 h-4 text-header-muted transition-transform shrink-0 ${isOpen ? "rotate-180" : ""}`} />
                             </button>
                             <div
                               className={`overflow-hidden transition-[max-height,opacity] duration-200 ${isOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}`}
@@ -1893,6 +1931,10 @@ const Header: React.FC = () => {
           color: var(--header-accent);
         }
         .nav-link:hover::after {
+          width: 100%;
+          opacity: 1;
+        }
+        .nav-link.nav-link-active::after {
           width: 100%;
           opacity: 1;
         }
