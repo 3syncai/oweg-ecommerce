@@ -513,6 +513,10 @@ const MegaMenuBannersPage = () => {
                     />
                     <Text size="small">Open in new tab</Text>
                   </div>
+                  <Text size="xsmall" className="text-ui-fg-subtle">
+                    Opens in a new browser tab using a standard link (works in Chrome/Edge and
+                    the installed desktop app).
+                  </Text>
                 </div>
               </div>
               <div className="mt-4 flex flex-col gap-2">

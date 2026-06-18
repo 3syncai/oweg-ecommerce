@@ -2,6 +2,9 @@
 
 import React from "react";
 import Link from "next/link";
+import {
+  openStorefrontLink,
+} from "@/lib/open-storefront-link";
 
 export const MEGA_MENU_BANNER_ASPECT = 793 / 1983;
 export const MEGA_MENU_BANNER_ROTATE_MS = 3000;
@@ -43,9 +46,24 @@ export default function CategoryMegaMenuBannerCarousel({
   if (!banners.length) return null;
 
   const activeBanner = banners[activeIndex] ?? banners[0];
-  const linkProps = activeBanner.open_in_new_tab
-    ? { target: "_blank" as const, rel: "noopener noreferrer" }
-    : {};
+  const bannerHref = activeBanner.link_url || "#";
+  const opensNewTab = activeBanner.open_in_new_tab === true;
+  const linkClassName =
+    "block h-full max-w-full aspect-[793/1983] overflow-hidden rounded-lg border border-[#C8EAC0] bg-white";
+
+  const bannerImage = (
+    <img
+      src={activeBanner.image_url}
+      alt={activeBanner.alt_text || "Category promotion"}
+      className="h-full w-full object-cover object-center"
+    />
+  );
+
+  const handleNewTabClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    onNavigate?.();
+    openStorefrontLink(bannerHref, { newTab: true });
+  };
 
   return (
     <div
@@ -54,18 +72,21 @@ export default function CategoryMegaMenuBannerCarousel({
       onMouseLeave={() => setPaused(false)}
     >
       <div className="flex min-h-0 flex-1 justify-center w-full">
-        <Link
-          href={activeBanner.link_url || "#"}
-          {...linkProps}
-          className="block h-full max-w-full aspect-[793/1983] overflow-hidden rounded-lg border border-[#C8EAC0] bg-white"
-          onClick={onNavigate}
-        >
-          <img
-            src={activeBanner.image_url}
-            alt={activeBanner.alt_text || "Category promotion"}
-            className="h-full w-full object-cover object-center"
-          />
-        </Link>
+        {opensNewTab ? (
+          <a
+            href={bannerHref}
+            target="_blank"
+            rel="noopener noreferrer external"
+            className={linkClassName}
+            onClick={handleNewTabClick}
+          >
+            {bannerImage}
+          </a>
+        ) : (
+          <Link href={bannerHref} className={linkClassName} onClick={onNavigate}>
+            {bannerImage}
+          </Link>
+        )}
       </div>
 
       {banners.length > 1 ? (
