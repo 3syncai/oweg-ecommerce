@@ -7,7 +7,6 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'Shop home appliances, kitchen utensils, and electronics at OWEG.',
     start_url: '/',
     display: 'standalone',
-    handle_links: 'not-preferred',
     background_color: '#ffffff',
     theme_color: '#7AC943',
     icons: [
