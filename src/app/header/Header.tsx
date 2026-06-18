@@ -1007,7 +1007,7 @@ const Header: React.FC = () => {
                   onClick={() => setAllOpen(false)}
                 >
                   <span className="flex items-center gap-2.5 min-w-0">
-                    <CategoryIcon handle={cat.handle} title={cat.title} className="w-5 h-5" />
+                    <CategoryIcon handle={cat.handle} title={cat.title} className="w-6 h-6" />
                     <span className="truncate">{cat.title}</span>
                   </span>
                   <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
@@ -1219,7 +1219,7 @@ const Header: React.FC = () => {
                                   type="button"
                                 >
                                   <span className="flex items-center gap-2 min-w-0">
-                                    <CategoryIcon handle={cat.handle} title={cat.title} className="w-4 h-4" />
+                                    <CategoryIcon handle={cat.handle} title={cat.title} className="w-5 h-5" />
                                     <span className="truncate text-left">{cat.title}</span>
                                   </span>
                                   <ChevronRight className={`w-4 h-4 transition-transform ${expandedCol === cat.id ? "rotate-90" : ""}`} />
@@ -1256,7 +1256,7 @@ const Header: React.FC = () => {
                                 className="w-full text-left px-2 py-2 text-sm hover:bg-gray-100 rounded flex items-center gap-2"
                                 type="button"
                               >
-                                <CategoryIcon handle={cat.handle} title={cat.title} className="w-4 h-4" />
+                                <CategoryIcon handle={cat.handle} title={cat.title} className="w-5 h-5" />
                                 <span>{cat.title}</span>
                               </button>
                             ))}
@@ -1604,7 +1604,7 @@ const Header: React.FC = () => {
                                 aria-expanded={allOpen}
                                 type="button"
                               >
-                                <CategoryIcon iconKey="more" active={allOpen} className="w-5 h-5" />
+                                <CategoryIcon iconKey="more" active={allOpen} className="w-6 h-6" />
                                 <span>More</span>
                               </button>
                             </div>
@@ -1644,7 +1644,7 @@ const Header: React.FC = () => {
                                 handle={cat.handle}
                                 title={cat.title}
                                 active={categoryActive || activeCategoryId === cat.id}
-                                className="w-5 h-5"
+                                className="w-6 h-6"
                               />
                               <span className="truncate">{cat.title}</span>
                               <ChevronDown
@@ -1729,7 +1729,7 @@ const Header: React.FC = () => {
                                   handle={cat.handle}
                                   title={cat.title}
                                   active={isCategoryActive(pathname, cat.handle)}
-                                  className="w-5 h-5"
+                                  className="w-6 h-6"
                                 />
                                 <span className="truncate">{cat.title}</span>
                               </span>
@@ -1749,7 +1749,7 @@ const Header: React.FC = () => {
                                   handle={cat.handle}
                                   title={cat.title}
                                   active={isCategoryActive(pathname, cat.handle) || isOpen}
-                                  className="w-5 h-5"
+                                  className="w-6 h-6"
                                 />
                                 <span className="truncate">{cat.title}</span>
                               </span>
