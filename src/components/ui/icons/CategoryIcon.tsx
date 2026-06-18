@@ -153,7 +153,7 @@ type CategoryIconProps = IconProps & {
 };
 
 export default function CategoryIcon({
-  className = "w-5 h-5",
+  className = "w-6 h-6",
   handle,
   title,
   iconKey,

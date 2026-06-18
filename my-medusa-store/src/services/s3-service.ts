@@ -112,6 +112,51 @@ export class S3Service {
         await this.s3Client.send(command)
     }
 
+    /**
+     * Upload mega menu category banner to S3 (public path for header dropdown)
+     */
+    async uploadCategoryMegaMenuBanner(
+        categoryName: string,
+        imageBaseName: string,
+        file: Buffer,
+        fileName: string,
+        mimeType: string
+    ): Promise<{ url: string; key: string }> {
+        const sanitizedCategory = this.sanitizeForPath(categoryName)
+        const ext = this.extensionFromMime(mimeType, fileName)
+        const baseName = this.sanitizeForPath(imageBaseName || fileName.replace(/\.[^.]+$/, "") || "banner")
+        const key = `headercategorybanner/${sanitizedCategory}/${baseName}.${ext}`
+
+        const command = new PutObjectCommand({
+            Bucket: this.bucketName,
+            Key: key,
+            Body: file,
+            ContentType: mimeType,
+            CacheControl: "public, max-age=31536000, immutable",
+            Metadata: {
+                categoryName: sanitizedCategory,
+                uploadedAt: new Date().toISOString(),
+            },
+        })
+
+        await this.s3Client.send(command)
+
+        const url = this.buildPublicUrl(key)
+        return { url, key }
+    }
+
+    /**
+     * Delete mega menu category banner from S3
+     */
+    async deleteCategoryMegaMenuBanner(key: string): Promise<void> {
+        if (!key) return
+        const command = new DeleteObjectCommand({
+            Bucket: this.bucketName,
+            Key: key,
+        })
+        await this.s3Client.send(command)
+    }
+
     private extensionFromMime(mimeType: string, fileName: string): string {
         if (mimeType.includes("png")) return "png"
         if (mimeType.includes("webp")) return "webp"

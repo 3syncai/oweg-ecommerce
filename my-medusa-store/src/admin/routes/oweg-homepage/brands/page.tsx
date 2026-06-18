@@ -15,7 +15,7 @@ import {
   toast,
 } from "@medusajs/ui"
 import { Plus, Trash } from "@medusajs/icons"
-import { getAdminBackendUrl, readAdminApiError } from "../../lib/admin-backend"
+import { getAdminBackendUrl, readAdminApiError } from "../../../lib/admin-backend"
 
 type FeaturedBrandRow = {
   id: string

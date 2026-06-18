@@ -782,7 +782,8 @@ const Header: React.FC = () => {
   // use position: fixed so portal remains stable during page scroll
   const computeDropdownStyle = (
     triggerEl: HTMLElement | null,
-    preferMaxWidth = 360
+    preferMaxWidth = 360,
+    includeViewportMaxHeight = false
   ): React.CSSProperties => {
     if (!triggerEl) {
       return { left: 0, top: 0, visibility: "hidden" as const } as React.CSSProperties;
@@ -799,7 +800,7 @@ const Header: React.FC = () => {
     if (left + width + 16 > window.innerWidth) {
       left = Math.max(8, window.innerWidth - width - 16);
     }
-    return {
+    const style: React.CSSProperties = {
       position: "fixed" as const,
       left,
       top: preferredTop,
@@ -807,6 +808,10 @@ const Header: React.FC = () => {
       zIndex: 9999,
       visibility: "visible" as const,
     };
+    if (includeViewportMaxHeight) {
+      style.maxHeight = Math.max(240, window.innerHeight - preferredTop - 16);
+    }
+    return style;
   };
 
   // helpers: start/clear hide timers for category dropdown
@@ -923,7 +928,7 @@ const Header: React.FC = () => {
     const active = allDesktopCategories.find((c) => c.id === activeCategoryId);
     if (!active || !mountedRef.current) return null;
     const trigger = triggersRef.current[activeCategoryId] ?? null;
-    const style = computeDropdownStyle(trigger, 680);
+    const style = computeDropdownStyle(trigger, 680, true);
 
     return createPortal(
       <div
@@ -941,9 +946,11 @@ const Header: React.FC = () => {
           style={{
             ...style,
             pointerEvents: "auto",
-            maxHeight: "480px",
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
           }}
-          className="relative rounded-xl bg-white shadow-2xl ring-1 ring-black/5 p-3 border border-gray-100 transition-transform duration-160 before:content-[''] before:absolute before:-top-3.5 before:left-0 before:right-0 before:h-3.5"
+          className="relative min-h-0 rounded-xl bg-white shadow-2xl ring-1 ring-black/5 p-3 border border-gray-100 transition-transform duration-160 scrollbar-hide before:content-[''] before:absolute before:-top-3.5 before:left-0 before:right-0 before:h-3.5"
           role="menu"
         >
           <CategoryMegaMenu
@@ -1000,7 +1007,7 @@ const Header: React.FC = () => {
                   onClick={() => setAllOpen(false)}
                 >
                   <span className="flex items-center gap-2.5 min-w-0">
-                    <CategoryIcon handle={cat.handle} title={cat.title} className="w-5 h-5" />
+                    <CategoryIcon handle={cat.handle} title={cat.title} className="w-6 h-6" />
                     <span className="truncate">{cat.title}</span>
                   </span>
                   <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
@@ -1212,7 +1219,7 @@ const Header: React.FC = () => {
                                   type="button"
                                 >
                                   <span className="flex items-center gap-2 min-w-0">
-                                    <CategoryIcon handle={cat.handle} title={cat.title} className="w-4 h-4" />
+                                    <CategoryIcon handle={cat.handle} title={cat.title} className="w-5 h-5" />
                                     <span className="truncate text-left">{cat.title}</span>
                                   </span>
                                   <ChevronRight className={`w-4 h-4 transition-transform ${expandedCol === cat.id ? "rotate-90" : ""}`} />
@@ -1249,7 +1256,7 @@ const Header: React.FC = () => {
                                 className="w-full text-left px-2 py-2 text-sm hover:bg-gray-100 rounded flex items-center gap-2"
                                 type="button"
                               >
-                                <CategoryIcon handle={cat.handle} title={cat.title} className="w-4 h-4" />
+                                <CategoryIcon handle={cat.handle} title={cat.title} className="w-5 h-5" />
                                 <span>{cat.title}</span>
                               </button>
                             ))}
@@ -1597,7 +1604,7 @@ const Header: React.FC = () => {
                                 aria-expanded={allOpen}
                                 type="button"
                               >
-                                <CategoryIcon iconKey="more" active={allOpen} className="w-5 h-5" />
+                                <CategoryIcon iconKey="more" active={allOpen} className="w-6 h-6" />
                                 <span>More</span>
                               </button>
                             </div>
@@ -1637,7 +1644,7 @@ const Header: React.FC = () => {
                                 handle={cat.handle}
                                 title={cat.title}
                                 active={categoryActive || activeCategoryId === cat.id}
-                                className="w-5 h-5"
+                                className="w-6 h-6"
                               />
                               <span className="truncate">{cat.title}</span>
                               <ChevronDown
@@ -1722,7 +1729,7 @@ const Header: React.FC = () => {
                                   handle={cat.handle}
                                   title={cat.title}
                                   active={isCategoryActive(pathname, cat.handle)}
-                                  className="w-5 h-5"
+                                  className="w-6 h-6"
                                 />
                                 <span className="truncate">{cat.title}</span>
                               </span>
@@ -1742,7 +1749,7 @@ const Header: React.FC = () => {
                                   handle={cat.handle}
                                   title={cat.title}
                                   active={isCategoryActive(pathname, cat.handle) || isOpen}
-                                  className="w-5 h-5"
+                                  className="w-6 h-6"
                                 />
                                 <span className="truncate">{cat.title}</span>
                               </span>
