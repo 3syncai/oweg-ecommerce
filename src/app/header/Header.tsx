@@ -1568,7 +1568,7 @@ const Header: React.FC = () => {
                       style={{
                         gridTemplateRows: "repeat(2, minmax(0, 1fr))",
                         gridTemplateColumns: `repeat(${desktopGridColumns}, minmax(${desktopMinColumnWidth}px, 1fr))`,
-                        gridAutoFlow: "column",
+                        gridAutoFlow: "row",
                         columnGap: `${desktopGridColumnGap}px`,
                       }}
                     >
