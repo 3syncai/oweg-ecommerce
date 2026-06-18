@@ -782,7 +782,8 @@ const Header: React.FC = () => {
   // use position: fixed so portal remains stable during page scroll
   const computeDropdownStyle = (
     triggerEl: HTMLElement | null,
-    preferMaxWidth = 360
+    preferMaxWidth = 360,
+    includeViewportMaxHeight = false
   ): React.CSSProperties => {
     if (!triggerEl) {
       return { left: 0, top: 0, visibility: "hidden" as const } as React.CSSProperties;
@@ -799,7 +800,7 @@ const Header: React.FC = () => {
     if (left + width + 16 > window.innerWidth) {
       left = Math.max(8, window.innerWidth - width - 16);
     }
-    return {
+    const style: React.CSSProperties = {
       position: "fixed" as const,
       left,
       top: preferredTop,
@@ -807,6 +808,10 @@ const Header: React.FC = () => {
       zIndex: 9999,
       visibility: "visible" as const,
     };
+    if (includeViewportMaxHeight) {
+      style.maxHeight = Math.max(240, window.innerHeight - preferredTop - 16);
+    }
+    return style;
   };
 
   // helpers: start/clear hide timers for category dropdown
@@ -923,7 +928,7 @@ const Header: React.FC = () => {
     const active = allDesktopCategories.find((c) => c.id === activeCategoryId);
     if (!active || !mountedRef.current) return null;
     const trigger = triggersRef.current[activeCategoryId] ?? null;
-    const style = computeDropdownStyle(trigger, 680);
+    const style = computeDropdownStyle(trigger, 680, true);
 
     return createPortal(
       <div
@@ -941,9 +946,11 @@ const Header: React.FC = () => {
           style={{
             ...style,
             pointerEvents: "auto",
-            maxHeight: "480px",
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
           }}
-          className="relative rounded-xl bg-white shadow-2xl ring-1 ring-black/5 p-3 border border-gray-100 transition-transform duration-160 before:content-[''] before:absolute before:-top-3.5 before:left-0 before:right-0 before:h-3.5"
+          className="relative min-h-0 rounded-xl bg-white shadow-2xl ring-1 ring-black/5 p-3 border border-gray-100 transition-transform duration-160 scrollbar-hide before:content-[''] before:absolute before:-top-3.5 before:left-0 before:right-0 before:h-3.5"
           role="menu"
         >
           <CategoryMegaMenu
