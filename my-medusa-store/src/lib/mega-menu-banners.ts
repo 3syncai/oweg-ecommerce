@@ -30,6 +30,7 @@ export type CategoryWithBanners = {
   id: string
   name?: string | null
   handle?: string | null
+  parent_category_id?: string | null
   metadata?: CategoryMegaMenuBannerMetadata | null
 }
 
