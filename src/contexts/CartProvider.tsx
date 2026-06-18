@@ -14,6 +14,8 @@ type CartSummaryContextValue = {
   count: number;
   refresh: () => Promise<void>;
   syncFromCartPayload: (payload?: CartApiPayload) => void;
+  bumpCount: (delta: number) => void;
+  restoreCount: (value: number) => void;
 };
 
 const CartSummaryContext = createContext<CartSummaryContextValue | undefined>(undefined);
@@ -28,6 +30,15 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const syncFromCartPayload = useCallback((payload?: CartApiPayload) => {
     const next = extractCartCount(payload);
     setCount(next);
+  }, []);
+
+  const bumpCount = useCallback((delta: number) => {
+    if (!Number.isFinite(delta) || delta === 0) return;
+    setCount((prev) => Math.max(0, prev + delta));
+  }, []);
+
+  const restoreCount = useCallback((value: number) => {
+    setCount(Math.max(0, value));
   }, []);
 
   const refresh = useCallback(async () => {
@@ -63,8 +74,10 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       count,
       refresh,
       syncFromCartPayload,
+      bumpCount,
+      restoreCount,
     }),
-    [count, refresh, syncFromCartPayload]
+    [count, refresh, syncFromCartPayload, bumpCount, restoreCount]
   );
 
   return <CartSummaryContext.Provider value={value}>{children}</CartSummaryContext.Provider>;

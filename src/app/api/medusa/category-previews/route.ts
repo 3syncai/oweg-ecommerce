@@ -28,7 +28,9 @@ export async function GET(req: NextRequest) {
   await Promise.all(
     ids.map(async (categoryId) => {
       try {
-        const products = await fetchProductsByCategoryId(categoryId, 1)
+        const products = await fetchProductsByCategoryId(categoryId, 1, {
+          includeSubcategories: true,
+        })
         const product = products[0]
         if (!product) return
         const image =

@@ -27,12 +27,79 @@ export type RazorpayOrderResponse = {
   receipt: string | null;
 };
 
+export type RazorpayPaymentEntity = {
+  id: string;
+  status: string;
+  amount: number;
+  currency: string;
+  method?: string;
+  order_id?: string;
+  error_code?: string;
+  error_description?: string;
+};
+
+export type RazorpayMethodsResponse = {
+  netbanking?: Record<string, string>;
+  wallet?: Record<string, string>;
+  upi?: boolean | Record<string, unknown>;
+  card?: boolean | Record<string, unknown>;
+};
+
 function getAuthHeader() {
   if (!RZP_KEY_ID || !RZP_KEY_SECRET) {
     throw new Error("Missing Razorpay credentials: set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET");
   }
   const token = Buffer.from(`${RZP_KEY_ID}:${RZP_KEY_SECRET}`).toString("base64");
   return `Basic ${token}`;
+}
+
+function getKeyIdAuthHeader() {
+  const keyId = RZP_KEY_ID || PUBLIC_KEY;
+  if (!keyId) {
+    throw new Error("Razorpay key id is not configured");
+  }
+  return `Basic ${Buffer.from(`${keyId}:`).toString("base64")}`;
+}
+
+export async function razorpayApiRequest<T>(
+  path: string,
+  options?: {
+    method?: "GET" | "POST";
+    body?: Record<string, unknown>;
+    auth?: "secret" | "key_id";
+    timeoutMs?: number;
+  }
+): Promise<T> {
+  const method = options?.method ?? "GET";
+  const timeoutMs = options?.timeoutMs ?? 15000;
+  const authHeader = options?.auth === "key_id" ? getKeyIdAuthHeader() : getAuthHeader();
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`https://api.razorpay.com${path}`, {
+      method,
+      headers: {
+        Authorization: authHeader,
+        "content-type": "application/json",
+      },
+      body: method === "POST" ? JSON.stringify(options?.body ?? {}) : undefined,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Razorpay API ${path} failed (${res.status}): ${text || "no body"}`);
+    }
+
+    return (await res.json()) as T;
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    throw err;
+  }
 }
 
 /**
@@ -98,6 +165,31 @@ export async function createRazorpayOrder(
   }
 }
 
+export async function fetchRazorpayPayment(paymentId: string): Promise<RazorpayPaymentEntity> {
+  return razorpayApiRequest<RazorpayPaymentEntity>(`/v1/payments/${paymentId}`, { method: "GET" });
+}
+
+export async function fetchRazorpayMethods(): Promise<RazorpayMethodsResponse> {
+  return razorpayApiRequest<RazorpayMethodsResponse>("/v1/methods", {
+    method: "GET",
+    auth: "key_id",
+  });
+}
+
+export function verifyCheckoutPaymentSignature(payload: {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}): boolean {
+  const secret = RZP_KEY_SECRET;
+  if (!secret) return false;
+  const generated = crypto
+    .createHmac("sha256", secret)
+    .update(`${payload.razorpay_order_id}|${payload.razorpay_payment_id}`)
+    .digest("hex");
+  return generated === payload.razorpay_signature;
+}
+
 /**
  * verifyRazorpaySignature
  * - Safely compares HMAC digest and incoming signature using timingSafeEqual.
@@ -138,4 +230,12 @@ export function getPublicRazorpayKey(): string {
     throw new Error("Razorpay public key is not configured (set NEXT_PUBLIC_RAZORPAY_KEY_ID or RAZORPAY_KEY_ID)");
   }
   return key;
+}
+
+export function getSiteOrigin(fallback = "http://localhost:3000"): string {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+  const vercel = process.env.VERCEL_URL?.trim();
+  if (vercel) return `https://${vercel}`;
+  return fallback;
 }

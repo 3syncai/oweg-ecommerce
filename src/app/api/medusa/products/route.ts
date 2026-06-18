@@ -8,6 +8,7 @@ import {
   fetchProductsByType,
   toUiProduct,
   isMedusaProductInStock,
+  type MedusaProduct,
 } from "@/lib/medusa"
 import { getPriceListPrices } from "@/lib/price-lists"
 // MySQL import removed - using Medusa prices only
@@ -21,7 +22,7 @@ const listCache = new Map<string, CachedList>()
 
 function buildCacheKey(searchParams: URLSearchParams) {
   const normalized = new URLSearchParams()
-  ;["category", "categoryId", "collection", "collectionId", "tag", "type", "limit", "priceMin", "priceMax", "dealsOnly"].forEach((key) => {
+  ;["category", "categoryId", "collection", "collectionId", "tag", "type", "limit", "priceMin", "priceMax", "dealsOnly", "includeSubcategories"].forEach((key) => {
     const value = searchParams.get(key)
     if (value !== null && value !== undefined && value !== "") {
       normalized.set(key, value)
@@ -73,12 +74,13 @@ export async function GET(req: NextRequest) {
     const priceMin = priceMinParam !== null ? Number(priceMinParam) : undefined
     const priceMax = priceMaxParam !== null ? Number(priceMaxParam) : undefined
     const dealsOnly = searchParams.get("dealsOnly") === "1"
+    const includeSubcategories = searchParams.get("includeSubcategories") === "1"
     const debugRaw =
       process.env.NODE_ENV !== "production" &&
       searchParams.get("debug") === "1"
     if (!category && !categoryId && !collection && !collectionId && !tag && !type) return NextResponse.json({ products: [] })
 
-    let products
+    let products: MedusaProduct[] = []
     if (type) {
       products = await fetchProductsByType(type, normalizedLimit)
       // Fallback: if no products by type, try category with same label
@@ -124,7 +126,7 @@ export async function GET(req: NextRequest) {
           return cat?.id
         })())
       if (!catId) return NextResponse.json({ products: [] })
-      products = await fetchProductsByCategoryId(catId, normalizedLimit)
+      products = await fetchProductsByCategoryId(catId, normalizedLimit, { includeSubcategories })
     }
     if (debugRaw) {
       return NextResponse.json({ products })
@@ -145,7 +147,7 @@ export async function GET(req: NextRequest) {
     // Filter out products that are completely out of stock before mapping
     const inStockProducts = products.filter(isMedusaProductInStock)
 
-    let ui = inStockProducts.map((product) => {
+    let ui: ReturnType<typeof toUiProduct>[] = inStockProducts.map((product: MedusaProduct) => {
       // Apply price list discount if available
       const variantId = product.variants?.[0]?.id
       if (variantId && priceListPrices.has(variantId) && product.variants?.[0]) {

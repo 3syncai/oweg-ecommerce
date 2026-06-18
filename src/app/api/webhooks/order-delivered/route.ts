@@ -85,7 +85,12 @@ export async function POST(req: NextRequest) {
             const coinsMinor = Math.round(totalMinor * COIN_EARNING_RATE)
             let earnResult = { applied: false, actual_balance: 0 };
 
-            if (coinsMinor > 0) {
+            const existingEarn = await pool.query(
+                `SELECT id FROM wallet_ledger WHERE order_id = $1 AND type = 'EARN' LIMIT 1`,
+                [orderId]
+            );
+
+            if (coinsMinor > 0 && !existingEarn.rows[0]) {
                 const expiryDate = new Date()
                 expiryDate.setFullYear(expiryDate.getFullYear() + 1)
 

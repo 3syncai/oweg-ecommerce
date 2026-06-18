@@ -11,6 +11,17 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthProvider";
 import { buildSignupUrl } from "@/lib/auth-redirect";
 import { calculateOweg10Discount, OWEG10_CODE } from "@/lib/oweg10-shared";
+import {
+  OwegPaymentForm,
+  type OwegPaymentFormHandle,
+} from "@/components/checkout/OwegPaymentForm";
+import {
+  loadRazorpayCustomScript,
+  prefetchRazorpayConnections,
+  submitCustomRazorpayPayment,
+  type RazorpaySuccessResponse,
+} from "@/lib/razorpay-custom-client";
+import { getSiteOrigin } from "@/lib/razorpay";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 
 type CartItem = {
@@ -39,6 +50,14 @@ type DraftOrderResponse = {
   total: number;
   currency_code: string;
   cartId: string;
+  razorpay?: {
+    orderId: string;
+    key: string;
+    amount: number;
+    currency: string;
+  };
+  codConfirmed?: boolean;
+  codFast?: boolean;
 };
 
 type CustomerAddress = {
@@ -58,6 +77,15 @@ type CustomerAddress = {
 
 const RAZORPAY_SUCCESS = process.env.NEXT_PUBLIC_PAYMENT_SUCCESS_URL || "/order/success";
 const RAZORPAY_FAILED = process.env.NEXT_PUBLIC_PAYMENT_FAILED_URL || "/order/failed";
+
+function razorpayAmountToMinor(amount: number, fallbackRupees: number): number {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return Math.round(Math.max(0, fallbackRupees) * 100);
+  }
+  // Razorpay API returns paise; draft-order embeds rupees when amount < 10000
+  if (amount >= 10000) return Math.round(amount);
+  return Math.round(amount * 100);
+}
 
 const INR = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -125,16 +153,6 @@ function getStateSuggestions(queryValue: string): string[] {
 }
 
 
-const isRazorpayTest =
-  process.env.NEXT_PUBLIC_RAZORPAY_TESTMODE === "true" ||
-  process.env.NEXT_PUBLIC_VERCEL_ENV !== "production";
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open: () => void; close?: () => void };
-  }
-}
-
 function CheckoutPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -181,6 +199,7 @@ function CheckoutPageInner() {
   const [checkoutAfterLoginIntent, setCheckoutAfterLoginIntent] = useState(false);
   const autoCheckoutNoticeShownRef = useRef(false);
   const performCheckoutRef = useRef<(() => Promise<void>) | null>(null);
+  const paymentFormRef = useRef<OwegPaymentFormHandle>(null);
 
   const [referralCode, setReferralCode] = useState("");
   const [referralCodeApplied, setReferralCodeApplied] = useState(false); // Track if auto-applied
@@ -565,8 +584,6 @@ function CheckoutPageInner() {
   const [walletLoading, setWalletLoading] = useState(false);
   const [useCoins, setUseCoins] = useState(false);
   const [coinsToUse, setCoinsToUse] = useState(0);
-  const [coinDiscountCode, setCoinDiscountCode] = useState<string | null>(null);
-  const [applyingCoinDiscount, setApplyingCoinDiscount] = useState(false);
 
   // Fetch wallet balance when customer loads
   useEffect(() => {
@@ -914,8 +931,7 @@ function CheckoutPageInner() {
   const orderTotal = activeTotals.total;
   const maxRedeemable = getMaxRedeemableCoins(orderTotal);
   const maxUsableCoins = Math.max(0, Math.floor(Math.min(walletBalance, orderTotal, maxRedeemable)));
-  // Trust coinsToUse when useCoins is checked, as it was validated at the time of checking.
-  // We don't want to re-clamp against walletBalance because it might decrease after deduction on backend.
+  // Trust coinsToUse when useCoins is checked (coins are only deducted after payment succeeds).
   const coinDiscount = useCoins ? coinsToUse : 0;
   const payableTotal = Math.max(0, activeTotals.total - coinDiscount - oweg10Discount);
 
@@ -962,11 +978,7 @@ function CheckoutPageInner() {
             cartId: cart?.id,
             guestCartId,
             shippingState: shipping.state,
-            coinDiscount: (() => {
-              const discountValue = useCoins ? coinsToUse / 100 : 0; // Convert coins (paise) to rupees
-              console.log("🔥🔥🔥 [Frontend] Draft Order Coin Discount:", { useCoins, coinsToUse, coinDiscountRupees: discountValue });
-              return discountValue;
-            })(),
+            coinDiscount: useCoins ? coinsToUse : 0,
             itemsOverride: isBuyNow && fallbackBuyNow
               ? [
                 {
@@ -1009,19 +1021,13 @@ function CheckoutPageInner() {
     clientTotals.total,
   ]);
 
-  const formatInr = (value: number) => INR.format(value);
+  useEffect(() => {
+    if (paymentMethod !== "razorpay") return;
+    prefetchRazorpayConnections();
+    void loadRazorpayCustomScript().catch(() => undefined);
+  }, [paymentMethod]);
 
-  const ensureRazorpay = () =>
-    new Promise<void>((resolve, reject) => {
-      if (typeof window === "undefined") return reject(new Error("No window"));
-      if (window.Razorpay) return resolve();
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.async = true;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Failed to load Razorpay SDK"));
-      document.body.appendChild(script);
-    });
+  const formatInr = (value: number) => INR.format(value);
 
   const createDraftOrder = async () => {
     const fallbackBuyNow =
@@ -1061,7 +1067,6 @@ function CheckoutPageInner() {
       referralCode,
       paymentMethod,
       mode: isBuyNow ? "buy_now" : "cart",
-      coinDiscountCode: coinDiscountCode || undefined,
       coinDiscount: useCoins ? coinsToUse : 0,
       oweg10Applied: customer?.id ? oweg10Applied && oweg10Status.canApply : false,
       itemsOverride: isBuyNow && fallbackBuyNow
@@ -1078,7 +1083,7 @@ function CheckoutPageInner() {
     console.log('🛒 [Frontend Debug] createDraftOrder Payload:', requestPayload);
 
     if (saveAsDefault) {
-      await saveDefaultAddress();
+      void saveDefaultAddress();
     }
 
     const res = await fetch("/api/checkout/draft-order", {
@@ -1101,143 +1106,131 @@ function CheckoutPageInner() {
     return (await res.json()) as DraftOrderResponse;
   };
 
-  const handleCod = async (draft: DraftOrderResponse) => {
-    const res = await fetch("/api/checkout/cod", {
+  const finalizeCodCheckout = (draft: DraftOrderResponse) => {
+    void fetch("/api/checkout/cod", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ medusaOrderId: draft.medusaOrderId }),
+      keepalive: true,
+    }).catch((err) => {
+      console.error("cod background confirm failed", err);
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || "COD confirmation failed");
-    }
-    router.push(`${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}`);
+    setProcessing(false);
+    router.push(
+      `${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}&confirming=1&cod=1`
+    );
   };
 
-  const handleRazorpay = async (draft: DraftOrderResponse) => {
-    await ensureRazorpay();
-    const createRes = await fetch("/api/create-razorpay-order", {
+  const refundCoinsForOrder = async (orderId: string) => {
+    try {
+      await fetch("/api/store/wallet/refund-coin-discount-order", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ order_id: orderId, reason: "failed" }),
+      });
+    } catch (err) {
+      console.warn("Failed to trigger coin refund on payment failure", err);
+    }
+  };
+
+  const confirmRazorpayPayment = async (
+    draft: DraftOrderResponse,
+    response: RazorpaySuccessResponse,
+    amountMinor: number,
+    currency: string
+  ) => {
+    const res = await fetch("/api/checkout/razorpay/confirm", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ medusaOrderId: draft.medusaOrderId, amount: draft.total }),
+      body: JSON.stringify({
+        medusaOrderId: draft.medusaOrderId,
+        razorpay_payment_id: response.razorpay_payment_id,
+        razorpay_order_id: response.razorpay_order_id,
+        razorpay_signature: response.razorpay_signature,
+        amount_minor: amountMinor,
+        currency,
+      }),
     });
-    if (!createRes.ok) {
-      const err = await createRes.json().catch(() => ({}));
-      throw new Error(err.error || "Unable to create payment");
+    if (!res.ok) {
+      console.error("razorpay confirm failed", await res.text().catch(() => ""));
     }
-    const createData = await createRes.json();
+  };
 
-    // DB now stores Rupees (Major Units). Razorpay expects Paise (Minor Units).
-    // Convert: Rupees * 100 = Paise
-    const amountMinor = Math.round(draft.total * 100);
+  const handleCustomRazorpay = async (draft: DraftOrderResponse, payableRupees: number) => {
+    const paymentPayload = paymentFormRef.current?.getPaymentPayload();
+    const validationError = paymentFormRef.current?.getValidationError();
+    if (!paymentPayload || validationError) {
+      throw new Error(validationError || "Complete payment details before paying");
+    }
 
-    const payload = {
+    let createData: {
+      key: string;
+      amount: number;
+      currency: string;
+      orderId: string;
+    };
+
+    if (draft.razorpay?.orderId && draft.razorpay.key) {
+      createData = {
+        key: draft.razorpay.key,
+        amount: draft.razorpay.amount,
+        currency: draft.razorpay.currency,
+        orderId: draft.razorpay.orderId,
+      };
+    } else {
+      const createRes = await fetch("/api/create-razorpay-order", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          medusaOrderId: draft.medusaOrderId,
+          amount: payableRupees > 0 ? payableRupees : draft.total,
+        }),
+      });
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({}));
+        throw new Error(err.error || "Unable to create payment");
+      }
+      createData = await createRes.json();
+    }
+
+    const amountMinor = razorpayAmountToMinor(
+      createData.amount,
+      payableRupees > 0 ? payableRupees : draft.total
+    );
+    if (amountMinor <= 0) {
+      throw new Error("Invalid payment amount. Please refresh and try again.");
+    }
+    const origin = getSiteOrigin(typeof window !== "undefined" ? window.location.origin : undefined);
+    const callbackUrl = `${origin}/api/checkout/razorpay/callback?orderId=${encodeURIComponent(
+      draft.medusaOrderId
+    )}`;
+
+    const email = shipping.email || billing.email;
+    const contact = shipping.phone || billing.phone;
+
+    await submitCustomRazorpayPayment({
       key: createData.key,
-      amount: amountMinor,
+      amountMinor,
       currency: createData.currency,
       orderId: createData.orderId,
-    };
-
-    console.log("💳 [Razorpay Init] Converting Rupees to Paise:", { totalRupees: draft.total, amountPaise: amountMinor });
-
-    const Razorpay = window.Razorpay;
-    if (!Razorpay) throw new Error("Razorpay SDK unavailable");
-
-    const refundCoinsForOrder = async (orderId: string) => {
-      try {
-        await fetch("/api/store/wallet/refund-coin-discount-order", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ order_id: orderId, reason: "failed" }),
-        });
-      } catch (err) {
-        console.warn("Failed to trigger immediate coin refund on dismiss", err);
-      }
-    };
-
-    const rzp = new Razorpay({
-      key: payload.key,
-      amount: payload.amount,
-      currency: payload.currency,
-      name: "OWEG",
-      description: "Order Payment",
-      order_id: payload.orderId,
-      method: ["upi", "card", "netbanking", "wallet"],
-      prefill: {
-        name: `${shipping.firstName} ${shipping.lastName}`.trim(),
-        email: shipping.email,
-        contact: shipping.phone,
-      },
-      // Highlight UPI and keep other options available
-      config: {
-        display: {
-          blocks: {
-            upi: {
-              name: "UPI",
-              instruments: [{ method: "upi" }],
-            },
-            wallet: {
-              name: "Wallets",
-              instruments: [{ method: "wallet" }],
-            },
-          },
-          sequence: ["upi", "wallet", "card", "netbanking"],
-          preferences: {
-            show_default_blocks: true,
-          },
-        },
-        upi: {
-          flow: "collect",
-        },
-        wallet: {
-          enabled: true,
-        },
-      },
-      notes: {
-        medusa_order_id: draft.medusaOrderId,
-      },
-      handler: async function (response: {
-        razorpay_payment_id: string;
-        razorpay_order_id: string;
-        razorpay_signature: string;
-      }) {
-        const confirmPayload = {
-          medusaOrderId: draft.medusaOrderId,
-          razorpay_payment_id: response.razorpay_payment_id,
-          razorpay_order_id: response.razorpay_order_id,
-          razorpay_signature: response.razorpay_signature,
-          amount_minor: payload.amount,
-          currency: payload.currency,
-        };
-
-        // Do not block the UI on confirmation. Redirect immediately and let success page poll status.
-        void fetch("/api/checkout/razorpay/confirm", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(confirmPayload),
-          keepalive: true,
-        })
-          .then((confirmRes) => {
-            if (!confirmRes.ok) {
-              console.error("razorpay confirm returned non-OK", { status: confirmRes.status });
-            }
-          })
-          .catch((err) => {
-            console.error("razorpay confirm failed", err);
-          });
-
+      medusaOrderId: draft.medusaOrderId,
+      email,
+      contact,
+      callbackUrl,
+      payload: paymentPayload,
+      onSuccess: async (response) => {
+        await confirmRazorpayPayment(draft, response, amountMinor, createData.currency);
         router.push(
           `${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}&confirming=1`
         );
       },
-      modal: {
-        ondismiss: async function () {
-          await refundCoinsForOrder(draft.medusaOrderId);
-          router.push(`${RAZORPAY_FAILED}?orderId=${encodeURIComponent(draft.medusaOrderId)}`);
-        },
+      onFailure: async () => {
+        await refundCoinsForOrder(draft.medusaOrderId);
+        router.push(`${RAZORPAY_FAILED}?orderId=${encodeURIComponent(draft.medusaOrderId)}`);
       },
     });
-    rzp.open();
+
+    setProcessing(false);
   };
 
   const performCheckout = async () => {
@@ -1264,16 +1257,18 @@ function CheckoutPageInner() {
         throw new Error("Selected item unavailable. Please try again.");
       }
 
-      const draft = await createDraftOrder();
+      const [draft] = await Promise.all([
+        createDraftOrder(),
+        paymentMethod === "razorpay" ? loadRazorpayCustomScript() : Promise.resolve(),
+      ]);
       if (paymentMethod === "cod") {
-        await handleCod(draft);
-      } else {
-        await handleRazorpay(draft);
+        finalizeCodCheckout(draft);
+        return;
       }
+      await handleCustomRazorpay(draft, payableTotal);
     } catch (err) {
       console.error(err);
       toast.error(err instanceof Error ? err.message : "Checkout failed");
-    } finally {
       setProcessing(false);
     }
   };
@@ -1638,48 +1633,52 @@ function CheckoutPageInner() {
             </section>
 
             <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-slate-900">Payment</h2>
+                <Image
+                  src="/razorpay_logo.png"
+                  alt="Secured by Razorpay"
+                  width={88}
+                  height={24}
+                  unoptimized
+                  className="opacity-80"
+                />
               </div>
-              <div className="space-y-3">
-                <label className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:border-green-500">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="radio"
-                      name="payment"
-                      checked={paymentMethod === "razorpay"}
-                      onChange={() => setPaymentMethod("razorpay")}
-                    />
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                        <span className="sr-only">Razorpay</span>
-                        <Image
-                          src="/razorpay_logo.png"
-                          alt="Razorpay"
-                          width={110}
-                          height={30}
-                          unoptimized
-                        />
-                      </p>
-                      <p className="text-xs text-slate-500">UPI, Cards, Netbanking</p>
-                    </div>
-                  </div>
-                </label>
-                <label className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:border-green-500">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="radio"
-                      name="payment"
-                      checked={paymentMethod === "cod"}
-                      onChange={() => setPaymentMethod("cod")}
-                    />
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Cash on Delivery</p>
-                      <p className="text-xs text-slate-500">Pay when the order arrives</p>
-                    </div>
-                  </div>
-                </label>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("razorpay")}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                    paymentMethod === "razorpay"
+                      ? "border-green-600 bg-green-50 text-green-800"
+                      : "border-slate-200 text-slate-700 hover:border-green-400"
+                  }`}
+                >
+                  Pay online
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("cod")}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                    paymentMethod === "cod"
+                      ? "border-green-600 bg-green-50 text-green-800"
+                      : "border-slate-200 text-slate-700 hover:border-green-400"
+                  }`}
+                >
+                  Cash on delivery
+                </button>
               </div>
+
+              <OwegPaymentForm
+                ref={paymentFormRef}
+                enabled={paymentMethod === "razorpay"}
+                prefill={{
+                  name: `${shipping.firstName} ${shipping.lastName}`.trim(),
+                  email: shipping.email,
+                  contact: shipping.phone,
+                }}
+              />
             </section>
 
             <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
@@ -1819,134 +1818,28 @@ function CheckoutPageInner() {
                       <input
                         type="checkbox"
                         checked={useCoins}
-                        onChange={async (e) => {
+                        onChange={(e) => {
                           const isChecked = e.target.checked;
-                          const hasRealCart = Boolean(cart?.id && cart.id !== "buy-now");
 
                           if (isChecked) {
                             if (!customer?.id) {
                               toast.error("Please sign in to redeem wallet coins.");
-                              setUseCoins(false);
-                              setCoinsToUse(0);
-                              setCoinDiscountCode(null);
                               return;
                             }
-
-                            // User wants to use coins
                             const maxCoins = maxUsableCoins;
                             if (maxCoins <= 0) {
                               toast.error("Add items to checkout before applying coins.");
-                              setUseCoins(false);
-                              setCoinsToUse(0);
-                              setCoinDiscountCode(null);
                               return;
                             }
-                            const coinsInMinorUnits = maxCoins * 100; // Convert coins to minor units
-
-                            setApplyingCoinDiscount(true);
-                            try {
-                              // Step 1: Create Medusa discount code
-                              const discountRes = await fetch('/api/store/wallet/create-coin-discount', {
-                                method: 'POST',
-                                headers: { 'content-type': 'application/json' },
-                                body: JSON.stringify({
-                                  customer_id: customer?.id,
-                                  cart_id: hasRealCart ? cart?.id : undefined,
-                                  coin_amount: coinsInMinorUnits
-                                })
-                              });
-
-                              if (!discountRes.ok) {
-                                const error = await discountRes.json();
-                                throw new Error(error.error || 'Failed to create discount');
-                              }
-
-                              const discountData = await discountRes.json();
-                              const { discount_code } = discountData;
-
-                              // Step 2: Apply discount to Medusa cart only for cart checkout
-                              if (hasRealCart) {
-                                const applyRes = await fetch('/api/store/cart/apply-discount', {
-                                  method: 'POST',
-                                  headers: { 'content-type': 'application/json' },
-                                  body: JSON.stringify({
-                                    cart_id: cart?.id,
-                                    discount_code
-                                  })
-                                });
-
-                                if (!applyRes.ok) {
-                                  let message = 'Failed to apply discount to cart';
-                                  try {
-                                    const errorPayload = await applyRes.json();
-                                    if (errorPayload?.error) message = String(errorPayload.error);
-                                    if (errorPayload?.details) {
-                                      const details = typeof errorPayload.details === "string"
-                                        ? errorPayload.details
-                                        : JSON.stringify(errorPayload.details);
-                                      message = `${message}: ${details}`;
-                                    }
-                                  } catch {
-                                    // ignore parse errors
-                                  }
-                                  throw new Error(message);
-                                }
-                              }
-
-                              // Success! Update state
-                              setUseCoins(true);
-                              setCoinsToUse(maxCoins);
-                              setCoinDiscountCode(discount_code);
-                              toast.success(`₹${maxCoins.toFixed(2)} coin discount applied!`);
-
-                            } catch (error) {
-                              console.error('Coin discount error:', error);
-                              toast.error(error instanceof Error ? error.message : 'Failed to apply coin discount');
-                              setUseCoins(false);
-                              setCoinsToUse(0);
-                              setCoinDiscountCode(null);
-                            } finally {
-                              setApplyingCoinDiscount(false);
-                            }
-
+                            setUseCoins(true);
+                            setCoinsToUse(maxCoins);
                           } else {
-                            // User wants to remove coins
-                            if (coinDiscountCode) {
-                              setApplyingCoinDiscount(true);
-                              try {
-                                // Remove discount from cart only for cart checkout
-                                if (hasRealCart) {
-                                  await fetch(`/api/store/cart/apply-discount?cart_id=${cart?.id}&discount_code=${coinDiscountCode}`, {
-                                    method: 'DELETE'
-                                  });
-                                }
-
-                                // Refund coins back to wallet
-                                await fetch('/api/store/wallet/refund-coin-discount', {
-                                  method: 'POST',
-                                  headers: { 'content-type': 'application/json' },
-                                  body: JSON.stringify({
-                                    customer_id: customer?.id,
-                                    discount_code: coinDiscountCode
-                                  })
-                                });
-
-                                toast.success("Coins refunded to your wallet");
-
-                              } catch (error) {
-                                console.error('Failed to remove discount:', error);
-                              } finally {
-                                setApplyingCoinDiscount(false);
-                              }
-                            }
-
                             setUseCoins(false);
                             setCoinsToUse(0);
-                            setCoinDiscountCode(null);
                           }
                         }}
                         className="w-4 h-4 text-green-600"
-                        disabled={applyingCoinDiscount || !walletCanRedeem || maxUsableCoins <= 0}
+                        disabled={!walletCanRedeem || maxUsableCoins <= 0}
                       />
                       <div className="flex-1">
                         <p className="text-sm font-medium text-slate-800">
@@ -1955,9 +1848,6 @@ function CheckoutPageInner() {
                         <p className="text-xs text-green-600">
                           Save ₹{maxUsableCoins}
                         </p>
-                        {applyingCoinDiscount && (
-                          <p className="text-xs text-slate-500 mt-1">Applying discount...</p>
-                        )}
                       </div>
                     </label>
 
@@ -1965,7 +1855,7 @@ function CheckoutPageInner() {
                       <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg p-3">
                         <span className="text-green-600">✓</span>
                         <p className="text-sm text-green-800">
-                          Discount of <strong>₹{coinDiscount.toFixed(2)}</strong> will be applied
+                          <strong>₹{coinDiscount.toFixed(2)}</strong> will be deducted from your wallet after payment succeeds
                         </p>
                       </div>
                     )}
@@ -2091,11 +1981,6 @@ function CheckoutPageInner() {
               >
                 {processing ? "Processing Payment…" : `Pay securely (${formatInr(payableTotal)})`}
               </Button>
-              {isRazorpayTest && (
-                <p className="text-xs text-slate-500 text-center">
-                 
-                </p>
-              )}
             </section>
           </div>
         </form>

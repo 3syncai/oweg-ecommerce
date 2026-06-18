@@ -89,6 +89,11 @@ export default function MyRewardPage() {
                 <span className="text-5xl font-bold text-gray-900">{(wallet?.balance || 0).toFixed(0)}</span>
               </div>
               <p className="text-emerald-700 text-sm font-medium pl-1">Worth ₹{(wallet?.balance || 0).toFixed(0)} at checkout</p>
+              {wallet?.lifetime_earned != null && wallet?.lifetime_spent != null && (
+                <p className="text-xs text-gray-500 pl-1">
+                  Earned {Math.round(wallet.lifetime_earned)} · Used {Math.round(wallet.lifetime_spent)}
+                </p>
+              )}
               {wallet?.adjustment_message && (
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-2 py-1 inline-block mt-2">
                   {wallet.adjustment_message}

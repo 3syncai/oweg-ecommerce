@@ -61,7 +61,10 @@ async function ensureAccount(client: PoolClient, customerId: string) {
   if (!res.rows[0]) {
     throw new Error("Failed to load wallet account");
   }
-  return res.rows[0] as { customer_id: string; actual_balance: number };
+  return {
+    customer_id: res.rows[0].customer_id as string,
+    actual_balance: Number(res.rows[0].actual_balance || 0),
+  };
 }
 
 async function reconcileAccountBalance(client: PoolClient, customerId: string) {
@@ -91,6 +94,22 @@ async function insertLedgerEntry(
     metadata?: Record<string, unknown>;
   }
 ) {
+  if (entry.idempotency_key) {
+    const existing = await client.query(
+      `SELECT id FROM wallet_ledger WHERE idempotency_key = $1 LIMIT 1`,
+      [entry.idempotency_key]
+    );
+    if (existing.rows[0]) return undefined;
+  }
+
+  if (entry.order_id && entry.type === "EARN") {
+    const existingEarn = await client.query(
+      `SELECT id FROM wallet_ledger WHERE order_id = $1 AND type = 'EARN' LIMIT 1`,
+      [entry.order_id]
+    );
+    if (existingEarn.rows[0]) return undefined;
+  }
+
   const res = await client.query(
     `INSERT INTO wallet_ledger
        (customer_id, order_id, type, amount, reference_id, idempotency_key, metadata)
@@ -108,6 +127,20 @@ async function insertLedgerEntry(
     ]
   );
   return res.rows[0]?.id as number | undefined;
+}
+
+export async function ensureWalletLedgerIndexes() {
+  const pool = getPool();
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS wallet_ledger_idempotency_uq
+      ON wallet_ledger (idempotency_key)
+      WHERE idempotency_key IS NOT NULL
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS wallet_ledger_order_earn_uq
+      ON wallet_ledger (order_id)
+      WHERE type = 'EARN' AND order_id IS NOT NULL
+  `);
 }
 
 export async function earnCoins(options: {
@@ -382,10 +415,28 @@ export async function getWalletSnapshot(options: { customerId: string }) {
     [options.customerId]
   );
 
+  const sums = await pool.query(
+    `SELECT
+       COALESCE(SUM(CASE WHEN type = 'EARN' THEN amount ELSE 0 END), 0)::bigint AS earned,
+       COALESCE(SUM(CASE WHEN type = 'SPEND' THEN ABS(amount) ELSE 0 END), 0)::bigint AS spent
+     FROM wallet_ledger
+     WHERE customer_id = $1`,
+    [options.customerId]
+  );
+  const recentEarn = await pool.query(
+    `SELECT amount FROM wallet_ledger
+     WHERE customer_id = $1 AND type = 'EARN'
+     ORDER BY created_at DESC LIMIT 1`,
+    [options.customerId]
+  );
+
   return {
     actual_balance_minor: actual,
     display_balance_minor: display,
     pending_adjustment_minor: pendingAdjustment,
+    lifetime_earned_minor: Number(sums.rows[0]?.earned || 0),
+    lifetime_spent_minor: Number(sums.rows[0]?.spent || 0),
+    recent_earn_minor: Math.abs(Number(recentEarn.rows[0]?.amount || 0)),
     transactions: tx.rows as Array<Record<string, unknown>>,
   };
 }

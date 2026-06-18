@@ -51,6 +51,7 @@ export type UIProduct = {
   variant_id?: string;
   handle?: string;
   opencartId?: string | number;
+  inventory_quantity?: number;
 };
 
 export type CategoryProductQueryParams = {
@@ -58,6 +59,7 @@ export type CategoryProductQueryParams = {
   priceMin?: number;
   priceMax?: number;
   dealsOnly?: boolean;
+  includeSubcategories?: boolean;
 };
 
 /**
@@ -115,6 +117,9 @@ export async function getProductsByCategoryService(
   }
   if (params?.dealsOnly) {
     search.set("dealsOnly", "1");
+  }
+  if (params?.includeSubcategories) {
+    search.set("includeSubcategories", "1");
   }
 
   const response = await fetch(`/api/medusa/products?${search.toString()}`, {

@@ -8,6 +8,9 @@ import { convertDraftOrder, createDraftOrder, readStoreCart, updateOrderMetadata
 import { medusaStoreFetch } from "@/lib/medusa-auth";
 import { calculateOweg10Discount, OWEG10_CODE } from "@/lib/oweg10-shared";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
+import { cartLineAmountRupees } from "@/lib/cart-helpers";
+import { applyFlashSalePricesToCart } from "@/lib/flash-sale-cart-mapper";
+import { applyCoinDiscountToOrder, syncOrderShippingAmount } from "@/lib/order-discount";
 import { findSpendByReference } from "@/lib/wallet-ledger";
 import {
   consumeOweg10Reservation,
@@ -15,6 +18,7 @@ import {
   reserveOweg10,
   syncOweg10ConsumedCustomerMetadata,
 } from "@/lib/oweg10";
+import { createRazorpayOrder, getPublicRazorpayKey } from "@/lib/razorpay";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +72,24 @@ function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
 }
 
+function cartItemLineTotalRupees(record: Record<string, unknown>, currencyCode: string): number {
+  return cartLineAmountRupees(record, currencyCode);
+}
+
+async function enrichCartWithFlashSale(cart: Record<string, unknown>): Promise<Record<string, unknown>> {
+  try {
+    const flashRes = await backend("/store/flash-sale/products");
+    if (!flashRes.ok) return cart;
+    const flashSaleData = await flashRes.json();
+    return applyFlashSalePricesToCart(
+      cart as Parameters<typeof applyFlashSalePricesToCart>[0],
+      flashSaleData as Parameters<typeof applyFlashSalePricesToCart>[1]
+    ) as Record<string, unknown>;
+  } catch {
+    return cart;
+  }
+}
+
 type DraftOrder = {
   id?: string;
   currency_code?: string;
@@ -109,6 +131,13 @@ const PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY ||
   process.env.MEDUSA_PUBLISHABLE_KEY ||
   process.env.MEDUSA_PUBLISHABLE_API_KEY;
+const DEFAULT_SHIPPING_OPTION_ID =
+  process.env.MEDUSA_DEFAULT_SHIPPING_OPTION_ID ||
+  process.env.NEXT_PUBLIC_MEDUSA_DEFAULT_SHIPPING_OPTION_ID;
+
+let cachedShippingOptionId: string | undefined;
+let cachedShippingOptionAt = 0;
+const SHIPPING_OPTION_CACHE_MS = 5 * 60 * 1000;
 
 async function backend(path: string, init?: RequestInit) {
   const headers: Record<string, string> = {
@@ -191,6 +220,25 @@ async function getFirstShippingOptionId(cartId: string): Promise<string | undefi
   }
 }
 
+async function resolveShippingOptionId(
+  cartId: string | undefined,
+  fromCart?: string
+): Promise<string | undefined> {
+  if (fromCart) return fromCart;
+  if (DEFAULT_SHIPPING_OPTION_ID) return DEFAULT_SHIPPING_OPTION_ID;
+  if (cachedShippingOptionId && Date.now() - cachedShippingOptionAt < SHIPPING_OPTION_CACHE_MS) {
+    return cachedShippingOptionId;
+  }
+  if (!cartId) return undefined;
+
+  const optionId = await getFirstShippingOptionId(cartId);
+  if (optionId) {
+    cachedShippingOptionId = optionId;
+    cachedShippingOptionAt = Date.now();
+  }
+  return optionId;
+}
+
 async function getAuthenticatedCustomer(cookieHeader?: string) {
   if (!cookieHeader) return null;
 
@@ -259,9 +307,11 @@ export async function POST(req: Request) {
         const refreshed = await backend(`/store/carts/${encodeURIComponent(temp.id)}`);
         if (refreshed.ok) {
           const data = await refreshed.json();
-          cart = (data.cart as Record<string, unknown>) || (data as Record<string, unknown>);
+          cart = await enrichCartWithFlashSale(
+            (data.cart as Record<string, unknown>) || (data as Record<string, unknown>)
+          );
         } else {
-          cart = temp.cart;
+          cart = temp.cart ? await enrichCartWithFlashSale(temp.cart as Record<string, unknown>) : null;
         }
       } catch (err) {
         console.error("buy-now cart build failed", err);
@@ -281,7 +331,7 @@ export async function POST(req: Request) {
       if (!cartData?.cart) {
         return badRequest("Cart is empty or unavailable");
       }
-      cart = cartData.cart as Record<string, unknown>;
+      cart = await enrichCartWithFlashSale(cartData.cart as Record<string, unknown>);
     }
 
     if (!cart) {
@@ -336,33 +386,52 @@ export async function POST(req: Request) {
     const billing = body.billingSameAsShipping || !body.billing ? shipping : body.billing;
 
     const paymentMethod = body.paymentMethod || "razorpay";
-    const authCustomer = body.oweg10Applied ? await getAuthenticatedCustomer(cookieHeader) : null;
+    const authCustomerPromise = body.oweg10Applied
+      ? getAuthenticatedCustomer(cookieHeader)
+      : Promise.resolve(null);
 
-    // Ensure we have a valid region
-    const fallbackRegion = await getFallbackRegionId();
-    const regionId = (typeof cart.region_id === "string" ? cart.region_id : undefined) || fallbackRegion;
+    // Ensure we have a valid region (env var is instant; only fetch when missing)
+    const regionId =
+      (typeof cart.region_id === "string" ? cart.region_id : undefined) ||
+      REGION_ID ||
+      (await getFallbackRegionId());
     const cartCurrency = (typeof cart.currency_code === "string" ? cart.currency_code : undefined) || "inr";
 
-    const itemsTotal = items.reduce((sum, item) => sum + (item.unit_price || 0) * item.quantity, 0);
+    const cartItemRecords = Array.isArray(cart.items)
+      ? (cart.items as Array<Record<string, unknown>>)
+      : [];
+    const itemsTotal = cartItemRecords.reduce(
+      (sum, record) => sum + cartItemLineTotalRupees(record, cartCurrency),
+      0
+    );
     const shippingCharge = calculateStatewiseShipping(itemsTotal, shipping.state);
     const oweg10DiscountRupees = body.oweg10Applied ? calculateOweg10Discount(itemsTotal) : 0;
 
-    // Declare coinDiscountRupees early (will be populated from database later)
     let coinDiscountRupees = 0;
+    if (typeof body.coinDiscount === "number" && body.coinDiscount > 0) {
+      coinDiscountRupees = body.coinDiscount;
+    }
 
     const cartShippingMethods = Array.isArray((cart as Record<string, unknown>).shipping_methods)
       ? ((cart as Record<string, unknown>).shipping_methods as Array<Record<string, unknown>>)
       : [];
-    const existingShippingOptionId = cartShippingMethods.find(
+    const shippingOptionFromCart = cartShippingMethods.find(
       (method) => typeof method.shipping_option_id === "string"
     )?.shipping_option_id as string | undefined;
-    const resolvedShippingOptionId =
-      existingShippingOptionId || (cartId ? await getFirstShippingOptionId(cartId) : undefined);
+    const resolvedShippingOptionId = await resolveShippingOptionId(cartId, shippingOptionFromCart);
+
+    if (!resolvedShippingOptionId) {
+      return badRequest(
+        "Shipping option unavailable. Configure MEDUSA_DEFAULT_SHIPPING_OPTION_ID or add a shipping method to the cart."
+      );
+    }
 
     const shippingMethodPayload: Record<string, unknown> = {
       amount: shippingCharge,
       price: shippingCharge,
       name: shippingCharge === 0 ? "Free Shipping" : "Standard Shipping",
+      shipping_option_id: resolvedShippingOptionId,
+      option_id: resolvedShippingOptionId,
       data: {
         pricing_rule: "statewise_subtotal",
         shipping_state: shipping.state || null,
@@ -370,16 +439,12 @@ export async function POST(req: Request) {
       },
     };
 
-    if (resolvedShippingOptionId) {
-      shippingMethodPayload.shipping_option_id = resolvedShippingOptionId;
-      shippingMethodPayload.option_id = resolvedShippingOptionId;
-    }
-
     const shippingMethodsPayload = [shippingMethodPayload];
     const cartCustomerId =
       typeof (cart as Record<string, unknown>)?.customer_id === "string"
         ? ((cart as Record<string, unknown>).customer_id as string)
         : undefined;
+    const authCustomer = await authCustomerPromise;
     const resolvedCustomerId =
       (typeof authCustomer?.id === "string" ? authCustomer.id : undefined) || cartCustomerId;
 
@@ -418,7 +483,7 @@ export async function POST(req: Request) {
         shipping_state: shipping.state || null,
         coin_discount_code: body.coinDiscountCode || null,
         coin_discount_minor: coinDiscountRupees > 0 ? Math.round(coinDiscountRupees * 100) : undefined,
-        coin_discount_rupees: coinDiscountRupees > 0 ? coinDiscountRupees : undefined, // Visible in admin
+        coin_discount_rupees: coinDiscountRupees > 0 ? coinDiscountRupees : undefined,
         coin_discount_applied: coinDiscountRupees > 0 ? `₹${coinDiscountRupees.toFixed(2)} OWEG Coins` : undefined,
         coins_discounted: coinDiscountRupees > 0 ? coinDiscountRupees : undefined,
         oweg10_code: body.oweg10Applied ? OWEG10_CODE : null,
@@ -461,7 +526,6 @@ export async function POST(req: Request) {
     let medusaCurrency = draftOrder.currency_code || cartCurrency;
     let medusaTotal = draftOrder.total || 0;
 
-    // Optimistic Total Calculation
     const expectedTotal = itemsTotal + shippingCharge;
 
     if (medusaTotal < expectedTotal && shippingCharge > 0) {
@@ -469,12 +533,41 @@ export async function POST(req: Request) {
       medusaTotal = expectedTotal;
     }
 
+    const finalTotal = Math.max(0, itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees);
+
+    // COD fast path: return after draft creation (~1 API call). Convert + confirm runs on success page.
+    if (paymentMethod === "cod") {
+      return NextResponse.json({
+        medusaOrderId,
+        total: finalTotal,
+        currency_code: medusaCurrency,
+        cartId,
+        draft: true,
+        codFast: true,
+        coinDiscountApplied: coinDiscountRupees,
+        oweg10DiscountApplied: oweg10DiscountRupees,
+      });
+    }
+
     let converted = false;
     let conversionError: string | null = null;
 
     if (paymentMethod === "razorpay") {
       try {
-        const convertedRes = await convertDraftOrder(draftOrder.id);
+        const [convertedRes, spend] = await Promise.all([
+          convertDraftOrder(draftOrder.id),
+          coinDiscountRupees <= 0 && body.coinDiscountCode && cartCustomerId
+            ? findSpendByReference({
+                customerId: cartCustomerId,
+                referenceId: body.coinDiscountCode,
+              }).catch(() => null)
+            : Promise.resolve(null),
+        ]);
+
+        if (spend && coinDiscountRupees <= 0) {
+          coinDiscountRupees = spend.amountMinor / 100;
+        }
+
         if (convertedRes.ok) {
           const convertedOrder = convertedRes.data ? extractOrder(convertedRes.data) : null;
           if (convertedOrder?.id) {
@@ -494,12 +587,12 @@ export async function POST(req: Request) {
       }
     }
 
-    // Ledger-driven coin discount using discount code
-    if (body.coinDiscountCode && cartCustomerId) {
+    // Ledger fallback when frontend did not send coin amount
+    if (coinDiscountRupees <= 0 && body.coinDiscountCode && cartCustomerId) {
       try {
         const spend = await findSpendByReference({
           customerId: cartCustomerId,
-          referenceId: body.coinDiscountCode
+          referenceId: body.coinDiscountCode,
         });
         if (spend) {
           coinDiscountRupees = spend.amountMinor / 100;
@@ -509,20 +602,29 @@ export async function POST(req: Request) {
       }
     }
 
-    if (coinDiscountRupees <= 0 && typeof body.coinDiscount === "number" && body.coinDiscount > 0) {
-      coinDiscountRupees = body.coinDiscount;
-    }
+    const payableRupees = Math.max(
+      0,
+      itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees
+    );
+    const finalTotalAfterLookup =
+      itemsTotal > 0 ? payableRupees : Math.max(0, medusaTotal - coinDiscountRupees - oweg10DiscountRupees);
 
-    // Subtract discount from total
-    const finalTotal = Math.max(0, medusaTotal - coinDiscountRupees - oweg10DiscountRupees);
-
-    console.log("💰 Coin Discount Applied:", {
+    console.log("💰 Order payable:", {
+      itemsTotal,
+      shippingCharge,
       coinDiscountRupees,
-      originalTotal: medusaTotal,
-      finalTotal,
-      reduction: medusaTotal - finalTotal,
-      source: coinDiscountRupees > 0 ? "ledger" : "none"
+      oweg10DiscountRupees,
+      medusaTotal,
+      payableRupees: finalTotalAfterLookup,
     });
+
+    if (medusaOrderId) {
+      try {
+        await syncOrderShippingAmount(medusaOrderId, shippingCharge);
+      } catch (err) {
+        console.warn("Failed to sync shipping amount on order:", err);
+      }
+    }
 
     if (coinDiscountRupees > 0 && medusaOrderId) {
       try {
@@ -531,10 +633,14 @@ export async function POST(req: Request) {
           coin_discount_minor: Math.round(coinDiscountRupees * 100),
           coin_discount_rupees: coinDiscountRupees,
           coin_discount_applied: `₹${coinDiscountRupees.toFixed(2)} OWEG Coins`,
-          coins_discounted: coinDiscountRupees
+          coins_discounted: coinDiscountRupees,
+        });
+        await applyCoinDiscountToOrder({
+          orderId: medusaOrderId,
+          discountMinor: Math.round(coinDiscountRupees * 100),
         });
       } catch (err) {
-        console.warn("Failed to update order metadata for coin discount:", err);
+        console.warn("Failed to apply coin discount on order:", err);
       }
     }
 
@@ -573,19 +679,59 @@ export async function POST(req: Request) {
         console.warn("Failed to persist OWEG10 metadata", error);
       }
 
-      await syncOweg10ConsumedCustomerMetadata(oweg10CustomerId);
+      await syncOweg10ConsumedCustomerMetadata(oweg10CustomerId).catch((err) => {
+        console.warn("Failed to sync OWEG10 customer metadata", err);
+      });
     }
 
+    let razorpay:
+      | {
+          orderId: string;
+          key: string;
+          amount: number;
+          currency: string;
+        }
+      | undefined;
+
+    if (paymentMethod === "razorpay" && medusaOrderId && finalTotalAfterLookup > 0) {
+      try {
+        const currency = (medusaCurrency || "inr").toString().toUpperCase();
+        const rzpOrder = await createRazorpayOrder(
+          {
+            amount: finalTotalAfterLookup,
+            currency,
+            receipt: medusaOrderId,
+            notes: { medusa_order_id: medusaOrderId },
+          },
+          { amountIsPaise: false }
+        );
+
+        await updateOrderMetadata(medusaOrderId, {
+          razorpay_order_id: rzpOrder.id,
+          razorpay_payment_status: "created",
+        });
+
+        razorpay = {
+          orderId: rzpOrder.id,
+          key: getPublicRazorpayKey(),
+          amount: finalTotalAfterLookup,
+          currency,
+        };
+      } catch (rzpErr) {
+        console.error("Failed to pre-create Razorpay order during draft-order", rzpErr);
+      }
+    }
 
     return NextResponse.json({
       medusaOrderId,
-      total: finalTotal, // Return discounted total
+      total: finalTotalAfterLookup,
       currency_code: medusaCurrency,
       cartId,
       draft: !converted,
       conversionWarning: conversionError || undefined,
-      coinDiscountApplied: coinDiscountRupees, // For frontend reference
+      coinDiscountApplied: coinDiscountRupees,
       oweg10DiscountApplied: oweg10DiscountRupees,
+      razorpay,
     });
   } catch (err) {
     console.error("draft-order error", err);

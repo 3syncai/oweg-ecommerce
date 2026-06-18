@@ -82,7 +82,7 @@ const OrderCodPaymentWidget = () => {
       ? metadata.cod_payment_status.toLowerCase()
       : ""
 
-  const isCod = paymentMethod === "cod" || codStatus === "confirmed"
+  const isCod = paymentMethod === "cod"
   const isDelivered = Boolean(
     order?.fulfillments?.some((fulfillment) => Boolean(fulfillment?.delivered_at))
   )

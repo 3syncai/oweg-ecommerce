@@ -261,11 +261,7 @@ export default async function orderFulfilledSubscriber({
 console.log("[Coin Activation] 🚀 Subscriber loaded! Listening for Fulfillment Events...")
 
 export const config: SubscriberConfig = {
-    // Listen for MULTIPLE events to catch the correct one
-    event: [
-        "order.fulfillment_created",
-        "fulfillment.created",
-        "shipment.created",
-        "delivery.created"
-    ],
+    // Only delivery — fulfillment/shipment events also fire for the same package
+    // and previously caused triple coin credits per delivery.
+    event: "delivery.created",
 }

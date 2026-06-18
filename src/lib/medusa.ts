@@ -484,7 +484,83 @@ export async function searchProducts(params: {
   return await fetchStoreProducts(baseParams)
 }
 
-export async function fetchProductsByCategoryId(categoryId: string, limit = 20) {
+function dedupeMedusaProducts(products: MedusaProduct[]): MedusaProduct[] {
+  const seen = new Set<string>()
+  const out: MedusaProduct[] = []
+  for (const product of products) {
+    if (!product?.id || seen.has(product.id)) continue
+    seen.add(product.id)
+    out.push(product)
+  }
+  return out
+}
+
+export function collectDescendantCategoryIds(category: MedusaCategory): string[] {
+  const ids: string[] = []
+  if (category.id) ids.push(category.id)
+  for (const child of category.category_children || []) {
+    ids.push(...collectDescendantCategoryIds(child))
+  }
+  return ids
+}
+
+export async function fetchCategoryById(categoryId: string): Promise<MedusaCategory | undefined> {
+  const params = new URLSearchParams({
+    id: categoryId,
+    include_descendants_tree: "true",
+  })
+  const res = await api(`/store/product-categories?${params.toString()}`)
+  if (!res.ok) return undefined
+  const data = await res.json()
+  const arr = (data.product_categories || data.categories || []) as MedusaCategory[]
+  return Array.isArray(arr) && arr.length ? arr[0] : undefined
+}
+
+export async function fetchProductsByCategoryIds(
+  categoryIds: string[],
+  limit = 20
+): Promise<MedusaProduct[]> {
+  const uniqueIds = Array.from(new Set(categoryIds.filter(Boolean)))
+  if (uniqueIds.length === 0) return []
+  if (uniqueIds.length === 1) return fetchProductsByCategoryId(uniqueIds[0], limit)
+
+  const extras: Array<[string, string]> = uniqueIds.map((id) => ["category_id[]", id])
+  const candidates = [
+    createBaseSearchParams(limit, extras),
+    createBaseSearchParams(limit, uniqueIds.map((id) => ["category_id", id] as [string, string])),
+  ]
+
+  for (const params of candidates) {
+    try {
+      const items = await fetchStoreProducts(params)
+      if (Array.isArray(items) && items.length) {
+        return dedupeMedusaProducts(items).slice(0, limit)
+      }
+    } catch {
+      // try next candidate / fallback below
+    }
+  }
+
+  const perCategoryLimit = Math.min(60, Math.max(limit, Math.ceil(limit / uniqueIds.length)))
+  const batches = await Promise.all(
+    uniqueIds.map((id) =>
+      fetchProductsByCategoryId(id, perCategoryLimit).catch(() => [] as MedusaProduct[])
+    )
+  )
+  return dedupeMedusaProducts(batches.flat()).slice(0, limit)
+}
+
+export async function fetchProductsByCategoryId(
+  categoryId: string,
+  limit = 20,
+  options?: { includeSubcategories?: boolean }
+): Promise<MedusaProduct[]> {
+  if (options?.includeSubcategories) {
+    const category = (await fetchCategoryById(categoryId)) || undefined
+    const categoryIds = category ? collectDescendantCategoryIds(category) : [categoryId]
+    return fetchProductsByCategoryIds(categoryIds, limit)
+  }
+
   const candidates = [
     createBaseSearchParams(limit, [["category_id[]", categoryId]]),
     createBaseSearchParams(limit, [["category_id", categoryId]]),
