@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Led Lamps &amp; Torches</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M26 9c6 0 11 5 11 11c0 4-2 7-4 9v5H21v-5c-2-2-4-5-4-9c0-6 5-11 11-11z"/>
+  <path class="outline" d="M22 40h10c2 0 4 2 4 4v8H18v-8c0-2 2-4 4-4z"/>
+  <path class="accent" d="M24 44h8v8h-8z"/>
+  <path class="accent-stroke" d="M42 27l7-2M42 33l7 2M14 27l-7-2"/>
+
+</svg>

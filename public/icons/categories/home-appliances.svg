@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Home Appliances</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <rect class="outline" x="11" y="8" width="19" height="46" rx="4"/>
+  <path class="outline" d="M11 26h19"/>
+  <path class="accent-stroke" d="M17 14v8M17 32v8"/>
+  <rect class="soft" x="31" y="26" width="22" height="28" rx="4"/>
+  <rect class="outline" x="31" y="26" width="22" height="28" rx="4"/>
+  <circle class="outline" cx="42" cy="42" r="7"/>
+  <path class="accent" d="M38.5 42a3.5 3.5 0 1 0 7 0a3.5 3.5 0 0 0-7 0z"/>
+  <path class="outline" d="M37 32h2M44 32h2M18 54v2M47 54v2"/>
+
+</svg>

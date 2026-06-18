@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Knife Sets</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M20 12c8 6 10 14 10 22v18"/>
+  <path class="outline" d="M30 34c8-4 14-10 16-18c-5 0-11 2-16 6"/>
+  <path class="accent" d="M27 36h6v16h-6z"/>
+  <path class="outline" d="M42 14l6-2"/>
+
+</svg>

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Table Fans</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <circle class="outline" cx="32" cy="26" r="10"/>
+  <circle class="outline" cx="32" cy="26" r="2.5"/>
+  <path class="outline" d="M32 16c5 1 7 5 5 9"/>
+  <path class="outline" d="M23 28c1-5 5-7 9-5"/>
+  <path class="outline" d="M37 31c-5-1-7-5-5-9"/>
+  <path class="outline" d="M32 36v8"/>
+  <path class="outline" d="M24 48h16"/>
+  <path class="accent-stroke" d="M28 48l-2 5M36 48l2 5"/>
+
+</svg>

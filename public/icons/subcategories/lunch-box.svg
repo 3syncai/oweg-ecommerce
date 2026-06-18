@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Lunch Box</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <rect class="outline" x="12" y="22" width="40" height="26" rx="6"/>
+  <path class="outline" d="M23 22v-5c0-2 2-4 4-4h10c2 0 4 2 4 4v5"/>
+  <path class="accent" d="M28 20h8v5h-8z"/>
+  <path class="outline" d="M12 31h40"/>
+  <path class="accent-stroke" d="M32 31v17"/>
+
+</svg>

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Bottles &amp; Flasks</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <rect class="outline" x="13" y="16" width="16" height="36" rx="5"/>
+  <path class="outline" d="M17 10h8v6h-8z"/>
+  <rect class="soft" x="35" y="14" width="16" height="38" rx="4"/>
+  <rect class="outline" x="35" y="14" width="16" height="38" rx="4"/>
+  <path class="outline" d="M39 10h8v4h-8z"/>
+  <path class="accent-stroke" d="M18 24v18M43 24v18"/>
+
+</svg>

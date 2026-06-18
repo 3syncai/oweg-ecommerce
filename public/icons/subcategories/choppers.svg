@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Choppers</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <rect class="outline" x="20" y="24" width="24" height="22" rx="4"/>
+  <path class="accent" d="M24 18h16v6H24z"/>
+  <path class="outline" d="M32 24v14"/>
+  <path class="outline" d="M32 38c-3 0-4 2-4 5"/>
+  <path class="outline" d="M32 38c3 0 4 2 4 5"/>
+  <path class="accent-stroke" d="M29 14h6"/>
+
+</svg>

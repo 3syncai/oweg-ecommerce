@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Computer &amp; Mobile Accessories</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M9 41h31l4 7H5l4-7z"/>
+  <rect class="outline" x="10" y="16" width="31" height="25" rx="3"/>
+  <path class="accent" d="M14 20h23v16H14z"/>
+  <path fill="#fff" opacity=".35" d="M14 20h23L14 36z"/>
+  <rect class="outline" x="46" y="17" width="10" height="31" rx="3"/>
+  <path class="accent-stroke" d="M50 22h2M50 43h2"/>
+  <path class="outline" d="M42 36h4M56 36h2c2 0 3 1 3 3v5"/>
+
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Immersion Rod</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M24 12h10v12l8 8c4 4 4 11 0 15s-11 4-15 0s-4-11 0-15l7-7"/>
+  <path class="accent-stroke" d="M27 18h4M27 23h4"/>
+  <path class="outline" d="M19 47l-7 7"/>
+  <circle class="accent" cx="36" cy="41" r="3"/>
+
+</svg>

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Stationery</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <rect class="outline" x="11" y="10" width="27" height="45" rx="4"/>
+  <path class="outline" d="M17 10v45M11 20h-4M11 30h-4M11 40h-4"/>
+  <rect class="accent" x="22" y="17" width="11" height="6" rx="1"/>
+  <path class="outline" d="M42 16h8v35l-4 6l-4-6V16z"/>
+  <path class="accent" d="M42 25h8v24h-8z"/>
+  <path class="outline" d="M53 20h6v35h-6"/>
+  <path class="outline" d="M53 27h3M53 34h3M53 41h3M53 48h3"/>
+
+</svg>

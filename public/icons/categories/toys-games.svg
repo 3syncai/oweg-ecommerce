@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Toys &amp; Games</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <circle class="outline" cx="21" cy="24" r="12"/>
+  <circle class="outline" cx="12" cy="15" r="5"/>
+  <circle class="outline" cx="30" cy="15" r="5"/>
+  <circle class="accent" cx="12" cy="15" r="2.7"/>
+  <circle class="accent" cx="30" cy="15" r="2.7"/>
+  <circle class="outline" cx="17" cy="23" r="1"/>
+  <circle class="outline" cx="25" cy="23" r="1"/>
+  <path class="outline" d="M18 29c2 2 4 2 6 0"/>
+  <path class="outline" d="M10 36c-3 4-4 13 1 16c4 2 8-1 10-5h22c2 4 6 7 10 5c5-3 4-12 1-16c-2-3-5-4-9-3H19c-4-1-7 0-9 3z"/>
+  <path class="accent-stroke" d="M20 38v8M16 42h8"/>
+  <circle class="accent" cx="44" cy="40" r="2"/><circle class="accent" cx="50" cy="45" r="2"/><circle class="accent" cx="39" cy="45" r="2"/>
+
+</svg>

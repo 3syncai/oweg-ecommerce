@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Cooling Pad</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M14 20h36l6 22H8l6-22z"/>
+  <circle class="outline" cx="24" cy="31" r="6"/>
+  <circle class="outline" cx="40" cy="31" r="6"/>
+  <path class="accent-stroke" d="M24 27v8M20 31h8M40 27v8M36 31h8"/>
+
+</svg>
