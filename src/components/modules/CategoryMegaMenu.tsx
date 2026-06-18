@@ -5,6 +5,9 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import SubcategoryIcon from "@/components/ui/icons/SubcategoryIcon";
 import { normalizeCategorySlug } from "@/components/ui/icons/CategoryIcon";
+import CategoryMegaMenuBannerCarousel, {
+  type MegaMenuBannerSlide,
+} from "@/components/modules/CategoryMegaMenuBannerCarousel";
 import { getCategoryMegaMenuConfig } from "@/lib/category-mega-menu.config";
 
 export type MegaMenuCategory = {
@@ -58,6 +61,38 @@ export default function CategoryMegaMenu({ category, onClose }: CategoryMegaMenu
   const config = getCategoryMegaMenuConfig(category.handle);
   const popularItems = resolvePopularItems(category);
   const parentHandle = category.handle || "";
+  const [banners, setBanners] = React.useState<MegaMenuBannerSlide[]>([]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const handle = category.handle?.trim();
+    if (!handle) {
+      setBanners([]);
+      return;
+    }
+
+    const loadBanners = async () => {
+      try {
+        const res = await fetch(
+          `/api/medusa/mega-menu-banners?handle=${encodeURIComponent(handle)}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setBanners(Array.isArray(data.banners) ? data.banners : []);
+      } catch {
+        if (!cancelled) setBanners([]);
+      }
+    };
+
+    void loadBanners();
+    return () => {
+      cancelled = true;
+    };
+  }, [category.handle]);
+
+  const showFeaturedPanel = Boolean(config?.featured || banners.length > 0);
 
   const handleMenuWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     const el = event.currentTarget;
@@ -130,24 +165,41 @@ export default function CategoryMegaMenu({ category, onClose }: CategoryMegaMenu
         </div>
       </div>
 
-      {config?.featured ? (
-        <aside className="hidden w-[168px] shrink-0 self-stretch sm:block">
-          <div className="flex h-full flex-col justify-between rounded-xl bg-[#EAF8E7] p-4">
-            <div>
-              <p className="text-lg font-bold leading-tight text-[#1F2A33]">
-                {config.featured.headline}
-              </p>
-              <p className="mt-2 text-sm leading-snug text-[#1F2A33]/80">
-                {config.featured.subtitle}
-              </p>
-            </div>
-            <Link
-              href={config.featured.ctaHref}
-              className="mt-4 inline-flex items-center justify-center rounded-lg bg-[#66C940] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#57b536]"
-              onClick={onClose}
-            >
-              {config.featured.ctaLabel}
-            </Link>
+      {showFeaturedPanel ? (
+        <aside className="hidden w-[180px] shrink-0 self-stretch sm:block">
+          <div className="flex h-full min-h-0 flex-col rounded-xl bg-[#EAF8E7] p-4">
+            {config?.featured ? (
+              <div className="shrink-0">
+                <p className="text-lg font-bold leading-tight text-[#1F2A33]">
+                  {config.featured.headline}
+                </p>
+                <p className="mt-2 text-sm leading-snug text-[#1F2A33]/80">
+                  {config.featured.subtitle}
+                </p>
+              </div>
+            ) : null}
+
+            {banners.length > 0 ? (
+              <div
+                className={`min-h-0 flex-1 ${config?.featured ? "mt-3" : "mt-0"}`}
+              >
+                <CategoryMegaMenuBannerCarousel
+                  banners={banners}
+                  onNavigate={onClose}
+                  className="h-full min-h-0"
+                />
+              </div>
+            ) : null}
+
+            {config?.featured ? (
+              <Link
+                href={config.featured.ctaHref}
+                className="mt-3 inline-flex shrink-0 items-center justify-center rounded-lg bg-[#66C940] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#57b536]"
+                onClick={onClose}
+              >
+                {config.featured.ctaLabel}
+              </Link>
+            ) : null}
           </div>
         </aside>
       ) : null}

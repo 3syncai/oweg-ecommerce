@@ -360,6 +360,22 @@ export async function fetchFeaturedBrands(): Promise<MedusaCollection[]> {
   }))
 }
 
+export type MegaMenuBanner = {
+  id: string
+  image_url: string
+  link_url: string
+  alt_text?: string
+  open_in_new_tab?: boolean
+  priority?: number
+}
+
+export async function fetchMegaMenuBanners(handle: string): Promise<MegaMenuBanner[]> {
+  const res = await api(`/store/mega-menu-banners?handle=${encodeURIComponent(handle)}`)
+  if (!res.ok) throw new Error(`Failed mega menu banners: ${res.status}`)
+  const data = await res.json()
+  return (data.banners || []) as MegaMenuBanner[]
+}
+
 export async function fetchProductTypes(): Promise<MedusaProductType[]> {
   const res = await api("/store/product-types?limit=200")
   if (!res.ok) throw new Error(`Failed product types: ${res.status}`)

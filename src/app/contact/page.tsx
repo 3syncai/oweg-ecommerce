@@ -5,14 +5,14 @@ const channels = [
   {
     title: "Call us",
     copy: "Speak with a human for orders, delivery ETA, or installation help.",
-    action: "+91 87977 87877",
+    action: "+91 8797787877",
     icon: Phone,
-    href: "tel:+91 87977 87877",
+    href: "tel:+918797787877",
   },
   {
     title: "Priority email",
     copy: "Drop a note for warranty, returns, or corporate orders.",
-    action: "support@oweg.in",
+    action: "owegonline@oweg.in",
     icon: Mail,
     href: "mailto:owegonline@oweg.in",
   },

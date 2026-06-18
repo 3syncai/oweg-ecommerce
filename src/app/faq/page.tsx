@@ -78,7 +78,7 @@ export default function FAQPage() {
             </div>
             <h3 className="text-xl font-semibold">Need escalation?</h3>
             <p className="text-sm text-white/90">Talk to the Priority Care team for warranty, installation, or delivery escalations.</p>
-            <div className="text-sm font-semibold">Email: support@oweg.in</div>
+            <div className="text-sm font-semibold">Email: owegonline@oweg.in</div>
           </div>
           <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 text-emerald-700 px-3 py-1 text-xs font-semibold">
@@ -87,7 +87,7 @@ export default function FAQPage() {
             </div>
             <h3 className="text-xl font-semibold text-gray-900">Live help from profile</h3>
             <p className="text-sm text-gray-600">Jump to Profile → Support to start a chat. We respond within minutes during 9 AM–10 PM IST.</p>
-            <div className="text-sm text-gray-700">Call: +91 89281 02299</div>
+            <div className="text-sm text-gray-700">Call: +91 8797787877</div>
           </div>
         </section>
       </div>

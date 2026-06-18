@@ -758,7 +758,7 @@ export default function OrderDetailPage() {
           </div>
           <div className="text-xs text-gray-500 inline-flex items-center gap-2">
             <Phone className="w-4 h-4" />
-            Need help? Call +91 89281 02299 or email support@oweg.in
+            Need help? Call +91 8797787877 or email owegonline@oweg.in
           </div>
         </div>
 

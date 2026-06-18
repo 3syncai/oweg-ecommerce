@@ -49,7 +49,7 @@ export default function CouponPolicyPage() {
               Fair use
             </div>
             <p className="text-sm text-gray-700">
-              We monitor fairness to keep deals exciting for everyone. If something feels off, write to support@oweg.in for a manual review.
+              We monitor fairness to keep deals exciting for everyone. If something feels off, write to owegonline@oweg.in for a manual review.
             </p>
           </div>
         </section>
