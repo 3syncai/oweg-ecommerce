@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Speakers</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M12 27h10l10-8v26l-10-8H12z"/>
+  <path class="outline" d="M38 24c4 2 6 5 6 8s-2 6-6 8"/>
+  <path class="outline" d="M43 20c6 3 9 7 9 12s-3 9-9 12"/>
+  <circle class="accent" cx="18" cy="32" r="3"/>
+
+</svg>

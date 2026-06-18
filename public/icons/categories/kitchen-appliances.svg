@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Kitchen Appliances</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M22 14h16l-3 29H25L22 14z"/>
+  <path class="outline" d="M38 21h7c3 0 5 2 5 5s-2 5-5 5h-5"/>
+  <path class="accent" d="M25 24h10l-1.5 15h-7z"/>
+  <path class="outline" d="M26 43h8l4 8H22l4-8z"/>
+  <circle class="accent" cx="30" cy="48" r="2"/>
+  <path class="accent" d="M24 10h12v4H24z"/>
+  <rect class="outline" x="44" y="35" width="11" height="18" rx="3"/>
+  <path class="accent" d="M44 34h11v5H44z"/>
+
+</svg>

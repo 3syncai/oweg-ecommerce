@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Ceiling Fans</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <circle class="outline" cx="32" cy="32" r="4"/>
+  <path class="outline" d="M32 12v16"/>
+  <path class="outline" d="M32 28c8-5 17-5 19-1c2 4-5 9-15 9"/>
+  <path class="outline" d="M32 28c-5-8-5-17-1-19c4-2 9 5 9 15"/>
+  <path class="outline" d="M32 28c-8 5-17 5-19 1c-2-4 5-9 15-9"/>
+  <path class="accent-stroke" d="M32 36v8"/>
+
+</svg>

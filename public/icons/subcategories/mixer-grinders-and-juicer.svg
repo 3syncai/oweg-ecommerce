@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Mixer Grinders &amp; Juicer</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M22 16h16l-2 18H24l-2-18z"/>
+  <path class="accent" d="M24 11h12v5H24z"/>
+  <path class="outline" d="M26 34h8l4 14H22l4-14z"/>
+  <circle class="accent" cx="30" cy="41" r="2"/>
+  <rect class="outline" x="42" y="28" width="10" height="20" rx="3"/>
+  <path class="accent" d="M42 25h10v5H42z"/>
+
+</svg>

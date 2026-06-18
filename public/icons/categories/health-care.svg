@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Health Care</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M32 8l20 8v12c0 14-8 23-20 28C20 51 12 42 12 28V16l20-8z"/>
+  <path class="accent" d="M28 21h8v8h8v8h-8v8h-8v-8h-8v-8h8z"/>
+  <path class="outline" d="M42 36c7 1 10 5 8 10c-2 5-9 4-10-1"/>
+  <path class="outline" d="M40 45c0 3-2 5-5 5s-5-2-5-5"/>
+  <circle class="accent" cx="49" cy="47" r="2.5"/>
+
+</svg>

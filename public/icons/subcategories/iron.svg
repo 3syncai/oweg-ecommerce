@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Iron</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M14 39c0-10 7-18 20-18h9c4 0 7 3 7 7v11H14z"/>
+  <path class="outline" d="M21 21c0-6 4-10 10-10c3 0 6 2 8 4"/>
+  <path class="accent-stroke" d="M22 31h16"/>
+  <path class="accent" d="M18 39h26l-4 6H16z"/>
+
+</svg>

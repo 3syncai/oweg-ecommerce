@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Jars &amp; Containers</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <rect class="outline" x="12" y="18" width="16" height="30" rx="4"/>
+  <path class="outline" d="M15 14h10v4H15z"/>
+  <rect class="soft" x="36" y="14" width="16" height="34" rx="4"/>
+  <rect class="outline" x="36" y="14" width="16" height="34" rx="4"/>
+  <path class="outline" d="M39 10h10v4H39z"/>
+  <path class="accent-stroke" d="M18 26v14M44 24v16"/>
+
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Mop</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M36 10l4 4l-18 18l-4-4z"/>
+  <path class="outline" d="M19 31l10 10"/>
+  <path class="accent" d="M14 42c4-2 8-2 12 0l6 6c-8 4-16 4-24 0z"/>
+  <path class="accent-stroke" d="M16 48c6-2 12-2 18 0"/>
+
+</svg>

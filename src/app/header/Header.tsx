@@ -17,6 +17,8 @@ import {
 import OrderIcon from "@/components/ui/icons/OrderIcon";
 import CartIcon from "@/components/ui/icons/CartIcon";
 import LocationIcon from "@/components/ui/icons/LocationIcon";
+import CategoryIcon from "@/components/ui/icons/CategoryIcon";
+import CategoryMegaMenu from "@/components/modules/CategoryMegaMenu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { MedusaCategory } from "@/lib/medusa";
@@ -126,6 +128,12 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
 
 const getCategoryHref = (handle?: string) =>
   handle ? `/c/${encodeURIComponent(handle)}` : "#";
+
+const isCategoryActive = (pathname: string | null, handle?: string) => {
+  if (!pathname || !handle) return false;
+  const href = getCategoryHref(handle);
+  return pathname === href || pathname.startsWith(`${href}/`);
+};
 
 const Header: React.FC = () => {
   const { count: cartCount, refresh: refreshCart } = useCartSummary();
@@ -526,6 +534,12 @@ const Header: React.FC = () => {
   // timers to control delayed hide (prevents disappearing while moving mouse)
   const hideTimerRef = React.useRef<number | null>(null);
   const allHideTimerRef = React.useRef<number | null>(null);
+  const categoryActivateTimerRef = React.useRef<number | null>(null);
+  const activeCategoryIdRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    activeCategoryIdRef.current = activeCategoryId;
+  }, [activeCategoryId]);
 
   // For re-positioning on resize/scroll
   const [, forceRerender] = React.useState(0);
@@ -541,11 +555,17 @@ const Header: React.FC = () => {
     };
   }, []);
 
-  // Cleanup profile menu timer on unmount
+  // Cleanup menu timers on unmount
   React.useEffect(() => {
     return () => {
       if (profileMenuTimerRef.current) {
         clearTimeout(profileMenuTimerRef.current);
+      }
+      if (hideTimerRef.current) {
+        window.clearTimeout(hideTimerRef.current);
+      }
+      if (categoryActivateTimerRef.current) {
+        window.clearTimeout(categoryActivateTimerRef.current);
       }
     };
   }, []);
@@ -774,7 +794,7 @@ const Header: React.FC = () => {
     const minWidth = 220;
     const viewportRight = window.innerWidth - 16;
     const availableRight = Math.max(200, viewportRight - rect.left);
-    const width = Math.min(maxWidth, Math.max(minWidth, Math.min(availableRight, 420)));
+    const width = Math.min(maxWidth, Math.max(minWidth, availableRight));
     let left = rect.left;
     if (left + width + 16 > window.innerWidth) {
       left = Math.max(8, window.innerWidth - width - 16);
@@ -796,9 +816,33 @@ const Header: React.FC = () => {
       hideTimerRef.current = null;
     }
   }, []);
+
+  const clearCategoryActivateTimer = React.useCallback(() => {
+    if (categoryActivateTimerRef.current) {
+      window.clearTimeout(categoryActivateTimerRef.current);
+      categoryActivateTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleCategoryActivate = React.useCallback(
+    (categoryId: string) => {
+      clearCategoryActivateTimer();
+      if (activeCategoryIdRef.current === categoryId) return;
+
+      const category = allDesktopCategories.find((c) => c.id === categoryId);
+      if (!category || category.children.length === 0) return;
+
+      categoryActivateTimerRef.current = window.setTimeout(() => {
+        setActiveCategoryId(categoryId);
+        categoryActivateTimerRef.current = null;
+      }, 120);
+    },
+    [allDesktopCategories, clearCategoryActivateTimer]
+  );
+
   // increased default delay slightly so user moving mouse has buffer
   const startHideTimer = React.useCallback(
-    (delay = 350) => {
+    (delay = 400) => {
       clearHideTimer();
       hideTimerRef.current = window.setTimeout(() => setActiveCategoryId(null), delay);
     },
@@ -876,10 +920,10 @@ const Header: React.FC = () => {
   // Dropdown portal for active category
   const CategoryPortal: React.FC = () => {
     if (!activeCategoryId) return null;
-    const active = navCategories.find((c) => c.id === activeCategoryId);
+    const active = allDesktopCategories.find((c) => c.id === activeCategoryId);
     if (!active || !mountedRef.current) return null;
     const trigger = triggersRef.current[activeCategoryId] ?? null;
-    const style = computeDropdownStyle(trigger, 360);
+    const style = computeDropdownStyle(trigger, 680);
 
     return createPortal(
       <div
@@ -889,36 +933,23 @@ const Header: React.FC = () => {
       >
         <div
           // actual visible panel handles hover/focus
-          onMouseEnter={() => clearHideTimer()}
+          onMouseEnter={() => {
+            clearCategoryActivateTimer();
+            clearHideTimer();
+          }}
           onMouseLeave={() => startHideTimer()}
           style={{
             ...style,
             pointerEvents: "auto",
-            maxHeight: "420px",
+            maxHeight: "480px",
           }}
-          className="rounded-xl bg-white shadow-2xl ring-1 ring-black/5 p-3 border border-gray-100 transition-transform duration-160"
+          className="relative rounded-xl bg-white shadow-2xl ring-1 ring-black/5 p-3 border border-gray-100 transition-transform duration-160 before:content-[''] before:absolute before:-top-3.5 before:left-0 before:right-0 before:h-3.5"
           role="menu"
         >
-          {/* scrollable area */}
-          <div
-            className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-3 pr-1 scrollbar-hide"
-            style={{
-              maxHeight: "360px",
-              overflowY: "auto",
-            }}
-            onWheel={handleMenuWheel}
-          >
-            {active.children.map((sub) => (
-              <Link
-                key={sub.id}
-                href={getCategoryHref(sub.handle)}
-                className="rounded-md px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 transition block"
-                onClick={() => setActiveCategoryId(null)}
-              >
-                {sub.title}
-              </Link>
-            ))}
-          </div>
+          <CategoryMegaMenu
+            category={active}
+            onClose={() => setActiveCategoryId(null)}
+          />
         </div>
       </div>,
       document.body
@@ -968,8 +999,11 @@ const Header: React.FC = () => {
                   className="flex items-center justify-between px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 transition"
                   onClick={() => setAllOpen(false)}
                 >
-                  <span>{cat.title}</span>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    <CategoryIcon handle={cat.handle} title={cat.title} className="w-5 h-5" />
+                    <span className="truncate">{cat.title}</span>
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
                 </Link>
               ))
             ) : (
@@ -1559,7 +1593,7 @@ const Header: React.FC = () => {
                                 aria-expanded={allOpen}
                                 type="button"
                               >
-                                <Menu className="w-4 h-4" />
+                                <CategoryIcon iconKey="more" active={allOpen} className="w-5 h-5" />
                                 <span>More</span>
                               </button>
                             </div>
@@ -1567,6 +1601,7 @@ const Header: React.FC = () => {
                         }
 
                         const categoryHref = getCategoryHref(cat.handle);
+                        const categoryActive = isCategoryActive(pathname, cat.handle);
                         return (
                           <div
                             key={cat.id}
@@ -1575,9 +1610,12 @@ const Header: React.FC = () => {
                             onMouseEnter={() => {
                               clearHideTimer();
                               setAllOpen(false);
-                              setActiveCategoryId(cat.id);
+                              scheduleCategoryActivate(cat.id);
                             }}
-                            onMouseLeave={() => startHideTimer()}
+                            onMouseLeave={() => {
+                              clearCategoryActivateTimer();
+                              startHideTimer();
+                            }}
                           >
                             <Link
                               href={categoryHref}
@@ -1587,6 +1625,12 @@ const Header: React.FC = () => {
                                 setSelectedFilter({ type: "category", title: cat.title, handle: cat.handle });
                               }}
                             >
+                              <CategoryIcon
+                                handle={cat.handle}
+                                title={cat.title}
+                                active={categoryActive || activeCategoryId === cat.id}
+                                className="w-5 h-5"
+                              />
                               <span className="truncate">{cat.title}</span>
                               <ChevronDown
                                 className={`hidden md:inline-block w-3.5 h-3.5 text-header-muted transition-transform duration-200 group-hover:text-header-accent ${

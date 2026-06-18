@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Kettle</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M18 24h22c4 0 8 4 8 10c0 8-6 16-19 16S10 42 10 34c0-6 4-10 8-10z"/>
+  <path class="outline" d="M23 18c0-4 3-7 7-7"/>
+  <path class="outline" d="M40 26h6c3 0 5 2 5 5s-2 5-5 5h-4"/>
+  <path class="accent" d="M18 24h10v5H18z"/>
+  <path class="accent-stroke" d="M22 34h10"/>
+
+</svg>
