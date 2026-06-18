@@ -513,6 +513,11 @@ const MegaMenuBannersPage = () => {
                     />
                     <Text size="small">Open in new tab</Text>
                   </div>
+                  <Text size="xsmall" className="text-ui-fg-subtle">
+                    Always opens in a new browser tab, including when the customer uses the
+                    installed desktop app. Reinstall the app after updates if behavior does not
+                    change.
+                  </Text>
                 </div>
               </div>
               <div className="mt-4 flex flex-col gap-2">
