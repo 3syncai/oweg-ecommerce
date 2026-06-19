@@ -22,6 +22,11 @@ import {
   type RazorpaySuccessResponse,
 } from "@/lib/razorpay-custom-client";
 import { getSiteOrigin } from "@/lib/razorpay";
+import {
+  clearStaleBuyNowSnapshot,
+  getCheckoutFailedPath,
+  getCheckoutSuccessPath,
+} from "@/lib/checkout-redirects";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 
 type CartItem = {
@@ -75,8 +80,8 @@ type CustomerAddress = {
   is_default_billing?: boolean;
 };
 
-const RAZORPAY_SUCCESS = process.env.NEXT_PUBLIC_PAYMENT_SUCCESS_URL || "/order/success";
-const RAZORPAY_FAILED = process.env.NEXT_PUBLIC_PAYMENT_FAILED_URL || "/order/failed";
+const RAZORPAY_SUCCESS = getCheckoutSuccessPath();
+const RAZORPAY_FAILED = getCheckoutFailedPath();
 
 function razorpayAmountToMinor(amount: number, fallbackRupees: number): number {
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -820,6 +825,12 @@ function CheckoutPageInner() {
     const stored = localStorage.getItem("guest_cart_id");
     if (stored) setGuestCartId(stored);
 
+    if (!isBuyNow) {
+      clearStaleBuyNowSnapshot();
+      setBuyNowItem(null);
+      return;
+    }
+
     const buyNowRaw = localStorage.getItem("buy_now_item");
     if (buyNowRaw) {
       try {
@@ -848,7 +859,7 @@ function CheckoutPageInner() {
         priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
       });
     }
-  }, [variantFromQuery, qtyFromQuery, priceFromQuery]);
+  }, [isBuyNow, variantFromQuery, qtyFromQuery, priceFromQuery]);
 
   useEffect(() => {
     const loadCart = async () => {
@@ -1248,6 +1259,18 @@ function CheckoutPageInner() {
       return;
     }
     autoCheckoutNoticeShownRef.current = false;
+
+    const missingShipping =
+      !shipping.email?.trim() ||
+      !shipping.firstName?.trim() ||
+      !shipping.address1?.trim() ||
+      !shipping.postalCode?.trim() ||
+      !shipping.phone?.trim();
+    if (missingShipping) {
+      toast.error("Complete shipping details before paying.");
+      return;
+    }
+
     // Validate presence of items before hitting backend
     const hasCartItems = (cart?.items?.length || 0) > 0;
     const hasBuyNowItem = isBuyNow && (buyNowItem || variantFromQuery);

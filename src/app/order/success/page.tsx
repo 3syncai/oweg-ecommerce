@@ -131,7 +131,7 @@ function OrderSuccessPageInner() {
   }
 
   useEffect(() => {
-    if (!orderId || !isConfirmingFlow) return;
+    if (!orderId || !isConfirmingFlow || !isCodCheckout) return;
     let cancelled = false;
 
     (async () => {
@@ -147,7 +147,7 @@ function OrderSuccessPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [orderId, isConfirmingFlow, router]);
+  }, [orderId, isConfirmingFlow, isCodCheckout, router]);
 
   useEffect(() => {
     if (!orderId || !isConfirmingFlow || isCodCheckout) return;

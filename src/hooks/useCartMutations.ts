@@ -11,6 +11,7 @@ import {
 } from "@/lib/notifications";
 import { useRouter } from "next/navigation";
 import { getGuestCartId, setGuestCartId } from "@/lib/guest-cart";
+import { clearStaleBuyNowSnapshot } from "@/lib/checkout-redirects";
 import { useAuth } from "@/contexts/AuthProvider";
 
 type AddToCartParams = {
@@ -106,6 +107,7 @@ export function useAddToCartWithNotification(productName?: string) {
     notifyCartAddSuccess(label, 1, () => router.push("/cart"));
 
     try {
+      clearStaleBuyNowSnapshot();
       return await addToCart.mutateAsync({ variant_id, quantity: 1 });
     } catch (err) {
       const message =
