@@ -35,11 +35,7 @@ export async function GET(req: NextRequest) {
     if (!meRes.ok) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const meData = await meRes.json().catch(() => ({}));
-    const customerId =
-      (meData as { customer?: { id?: string } }).customer?.id ||
-      (meData as { id?: string }).id ||
-      undefined;
+    await meRes.json().catch(() => ({}));
 
     const url = new URL(req.url);
     const limitParam = Number(url.searchParams.get("limit") || 20);

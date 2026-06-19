@@ -34,6 +34,8 @@ type OrderSummary = {
   metadata?: Record<string, unknown>;
 };
 
+type OrderLineItem = NonNullable<OrderSummary["items"]>[number];
+
 const INR = new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",
@@ -325,7 +327,7 @@ function OrderSuccessPageInner() {
     return INR.format(codOrder ? rawTotal : rawTotal / 100);
   }
 
-  function formatItemAmount(item: OrderSummary["items"] extends Array<infer T> ? T : never) {
+  function formatItemAmount(item: OrderLineItem) {
     if (!item) return "N/A";
     const qty = Math.max(1, Number(item.quantity) || 1);
     const unitPrice = typeof item.unit_price === "number" ? item.unit_price : undefined;

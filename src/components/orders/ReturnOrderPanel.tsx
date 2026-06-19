@@ -120,7 +120,7 @@ function ReasonOption({
 }: {
   title: string;
   description: string;
-  icon: ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   selected: boolean;
   onSelect: () => void;
 }) {

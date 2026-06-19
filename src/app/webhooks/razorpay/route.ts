@@ -61,24 +61,6 @@ function asRecordArray(value: unknown): UnknownRecord[] {
     .filter((v): v is UnknownRecord => Boolean(v));
 }
 
-function extractOrder(data: unknown): MedusaOrder | null {
-  const record = asRecord(data);
-  if (!record) return null;
-  const direct = asRecord(record.order);
-  if (direct) return direct as MedusaOrder;
-  const nested = record.data;
-  if (nested) {
-    if (Array.isArray(nested) && nested.length && asRecord(nested[0])) {
-      return nested[0] as MedusaOrder;
-    }
-    const nestedRecord = asRecord(nested);
-    if (nestedRecord?.order && typeof nestedRecord.order === "object") {
-      return nestedRecord.order as MedusaOrder;
-    }
-  }
-  return record as MedusaOrder;
-}
-
 function extractMessage(data: unknown): string | null {
   const record = asRecord(data);
   if (record) {

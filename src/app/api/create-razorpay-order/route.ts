@@ -19,22 +19,6 @@ type MedusaOrder = {
   total?: number;
 };
 
-function extractOrder(data: unknown): MedusaOrder | null {
-  if (!data || typeof data !== "object") return null;
-  const root = data as Record<string, unknown>;
-  const direct = root.order;
-  if (direct && typeof direct === "object") return direct as MedusaOrder;
-  const nested = root.data;
-  if (nested && typeof nested === "object") {
-    const nestedOrder = (nested as Record<string, unknown>).order;
-    if (nestedOrder && typeof nestedOrder === "object") return nestedOrder as MedusaOrder;
-    if (Array.isArray(nested) && nested[0] && typeof nested[0] === "object") {
-      return nested[0] as MedusaOrder;
-    }
-  }
-  return root as MedusaOrder;
-}
-
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
 }

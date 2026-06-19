@@ -99,7 +99,6 @@ export async function POST(req: NextRequest) {
         let code = ""
         for (let attempt = 0; attempt < 10; attempt++) {
             const candidate = `OWG${randomCode(5)}`
-            // eslint-disable-next-line no-await-in-loop
             if (await isCodeUnique(candidate)) {
                 code = candidate
                 break
