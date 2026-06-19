@@ -378,7 +378,7 @@ export default function DebugControllerDashboard() {
           <div className="grid md:grid-cols-2 gap-3">
             <ToggleRow
               label="Disable right click"
-              description="Blocks context menu across the storefront"
+              description="Blocks context menu, DevTools shortcuts, and hides page when Inspect is open"
               checked={Boolean(settings?.disableRightClick)}
               onChange={(value) => patchSettings({ disableRightClick: value })}
             />
@@ -390,7 +390,7 @@ export default function DebugControllerDashboard() {
             />
             <ToggleRow
               label="Block DevTools shortcuts"
-              description="Blocks F12 and common inspect shortcuts"
+              description="Blocks F12, View Source, and Inspect shortcuts; hides page when DevTools is open"
               checked={Boolean(settings?.disableDevToolsShortcuts)}
               onChange={(value) =>
                 patchSettings({ disableDevToolsShortcuts: value })
