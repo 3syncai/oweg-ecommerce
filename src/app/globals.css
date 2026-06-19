@@ -24,6 +24,12 @@ body {
   overflow-x: hidden;
 }
 
+html.debug-no-select,
+html.debug-no-select * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   html,
   body,
