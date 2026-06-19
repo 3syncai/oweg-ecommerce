@@ -12,8 +12,10 @@ import CartProvider from "@/contexts/CartProvider";
 import AuthProvider from "@/contexts/AuthProvider";
 import AppToaster from "@/components/ui/app-toaster";
 import AffiliateRefCapture from "@/components/AffiliateRefCapture";
-import FloatingWhatsAppWidget from "@/components/common/FloatingWhatsAppWidget";
 import SmoothScroll from "@/components/SmoothScroll";
+import { DebugControllerProvider } from "@/components/debug-controller/DebugControllerProvider";
+import SiteProtections from "@/components/debug-controller/SiteProtections";
+import ConditionalWhatsAppWidget from "@/components/debug-controller/ConditionalWhatsAppWidget";
 
 export const metadata: Metadata = {
   title: {
@@ -51,32 +53,35 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <Providers>
-          <AuthProvider>
-            <CartProvider>
-              <SmoothScroll />
-              <ServiceWorkerRegister />
-              <Suspense fallback={null}>
-                <AffiliateRefCapture />
-              </Suspense>
+          <DebugControllerProvider>
+            <AuthProvider>
+              <CartProvider>
+                <SmoothScroll />
+                <ServiceWorkerRegister />
+                <Suspense fallback={null}>
+                  <AffiliateRefCapture />
+                </Suspense>
 
-              <div className="min-h-screen flex flex-col">
-                <Header />
+                <div className="min-h-screen flex flex-col">
+                  <SiteProtections />
+                  <Header />
 
-                <main
-                  className="flex-1 pb-24 md:pb-0"
-                  style={{ paddingTop: "var(--app-header-height, 136px)" }}
-                >
-                  {children}
-                </main>
+                  <main
+                    className="flex-1 pb-24 md:pb-0"
+                    style={{ paddingTop: "var(--app-header-height, 136px)" }}
+                  >
+                    {children}
+                  </main>
 
-                <Footer />
-                <MobileBottomNav />
-                <FloatingWhatsAppWidget />
-              </div>
+                  <Footer />
+                  <MobileBottomNav />
+                  <ConditionalWhatsAppWidget />
+                </div>
 
-              <AppToaster />
-            </CartProvider>
-          </AuthProvider>
+                <AppToaster />
+              </CartProvider>
+            </AuthProvider>
+          </DebugControllerProvider>
         </Providers>
       </body>
     </html>

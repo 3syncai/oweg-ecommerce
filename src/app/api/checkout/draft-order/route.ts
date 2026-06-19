@@ -23,6 +23,7 @@ import {
 } from "@/lib/oweg10";
 import { syncOrderTaxInclusivePricing } from "@/lib/order-discount";
 import { createRazorpayOrder, getPublicRazorpayKey } from "@/lib/razorpay";
+import { getCheckoutGuardResponse } from "@/lib/debug-controller/guards";
 
 export const dynamic = "force-dynamic";
 
@@ -261,6 +262,9 @@ async function getAuthenticatedCustomer(cookieHeader?: string) {
 }
 
 export async function POST(req: Request) {
+  const checkoutGuard = await getCheckoutGuardResponse();
+  if (checkoutGuard) return checkoutGuard;
+
   let oweg10ReservationToken: string | null = null;
   let oweg10CustomerId: string | null = null;
   let oweg10Consumed = false;

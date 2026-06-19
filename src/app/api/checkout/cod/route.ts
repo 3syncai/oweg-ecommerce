@@ -6,6 +6,7 @@ import { OWEG10_CODE } from "@/lib/oweg10-shared";
 import { consumeOweg10Reservation, syncOweg10ConsumedCustomerMetadata } from "@/lib/oweg10";
 import { logPendingCoinsForOrder } from "@/lib/customer-affiliate-coins";
 import { getPool } from "@/lib/wallet-ledger";
+import { getCheckoutGuardResponse } from "@/lib/debug-controller/guards";
 
 export const dynamic = "force-dynamic";
 
@@ -216,6 +217,9 @@ function scheduleCodSideEffects(finalOrderId: string, metadata: Record<string, u
 }
 
 export async function POST(req: Request) {
+  const checkoutGuard = await getCheckoutGuardResponse();
+  if (checkoutGuard) return checkoutGuard;
+
   try {
     const body = (await req.json().catch(() => ({}))) as Body;
     let medusaOrderId = body.medusaOrderId?.trim();

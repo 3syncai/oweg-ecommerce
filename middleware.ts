@@ -1,11 +1,56 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { isSafeRedirect } from "@/lib/auth-redirect"
+import { getDebugControllerSettings } from "@/lib/debug-controller/settings"
 
 const GUARDED_AUTH_ROUTES = new Set(["/login", "/signup"])
+const MAINTENANCE_BYPASS = new Set([
+  "/maintenance",
+  "/debug-controller-4719",
+])
+
+function isMaintenanceBypass(pathname: string) {
+  if (MAINTENANCE_BYPASS.has(pathname)) return true
+  if (pathname.startsWith("/api/debug-controller")) return true
+  if (pathname.startsWith("/api/medusa/auth")) return true
+  if (pathname.startsWith("/_next")) return true
+  if (pathname.startsWith("/favicon")) return true
+  return false
+}
 
 export async function middleware(req: NextRequest) {
   const { pathname, origin, searchParams } = req.nextUrl
+
+  if (!isMaintenanceBypass(pathname)) {
+    try {
+      const settings = await getDebugControllerSettings()
+      if (settings.siteStatus === "maintenance") {
+        const url = req.nextUrl.clone()
+        url.pathname = "/maintenance"
+        url.search = ""
+        return NextResponse.redirect(url)
+      }
+
+      if (pathname === "/signup" && !settings.enableRegistration) {
+        const url = req.nextUrl.clone()
+        url.pathname = "/login"
+        url.searchParams.set("registration", "disabled")
+        return NextResponse.redirect(url)
+      }
+
+      if (
+        (pathname === "/checkout" || pathname.startsWith("/checkout/")) &&
+        (!settings.enableCheckout || settings.siteStatus === "read_only")
+      ) {
+        const url = req.nextUrl.clone()
+        url.pathname = "/cart"
+        url.searchParams.set("checkout", "disabled")
+        return NextResponse.redirect(url)
+      }
+    } catch {
+      // If settings cannot be loaded, allow traffic through
+    }
+  }
 
   if (!GUARDED_AUTH_ROUTES.has(pathname)) {
     return NextResponse.next()
@@ -54,5 +99,10 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/login", "/signup"],
+  matcher: [
+    "/login",
+    "/signup",
+    "/checkout/:path*",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 }
