@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import ReturnModuleService from "../../../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../../../modules/returns"
+import { syncOrderReturnMetadata } from "../../../../../services/sync-order-return-metadata"
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const { id } = req.params
@@ -14,6 +15,16 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     return res.status(400).json({ message: "Refund can be marked only after pickup." })
   }
   const updated = await returnService.markRefunded(id)
+
+  if (updated?.order_id) {
+    await syncOrderReturnMetadata(req.scope, updated.order_id, {
+      id: updated.id,
+      type: updated.type,
+      status: updated.status,
+      reason: updated.reason,
+      created_at: updated.created_at,
+    })
+  }
 
   // Trigger wallet coin reversal in storefront app
   try {

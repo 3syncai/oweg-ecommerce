@@ -4,13 +4,16 @@
 
 import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
-import { convertDraftOrder, createDraftOrder, readStoreCart, updateOrderMetadata } from "@/lib/medusa-admin";
+import { createDraftOrder, readStoreCart } from "@/lib/medusa-admin";
+import {
+  runPostConvertCheckoutSideEffects,
+  updateCheckoutOrderMetadata,
+} from "@/lib/checkout-order";
 import { medusaStoreFetch } from "@/lib/medusa-auth";
 import { calculateOweg10Discount, OWEG10_CODE } from "@/lib/oweg10-shared";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 import { cartLineAmountRupees } from "@/lib/cart-helpers";
 import { applyFlashSalePricesToCart } from "@/lib/flash-sale-cart-mapper";
-import { applyCoinDiscountToOrder, syncOrderShippingAmount } from "@/lib/order-discount";
 import { findSpendByReference } from "@/lib/wallet-ledger";
 import {
   consumeOweg10Reservation,
@@ -18,6 +21,7 @@ import {
   reserveOweg10,
   syncOweg10ConsumedCustomerMetadata,
 } from "@/lib/oweg10";
+import { syncOrderTaxInclusivePricing } from "@/lib/order-discount";
 import { createRazorpayOrder, getPublicRazorpayKey } from "@/lib/razorpay";
 
 export const dynamic = "force-dynamic";
@@ -535,6 +539,17 @@ export async function POST(req: Request) {
 
     const finalTotal = Math.max(0, itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees);
 
+    try {
+      await syncOrderTaxInclusivePricing(medusaOrderId, {
+        expectedGrandTotal: finalTotal,
+        shippingRupees: shippingCharge,
+        coinDiscountRupees,
+        oweg10DiscountRupees,
+      });
+    } catch (taxErr) {
+      console.warn("Failed to sync tax-inclusive pricing on draft order:", taxErr);
+    }
+
     // COD fast path: return after draft creation (~1 API call). Convert + confirm runs on success page.
     if (paymentMethod === "cod") {
       return NextResponse.json({
@@ -552,39 +567,9 @@ export async function POST(req: Request) {
     let converted = false;
     let conversionError: string | null = null;
 
+    // Razorpay stays as draft until payment succeeds. COD converts on confirm.
     if (paymentMethod === "razorpay") {
-      try {
-        const [convertedRes, spend] = await Promise.all([
-          convertDraftOrder(draftOrder.id),
-          coinDiscountRupees <= 0 && body.coinDiscountCode && cartCustomerId
-            ? findSpendByReference({
-                customerId: cartCustomerId,
-                referenceId: body.coinDiscountCode,
-              }).catch(() => null)
-            : Promise.resolve(null),
-        ]);
-
-        if (spend && coinDiscountRupees <= 0) {
-          coinDiscountRupees = spend.amountMinor / 100;
-        }
-
-        if (convertedRes.ok) {
-          const convertedOrder = convertedRes.data ? extractOrder(convertedRes.data) : null;
-          if (convertedOrder?.id) {
-            medusaOrderId = convertedOrder.id;
-            // If converted order has correct total, use it. Otherwise keep optimistic.
-            if (convertedOrder.total && convertedOrder.total >= expectedTotal) medusaTotal = convertedOrder.total;
-            converted = true;
-          } else {
-            conversionError = "convertDraftOrder returned no order id";
-          }
-        } else {
-          conversionError = extractMessage(convertedRes.data) || `convertDraftOrder failed (${convertedRes.status})`;
-        }
-      } catch (err) {
-        conversionError = `convertDraftOrder threw for ${draftOrder.id} (${paymentMethod})`;
-        console.error(conversionError, err);
-      }
+      converted = false;
     }
 
     // Ledger fallback when frontend did not send coin amount
@@ -618,29 +603,29 @@ export async function POST(req: Request) {
       payableRupees: finalTotalAfterLookup,
     });
 
-    if (medusaOrderId) {
+    if (medusaOrderId && converted) {
       try {
-        await syncOrderShippingAmount(medusaOrderId, shippingCharge);
+        await runPostConvertCheckoutSideEffects(medusaOrderId, {
+          expected_shipping_price: shippingCharge,
+          coin_discount_rupees: coinDiscountRupees,
+          coins_discounted: coinDiscountRupees,
+        });
       } catch (err) {
-        console.warn("Failed to sync shipping amount on order:", err);
+        console.warn("Failed to sync post-convert checkout side effects:", err);
       }
     }
 
     if (coinDiscountRupees > 0 && medusaOrderId) {
       try {
-        await updateOrderMetadata(medusaOrderId, {
+        await updateCheckoutOrderMetadata(medusaOrderId, !converted, {
           coin_discount_code: body.coinDiscountCode || null,
           coin_discount_minor: Math.round(coinDiscountRupees * 100),
           coin_discount_rupees: coinDiscountRupees,
           coin_discount_applied: `₹${coinDiscountRupees.toFixed(2)} OWEG Coins`,
           coins_discounted: coinDiscountRupees,
         });
-        await applyCoinDiscountToOrder({
-          orderId: medusaOrderId,
-          discountMinor: Math.round(coinDiscountRupees * 100),
-        });
       } catch (err) {
-        console.warn("Failed to apply coin discount on order:", err);
+        console.warn("Failed to persist coin discount metadata:", err);
       }
     }
 
@@ -666,7 +651,7 @@ export async function POST(req: Request) {
       oweg10Consumed = true;
 
       try {
-        await updateOrderMetadata(medusaOrderId, {
+        await updateCheckoutOrderMetadata(medusaOrderId, !converted, {
           oweg10_code: OWEG10_CODE,
           oweg10_discount_minor: Math.round(oweg10DiscountRupees * 100),
           oweg10_discount_rupees: oweg10DiscountRupees,
@@ -706,7 +691,7 @@ export async function POST(req: Request) {
           { amountIsPaise: false }
         );
 
-        await updateOrderMetadata(medusaOrderId, {
+        await updateCheckoutOrderMetadata(medusaOrderId, !converted, {
           razorpay_order_id: rzpOrder.id,
           razorpay_payment_status: "created",
         });

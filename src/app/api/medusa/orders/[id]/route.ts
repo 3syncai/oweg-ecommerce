@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminFetch, getOrderById } from "@/lib/medusa-admin";
 import { medusaStoreFetch } from "@/lib/medusa-auth";
+import {
+  enrichOrderWithSummaryTotals,
+  normalizeOrderForCustomer,
+} from "@/lib/order-display-totals";
 
 type MedusaOrder = Record<string, unknown>;
 
@@ -51,46 +55,6 @@ function ownsOrder(order: MedusaOrder, customerId?: string, customerEmail?: stri
   }
 
   return false;
-}
-
-function normalizeOrder(order: MedusaOrder): MedusaOrder {
-  const metadata = (order.metadata && typeof order.metadata === "object"
-    ? order.metadata
-    : {}) as Record<string, unknown>;
-
-  const items = Array.isArray(order.items)
-    ? order.items.map((item) => {
-        const record = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
-        return {
-          id: record.id,
-          title: (record.title as string) || (record.product_title as string),
-          quantity: record.quantity,
-          unit_price: record.unit_price,
-          total: record.total,
-          thumbnail: (record.thumbnail as string) || (record.image_url as string),
-        };
-      })
-    : [];
-
-  const razorpayStatus =
-    typeof metadata.razorpay_payment_status === "string" ? metadata.razorpay_payment_status : undefined;
-  const paymentMethod =
-    typeof metadata.payment_method === "string" ? metadata.payment_method.toLowerCase() : "";
-  const codStatus = typeof metadata.cod_status === "string" ? metadata.cod_status.toLowerCase() : "";
-
-  let payment_status = typeof order.payment_status === "string" ? order.payment_status : undefined;
-  if (razorpayStatus === "captured") {
-    payment_status = "paid";
-  } else if (paymentMethod === "cod" || razorpayStatus === "cod" || codStatus === "confirmed") {
-    payment_status = payment_status || "pending";
-  }
-
-  return {
-    ...order,
-    payment_status,
-    items,
-    metadata,
-  };
 }
 
 async function loadOrderFromAdmin(orderId: string): Promise<MedusaOrder | null> {
@@ -154,7 +118,17 @@ export async function GET(req: NextRequest, ctx: { params: { id: string } | Prom
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    return NextResponse.json({ order: normalizeOrder(order) });
+    const adminRes = await getOrderById(orderId);
+    if (adminRes.ok && adminRes.data) {
+      const adminOrder = extractOrder(adminRes.data);
+      if (adminOrder?.summary) {
+        order = { ...order, summary: adminOrder.summary };
+      }
+    }
+
+    order = await enrichOrderWithSummaryTotals(order);
+
+    return NextResponse.json({ order: normalizeOrderForCustomer(order) });
   } catch {
     return NextResponse.json({ error: "Unexpected error loading order" }, { status: 500 });
   }

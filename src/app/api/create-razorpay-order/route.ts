@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createRazorpayOrder, getPublicRazorpayKey } from "@/lib/razorpay";
-import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
+import { loadCheckoutOrder, updateCheckoutOrderMetadata } from "@/lib/checkout-order";
 import { getPool } from "@/lib/wallet-ledger";
 
 export const dynamic = "force-dynamic";
@@ -72,36 +72,11 @@ export async function POST(req: Request) {
 
     let order: MedusaOrder | null = null;
 
-    const orderRes = await getOrderById(medusaOrderId);
-    if (orderRes.status === 0) {
-      return NextResponse.json(
-        { error: "Medusa admin backend is temporarily unavailable. Please retry." },
-        { status: 503 }
-      );
-    }
-    if (orderRes.ok && orderRes.data && extractOrder(orderRes.data)) {
-      order = extractOrder(orderRes.data);
-    } else {
-      // If we only have a draft id, convert it so Razorpay can reference a real order
-      const converted = await convertDraftOrder(medusaOrderId);
-      if (converted.status === 0) {
-        return NextResponse.json(
-          { error: "Medusa admin backend is temporarily unavailable. Please retry." },
-          { status: 503 }
-        );
-      }
-      if (converted.ok) {
-        const convertedOrder = extractOrder(converted.data);
-        if (convertedOrder?.id) {
-          medusaOrderId = convertedOrder.id;
-          order = convertedOrder;
-        }
-      }
-    }
-
-    if (!order) {
+    const loaded = await loadCheckoutOrder(medusaOrderId);
+    if (!loaded) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
+    order = loaded.order as MedusaOrder;
 
     const currency = (order.currency_code || DEFAULT_CURRENCY).toString().toUpperCase();
     const orderTotalRupees = Number.isFinite(Number(order.total ?? 0)) ? Number(order.total ?? 0) : 0;
@@ -159,7 +134,7 @@ export async function POST(req: Request) {
       razorpay_payment_status: "created",
     };
 
-    await updateOrderMetadata(medusaOrderId, nextMetadata);
+    await updateCheckoutOrderMetadata(medusaOrderId, loaded.isDraft, nextMetadata);
 
     return NextResponse.json({
       orderId: rzpOrder.id,

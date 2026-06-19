@@ -30,8 +30,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     throw new MedusaError(MedusaErrorTypes.UNAUTHORIZED, "Order does not belong to customer.")
   }
 
-  const metadata = order.metadata || {}
-  const shiprocketStatus = String((metadata as any).shiprocket_status || "").toLowerCase()
+  const metadata = { ...(order.metadata || {}) } as Record<string, unknown>
+  const shiprocketStatus = String(metadata.shiprocket_status || "").toLowerCase()
   const fulfillment = String(orderAny?.fulfillment_status || "").toLowerCase()
 
   if (BLOCKED_SHIPROCKET.has(shiprocketStatus) || fulfillment === "shipped" || fulfillment === "delivered") {
@@ -41,16 +41,20 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     )
   }
 
-  const shiprocketOrderId = (metadata as any).shiprocket_order_id
+  const body = (req.body || {}) as { reason?: unknown }
+  const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 180) : ""
+  if (reason.length < 3) {
+    throw new MedusaError(MedusaErrorTypes.INVALID_DATA, "Cancellation reason is required.")
+  }
+
+  const shiprocketOrderId = metadata.shiprocket_order_id
   if (shiprocketOrderId) {
     try {
       const shiprocket = new ShiprocketService()
       await shiprocket.cancelOrders([String(shiprocketOrderId)])
+      metadata.shiprocket_status = "cancelled"
       await orderModuleService.updateOrders(order.id, {
-        metadata: {
-          ...metadata,
-          shiprocket_status: "cancelled",
-        },
+        metadata,
       })
     } catch (error: any) {
       throw new MedusaError(
@@ -65,6 +69,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       order_id: order.id,
       canceled_by: authContext.actor_id,
     },
+  })
+
+  metadata.cancellation_reason = reason
+  metadata.cancellation_requested_at = new Date().toISOString()
+  metadata.cancellation_requested_by = authContext.actor_id
+
+  await orderModuleService.updateOrders(order.id, {
+    metadata,
   })
 
   return res.json({ success: true })

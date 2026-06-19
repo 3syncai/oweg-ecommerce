@@ -124,8 +124,19 @@ export async function getOrderById(orderId: string) {
   return adminFetch(`/admin/orders/${encodeURIComponent(orderId)}`);
 }
 
+export async function getDraftOrderById(orderId: string) {
+  return adminFetch(`/admin/draft-orders/${encodeURIComponent(orderId)}`);
+}
+
 export async function updateOrderMetadata(orderId: string, metadata: Record<string, unknown>) {
   return adminFetch(`/admin/orders/${encodeURIComponent(orderId)}`, {
+    method: "POST",
+    body: JSON.stringify({ metadata }),
+  });
+}
+
+export async function updateDraftOrderMetadata(orderId: string, metadata: Record<string, unknown>) {
+  return adminFetch(`/admin/draft-orders/${encodeURIComponent(orderId)}`, {
     method: "POST",
     body: JSON.stringify({ metadata }),
   });

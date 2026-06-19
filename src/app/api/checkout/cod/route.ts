@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
-import { applyCoinDiscountToOrder, syncOrderShippingAmount } from "@/lib/order-discount";
+import { applyCoinDiscountToOrder, syncOrderShippingAmount, syncOrderTaxInclusivePricing } from "@/lib/order-discount";
 import { finalizeCoinSpendForOrder } from "@/lib/wallet-coin-order";
 import { OWEG10_CODE } from "@/lib/oweg10-shared";
 import { consumeOweg10Reservation, syncOweg10ConsumedCustomerMetadata } from "@/lib/oweg10";
@@ -71,6 +71,27 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 5000
 }
 
 async function runCodSideEffects(finalOrderId: string, metadata: Record<string, unknown>) {
+  try {
+    const coinDiscountRupees =
+      typeof metadata.coin_discount_rupees === "number"
+        ? metadata.coin_discount_rupees
+        : typeof metadata.coins_discounted === "number"
+          ? metadata.coins_discounted
+          : 0;
+    const oweg10DiscountRupees =
+      typeof metadata.oweg10_discount_rupees === "number" ? metadata.oweg10_discount_rupees : 0;
+    const expectedShipping =
+      typeof metadata.expected_shipping_price === "number" ? metadata.expected_shipping_price : undefined;
+
+    await syncOrderTaxInclusivePricing(finalOrderId, {
+      shippingRupees: expectedShipping,
+      coinDiscountRupees,
+      oweg10DiscountRupees,
+    });
+  } catch (taxErr) {
+    console.error("cod post-process: tax-inclusive sync failed", taxErr);
+  }
+
   try {
     const coinMinor =
       typeof metadata.coin_discount_minor === "number"
