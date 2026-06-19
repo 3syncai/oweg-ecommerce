@@ -30,6 +30,15 @@ html.debug-no-select * {
   user-select: none;
 }
 
+html.debug-devtools-blocked body {
+  overflow: hidden !important;
+}
+
+html.debug-devtools-blocked body > *:not(.debug-devtools-shield) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   html,
   body,
