@@ -86,6 +86,162 @@ export async function syncOrderShippingAmount(orderId: string, shippingRupees: n
   );
 }
 
+type TaxInclusiveSyncOptions = {
+  expectedGrandTotal?: number;
+  shippingRupees?: number;
+  coinDiscountRupees?: number;
+  oweg10DiscountRupees?: number;
+};
+
+/** OWEG prices are tax-inclusive. Remove Medusa's extra GST lines so admin totals match checkout. */
+export async function syncOrderTaxInclusivePricing(
+  orderId: string,
+  options: TaxInclusiveSyncOptions = {}
+) {
+  if (!orderId?.trim()) return { applied: false as const };
+
+  const pool = getPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    await client.query(
+      `UPDATE order_line_item oli
+       SET is_tax_inclusive = true,
+           updated_at = now()
+       FROM order_item oi
+       WHERE oi.order_id = $1
+         AND oi.item_id = oli.id
+         AND oi.deleted_at IS NULL
+         AND oli.deleted_at IS NULL`,
+      [orderId]
+    );
+
+    await client.query(
+      `UPDATE order_shipping_method osm
+       SET is_tax_inclusive = true,
+           updated_at = now()
+       FROM order_shipping os
+       WHERE os.order_id = $1
+         AND os.shipping_method_id = osm.id
+         AND osm.deleted_at IS NULL`,
+      [orderId]
+    );
+
+    await client.query(
+      `UPDATE order_line_item_tax_line t
+       SET deleted_at = now(),
+           updated_at = now()
+       FROM order_item oi
+       WHERE oi.order_id = $1
+         AND oi.item_id = t.item_id
+         AND t.deleted_at IS NULL`,
+      [orderId]
+    );
+
+    await client.query(
+      `UPDATE order_shipping_method_tax_line t
+       SET deleted_at = now(),
+           updated_at = now()
+       FROM order_shipping os
+       WHERE os.order_id = $1
+         AND os.shipping_method_id = t.shipping_method_id
+         AND t.deleted_at IS NULL`,
+      [orderId]
+    );
+
+    const summaryRes = await client.query(
+      `SELECT totals
+       FROM order_summary
+       WHERE order_id = $1
+       FOR UPDATE`,
+      [orderId]
+    );
+
+    if (summaryRes.rows[0]) {
+      const totals = (summaryRes.rows[0].totals || {}) as Record<string, unknown>;
+
+      let grandTotal = options.expectedGrandTotal;
+      if (!grandTotal || grandTotal <= 0) {
+        const itemsRes = await client.query(
+          `SELECT COALESCE(SUM(oli.unit_price::numeric * oi.quantity::numeric), 0) AS items_total
+           FROM order_item oi
+           JOIN order_line_item oli ON oi.item_id = oli.id
+           WHERE oi.order_id = $1
+             AND oi.deleted_at IS NULL
+             AND oli.deleted_at IS NULL`,
+          [orderId]
+        );
+
+        let shippingTotal = options.shippingRupees;
+        if (shippingTotal === undefined) {
+          const shipRes = await client.query(
+            `SELECT COALESCE(SUM(osm.amount::numeric), 0) AS shipping_total
+             FROM order_shipping os
+             JOIN order_shipping_method osm ON os.shipping_method_id = osm.id
+             WHERE os.order_id = $1`,
+            [orderId]
+          );
+          shippingTotal = Number(shipRes.rows[0]?.shipping_total || 0);
+        }
+
+        const coinDiscount = Math.max(0, Number(options.coinDiscountRupees || 0));
+        const oweg10Discount = Math.max(0, Number(options.oweg10DiscountRupees || 0));
+        const itemsTotal = Number(itemsRes.rows[0]?.items_total || 0);
+        grandTotal = Math.max(0, itemsTotal + (shippingTotal || 0) - coinDiscount - oweg10Discount);
+      }
+
+      const paidTotal = Number(totals.paid_total || 0);
+      const pendingDifference = Math.max(0, grandTotal - paidTotal);
+
+      const updatedTotals = {
+        ...totals,
+        tax_total: 0,
+        raw_tax_total: { value: "0", precision: 20 },
+        current_order_total: grandTotal,
+        original_order_total: grandTotal,
+        accounting_total: grandTotal,
+        raw_current_order_total: { value: String(grandTotal), precision: 20 },
+        raw_original_order_total: { value: String(grandTotal), precision: 20 },
+        raw_accounting_total: { value: String(grandTotal), precision: 20 },
+        pending_difference: pendingDifference,
+        raw_pending_difference: { value: String(pendingDifference), precision: 20 },
+      };
+
+      await client.query(
+        `UPDATE order_summary
+         SET totals = $2::jsonb,
+             updated_at = now()
+         WHERE order_id = $1`,
+        [orderId, JSON.stringify(updatedTotals)]
+      );
+    }
+
+    await client.query(
+      `UPDATE "order"
+       SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+           updated_at = now()
+       WHERE id = $1`,
+      [
+        orderId,
+        JSON.stringify({
+          prices_tax_inclusive: true,
+          tax_synced_at: new Date().toISOString(),
+        }),
+      ]
+    );
+
+    await client.query("COMMIT");
+    return { applied: true as const };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function applyCoinDiscountToOrder(options: {
   orderId: string;
   discountMinor: number;

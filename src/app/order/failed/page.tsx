@@ -11,7 +11,16 @@ function OrderFailedPageInner() {
 
   useEffect(() => {
     if (!orderId) return;
-    const refundCoins = async () => {
+    const cleanup = async () => {
+      try {
+        await fetch("/api/checkout/payment-failed", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ medusaOrderId: orderId }),
+        });
+      } catch {
+        // best-effort fallback; webhook handles primary cleanup
+      }
       try {
         await fetch("/api/store/wallet/refund-coin-discount-order", {
           method: "POST",
@@ -22,7 +31,7 @@ function OrderFailedPageInner() {
         // best-effort fallback; webhook handles primary refund
       }
     };
-    refundCoins();
+    void cleanup();
   }, [orderId]);
 
   return (

@@ -22,6 +22,7 @@ import {
   notifyQuantityUpdated,
   notifyRemoveItem,
 } from "@/lib/notifications";
+import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 interface CartItemUI {
   id: string;
   name: string;
@@ -653,7 +654,7 @@ const Cart: React.FC = () => {
   };
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const shipping = 0;
+  const shipping = calculateStatewiseShipping(subtotal);
   const total = subtotal + shipping;
   const activeCurrency = cartItems[0]?.currency ?? DEFAULT_CURRENCY;
 

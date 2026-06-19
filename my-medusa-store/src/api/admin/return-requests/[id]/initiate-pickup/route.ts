@@ -2,6 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError, MedusaErrorTypes, Modules } from "@medusajs/framework/utils"
 import ReturnModuleService from "../../../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../../../modules/returns"
+import { syncOrderReturnMetadata } from "../../../../../services/sync-order-return-metadata"
 import ShiprocketService from "../../../../../services/shiprocket"
 
 function getReturnWarehouseAddress() {
@@ -149,6 +150,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   await returnService.markPickupInitiated(request.id)
   console.log(`[Return] Marked pickup initiated for ${request.id}`)
+
+  const latest = await returnService.listReturnRequests({ id: request.id })
+  const synced = latest[0]
+  if (synced?.order_id) {
+    await syncOrderReturnMetadata(req.scope, synced.order_id, {
+      id: synced.id,
+      type: synced.type,
+      status: synced.status,
+      reason: synced.reason,
+      created_at: synced.created_at,
+    })
+  }
 
   return res.json({ return_request: updated, shiprocket: response })
 }

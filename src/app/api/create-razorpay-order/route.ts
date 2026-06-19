@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createRazorpayOrder, getPublicRazorpayKey } from "@/lib/razorpay";
-import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
+import { loadCheckoutOrder, updateCheckoutOrderMetadata } from "@/lib/checkout-order";
 import { getPool } from "@/lib/wallet-ledger";
 
 export const dynamic = "force-dynamic";
@@ -18,22 +18,6 @@ type MedusaOrder = {
   currency_code?: string;
   total?: number;
 };
-
-function extractOrder(data: unknown): MedusaOrder | null {
-  if (!data || typeof data !== "object") return null;
-  const root = data as Record<string, unknown>;
-  const direct = root.order;
-  if (direct && typeof direct === "object") return direct as MedusaOrder;
-  const nested = root.data;
-  if (nested && typeof nested === "object") {
-    const nestedOrder = (nested as Record<string, unknown>).order;
-    if (nestedOrder && typeof nestedOrder === "object") return nestedOrder as MedusaOrder;
-    if (Array.isArray(nested) && nested[0] && typeof nested[0] === "object") {
-      return nested[0] as MedusaOrder;
-    }
-  }
-  return root as MedusaOrder;
-}
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
@@ -72,36 +56,11 @@ export async function POST(req: Request) {
 
     let order: MedusaOrder | null = null;
 
-    const orderRes = await getOrderById(medusaOrderId);
-    if (orderRes.status === 0) {
-      return NextResponse.json(
-        { error: "Medusa admin backend is temporarily unavailable. Please retry." },
-        { status: 503 }
-      );
-    }
-    if (orderRes.ok && orderRes.data && extractOrder(orderRes.data)) {
-      order = extractOrder(orderRes.data);
-    } else {
-      // If we only have a draft id, convert it so Razorpay can reference a real order
-      const converted = await convertDraftOrder(medusaOrderId);
-      if (converted.status === 0) {
-        return NextResponse.json(
-          { error: "Medusa admin backend is temporarily unavailable. Please retry." },
-          { status: 503 }
-        );
-      }
-      if (converted.ok) {
-        const convertedOrder = extractOrder(converted.data);
-        if (convertedOrder?.id) {
-          medusaOrderId = convertedOrder.id;
-          order = convertedOrder;
-        }
-      }
-    }
-
-    if (!order) {
+    const loaded = await loadCheckoutOrder(medusaOrderId);
+    if (!loaded) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
+    order = loaded.order as MedusaOrder;
 
     const currency = (order.currency_code || DEFAULT_CURRENCY).toString().toUpperCase();
     const orderTotalRupees = Number.isFinite(Number(order.total ?? 0)) ? Number(order.total ?? 0) : 0;
@@ -159,7 +118,7 @@ export async function POST(req: Request) {
       razorpay_payment_status: "created",
     };
 
-    await updateOrderMetadata(medusaOrderId, nextMetadata);
+    await updateCheckoutOrderMetadata(medusaOrderId, loaded.isDraft, nextMetadata);
 
     return NextResponse.json({
       orderId: rzpOrder.id,

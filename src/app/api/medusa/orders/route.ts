@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { MEDUSA_CONFIG } from "@/lib/medusa-config";
 import { medusaStoreFetch } from "@/lib/medusa-auth";
-import { adminFetch } from "@/lib/medusa-admin";
-
+import { isCustomerVisibleOrder } from "@/lib/checkout-order";
+import {
+  enrichOrdersWithSummaryTotals,
+  normalizeOrderForCustomer,
+} from "@/lib/order-display-totals";
 function toTimestamp(value: unknown): number {
   if (typeof value !== "string" || !value) return 0;
   const time = new Date(value).getTime();
@@ -32,11 +35,7 @@ export async function GET(req: NextRequest) {
     if (!meRes.ok) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const meData = await meRes.json().catch(() => ({}));
-    const customerId =
-      (meData as { customer?: { id?: string } }).customer?.id ||
-      (meData as { id?: string }).id ||
-      undefined;
+    await meRes.json().catch(() => ({}));
 
     const url = new URL(req.url);
     const limitParam = Number(url.searchParams.get("limit") || 20);
@@ -48,7 +47,7 @@ export async function GET(req: NextRequest) {
     baseTarget.searchParams.set("limit", String(limit));
     baseTarget.searchParams.set("offset", String(offset));
     // Ensure metadata is available for payment method filters (e.g. COD).
-    baseTarget.searchParams.set("fields", "+metadata");
+    baseTarget.searchParams.set("fields", "+metadata,+items");
 
     const fetchWithOrder = async (orderValue?: string, directionValue?: string) => {
       const target = new URL(baseTarget.toString());
@@ -79,46 +78,18 @@ export async function GET(req: NextRequest) {
 
     const data = await res.json();
     const rawOrders = (data as { orders?: unknown[] }).orders || data;
-    const orders = Array.isArray(rawOrders) ? rawOrders : [];
-    const count = (data as { count?: number }).count ?? orders.length;
+    const orders = (Array.isArray(rawOrders) ? rawOrders : []).filter((order) =>
+      isCustomerVisibleOrder(order as Record<string, unknown>)
+    );
+    const enrichedOrders = await enrichOrdersWithSummaryTotals(
+      orders as Record<string, unknown>[]
+    );
+    const normalizedOrders = enrichedOrders.map((order) => normalizeOrderForCustomer(order));
+    const count = normalizedOrders.length;
     const rawLimit = (data as { limit?: number }).limit ?? limit;
     const rawOffset = (data as { offset?: number }).offset ?? offset;
 
-    let draftOrders: unknown[] = [];
-    if (customerId) {
-      const params = new URLSearchParams();
-      params.set("customer_id", customerId);
-      params.set("fields", "+metadata");
-      params.set("limit", "200");
-      const draftRes = await adminFetch(`/admin/draft-orders?${params.toString()}`);
-      if (draftRes.ok && draftRes.data) {
-        const draftData = draftRes.data as {
-          draft_orders?: unknown[];
-          draftOrders?: unknown[];
-          data?: unknown[];
-        };
-        const rawDrafts = draftData.draft_orders || draftData.draftOrders || draftData.data || [];
-        if (Array.isArray(rawDrafts)) {
-          draftOrders = rawDrafts;
-        }
-      }
-    }
-
-    if (draftOrders.length) {
-      const merged = new Map<string, unknown>();
-      orders.forEach((order) => {
-        const id = (order as { id?: string | number })?.id;
-        if (id !== undefined && id !== null) merged.set(String(id), order);
-      });
-      draftOrders.forEach((order) => {
-        const id = (order as { id?: string | number })?.id;
-        if (id !== undefined && id !== null) merged.set(String(id), order);
-      });
-      const combined = sortLatestFirst(Array.from(merged.values()));
-      return NextResponse.json({ orders: combined, count: combined.length, limit: rawLimit, offset: rawOffset });
-    }
-
-    return NextResponse.json({ orders: sortLatestFirst(orders), count, limit: rawLimit, offset: rawOffset });
+    return NextResponse.json({ orders: sortLatestFirst(normalizedOrders), count, limit: rawLimit, offset: rawOffset });
   } catch {
     return NextResponse.json({ error: "Unexpected error loading orders" }, { status: 500 });
   }

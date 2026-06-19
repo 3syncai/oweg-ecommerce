@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import {
   updateOrderMetadata,
-  getOrderById,
 } from "@/lib/medusa-admin";
+import {
+  ensurePlacedCheckoutOrder,
+  runPostConvertCheckoutSideEffects,
+} from "@/lib/checkout-order";
 import {
   ensureOrderShippingMethod,
   ensureOrderReservations,
@@ -88,6 +91,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "invalid_signature" }, { status: 400 });
     }
 
+    const placed = await ensurePlacedCheckoutOrder(medusaOrderId);
+    if (!placed) {
+      return NextResponse.json({ error: "order_not_found" }, { status: 404 });
+    }
+
+    const finalOrderId = placed.orderId;
+    const orderMetadata = (placed.order.metadata || {}) as Record<string, unknown>;
+
+    if (placed.converted) {
+      await runPostConvertCheckoutSideEffects(finalOrderId, orderMetadata);
+    }
+
     // Store all payment data in metadata
     const metadata = {
       razorpay_payment_status: "captured",
@@ -104,26 +119,12 @@ export async function POST(req: Request) {
     };
 
     // Persist metadata
-    const metaRes = await updateOrderMetadata(medusaOrderId, metadata);
+    const metaRes = await updateOrderMetadata(finalOrderId, metadata);
     if (!metaRes.ok) {
       console.error("razorpay confirm: metadata update failed", { status: metaRes.status, data: metaRes.data });
     }
 
     try {
-      const orderRes = await getOrderById(medusaOrderId);
-      const orderData = orderRes.data as
-        | { order?: { metadata?: Record<string, unknown>; customer_id?: string } }
-        | { metadata?: Record<string, unknown>; customer_id?: string }
-        | null;
-      let order: { metadata?: Record<string, unknown>; customer_id?: string } | null = null;
-      if (orderData && typeof orderData === "object") {
-        if ("order" in orderData) {
-          order = orderData.order || null;
-        } else {
-          order = orderData as { metadata?: Record<string, unknown>; customer_id?: string };
-        }
-      }
-      const orderMetadata = (order?.metadata || {}) as Record<string, unknown>;
       const reservationToken =
         typeof orderMetadata.oweg10_reservation_token === "string"
           ? orderMetadata.oweg10_reservation_token
@@ -131,8 +132,8 @@ export async function POST(req: Request) {
       const customerId =
         typeof orderMetadata.oweg10_customer_id === "string"
           ? orderMetadata.oweg10_customer_id
-          : typeof order?.customer_id === "string"
-            ? order.customer_id
+          : typeof placed.order.customer_id === "string"
+            ? placed.order.customer_id
             : undefined;
 
       if (reservationToken && customerId) {
@@ -140,7 +141,7 @@ export async function POST(req: Request) {
           const consumeResult = await consumeOweg10Reservation({
             customerId,
             reservationToken,
-            orderId: medusaOrderId,
+            orderId: finalOrderId,
             metadata: {
               payment_method: "razorpay",
               source: "razorpay-confirm",
@@ -149,7 +150,7 @@ export async function POST(req: Request) {
           });
 
           if (!consumeResult.ok) {
-            await updateOrderMetadata(medusaOrderId, {
+            await updateOrderMetadata(finalOrderId, {
               ...orderMetadata,
               oweg10_pending: true,
               oweg10_reconcile_required: true,
@@ -160,13 +161,13 @@ export async function POST(req: Request) {
               },
             });
             console.warn("razorpay confirm: OWEG10 consume rejected; reconciliation required", {
-              medusaOrderId,
+              finalOrderId,
               customerId,
               consumeResult,
             });
           } else {
             await syncOweg10ConsumedCustomerMetadata(customerId);
-            await updateOrderMetadata(medusaOrderId, {
+            await updateOrderMetadata(finalOrderId, {
               ...orderMetadata,
               oweg10_pending: false,
               oweg10_consumed: true,
@@ -180,7 +181,7 @@ export async function POST(req: Request) {
           }
         } catch (consumeError) {
           const errorDetails = stringifyErrorDetails(consumeError);
-          await updateOrderMetadata(medusaOrderId, {
+          await updateOrderMetadata(finalOrderId, {
             ...orderMetadata,
             oweg10_pending: true,
             oweg10_reconcile_required: true,
@@ -191,7 +192,7 @@ export async function POST(req: Request) {
             },
           });
           console.warn("razorpay confirm: OWEG10 consume failed; reconciliation required", {
-            medusaOrderId,
+            finalOrderId,
             customerId,
             error: errorDetails,
           });
@@ -199,7 +200,7 @@ export async function POST(req: Request) {
       }
     } catch (error) {
       console.warn("razorpay confirm: OWEG10 consume sync failed", {
-        medusaOrderId,
+        finalOrderId,
         error: stringifyErrorDetails(error),
       });
     }
@@ -207,22 +208,20 @@ export async function POST(req: Request) {
     // FORCE RESERVATIONS AND SHIPPING METHOD
     // This is critical for Medusa v2 fulfillment to work correctly.
     // Without reservations, fulfillment items will be empty.
-    if (medusaOrderId) {
-      console.log("razorpay confirm: Ensuring order readiness...");
-      await ensureOrderShippingMethod(medusaOrderId);
-      await ensureOrderReservations(medusaOrderId);
-    }
+    console.log("razorpay confirm: Ensuring order readiness...");
+    await ensureOrderShippingMethod(finalOrderId);
+    await ensureOrderReservations(finalOrderId);
 
     // Create payment records + sync Medusa admin "Captured" status
     let paymentCreated = false;
     const resolvedAmountMinor =
       typeof amountMinor === "number" && amountMinor > 0
         ? amountMinor
-        : await resolveOrderPayableAmountMinor(medusaOrderId);
+        : await resolveOrderPayableAmountMinor(finalOrderId);
 
     if (resolvedAmountMinor && resolvedAmountMinor > 0) {
       const finalizeResult = await finalizeRazorpayOrderPayment({
-        orderId: medusaOrderId,
+        orderId: finalOrderId,
         amountMinor: resolvedAmountMinor,
         currencyCode,
         razorpayPaymentId: razorpay_payment_id,
@@ -235,10 +234,10 @@ export async function POST(req: Request) {
         console.error("razorpay confirm: finalize payment failed", finalizeResult);
       }
     } else {
-      console.error("razorpay confirm: missing payable amount for order", medusaOrderId);
+      console.error("razorpay confirm: missing payable amount for order", finalOrderId);
     }
 
-    await updateOrderMetadata(medusaOrderId, {
+    await updateOrderMetadata(finalOrderId, {
       payment_method: "razorpay",
       razorpay_capture_status: paymentCreated ? "captured" : "failed",
       cod_status: null,
@@ -252,7 +251,7 @@ export async function POST(req: Request) {
 
       const metaResult = await pool.query(
         `SELECT metadata FROM "order" WHERE id = $1`,
-        [medusaOrderId]
+        [finalOrderId]
       );
       const dbMetadata = metaResult.rows[0]?.metadata || {};
       const coinMinor =
@@ -267,13 +266,13 @@ export async function POST(req: Request) {
           typeof dbMetadata?.customer_id === "string"
             ? dbMetadata.customer_id
             : (
-                await pool.query(`SELECT customer_id FROM "order" WHERE id = $1`, [medusaOrderId])
+                await pool.query(`SELECT customer_id FROM "order" WHERE id = $1`, [finalOrderId])
               ).rows[0]?.customer_id;
 
         if (customerId) {
           await finalizeCoinSpendForOrder({
             customerId: String(customerId),
-            orderId: medusaOrderId,
+            orderId: finalOrderId,
             amountMinor: coinMinor,
           });
         }
@@ -283,7 +282,7 @@ export async function POST(req: Request) {
     }
 
     // AFFILIATE COMMISSION: Call the commission webhook for hierarchy support
-    if (medusaOrderId && typeof amountMinor === "number") {
+    if (typeof amountMinor === "number") {
       try {
         console.log("razorpay confirm: Triggering commission webhook for hierarchy...");
 
@@ -301,7 +300,7 @@ export async function POST(req: Request) {
            JOIN customer c ON o.customer_id = c.id
            LEFT JOIN customer_referral cr ON cr.customer_id = c.id
            WHERE o.id = $1`,
-          [medusaOrderId]
+          [finalOrderId]
         );
 
         const customer = customerResult.rows[0];
@@ -323,7 +322,7 @@ export async function POST(req: Request) {
              LEFT JOIN product_variant pv ON oli.variant_id = pv.id
              LEFT JOIN product p ON pv.product_id = p.id
              WHERE oi.order_id = $1`,
-            [medusaOrderId]
+            [finalOrderId]
           );
 
           // Call webhook for each item (same as Medusa subscriber)
@@ -337,7 +336,7 @@ export async function POST(req: Request) {
               const itemAmount = unitPrice * (item.quantity || 1);
 
               const payload = {
-                order_id: medusaOrderId,
+                order_id: finalOrderId,
                 affiliate_code: affiliateCode,
                 product_id: item.product_id,
                 product_name: item.product_name,
@@ -380,16 +379,14 @@ export async function POST(req: Request) {
     }
 
     // Customer-affiliate coins (separate from agent affiliate above)
-    if (medusaOrderId) {
-      try {
-        const result = await logPendingCoinsForOrder(medusaOrderId);
-        console.log("[customer-affiliate-coins] razorpay confirm:", result);
-      } catch (err) {
-        console.error("[customer-affiliate-coins] razorpay confirm failed:", err);
-      }
+    try {
+      const result = await logPendingCoinsForOrder(finalOrderId);
+      console.log("[customer-affiliate-coins] razorpay confirm:", result);
+    } catch (err) {
+      console.error("[customer-affiliate-coins] razorpay confirm failed:", err);
     }
 
-    return NextResponse.json({ ok: true, paymentCreated });
+    return NextResponse.json({ ok: true, paymentCreated, medusaOrderId: finalOrderId });
   } catch (err) {
     console.error("razorpay confirm failed", err);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });

@@ -3,6 +3,7 @@ import { MedusaError, MedusaErrorTypes, Modules } from "@medusajs/framework/util
 import ReturnModuleService from "../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../modules/returns"
 import { StoreCreateReturnRequest } from "./validators"
+import { syncOrderReturnMetadata } from "../../../services/sync-order-return-metadata"
 
 function resolveDeliveryDate(order: any) {
   const metaDate = order?.metadata?.shiprocket_delivered_at
@@ -121,6 +122,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     refund_method: refundMethod,
     bank_details: body.bank_details ?? null,
     items: body.items,
+  })
+
+  await syncOrderReturnMetadata(req.scope, body.order_id, {
+    id: request.id,
+    type: request.type,
+    status: request.status,
+    reason: request.reason,
+    created_at: request.created_at,
   })
 
   return res.status(200).json({ return_request: request })

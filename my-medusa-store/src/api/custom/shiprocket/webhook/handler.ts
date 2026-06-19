@@ -2,6 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import ReturnModuleService from "../../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../../modules/returns"
+import { syncOrderReturnMetadata } from "../../../../services/sync-order-return-metadata"
 
 function normalizeStatus(status: string) {
   const normalized = status.trim().toLowerCase()
@@ -69,7 +70,17 @@ export async function handleShiprocketWebhook(req: MedusaRequest, res: MedusaRes
         })
       }
       console.log(`[Return] Updated return ${request.id} with status ${status}`)
-      updatedReturn = request
+      const latest = await returnService.listReturnRequests({ id: request.id })
+      updatedReturn = latest[0] || request
+      if (updatedReturn?.order_id) {
+        await syncOrderReturnMetadata(req.scope, updatedReturn.order_id, {
+          id: updatedReturn.id,
+          type: updatedReturn.type,
+          status: updatedReturn.status,
+          reason: updatedReturn.reason,
+          created_at: updatedReturn.created_at,
+        })
+      }
     }
   }
 

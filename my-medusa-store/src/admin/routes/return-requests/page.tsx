@@ -11,6 +11,7 @@ type ReturnItem = {
 type ReturnRequest = {
   id: string
   order_id: string
+  order_display_id?: number | null
   customer_id: string | null
   customer_email?: string | null
   customer_name?: string | null
@@ -146,14 +147,14 @@ const ReturnRequestsPage = () => {
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-2">
                     <Heading level="h2" className="text-lg font-semibold">
-                      Order {request.order_id}
+                      {request.order_display_id ? `Order #${request.order_display_id}` : `Order ${request.order_id}`}
                     </Heading>
-                    <div className="flex items-center gap-2">
-                      <Badge size="small" color="blue">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge size="small" color={request.type === "replacement" ? "blue" : "orange"}>
                         {request.type}
                       </Badge>
                       <Badge size="small" color="green">
-                        {request.status}
+                        {request.status.replace(/_/g, " ")}
                       </Badge>
                     </div>
                     {request.reason && (
@@ -176,6 +177,15 @@ const ReturnRequestsPage = () => {
                     )}
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="secondary"
+                      size="base"
+                      onClick={() => {
+                        window.location.href = `/app/orders/${request.order_id}`
+                      }}
+                    >
+                      View Order
+                    </Button>
                     <Button
                       variant="secondary"
                       size="base"

@@ -2,6 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError, MedusaErrorTypes } from "@medusajs/framework/utils"
 import ReturnModuleService from "../../../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../../../modules/returns"
+import { syncOrderReturnMetadata } from "../../../../../services/sync-order-return-metadata"
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const { id } = req.params
@@ -13,5 +14,16 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const returnService: ReturnModuleService = req.scope.resolve(RETURN_MODULE)
   const adminId = (req as any).auth_context?.actor_id || null
   const request = await returnService.rejectReturnRequest(id, reason, adminId)
+
+  if (request?.order_id) {
+    await syncOrderReturnMetadata(req.scope, request.order_id, {
+      id: request.id,
+      type: request.type,
+      status: request.status,
+      reason: request.reason,
+      created_at: request.created_at,
+    })
+  }
+
   return res.json({ return_request: request })
 }

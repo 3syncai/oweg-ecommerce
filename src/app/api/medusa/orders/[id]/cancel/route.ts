@@ -13,6 +13,17 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
 
+  let reason = "";
+  try {
+    const body = await req.json();
+    reason = typeof body?.reason === "string" ? body.reason.trim().slice(0, 180) : "";
+  } catch {
+    reason = "";
+  }
+  if (reason.length < 3) {
+    return NextResponse.json({ error: "Cancellation reason is required." }, { status: 400 });
+  }
+
   const fireCustomerAffiliate = async () => {
     try {
       const result = await cancelOrReverseCoinsForOrder(orderId, { event: "order.cancelled" });
@@ -28,6 +39,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
         method: "POST",
         forwardedCookie,
         headers: { Cookie: forwardedCookie },
+        body: JSON.stringify({ reason }),
       });
     };
 

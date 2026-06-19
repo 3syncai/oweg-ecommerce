@@ -1225,6 +1225,11 @@ function CheckoutPageInner() {
         );
       },
       onFailure: async () => {
+        await fetch("/api/checkout/payment-failed", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ medusaOrderId: draft.medusaOrderId }),
+        }).catch(() => undefined);
         await refundCoinsForOrder(draft.medusaOrderId);
         router.push(`${RAZORPAY_FAILED}?orderId=${encodeURIComponent(draft.medusaOrderId)}`);
       },

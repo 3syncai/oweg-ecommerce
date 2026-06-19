@@ -19,6 +19,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         entity: "order",
         fields: [
           "id",
+          "display_id",
           "customer_id",
           "email",
           "metadata",
@@ -87,6 +88,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     return {
       ...request,
       items: itemsByRequest.get(request.id) || [],
+      order_display_id: order?.display_id ?? null,
       customer_id: order?.customer_id || request.customer_id || null,
       customer_email: order?.email || customer?.email || null,
       customer_name: customerName || null,

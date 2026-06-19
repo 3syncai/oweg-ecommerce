@@ -26,12 +26,15 @@ type OrderSummary = {
     id: string;
     title: string;
     quantity: number;
+    unit_price?: number;
     total: number;
     thumbnail?: string;
   }>;
   shipping_address?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
 };
+
+type OrderLineItem = NonNullable<OrderSummary["items"]>[number];
 
 const INR = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -324,9 +327,16 @@ function OrderSuccessPageInner() {
     return INR.format(codOrder ? rawTotal : rawTotal / 100);
   }
 
-  function formatItemAmount(raw?: number) {
-    if (raw === undefined || raw === null) return "N/A";
-    return INR.format(raw);
+  function formatItemAmount(item: OrderLineItem) {
+    if (!item) return "N/A";
+    const qty = Math.max(1, Number(item.quantity) || 1);
+    const unitPrice = typeof item.unit_price === "number" ? item.unit_price : undefined;
+    const lineTotal =
+      unitPrice && unitPrice > 0 && unitPrice < 10000
+        ? unitPrice * qty
+        : item.total;
+    if (lineTotal === undefined || lineTotal === null) return "N/A";
+    return INR.format(lineTotal);
   }
 
   const displayTotal = formatAmount(
@@ -479,7 +489,7 @@ function OrderSuccessPageInner() {
                       <p className="line-clamp-2 text-sm font-medium text-slate-900">{item.title}</p>
                       <p className="mt-0.5 text-xs text-slate-500">Qty {item.quantity}</p>
                     </div>
-                    <p className="shrink-0 text-sm font-semibold text-slate-900">{formatItemAmount(item.total)}</p>
+                    <p className="shrink-0 text-sm font-semibold text-slate-900">{formatItemAmount(item)}</p>
                   </div>
                 ))}
 

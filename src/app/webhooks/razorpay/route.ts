@@ -6,14 +6,18 @@ import { verifyRazorpaySignature } from "@/lib/razorpay";
 import { finalizeCoinSpendForOrder, refundCoinSpendForOrder } from "@/lib/wallet-coin-order";
 import {
   convertDraftOrder,
-  deleteDraftOrder,
-  getOrderById,
   registerOrderTransaction,
   setOrderPaidTotal,
   setOrderPaymentStatus,
   updateOrderMetadata,
   registerOrderPaymentV2,
 } from "@/lib/medusa-admin";
+import {
+  extractCheckoutOrder,
+  loadCheckoutOrder,
+  markCheckoutPaymentFailed,
+  runPostConvertCheckoutSideEffects,
+} from "@/lib/checkout-order";
 
 type RazorpayPaymentEntity = {
   id?: string;
@@ -55,24 +59,6 @@ function asRecordArray(value: unknown): UnknownRecord[] {
   return value
     .map((v) => asRecord(v))
     .filter((v): v is UnknownRecord => Boolean(v));
-}
-
-function extractOrder(data: unknown): MedusaOrder | null {
-  const record = asRecord(data);
-  if (!record) return null;
-  const direct = asRecord(record.order);
-  if (direct) return direct as MedusaOrder;
-  const nested = record.data;
-  if (nested) {
-    if (Array.isArray(nested) && nested.length && asRecord(nested[0])) {
-      return nested[0] as MedusaOrder;
-    }
-    const nestedRecord = asRecord(nested);
-    if (nestedRecord?.order && typeof nestedRecord.order === "object") {
-      return nestedRecord.order as MedusaOrder;
-    }
-  }
-  return record as MedusaOrder;
 }
 
 function extractMessage(data: unknown): string | null {
@@ -326,13 +312,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "medusa order id missing" }, { status: 400 });
   }
 
-  // Fetch Medusa order
-  const orderRes = await getOrderById(medusaOrderId);
-  const order = orderRes.data ? extractOrder(orderRes.data) : null;
-  if (!orderRes.ok || !order) {
+  // Fetch Medusa draft/order
+  const loaded = await loadCheckoutOrder(medusaOrderId);
+  if (!loaded) {
     console.warn("razorpay webhook order not found", medusaOrderId);
     return NextResponse.json({ error: "order not found" }, { status: 404 });
   }
+  const order = loaded.order as MedusaOrder;
+  const isDraft = loaded.isDraft;
   const metadata = (order.metadata || {}) as Record<string, unknown>;
   const metadataStatus =
     typeof metadata.razorpay_payment_status === "string" ? metadata.razorpay_payment_status : undefined;
@@ -420,11 +407,21 @@ export async function POST(req: Request) {
 
   // Captured path
   if (isCaptured) {
+    let placedOrderId = medusaOrderId;
     try {
+      if (isDraft) {
+        const converted = await convertDraftOrder(medusaOrderId);
+        const convertedOrder = converted.data ? extractCheckoutOrder(converted.data) : null;
+        if (converted.ok && convertedOrder?.id) {
+          placedOrderId = convertedOrder.id;
+          await runPostConvertCheckoutSideEffects(placedOrderId, metadata);
+        }
+      }
+
       const transactionPayload = {
         amount: canonicalMinor,
         currency_code: currency.toLowerCase?.() || currency,
-        reference: coerceId(paymentId) || coerceId(razorpayOrderId) || `razorpay-${medusaOrderId}`,
+        reference: coerceId(paymentId) || coerceId(razorpayOrderId) || `razorpay-${placedOrderId}`,
         provider: "razorpay",
         metadata: {
           razorpay_payment_id: paymentId,
@@ -438,7 +435,7 @@ export async function POST(req: Request) {
         },
       };
 
-      const txRes = await registerOrderTransaction(medusaOrderId, transactionPayload);
+      const txRes = await registerOrderTransaction(placedOrderId, transactionPayload);
       const transaction = extractTransaction(txRes.data);
       const transactionId = (transaction?.id as string | undefined) || undefined;
       const metaWithCapture = {
@@ -455,7 +452,7 @@ export async function POST(req: Request) {
       };
 
       // Persist metadata
-      await updateOrderMetadata(medusaOrderId, metaWithCapture);
+      await updateOrderMetadata(placedOrderId, metaWithCapture);
 
       try {
         const coinMinor =
@@ -476,7 +473,7 @@ export async function POST(req: Request) {
           if (customerId) {
             await finalizeCoinSpendForOrder({
               customerId,
-              orderId: medusaOrderId,
+              orderId: placedOrderId,
               amountMinor: coinMinor,
             });
           }
@@ -488,8 +485,8 @@ export async function POST(req: Request) {
       // Keep Medusa paid totals in sync with Razorpay's captured amount
       if (txRes?.ok) {
         try {
-          await setOrderPaidTotal(medusaOrderId, canonicalMinor);
-          await setOrderPaymentStatus(medusaOrderId, "captured");
+          await setOrderPaidTotal(placedOrderId, canonicalMinor);
+          await setOrderPaymentStatus(placedOrderId, "captured");
         } catch (err) {
           console.error("failed to update order payment status after capture", {
             medusaOrderId,
@@ -502,14 +499,6 @@ export async function POST(req: Request) {
       }
 
       if (txRes?.ok) {
-        if (order.is_draft_order) {
-          try {
-            await convertDraftOrder(medusaOrderId);
-          } catch (err) {
-            console.error("convertDraftOrder failed", err);
-          }
-        }
-
         return NextResponse.json({ ok: true, transaction_id: transactionId });
       }
 
@@ -517,7 +506,7 @@ export async function POST(req: Request) {
       if (txRes?.status === 404) {
         try {
           // Attempt Medusa v2 register-payment endpoint
-          const regV2 = await registerOrderPaymentV2(medusaOrderId, {
+          const regV2 = await registerOrderPaymentV2(placedOrderId, {
             amount: canonicalMinor,
             currency_code: currency.toLowerCase?.() || currency,
             payment_id: paymentId,
@@ -532,11 +521,11 @@ export async function POST(req: Request) {
             console.error("razorpay webhook: register-payment v2 failed", { status: regV2?.status, data: regV2?.data });
           } else {
             try {
-              const paidRes = await setOrderPaidTotal(medusaOrderId, canonicalMinor);
+              const paidRes = await setOrderPaidTotal(placedOrderId, canonicalMinor);
               if (!paidRes.ok) {
                 console.error("razorpay webhook: set paid total failed", { status: paidRes.status, data: paidRes.data });
               }
-              const statusRes = await setOrderPaymentStatus(medusaOrderId, "captured");
+              const statusRes = await setOrderPaymentStatus(placedOrderId, "captured");
               if (!statusRes.ok) {
                 console.error("razorpay webhook: set payment status failed", { status: statusRes.status, data: statusRes.data });
               }
@@ -548,7 +537,7 @@ export async function POST(req: Request) {
           console.error("razorpay webhook: register-payment v2 threw", err);
         }
 
-        await updateOrderMetadata(medusaOrderId, {
+        await updateOrderMetadata(placedOrderId, {
           ...metaWithCapture,
           razorpay_capture_status: "not_supported",
         });
@@ -565,7 +554,7 @@ export async function POST(req: Request) {
     } catch (err) {
       console.error("razorpay webhook unexpected error on capture path", err);
       try {
-        await updateOrderMetadata(medusaOrderId, {
+        await updateOrderMetadata(placedOrderId, {
           ...nextMetadata,
           razorpay_capture_status: "error",
           razorpay_capture_error: String(err),
@@ -579,8 +568,6 @@ export async function POST(req: Request) {
 
   // Failure path (not captured)
   try {
-    await updateOrderMetadata(medusaOrderId, nextMetadata);
-
     try {
       const customerId =
         typeof (order as any)?.customer_id === "string"
@@ -597,13 +584,7 @@ export async function POST(req: Request) {
       console.error("razorpay webhook failed to refund coin discount", refundErr);
     }
 
-    if (order.is_draft_order) {
-      try {
-        await deleteDraftOrder(medusaOrderId);
-      } catch (err) {
-        console.error("deleteDraftOrder failed", err);
-      }
-    }
+    await markCheckoutPaymentFailed(medusaOrderId, nextMetadata);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

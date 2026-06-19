@@ -7,6 +7,8 @@ import { useParams, useSearchParams } from "next/navigation";
 import { CheckCircle2, ChevronRight, Clock, Loader2, MapPin, Package, Phone, ReceiptIndianRupee, Undo2, User2, XCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthProvider";
 import { Button } from "@/components/ui/button";
+import { CancelOrderPanel, CANCELLATION_REASONS } from "@/components/orders/CancelOrderPanel";
+import { ReturnOrderPanel, type ReturnItemForm } from "@/components/orders/ReturnOrderPanel";
 
 type OrderItem = {
   id: string;
@@ -14,6 +16,7 @@ type OrderItem = {
   quantity?: number;
   thumbnail?: string;
   unit_price?: number;
+  total?: number;
 };
 
 type Address = {
@@ -45,6 +48,13 @@ type OrderDetail = {
   shipping_address?: Address;
   billing_address?: Address;
   metadata?: Record<string, unknown>;
+  display_totals?: {
+    itemsSubtotal: number;
+    shipping: number;
+    coinDiscount: number;
+    oweg10Discount: number;
+    grandTotal: number;
+  };
 };
 
 type ReturnRequest = {
@@ -52,14 +62,6 @@ type ReturnRequest = {
   order_id: string;
   status: string;
   type: string;
-};
-
-type ReturnItemForm = {
-  order_item_id: string;
-  title?: string;
-  quantity: number;
-  max: number;
-  selected: boolean;
 };
 
 function sanitizeTextInput(value: string, maxLength: number) {
@@ -112,11 +114,12 @@ function getDeliveryDate(order?: OrderDetail | null) {
 
 function trackerSteps(order?: OrderDetail, returnRequest?: ReturnRequest | null) {
   const fulfillment = order?.fulfillment_status || "";
-  const payment = order?.payment_status || "";
+  const payment = (order?.payment_status || "").toLowerCase();
   const meta = (order?.metadata || {}) as Record<string, unknown>;
   const shiprocketStatusRaw = typeof meta.shiprocket_status === "string" ? meta.shiprocket_status : "";
   const shiprocketStatus = shiprocketStatusRaw.toLowerCase();
   const orderStatus = (order?.status || "").toLowerCase();
+  const isCancelled = orderStatus === "canceled" || orderStatus === "cancelled";
 
   const shippedStates = ["shipped", "partially_shipped"];
   const deliveredStates = ["delivered"];
@@ -124,21 +127,53 @@ function trackerSteps(order?: OrderDetail, returnRequest?: ReturnRequest | null)
   const shiprocketShipped = ["picked_up", "pickup_scheduled", "pickup_initiated", "in_transit", "out_for_delivery", "shipped"].includes(shiprocketStatus);
   const shiprocketDelivered = ["delivered"].includes(shiprocketStatus);
 
+  const paymentConfirmed =
+    payment === "captured" ||
+    payment === "paid" ||
+    meta.razorpay_payment_status === "captured";
+
+  if (isCancelled) {
+    return [
+      { key: "placed", label: "Order placed", active: true, icon: Clock, tone: "default" as const },
+      {
+        key: "cancelled",
+        label: "Order cancelled",
+        active: true,
+        icon: XCircle,
+        tone: "cancelled" as const,
+      },
+    ];
+  }
+
   const steps = [
-    { key: "placed", label: "Order placed", active: true, icon: Clock },
-    { key: "paid", label: "Payment confirmed", active: payment === "captured" || payment === "paid", icon: CheckCircle2 },
-    { key: "processing", label: "Processing", active: payment === "captured" || payment === "paid", icon: Package },
+    { key: "placed", label: "Order placed", active: true, icon: Clock, tone: "default" as const },
+    {
+      key: "paid",
+      label: "Payment confirmed",
+      active: paymentConfirmed,
+      icon: CheckCircle2,
+      tone: "default" as const,
+    },
+    {
+      key: "processing",
+      label: "Processing",
+      active: paymentConfirmed,
+      icon: Package,
+      tone: "default" as const,
+    },
     {
       key: "shipped",
       label: "Shipped",
       active: shiprocketShipped || shippedStates.includes(fulfillment) || deliveredStates.includes(fulfillment),
       icon: Package,
+      tone: "default" as const,
     },
     {
       key: "delivered",
       label: "Delivered",
       active: shiprocketDelivered || deliveredStates.includes(fulfillment),
       icon: CheckCircle2,
+      tone: "default" as const,
     },
   ];
 
@@ -160,15 +195,7 @@ function trackerSteps(order?: OrderDetail, returnRequest?: ReturnRequest | null)
       label: labelMap[status] || "Return in progress",
       active: true,
       icon: Undo2,
-    });
-  }
-
-  if (orderStatus === "canceled" || orderStatus === "cancelled") {
-    steps.push({
-      key: "cancelled",
-      label: "Order cancelled",
-      active: true,
-      icon: XCircle,
+      tone: "default" as const,
     });
   }
 
@@ -197,15 +224,18 @@ export default function OrderDetailPage() {
   const [returnError, setReturnError] = useState<string | null>(null);
   const [returnSuccess, setReturnSuccess] = useState<string | null>(null);
   const [returnSubmitting, setReturnSubmitting] = useState(false);
-  const [showReturnSubmitConfirm, setShowReturnSubmitConfirm] = useState(false);
   const [bankDetails, setBankDetails] = useState({
     account_name: "",
     account_number: "",
     ifsc_code: "",
     bank_name: "",
   });
+  const [cancelFormOpen, setCancelFormOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [customCancelReason, setCustomCancelReason] = useState("");
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [cancelMessage, setCancelMessage] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   useEffect(() => {
     orderRef.current = order;
@@ -271,6 +301,7 @@ export default function OrderDetailPage() {
       order.items.map((item) => ({
         order_item_id: item.id,
         title: item.title,
+        thumbnail: item.thumbnail,
         quantity: item.quantity || 1,
         max: item.quantity || 1,
         selected: true,
@@ -336,26 +367,74 @@ export default function OrderDetailPage() {
     return !existingReturn;
   }, [order?.id, order?.fulfillment_status, order?.status, shiprocketStatus, existingReturn]);
 
+  const resetCancelForm = () => {
+    setCancelFormOpen(false);
+    setCancelReason("");
+    setCustomCancelReason("");
+    setCancelError(null);
+  };
+
   const cancelOrder = async () => {
-    if (!order?.id) return;
+    if (!order?.id || !cancelReason) return;
+
+    const reason =
+      cancelReason === CANCELLATION_REASONS[0]
+        ? sanitizeTextInput(customCancelReason, 180)
+        : cancelReason;
+
+    if (!reason || reason.length < 3) {
+      setCancelError("Please provide a cancellation reason.");
+      return;
+    }
+
     setCancelSubmitting(true);
     setCancelMessage(null);
+    setCancelError(null);
     try {
       const res = await fetch(`/api/medusa/orders/${encodeURIComponent(order.id)}/cancel`, {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setCancelMessage(data?.error || "Unable to cancel order.");
+        setCancelError(data?.error || "Unable to cancel order.");
         return;
       }
+      resetCancelForm();
       setCancelMessage("Order cancelled successfully.");
       await loadOrder(false, false);
     } catch {
-      setCancelMessage("Unable to cancel order.");
+      setCancelError("Unable to cancel order.");
     } finally {
       setCancelSubmitting(false);
+    }
+  };
+
+  const resetReturnForm = () => {
+    setReturnFormOpen(false);
+    setReturnReason("");
+    setReturnNotes("");
+    setReturnType("return");
+    setReturnError(null);
+    setBankDetails({
+      account_name: "",
+      account_number: "",
+      ifsc_code: "",
+      bank_name: "",
+    });
+    if (order?.items?.length) {
+      setReturnItems(
+        order.items.map((item) => ({
+          order_item_id: item.id,
+          title: item.title,
+          thumbnail: item.thumbnail,
+          max: Math.max(1, item.quantity || 1),
+          quantity: Math.max(1, item.quantity || 1),
+          selected: true,
+        }))
+      );
     }
   };
 
@@ -371,8 +450,8 @@ export default function OrderDetailPage() {
       setReturnError("Please select at least one item.");
       return;
     }
-    if (safeReason.length > 0 && safeReason.length < 3) {
-      setReturnError("Please enter a clearer return reason.");
+    if (!safeReason || safeReason.length < 3) {
+      setReturnError("Please select a reason for return/exchange.");
       return;
     }
 
@@ -392,7 +471,7 @@ export default function OrderDetailPage() {
         body: JSON.stringify({
           order_id: order.id,
           type: returnType,
-          reason: safeReason || undefined,
+          reason: safeReason,
           notes: safeNotes || undefined,
           items: selected.map((item) => ({
             order_item_id: item.order_item_id,
@@ -414,7 +493,7 @@ export default function OrderDetailPage() {
         return;
       }
       setReturnSuccess("Return request submitted. We will update you after approval.");
-      setReturnFormOpen(false);
+      resetReturnForm();
       await loadReturnRequests();
     } catch {
       setReturnError("Unable to submit return request.");
@@ -422,6 +501,17 @@ export default function OrderDetailPage() {
       setReturnSubmitting(false);
     }
   };
+
+  const displayTotals = useMemo(() => {
+    if (order?.display_totals) return order.display_totals;
+    return {
+      itemsSubtotal: order?.subtotal || 0,
+      shipping: order?.shipping_total || 0,
+      coinDiscount: 0,
+      oweg10Discount: 0,
+      grandTotal: order?.total || 0,
+    };
+  }, [order?.display_totals, order?.subtotal, order?.shipping_total, order?.total]);
 
   const steps = useMemo(
     () => trackerSteps(order || undefined, existingReturn || null),
@@ -482,14 +572,34 @@ export default function OrderDetailPage() {
       <div className="grid gap-6">
         <div className="rounded-3xl border border-gray-100 bg-white p-4 sm:p-6 space-y-4">
           <p className="text-sm font-semibold text-gray-900">Order tracker</p>
-          <div className="grid gap-3 sm:grid-cols-5">
+          <div
+            className={`grid gap-3 ${
+              steps.length <= 2 ? "grid-cols-2" : steps.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-5"
+            }`}
+          >
             {steps.map((step) => (
-              <div key={step.key} className="flex flex-col gap-2">
-                <div className={`flex items-center gap-2 text-sm font-semibold ${step.active ? "text-emerald-700" : "text-gray-500"}`}>
-                  <step.icon className="w-4 h-4" />
-                  {step.label}
+              <div key={step.key} className="flex flex-col gap-2 min-w-0">
+                <div
+                  className={`flex items-center gap-2 text-sm font-semibold ${
+                    step.tone === "cancelled"
+                      ? "text-rose-700"
+                      : step.active
+                        ? "text-emerald-700"
+                        : "text-gray-500"
+                  }`}
+                >
+                  <step.icon className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{step.label}</span>
                 </div>
-                <div className={`h-1 rounded-full ${step.active ? "bg-emerald-500" : "bg-gray-200"}`} />
+                <div
+                  className={`h-1 rounded-full ${
+                    step.tone === "cancelled"
+                      ? "bg-rose-500"
+                      : step.active
+                        ? "bg-emerald-500"
+                        : "bg-gray-200"
+                  }`}
+                />
               </div>
             ))}
           </div>
@@ -502,7 +612,7 @@ export default function OrderDetailPage() {
           <div className="flex flex-wrap items-center gap-3 text-sm text-gray-700">
             <span className="font-semibold inline-flex items-center gap-2">
               <ReceiptIndianRupee className="w-4 h-4 text-emerald-600" />
-              Total: {formatCurrency(order?.total, order?.currency_code)}
+              Total: {formatCurrency(displayTotals.grandTotal, order?.currency_code)}
             </span>
             <span className="inline-flex items-center gap-2 text-xs bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full">
               Payment: {order?.payment_status || "pending"}
@@ -511,6 +621,37 @@ export default function OrderDetailPage() {
               Fulfillment: {order?.fulfillment_status || "processing"}
             </span>
           </div>
+
+          {(displayTotals.itemsSubtotal > 0 || displayTotals.shipping > 0) && (
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-700 space-y-1">
+              <div className="flex justify-between gap-3">
+                <span>Items</span>
+                <span>{formatCurrency(displayTotals.itemsSubtotal, order?.currency_code)}</span>
+              </div>
+              {displayTotals.shipping > 0 && (
+                <div className="flex justify-between gap-3">
+                  <span>Shipping</span>
+                  <span>{formatCurrency(displayTotals.shipping, order?.currency_code)}</span>
+                </div>
+              )}
+              {displayTotals.oweg10Discount > 0 && (
+                <div className="flex justify-between gap-3 text-emerald-700">
+                  <span>OWEG10 discount</span>
+                  <span>-{formatCurrency(displayTotals.oweg10Discount, order?.currency_code)}</span>
+                </div>
+              )}
+              {displayTotals.coinDiscount > 0 && (
+                <div className="flex justify-between gap-3 text-emerald-700">
+                  <span>Coins applied</span>
+                  <span>-{formatCurrency(displayTotals.coinDiscount, order?.currency_code)}</span>
+                </div>
+              )}
+              <div className="flex justify-between gap-3 border-t border-gray-200 pt-2 font-semibold text-gray-900">
+                <span>Total</span>
+                <span>{formatCurrency(displayTotals.grandTotal, order?.currency_code)}</span>
+              </div>
+            </div>
+          )}
 
           {cancelMessage && (
             <div className="rounded-2xl border border-gray-200 bg-gray-50 text-gray-700 px-4 py-3 text-sm font-semibold">
@@ -522,11 +663,14 @@ export default function OrderDetailPage() {
             <Button
               variant="secondary"
               className="w-full sm:w-auto bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 hover:text-rose-800 transition-all duration-200 cursor-pointer [&_svg]:transition-transform hover:[&_svg]:rotate-6 hover:[&_svg]:scale-105"
-              onClick={cancelOrder}
+              onClick={() => {
+                setCancelFormOpen(true);
+                setCancelError(null);
+              }}
               disabled={cancelSubmitting}
             >
               <XCircle className="w-4 h-4 mr-2" />
-              {cancelSubmitting ? "Cancelling..." : "Cancel order"}
+              Cancel order
             </Button>
           )}
 
@@ -545,7 +689,7 @@ export default function OrderDetailPage() {
                     <p className="text-xs text-gray-600">Qty {item.quantity}</p>
                   </div>
                   <div className="text-sm font-semibold text-gray-900">
-                    {formatCurrency((item.unit_price || 0) * (item.quantity || 1), order?.currency_code)}
+                    {formatCurrency(item.total ?? (item.unit_price || 0) * (item.quantity || 1), order?.currency_code)}
                   </div>
                 </div>
               ))}
@@ -603,131 +747,27 @@ export default function OrderDetailPage() {
           )}
 
           {returnFormOpen && !existingReturn && (
-            <div className="space-y-4 border-t border-gray-100 pt-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-gray-700">Request type</label>
-                  <select
-                    value={returnType}
-                    onChange={(event) => setReturnType(event.target.value as "return" | "replacement")}
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                  >
-                    <option value="return">Return</option>
-                    <option value="replacement">Replacement</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-gray-700">Reason</label>
-                  <input
-                    value={returnReason}
-                    onChange={(event) => setReturnReason(sanitizeTextInput(event.target.value, 180))}
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                    placeholder="Share a short reason"
-                    maxLength={180}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-gray-700">Items to return</label>
-                <div className="divide-y border rounded-2xl">
-                  {returnItems.map((item) => (
-                    <div key={item.order_item_id} className="flex flex-wrap items-center gap-3 p-3">
-                      <label className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="checkbox"
-                          checked={item.selected}
-                          onChange={(event) => {
-                            const selected = event.target.checked;
-                            setReturnItems((prev) =>
-                              prev.map((entry) =>
-                                entry.order_item_id === item.order_item_id ? { ...entry, selected } : entry
-                              )
-                            );
-                          }}
-                        />
-                        {item.title || "Item"}
-                      </label>
-                      <div className="ml-auto flex items-center gap-2 text-sm">
-                        <span className="text-xs text-gray-500">Qty</span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={item.max}
-                          value={item.quantity}
-                          onChange={(event) => {
-                            const value = Math.min(item.max, Math.max(1, Number(event.target.value) || 1));
-                            setReturnItems((prev) =>
-                              prev.map((entry) =>
-                                entry.order_item_id === item.order_item_id ? { ...entry, quantity: value } : entry
-                              )
-                            );
-                          }}
-                          className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-sm"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {isCod && (
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-gray-700">Bank details for refund</label>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <input
-                      value={bankDetails.account_name}
-                      onChange={(event) => setBankDetails((prev) => ({ ...prev, account_name: event.target.value }))}
-                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                      placeholder="Account holder name"
-                    />
-                    <input
-                      value={bankDetails.account_number}
-                      onChange={(event) => setBankDetails((prev) => ({ ...prev, account_number: event.target.value }))}
-                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                      placeholder="Account number"
-                    />
-                    <input
-                      value={bankDetails.ifsc_code}
-                      onChange={(event) => setBankDetails((prev) => ({ ...prev, ifsc_code: event.target.value }))}
-                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                      placeholder="IFSC code"
-                    />
-                    <input
-                      value={bankDetails.bank_name}
-                      onChange={(event) => setBankDetails((prev) => ({ ...prev, bank_name: event.target.value }))}
-                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                      placeholder="Bank name (optional)"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-gray-700">Notes (optional)</label>
-                <textarea
-                  value={returnNotes}
-                  onChange={(event) => setReturnNotes(sanitizeTextInput(event.target.value, 1000))}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                  rows={3}
-                  placeholder="Add extra context"
-                  maxLength={1000}
-                />
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  onClick={() => setShowReturnSubmitConfirm(true)}
-                  disabled={returnSubmitting}
-                  className="bg-green-600 text-white border border-green-600 hover:bg-white hover:text-green-600"
-                >
-                  {returnSubmitting ? "Submitting..." : "Submit request"}
-                </Button>
-                <Button variant="secondary" onClick={() => setReturnFormOpen(false)} disabled={returnSubmitting}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
+            <ReturnOrderPanel
+              open={returnFormOpen}
+              orderNumber={orderNumber}
+              returnType={returnType}
+              onReturnTypeChange={setReturnType}
+              orderItems={order?.items || []}
+              returnItems={returnItems}
+              onReturnItemsChange={setReturnItems}
+              currencyCode={order?.currency_code}
+              selectedReason={returnReason}
+              onReasonChange={setReturnReason}
+              notes={returnNotes}
+              onNotesChange={(value) => setReturnNotes(sanitizeTextInput(value, 1000))}
+              isCod={isCod}
+              bankDetails={bankDetails}
+              onBankDetailsChange={setBankDetails}
+              submitting={returnSubmitting}
+              error={returnError}
+              onClose={resetReturnForm}
+              onSubmit={() => void submitReturnRequest()}
+            />
           )}
         </div>
 
@@ -762,35 +802,20 @@ export default function OrderDetailPage() {
           </div>
         </div>
 
-        {showReturnSubmitConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
-              <h3 className="text-base font-semibold text-gray-900">Confirm submission</h3>
-              <p className="mt-2 text-sm text-gray-600">
-                Are you sure you want to submit this return/replacement request?
-              </p>
-              <div className="mt-5 flex justify-end gap-3">
-                <Button
-                  variant="secondary"
-                  onClick={() => setShowReturnSubmitConfirm(false)}
-                  disabled={returnSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => {
-                    setShowReturnSubmitConfirm(false);
-                    void submitReturnRequest();
-                  }}
-                  disabled={returnSubmitting}
-                  className="bg-green-600 text-white border border-green-600 hover:bg-white hover:text-green-600"
-                >
-                  Confirm
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+        <CancelOrderPanel
+          open={cancelFormOpen}
+          items={order?.items || []}
+          currencyCode={order?.currency_code}
+          selectedReason={cancelReason}
+          customReason={customCancelReason}
+          submitting={cancelSubmitting}
+          error={cancelError}
+          onReasonChange={setCancelReason}
+          onCustomReasonChange={(value) => setCustomCancelReason(sanitizeTextInput(value, 180))}
+          onClose={resetCancelForm}
+          onSubmit={() => void cancelOrder()}
+        />
+
       </div>
     </div>
   );
