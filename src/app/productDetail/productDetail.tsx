@@ -44,6 +44,7 @@ import {
   notifyWishlistLogin,
   notifyWishlistSuccess,
 } from '@/lib/notifications'
+import { clearStaleBuyNowSnapshot } from '@/lib/checkout-redirects'
 import { useAuth } from '@/contexts/AuthProvider'
 import { useCartSummary } from '@/contexts/CartProvider'
 import { useFlashSale } from '@/hooks/useFlashSale'
@@ -1276,6 +1277,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
     const itemLabel = label ?? product?.title ?? "Item";
 
+    clearStaleBuyNowSnapshot();
     notifyCartAddSuccess(itemLabel, qty, goToCart);
     const previousCount = count;
     bumpCount(qty);

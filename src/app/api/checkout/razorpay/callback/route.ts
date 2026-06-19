@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { getSiteOrigin, verifyCheckoutPaymentSignature } from "@/lib/razorpay";
+import {
+  buildCheckoutReturnUrl,
+  getCheckoutFailedPath,
+  getCheckoutSuccessPath,
+} from "@/lib/checkout-redirects";
 
 export const dynamic = "force-dynamic";
 
-const SUCCESS_URL = process.env.NEXT_PUBLIC_PAYMENT_SUCCESS_URL || "/order/success";
-const FAILED_URL = process.env.NEXT_PUBLIC_PAYMENT_FAILED_URL || "/order/failed";
+const SUCCESS_PATH = getCheckoutSuccessPath();
+const FAILED_PATH = getCheckoutFailedPath();
 
 async function parseCallbackBody(req: Request): Promise<Record<string, string>> {
   const contentType = req.headers.get("content-type") || "";
@@ -33,10 +38,12 @@ export async function POST(req: Request) {
   const razorpay_order_id = body.razorpay_order_id || "";
   const razorpay_signature = body.razorpay_signature || "";
 
-  const origin = getSiteOrigin(url.origin);
+  const origin = getSiteOrigin(url.origin, url.origin);
 
   if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
-    return NextResponse.redirect(`${origin}${FAILED_URL}?orderId=${encodeURIComponent(medusaOrderId)}`);
+    return NextResponse.redirect(
+      buildCheckoutReturnUrl(FAILED_PATH, { orderId: medusaOrderId }, origin)
+    );
   }
 
   const verified = verifyCheckoutPaymentSignature({
@@ -47,12 +54,15 @@ export async function POST(req: Request) {
 
   if (!verified) {
     return NextResponse.redirect(
-      `${origin}${FAILED_URL}?orderId=${encodeURIComponent(medusaOrderId)}&error=invalid_signature`
+      buildCheckoutReturnUrl(
+        FAILED_PATH,
+        { orderId: medusaOrderId, error: "invalid_signature" },
+        origin
+      )
     );
   }
 
   if (medusaOrderId) {
-    const origin = getSiteOrigin(url.origin);
     try {
       await fetch(`${origin}/api/checkout/razorpay/confirm`, {
         method: "POST",
@@ -69,9 +79,11 @@ export async function POST(req: Request) {
     }
   }
 
-  const successTarget = `${origin}${SUCCESS_URL}?orderId=${encodeURIComponent(
-    medusaOrderId
-  )}&confirming=1`;
+  const successTarget = buildCheckoutReturnUrl(
+    SUCCESS_PATH,
+    { orderId: medusaOrderId, confirming: "1" },
+    origin
+  );
 
   return NextResponse.redirect(successTarget, 303);
 }

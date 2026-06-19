@@ -232,9 +232,27 @@ export function getPublicRazorpayKey(): string {
   return key;
 }
 
-export function getSiteOrigin(fallback = "http://localhost:3000"): string {
+export function getSiteOrigin(
+  fallback = "http://localhost:3000",
+  requestOrigin?: string
+): string {
+  if (requestOrigin) {
+    try {
+      return new URL(requestOrigin).origin;
+    } catch {
+      // fall through to configured defaults
+    }
+  }
+
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (configured) return configured.replace(/\/$/, "");
+  if (configured) {
+    try {
+      return new URL(configured).origin;
+    } catch {
+      return configured.replace(/\/$/, "");
+    }
+  }
+
   const vercel = process.env.VERCEL_URL?.trim();
   if (vercel) return `https://${vercel}`;
   return fallback;
