@@ -7,8 +7,8 @@ import { ChevronLeft, ChevronRight, Megaphone } from 'lucide-react'
 import { Heart } from 'lucide-react'
 import axios from 'axios'
 import { useAuth } from '@/contexts/AuthProvider'
-import { useAddToCartWithNotification } from '@/hooks/useCartMutations'
 import { useAddToWishlistWithNotification } from '@/hooks/useWishlistMutations'
+import { ProductCardQuickActions } from '@/components/modules/ProductCardQuickActions'
 
 type FlashSaleProduct = {
   id: string
@@ -204,7 +204,6 @@ const FlashSaleSection: React.FC = () => {
 function FlashSaleProductCard({ product }: { product: FlashSaleProduct }) {
   const [isHovered, setIsHovered] = useState(false)
   const { customer } = useAuth()
-  const { addToCart, isLoading: isAddingToCart } = useAddToCartWithNotification(product.title)
   const { addToWishlist, isLoading: isAddingToWishlist } = useAddToWishlistWithNotification(product.id)
 
   // Get variant_id from product
@@ -278,13 +277,6 @@ function FlashSaleProductCard({ product }: { product: FlashSaleProduct }) {
     return list.map((itemId) => String(itemId)).includes(String(product.id))
   })()
 
-  const handleQuickAdd = async (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-    if (!variantId) return
-    await addToCart(variantId)
-  }
-
   const handleWishlist = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
     event.stopPropagation()
@@ -309,25 +301,11 @@ function FlashSaleProductCard({ product }: { product: FlashSaleProduct }) {
               sizes="(max-width: 640px) 200px, (max-width: 1024px) 220px, 260px"
             />
           </div>
-          <div
-            className={`absolute top-2 right-2 flex flex-col gap-2 z-30 transition-all duration-300 ${
-              isHovered ? "opacity-100 translate-x-0" : "opacity-0 translate-x-2"
-            }`}
-            style={{ pointerEvents: isHovered ? "auto" : "none" }}
+          <ProductCardQuickActions
+            variantId={variantId ?? undefined}
+            productName={product.title}
+            isHovered={isHovered}
           >
-            <button
-              type="button"
-              onClick={handleQuickAdd}
-              title="Add to Cart"
-              disabled={!variantId || isAddingToCart}
-              className={`w-9 h-9 rounded-full text-white flex items-center justify-center shadow-lg ${
-                variantId
-                  ? "bg-green-500 hover:bg-green-600"
-                  : "bg-slate-400 cursor-not-allowed opacity-70"
-              } ${isAddingToCart ? "opacity-60 cursor-not-allowed" : ""}`}
-            >
-              +
-            </button>
             <button
               type="button"
               onClick={handleWishlist}
@@ -339,7 +317,7 @@ function FlashSaleProductCard({ product }: { product: FlashSaleProduct }) {
             >
               <Heart className="w-4 h-4" fill={isWishlisted ? "currentColor" : "none"} />
             </button>
-          </div>
+          </ProductCardQuickActions>
         </div>
         <div className="p-3 flex flex-col flex-1">
           <div className="flex items-start gap-2 mb-2">

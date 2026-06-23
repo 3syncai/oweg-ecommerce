@@ -1,11 +1,14 @@
-// GuestAccountDropdown: Dropdown menu for non-logged-in users (Amazon-style)
 "use client";
 
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Heart, LogIn, UserPlus } from "lucide-react";
+import { LogIn, UserPlus } from "lucide-react";
 import { buildLoginUrl, buildSignupUrl } from "@/lib/auth-redirect";
+import { MyWishlistMenuIcon } from "@/components/ui/icons/account";
+
+const itemClassName =
+  "flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm font-medium text-[#1F2A33] transition-colors hover:bg-[#EAF8E7] hover:text-[#66C940]";
 
 export default function GuestAccountDropdown() {
   const pathname = usePathname();
@@ -13,51 +16,36 @@ export default function GuestAccountDropdown() {
   const signupHref = buildSignupUrl(pathname);
 
   return (
-    <div className="w-64 bg-white shadow-2xl border border-gray-200 z-[9999] rounded-lg overflow-hidden" style={{ backgroundColor: '#ffffff', opacity: 1 }}>
-      <div className="p-4 border-b border-gray-200">
-        <p className="text-sm font-semibold text-gray-900 mb-1">Welcome</p>
+    <div className="w-64 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl">
+      <div className="border-b border-gray-200 p-4">
+        <p className="mb-1 text-sm font-semibold text-[#1F2A33]">Welcome</p>
         <p className="text-xs text-gray-600">Sign in to access your account</p>
       </div>
 
-      <div className="p-2">
-        <Link
-          href={loginHref}
-          className="flex items-center gap-3 px-3 py-2.5 text-sm text-blue-600 hover:bg-blue-50 rounded transition-colors"
-        >
-          <LogIn className="w-4 h-4" />
+      <div className="space-y-1 p-2">
+        <Link href={loginHref} className={itemClassName}>
+          <LogIn className="h-5 w-5 shrink-0" />
           <span>Sign in</span>
         </Link>
-        <Link
-          href={signupHref}
-          className="flex items-center gap-3 px-3 py-2.5 text-sm text-blue-600 hover:bg-blue-50 rounded transition-colors"
-        >
-          <UserPlus className="w-4 h-4" />
+        <Link href={signupHref} className={itemClassName}>
+          <UserPlus className="h-5 w-5 shrink-0" />
           <span>New customer? Start here</span>
         </Link>
       </div>
 
       <div className="border-t border-gray-200 p-2">
-        <Link
-          href="/wishlist"
-          className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-        >
-          <Heart className="w-4 h-4" />
+        <Link href="/wishlist" className={itemClassName}>
+          <MyWishlistMenuIcon className="shrink-0" />
           <span>Your Wish List</span>
         </Link>
       </div>
 
-      <div className="border-t border-gray-200 p-2">
-        <Link
-          href="/account"
-          className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-        >
-          Your Account
+      <div className="space-y-1 border-t border-gray-200 p-2">
+        <Link href="/account" className={itemClassName}>
+          <span>Your Account</span>
         </Link>
-        <Link
-          href="/orders"
-          className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-        >
-          Your Orders
+        <Link href="/orders" className={itemClassName}>
+          <span>Your Orders</span>
         </Link>
       </div>
     </div>

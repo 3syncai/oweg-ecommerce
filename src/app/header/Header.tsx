@@ -19,6 +19,10 @@ import CartIcon from "@/components/ui/icons/CartIcon";
 import LocationIcon from "@/components/ui/icons/LocationIcon";
 import CategoryIcon from "@/components/ui/icons/CategoryIcon";
 import CategoryMegaMenu from "@/components/modules/CategoryMegaMenu";
+import {
+  prefetchMegaMenuBanners,
+  prefetchMegaMenuBannersForCategories,
+} from "@/lib/mega-menu-banner-cache";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { MedusaCategory } from "@/lib/medusa";
@@ -625,6 +629,7 @@ const Header: React.FC = () => {
         if (!cancelled) {
           setNavCategories(withChildren);
           setOverflowCategories(withoutChildren);
+          prefetchMegaMenuBannersForCategories(withChildren, 4);
         }
       } catch {
         if (!cancelled) {
@@ -1621,6 +1626,7 @@ const Header: React.FC = () => {
                             onMouseEnter={() => {
                               clearHideTimer();
                               setAllOpen(false);
+                              prefetchMegaMenuBanners(cat.handle);
                               scheduleCategoryActivate(cat.id);
                             }}
                             onMouseLeave={() => {
