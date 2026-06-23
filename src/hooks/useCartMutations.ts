@@ -17,6 +17,7 @@ import { getGuestCartId, setGuestCartId } from "@/lib/guest-cart";
 import { clearStaleBuyNowSnapshot } from "@/lib/checkout-redirects";
 import { useAuth } from "@/contexts/AuthProvider";
 import {
+  clearCartQueryCache,
   getCartQueryKey,
   optimisticAddVariantToCart,
   optimisticRemoveLineFromCart,
@@ -117,6 +118,8 @@ export function useAddToCart() {
       }
       if (context?.previousPayload !== undefined) {
         writeCartQueryCache(queryClient, customer?.id, context.previousPayload);
+      } else {
+        clearCartQueryCache(queryClient, customer?.id);
       }
     },
   });

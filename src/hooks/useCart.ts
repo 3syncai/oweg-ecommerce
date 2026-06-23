@@ -72,6 +72,13 @@ export function writeCartQueryCache(
   queryClient.setQueryData(getCartQueryKey(customerId), payload);
 }
 
+export function clearCartQueryCache(
+  queryClient: QueryClient,
+  customerId?: string | null
+) {
+  queryClient.removeQueries({ queryKey: getCartQueryKey(customerId) });
+}
+
 function cloneCartPayload(payload: CartApiPayload | undefined): CartApiPayload | undefined {
   if (!payload) return undefined;
   return JSON.parse(JSON.stringify(payload)) as CartApiPayload;
