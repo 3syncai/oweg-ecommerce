@@ -111,7 +111,7 @@ export function ProductCard({
     <Link
       ref={cardRef}
       href={productHref}
-      className="group relative w-full bg-white rounded-lg overflow-visible shadow-sm hover:shadow-xl transition-all duration-300 hover:border-[#7AC943] border border-gray-200 flex flex-col h-full"
+      className="group relative w-full bg-white rounded-lg overflow-visible shadow-sm hover:shadow-xl transition-all duration-150 hover:border-[#7AC943] border border-gray-200 flex flex-col h-full"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -121,7 +121,7 @@ export function ProductCard({
             src={image}
             alt={name}
             fill
-            className={`object-contain p-3 transition-all duration-300 ${
+            className={`object-contain p-3 transition-all duration-150 ${
               isOutOfStock ? "opacity-60 grayscale" : ""
             }`}
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"

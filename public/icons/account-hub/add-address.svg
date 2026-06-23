@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Add Address</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .muted-outline { fill: none; stroke: var(--oweg-muted, #667085); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+    .red { fill: var(--oweg-red, #D92D20); }
+    .red-stroke { fill: none; stroke: var(--oweg-red, #D92D20); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .orange { fill: var(--oweg-orange, #F79009); }
+    .orange-stroke { fill: none; stroke: var(--oweg-orange, #F79009); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .blue { fill: var(--oweg-blue, #1570EF); }
+    .blue-stroke { fill: none; stroke: var(--oweg-blue, #1570EF); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+
+  <path class="outline" d="M31 55S17 43 17 29c0-8 6-14 14-14s14 6 14 14c0 14-14 26-14 26z"/>
+  <circle class="outline" cx="31" cy="29" r="5"/>
+  <path class="accent-stroke" d="M48 17v12M42 23h12"/>
+
+</svg>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">WhatsApp Message</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .muted-outline { fill: none; stroke: var(--oweg-muted, #667085); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+    .red { fill: var(--oweg-red, #D92D20); }
+    .red-stroke { fill: none; stroke: var(--oweg-red, #D92D20); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .orange { fill: var(--oweg-orange, #F79009); }
+    .orange-stroke { fill: none; stroke: var(--oweg-orange, #F79009); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .blue { fill: var(--oweg-blue, #1570EF); }
+    .blue-stroke { fill: none; stroke: var(--oweg-blue, #1570EF); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+
+  <path class="outline" d="M16 49l3-9c-3-4-4-8-3-13c2-9 10-15 19-13c9 2 15 10 13 19c-2 9-10 15-19 13c-3-.5-5-1.5-7-3z"/>
+  <path class="accent-stroke" d="M27 24c2 7 6 11 13 13"/>
+  <path class="outline" d="M27 24l3-2l3 4l-2 2M40 37l2-3l4 3l-2 4"/>
+
+</svg>

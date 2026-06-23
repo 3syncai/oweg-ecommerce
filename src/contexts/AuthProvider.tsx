@@ -9,6 +9,8 @@ import {
   useRef,
   useState,
 } from "react"
+import { useQueryClient } from "@tanstack/react-query"
+import { clearUserSessionCache } from "@/lib/client-session-cache"
 
 export type StoreCustomer = {
   id: string
@@ -46,6 +48,7 @@ async function fetchSession(): Promise<StoreCustomer> {
 }
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient()
   const [customer, setCustomer] = useState<StoreCustomer>(null)
   const [initializing, setInitializing] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -111,6 +114,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   }, [])
 
   const logout = useCallback(async () => {
+    const previousCustomerId = customerRef.current?.id ?? null
     try {
       await fetch(LOGOUT_ENDPOINT, {
         method: "POST",
@@ -119,9 +123,10 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     } catch (err) {
       console.warn("Failed to logout", err)
     } finally {
+      clearUserSessionCache(queryClient, previousCustomerId)
       setCustomer(null)
     }
-  }, [])
+  }, [queryClient])
 
   const setCustomerState = useCallback((value: StoreCustomer) => {
     const prevCustomer = customer

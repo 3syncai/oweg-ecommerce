@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">All Orders</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .muted-outline { fill: none; stroke: var(--oweg-muted, #667085); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+    .red-soft { fill: #FEECEC; }
+    .red { fill: var(--oweg-red, #D92D20); }
+    .red-stroke { fill: none; stroke: var(--oweg-red, #D92D20); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .orange-soft { fill: #FFF4E5; }
+    .orange { fill: var(--oweg-orange, #F79009); }
+    .orange-stroke { fill: none; stroke: var(--oweg-orange, #F79009); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .blue-soft { fill: #EAF3FF; }
+    .blue { fill: var(--oweg-blue, #1570EF); }
+    .blue-stroke { fill: none; stroke: var(--oweg-blue, #1570EF); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+
+  <rect class="soft" x="10" y="12" width="44" height="40" rx="8"/>
+  <rect class="outline" x="10" y="12" width="44" height="40" rx="8"/>
+  <path class="accent-stroke" d="M22 25h20M22 33h20M22 41h12"/>
+
+</svg>

@@ -6,8 +6,10 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import { useAuth } from "@/contexts/AuthProvider";
 import { extractCartCount, type CartApiPayload } from "@/lib/cart-helpers";
 
 type CartSummaryContextValue = {
@@ -25,7 +27,9 @@ type CartProviderProps = {
 };
 
 const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
+  const { customer } = useAuth();
   const [count, setCount] = useState(0);
+  const previousCustomerIdRef = useRef<string | undefined>(customer?.id);
 
   const syncFromCartPayload = useCallback((payload?: CartApiPayload) => {
     const next = extractCartCount(payload);
@@ -53,12 +57,11 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       });
       if (!res.ok) return;
       const data = (await res.json()) as CartApiPayload;
-      
-      // If guest cart ID is returned, store it in localStorage
+
       if (data.guestCartId && typeof window !== "undefined" && typeof data.guestCartId === "string") {
         localStorage.setItem("guest_cart_id", data.guestCartId);
       }
-      
+
       syncFromCartPayload(data);
     } catch (err) {
       console.error("Failed to refresh cart", err);
@@ -68,6 +71,18 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const previousId = previousCustomerIdRef.current;
+    const nextId = customer?.id;
+
+    if (previousId && !nextId) {
+      restoreCount(0);
+      void refresh();
+    }
+
+    previousCustomerIdRef.current = nextId;
+  }, [customer?.id, refresh, restoreCount]);
 
   const value = useMemo(
     () => ({

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Contact Support</title>
+  <style>
+    .outline { fill: none; stroke: #1F2A33; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: #66C940; }
+    .accent-stroke { fill: none; stroke: #66C940; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: #EAF8E7; }
+    .red-soft { fill: #FEECEC; }
+    .red-stroke { fill: none; stroke: #D92D20; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .orange-soft { fill: #FFF4E5; }
+    .orange-stroke { fill: none; stroke: #F79009; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .blue-soft { fill: #EAF3FF; }
+    .blue-stroke { fill: none; stroke: #1570EF; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .white-stroke { fill: none; stroke: #fff; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+<path class="outline" d="M16 34v-3c0-9 7-16 16-16s16 7 16 16v3"/><path class="outline" d="M17 34h6v12h-6zM41 34h6v12h-6z"/><path class="outline" d="M41 46c-2 4-5 6-10 6h-4"/><circle class="accent" cx="26" cy="52" r="2.5"/>
+</svg>

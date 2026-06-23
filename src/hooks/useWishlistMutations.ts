@@ -56,8 +56,10 @@ export function useToggleWishlist() {
           },
         });
       }
-      // Invalidate wishlist queries
-      queryClient.invalidateQueries({ queryKey: ["wishlist"] });
+      // Invalidate wishlist queries for this customer
+      if (customer?.id) {
+        queryClient.invalidateQueries({ queryKey: ["wishlist", customer.id] });
+      }
     },
   });
 }

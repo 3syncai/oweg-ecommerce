@@ -16,6 +16,14 @@ import { useRouter } from "next/navigation";
 import { getGuestCartId, setGuestCartId } from "@/lib/guest-cart";
 import { clearStaleBuyNowSnapshot } from "@/lib/checkout-redirects";
 import { useAuth } from "@/contexts/AuthProvider";
+import {
+  clearCartQueryCache,
+  getCartQueryKey,
+  optimisticAddVariantToCart,
+  optimisticRemoveLineFromCart,
+  optimisticUpdateLineInCart,
+  writeCartQueryCache,
+} from "@/hooks/useCart";
 
 type AddToCartParams = {
   variant_id: string;
@@ -40,10 +48,6 @@ type RemoveLineItemParams = {
   label?: string;
 };
 
-function invalidateCartQuery(queryClient: ReturnType<typeof useQueryClient>) {
-  void queryClient.invalidateQueries({ queryKey: ["cart"] });
-}
-
 function buildCartHeaders(customer: unknown): Record<string, string> {
   const guestCartId = getGuestCartId();
   if (guestCartId && !customer) {
@@ -59,10 +63,10 @@ export function useAddToCart() {
   const queryClient = useQueryClient();
   const { count, syncFromCartPayload, bumpCount, restoreCount } = useCartSummary();
   const { customer } = useAuth();
+  const cartQueryKey = getCartQueryKey(customer?.id);
 
   return useMutation({
     mutationFn: async ({ variant_id, quantity = 1 }: AddToCartParams) => {
-      // Single request — line-items route ensures cart exists (no separate cart POST).
       const response = await fetch("/api/medusa/cart/line-items", {
         method: "POST",
         headers: {
@@ -89,21 +93,33 @@ export function useAddToCart() {
 
       return payload;
     },
-    onMutate: async ({ quantity = 1 }) => {
-      await queryClient.cancelQueries({ queryKey: ["cart"] });
+    onMutate: async ({ variant_id, quantity = 1 }) => {
+      await queryClient.cancelQueries({ queryKey: cartQueryKey });
+      const previousPayload = queryClient.getQueryData<CartApiPayload>(cartQueryKey);
       const previousCount = count;
       bumpCount(quantity);
-      return { previousCount };
+      const optimisticPayload = optimisticAddVariantToCart(previousPayload, variant_id, quantity);
+      writeCartQueryCache(queryClient, customer?.id, optimisticPayload);
+      return { previousCount, previousPayload };
     },
     onSuccess: (data) => {
       if (data) {
         syncFromCartPayload(data as unknown as Parameters<typeof syncFromCartPayload>[0]);
+        writeCartQueryCache(
+          queryClient,
+          customer?.id,
+          data as unknown as CartApiPayload
+        );
       }
-      invalidateCartQuery(queryClient);
     },
     onError: (_error, _variables, context) => {
       if (context && typeof context.previousCount === "number") {
         restoreCount(context.previousCount);
+      }
+      if (context?.previousPayload !== undefined) {
+        writeCartQueryCache(queryClient, customer?.id, context.previousPayload);
+      } else {
+        clearCartQueryCache(queryClient, customer?.id);
       }
     },
   });
@@ -150,6 +166,7 @@ export function useUpdateCartLineItem() {
   const queryClient = useQueryClient();
   const { syncFromCartPayload } = useCartSummary();
   const { customer } = useAuth();
+  const cartQueryKey = getCartQueryKey(customer?.id);
 
   return useMutation({
     mutationFn: async ({ lineId, quantity }: UpdateLineItemParams) => {
@@ -176,16 +193,27 @@ export function useUpdateCartLineItem() {
 
       return (await response.json()) as CartApiPayload;
     },
-    onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ["cart"] });
+    onMutate: async ({ lineId, quantity }) => {
+      await queryClient.cancelQueries({ queryKey: cartQueryKey });
+      const previousPayload = queryClient.getQueryData<CartApiPayload>(cartQueryKey);
+      const optimisticPayload = optimisticUpdateLineInCart(previousPayload, lineId, quantity);
+      if (optimisticPayload) {
+        writeCartQueryCache(queryClient, customer?.id, optimisticPayload);
+      }
+      return { previousPayload };
     },
     onSuccess: (data, variables) => {
       if (data) {
         syncFromCartPayload(data);
+        writeCartQueryCache(queryClient, customer?.id, data);
       }
-      invalidateCartQuery(queryClient);
       if (variables.label) {
         notifyQuantityUpdated(variables.label, variables.quantity);
+      }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousPayload !== undefined) {
+        writeCartQueryCache(queryClient, customer?.id, context.previousPayload);
       }
     },
   });
@@ -198,6 +226,7 @@ export function useRemoveCartLineItem() {
   const queryClient = useQueryClient();
   const { syncFromCartPayload } = useCartSummary();
   const { customer } = useAuth();
+  const cartQueryKey = getCartQueryKey(customer?.id);
 
   return useMutation({
     mutationFn: async ({ lineId }: RemoveLineItemParams) => {
@@ -222,13 +251,27 @@ export function useRemoveCartLineItem() {
 
       return (await response.json()) as CartApiPayload;
     },
+    onMutate: async ({ lineId }) => {
+      await queryClient.cancelQueries({ queryKey: cartQueryKey });
+      const previousPayload = queryClient.getQueryData<CartApiPayload>(cartQueryKey);
+      const optimisticPayload = optimisticRemoveLineFromCart(previousPayload, lineId);
+      if (optimisticPayload) {
+        writeCartQueryCache(queryClient, customer?.id, optimisticPayload);
+      }
+      return { previousPayload };
+    },
     onSuccess: (data, variables) => {
       if (data) {
         syncFromCartPayload(data);
+        writeCartQueryCache(queryClient, customer?.id, data);
       }
-      invalidateCartQuery(queryClient);
       if (variables.label) {
         notifyRemoveItem(variables.label);
+      }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousPayload !== undefined) {
+        writeCartQueryCache(queryClient, customer?.id, context.previousPayload);
       }
     },
   });
