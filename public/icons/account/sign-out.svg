@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Sign Out</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M24 12h19c3 0 5 2 5 5v30c0 3-2 5-5 5H24"/>
+  <path class="outline" d="M16 32h22"/>
+  <path class="accent-stroke" d="M31 23l9 9l-9 9"/>
+  <path class="outline" d="M16 20v24"/>
+  <rect class="soft" x="12" y="18" width="8" height="28" rx="2"/>
+  <rect class="outline" x="12" y="18" width="8" height="28" rx="2"/>
+
+</svg>

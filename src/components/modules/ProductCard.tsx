@@ -9,8 +9,8 @@ import { Heart } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthProvider";
-import { useAddToCartWithNotification } from "@/hooks/useCartMutations";
 import { useAddToWishlistWithNotification } from "@/hooks/useWishlistMutations";
+import { ProductCardQuickActions } from "@/components/modules/ProductCardQuickActions";
 
 export type ProductCardProps = {
   id: string | number;
@@ -51,7 +51,6 @@ export function ProductCard({
   const [isHovered, setIsHovered] = useState(false);
   const [prefetched, setPrefetched] = useState(false);
   const { customer } = useAuth();
-  const { addToCart, isLoading: isAddingToCart } = useAddToCartWithNotification(name);
   const { addToWishlist, isLoading: isAddingToWishlist } = useAddToWishlistWithNotification(name);
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -71,13 +70,6 @@ export function ProductCard({
     if (!Array.isArray(list)) return false;
     return list.map((itemId) => String(itemId)).includes(String(id));
   })();
-
-  const handleQuickAdd = async (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!variant_id) return;
-    await addToCart(variant_id);
-  };
 
   const handleWishlist = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -142,25 +134,13 @@ export function ProductCard({
             </div>
           </div>
         )}
-        <div
-          className={`absolute top-2 right-2 flex flex-col gap-2 z-30 transition-all duration-300 ${
-            isHovered ? "opacity-100 translate-x-0" : "opacity-0 translate-x-2"
-          }`}
-          style={{ pointerEvents: isHovered ? "auto" : "none" }}
+        <ProductCardQuickActions
+          variantId={variant_id}
+          productName={name}
+          disabled={isOutOfStock}
+          isHovered={isHovered}
+          inventoryQuantity={inventory_quantity}
         >
-          <button
-            type="button"
-            onClick={handleQuickAdd}
-            title={isOutOfStock ? "Out of Stock" : "Add to Cart"}
-            disabled={!variant_id || isAddingToCart || isOutOfStock}
-            className={`w-9 h-9 rounded-full text-white flex items-center justify-center shadow-lg ${
-              variant_id && !isOutOfStock
-                ? "bg-green-500 hover:bg-green-600"
-                : "bg-slate-400 cursor-not-allowed opacity-70"
-            } ${isAddingToCart ? "opacity-60 cursor-not-allowed" : ""}`}
-          >
-            +
-          </button>
           <button
             type="button"
             onClick={handleWishlist}
@@ -172,7 +152,7 @@ export function ProductCard({
           >
             <Heart className="w-4 h-4" fill={isWishlisted ? "currentColor" : "none"} />
           </button>
-        </div>
+        </ProductCardQuickActions>
       </div>
       <div className="p-3 flex flex-col flex-1">
         <div className="flex items-start gap-2 mb-2">

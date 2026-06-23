@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">My Wishlist</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M32 51l-3-2C18 41 11 35 11 25c0-7 5-12 12-12c4 0 7 2 9 5c2-3 5-5 9-5c7 0 12 5 12 12c0 10-7 16-18 24l-3 2z"/>
+  <path class="accent" d="M32 46l-2-1.4C21 38 16 33 16 25.8c0-4.6 3-7.8 7.2-7.8c2.7 0 5 1.4 6.5 3.8c.8 1.2 2.6 1.2 3.4 0c1.5-2.4 3.8-3.8 6.5-3.8c4.2 0 7.2 3.2 7.2 7.8c0 7.2-5 12.2-14 18.8z"/>
+  <path class="accent-stroke" d="M24 27c1-3 3-5 6-5"/>
+
+</svg>

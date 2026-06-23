@@ -8,6 +8,10 @@ import { normalizeCategorySlug } from "@/components/ui/icons/CategoryIcon";
 import CategoryMegaMenuBannerCarousel, {
   type MegaMenuBannerSlide,
 } from "@/components/modules/CategoryMegaMenuBannerCarousel";
+import {
+  fetchMegaMenuBannersCached,
+  getCachedMegaMenuBanners,
+} from "@/lib/mega-menu-banner-cache";
 import { getCategoryMegaMenuConfig } from "@/lib/category-mega-menu.config";
 
 export type MegaMenuCategory = {
@@ -61,38 +65,44 @@ export default function CategoryMegaMenu({ category, onClose }: CategoryMegaMenu
   const config = getCategoryMegaMenuConfig(category.handle);
   const popularItems = resolvePopularItems(category);
   const parentHandle = category.handle || "";
-  const [banners, setBanners] = React.useState<MegaMenuBannerSlide[]>([]);
+  const categoryHandle = category.handle?.trim() ?? "";
+  const [banners, setBanners] = React.useState<MegaMenuBannerSlide[]>(
+    () => getCachedMegaMenuBanners(categoryHandle) ?? []
+  );
+  const [bannersLoading, setBannersLoading] = React.useState(
+    () => Boolean(categoryHandle) && !getCachedMegaMenuBanners(categoryHandle)
+  );
 
   React.useEffect(() => {
-    let cancelled = false;
-    const handle = category.handle?.trim();
-    if (!handle) {
+    if (!categoryHandle) {
       setBanners([]);
+      setBannersLoading(false);
       return;
     }
 
-    const loadBanners = async () => {
-      try {
-        const res = await fetch(
-          `/api/medusa/mega-menu-banners?handle=${encodeURIComponent(handle)}`,
-          { cache: "no-store" }
-        );
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-        setBanners(Array.isArray(data.banners) ? data.banners : []);
-      } catch {
-        if (!cancelled) setBanners([]);
-      }
-    };
+    const cached = getCachedMegaMenuBanners(categoryHandle);
+    if (cached) {
+      setBanners(cached);
+      setBannersLoading(false);
+    } else {
+      setBannersLoading(true);
+    }
 
-    void loadBanners();
+    let cancelled = false;
+    void fetchMegaMenuBannersCached(categoryHandle).then((next) => {
+      if (cancelled) return;
+      setBanners(next);
+      setBannersLoading(false);
+    });
+
     return () => {
       cancelled = true;
     };
-  }, [category.handle]);
+  }, [categoryHandle]);
 
-  const showFeaturedPanel = Boolean(config?.featured || banners.length > 0);
+  const showFeaturedPanel = Boolean(
+    config?.featured || banners.length > 0 || (bannersLoading && categoryHandle)
+  );
 
   const handleMenuWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     const el = event.currentTarget;
@@ -188,6 +198,13 @@ export default function CategoryMegaMenu({ category, onClose }: CategoryMegaMenu
                   onNavigate={onClose}
                   className="h-full min-h-0"
                 />
+              </div>
+            ) : bannersLoading ? (
+              <div
+                className={`min-h-0 flex-1 ${config?.featured ? "mt-3" : "mt-0"}`}
+                aria-hidden
+              >
+                <div className="aspect-[793/1983] w-full animate-pulse rounded-lg border border-[#C8EAC0] bg-white/70" />
               </div>
             ) : null}
 

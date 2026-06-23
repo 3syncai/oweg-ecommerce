@@ -8,7 +8,10 @@ import {
   notifyCartAddError,
   notifyCartAddSuccess,
   notifyCartUnavailable,
+  notifyQuantityUpdated,
+  notifyRemoveItem,
 } from "@/lib/notifications";
+import type { CartApiPayload } from "@/lib/cart-helpers";
 import { useRouter } from "next/navigation";
 import { getGuestCartId, setGuestCartId } from "@/lib/guest-cart";
 import { clearStaleBuyNowSnapshot } from "@/lib/checkout-redirects";
@@ -25,6 +28,21 @@ type AddToCartResponse = {
   guestCartId?: string;
   [key: string]: unknown;
 };
+
+type UpdateLineItemParams = {
+  lineId: string;
+  quantity: number;
+  label?: string;
+};
+
+type RemoveLineItemParams = {
+  lineId: string;
+  label?: string;
+};
+
+function invalidateCartQuery(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: ["cart"] });
+}
 
 function buildCartHeaders(customer: unknown): Record<string, string> {
   const guestCartId = getGuestCartId();
@@ -81,6 +99,7 @@ export function useAddToCart() {
       if (data) {
         syncFromCartPayload(data as unknown as Parameters<typeof syncFromCartPayload>[0]);
       }
+      invalidateCartQuery(queryClient);
     },
     onError: (_error, _variables, context) => {
       if (context && typeof context.previousCount === "number") {
@@ -121,5 +140,117 @@ export function useAddToCartWithNotification(productName?: string) {
     addToCart: addToCartWithNotification,
     isLoading: addToCart.isPending,
     error: addToCart.error,
+  };
+}
+
+/**
+ * Hook for updating cart line item quantity
+ */
+export function useUpdateCartLineItem() {
+  const queryClient = useQueryClient();
+  const { syncFromCartPayload } = useCartSummary();
+  const { customer } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({ lineId, quantity }: UpdateLineItemParams) => {
+      const response = await fetch(
+        `/api/medusa/cart/line-items/${encodeURIComponent(lineId)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+            ...buildCartHeaders(customer),
+          },
+          body: JSON.stringify({ quantity }),
+          credentials: "include",
+        }
+      );
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        const message =
+          (payload && (payload.error || payload.message)) ||
+          "Could not update quantity";
+        throw new Error(message);
+      }
+
+      return (await response.json()) as CartApiPayload;
+    },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["cart"] });
+    },
+    onSuccess: (data, variables) => {
+      if (data) {
+        syncFromCartPayload(data);
+      }
+      invalidateCartQuery(queryClient);
+      if (variables.label) {
+        notifyQuantityUpdated(variables.label, variables.quantity);
+      }
+    },
+  });
+}
+
+/**
+ * Hook for removing a cart line item
+ */
+export function useRemoveCartLineItem() {
+  const queryClient = useQueryClient();
+  const { syncFromCartPayload } = useCartSummary();
+  const { customer } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({ lineId }: RemoveLineItemParams) => {
+      const response = await fetch(
+        `/api/medusa/cart/line-items/${encodeURIComponent(lineId)}`,
+        {
+          method: "DELETE",
+          headers: {
+            ...buildCartHeaders(customer),
+          },
+          credentials: "include",
+        }
+      );
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        const message =
+          (payload && (payload.error || payload.message)) ||
+          "Could not remove item";
+        throw new Error(message);
+      }
+
+      return (await response.json()) as CartApiPayload;
+    },
+    onSuccess: (data, variables) => {
+      if (data) {
+        syncFromCartPayload(data);
+      }
+      invalidateCartQuery(queryClient);
+      if (variables.label) {
+        notifyRemoveItem(variables.label);
+      }
+    },
+  });
+}
+
+export function useUpdateCartLineQuantity() {
+  const updateLineItem = useUpdateCartLineItem();
+  const removeLineItem = useRemoveCartLineItem();
+
+  const updateQuantity = async (
+    lineId: string,
+    nextQuantity: number,
+    label?: string
+  ) => {
+    if (nextQuantity < 1) {
+      return removeLineItem.mutateAsync({ lineId, label });
+    }
+    return updateLineItem.mutateAsync({ lineId, quantity: nextQuantity, label });
+  };
+
+  return {
+    updateQuantity,
+    isUpdating: updateLineItem.isPending || removeLineItem.isPending,
   };
 }
