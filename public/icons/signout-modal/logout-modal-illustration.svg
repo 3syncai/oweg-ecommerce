@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Logout Modal Illustration</title>
+  <style>
+    .outline { fill: none; stroke: #1F2A33; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .muted-outline { fill: none; stroke: #667085; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: #66C940; }
+    .accent-dark { fill: #0B7A22; }
+    .accent-stroke { fill: none; stroke: #66C940; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .dark-stroke { fill: none; stroke: #1F2A33; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: #EAF8E7; }
+    .red { fill: #D92D20; }
+    .red-soft { fill: #FEECEC; }
+    .red-stroke { fill: none; stroke: #D92D20; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .white { fill: #fff; }
+    .white-stroke { fill: none; stroke: #fff; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+
+  <circle class="soft" cx="32" cy="32" r="26"/>
+  <rect class="accent" x="21" y="17" width="15" height="30" rx="3"/>
+  <path class="outline" d="M36 21h7c3 0 5 2 5 5v12c0 3-2 5-5 5h-7"/>
+  <path class="dark-stroke" d="M32 32h16"/>
+  <path class="dark-stroke" d="M42 25l7 7l-7 7"/>
+  <path class="white-stroke" d="M26 25v14"/>
+  <path class="accent" d="M50 40l7 3v5c0 5-3 8-7 10c-4-2-7-5-7-10v-5z"/>
+  <path class="white-stroke" d="M47 49l2 2l5-6"/>
+
+</svg>

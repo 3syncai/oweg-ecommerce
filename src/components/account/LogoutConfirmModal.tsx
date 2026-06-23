@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthProvider";
-import { Button } from "@/components/ui/button";
+import SignOutModalIcon from "@/components/ui/icons/signout-modal/SignOutModalIcon";
 import { cn } from "@/lib/utils";
 
 type LogoutConfirmModalProps = {
@@ -60,42 +60,63 @@ export default function LogoutConfirmModal({ open, onClose }: LogoutConfirmModal
       role="presentation"
     >
       <div
-        className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
+        className="w-full max-w-[420px] rounded-2xl bg-white px-6 py-7 text-center shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="logout-modal-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <h2 id="logout-modal-title" className="text-lg font-semibold text-[#1F2A33]">
-          Sign out?
+        <div className="mx-auto mb-5 flex h-[72px] w-[72px] items-center justify-center">
+          <SignOutModalIcon
+            name="logout-modal-illustration"
+            size={72}
+            className="h-[72px] w-[72px]"
+          />
+        </div>
+
+        <h2 id="logout-modal-title" className="text-xl font-bold text-[#1F2A33]">
+          Sign out of your account?
         </h2>
-        <p className="mt-2 text-sm text-gray-500">
-          You will need to sign in again to access your account.
+        <p className="mt-3 text-sm leading-relaxed text-[#667085]">
+          You&apos;ll need to sign in again to access your orders, wishlist, and account
+          settings.
         </p>
 
-        <div className="mt-6 flex justify-end gap-3">
-          <Button
+        <div className="mt-5 flex items-center gap-3 rounded-xl bg-[#EAF8E7] px-4 py-3 text-left">
+          <SignOutModalIcon
+            name="secure-shield-check"
+            size={28}
+            className="h-7 w-7 shrink-0"
+          />
+          <p className="text-sm font-medium text-[#0B7A22]">
+            Your account and data will remain secure.
+          </p>
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <button
             type="button"
-            variant="outline"
             onClick={onClose}
             disabled={signingOut}
-            className="min-w-[96px] border-gray-200 text-[#1F2A33] hover:bg-gray-50"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#E6E9EC] bg-white px-3 text-sm font-semibold text-[#66C940] transition hover:bg-[#F9FAFB] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Cancel
-          </Button>
-          <Button
+            <SignOutModalIcon name="stay-signed-in" size={18} className="h-[18px] w-[18px]" />
+            Stay Signed In
+          </button>
+          <button
             type="button"
             onClick={() => {
               void handleSignOut();
             }}
             disabled={signingOut}
             className={cn(
-              "min-w-[96px] bg-red-600 text-white hover:bg-red-700",
+              "inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#D92D20] px-3 text-sm font-semibold text-white transition hover:bg-[#B42318] disabled:cursor-not-allowed",
               signingOut && "opacity-70"
             )}
           >
+            <SignOutModalIcon name="sign-out-red" size={18} className="h-[18px] w-[18px]" />
             {signingOut ? "Signing out..." : "Sign Out"}
-          </Button>
+          </button>
         </div>
       </div>
     </div>,
