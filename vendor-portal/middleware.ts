@@ -1,35 +1,92 @@
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-export function middleware(request: NextRequest) {
-  const token = request.cookies.get('vendor_token')?.value
+const MAINTENANCE_BYPASS = new Set([
+  "/maintenance",
+  "/debug-controller-4719",
+]);
 
-  // Protected routes
-  const protectedPaths = ['/dashboard', '/inventory', '/products', '/orders', '/profile']
-  const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))
+type MiddlewareSettings = {
+  siteStatus?: "live" | "maintenance" | "read_only";
+  enableRegistration?: boolean;
+};
 
-  // Auth routes
-  const authPaths = ['/login', '/signup']
-  const isAuthPath = authPaths.some(path => request.nextUrl.pathname.startsWith(path))
+function isMaintenanceBypass(pathname: string) {
+  if (MAINTENANCE_BYPASS.has(pathname)) return true;
+  if (pathname.startsWith("/api/debug-controller")) return true;
+  if (pathname.startsWith("/_next")) return true;
+  if (pathname.startsWith("/favicon")) return true;
+  return false;
+}
 
-  // If accessing protected route without token, redirect to login
+async function fetchDebugSettings(origin: string): Promise<MiddlewareSettings | null> {
+  try {
+    const res = await fetch(`${origin}/api/debug-controller/settings`, {
+      cache: "no-store",
+      headers: { "x-debug-middleware": "1" },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { settings?: MiddlewareSettings };
+    return data.settings || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (!isMaintenanceBypass(pathname)) {
+    const settings = await fetchDebugSettings(request.nextUrl.origin);
+
+    if (settings?.siteStatus === "maintenance") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/maintenance";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    if (pathname === "/signup" && settings?.enableRegistration === false) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.searchParams.set("registration", "disabled");
+      return NextResponse.redirect(url);
+    }
+  }
+
+  const token = request.cookies.get("vendor_token")?.value;
+
+  const protectedPaths = [
+    "/dashboard",
+    "/inventory",
+    "/products",
+    "/orders",
+    "/profile",
+    "/customers",
+    "/payout",
+    "/settings",
+    "/search",
+  ];
+  const isProtectedPath = protectedPaths.some((path) => pathname.startsWith(path));
+
+  const authPaths = ["/login", "/signup"];
+  const isAuthPath = authPaths.some((path) => pathname.startsWith(path));
+
   if (isProtectedPath && !token) {
-    const loginUrl = new URL('/login', request.url)
-    loginUrl.searchParams.set('redirect', request.nextUrl.pathname)
-    return NextResponse.redirect(loginUrl)
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("redirect", pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
-  // If accessing auth route with token, redirect to dashboard
   if (isAuthPath && token) {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  return NextResponse.next()
+  return NextResponse.next();
 }
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    "/((?!api/medusa|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
-}
-
+};

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Badge, Button, Container, Heading, Input, Label, Text, Textarea, toast } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
-import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi } from "@/lib/api/client"
+import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorInventoryApi } from "@/lib/api/client"
 import {
   collectAllImageUrls,
   detectVisualOption,
@@ -13,6 +13,7 @@ import {
   type UploadedImageRef,
   type VariantMatrixRow,
 } from "@/lib/variant-matrix"
+import { buildUsedSkuSet, validateProductSkus } from "@/lib/sku-validation"
 import { useParams, useRouter } from "next/navigation"
 
 type Product = {
@@ -94,6 +95,7 @@ const VendorProductEditPage = () => {
   const [colorImages, setColorImages] = useState<Record<string, UploadedImageRef[]>>({})
   const [initialColorImages, setInitialColorImages] = useState<Record<string, UploadedImageRef[]>>({})
   const [primaryVisualOption, setPrimaryVisualOption] = useState("")
+  const [usedSkus, setUsedSkus] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!productId) {
@@ -109,10 +111,12 @@ const VendorProductEditPage = () => {
 
     const loadPageData = async () => {
       try {
-        const [productResponse, categoriesResponse, collectionsResponse] = await Promise.all([
+        const [productResponse, categoriesResponse, collectionsResponse, inventoryResponse] =
+          await Promise.all([
           vendorProductsApi.get(productId),
           vendorCategoriesApi.list({ limit: 100, offset: 0 }).catch(() => ({ product_categories: [] })),
           vendorCollectionsApi.list({ limit: 100, offset: 0 }).catch(() => ({ collections: [] })),
+          vendorInventoryApi.list().catch(() => ({ success: false, inventory: [] })),
         ])
 
         const prod = (productResponse as any)?.product as Product
@@ -149,6 +153,11 @@ const VendorProductEditPage = () => {
         setVariantSummary(summary || null)
         setCategories(loadedCategories)
         setCollections(loadedCollections)
+        if ((inventoryResponse as any)?.success) {
+          setUsedSkus(
+            buildUsedSkuSet((inventoryResponse as any).inventory || [], productId)
+          )
+        }
 
         const existingCategoryId =
           prod?.categories?.[0]?.id ||
@@ -302,6 +311,16 @@ const VendorProductEditPage = () => {
 
     try {
       if (hasVariants && (variantRowsChanged || colorImagesChanged)) {
+        const skuValidation = validateProductSkus(
+          variantRows.map((row) => row.sku),
+          usedSkus
+        )
+        if (!skuValidation.ok) {
+          toast.error(skuValidation.title, { description: skuValidation.description })
+          setSaving(false)
+          return
+        }
+
         const serializedColorImages = serializeColorImages(colorImages)
         const allImageUrls = collectAllImageUrls([], colorImages)
 
@@ -572,6 +591,7 @@ const VendorProductEditPage = () => {
                   primaryVisualOption={primaryVisualOption}
                   onPrimaryVisualOptionChange={setPrimaryVisualOption}
                   optionsReadOnly
+                  usedSkus={usedSkus}
                 />
               </div>
             )}

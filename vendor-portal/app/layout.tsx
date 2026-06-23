@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider, themeBootstrapScript } from "@/lib/theme";
+import { DebugControllerProvider } from "@/components/debug-controller/DebugControllerProvider";
+import SiteProtections from "@/components/debug-controller/SiteProtections";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vendor Portal",
-  description: "Vendor management portal",
+  title: "OWEG Vendor Portal",
+  description: "Manage your OWEG store — products, orders, inventory & payouts",
 };
 
 export default function RootLayout({
@@ -35,7 +37,12 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
       >
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <DebugControllerProvider>
+            <SiteProtections />
+            {children}
+          </DebugControllerProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

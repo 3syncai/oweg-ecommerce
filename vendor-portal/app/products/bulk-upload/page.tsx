@@ -13,6 +13,16 @@ import {
 import * as XLSX from "xlsx"
 import axios from "axios"
 import VendorShell from "@/components/VendorShell"
+import GuideCard from "@/components/bulk-upload/GuideCard"
+import StepCard from "@/components/bulk-upload/StepCard"
+import {
+  ArrowDownTray,
+  ArrowUpRightMini,
+  DocumentText,
+  Photo,
+  Sparkles,
+  Tag,
+} from "@medusajs/icons"
 import {
   vendorCategoriesApi,
   vendorCollectionsApi,
@@ -614,12 +624,99 @@ const VendorProductsBulkUploadPage = () => {
     }
   }
 
-  const handleDownloadTemplate = () => {
-    const exampleRow: Record<string, string> = {}
+  const buildTemplateExampleRow = (
+    overrides: Record<string, string> = {}
+  ): Record<string, string> => {
+    const row: Record<string, string> = {}
     TEMPLATE_HEADERS.forEach((h) => {
-      exampleRow[h.key] = h.example
+      row[h.key] = h.example
     })
-    const ws = XLSX.utils.json_to_sheet([exampleRow], {
+    return { ...row, ...overrides }
+  }
+
+  const handleDownloadTemplate = () => {
+    // Row 1: single-variant product. Rows 2–4: same title grouped into one
+    // product with Size + Color variants (each row = one SKU / inventory / price).
+    const exampleRows = [
+      buildTemplateExampleRow(),
+      buildTemplateExampleRow({
+        Title: "Winter jacket",
+        Subtitle: "Warm and cozy",
+        Handle: "winter-jacket",
+        Description: "A warm and cozy jacket",
+        Brand: "Nike",
+        Category: "Clothing",
+        Subcategory: "Jackets",
+        Collection: "Winter Collection",
+        Tags: "winter, jacket, outdoor",
+        "Option 1 Name": "Size",
+        "Option 1 Value": "M",
+        "Option 2 Name": "Color",
+        "Option 2 Value": "Black",
+        "Visual Option Name": "Color",
+        "Visual Option Value": "Black",
+        "Visual Image Refs": "winter-jacket-black-1.jpg, winter-jacket-black-2.jpg",
+        "Variant Title": "M / Black",
+        SKU: "(auto)",
+        "Inventory Count": "10",
+        "Price INR": "1999",
+        "Discounted Price INR": "1499",
+        Thumbnail: "winter-jacket-black-1.jpg",
+        "Image 1": "winter-jacket-black-2.jpg",
+        "Image 2": "",
+        "Image 3": "",
+        "Image 4": "",
+        "Image 5": "",
+        "Brand Letter": "nike-letter.pdf",
+      }),
+      buildTemplateExampleRow({
+        Title: "Winter jacket",
+        Brand: "Nike",
+        Category: "Clothing",
+        Subcategory: "Jackets",
+        Collection: "Winter Collection",
+        Tags: "winter, jacket, outdoor",
+        "Option 1 Name": "Size",
+        "Option 1 Value": "L",
+        "Option 2 Name": "Color",
+        "Option 2 Value": "Black",
+        "Visual Option Name": "Color",
+        "Visual Option Value": "Black",
+        "Visual Image Refs": "winter-jacket-black-1.jpg, winter-jacket-black-2.jpg",
+        "Variant Title": "L / Black",
+        SKU: "(auto)",
+        "Inventory Count": "15",
+        "Price INR": "1999",
+        "Discounted Price INR": "1499",
+        Thumbnail: "winter-jacket-black-1.jpg",
+        "Image 1": "winter-jacket-black-2.jpg",
+        "Brand Letter": "nike-letter.pdf",
+      }),
+      buildTemplateExampleRow({
+        Title: "Winter jacket",
+        Brand: "Nike",
+        Category: "Clothing",
+        Subcategory: "Jackets",
+        Collection: "Winter Collection",
+        Tags: "winter, jacket, outdoor",
+        "Option 1 Name": "Size",
+        "Option 1 Value": "M",
+        "Option 2 Name": "Color",
+        "Option 2 Value": "Red",
+        "Visual Option Name": "Color",
+        "Visual Option Value": "Red",
+        "Visual Image Refs": "winter-jacket-red-1.jpg",
+        "Variant Title": "M / Red",
+        SKU: "(auto)",
+        "Inventory Count": "8",
+        "Price INR": "2099",
+        "Discounted Price INR": "1599",
+        Thumbnail: "winter-jacket-red-1.jpg",
+        "Brand Letter": "nike-letter.pdf",
+      }),
+    ]
+
+    const ws = XLSX.utils.json_to_sheet(exampleRows, {
       header: TEMPLATE_HEADERS.map((h) => h.key),
     })
 
@@ -639,7 +736,9 @@ const VendorProductsBulkUploadPage = () => {
     const instructions = [
       ["Bulk Product Upload — Instructions"],
       [],
-      ["1. Fill in one product per row in the 'Products' sheet."],
+      ["1. One Excel row = one variant (SKU). For a single product with no options,"],
+      ["   use one row. For sizes/colors, repeat the same Title on multiple rows —"],
+      ["   each row gets its own Option values, Price, and Inventory Count."],
       ["2. Required columns are marked with an asterisk (*)."],
       ["3. Brand and Title are used to auto-generate the SKU when SKU is left blank."],
       ["   SKU format: <FIRST 3 LETTERS OF BRAND>-<FIRST 2 LETTERS OF TITLE><6 RANDOM DIGITS>"],
@@ -659,6 +758,16 @@ const VendorProductsBulkUploadPage = () => {
       ["   in those columns will auto-create the matching entry in Medusa"],
       ["   on publish."],
       ["9. Brand authorization must be approved by admin before products can be created."],
+      [],
+      ["Multi-variant products (size, color, etc.):"],
+      ["• Rows with the same Title are grouped into ONE product with multiple variants."],
+      ["• Set Option 1 Name + Option 1 Value on every row (e.g. Size = M, L, XL)."],
+      ["• Optionally add Option 2 Name + Option 2 Value (e.g. Color = Black, Red)."],
+      ["• Each variant row can have its own SKU, Inventory Count, Price INR, and images."],
+      ["• Use Visual Option Name / Visual Option Value / Visual Image Refs when each"],
+      ["  color needs its own gallery (e.g. Color = Black → black-1.jpg, black-2.jpg)."],
+      ["• Option names must match across all rows of the same product."],
+      ["• See rows 2–4 in the Products sheet for a Size + Color example."],
       [],
       ["Images — two ways to add them:"],
       [""],
@@ -1136,7 +1245,7 @@ const VendorProductsBulkUploadPage = () => {
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     const file = e.dataTransfer.files?.[0]
     if (file) await handleFile(file)
@@ -1785,18 +1894,24 @@ const VendorProductsBulkUploadPage = () => {
 
   return (
     <VendorShell>
-      <div className="p-4 md:p-8 max-w-[1400px] mx-auto">
-        <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
+      <div className="mx-auto max-w-7xl p-4 md:p-6 space-y-5 md:space-y-6">
+        <div
+          className="animate-fade-in-up flex flex-wrap items-start justify-between gap-4"
+          style={{ animationDelay: "0ms" }}
+        >
           <div>
-            <Heading level="h1">Bulk Upload Products</Heading>
-            <Text className="text-ui-fg-subtle">
-              Upload an Excel sheet to create multiple products at once. SKUs are
-              auto-generated and discount % is computed for you.
+            <Heading level="h1" className="text-2xl md:text-3xl">
+              Bulk Upload Products
+            </Heading>
+            <Text className="mt-1 text-ui-fg-subtle">
+              Upload an Excel sheet to create multiple products at once. SKUs and
+              discount % are computed automatically.
             </Text>
           </div>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => router.push("/products")}>
               Back to products
+              <ArrowUpRightMini />
             </Button>
             {phase !== "intro" && (
               <Button variant="secondary" onClick={handleReset}>
@@ -1807,125 +1922,141 @@ const VendorProductsBulkUploadPage = () => {
         </div>
 
         {phase === "intro" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="border border-ui-border-base rounded-lg p-6 bg-ui-bg-base space-y-4">
-              <div className="flex items-center gap-2">
-                <Badge color="blue">Step 1</Badge>
-                <Text weight="plus">Download the template</Text>
-              </div>
-              <Text size="small" className="text-ui-fg-subtle">
-                The template lists every supported column with one example row.
-                Required columns are marked with <span className="font-mono">*</span>.
-                Leave the SKU and Discount % columns blank — they are generated
-                automatically.
-              </Text>
-              <Button variant="secondary" onClick={handleDownloadTemplate}>
-                Download Excel template
-              </Button>
-            </div>
-
-            <div
-              className="border-2 border-dashed border-ui-border-base rounded-lg p-6 bg-ui-bg-base space-y-4 text-center cursor-pointer hover:bg-ui-bg-subtle transition-colors"
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={handleDrop}
-            >
-              <div className="flex items-center justify-center gap-2">
-                <Badge color="blue">Step 2</Badge>
-                <Text weight="plus">Upload the filled file</Text>
-              </div>
-              <Text size="small" className="text-ui-fg-subtle">
-                Drag and drop your <span className="font-mono">.xlsx</span> /{" "}
-                <span className="font-mono">.xls</span> /{" "}
-                <span className="font-mono">.csv</span> file here, or click to browse.
-              </Text>
-              <Button
-                variant="primary"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  fileInputRef.current?.click()
-                }}
+          <div className="space-y-5 md:space-y-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
+              <StepCard
+                step={1}
+                title="Download the template"
+                style={{ animationDelay: "40ms" }}
               >
-                Choose file
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                className="hidden"
-                onChange={handleFileInputChange}
-              />
+                <Text size="small" className="text-ui-fg-subtle">
+                  The template lists every supported column with one example row.
+                  Required columns are marked with <span className="font-mono">*</span>.
+                  Leave SKU and Discount % blank — they are generated automatically.
+                </Text>
+                <Button variant="secondary" onClick={handleDownloadTemplate}>
+                  <ArrowDownTray />
+                  Download Excel template
+                </Button>
+              </StepCard>
+
+              <StepCard
+                step={2}
+                title="Upload the filled file"
+                variant="dropzone"
+                style={{ animationDelay: "80ms" }}
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleDrop}
+              >
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-ui-bg-base-hover text-ui-fg-muted ring-1 ring-ui-border-base">
+                  <DocumentText />
+                </div>
+                <Text size="small" className="text-ui-fg-subtle">
+                  Drag and drop your <span className="font-mono">.xlsx</span>,{" "}
+                  <span className="font-mono">.xls</span>, or{" "}
+                  <span className="font-mono">.csv</span> file here, or click to browse.
+                </Text>
+                <Button
+                  variant="primary"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    fileInputRef.current?.click()
+                  }}
+                >
+                  Choose file
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  className="hidden"
+                  onChange={handleFileInputChange}
+                />
+              </StepCard>
             </div>
 
-            <div className="md:col-span-2 border border-ui-border-base rounded-lg p-6 bg-ui-bg-base space-y-3">
-              <Text weight="plus">How SKUs are generated</Text>
-              <Text size="small" className="text-ui-fg-subtle">
-                SKU format:{" "}
-                <span className="font-mono bg-ui-bg-subtle px-2 py-0.5 rounded">
-                  &lt;BRAND_FIRST_3&gt;-&lt;PRODUCT_FIRST_2&gt;&lt;6_RANDOM_DIGITS&gt;
-                </span>
-              </Text>
-              <Text size="small" className="text-ui-fg-subtle">
-                Example: brand &quot;Nike&quot;, title &quot;Winter Jacket&quot; →{" "}
-                <span className="font-mono">NIK-WI348215</span>. The trailing 6 digits
-                are random per row, ensuring every SKU is unique within the upload.
-              </Text>
-            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <GuideCard
+                icon={<Sparkles />}
+                title="How SKUs are generated"
+                accent="oweg"
+                style={{ animationDelay: "120ms" }}
+                className="animate-fade-in-up md:col-span-2"
+              >
+                <Text size="small" className="text-ui-fg-subtle">
+                  SKU format:{" "}
+                  <code className="rounded-md bg-ui-bg-subtle px-2 py-0.5 font-mono text-xs">
+                    &lt;BRAND_FIRST_3&gt;-&lt;PRODUCT_FIRST_2&gt;-&lt;6_RANDOM_DIGITS&gt;
+                  </code>
+                </Text>
+                <Text size="small" className="text-ui-fg-subtle">
+                  Example: brand &quot;Nike&quot;, title &quot;Winter Jacket&quot; →{" "}
+                  <code className="font-mono text-xs">NIK-WI348215</code>. The trailing 6
+                  digits are random per row, ensuring every SKU is unique within the upload.
+                </Text>
+              </GuideCard>
 
-            <div className="md:col-span-2 border border-ui-border-base rounded-lg p-6 bg-ui-bg-base space-y-2">
-              <Text weight="plus">Multi-variant products (sizes, colors, etc.)</Text>
-              <Text size="small" className="text-ui-fg-subtle">
-                Rows with the same <span className="font-mono">Title</span> are grouped into
-                one product with multiple variants. Use{" "}
-                <span className="font-mono">Option 1 Name</span> /{" "}
-                <span className="font-mono">Option 1 Value</span> (and optionally Option 2)
-                on each row — for example Size = M, L, XL on three rows with the same title.
-              </Text>
-            </div>
+              <GuideCard
+                icon={<Tag />}
+                title="Multi-variant products"
+                accent="purple"
+                style={{ animationDelay: "160ms" }}
+                className="animate-fade-in-up"
+              >
+                <Text size="small" className="text-ui-fg-subtle">
+                  One Excel row = one variant. Rows with the same{" "}
+                  <code className="font-mono text-xs">Title</code> become one product with
+                  multiple variants. Use Option 1 / Option 2 columns for size, color, etc.
+                </Text>
+                <Text size="small" className="text-ui-fg-subtle">
+                  For color galleries, use Visual Option Name, Visual Option Value, and
+                  Visual Image Refs. The template includes example variant rows.
+                </Text>
+              </GuideCard>
 
-            <div className="md:col-span-2 border border-ui-border-base rounded-lg p-6 bg-ui-bg-base space-y-2">
-              <Text weight="plus">Brand authorization letters</Text>
-              <Text size="small" className="text-ui-fg-subtle">
-                The Excel template has a <span className="font-mono">Brand
-                Letter</span> column where you can reference the letter
-                filename (e.g. <span className="font-mono">nike-letter.pdf</span>).
-                You only need <span className="font-medium">one letter per
-                brand</span>, no matter how many products use it — write the
-                same filename for every row of the same brand, or leave it
-                blank and pick the file directly in the portal.
-              </Text>
-              <Text size="small" className="text-ui-fg-subtle">
-                After you upload the Excel, a panel lists every distinct brand.
-                For brands that need a letter you&apos;ll see a drop zone — drop
-                or browse the file (PDF, DOC, DOCX, JPG, or PNG). The file is
-                stored on S3 and reused for every product of that brand.
-              </Text>
-            </div>
+              <GuideCard
+                icon={<DocumentText />}
+                title="Brand authorization letters"
+                accent="orange"
+                style={{ animationDelay: "200ms" }}
+                className="animate-fade-in-up"
+              >
+                <Text size="small" className="text-ui-fg-subtle">
+                  Reference letter filenames in the Brand Letter column (e.g.{" "}
+                  <code className="font-mono text-xs">nike-letter.pdf</code>). One letter
+                  per brand — reuse the same filename for every row of that brand.
+                </Text>
+                <Text size="small" className="text-ui-fg-subtle">
+                  After upload, drop or browse PDF, DOC, DOCX, JPG, or PNG files in the
+                  brand panel. Files are stored and reused for all products of that brand.
+                </Text>
+              </GuideCard>
 
-            <div className="md:col-span-2 border border-ui-border-base rounded-lg p-6 bg-ui-bg-base space-y-2">
-              <Text weight="plus">Adding photos to your products</Text>
-              <Text size="small" className="text-ui-fg-subtle">
-                In the Excel file, list image filenames in the{" "}
-                <span className="font-mono">Thumbnail</span> and{" "}
-                <span className="font-mono">Images</span> columns (the{" "}
-                <span className="font-mono">Images</span> column accepts a
-                comma-separated list — e.g.{" "}
-                <span className="font-mono">jacket-1.jpg, jacket-2.jpg</span>).
-              </Text>
-              <Text size="small" className="text-ui-fg-subtle">
-                After you upload the Excel, a drop zone will appear where you can
-                select or drag in those exact image files. We&apos;ll upload them to
-                S3 and automatically attach each filename to the right product. The
-                <span className="font-mono"> Thumbnail</span> file becomes the
-                product&apos;s main image; the rest become the gallery.
-              </Text>
+              <GuideCard
+                icon={<Photo />}
+                title="Adding photos"
+                accent="green"
+                style={{ animationDelay: "240ms" }}
+                className="animate-fade-in-up md:col-span-2"
+              >
+                <Text size="small" className="text-ui-fg-subtle">
+                  List filenames in Thumbnail and Image columns. The Images column accepts
+                  comma-separated lists (e.g.{" "}
+                  <code className="font-mono text-xs">jacket-1.jpg, jacket-2.jpg</code>).
+                </Text>
+                <Text size="small" className="text-ui-fg-subtle">
+                  After upload, a drop zone lets you match those exact files. Thumbnail
+                  becomes the main image; the rest form the gallery.
+                </Text>
+              </GuideCard>
             </div>
           </div>
         )}
 
         {(phase === "preview" || phase === "uploading" || phase === "done") && (
-          <div className="space-y-4">
-            <div className="border border-ui-border-base rounded-lg p-4 bg-ui-bg-base flex flex-wrap items-center gap-3 justify-between">
+          <div className="animate-fade-in-up space-y-4 md:space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-ui-border-base/70 bg-ui-bg-base p-4 md:p-5 shadow-sm">
               <div>
                 <Text size="small" className="text-ui-fg-subtle">File</Text>
                 <Text weight="plus">{fileName}</Text>
@@ -1973,7 +2104,7 @@ const VendorProductsBulkUploadPage = () => {
             </div>
 
             {uniqueBrands.length > 0 && phase !== "uploading" && (
-              <div className="border border-ui-border-base rounded-lg p-4 bg-ui-bg-base space-y-3">
+              <div className="space-y-3 rounded-xl border border-ui-border-base/70 bg-ui-bg-base p-4 md:p-5">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
                     <Text weight="plus">Brand authorization letters</Text>
@@ -2028,7 +2159,7 @@ const VendorProductsBulkUploadPage = () => {
                       return (
                         <div
                           key={key}
-                          className="border border-ui-border-base rounded-md p-3 bg-ui-bg-subtle/50 space-y-2"
+                          className="space-y-2 rounded-xl border border-ui-border-base/70 bg-ui-bg-subtle/40 p-4 transition-colors hover:border-ui-border-strong"
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
@@ -2143,7 +2274,7 @@ const VendorProductsBulkUploadPage = () => {
             )}
 
             {totalImages > 0 && phase !== "uploading" && (
-              <div className="border border-ui-border-base rounded-lg p-4 bg-ui-bg-base space-y-3">
+              <div className="space-y-3 rounded-xl border border-ui-border-base/70 bg-ui-bg-base p-4 md:p-5">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
                     <Text weight="plus">Product images (bulk drop)</Text>
@@ -2164,11 +2295,14 @@ const VendorProductsBulkUploadPage = () => {
                 </div>
 
                 <div
-                  className="border-2 border-dashed border-ui-border-base rounded-lg p-5 text-center cursor-pointer hover:bg-ui-bg-subtle transition-colors"
+                  className="cursor-pointer rounded-xl border-2 border-dashed border-ui-border-base/80 p-6 text-center transition-all duration-200 hover:border-ui-border-strong hover:bg-ui-bg-subtle/40"
                   onClick={() => imageInputRef.current?.click()}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={handleImageDrop}
                 >
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-ui-bg-base-hover text-ui-fg-muted">
+                    <Photo />
+                  </div>
                   <Text size="small" className="text-ui-fg-subtle">
                     Drag images here, or{" "}
                     <span className="text-ui-fg-interactive font-medium">
@@ -2196,7 +2330,7 @@ const VendorProductsBulkUploadPage = () => {
             )}
 
             {phase === "preview" && (
-              <div className="border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 flex items-start gap-3">
+              <div className="flex items-start gap-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-4">
                 <div className="shrink-0 mt-0.5 text-blue-600 dark:text-blue-400">
                   <svg
                     width="18"
@@ -2212,7 +2346,7 @@ const VendorProductsBulkUploadPage = () => {
                     <path d="M12 16v-4M12 8h.01" />
                   </svg>
                 </div>
-                <Text size="small" className="text-blue-900 dark:text-blue-200">
+                <Text size="small" className="text-ui-fg-base">
                   <span className="font-medium">Edit rows in place.</span>{" "}
                   Click the title to rename, the{" "}
                   <span className="font-mono">+</span> next to a row to
@@ -2226,7 +2360,7 @@ const VendorProductsBulkUploadPage = () => {
               </div>
             )}
 
-            <div className="border border-ui-border-base rounded-lg overflow-hidden overflow-x-auto bg-ui-bg-base">
+            <div className="overflow-hidden overflow-x-auto rounded-xl border border-ui-border-base/70 bg-ui-bg-base">
               <table className="w-full min-w-[1500px] border-collapse text-sm">
                 <thead className="bg-ui-bg-subtle border-b border-ui-border-base">
                   <tr>

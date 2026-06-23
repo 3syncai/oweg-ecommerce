@@ -21,6 +21,7 @@ import {
 } from "@medusajs/icons"
 import { usePathname, useRouter } from "next/navigation"
 import { vendorProfileApi, vendorOrdersApi } from "@/lib/api/client"
+import { OWEG_BRAND } from "@/lib/brand"
 import { type ThemeMode, useTheme } from "@/lib/theme"
 
 type VendorInfo = {
@@ -101,7 +102,9 @@ const navItems = [
 const VendorShell = ({ children }: PropsWithChildren) => {
   const pathname = usePathname()
   const router = useRouter()
-  const { theme, setTheme } = useTheme()
+  const { theme, setTheme, resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === "dark"
+  const platformLogo = isDark ? OWEG_BRAND.logoPathDark : OWEG_BRAND.logoPathLight
   const [vendorInfo, setVendorInfo] = useState<VendorInfo | null>(null)
   const [payoutData, setPayoutData] = useState<PayoutData>({ totalRevenue: 0, totalBalance: 0, loading: true })
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
@@ -211,36 +214,45 @@ const VendorShell = ({ children }: PropsWithChildren) => {
       {/* Sidebar */}
       <aside
         className={clx(
-          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-ui-border-base bg-ui-bg-component transition-transform duration-300 md:static md:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-oweg-500/15 bg-oweg-sidebar transition-transform duration-300 md:static md:translate-x-0",
           mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        {/* Sidebar Header */}
-        <div className="flex h-16 shrink-0 items-center justify-between px-6 border-b border-ui-border-base">
-          <div className="flex items-center gap-3">
+        {/* Sidebar Header — vendor store (vendor logo slot) */}
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-oweg-500/10 px-4">
+          <button
+            type="button"
+            onClick={() => navigate("/dashboard")}
+            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          >
             {vendorInfo?.store_logo ? (
-              <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-ui-border-strong bg-ui-bg-base/10 shadow-sm">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg ring-1 ring-oweg-500/20 shadow-sm">
                 <Image
                   src={vendorInfo.store_logo}
                   alt={vendorInfo.store_name || "Store logo"}
-                  width={32}
-                  height={32}
+                  width={36}
+                  height={36}
                   className="h-full w-full object-cover"
                   unoptimized
                 />
               </div>
             ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-ui-border-strong bg-ui-bg-base/10 text-sm font-semibold text-ui-fg-base shadow-sm">
-                {(vendorInfo?.store_name?.[0] || vendorInfo?.name?.[0] || "M").toUpperCase()}
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-oweg-500/15 text-sm font-semibold text-oweg-800 ring-1 ring-oweg-500/25 dark:text-oweg-200">
+                {(vendorInfo?.store_name?.[0] || vendorInfo?.name?.[0] || "S").toUpperCase()}
               </div>
             )}
-            <span className="text-sm font-semibold text-ui-fg-base truncate max-w-[140px]">
-              {vendorInfo?.store_name ? `${vendorInfo.store_name} Store` : "Medusa Store"}
-            </span>
-          </div>
+            <div className="min-w-0">
+              <span className="block truncate text-sm font-semibold text-ui-fg-base">
+                {vendorInfo?.store_name || "Your Store"}
+              </span>
+              <span className="block truncate text-xs text-oweg-600 dark:text-oweg-400">
+                Vendor Portal
+              </span>
+            </div>
+          </button>
           <button
             type="button"
-            className="md:hidden text-ui-fg-subtle"
+            className="shrink-0 md:hidden text-ui-fg-subtle"
             onClick={() => setMobileMenuOpen(false)}
           >
             <XMark />
@@ -267,8 +279,10 @@ const VendorShell = ({ children }: PropsWithChildren) => {
                       }
                     }}
                     className={clx(
-                      "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors",
-                      active ? "bg-ui-bg-base-hover text-ui-fg-base" : "text-ui-fg-subtle hover:bg-ui-bg-base-hover/50 hover:text-ui-fg-base"
+                      "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-all duration-200",
+                      active
+                        ? "oweg-nav-active"
+                        : "text-ui-fg-subtle hover:bg-oweg-500/[0.06] hover:text-ui-fg-base"
                     )}
                   >
                     <span className="flex h-5 w-5 items-center justify-center text-ui-fg-muted">
@@ -294,8 +308,10 @@ const VendorShell = ({ children }: PropsWithChildren) => {
                             key={child.path}
                             onClick={() => navigate(child.path)}
                             className={clx(
-                              "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
-                              isChildActive ? "bg-ui-bg-base-hover text-ui-fg-base font-medium" : "text-ui-fg-subtle hover:bg-ui-bg-base-hover/50 hover:text-ui-fg-base"
+                              "w-full rounded-lg px-3 py-2 text-left text-sm transition-all duration-200",
+                              isChildActive
+                                ? "oweg-nav-active font-medium"
+                                : "text-ui-fg-subtle hover:bg-oweg-500/[0.06] hover:text-ui-fg-base"
                             )}
                           >
                             {child.label}
@@ -311,10 +327,36 @@ const VendorShell = ({ children }: PropsWithChildren) => {
         </div>
 
         {/* User Menu */}
-        <div className="border-t border-ui-border-base p-4">
+        <div className="border-t border-oweg-500/10 p-4">
+          {/* OWEG platform branding — not in vendor logo slot */}
+          <div
+            className={clx(
+              "mb-3 flex items-center gap-2.5 rounded-lg px-3 py-2 ring-1",
+              isDark
+                ? "bg-zinc-950 ring-oweg-500/20"
+                : "bg-oweg-50 ring-oweg-200/80"
+            )}
+          >
+            <Image
+              src={platformLogo}
+              alt="OWEG"
+              width={72}
+              height={24}
+              className="h-5 w-auto object-contain"
+            />
+            <span
+              className={clx(
+                "text-[10px] font-medium uppercase tracking-wider",
+                isDark ? "text-ui-fg-muted" : "text-oweg-700"
+              )}
+            >
+              Platform
+            </span>
+          </div>
+
           <button
             onClick={() => navigate("/settings")}
-            className="mb-2 flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm text-ui-fg-subtle hover:bg-ui-bg-base-hover/50 hover:text-ui-fg-base transition-colors"
+            className="mb-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-ui-fg-subtle transition-all hover:bg-oweg-500/[0.06] hover:text-ui-fg-base"
           >
             {/* Reusing settings icon SVG for now as not imported specifically */}
             <span className="flex h-5 w-5 items-center justify-center text-ui-fg-muted">
@@ -329,9 +371,9 @@ const VendorShell = ({ children }: PropsWithChildren) => {
           <div ref={accountMenuRef} className="relative">
             <button
               onClick={() => setAccountMenuOpen((prev) => !prev)}
-              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-ui-bg-base-hover/50 transition-colors"
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-all hover:bg-oweg-500/[0.06]"
             >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-ui-border-strong bg-ui-bg-base/10 text-sm font-semibold text-ui-fg-base shadow-sm">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-oweg-500/15 text-sm font-semibold text-oweg-800 ring-1 ring-oweg-500/25 dark:text-oweg-200">
                 {vendorInfo?.email?.[0]?.toUpperCase() || "A"}
               </div>
               <div className="flex-1 overflow-hidden">
@@ -381,7 +423,7 @@ const VendorShell = ({ children }: PropsWithChildren) => {
                         </span>
                         <span className="flex-1">{label}</span>
                         {active && (
-                          <span className="flex h-4 w-4 items-center justify-center text-ui-fg-interactive">
+                          <span className="flex h-4 w-4 items-center justify-center text-oweg-600 dark:text-oweg-400">
                             <CheckMini />
                           </span>
                         )}
@@ -410,22 +452,25 @@ const VendorShell = ({ children }: PropsWithChildren) => {
       {/* Main Content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Mobile Header */}
-        <div className="flex h-16 items-center gap-4 border-b border-ui-border-base bg-ui-bg-component px-4 shadow-sm md:hidden">
+        <div className="flex h-16 items-center gap-3 border-b border-oweg-500/10 bg-ui-bg-component px-4 shadow-sm md:hidden">
           <button
             type="button"
-            className="text-ui-fg-base"
+            className="shrink-0 text-ui-fg-base"
             onClick={() => setMobileMenuOpen(true)}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
               <path d="M3.75 6.75H20.25M3.75 12H20.25M3.75 17.25H20.25" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          <div className="text-sm font-semibold text-ui-fg-base">
-            {vendorInfo?.store_name ? `${vendorInfo.store_name} Store` : "OWEG Vendor Store"}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold text-ui-fg-base">
+              {vendorInfo?.store_name || "Your Store"}
+            </div>
+            <div className="truncate text-xs text-ui-fg-muted">Vendor Portal</div>
           </div>
         </div>
 
-        <main className="flex-1 overflow-y-auto bg-ui-bg-base">
+        <main className="flex-1 overflow-y-auto bg-ui-bg-base bg-oweg-page">
           {children}
         </main>
       </div>

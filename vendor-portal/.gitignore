@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local bulk-upload sample (do not commit)
+/samples/dummy-products-bulk-upload.xlsx
+/scripts/generate-dummy-bulk-upload.mjs

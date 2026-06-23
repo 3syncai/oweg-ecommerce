@@ -146,17 +146,19 @@ export default function SettingsPage() {
 
   return (
     <VendorShell>
-      <Container className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto">
+      <Container className="mx-auto max-w-7xl p-4 md:p-6 space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="space-y-1">
-          <Heading level="h1">Settings</Heading>
+        <div className="animate-fade-in-up space-y-1">
+          <Heading level="h1" className="text-2xl md:text-3xl">
+            Settings
+          </Heading>
           <Text className="text-ui-fg-subtle">
             Manage how you sign in and protect your vendor account.
           </Text>
         </div>
 
         {/* Section: Account & Security */}
-        <div className="space-y-4">
+        <div className="animate-fade-in-up-slow space-y-4">
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-ui-fg-subtle" />
             <Heading level="h2" className="text-base">
@@ -165,7 +167,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Account summary card */}
-          <div className="border border-ui-border-base rounded-xl bg-ui-bg-base p-5 md:p-6">
+          <div className="oweg-card p-5 md:p-6">
             <div className="flex items-start justify-between flex-wrap gap-4">
               <div className="space-y-1">
                 <Text size="small" className="text-ui-fg-subtle">
@@ -190,9 +192,9 @@ export default function SettingsPage() {
           </div>
 
           {/* Change password card */}
-          <div className="border border-ui-border-base rounded-xl bg-ui-bg-base p-5 md:p-6 space-y-5">
+          <div className="oweg-card space-y-5 p-5 md:p-6">
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 ring-1 ring-blue-500/20">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-oweg-500/10 text-oweg-700 ring-1 ring-oweg-500/20 dark:text-oweg-400">
                 <Lock className="h-5 w-5" />
               </div>
               <div className="space-y-1">
@@ -354,10 +356,10 @@ export default function SettingsPage() {
           </div>
 
           {/* 2FA placeholder card */}
-          <div className="border border-ui-border-base rounded-xl bg-ui-bg-base p-5 md:p-6">
+          <div className="oweg-card p-5 md:p-6">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 ring-1 ring-purple-500/20">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-oweg-500/10 text-oweg-700 ring-1 ring-oweg-500/20 dark:text-oweg-400">
                   <KeyRound className="h-5 w-5" />
                 </div>
                 <div className="space-y-1">
@@ -380,10 +382,10 @@ export default function SettingsPage() {
           </div>
 
           {/* Sign out card */}
-          <div className="border border-ui-border-base rounded-xl bg-ui-bg-base p-5 md:p-6">
+          <div className="oweg-card p-5 md:p-6">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10 text-orange-500 ring-1 ring-orange-500/20">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 ring-1 ring-amber-500/20">
                   <LogOut className="h-5 w-5" />
                 </div>
                 <div className="space-y-1">

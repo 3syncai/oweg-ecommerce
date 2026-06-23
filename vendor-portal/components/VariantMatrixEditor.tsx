@@ -23,6 +23,7 @@ import {
   type UploadedImageRef,
   type VariantMatrixRow,
 } from "@/lib/variant-matrix"
+import { validateSingleSkuInput } from "@/lib/sku-validation"
 
 export type VariantMatrixEditorProps = {
   hasVariants: boolean
@@ -37,6 +38,7 @@ export type VariantMatrixEditorProps = {
   onPrimaryVisualOptionChange?: (option: string) => void
   optionsReadOnly?: boolean
   simpleProductExtras?: React.ReactNode
+  usedSkus?: Set<string>
 }
 
 const VariantDiscountCell = ({
@@ -131,6 +133,7 @@ export default function VariantMatrixEditor({
   onPrimaryVisualOptionChange,
   optionsReadOnly = false,
   simpleProductExtras,
+  usedSkus,
 }: VariantMatrixEditorProps) {
   const [bulkPrice, setBulkPrice] = useState("")
   const [bulkSalePrice, setBulkSalePrice] = useState("")
@@ -262,6 +265,18 @@ export default function VariantMatrixEditor({
     onVariantsChange(next)
   }
 
+  const handleSkuBlur = (index: number, sku: string) => {
+    const result = validateSingleSkuInput(
+      sku,
+      index,
+      variants.map((v) => v.sku),
+      usedSkus
+    )
+    if (!result.ok) {
+      toast.error(result.title, { description: result.description })
+    }
+  }
+
   const updateVariantOptionValue = (
     index: number,
     optionTitle: string,
@@ -386,6 +401,7 @@ export default function VariantMatrixEditor({
           <Input
             value={row.sku}
             onChange={(e) => updateVariantField(globalIndex, "sku", e.target.value)}
+            onBlur={(e) => handleSkuBlur(globalIndex, e.target.value)}
             placeholder="Optional"
             className="min-w-[80px] h-8"
           />
@@ -979,6 +995,7 @@ export default function VariantMatrixEditor({
                         <Input
                           value={variant.sku}
                           onChange={(e) => updateVariantField(idx, "sku", e.target.value)}
+                          onBlur={(e) => handleSkuBlur(idx, e.target.value)}
                           placeholder="Optional"
                           className="min-w-[80px] h-8"
                         />
@@ -1048,6 +1065,7 @@ export default function VariantMatrixEditor({
                       <Input
                         value={variant.sku}
                         onChange={(e) => updateVariantField(idx, "sku", e.target.value)}
+                        onBlur={(e) => handleSkuBlur(idx, e.target.value)}
                         placeholder="Optional"
                         className="min-w-[80px] h-8"
                       />

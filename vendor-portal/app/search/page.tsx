@@ -2,17 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import {
-  Badge,
-  Button,
-  Container,
-  Heading,
-  Input,
-  Table,
-  Text,
-} from "@medusajs/ui"
-import { MagnifyingGlass } from "@medusajs/icons"
+import { Button, Container, Heading, Text } from "@medusajs/ui"
+import { MagnifyingGlass, ShoppingCart, Tag, Users } from "@medusajs/icons"
 import VendorShell from "@/components/VendorShell"
+import PageSkeleton from "@/components/PageSkeleton"
+import EmptyState from "@/components/EmptyState"
+import StatCard from "@/components/dashboard/StatCard"
+import StatusDot, { fulfillmentStatusVariant } from "@/components/dashboard/StatusDot"
+import ProductStatus from "@/components/dashboard/ProductStatus"
 import {
   vendorCustomersApi,
   vendorOrdersApi,
@@ -20,41 +17,6 @@ import {
 } from "@/lib/api/client"
 
 type SearchTab = "all" | "products" | "orders" | "customers"
-
-// Small colored dot used for status / result indicators (matches dashboard style)
-const STATUS_DOT: Record<string, string> = {
-  live: "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]",
-  pending: "bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]",
-  draft: "bg-gray-400",
-  rejected: "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]",
-  shipped: "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]",
-  delivered: "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]",
-  canceled: "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]",
-  default: "bg-gray-400",
-}
-
-const StatusDot = ({ status }: { status: string }) => {
-  const key = (status || "default").toLowerCase()
-  const cls = STATUS_DOT[key] || STATUS_DOT.default
-  return (
-    <div className="flex items-center gap-2">
-      <div className={`w-2 h-2 rounded-full ${cls}`} />
-      <span className="text-ui-fg-base capitalize text-sm">{status}</span>
-    </div>
-  )
-}
-
-const ResultDot = ({ count }: { count: number }) => {
-  const cls = count > 0
-    ? "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]"
-    : "bg-gray-400"
-  return (
-    <div className="flex items-center gap-2">
-      <div className={`w-2 h-2 rounded-full ${cls}`} />
-      <span className="text-ui-fg-subtle text-sm">{count} results</span>
-    </div>
-  )
-}
 
 type Product = {
   id: string
@@ -90,6 +52,25 @@ type Customer = {
 }
 
 const RECENT_KEY = "vendor_portal_recent_searches"
+
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(amount)
+
+const formatDate = (dateString?: string) => {
+  if (!dateString) return "—"
+  return new Date(dateString).toLocaleDateString("en-IN", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  })
+}
+
+const getProductStatus = (p: Product) => {
+  if (p.metadata?.approval_status === "pending") return "pending"
+  if (p.metadata?.approval_status === "rejected") return "rejected"
+  if (p.status === "published") return "published"
+  return "draft"
+}
 
 export default function VendorSearchPage() {
   const router = useRouter()
@@ -220,81 +201,106 @@ export default function VendorSearchPage() {
   const renderOrders = activeTab === "all" || activeTab === "orders"
   const renderCustomers = activeTab === "all" || activeTab === "customers"
 
-  return (
-    <VendorShell>
-      <Container className="p-4 md:p-6 space-y-6">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
+  const tabOptions: { value: SearchTab; label: string; count: number }[] = [
+    { value: "all", label: "All", count: totalHits },
+    { value: "products", label: "Products", count: productResults.length },
+    { value: "orders", label: "Orders", count: orderResults.length },
+    { value: "customers", label: "Customers", count: customerResults.length },
+  ]
+
+  const productStatusOptions = ["all", "live", "pending", "draft", "rejected"] as const
+
+  let content
+
+  if (loading) {
+    content = <PageSkeleton label="Loading search…" stats={3} rows={6} cols={4} showAction={false} />
+  } else if (error) {
+    content = (
+      <Container className="mx-auto max-w-7xl p-4 md:p-6">
+        <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-6">
+          <Text className="text-ui-fg-error">{error}</Text>
+        </div>
+      </Container>
+    )
+  } else {
+    content = (
+      <Container className="mx-auto max-w-7xl p-4 md:p-6 space-y-5 md:space-y-6">
+        <div className="animate-fade-in-up flex flex-wrap items-start justify-between gap-4">
           <div>
-            <Heading level="h1">Search</Heading>
-            <Text className="text-ui-fg-subtle">
-              Quickly find products, orders, and customers in one place.
+            <Heading level="h1" className="text-2xl md:text-3xl">
+              Search
+            </Heading>
+            <Text className="mt-1 text-ui-fg-subtle">
+              {products.length + orders.length + customers.length > 0
+                ? `${products.length} products · ${orders.length} orders · ${customers.length} customers`
+                : "Quickly find products, orders, and customers in one place"}
             </Text>
-          </div>
-          <div className="flex items-center gap-4 text-sm text-ui-fg-subtle">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]" />
-              <span>{products.length} products</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]" />
-              <span>{orders.length} orders</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
-              <span>{customers.length} customers</span>
-            </div>
           </div>
         </div>
 
-        <div className="border border-ui-border-base rounded-lg p-4 space-y-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 md:gap-4 animate-fade-in-up-slow">
+          <StatCard icon={<Tag />} label="Products" value={products.length} subtext={<Text className="text-ui-fg-subtle">In your catalog</Text>} />
+          <StatCard icon={<ShoppingCart />} label="Orders" value={orders.length} subtext={<Text className="text-ui-fg-subtle">All time</Text>} />
+          <StatCard icon={<Users />} label="Customers" value={customers.length} subtext={<Text className="text-ui-fg-subtle">Who bought from you</Text>} />
+        </div>
+
+        <div className="animate-fade-in-up oweg-card space-y-4 p-4 md:p-5">
           <div className="relative">
-            <Input
-              placeholder="Search product name, order ID, customer email..."
+            <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ui-fg-muted" />
+            <input
+              type="search"
+              placeholder="Search product name, order ID, customer email…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") saveRecent(query)
               }}
-              className="pl-9"
+              className="h-11 w-full rounded-lg border border-ui-border-base/70 bg-ui-bg-base pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-ui-fg-muted focus:border-ui-border-strong"
             />
-            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-ui-fg-muted">
-              <MagnifyingGlass />
-            </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {(["all", "products", "orders", "customers"] as SearchTab[]).map((tab) => (
-              <Button
-                key={tab}
-                variant={activeTab === tab ? "primary" : "secondary"}
-                size="small"
-                onClick={() => setActiveTab(tab)}
+          <div className="flex flex-wrap gap-2">
+            {tabOptions.map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setActiveTab(tab.value)}
+                className={`rounded-full border px-3 py-1.5 text-sm transition-all duration-200 ${
+                  activeTab === tab.value
+                    ? "border-ui-border-strong bg-ui-bg-subtle text-ui-fg-base"
+                    : "border-ui-border-base/70 text-ui-fg-subtle hover:border-ui-border-strong hover:text-ui-fg-base"
+                }`}
               >
-                {tab[0].toUpperCase() + tab.slice(1)}
-              </Button>
+                {tab.label}
+                <span className="ml-1.5 text-ui-fg-muted">({tab.count})</span>
+              </button>
             ))}
           </div>
 
           {(activeTab === "all" || activeTab === "products") && (
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex flex-wrap items-center gap-2">
               <Text size="small" className="text-ui-fg-subtle">
                 Product status:
               </Text>
-              {(["all", "live", "pending", "draft", "rejected"] as const).map((status) => (
-                <Button
+              {productStatusOptions.map((status) => (
+                <button
                   key={status}
-                  variant={statusFilter === status ? "primary" : "transparent"}
-                  size="small"
+                  type="button"
                   onClick={() => setStatusFilter(status)}
+                  className={`rounded-full border px-2.5 py-1 text-xs capitalize transition-all duration-200 ${
+                    statusFilter === status
+                      ? "border-oweg-500/40 bg-oweg-500/10 text-oweg-800 dark:text-oweg-300"
+                      : "border-ui-border-base/70 text-ui-fg-subtle hover:border-ui-border-strong"
+                  }`}
                 >
-                  {status[0].toUpperCase() + status.slice(1)}
-                </Button>
+                  {status}
+                </button>
               ))}
             </div>
           )}
 
           {recentSearches.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex flex-wrap items-center gap-2 border-t border-ui-border-base/50 pt-3">
               <Text size="small" className="text-ui-fg-subtle">
                 Recent:
               </Text>
@@ -303,7 +309,7 @@ export default function VendorSearchPage() {
                   key={term}
                   type="button"
                   onClick={() => setQuery(term)}
-                  className="text-xs px-2 py-1 rounded-md border border-ui-border-base hover:bg-ui-bg-base-hover"
+                  className="rounded-md border border-ui-border-base/70 bg-ui-bg-subtle/50 px-2 py-1 text-xs text-ui-fg-subtle transition hover:border-ui-border-strong hover:text-ui-fg-base"
                 >
                   {term}
                 </button>
@@ -312,196 +318,203 @@ export default function VendorSearchPage() {
           )}
         </div>
 
-        {loading ? (
-          <Text>Loading searchable data...</Text>
-        ) : error ? (
-          <Text className="text-ui-fg-error">{error}</Text>
-        ) : totalHits === 0 ? (
-          <div className="p-8 text-center border border-ui-border-base rounded-lg border-dashed">
-            <Text className="text-ui-fg-subtle">
-              No results found. Try different keywords like SKU, email, status, or order id.
-            </Text>
-          </div>
+        {totalHits === 0 ? (
+          <EmptyState
+            accent="oweg"
+            icon={<MagnifyingGlass />}
+            title="No results found"
+            description="Try different keywords like SKU, email, status, or order ID."
+            primaryAction={
+              query
+                ? {
+                    label: "Clear search",
+                    onClick: () => {
+                      setQuery("")
+                      setStatusFilter("all")
+                      setActiveTab("all")
+                    },
+                  }
+                : undefined
+            }
+          />
         ) : (
-          <div className="space-y-6">
-            {renderProducts && (
+          <div className="animate-fade-in-up space-y-6">
+            {renderProducts && productResults.length > 0 && (
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <Heading level="h2">Products</Heading>
-                  <ResultDot count={productResults.length} />
+                  <Heading level="h2" className="text-lg">
+                    Products
+                  </Heading>
+                  <Text size="small" className="text-ui-fg-muted">
+                    {productResults.length} result{productResults.length !== 1 ? "s" : ""}
+                  </Text>
                 </div>
-                <div className="border border-ui-border-base rounded-lg overflow-x-auto">
-                  <Table className="min-w-[680px]">
-                    <Table.Header>
-                      <Table.Row>
-                        <Table.HeaderCell>Product</Table.HeaderCell>
-                        <Table.HeaderCell>Status</Table.HeaderCell>
-                        <Table.HeaderCell>Created</Table.HeaderCell>
-                        <Table.HeaderCell className="text-right">Action</Table.HeaderCell>
-                      </Table.Row>
-                    </Table.Header>
-                    <Table.Body>
-                      {productResults.slice(0, 50).map((p) => {
-                        const status =
-                          p.metadata?.approval_status === "pending"
-                            ? "pending"
-                            : p.metadata?.approval_status === "rejected"
-                              ? "rejected"
-                              : p.status === "published"
-                                ? "live"
-                                : "draft"
-                        return (
-                          <Table.Row key={p.id}>
-                            <Table.Cell>
-                              <div className="flex items-center gap-3">
-                                {(() => {
-                                  const img = p.thumbnail || p.images?.[0]?.url
-                                  return img ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                      src={img}
-                                      alt={p.title}
-                                      className="w-10 h-10 object-cover rounded border border-ui-border-base flex-shrink-0"
-                                      onError={(e) => {
-                                        (e.currentTarget as HTMLImageElement).style.display = "none"
-                                      }}
-                                    />
-                                  ) : (
-                                    <div className="w-10 h-10 rounded border border-ui-border-base bg-ui-bg-subtle flex items-center justify-center text-ui-fg-muted text-xs flex-shrink-0">
-                                      —
-                                    </div>
-                                  )
-                                })()}
-                                <div className="flex flex-col min-w-0">
-                                  <Text className="font-medium truncate">{p.title}</Text>
-                                  <Text className="text-ui-fg-subtle text-xs truncate">{p.handle || p.id}</Text>
-                                </div>
+                <div className="overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base">
+                  <div className="hidden md:grid md:grid-cols-[minmax(0,1fr)_120px_100px_80px] md:gap-4 border-b border-ui-border-base/70 bg-ui-bg-subtle/30 px-4 py-3">
+                    {["Product", "Status", "Created", ""].map((h) => (
+                      <Text key={h || "action"} size="small" weight="plus" className="text-ui-fg-subtle">
+                        {h}
+                      </Text>
+                    ))}
+                  </div>
+                  <div className="divide-y divide-ui-border-base/70">
+                    {productResults.slice(0, 50).map((p) => {
+                      const status = getProductStatus(p)
+                      const img = p.thumbnail || p.images?.[0]?.url
+                      return (
+                        <div
+                          key={p.id}
+                          className="grid grid-cols-1 gap-2 px-4 py-4 transition-colors hover:bg-ui-bg-subtle/60 md:grid-cols-[minmax(0,1fr)_120px_100px_80px] md:items-center md:gap-4"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            {img ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={img}
+                                alt={p.title}
+                                className="h-10 w-10 shrink-0 rounded-lg border border-ui-border-base/70 object-cover"
+                                onError={(e) => {
+                                  ;(e.currentTarget as HTMLImageElement).style.display = "none"
+                                }}
+                              />
+                            ) : (
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-ui-border-base/70 bg-ui-bg-subtle text-xs text-ui-fg-muted">
+                                —
                               </div>
-                            </Table.Cell>
-                            <Table.Cell>
-                              <StatusDot status={status} />
-                            </Table.Cell>
-                            <Table.Cell>
-                              <Text className="text-ui-fg-subtle text-sm">
-                                {p.created_at ? new Date(p.created_at).toLocaleDateString("en-IN") : "—"}
+                            )}
+                            <div className="min-w-0">
+                              <Text weight="plus" className="truncate">
+                                {p.title}
                               </Text>
-                            </Table.Cell>
-                            <Table.Cell className="text-right">
-                              <Button variant="transparent" size="small" onClick={() => router.push(`/products/${p.id}`)}>
-                                Open
-                              </Button>
-                            </Table.Cell>
-                          </Table.Row>
-                        )
-                      })}
-                    </Table.Body>
-                  </Table>
+                              <Text size="small" className="truncate text-ui-fg-subtle">
+                                {p.handle || p.id}
+                              </Text>
+                            </div>
+                          </div>
+                          <ProductStatus status={status} />
+                          <Text size="small" className="text-ui-fg-subtle">
+                            {formatDate(p.created_at)}
+                          </Text>
+                          <div className="md:text-right">
+                            <Button variant="transparent" size="small" onClick={() => router.push(`/products/${p.id}`)}>
+                              Open
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               </section>
             )}
 
-            {renderOrders && (
+            {renderOrders && orderResults.length > 0 && (
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <Heading level="h2">Orders</Heading>
-                  <ResultDot count={orderResults.length} />
+                  <Heading level="h2" className="text-lg">
+                    Orders
+                  </Heading>
+                  <Text size="small" className="text-ui-fg-muted">
+                    {orderResults.length} result{orderResults.length !== 1 ? "s" : ""}
+                  </Text>
                 </div>
-                <div className="border border-ui-border-base rounded-lg overflow-x-auto">
-                  <Table className="min-w-[680px]">
-                    <Table.Header>
-                      <Table.Row>
-                        <Table.HeaderCell>Order</Table.HeaderCell>
-                        <Table.HeaderCell>Customer</Table.HeaderCell>
-                        <Table.HeaderCell>Status</Table.HeaderCell>
-                        <Table.HeaderCell className="text-right">Total</Table.HeaderCell>
-                      </Table.Row>
-                    </Table.Header>
-                    <Table.Body>
-                      {orderResults.slice(0, 50).map((o) => (
-                        <Table.Row key={o.id}>
-                          <Table.Cell>
-                            <div className="flex flex-col">
-                              <Text className="font-medium">#{o.display_id || o.id.slice(0, 8)}</Text>
-                              <Text className="text-ui-fg-subtle text-xs">
-                                {o.created_at ? new Date(o.created_at).toLocaleDateString("en-IN") : "—"}
-                              </Text>
-                            </div>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <Text>{o.email || "N/A"}</Text>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <StatusDot status={o.fulfillment_status || "pending"} />
-                          </Table.Cell>
-                          <Table.Cell className="text-right">
-                            <Text className="font-medium">
-                              {new Intl.NumberFormat("en-IN", {
-                                style: "currency",
-                                currency: "INR",
-                              }).format(o.total || 0)}
+                <div className="overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base">
+                  <div className="hidden md:grid md:grid-cols-[100px_minmax(0,1fr)_120px_100px] md:gap-4 border-b border-ui-border-base/70 bg-ui-bg-subtle/30 px-4 py-3">
+                    {["Order", "Customer", "Status", "Total"].map((h) => (
+                      <Text
+                        key={h}
+                        size="small"
+                        weight="plus"
+                        className={`text-ui-fg-subtle ${h === "Total" ? "text-right" : ""}`}
+                      >
+                        {h}
+                      </Text>
+                    ))}
+                  </div>
+                  <div className="divide-y divide-ui-border-base/70">
+                    {orderResults.slice(0, 50).map((o) => {
+                      const status = o.fulfillment_status || "pending"
+                      return (
+                        <div
+                          key={o.id}
+                          className="grid grid-cols-1 gap-2 px-4 py-4 transition-colors hover:bg-ui-bg-subtle/60 md:grid-cols-[100px_minmax(0,1fr)_120px_100px] md:items-center md:gap-4"
+                        >
+                          <div>
+                            <Text weight="plus">#{o.display_id || o.id.slice(0, 8)}</Text>
+                            <Text size="small" className="text-ui-fg-subtle md:hidden">
+                              {formatDate(o.created_at)}
                             </Text>
-                          </Table.Cell>
-                        </Table.Row>
-                      ))}
-                    </Table.Body>
-                  </Table>
+                          </div>
+                          <Text size="small" className="truncate">
+                            {o.email || "N/A"}
+                          </Text>
+                          <span className="inline-flex items-center gap-1.5 capitalize">
+                            <StatusDot variant={fulfillmentStatusVariant(status)} />
+                            <Text size="small">{status}</Text>
+                          </span>
+                          <Text weight="plus" className="md:text-right">
+                            {formatCurrency(o.total || 0)}
+                          </Text>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               </section>
             )}
 
-            {renderCustomers && (
+            {renderCustomers && customerResults.length > 0 && (
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <Heading level="h2">Customers</Heading>
-                  <ResultDot count={customerResults.length} />
+                  <Heading level="h2" className="text-lg">
+                    Customers
+                  </Heading>
+                  <Text size="small" className="text-ui-fg-muted">
+                    {customerResults.length} result{customerResults.length !== 1 ? "s" : ""}
+                  </Text>
                 </div>
-                <div className="border border-ui-border-base rounded-lg overflow-x-auto">
-                  <Table className="min-w-[680px]">
-                    <Table.Header>
-                      <Table.Row>
-                        <Table.HeaderCell>Name</Table.HeaderCell>
-                        <Table.HeaderCell>Email</Table.HeaderCell>
-                        <Table.HeaderCell>Orders</Table.HeaderCell>
-                        <Table.HeaderCell className="text-right">Total Spent</Table.HeaderCell>
-                      </Table.Row>
-                    </Table.Header>
-                    <Table.Body>
-                      {customerResults.slice(0, 50).map((c) => (
-                        <Table.Row key={c.id}>
-                          <Table.Cell>
-                            <Text className="font-medium">
-                              {`${c.first_name || ""} ${c.last_name || ""}`.trim() || "Guest"}
-                            </Text>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <Text>{c.email || "N/A"}</Text>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]" />
-                              <Text className="text-ui-fg-subtle text-sm">
-                                {c.orders_count || 0} orders
-                              </Text>
-                            </div>
-                          </Table.Cell>
-                          <Table.Cell className="text-right">
-                            <Text className="font-medium">
-                              {new Intl.NumberFormat("en-IN", {
-                                style: "currency",
-                                currency: "INR",
-                              }).format(c.total_spent || 0)}
-                            </Text>
-                          </Table.Cell>
-                        </Table.Row>
-                      ))}
-                    </Table.Body>
-                  </Table>
+                <div className="overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base">
+                  <div className="hidden md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_100px_120px] md:gap-4 border-b border-ui-border-base/70 bg-ui-bg-subtle/30 px-4 py-3">
+                    {["Name", "Email", "Orders", "Total spent"].map((h) => (
+                      <Text
+                        key={h}
+                        size="small"
+                        weight="plus"
+                        className={`text-ui-fg-subtle ${h === "Total spent" ? "text-right" : ""}`}
+                      >
+                        {h}
+                      </Text>
+                    ))}
+                  </div>
+                  <div className="divide-y divide-ui-border-base/70">
+                    {customerResults.slice(0, 50).map((c) => (
+                      <div
+                        key={c.id}
+                        className="grid grid-cols-1 gap-2 px-4 py-4 transition-colors hover:bg-ui-bg-subtle/60 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_100px_120px] md:items-center md:gap-4"
+                      >
+                        <Text weight="plus">
+                          {`${c.first_name || ""} ${c.last_name || ""}`.trim() || "Guest"}
+                        </Text>
+                        <Text size="small" className="truncate text-ui-fg-subtle">
+                          {c.email || "N/A"}
+                        </Text>
+                        <span className="inline-flex w-fit items-center rounded-full bg-oweg-500/10 px-2 py-0.5 text-xs font-medium text-oweg-800 dark:text-oweg-300">
+                          {c.orders_count || 0} orders
+                        </span>
+                        <Text weight="plus" className="md:text-right">
+                          {formatCurrency(c.total_spent || 0)}
+                        </Text>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </section>
             )}
           </div>
         )}
       </Container>
-    </VendorShell>
-  )
+    )
+  }
+
+  return <VendorShell>{content}</VendorShell>
 }
