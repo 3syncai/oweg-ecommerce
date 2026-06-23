@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vendor Portal",
-  description: "Vendor management portal",
+  title: "OWEG Vendor Portal",
+  description: "Manage your OWEG store — products, orders, inventory & payouts",
 };
 
 export default function RootLayout({

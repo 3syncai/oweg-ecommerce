@@ -8,7 +8,7 @@ type EmptyStateProps = {
   title: string
   description?: string
   /** Soft accent color around the icon ring (tailwind base, e.g. "blue", "orange") */
-  accent?: "blue" | "green" | "orange" | "purple" | "gray"
+  accent?: "oweg" | "blue" | "green" | "orange" | "purple" | "gray"
   primaryAction?: {
     label: string
     onClick: () => void
@@ -20,8 +20,9 @@ type EmptyStateProps = {
 }
 
 const ACCENT_RING: Record<NonNullable<EmptyStateProps["accent"]>, string> = {
+  oweg: "bg-oweg-500/10 text-oweg-600 ring-oweg-500/25 dark:text-oweg-400",
   blue: "bg-blue-500/10 text-blue-500 ring-blue-500/20",
-  green: "bg-green-500/10 text-green-500 ring-green-500/20",
+  green: "bg-oweg-500/10 text-oweg-600 ring-oweg-500/20 dark:text-oweg-400",
   orange: "bg-orange-500/10 text-orange-500 ring-orange-500/20",
   purple: "bg-purple-500/10 text-purple-500 ring-purple-500/20",
   gray: "bg-ui-bg-base-hover text-ui-fg-muted ring-ui-border-base",

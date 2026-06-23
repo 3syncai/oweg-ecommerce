@@ -416,7 +416,7 @@ const VendorProfilePage = () => {
           {/* Hero Card */}
           <div className="relative overflow-hidden rounded-2xl border border-ui-border-base bg-ui-bg-base shadow-sm">
             {/* Banner */}
-            <div className="h-32 sm:h-40 w-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 relative">
+            <div className="h-32 sm:h-40 w-full bg-gradient-to-br from-oweg-600 via-oweg-500 to-emerald-400 relative">
               {vendor.store_banner ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -863,7 +863,7 @@ const VendorProfilePage = () => {
                 </div>
                 <div className="h-2 rounded-full bg-ui-bg-subtle overflow-hidden">
                   <div
-                    className="h-full bg-ui-fg-interactive transition-all duration-500"
+                    className="h-full bg-oweg-500 transition-all duration-500"
                     style={{ width: `${completion}%` }}
                   />
                 </div>
@@ -960,7 +960,7 @@ const VendorProfilePage = () => {
               )}
 
               {/* Help */}
-              <div className="rounded-xl border border-ui-border-base bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 p-6">
+              <div className="rounded-xl border border-oweg-500/20 bg-gradient-to-br from-oweg-50 to-emerald-50 dark:from-oweg-950/40 dark:to-emerald-950/30 p-6">
                 <Heading level="h3" className="text-base mb-1">
                   Need help?
                 </Heading>

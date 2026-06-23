@@ -3,6 +3,90 @@
 @tailwind utilities;
 
 /* ----------------------------------------------------------------
+   OWEG brand overrides (Medusa UI tokens → #00D26A green)
+   ---------------------------------------------------------------- */
+
+:root {
+  --oweg-primary: #00d26a;
+  --oweg-primary-hover: #00b856;
+  --oweg-primary-pressed: #00a551;
+
+  --button-inverted: rgba(0, 210, 106, 1);
+  --button-inverted-hover: rgba(0, 184, 86, 1);
+  --button-inverted-pressed: rgba(0, 165, 81, 1);
+  --fg-interactive: rgba(0, 189, 95, 1);
+  --fg-interactive-hover: rgba(0, 165, 81, 1);
+  --border-interactive: rgba(0, 210, 106, 0.45);
+  --bg-interactive: rgba(0, 210, 106, 1);
+  --bg-highlight: rgba(236, 253, 245, 1);
+  --bg-highlight-hover: rgba(209, 250, 229, 1);
+  --tag-green-icon: rgba(0, 210, 106, 1);
+  --tag-green-text: rgba(0, 120, 60, 1);
+  --tag-green-border: rgba(167, 243, 208, 1);
+  --tag-green-bg: rgba(236, 253, 245, 1);
+  --tag-green-bg-hover: rgba(209, 250, 229, 1);
+  --bg-base: rgba(252, 254, 252, 1);
+  --bg-subtle: rgba(247, 252, 249, 1);
+  --bg-component: rgba(255, 255, 255, 1);
+}
+
+.dark {
+  --button-inverted: rgba(0, 210, 106, 1);
+  --button-inverted-hover: rgba(0, 184, 86, 1);
+  --button-inverted-pressed: rgba(0, 165, 81, 1);
+  --fg-interactive: rgba(52, 211, 153, 1);
+  --fg-interactive-hover: rgba(0, 210, 106, 1);
+  --border-interactive: rgba(0, 210, 106, 0.35);
+  --bg-interactive: rgba(0, 210, 106, 1);
+  --bg-highlight: rgba(6, 44, 34, 1);
+  --bg-highlight-hover: rgba(6, 78, 59, 1);
+  --tag-green-icon: rgba(52, 211, 153, 1);
+  --tag-green-text: rgba(110, 231, 183, 1);
+  --tag-green-border: rgba(6, 78, 59, 1);
+  --tag-green-bg: rgba(2, 44, 34, 1);
+  --tag-green-bg-hover: rgba(6, 78, 59, 1);
+  --bg-base: rgba(12, 16, 14, 1);
+  --bg-subtle: rgba(8, 12, 10, 1);
+  --bg-component: rgba(16, 22, 19, 1);
+}
+
+@layer components {
+  .oweg-card {
+    @apply rounded-xl border border-oweg-200/60 bg-ui-bg-base shadow-sm shadow-oweg-500/[0.04]
+      transition-all duration-200 hover:border-oweg-300/70 hover:shadow-md hover:shadow-oweg-500/[0.06];
+  }
+
+  .dark .oweg-card {
+    @apply border-oweg-800/30 shadow-oweg-500/[0.03] hover:border-oweg-700/40;
+  }
+
+  .oweg-nav-active {
+    @apply bg-oweg-500/10 text-oweg-800 font-medium ring-1 ring-oweg-500/20;
+  }
+
+  .dark .oweg-nav-active {
+    @apply bg-oweg-500/15 text-oweg-300 ring-oweg-500/25;
+  }
+
+  /* Primary CTA — OWEG green, softer than default primary */
+  .oweg-btn-primary {
+    @apply !border-oweg-800/20 !bg-oweg-800 !text-white !shadow-none;
+  }
+
+  .oweg-btn-primary:hover {
+    @apply !border-oweg-800/30 !bg-oweg-900;
+  }
+
+  .dark .oweg-btn-primary {
+    @apply !border-oweg-600/20 !bg-oweg-800/90;
+  }
+
+  .dark .oweg-btn-primary:hover {
+    @apply !border-oweg-600/30 !bg-oweg-800;
+  }
+}
+
+/* ----------------------------------------------------------------
    Decorative animations used on the login / signup hero panel
    ---------------------------------------------------------------- */
 
@@ -56,7 +140,12 @@
 }
 
 .animate-fade-in-up {
-  animation: fade-in-up 0.24s ease-out;
+  animation: fade-in-up 0.24s ease-out both;
+  will-change: transform, opacity;
+}
+
+.animate-fade-in-up-slow {
+  animation: fade-in-up 0.36s ease-out both;
   will-change: transform, opacity;
 }
 
@@ -64,7 +153,8 @@
   .animate-float,
   .animate-float-slow,
   .animate-shake,
-  .animate-fade-in-up {
+  .animate-fade-in-up,
+  .animate-fade-in-up-slow {
     animation: none !important;
   }
 }

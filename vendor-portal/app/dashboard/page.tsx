@@ -1,9 +1,20 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Container, Heading, Text, Badge, Button, Table } from "@medusajs/ui"
+import { Container, Heading, Text, Button } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
-import { vendorProductsApi, vendorOrdersApi, vendorCustomersApi, vendorInventoryApi } from "@/lib/api/client"
+import EmptyState from "@/components/EmptyState"
+import StatCard from "@/components/dashboard/StatCard"
+import InsightPill from "@/components/dashboard/InsightPill"
+import DashboardSection from "@/components/dashboard/DashboardSection"
+import StatusDot, { fulfillmentStatusVariant } from "@/components/dashboard/StatusDot"
+import {
+  vendorProductsApi,
+  vendorOrdersApi,
+  vendorCustomersApi,
+  vendorInventoryApi,
+  vendorProfileApi,
+} from "@/lib/api/client"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -13,11 +24,10 @@ import {
   ArchiveBox,
   Plus,
   ArrowUpRightMini,
-  Clock
+  Tag,
 } from "@medusajs/icons"
 
 type DashboardData = {
-  // Metrics
   totalProducts: number
   publishedProducts: number
   draftProducts: number
@@ -28,17 +38,79 @@ type DashboardData = {
   totalRevenue: number
   totalCustomers: number
   averageOrderValue: number
-
-  // Lists
   recentOrders: any[]
   lowStockProducts: any[]
   topProducts: { product: string; orders: number }[]
-  actionItems: { type: string; message: string; link: string }[]
+  actionItems: { type: string; message: string; link: string; variant: "success" | "warning" | "info" }[]
+}
+
+type VendorInfo = {
+  name?: string
+  email?: string
+  store_name?: string
+}
+
+const QUICK_ACTIONS = [
+  {
+    href: "/products",
+    label: "Manage Products",
+    description: "View and edit your catalog",
+    icon: Tag,
+  },
+  {
+    href: "/orders",
+    label: "View Orders",
+    description: "Process customer orders",
+    icon: ShoppingCart,
+  },
+  {
+    href: "/customers",
+    label: "View Customers",
+    description: "See who's buying from you",
+    icon: Users,
+  },
+  {
+    href: "/inventory",
+    label: "Manage Inventory",
+    description: "Update stock levels",
+    icon: ArchiveBox,
+  },
+] as const
+
+const getTimeGreeting = () => {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      hour: "numeric",
+      hour12: false,
+    })
+      .formatToParts(new Date())
+      .find((part) => part.type === "hour")?.value ?? 0
+  )
+
+  // Boundaries in IST (Asia/Kolkata)
+  if (hour >= 5 && hour < 12) return "Good morning"
+  if (hour >= 12 && hour < 17) return "Good afternoon"
+  if (hour >= 17 && hour < 22) return "Good evening"
+  return "Good night"
+}
+
+const formatRelativeTime = (dateString: string) => {
+  const diffMs = Date.now() - new Date(dateString).getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  if (diffMins < 1) return "Just now"
+  if (diffMins < 60) return `${diffMins}m ago`
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 7) return `${diffDays}d ago`
+  return new Date(dateString).toLocaleDateString("en-IN", { month: "short", day: "numeric" })
 }
 
 const VendorDashboardPage = () => {
   const router = useRouter()
   const [data, setData] = useState<DashboardData | null>(null)
+  const [vendorInfo, setVendorInfo] = useState<VendorInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -54,56 +126,59 @@ const VendorDashboardPage = () => {
       try {
         setLoading(true)
 
-        // Fetch all data in parallel
-        const [productsData, ordersData, customersData, inventoryData] = await Promise.all([
-          vendorProductsApi.list().catch(() => ({ products: [] })),
-          vendorOrdersApi.list().catch(() => ({ orders: [] })),
-          vendorCustomersApi.list().catch(() => ({ customers: [] })),
-          vendorInventoryApi.list().catch(() => ({ inventory: [] }))
-        ])
+        const [productsData, ordersData, customersData, inventoryData, profileData] =
+          await Promise.all([
+            vendorProductsApi.list().catch(() => ({ products: [] })),
+            vendorOrdersApi.list().catch(() => ({ orders: [] })),
+            vendorCustomersApi.list().catch(() => ({ customers: [] })),
+            vendorInventoryApi.list().catch(() => ({ inventory: [] })),
+            vendorProfileApi.getMe().catch(() => ({ vendor: null })),
+          ])
+
+        setVendorInfo(profileData?.vendor || null)
 
         const products = productsData?.products || []
         const orders = ordersData?.orders || []
         const customers = customersData?.customers || []
         const inventory = inventoryData?.inventory || []
 
-        // Product stats
-        const publishedProducts = products.filter((p: any) =>
-          p.status === 'published' &&
-          p.metadata?.approval_status !== 'pending' &&
-          p.metadata?.approval_status !== 'rejected'
+        const publishedProducts = products.filter(
+          (p: any) =>
+            p.status === "published" &&
+            p.metadata?.approval_status !== "pending" &&
+            p.metadata?.approval_status !== "rejected"
         ).length
 
-        const pendingApprovalProducts = products.filter((p: any) =>
-          p.metadata?.approval_status === 'pending'
+        const pendingApprovalProducts = products.filter(
+          (p: any) => p.metadata?.approval_status === "pending"
         ).length
 
-        const draftProducts = products.filter((p: any) =>
-          p.status === 'draft'
+        const draftProducts = products.filter((p: any) => p.status === "draft").length
+
+        const pendingOrders = orders.filter(
+          (o: any) =>
+            o.fulfillment_status === "pending" || o.fulfillment_status === "processing"
         ).length
 
-        // Order stats - use fulfillment_status
-        const pendingOrders = orders.filter((o: any) =>
-          o.fulfillment_status === 'pending' || o.fulfillment_status === 'processing'
-        ).length
-        const completedOrders = orders.filter((o: any) =>
-          o.fulfillment_status === 'shipped' || o.fulfillment_status === 'delivered'
+        const completedOrders = orders.filter(
+          (o: any) =>
+            o.fulfillment_status === "shipped" || o.fulfillment_status === "delivered"
         ).length
 
-        const totalRevenue = orders.reduce((sum: number, order: any) => {
-          return sum + (order.total || 0)
-        }, 0)
+        const totalRevenue = orders.reduce(
+          (sum: number, order: any) => sum + (order.total || 0),
+          0
+        )
 
         const avgOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0
 
-        // Recent orders
         const recentOrders = orders
-          .sort((a: any, b: any) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          .sort(
+            (a: any, b: any) =>
+              new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
           )
           .slice(0, 5)
 
-        // Low stock items (< 10 units)
         const lowStockProducts = inventory
           .filter((item: any) => {
             const qty = item.available_quantity || item.stocked_quantity || 0
@@ -111,44 +186,54 @@ const VendorDashboardPage = () => {
           })
           .slice(0, 5)
 
-        // Top products by order count
         const productOrderCount = new Map<string, number>()
         orders.forEach((order: any) => {
-          (order.items || []).forEach((item: any) => {
-            const title = item.title || 'Unknown Product'
+          ;(order.items || []).forEach((item: any) => {
+            const title = item.title || "Unknown Product"
             productOrderCount.set(title, (productOrderCount.get(title) || 0) + 1)
           })
         })
 
         const topProducts = Array.from(productOrderCount.entries())
-          .map(([product, orders]) => ({ product, orders }))
+          .map(([product, orderCount]) => ({ product, orders: orderCount }))
           .sort((a, b) => b.orders - a.orders)
           .slice(0, 5)
 
-        // Action items
-        const actionItems: any[] = []
+        const actionItems: DashboardData["actionItems"] = []
 
         if (pendingApprovalProducts > 0) {
           actionItems.push({
-            type: 'warning',
-            message: `${pendingApprovalProducts} product${pendingApprovalProducts > 1 ? 's' : ''} awaiting approval`,
-            link: '/products'
+            type: "warning",
+            variant: "warning",
+            message: `${pendingApprovalProducts} product${pendingApprovalProducts > 1 ? "s" : ""} awaiting approval`,
+            link: "/products",
           })
         }
 
         if (pendingOrders > 0) {
           actionItems.push({
-            type: 'info',
-            message: `${pendingOrders} pending order${pendingOrders > 1 ? 's' : ''} to process`,
-            link: '/orders'
+            type: "info",
+            variant: "warning",
+            message: `${pendingOrders} pending order${pendingOrders > 1 ? "s" : ""} to process`,
+            link: "/orders",
           })
         }
 
         if (lowStockProducts.length > 0) {
           actionItems.push({
-            type: 'warning',
-            message: `${lowStockProducts.length} product${lowStockProducts.length > 1 ? 's' : ''} running low on stock`,
-            link: '/inventory'
+            type: "warning",
+            variant: "warning",
+            message: `${lowStockProducts.length} product${lowStockProducts.length > 1 ? "s" : ""} low on stock`,
+            link: "/inventory",
+          })
+        }
+
+        if (publishedProducts > 0) {
+          actionItems.push({
+            type: "success",
+            variant: "success",
+            message: `${publishedProducts} live product${publishedProducts > 1 ? "s" : ""} visible to customers`,
+            link: "/products",
           })
         }
 
@@ -166,9 +251,8 @@ const VendorDashboardPage = () => {
           recentOrders,
           lowStockProducts,
           topProducts,
-          actionItems
+          actionItems,
         })
-
       } catch (e: any) {
         if (e.status === 403) {
           router.push("/pending")
@@ -184,382 +268,346 @@ const VendorDashboardPage = () => {
     loadDashboardData()
   }, [router])
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-    }).format(amount)
-  }
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(amount)
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-IN", {
-      month: "short",
-      day: "numeric",
-    })
-  }
+  const displayName =
+    vendorInfo?.name?.split(" ")[0] ||
+    vendorInfo?.email?.split("@")[0] ||
+    "there"
+
+  const storeLabel = vendorInfo?.store_name ? `${vendorInfo.store_name} Store` : null
 
   let content
 
   if (loading) {
     content = (
-      <Container className="p-4 md:p-6 space-y-4 md:space-y-6">
-        <div className="flex items-center justify-between">
+      <Container className="mx-auto max-w-7xl p-4 md:p-6 space-y-5 md:space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-2">
-            <div className="h-6 w-40 rounded-md bg-ui-bg-base-hover animate-pulse" />
-            <div className="h-4 w-64 rounded-md bg-ui-bg-base-hover/70 animate-pulse" />
+            <div className="h-7 w-48 rounded-lg bg-ui-bg-base-hover animate-pulse" />
+            <div className="h-4 w-72 rounded-md bg-ui-bg-base-hover/70 animate-pulse" />
           </div>
-          <div className="h-9 w-32 rounded-md bg-ui-bg-base-hover animate-pulse" />
+          <div className="h-9 w-36 rounded-lg bg-ui-bg-base-hover animate-pulse" />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
+        <div className="flex flex-wrap gap-2">
+          {Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
-              className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base space-y-3"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-md bg-ui-bg-base-hover animate-pulse" />
-                <div className="h-3 w-24 rounded-md bg-ui-bg-base-hover animate-pulse" />
-              </div>
-              <div className="h-7 w-32 rounded-md bg-ui-bg-base-hover animate-pulse" />
-              <div className="h-3 w-40 rounded-md bg-ui-bg-base-hover/70 animate-pulse" />
-            </div>
+              className="h-10 w-52 rounded-full bg-ui-bg-base-hover animate-pulse"
+            />
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="h-36 rounded-xl bg-ui-bg-base-hover animate-pulse lg:col-span-2" />
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-36 rounded-xl bg-ui-bg-base-hover animate-pulse" />
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           {Array.from({ length: 2 }).map((_, i) => (
             <div
               key={i}
-              className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base space-y-4"
+              className="rounded-xl border border-ui-border-base/70 bg-ui-bg-base p-5 space-y-4"
             >
-              <div className="h-5 w-40 rounded-md bg-ui-bg-base-hover animate-pulse" />
+              <div className="h-5 w-36 rounded-md bg-ui-bg-base-hover animate-pulse" />
               <div className="space-y-3">
                 {Array.from({ length: 4 }).map((__, j) => (
-                  <div
-                    key={j}
-                    className="flex items-center justify-between gap-3"
-                  >
-                    <div className="flex items-center gap-3 flex-1">
-                      <div className="h-10 w-10 rounded-md bg-ui-bg-base-hover animate-pulse" />
-                      <div className="space-y-2 flex-1">
-                        <div className="h-3 w-3/4 rounded-md bg-ui-bg-base-hover animate-pulse" />
-                        <div className="h-3 w-1/2 rounded-md bg-ui-bg-base-hover/70 animate-pulse" />
-                      </div>
-                    </div>
-                    <div className="h-3 w-16 rounded-md bg-ui-bg-base-hover animate-pulse" />
-                  </div>
+                  <div key={j} className="h-14 rounded-lg bg-ui-bg-base-hover/70 animate-pulse" />
                 ))}
               </div>
             </div>
           ))}
-        </div>
-
-        <div className="flex items-center justify-center gap-2 pt-2 text-ui-fg-subtle">
-          <span className="h-2 w-2 rounded-full bg-ui-fg-muted animate-pulse" />
-          <Text size="small">Loading dashboard…</Text>
         </div>
       </Container>
     )
   } else if (error) {
     content = (
-      <Container className="p-4 md:p-6">
-        <Text className="text-ui-fg-error">{error}</Text>
+      <Container className="mx-auto max-w-7xl p-4 md:p-6">
+        <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-6">
+          <Text className="text-ui-fg-error">{error}</Text>
+        </div>
       </Container>
     )
   } else if (data) {
     content = (
-      <Container className="p-4 md:p-6 space-y-4 md:space-y-6">
-        <div className="flex items-center justify-between">
+      <Container className="mx-auto max-w-7xl p-4 md:p-6 space-y-5 md:space-y-6">
+        {/* Header */}
+        <div
+          className="animate-fade-in-up flex flex-wrap items-start justify-between gap-4"
+          style={{ animationDelay: "0ms" }}
+        >
           <div>
-            <Heading level="h1">Dashboard</Heading>
-            <Text className="text-ui-fg-subtle">Welcome back! Here's what's happening</Text>
+            <Heading level="h1" className="text-2xl md:text-3xl">
+              {getTimeGreeting()}, {displayName}
+            </Heading>
+            <Text className="mt-1 text-ui-fg-subtle">
+              {storeLabel
+                ? `${storeLabel} · Here's your store at a glance`
+                : "Here's what's happening with your store"}
+            </Text>
           </div>
-          <Button
-            variant="primary"
-            onClick={() => router.push("/products/new")}
-          >
-            <Plus />
-            Create Product
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => router.push("/products/bulk-upload")}>
+              Bulk Upload
+            </Button>
+            <Button variant="secondary" className="oweg-btn-primary" onClick={() => router.push("/products/new")}>
+              <Plus />
+              Create Product
+            </Button>
+          </div>
         </div>
 
-        {/* Action Items Alert */}
+        {/* Insight pills */}
         {data.actionItems.length > 0 && (
-          <div className="border border-ui-border-base bg-ui-bg-base rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]" />
-              <Heading level="h3" className="text-ui-fg-base">Action Required</Heading>
-            </div>
-            <div className="space-y-2 pl-5">
-              {data.actionItems.map((item, idx) => (
-                <Link
-                  key={idx}
-                  href={item.link}
-                  className="flex items-center justify-between p-3 bg-ui-bg-subtle/50 rounded-md hover:bg-ui-bg-subtle transition-colors group"
-                >
-                  <Text>{item.message}</Text>
-                  <ArrowUpRightMini className="text-ui-fg-muted group-hover:text-ui-fg-base" />
-                </Link>
-              ))}
-            </div>
+          <div
+            className="animate-fade-in-up flex flex-wrap gap-2"
+            style={{ animationDelay: "40ms" }}
+          >
+            {data.actionItems.map((item, idx) => (
+              <InsightPill
+                key={idx}
+                href={item.link}
+                message={item.message}
+                variant={item.variant}
+                style={{ animationDelay: `${60 + idx * 30}ms` }}
+              />
+            ))}
           </div>
         )}
 
-        {/* Active Products Info Card */}
-        {data.publishedProducts > 0 && (
-          <div className="border border-ui-border-base bg-ui-bg-base rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
-                <div>
-                  <Heading level="h3" className="text-ui-fg-base">
-                    {data.publishedProducts} Active Product{data.publishedProducts > 1 ? 's' : ''}
-                  </Heading>
-                  <Text className="text-ui-fg-subtle text-sm">
-                    Your approved products are live and visible to customers
-                  </Text>
+        {/* Metrics */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            variant="hero"
+            icon={<CurrencyDollar />}
+            label="Total Revenue"
+            value={formatCurrency(data.totalRevenue)}
+            style={{ animationDelay: "80ms" }}
+            className="animate-fade-in-up-slow"
+            subtext={
+              data.totalOrders > 0 ? (
+                <Text className="text-ui-fg-subtle">
+                  Avg {formatCurrency(data.averageOrderValue)} per order · {data.totalOrders} total
+                  orders
+                </Text>
+              ) : (
+                <Text className="text-ui-fg-subtle">Revenue will appear once you get orders</Text>
+              )
+            }
+          />
+
+          <StatCard
+            icon={<ShoppingCart />}
+            label="Orders"
+            value={data.totalOrders}
+            style={{ animationDelay: "120ms" }}
+            className="animate-fade-in-up-slow"
+            subtext={
+              <div className="flex flex-wrap gap-3">
+                <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
+                  <StatusDot variant="warning" />
+                  <Text size="small">{data.pendingOrders} pending</Text>
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
+                  <StatusDot variant="success" />
+                  <Text size="small">{data.completedOrders} done</Text>
+                </span>
+              </div>
+            }
+          />
+
+          <StatCard
+            icon={<Users />}
+            label="Customers"
+            value={data.totalCustomers}
+            style={{ animationDelay: "160ms" }}
+            className="animate-fade-in-up-slow"
+            subtext={<Text className="text-ui-fg-subtle">Unique buyers</Text>}
+          />
+
+          <StatCard
+            icon={<ArchiveBox />}
+            label="Products"
+            value={data.totalProducts}
+            style={{ animationDelay: "200ms" }}
+            className="animate-fade-in-up-slow"
+            subtext={
+              <div className="flex flex-wrap gap-3">
+                <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
+                  <StatusDot variant="success" />
+                  <Text size="small">{data.publishedProducts} live</Text>
+                </span>
+                {data.pendingApprovalProducts > 0 && (
+                  <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
+                    <StatusDot variant="warning" />
+                    <Text size="small">{data.pendingApprovalProducts} pending</Text>
+                  </span>
+                )}
+              </div>
+            }
+          />
+        </div>
+
+        {/* Lists + quick actions */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          <div className="lg:col-span-2 space-y-5">
+            <DashboardSection
+              title="Recent Orders"
+              action={
+                data.recentOrders.length > 0
+                  ? { label: "View all", onClick: () => router.push("/orders") }
+                  : undefined
+              }
+              style={{ animationDelay: "240ms" }}
+            >
+              {data.recentOrders.length > 0 ? (
+                <div className="overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base divide-y divide-ui-border-base/70">
+                  {data.recentOrders.map((order: any) => {
+                    const status = order.fulfillment_status || "pending"
+                    const itemCount = (order.items || []).reduce(
+                      (sum: number, item: any) => sum + (item.quantity || 1),
+                      0
+                    )
+
+                    return (
+                      <Link
+                        key={order.id}
+                        href="/orders"
+                        className="group flex items-center justify-between gap-4 p-4 transition-all duration-200 hover:bg-ui-bg-subtle/80"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Text weight="plus" className="truncate">
+                              #{order.display_id || order.id.slice(0, 8)}
+                            </Text>
+                            {order.created_at && (
+                              <Text size="xsmall" className="shrink-0 text-ui-fg-muted">
+                                {formatRelativeTime(order.created_at)}
+                              </Text>
+                            )}
+                          </div>
+                          <Text size="small" className="truncate text-ui-fg-subtle">
+                            {order.email}
+                            {itemCount > 0 ? ` · ${itemCount} item${itemCount > 1 ? "s" : ""}` : ""}
+                          </Text>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-4">
+                          <span className="inline-flex items-center gap-1.5">
+                            <StatusDot variant={fulfillmentStatusVariant(status)} />
+                            <Text size="small" className="capitalize text-ui-fg-subtle">
+                              {status}
+                            </Text>
+                          </span>
+                          <Text weight="plus" className="min-w-[80px] text-right">
+                            {formatCurrency(order.total || 0)}
+                          </Text>
+                          <ArrowUpRightMini className="hidden text-ui-fg-muted transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-ui-fg-base sm:block" />
+                        </div>
+                      </Link>
+                    )
+                  })}
                 </div>
-              </div>
-              <Button
-                variant="transparent"
-                onClick={() => router.push("/products")}
-                className="text-ui-fg-subtle hover:text-ui-fg-base"
-              >
-                View Products
-                <ArrowUpRightMini />
-              </Button>
-            </div>
-          </div>
-        )}
+              ) : (
+                <EmptyState
+                  accent="blue"
+                  icon={<ShoppingCart />}
+                  title="No orders yet"
+                  description="When customers purchase your products, they'll show up here."
+                  primaryAction={{
+                    label: "View products",
+                    onClick: () => router.push("/products"),
+                  }}
+                />
+              )}
+            </DashboardSection>
 
-        {/* Primary Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 rounded-md bg-ui-bg-base-hover">
-                <CurrencyDollar className="text-ui-fg-muted" />
-              </div>
-              <Text className="text-ui-fg-subtle text-sm">Total Revenue</Text>
-            </div>
-            <Heading level="h2" className="text-2xl">
-              {formatCurrency(data.totalRevenue)}
-            </Heading>
-            {data.totalOrders > 0 && (
-              <Text className="text-ui-fg-subtle text-xs mt-2">
-                Avg: {formatCurrency(data.averageOrderValue)} per order
-              </Text>
+            {data.topProducts.length > 0 && (
+              <DashboardSection title="Top Selling Products" style={{ animationDelay: "280ms" }}>
+                <div className="overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base divide-y divide-ui-border-base/70">
+                  {data.topProducts.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between gap-3 p-4 transition-colors hover:bg-ui-bg-subtle/50"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ui-bg-base-hover text-sm font-semibold text-ui-fg-subtle">
+                          {idx + 1}
+                        </div>
+                        <Text weight="plus" className="truncate">
+                          {item.product}
+                        </Text>
+                      </div>
+                      <span className="inline-flex shrink-0 items-center gap-1.5">
+                        <StatusDot variant="info" />
+                        <Text size="small" className="text-ui-fg-subtle">
+                          {item.orders} order{item.orders > 1 ? "s" : ""}
+                        </Text>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </DashboardSection>
+            )}
+
+            {data.lowStockProducts.length > 0 && (
+              <DashboardSection
+                title="Low Stock Alert"
+                action={{ label: "Manage", onClick: () => router.push("/inventory") }}
+                style={{ animationDelay: "320ms" }}
+              >
+                <div className="overflow-hidden rounded-xl border border-orange-500/20 bg-orange-500/[0.04] divide-y divide-orange-500/10">
+                  {data.lowStockProducts.map((item: any, idx: number) => (
+                    <div key={idx} className="flex items-center justify-between gap-3 p-4">
+                      <div className="min-w-0">
+                        <Text weight="plus" className="truncate">
+                          {item.product_title}
+                        </Text>
+                        <Text size="small" className="text-ui-fg-subtle">
+                          {item.variant_title}
+                        </Text>
+                      </div>
+                      <span className="inline-flex shrink-0 items-center gap-1.5">
+                        <StatusDot variant="warning" />
+                        <Text size="small" className="text-ui-fg-subtle">
+                          {item.available_quantity || item.stocked_quantity} left
+                        </Text>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </DashboardSection>
             )}
           </div>
 
-          <div className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 rounded-md bg-ui-bg-base-hover">
-                <ShoppingCart className="text-ui-fg-muted" />
-              </div>
-              <Text className="text-ui-fg-subtle text-sm">Orders</Text>
-            </div>
-            <Heading level="h2" className="text-2xl">
-              {data.totalOrders}
-            </Heading>
-            <div className="mt-2 flex gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]" />
-                <Text className="text-ui-fg-subtle text-sm">{data.pendingOrders} Pending</Text>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
-                <Text className="text-ui-fg-subtle text-sm">{data.completedOrders} Done</Text>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 rounded-md bg-ui-bg-base-hover">
-                <Users className="text-ui-fg-muted" />
-              </div>
-              <Text className="text-ui-fg-subtle text-sm">Customers</Text>
-            </div>
-            <Heading level="h2" className="text-2xl">
-              {data.totalCustomers}
-            </Heading>
-            <Text className="text-ui-fg-subtle text-xs mt-2">
-              Unique buyers
-            </Text>
-          </div>
-
-          <div className="p-6 border border-ui-border-base rounded-lg bg-ui-bg-base">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 rounded-md bg-ui-bg-base-hover">
-                <ArchiveBox className="text-ui-fg-muted" />
-              </div>
-              <Text className="text-ui-fg-subtle text-sm">Products</Text>
-            </div>
-            <Heading level="h2" className="text-2xl">
-              {data.totalProducts}
-            </Heading>
-            <div className="mt-2 flex gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
-                <Text className="text-ui-fg-subtle text-sm">{data.publishedProducts} Live</Text>
-              </div>
-              {data.pendingApprovalProducts > 0 && (
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]" />
-                  <Text className="text-ui-fg-subtle text-sm">{data.pendingApprovalProducts} Pending</Text>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Recent Orders */}
-          {data.recentOrders.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <Heading level="h3">Recent Orders</Heading>
-                <Button
-                  variant="transparent"
-                  onClick={() => router.push("/orders")}
+          {/* Quick actions sidebar */}
+          <DashboardSection title="Quick Actions" style={{ animationDelay: "260ms" }}>
+            <div className="grid grid-cols-1 gap-2.5">
+              {QUICK_ACTIONS.map((action) => (
+                <Link
+                  key={action.href}
+                  href={action.href}
+                  className="group flex items-center gap-3 rounded-xl border border-ui-border-base/70 bg-ui-bg-base p-4 transition-all duration-200 hover:border-ui-border-strong hover:bg-ui-bg-subtle/60 hover:shadow-sm"
                 >
-                  View All
-                  <ArrowUpRightMini />
-                </Button>
-              </div>
-              <div className="border border-ui-border-base rounded-lg divide-y divide-ui-border-base">
-                {data.recentOrders.map((order: any) => {
-                  const statusColor = order.fulfillment_status === 'delivered' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' :
-                    order.fulfillment_status === 'shipped' ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]' :
-                      order.fulfillment_status === 'canceled' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]' :
-                        'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]';
-
-                  return (
-                    <div key={order.id} className="p-4 flex items-center justify-between hover:bg-ui-bg-subtle transition-colors">
-                      <div className="flex-1">
-                        <Text className="font-medium">#{order.display_id || order.id.slice(0, 8)}</Text>
-                        <Text className="text-ui-fg-subtle text-sm">{order.email}</Text>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${statusColor}`} />
-                          <Text className="text-ui-fg-subtle text-sm capitalize">{order.fulfillment_status || 'pending'}</Text>
-                        </div>
-                        <Text className="font-medium min-w-[80px] text-right">
-                          {formatCurrency(order.total || 0)}
-                        </Text>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Top Products */}
-          {data.topProducts.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <Heading level="h3">Top Selling Products</Heading>
-              </div>
-              <div className="border border-ui-border-base rounded-lg divide-y divide-ui-border-base">
-                {data.topProducts.map((item, idx) => (
-                  <div key={idx} className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-ui-bg-base-hover">
-                        <Text className="text-sm font-medium">{idx + 1}</Text>
-                      </div>
-                      <Text className="font-medium">{item.product}</Text>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]" />
-                      <Text className="text-ui-fg-subtle text-sm">{item.orders} orders</Text>
-                    </div>
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ui-bg-base-hover text-ui-fg-muted transition-colors group-hover:bg-ui-bg-subtle group-hover:text-ui-fg-base">
+                    <action.icon />
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Low Stock Alert */}
-          {data.lowStockProducts.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <Heading level="h3">Low Stock Alert</Heading>
-                <Button
-                  variant="transparent"
-                  onClick={() => router.push("/inventory")}
-                >
-                  Manage
-                  <ArrowUpRightMini />
-                </Button>
-              </div>
-              <div className="border border-orange-500/20 bg-orange-500/5 rounded-lg divide-y divide-orange-500/10">
-                {data.lowStockProducts.map((item: any, idx: number) => (
-                  <div key={idx} className="p-4 flex items-center justify-between">
-                    <div>
-                      <Text className="font-medium">{item.product_title}</Text>
-                      <Text className="text-ui-fg-subtle text-sm">{item.variant_title}</Text>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]" />
-                      <Text className="text-ui-fg-subtle text-sm">
-                        {item.available_quantity || item.stocked_quantity} left
-                      </Text>
-                    </div>
+                  <div className="min-w-0 flex-1">
+                    <Text weight="plus" className="text-ui-fg-base">
+                      {action.label}
+                    </Text>
+                    <Text size="small" className="text-ui-fg-subtle">
+                      {action.description}
+                    </Text>
                   </div>
-                ))}
-              </div>
+                  <ArrowUpRightMini className="shrink-0 text-ui-fg-muted transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-ui-fg-base" />
+                </Link>
+              ))}
             </div>
-          )}
-
-          {/* Quick Actions */}
-          <div>
-            <Heading level="h3" className="mb-4">Quick Actions</Heading>
-            <div className="grid grid-cols-1 gap-3">
-              <Link
-                href="/products"
-                className="p-4 border border-ui-border-base rounded-lg hover:bg-ui-bg-subtle transition-colors flex items-center justify-between group"
-              >
-                <div>
-                  <Text className="font-medium">Manage Products</Text>
-                  <Text className="text-ui-fg-subtle text-sm">View and edit your catalog</Text>
-                </div>
-                <ArrowUpRightMini className="text-ui-fg-muted group-hover:text-ui-fg-base" />
-              </Link>
-              <Link
-                href="/orders"
-                className="p-4 border border-ui-border-base rounded-lg hover:bg-ui-bg-subtle transition-colors flex items-center justify-between group"
-              >
-                <div>
-                  <Text className="font-medium">View Orders</Text>
-                  <Text className="text-ui-fg-subtle text-sm">Process customer orders</Text>
-                </div>
-                <ArrowUpRightMini className="text-ui-fg-muted group-hover:text-ui-fg-base" />
-              </Link>
-              <Link
-                href="/customers"
-                className="p-4 border border-ui-border-base rounded-lg hover:bg-ui-bg-subtle transition-colors flex items-center justify-between group"
-              >
-                <div>
-                  <Text className="font-medium">View Customers</Text>
-                  <Text className="text-ui-fg-subtle text-sm">See who's buying from you</Text>
-                </div>
-                <ArrowUpRightMini className="text-ui-fg-muted group-hover:text-ui-fg-base" />
-              </Link>
-              <Link
-                href="/inventory"
-                className="p-4 border border-ui-border-base rounded-lg hover:bg-ui-bg-subtle transition-colors flex items-center justify-between group"
-              >
-                <div>
-                  <Text className="font-medium">Manage Inventory</Text>
-                  <Text className="text-ui-fg-subtle text-sm">Update stock levels</Text>
-                </div>
-                <ArrowUpRightMini className="text-ui-fg-muted group-hover:text-ui-fg-base" />
-              </Link>
-            </div>
-          </div>
+          </DashboardSection>
         </div>
       </Container>
     )
