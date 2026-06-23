@@ -625,7 +625,7 @@ const VendorProductsBulkUploadPage = () => {
   }
 
   const buildTemplateExampleRow = (
-    overrides: Partial<Record<string, string>> = {}
+    overrides: Record<string, string> = {}
   ): Record<string, string> => {
     const row: Record<string, string> = {}
     TEMPLATE_HEADERS.forEach((h) => {
@@ -1245,7 +1245,7 @@ const VendorProductsBulkUploadPage = () => {
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     const file = e.dataTransfer.files?.[0]
     if (file) await handleFile(file)

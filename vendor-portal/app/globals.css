@@ -158,3 +158,19 @@
     animation: none !important;
   }
 }
+
+/* Debug controller — DevTools / copy protections */
+html.debug-no-select,
+html.debug-no-select * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html.debug-devtools-blocked body {
+  overflow: hidden !important;
+}
+
+html.debug-devtools-blocked body > *:not(.debug-devtools-shield) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
