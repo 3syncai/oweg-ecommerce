@@ -41,14 +41,7 @@ export function isCodConfirmed(order?: OrderDetail | null): boolean {
   if (!isCodOrder(order)) return false;
   const meta = (order?.metadata || {}) as Record<string, unknown>;
   const codStatus = typeof meta.cod_status === "string" ? meta.cod_status.toLowerCase() : "";
-  if (codStatus === "confirmed") return true;
-  const orderStatus = (order?.status || "").toLowerCase();
-  return (
-    Boolean(order?.id) &&
-    orderStatus !== "canceled" &&
-    orderStatus !== "cancelled" &&
-    orderStatus !== "draft"
-  );
+  return codStatus === "confirmed";
 }
 
 function applyTrackerStageCascade(steps: TrackerStep[]): TrackerStep[] {
@@ -222,6 +215,9 @@ export function trackerSteps(
       rejected: "Return rejected",
       closed: "Return closed",
     };
+    cascadedSteps.forEach((step) => {
+      step.current = false;
+    });
     cascadedSteps.push({
       key: "return",
       label: labelMap[status] || "Return in progress",
@@ -336,7 +332,7 @@ export function getTrackHeroContent(
     return {
       title: "Order Placed",
       subtitle: "We received your order",
-      description: "Your COD order is confirmed. We will start preparing it shortly.",
+      description: "We will confirm your COD order before preparation begins.",
     };
   }
 

@@ -67,22 +67,25 @@ export default function AccountSecurityCard() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [savingPassword, setSavingPassword] = useState(false);
 
-  const passwordsMatch = newPassword === confirmPassword;
+  const trimmedCurrent = currentPassword.trim();
+  const trimmedNew = newPassword.trim();
+  const trimmedConfirm = confirmPassword.trim();
+  const passwordsMatch = trimmedNew === trimmedConfirm;
   const canSubmit =
-    Boolean(currentPassword && newPassword && confirmPassword) && passwordsMatch;
+    Boolean(trimmedCurrent && trimmedNew && trimmedConfirm) && passwordsMatch;
 
   const handlePasswordSave = async () => {
     setPasswordError(null);
 
-    if (!currentPassword || !newPassword) {
+    if (!trimmedCurrent || !trimmedNew) {
       toast.error("Enter your current and new password.");
       return;
     }
-    if (newPassword.length < 8) {
+    if (trimmedNew.length < 8) {
       toast.error("New password must be at least 8 characters.");
       return;
     }
-    if (newPassword !== confirmPassword) {
+    if (trimmedNew !== trimmedConfirm) {
       toast.error("Passwords do not match.");
       return;
     }
@@ -94,8 +97,8 @@ export default function AccountSecurityCard() {
         headers: { "content-type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          currentPassword: currentPassword.trim(),
-          newPassword: newPassword.trim(),
+          currentPassword: trimmedCurrent,
+          newPassword: trimmedNew,
         }),
       });
 

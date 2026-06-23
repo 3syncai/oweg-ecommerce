@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
@@ -118,6 +118,7 @@ export default function OrderDetailContent({
   const detail = useOrderDetail(orderId);
   const addToCart = useAddToCart();
   const [buyAgainPending, setBuyAgainPending] = useState(false);
+  const initialActionHandledRef = useRef(false);
 
   const {
     order,
@@ -160,7 +161,8 @@ export default function OrderDetailContent({
   } = detail;
 
   useEffect(() => {
-    if (!order || !initialAction) return;
+    if (!order || !initialAction || initialActionHandledRef.current) return;
+    initialActionHandledRef.current = true;
     if (initialAction === "cancel" && canCancel) {
       setCancelFormOpen(true);
     }

@@ -57,7 +57,7 @@ export function ProductCardQuickActions({
 
   useEffect(() => {
     if (!showAddedFlash) return;
-    const timer = window.setTimeout(() => setShowAddedFlash(false), 400);
+    const timer = window.setTimeout(() => setShowAddedFlash(false), 200);
     return () => window.clearTimeout(timer);
   }, [showAddedFlash]);
 
@@ -82,7 +82,7 @@ export function ProductCardQuickActions({
 
   return (
     <div
-      className={`absolute top-2 right-2 flex flex-col gap-2 z-30 transition-all duration-300 ${
+      className={`absolute top-2 right-2 flex flex-col gap-2 z-30 transition-all duration-150 ${
         isVisible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-2"
       } ${className}`}
       style={{ pointerEvents }}

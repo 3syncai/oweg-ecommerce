@@ -79,7 +79,13 @@ function OrderRow({ order }: { order: AccountOrder }) {
 
 export default function RecentOrdersCard() {
   const { orders, loading, error } = useAccountOrdersSummary();
-  const recentOrders = orders.slice(0, 3);
+  const recentOrders = [...orders]
+    .sort((a, b) => {
+      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return bTime - aTime;
+    })
+    .slice(0, 3);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 md:p-6">

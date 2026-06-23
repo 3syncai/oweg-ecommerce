@@ -4,10 +4,13 @@ import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Minus, Plus, Trash2, ChevronRight, ChevronUp, ChevronDown } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCartSummary } from "@/contexts/CartProvider";
+import { useAuth } from "@/contexts/AuthProvider";
+import { writeCartQueryCache } from "@/hooks/useCart";
 import {
   extractCartObject,
   type CartApiPayload,
@@ -411,6 +414,8 @@ const mapCartPayloadToItems = (payload?: CartApiPayload): CartItemUI[] => {
 
 const Cart: React.FC = () => {
   const { syncFromCartPayload } = useCartSummary();
+  const { customer } = useAuth();
+  const queryClient = useQueryClient();
   const [cartItems, setCartItems] = useState<CartItemUI[]>([]);
   const [couponCode, setCouponCode] = useState<string>("");
   const [mounted, setMounted] = useState<boolean>(false);
@@ -437,6 +442,7 @@ const Cart: React.FC = () => {
   const applyCartPayload = useCallback(
     (payload?: CartApiPayload, options?: { delayMs?: number }) => {
       syncFromCartPayload(payload);
+      writeCartQueryCache(queryClient, customer?.id, payload);
       const mapped = mapCartPayloadToItems(payload);
       const applyState = () => setCartItems(mapped);
       if (options?.delayMs) {
@@ -445,7 +451,7 @@ const Cart: React.FC = () => {
         applyState();
       }
     },
-    [syncFromCartPayload]
+    [syncFromCartPayload, queryClient, customer?.id]
   );
 
   const rehydrateCart = useCallback(

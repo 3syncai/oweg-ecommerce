@@ -42,10 +42,12 @@ export const formatOrderDate = (value?: string) => {
 
 export const formatOrderCurrency = (value?: number, currency?: string) => {
   if (typeof value !== "number") return "-";
+  const code = (currency || "INR").toUpperCase();
+  const isInr = code === "INR";
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
-    currency: (currency || "INR").toUpperCase(),
-    maximumFractionDigits: 0,
+    currency: code,
+    ...(isInr ? { maximumFractionDigits: 0, minimumFractionDigits: 0 } : {}),
   }).format(value);
 };
 

@@ -12,7 +12,11 @@ export default function LegacyOrderDetailRedirect() {
   useEffect(() => {
     if (!orderId) return;
     const orderNo = searchParams.get("orderNo");
-    const query = orderNo ? `?orderNo=${encodeURIComponent(orderNo)}` : "";
+    const action = searchParams.get("action");
+    const params = new URLSearchParams();
+    if (orderNo) params.set("orderNo", orderNo);
+    if (action) params.set("action", action);
+    const query = params.toString() ? `?${params.toString()}` : "";
     router.replace(`/account/orders/${encodeURIComponent(orderId)}${query}`);
   }, [orderId, router, searchParams]);
 

@@ -208,6 +208,7 @@ export default function PreferencesContent({ embedded = false }: PreferencesCont
 
   const saving = savingPrefs || savingSettings;
   const loading = prefsLoading || settingsLoading;
+  const canSave = !loading && !saving;
 
   if (!customer) {
     return (
@@ -475,7 +476,7 @@ export default function PreferencesContent({ embedded = false }: PreferencesCont
         onClick={() => {
           void handleSave();
         }}
-        disabled={saving}
+        disabled={!canSave}
       >
         {saving ? (
           <>

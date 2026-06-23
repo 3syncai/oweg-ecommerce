@@ -95,10 +95,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Please sign in to update account settings." }, { status: 401 });
     }
 
-    const body = ((await req.json().catch(() => ({}))) || {}) as {
-      accountSettings?: AccountSettings;
-    };
-    const incoming = normalizeAccountSettings(body.accountSettings ?? body);
+    const body = ((await req.json().catch(() => null)) || null) as Record<string, unknown> | null;
+    if (!body || typeof body !== "object" || Object.keys(body).length === 0) {
+      return NextResponse.json({ error: "Invalid account settings payload." }, { status: 400 });
+    }
+
+    const source =
+      body.accountSettings && typeof body.accountSettings === "object"
+        ? (body.accountSettings as Record<string, unknown>)
+        : body;
+
+    const hasNotifications = source.notifications !== undefined;
+    const hasRecommendations = source.recommendations !== undefined;
+
+    if (!hasNotifications && !hasRecommendations) {
+      return NextResponse.json({ error: "Invalid account settings payload." }, { status: 400 });
+    }
+
     const timestamp = new Date().toISOString();
 
     const meRes = await medusaStoreFetch("/store/customers/me", {
@@ -123,8 +136,12 @@ export async function POST(req: NextRequest) {
     const existingSettings = extractAccountSettings(existingMetadata);
 
     const nextAccountSettings: AccountSettings = {
-      notifications: incoming.notifications ?? existingSettings.notifications,
-      recommendations: incoming.recommendations ?? existingSettings.recommendations,
+      notifications: hasNotifications
+        ? normalizeAccountSettings({ notifications: source.notifications }).notifications
+        : existingSettings.notifications,
+      recommendations: hasRecommendations
+        ? normalizeAccountSettings({ recommendations: source.recommendations }).recommendations
+        : existingSettings.recommendations,
       lastUpdated: timestamp,
     };
 

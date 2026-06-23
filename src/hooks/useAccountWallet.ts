@@ -54,7 +54,6 @@ export function useAccountWallet() {
     staleTime: 60 * 1000,
     queryFn: async () => {
       const res = await fetch(ENDPOINT, {
-        headers: { "x-customer-id": customer!.id },
         credentials: "include",
         cache: "no-store",
       });

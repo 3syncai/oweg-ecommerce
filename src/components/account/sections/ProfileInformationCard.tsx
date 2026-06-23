@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import { useAuth } from "@/contexts/AuthProvider";
 import {
@@ -46,15 +45,15 @@ export default function ProfileInformationCard() {
           </h3>
         </div>
 
-        <Link
-          href="#"
-          className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-[#1F2A33] transition-colors hover:border-[#66C940] hover:text-[#66C940] md:text-sm"
-          aria-disabled
-          onClick={(event) => event.preventDefault()}
+        <button
+          type="button"
+          disabled
+          aria-disabled="true"
+          className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-400 md:text-sm"
         >
-          <AccountHubIcon name="edit" size={16} className="h-4 w-4" />
+          <AccountHubIcon name="edit" size={16} className="h-4 w-4 opacity-60" />
           Edit
-        </Link>
+        </button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

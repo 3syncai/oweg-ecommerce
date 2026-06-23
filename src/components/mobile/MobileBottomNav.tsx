@@ -873,9 +873,9 @@ export default function MobileBottomNav() {
                   type="button"
                   className={shared}
                   onMouseEnter={() => {
-                    if (item.prefetchKey === 'wishlist') {
+                    if (item.prefetchKey === 'wishlist' && customer?.id) {
                       void queryClient.prefetchQuery({
-                        queryKey: ['wishlist'],
+                        queryKey: ['wishlist', customer.id],
                         queryFn: async () => {
                           const res = await fetch('/api/medusa/wishlist', { credentials: 'include', cache: 'no-store' });
                           if (!res.ok) throw new Error('Unable to load wishlist');

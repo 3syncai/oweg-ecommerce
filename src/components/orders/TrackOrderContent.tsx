@@ -77,7 +77,13 @@ export default function TrackOrderContent({ orderId, orderNumber }: TrackOrderCo
       >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#66C940]">Live Status</p>
+            <p
+              className={`text-xs font-semibold uppercase tracking-wide ${
+                isCancelledHero ? "text-red-600" : "text-[#66C940]"
+              }`}
+            >
+              {isCancelledHero ? "Cancelled" : "Live Status"}
+            </p>
             <h2 className="mt-1 text-2xl font-bold text-[#1F2A33]">{hero.title}</h2>
             <p className="mt-1 text-sm text-[#1F2A33]/80">{hero.subtitle}</p>
             <p className="mt-2 text-sm text-[#1F2A33]/70">{hero.description}</p>

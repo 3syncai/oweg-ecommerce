@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthProvider";
 import {
   extractCartItems,
@@ -59,6 +59,93 @@ export function findCartLineByVariant(
   return null;
 }
 
+export function getCartQueryKey(customerId?: string | null) {
+  return ["cart", customerId ?? "guest"] as const;
+}
+
+export function writeCartQueryCache(
+  queryClient: QueryClient,
+  customerId: string | null | undefined,
+  payload: CartApiPayload | undefined
+) {
+  if (!payload) return;
+  queryClient.setQueryData(getCartQueryKey(customerId), payload);
+}
+
+function cloneCartPayload(payload: CartApiPayload | undefined): CartApiPayload | undefined {
+  if (!payload) return undefined;
+  return JSON.parse(JSON.stringify(payload)) as CartApiPayload;
+}
+
+function replaceCartItems(payload: CartApiPayload, items: CartApiPayload[]): CartApiPayload {
+  if (payload.cart && typeof payload.cart === "object") {
+    return {
+      ...payload,
+      cart: {
+        ...(payload.cart as CartApiPayload),
+        items,
+        line_items: items,
+      },
+    };
+  }
+  return {
+    ...payload,
+    items,
+    line_items: items,
+  };
+}
+
+export function optimisticAddVariantToCart(
+  current: CartApiPayload | undefined,
+  variantId: string,
+  quantity: number
+): CartApiPayload {
+  const base = cloneCartPayload(current) ?? { items: [] as CartApiPayload[] };
+  const items = [...extractCartItems(base)];
+  const existing = findCartLineByVariant(items, variantId);
+
+  if (existing) {
+    const index = items.findIndex((item) => String(item.id) === existing.lineId);
+    if (index >= 0) {
+      items[index] = {
+        ...items[index],
+        quantity: existing.quantity + quantity,
+      };
+    }
+  } else {
+    items.push({
+      id: `optimistic-${variantId}-${Date.now()}`,
+      variant_id: variantId,
+      quantity,
+    });
+  }
+
+  return replaceCartItems(base, items);
+}
+
+export function optimisticUpdateLineInCart(
+  current: CartApiPayload | undefined,
+  lineId: string,
+  quantity: number
+): CartApiPayload | undefined {
+  if (!current) return current;
+  const base = cloneCartPayload(current)!;
+  const items = extractCartItems(base).map((item) =>
+    String(item.id) === lineId ? { ...item, quantity } : item
+  );
+  return replaceCartItems(base, items);
+}
+
+export function optimisticRemoveLineFromCart(
+  current: CartApiPayload | undefined,
+  lineId: string
+): CartApiPayload | undefined {
+  if (!current) return current;
+  const base = cloneCartPayload(current)!;
+  const items = extractCartItems(base).filter((item) => String(item.id) !== lineId);
+  return replaceCartItems(base, items);
+}
+
 async function fetchCartPayload(): Promise<CartApiPayload> {
   const guestCartId = getGuestCartId();
   const res = await fetch("/api/medusa/cart", {
@@ -81,9 +168,10 @@ async function fetchCartPayload(): Promise<CartApiPayload> {
 export function useCart() {
   const { customer } = useAuth();
   return useQuery({
-    queryKey: ["cart", customer?.id ?? "guest"],
+    queryKey: getCartQueryKey(customer?.id),
     queryFn: fetchCartPayload,
-    staleTime: 30_000,
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
   });
 }
 

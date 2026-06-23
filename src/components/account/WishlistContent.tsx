@@ -68,15 +68,18 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
   );
 
   const wishlistQuery = useQuery<WishlistProduct[]>({
-    queryKey: ["wishlist"],
-    enabled: Boolean(customer),
+    queryKey: ["wishlist", customer?.id],
+    enabled: Boolean(customer?.id),
     staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 10,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     refetchOnMount: false,
     retry: 1,
-    placeholderData: () => queryClient.getQueryData<WishlistProduct[]>(["wishlist"]) || [],
+    placeholderData: () =>
+      customer?.id
+        ? queryClient.getQueryData<WishlistProduct[]>(["wishlist", customer.id]) || []
+        : [],
     queryFn: async () => {
       const res = await fetch("/api/medusa/wishlist", { credentials: "include", cache: "no-store" });
       const data = await res.json();
@@ -113,7 +116,7 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
         const message = (data && (data.error || data.message)) || "Unable to remove item.";
         throw new Error(message);
       }
-      queryClient.setQueryData<WishlistProduct[]>(["wishlist"], (prev) =>
+      queryClient.setQueryData<WishlistProduct[]>(["wishlist", customer?.id], (prev) =>
         (prev || []).filter((p) => p.id !== productId)
       );
       if (data?.wishlist && Array.isArray(data.wishlist) && customer) {

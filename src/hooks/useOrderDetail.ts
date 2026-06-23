@@ -43,6 +43,7 @@ export function useOrderDetail(orderId?: string) {
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [cancelMessage, setCancelMessage] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const returnItemsInitializedForRef = useRef<string | null>(null);
 
   useEffect(() => {
     orderRef.current = order;
@@ -103,7 +104,11 @@ export function useOrderDetail(orderId?: string) {
   }, [orderId, customer?.id, loadOrder]);
 
   useEffect(() => {
-    if (!order?.items?.length) return;
+    if (!order?.items?.length || !order.id) return;
+    if (returnFormOpen) return;
+    if (returnItemsInitializedForRef.current === order.id) return;
+
+    returnItemsInitializedForRef.current = order.id;
     setReturnItems(
       order.items.map((item) => ({
         order_item_id: item.id,
@@ -114,7 +119,7 @@ export function useOrderDetail(orderId?: string) {
         selected: true,
       }))
     );
-  }, [order?.items]);
+  }, [order?.id, order?.items, returnFormOpen]);
 
   const loadReturnRequests = useCallback(async () => {
     if (!customer?.id) return;
