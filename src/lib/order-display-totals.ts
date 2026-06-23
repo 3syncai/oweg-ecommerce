@@ -152,6 +152,21 @@ export function normalizeOrderForCustomer(order: Record<string, unknown>): Recor
           const lineTotal = resolveOrderLineAmount(record, currency);
           const quantity = Math.max(1, Number(record.quantity) || 1);
           const itemId = record.id != null ? String(record.id) : "";
+          const variantRecord =
+            record.variant && typeof record.variant === "object"
+              ? (record.variant as Record<string, unknown>)
+              : null;
+          const itemMetadata =
+            record.metadata && typeof record.metadata === "object"
+              ? (record.metadata as Record<string, unknown>)
+              : null;
+          const variantId =
+            (typeof record.variant_id === "string" && record.variant_id) ||
+            (variantRecord && typeof variantRecord.id === "string" ? variantRecord.id : undefined) ||
+            (itemMetadata && typeof itemMetadata.variant_id === "string"
+              ? itemMetadata.variant_id
+              : undefined);
+
           return {
             id: record.id,
             title: (record.title as string) || (record.product_title as string),
@@ -159,6 +174,7 @@ export function normalizeOrderForCustomer(order: Record<string, unknown>): Recor
             unit_price: lineTotal / quantity,
             total: lineTotal,
             thumbnail: (record.thumbnail as string) || (record.image_url as string),
+            ...(variantId ? { variant_id: variantId } : {}),
             _itemId: itemId,
           };
         })

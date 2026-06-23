@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Cancel Order</title>
+  <style>
+    .outline { fill: none; stroke: #1F2A33; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: #66C940; }
+    .accent-stroke { fill: none; stroke: #66C940; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: #EAF8E7; }
+    .red-soft { fill: #FEECEC; }
+    .red-stroke { fill: none; stroke: #D92D20; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .orange-soft { fill: #FFF4E5; }
+    .orange-stroke { fill: none; stroke: #F79009; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .blue-soft { fill: #EAF3FF; }
+    .blue-stroke { fill: none; stroke: #1570EF; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .white-stroke { fill: none; stroke: #fff; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+<circle class="red-soft" cx="32" cy="32" r="24"/><circle class="red-stroke" cx="32" cy="32" r="21"/><path class="red-stroke" d="M23 23l18 18M41 23L23 41"/>
+</svg>

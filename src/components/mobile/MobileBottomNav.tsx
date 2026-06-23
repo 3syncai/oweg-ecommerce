@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useState, useCallback, useRef, type ReactNode } from 'react';
 import Link from 'next/link';
@@ -512,6 +512,8 @@ export default function MobileBottomNav() {
 
   // Prefetch key routes/data so bottom nav taps feel instant
   useEffect(() => {
+    router.prefetch('/account');
+    router.prefetch('/account/orders');
     router.prefetch('/wishlist');
     router.prefetch('/');
     router.prefetch('/vendor-portal');
@@ -721,9 +723,9 @@ export default function MobileBottomNav() {
         ? 'category'
         : joinOpen || isJoinPath
           ? 'join'
-          : pathname?.startsWith('/wishlist')
+          : pathname?.startsWith('/account/wishlist') || pathname?.startsWith('/wishlist')
             ? 'wishlist'
-            : pathname?.startsWith('/profile')
+            : pathname?.startsWith('/account')
               ? 'profile'
               : pathname === '/'
                 ? 'home'
@@ -771,11 +773,7 @@ export default function MobileBottomNav() {
     {
       key: 'profile',
       label: 'Profile',
-      onClick: () => {
-        closeCategory();
-        closeJoin();
-        setProfileOpen(true);
-      },
+      href: '/account',
       icon: <User className="w-5 h-5" />,
       active: undefined,
     },
@@ -1574,7 +1572,7 @@ export default function MobileBottomNav() {
                 </Link>
               ) : null}
               <Link
-                href="/orders"
+                href="/account/orders"
                 onClick={closeProfile}
                 className="flex items-center justify-between border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
               >

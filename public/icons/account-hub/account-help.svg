@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Account Help</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .muted-outline { fill: none; stroke: var(--oweg-muted, #667085); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+    .red { fill: var(--oweg-red, #D92D20); }
+    .red-stroke { fill: none; stroke: var(--oweg-red, #D92D20); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .orange { fill: var(--oweg-orange, #F79009); }
+    .orange-stroke { fill: none; stroke: var(--oweg-orange, #F79009); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .blue { fill: var(--oweg-blue, #1570EF); }
+    .blue-stroke { fill: none; stroke: var(--oweg-blue, #1570EF); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+
+  <circle class="outline" cx="28" cy="22" r="8"/>
+  <path class="outline" d="M12 50c2-9 8-14 16-14c4 0 7 1 10 4"/>
+  <circle class="accent-stroke" cx="45" cy="42" r="9"/>
+  <path class="accent-stroke" d="M45 39c0-3 4-3 4 0c0 3-4 3-4 6M45 49h.1"/>
+
+</svg>

@@ -34,6 +34,7 @@ import { useAuth } from "@/contexts/AuthProvider";
 import { toast } from "sonner";
 import AccountDropdown from "@/components/modules/AccountDropdown";
 import GuestAccountDropdown from "@/components/modules/GuestAccountDropdown";
+import LogoutConfirmModal from "@/components/account/LogoutConfirmModal";
 import { usePreferences } from "@/hooks/usePreferences";
 import { reorderByPreferences } from "@/lib/personalization";
 import WalletBalance from "@/components/wallet/WalletBalance";
@@ -141,7 +142,7 @@ const isCategoryActive = (pathname: string | null, handle?: string) => {
 
 const Header: React.FC = () => {
   const { count: cartCount, refresh: refreshCart } = useCartSummary();
-  const { customer, logout, initializing } = useAuth();
+  const { customer, initializing } = useAuth();
   const { preferences } = usePreferences();
   const [oweg10Visible, setOweg10Visible] = React.useState(false);
   const [cartPreviewOpen, setCartPreviewOpen] = React.useState(false);
@@ -240,6 +241,7 @@ const Header: React.FC = () => {
   const [mobileExpandedCat, setMobileExpandedCat] = React.useState<string | null>(null);
   const [, setMobileProfileOpen] = React.useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
+  const [logoutModalOpen, setLogoutModalOpen] = React.useState(false);
   const moreMenuRef = React.useRef<HTMLDivElement | null>(null);
   const desktopNavRef = React.useRef<HTMLDivElement | null>(null);
   const mountedRef = React.useRef(false);
@@ -390,22 +392,6 @@ const Header: React.FC = () => {
       cancelled = true;
     };
   }, [customer, initializing]);
-
-  const handleLogout = React.useCallback(async () => {
-    try {
-      await logout();
-      toast.success("You have been signed out.");
-      if (pathname?.startsWith("/account")) {
-        router.push("/login?redirect=/account");
-      }
-    } catch (err) {
-      console.error("logout failed", err);
-      toast.error("Could not sign out. Please try again.");
-    } finally {
-      setProfileMenuOpen(false);
-      setMobileProfileOpen(false);
-    }
-  }, [logout, pathname, router]);
 
   // Check if cache is valid
   const isCartPreviewCacheValid = React.useCallback((): boolean => {
@@ -1406,7 +1392,10 @@ const Header: React.FC = () => {
                     >
                       {customer ? (
                         <AccountDropdown
-                          onLogout={handleLogout}
+                          onSignOutClick={() => {
+                            setProfileMenuOpen(false);
+                            setLogoutModalOpen(true);
+                          }}
                         />
                       ) : (
                         <GuestAccountDropdown />
@@ -1421,7 +1410,7 @@ const Header: React.FC = () => {
                 )}
 
                 {/* Orders */}
-                <Link href="/orders" className="hidden lg:flex items-center gap-1.5 hover:opacity-80 transition-opacity py-1">
+                <Link href="/account/orders" className="hidden lg:flex items-center gap-1.5 hover:opacity-80 transition-opacity py-1">
                   <OrderIcon className="w-5 h-5 text-header-text shrink-0" />
                   <span className="text-sm font-medium text-header-text whitespace-nowrap">Orders</span>
                 </Link>
@@ -2000,6 +1989,10 @@ const Header: React.FC = () => {
           }
         }
       `}</style>
+      <LogoutConfirmModal
+        open={logoutModalOpen}
+        onClose={() => setLogoutModalOpen(false)}
+      />
     </header>
   );
 };

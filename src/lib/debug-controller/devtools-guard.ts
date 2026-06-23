@@ -56,6 +56,7 @@ export function isDevToolsLikelyOpen(): boolean {
 }
 
 export function isDevToolsShortcut(event: KeyboardEvent): boolean {
+  if (!event.key) return false;
   const key = event.key.toLowerCase();
 
   if (key === "f12") return true;

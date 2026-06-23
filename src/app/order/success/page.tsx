@@ -521,7 +521,7 @@ function OrderSuccessPageInner() {
                 <ArrowRight className="ml-1 h-4 w-4" aria-hidden />
               </Button>
               <Button
-                onClick={() => router.push("/orders")}
+                onClick={() => router.push("/account/orders")}
                 variant="outline"
                 className="h-11 flex-1 rounded-xl border-slate-200"
               >

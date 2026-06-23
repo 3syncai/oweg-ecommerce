@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Notifications</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .muted-outline { fill: none; stroke: var(--oweg-muted, #667085); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+    .red { fill: var(--oweg-red, #D92D20); }
+    .red-stroke { fill: none; stroke: var(--oweg-red, #D92D20); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .orange { fill: var(--oweg-orange, #F79009); }
+    .orange-stroke { fill: none; stroke: var(--oweg-orange, #F79009); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .blue { fill: var(--oweg-blue, #1570EF); }
+    .blue-stroke { fill: none; stroke: var(--oweg-blue, #1570EF); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+
+  <path class="outline" d="M20 38V27c0-7 5-12 12-12s12 5 12 12v11l5 7H15z"/>
+  <path class="outline" d="M28 49c1 3 7 3 8 0"/>
+  <circle class="accent" cx="43" cy="17" r="4"/>
+
+</svg>
