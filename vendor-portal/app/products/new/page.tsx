@@ -6,7 +6,7 @@ import VendorShell from "@/components/VendorShell"
 import { useRouter } from "next/navigation"
 import { BrandAuthorizationField } from "@/components/BrandAuthorizationField"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
-import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorTypesApi } from "@/lib/api/client"
+import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorTypesApi, vendorInventoryApi } from "@/lib/api/client"
 import {
   collectAllImageUrls,
   createDefaultVariantRow,
@@ -18,6 +18,7 @@ import {
   type UploadedImageRef,
   type VariantMatrixRow,
 } from "@/lib/variant-matrix"
+import { buildUsedSkuSet, validateProductSkus } from "@/lib/sku-validation"
 import axios from "axios"
 
 type UploadedImage = {
@@ -138,11 +139,27 @@ const VendorProductNewPage = () => {
   const [brandNeedsAuthorization, setBrandNeedsAuthorization] = useState(false)
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null)
   const [brandAuthorizationFile, setBrandAuthorizationFile] = useState<File | null>(null)
+  const [usedSkus, setUsedSkus] = useState<Set<string>>(new Set())
   const menuRefs = React.useRef<{ [key: number]: HTMLDivElement | null }>({})
 
   useEffect(() => {
     fetchCategoriesAndCollections()
+    void loadUsedSkus()
   }, [])
+
+  const loadUsedSkus = async () => {
+    try {
+      const token = localStorage.getItem("vendor_token")
+      if (!token) return
+
+      const data = await vendorInventoryApi.list()
+      if (data.success) {
+        setUsedSkus(buildUsedSkuSet(data.inventory || []))
+      }
+    } catch (error) {
+      console.error("Failed to load existing SKUs:", error)
+    }
+  }
 
   const fetchCategoriesAndCollections = async () => {
     try {
@@ -479,11 +496,13 @@ const VendorProductNewPage = () => {
         comboKeys.add(comboKey)
       }
 
-      const skus = formData.variants.map((v) => v.sku.trim()).filter(Boolean)
-      if (skus.length !== new Set(skus).size) {
-        toast.error("Duplicate SKU", { description: "Each variant needs a different SKU (or leave all blank)" })
-        return
-      }
+    }
+
+    const skus = formData.variants.map((v) => v.sku.trim()).filter(Boolean)
+    const skuValidation = validateProductSkus(skus, usedSkus)
+    if (!skuValidation.ok) {
+      toast.error(skuValidation.title, { description: skuValidation.description })
+      return
     }
 
     setLoading(true)
@@ -630,14 +649,18 @@ const VendorProductNewPage = () => {
       toast.success("Success", { description: "Product created successfully" })
       router.push("/products")
     } catch (e: unknown) {
-      const err = e as { message?: string; data?: { message?: string; details?: string } }
+      const err = e as { message?: string; data?: { message?: string; details?: string; error?: string } }
       const backendMessage =
         err?.data?.message ||
         err?.data?.details ||
         err?.message ||
         "Failed to create product"
       console.error("Product create failed:", err?.data || err)
-      toast.error("Error", { description: backendMessage })
+      if (err?.data?.error === "duplicate_sku") {
+        toast.error("SKU already in use", { description: backendMessage })
+      } else {
+        toast.error("Error", { description: backendMessage })
+      }
     } finally {
       setLoading(false)
     }
@@ -1434,6 +1457,7 @@ const VendorProductNewPage = () => {
       onPrimaryVisualOptionChange={(primaryVisualOption) =>
         setFormData((prev) => ({ ...prev, primaryVisualOption }))
       }
+      usedSkus={usedSkus}
       simpleProductExtras={!formData.hasVariants ? renderSimpleProductMedia() : undefined}
     />
   )
