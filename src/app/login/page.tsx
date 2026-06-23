@@ -4,7 +4,16 @@ import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Mail, Eye, EyeOff, Phone, Loader2, ChevronDown, Lock, KeyRound } from "lucide-react";
+import {
+  Mail,
+  Eye,
+  EyeOff,
+  Phone,
+  Loader2,
+  ChevronDown,
+  Lock,
+  KeyRound,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthProvider";
 import { getSafeRedirect } from "@/lib/auth-redirect";
@@ -35,7 +44,8 @@ function getApiMessage(payload: unknown, fallback: string) {
   }
 
   const directMessage = record.message;
-  if (typeof directMessage === "string" && directMessage.trim()) return directMessage;
+  if (typeof directMessage === "string" && directMessage.trim())
+    return directMessage;
 
   const dataMessage =
     record.data && typeof record.data === "object"
@@ -127,7 +137,7 @@ function LoginPageInner() {
   const detectInputType = (value: string): InputType => {
     // Remove spaces and special characters for detection
     const cleaned = value.replace(/[\s-()]/g, "");
-    
+
     // Check if it's all digits (phone number)
     if (/^\d+$/.test(cleaned)) {
       // Indian phone numbers start with 6-9 and are 10 digits
@@ -139,17 +149,17 @@ function LoginPageInner() {
         return "phone";
       }
     }
-    
+
     // Check if it contains @ symbol (email)
     if (value.includes("@")) {
       return "email";
     }
-    
+
     // Check if it looks like an email without @ yet
     if (/^[a-zA-Z0-9._-]+$/.test(value) && value.length > 0) {
       return "unknown"; // Could be email or username
     }
-    
+
     return "unknown";
   };
 
@@ -167,11 +177,11 @@ function LoginPageInner() {
   async function handleStepOne(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    
+
     if (!identifier.trim()) {
       return setError("Please enter your email or mobile number");
     }
-    
+
     // Validate based on detected type
     if (inputType === "phone") {
       const cleaned = identifier.replace(/[\s-()]/g, "");
@@ -183,7 +193,7 @@ function LoginPageInner() {
         return setError("Please enter a valid email address");
       }
     }
-    
+
     // Move to step 2
     setStep(2);
   }
@@ -198,12 +208,19 @@ function LoginPageInner() {
         return setError("Please request an OTP first.");
       }
       if (!otp.trim()) {
-        return setError(inputType === "phone" ? "Please enter the 4-digit OTP." : "Please enter the 6-digit OTP.");
+        return setError(
+          inputType === "phone"
+            ? "Please enter the 4-digit OTP."
+            : "Please enter the 6-digit OTP.",
+        );
       }
 
       try {
         setBusy(true);
-        const endpoint = inputType === "phone" ? "/api/auth/verify-otp" : "/api/medusa/auth/login-otp/verify"
+        const endpoint =
+          inputType === "phone"
+            ? "/api/auth/verify-otp"
+            : "/api/medusa/auth/login-otp/verify";
         const payload =
           inputType === "phone"
             ? {
@@ -213,7 +230,7 @@ function LoginPageInner() {
             : {
                 email: otpRequestedFor,
                 otp: otp.trim(),
-              }
+              };
         const res = await fetch(endpoint, {
           method: "POST",
           headers: {
@@ -271,7 +288,9 @@ function LoginPageInner() {
     try {
       setBusy(true);
       const fullIdentifier =
-        inputType === "phone" ? `${countryCode}${identifier}` : identifier.trim();
+        inputType === "phone"
+          ? `${countryCode}${identifier}`
+          : identifier.trim();
 
       const res = await fetch("/api/medusa/auth/login", {
         method: "POST",
@@ -328,12 +347,14 @@ function LoginPageInner() {
 
     try {
       setBusy(true);
-      const isPhoneFlow = inputType === "phone"
-      const endpoint = isPhoneFlow ? "/api/auth/send-otp" : "/api/medusa/auth/login-otp/request"
-      const email = identifier.trim().toLowerCase()
+      const isPhoneFlow = inputType === "phone";
+      const endpoint = isPhoneFlow
+        ? "/api/auth/send-otp"
+        : "/api/medusa/auth/login-otp/request";
+      const email = identifier.trim().toLowerCase();
       if (!isPhoneFlow && (!email.includes("@") || !email.includes("."))) {
-        setError("Please enter a valid email address.")
-        return
+        setError("Please enter a valid email address.");
+        return;
       }
       const res = await fetch(endpoint, {
         method: "POST",
@@ -343,7 +364,7 @@ function LoginPageInner() {
         },
         credentials: "include",
         body: JSON.stringify(
-          isPhoneFlow ? { phone: `${countryCode}${identifier}` } : { email }
+          isPhoneFlow ? { phone: `${countryCode}${identifier}` } : { email },
         ),
       });
 
@@ -361,7 +382,10 @@ function LoginPageInner() {
           return;
         }
 
-        const message = getApiMessage(data, "Something went wrong. Please try again.");
+        const message = getApiMessage(
+          data,
+          "Something went wrong. Please try again.",
+        );
         setError(message);
         toast.error(message);
         return;
@@ -375,8 +399,8 @@ function LoginPageInner() {
           data,
           isPhoneFlow
             ? "If an account exists, an OTP has been sent to your mobile number."
-            : "If an account exists, an OTP has been sent to your email."
-        )
+            : "If an account exists, an OTP has been sent to your email.",
+        ),
       );
     } catch {
       setError("Something went wrong. Please try again.");
@@ -409,13 +433,19 @@ function LoginPageInner() {
 
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        const message = getApiMessage(data, "Unable to send reset link. Please try again.");
+        const message = getApiMessage(
+          data,
+          "Unable to send reset link. Please try again.",
+        );
         setError(message);
         toast.error(message);
         return;
       }
 
-      const message = getApiMessage(data, "If an account exists, a reset link has been sent.");
+      const message = getApiMessage(
+        data,
+        "If an account exists, a reset link has been sent.",
+      );
       toast.success(message);
     } catch {
       setError("Unable to send reset link. Please try again.");
@@ -445,12 +475,15 @@ function LoginPageInner() {
   // Public banner image for preview (replace with your own when ready)
 
   // Get current country
-  const selectedCountry = COUNTRY_CODES.find(c => c.code === countryCode) || COUNTRY_CODES[0];
+  const selectedCountry =
+    COUNTRY_CODES.find((c) => c.code === countryCode) || COUNTRY_CODES[0];
 
   return (
-    <div 
+    <div
       className="min-h-[100svh] bg-gradient-to-br from-slate-50 to-green-50/30 text-slate-800"
-      style={{ fontFamily: 'OPTIHandelGothic-Light, "Inter", "Arial", sans-serif' }}
+      style={{
+        fontFamily: 'OPTIHandelGothic-Light, "Inter", "Arial", sans-serif',
+      }}
     >
       {/* Offline banner (after mount to avoid hydration mismatch) */}
       {mounted && !isOnline && (
@@ -472,8 +505,8 @@ function LoginPageInner() {
                 {step === 1 ? "Welcome Back" : "Sign In"}
               </h1>
               <p className="text-slate-600 text-sm">
-                {step === 1 
-                  ? "Enter your details to continue" 
+                {step === 1
+                  ? "Enter your details to continue"
                   : "Choose how you'd like to sign in"}
               </p>
             </div>
@@ -482,7 +515,10 @@ function LoginPageInner() {
             {step === 1 && (
               <form onSubmit={handleStepOne} className="grid gap-6" noValidate>
                 <div className="grid gap-2">
-                  <label htmlFor="identifier" className="text-sm font-medium text-slate-700">
+                  <label
+                    htmlFor="identifier"
+                    className="text-sm font-medium text-slate-700"
+                  >
                     Email or Mobile Number
                   </label>
                   <div className="relative">
@@ -491,15 +527,21 @@ function LoginPageInner() {
                       <div className="absolute left-0 top-0 bottom-0 flex items-center">
                         <button
                           type="button"
-                          onClick={() => setShowCountryDropdown(!showCountryDropdown)}
+                          onClick={() =>
+                            setShowCountryDropdown(!showCountryDropdown)
+                          }
                           className="h-full px-3 flex items-center gap-1 border-r hover:bg-slate-50 rounded-l-lg transition cursor-pointer"
                           style={{ borderColor: "#e2e8f0" }}
                         >
-                          <span className="text-lg">{selectedCountry.flag}</span>
-                          <span className="text-sm font-medium text-slate-700">{selectedCountry.code}</span>
+                          <span className="text-lg">
+                            {selectedCountry.flag}
+                          </span>
+                          <span className="text-sm font-medium text-slate-700">
+                            {selectedCountry.code}
+                          </span>
                           <ChevronDown className="h-3 w-3 text-slate-500" />
                         </button>
-                        
+
                         {/* Dropdown Menu */}
                         {showCountryDropdown && (
                           <div className="absolute top-full left-0 mt-1 bg-white border rounded-lg shadow-lg z-10 py-1 w-48">
@@ -514,8 +556,12 @@ function LoginPageInner() {
                                 className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 text-sm cursor-pointer"
                               >
                                 <span className="text-lg">{country.flag}</span>
-                                <span className="font-medium">{country.code}</span>
-                                <span className="text-slate-600">{country.name}</span>
+                                <span className="font-medium">
+                                  {country.code}
+                                </span>
+                                <span className="text-slate-600">
+                                  {country.name}
+                                </span>
                               </button>
                             ))}
                           </div>
@@ -530,12 +576,16 @@ function LoginPageInner() {
                       type="text"
                       inputMode={inputType === "phone" ? "tel" : "email"}
                       autoComplete="username"
-                      placeholder={inputType === "phone" ? "9876543210" : "jane@example.com"}
+                      placeholder={
+                        inputType === "phone"
+                          ? "9876543210"
+                          : "jane@example.com"
+                      }
                       value={identifier}
                       onChange={(e) => handleIdentifierChange(e.target.value)}
                       className="w-full rounded-lg border border-slate-200 bg-white py-3.5 pr-12 text-[16px] outline-none focus:ring-2 focus:ring-offset-1 transition"
-                      style={{ 
-                        paddingLeft: inputType === "phone" ? "130px" : "16px"
+                      style={{
+                        paddingLeft: inputType === "phone" ? "130px" : "16px",
                       }}
                       onFocus={(e) => {
                         e.currentTarget.style.borderColor = BRAND;
@@ -546,7 +596,7 @@ function LoginPageInner() {
                         e.currentTarget.style.boxShadow = "none";
                       }}
                     />
-                    
+
                     {/* Dynamic Icon */}
                     <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
                       {inputType === "phone" ? (
@@ -603,11 +653,17 @@ function LoginPageInner() {
                   </p>
                   <p className="text-xs text-slate-500 leading-relaxed">
                     By continuing, you agree to our{" "}
-                    <Link className="underline hover:text-slate-700 cursor-pointer" href="/terms">
+                    <Link
+                      className="underline hover:text-slate-700 cursor-pointer"
+                      href="/terms"
+                    >
                       Terms
                     </Link>{" "}
                     and{" "}
-                    <Link className="underline hover:text-slate-700 cursor-pointer" href="/privacy">
+                    <Link
+                      className="underline hover:text-slate-700 cursor-pointer"
+                      href="/privacy"
+                    >
                       Privacy Policy
                     </Link>
                   </p>
@@ -629,7 +685,9 @@ function LoginPageInner() {
                     <div>
                       <p className="text-xs text-slate-500">Signing in as:</p>
                       <p className="font-medium text-slate-800">
-                        {inputType === "phone" ? `${countryCode} ${identifier}` : identifier}
+                        {inputType === "phone"
+                          ? `${countryCode} ${identifier}`
+                          : identifier}
                       </p>
                     </div>
                   </div>
@@ -657,7 +715,9 @@ function LoginPageInner() {
                           ? "bg-white shadow-sm text-slate-800"
                           : "text-slate-600 hover:text-slate-800"
                       }`}
-                      style={authMethod === "password" ? { color: BRAND } : undefined}
+                      style={
+                        authMethod === "password" ? { color: BRAND } : undefined
+                      }
                     >
                       <Lock className="h-4 w-4" />
                       Password
@@ -670,7 +730,9 @@ function LoginPageInner() {
                           ? "bg-white shadow-sm text-slate-800"
                           : "text-slate-600 hover:text-slate-800"
                       }`}
-                      style={authMethod === "otp" ? { color: BRAND } : undefined}
+                      style={
+                        authMethod === "otp" ? { color: BRAND } : undefined
+                      }
                     >
                       <KeyRound className="h-4 w-4" />
                       OTP
@@ -682,10 +744,17 @@ function LoginPageInner() {
                 {authMethod === "password" && (
                   <div className="grid gap-2">
                     <div className="flex items-center justify-between">
-                      <label htmlFor="password" className="text-sm font-medium text-slate-700">
+                      <label
+                        htmlFor="password"
+                        className="text-sm font-medium text-slate-700"
+                      >
                         Password
                       </label>
-                      <Link href="/forgot" className="text-xs font-medium hover:underline cursor-pointer" style={{ color: BRAND }}>
+                      <Link
+                        href="/forgot"
+                        className="text-xs font-medium hover:underline cursor-pointer"
+                        style={{ color: BRAND }}
+                      >
                         Forgot password?
                       </Link>
                     </div>
@@ -715,7 +784,11 @@ function LoginPageInner() {
                         className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-500 hover:bg-slate-100 cursor-pointer"
                         aria-label={showPwd ? "Hide password" : "Show password"}
                       >
-                        {showPwd ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        {showPwd ? (
+                          <EyeOff className="h-5 w-5" />
+                        ) : (
+                          <Eye className="h-5 w-5" />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -751,7 +824,10 @@ function LoginPageInner() {
 
                     {otpSent && (
                       <div className="grid gap-2">
-                        <label htmlFor="otp" className="text-sm font-medium text-slate-700">
+                        <label
+                          htmlFor="otp"
+                          className="text-sm font-medium text-slate-700"
+                        >
                           Enter OTP
                         </label>
                         <input
@@ -761,9 +837,15 @@ function LoginPageInner() {
                           inputMode="numeric"
                           pattern="[0-9]{4,8}"
                           autoComplete="one-time-code"
-                          placeholder={inputType === "phone" ? "Enter 4-digit code" : "Enter 6-digit code"}
+                          placeholder={
+                            inputType === "phone"
+                              ? "Enter 4-digit code"
+                              : "Enter 6-digit code"
+                          }
                           value={otp}
-                          onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                          onChange={(e) =>
+                            setOtp(e.target.value.replace(/\D/g, ""))
+                          }
                           maxLength={inputType === "phone" ? 4 : 6}
                           className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3.5 text-center text-2xl tracking-widest font-semibold outline-none transition"
                           onFocus={(e) => {
@@ -817,7 +899,12 @@ function LoginPageInner() {
                 <div className="grid gap-3 pt-2">
                   <button
                     type="submit"
-                    disabled={busy || !isOnline || (authMethod === "password" && !password) || (authMethod === "otp" && !otp)}
+                    disabled={
+                      busy ||
+                      !isOnline ||
+                      (authMethod === "password" && !password) ||
+                      (authMethod === "otp" && !otp)
+                    }
                     className="w-full rounded-lg px-6 py-3.5 font-semibold text-white transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 cursor-pointer"
                     style={{ backgroundColor: BRAND }}
                   >
@@ -844,16 +931,15 @@ function LoginPageInner() {
           </section>
 
           {/* Promo panel - Image Banner */}
-          <aside className="order-1 md:order-2 overflow-hidden shadow-2xl bg-white">
-            <div className="relative w-full h-full min-h-[18rem]">
-              <Image 
-                src='/login.png' 
-                alt="OWEG Promotional Banner" 
-                fill 
-                className="object-container"
-                unoptimized
-              />
-            </div>
+          <aside className="order-1 md:order-2 relative overflow-hidden rounded-2xl border border-slate-200/60 shadow-xl bg-[#f3f9f1] min-h-[20rem] md:min-h-full">
+            <Image
+              src="/login.png"
+              alt="Secure login, smarter shopping with OWEG"
+              fill
+              className="object-contain"
+              priority
+              unoptimized
+            />
           </aside>
         </div>
       </main>
@@ -873,6 +959,5 @@ export default function LoginPage() {
     <Suspense fallback={null}>
       <LoginPageInner />
     </Suspense>
-  )
+  );
 }
-
