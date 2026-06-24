@@ -1,6 +1,6 @@
 "use client"
 
-import { PropsWithChildren, useEffect, useMemo, useRef, useState } from "react"
+import { PropsWithChildren, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { Text, clx, Prompt } from "@medusajs/ui"
 import Image from "next/image"
 import {
@@ -14,15 +14,13 @@ import {
   EllipsisHorizontal,
   CurrencyDollar,
   XMark,
-  Sun,
-  Moon,
-  ComputerDesktop,
-  CheckMini,
 } from "@medusajs/icons"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { vendorProfileApi, vendorOrdersApi } from "@/lib/api/client"
+import { performVendorLogout } from "@/lib/vendor-session"
 import { OWEG_BRAND } from "@/lib/brand"
-import { type ThemeMode, useTheme } from "@/lib/theme"
+import { useTheme } from "@/lib/theme"
+import VendorSettingsModal from "@/components/VendorSettingsModal"
 
 type VendorInfo = {
   name?: string
@@ -99,30 +97,32 @@ const navItems = [
   },
 ]
 
-const VendorShell = ({ children }: PropsWithChildren) => {
+const VendorShellInner = ({ children }: PropsWithChildren) => {
   const pathname = usePathname()
   const router = useRouter()
-  const { theme, setTheme, resolvedTheme } = useTheme()
+  const searchParams = useSearchParams()
+  const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === "dark"
   const platformLogo = isDark ? OWEG_BRAND.logoPathDark : OWEG_BRAND.logoPathLight
   const [vendorInfo, setVendorInfo] = useState<VendorInfo | null>(null)
   const [payoutData, setPayoutData] = useState<PayoutData>({ totalRevenue: 0, totalBalance: 0, loading: true })
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>(["Products"])
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [logoutPromptOpen, setLogoutPromptOpen] = useState(false)
 
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
 
-  const themeOptions: Array<{
-    value: ThemeMode
-    label: string
-    Icon: typeof Sun
-  }> = [
-    { value: "light", label: "Light", Icon: Sun },
-    { value: "dark", label: "Dark", Icon: Moon },
-    { value: "system", label: "System", Icon: ComputerDesktop },
-  ]
+  useEffect(() => {
+    if (searchParams.get("settings") === "1") {
+      setSettingsOpen(true)
+      const next = new URLSearchParams(searchParams.toString())
+      next.delete("settings")
+      const query = next.toString()
+      router.replace(query ? `${pathname}?${query}` : pathname || "/dashboard")
+    }
+  }, [searchParams, pathname, router])
 
   const toggleExpanded = (label: string) => {
     setExpandedItems((prev) =>
@@ -195,10 +195,7 @@ const VendorShell = ({ children }: PropsWithChildren) => {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem("vendor_token")
-    localStorage.removeItem("vendor_user")
-    document.cookie = 'vendor_token=; path=/; max-age=0; SameSite=Lax'
-    router.push("/login")
+    void performVendorLogout("/login")
   }
 
   return (
@@ -354,20 +351,6 @@ const VendorShell = ({ children }: PropsWithChildren) => {
             </span>
           </div>
 
-          <button
-            onClick={() => navigate("/settings")}
-            className="mb-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-ui-fg-subtle transition-all hover:bg-oweg-500/[0.06] hover:text-ui-fg-base"
-          >
-            {/* Reusing settings icon SVG for now as not imported specifically */}
-            <span className="flex h-5 w-5 items-center justify-center text-ui-fg-muted">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M8.5 2H11.5L12 4.5C12.5 4.7 13 5 13.5 5.5L16 4.5L17.5 7L15.5 8.5C15.6 9 15.6 9.5 15.5 10L17.5 11.5L16 14L13.5 13C13 13.5 12.5 13.8 12 14L11.5 16.5H8.5L8 14C7.5 13.8 7 13.5 6.5 13L4 14L2.5 11.5L4.5 10C4.4 9.5 4.4 9 4.5 8.5L2.5 7L4 4.5L6.5 5.5C7 5 7.5 4.7 8 4.5L8.5 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                <circle cx="10" cy="9.5" r="2.5" stroke="currentColor" strokeWidth="1.5" />
-              </svg>
-            </span>
-            <span className="font-medium">Settings</span>
-          </button>
-
           <div ref={accountMenuRef} className="relative">
             <button
               onClick={() => setAccountMenuOpen((prev) => !prev)}
@@ -387,59 +370,25 @@ const VendorShell = ({ children }: PropsWithChildren) => {
             </button>
 
             {accountMenuOpen && (
-              <div className="absolute bottom-full left-0 right-0 mb-2 flex flex-col gap-1 rounded-lg border border-ui-border-base bg-ui-bg-component p-2 shadow-xl z-50">
+              <div className="absolute bottom-full left-0 right-0 z-50 mb-2 flex flex-col gap-0.5 rounded-lg border border-ui-border-base bg-ui-bg-component p-1.5 shadow-xl">
                 <button
+                  type="button"
                   onClick={() => {
                     setAccountMenuOpen(false)
-                    navigate("/profile")
+                    setSettingsOpen(true)
                   }}
-                  className="rounded-md px-3 py-2 text-left text-sm text-ui-fg-base hover:bg-ui-bg-base-hover transition-colors"
+                  className="rounded-md px-3 py-2.5 text-left text-sm text-ui-fg-base hover:bg-ui-bg-base-hover transition-colors"
                 >
-                  Profile settings
+                  Settings
                 </button>
-
-                <div className="h-px bg-ui-border-base my-1" />
-
-                <div className="px-3 pt-1 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-ui-fg-muted">
-                  Theme
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  {themeOptions.map(({ value, label, Icon }) => {
-                    const active = theme === value
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => setTheme(value)}
-                        className={clx(
-                          "flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors",
-                          active
-                            ? "bg-ui-bg-base-hover text-ui-fg-base"
-                            : "text-ui-fg-subtle hover:bg-ui-bg-base-hover/60 hover:text-ui-fg-base"
-                        )}
-                      >
-                        <span className="flex h-4 w-4 items-center justify-center text-ui-fg-muted">
-                          <Icon />
-                        </span>
-                        <span className="flex-1">{label}</span>
-                        {active && (
-                          <span className="flex h-4 w-4 items-center justify-center text-oweg-600 dark:text-oweg-400">
-                            <CheckMini />
-                          </span>
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-
-                <div className="h-px bg-ui-border-base my-1" />
-
+                <div className="my-0.5 h-px bg-ui-border-base" />
                 <button
+                  type="button"
                   onClick={() => {
                     setAccountMenuOpen(false)
                     setLogoutPromptOpen(true)
                   }}
-                  className="rounded-md px-3 py-2 text-left text-sm text-ui-fg-subtle hover:bg-ui-bg-base-hover transition-colors"
+                  className="rounded-md px-3 py-2.5 text-left text-sm text-ui-fg-subtle hover:bg-ui-bg-base-hover transition-colors"
                 >
                   Log out
                 </button>
@@ -475,6 +424,8 @@ const VendorShell = ({ children }: PropsWithChildren) => {
         </main>
       </div>
 
+      <VendorSettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
+
       {/* Logout confirmation prompt */}
       <Prompt
         variant="confirmation"
@@ -498,6 +449,12 @@ const VendorShell = ({ children }: PropsWithChildren) => {
     </div>
   )
 }
+
+const VendorShell = ({ children }: PropsWithChildren) => (
+  <Suspense fallback={<div className="flex h-screen items-center justify-center bg-ui-bg-base">Loading…</div>}>
+    <VendorShellInner>{children}</VendorShellInner>
+  </Suspense>
+)
 
 export default VendorShell
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { vendorProfileApi } from '@/lib/api/client'
+import { performVendorLogout } from '@/lib/vendor-session'
 
 export default function PendingPage() {
   const router = useRouter()
@@ -51,11 +52,7 @@ export default function PendingPage() {
   }, [router])
 
   const handleLogout = () => {
-    localStorage.removeItem('vendor_token')
-    localStorage.removeItem('vendor_user')
-    // Clear cookie as well
-    document.cookie = 'vendor_token=; path=/; max-age=0; SameSite=Lax'
-    router.push('/login')
+    void performVendorLogout('/login')
   }
 
   if (loading) {
