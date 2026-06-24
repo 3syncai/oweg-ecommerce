@@ -1,6 +1,11 @@
-import type { ExecArgs } from "@medusajs/framework/types"
 import { Modules } from "@medusajs/framework/utils"
 import { Client } from "pg"
+
+type MedusaExecArgs = {
+  container: {
+    resolve: (key: string) => unknown
+  }
+}
 
 /**
  * Create or repair a Medusa admin user (links auth identity to user_id, sets password).
@@ -8,7 +13,7 @@ import { Client } from "pg"
  * Usage:
  *   ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='secret' npx medusa exec ./scripts/upsert-admin-user.ts
  */
-export default async function upsertAdminUser({ container }: ExecArgs) {
+export default async function upsertAdminUser({ container }: MedusaExecArgs) {
   const email = process.env.ADMIN_EMAIL?.trim().toLowerCase()
   const password = process.env.ADMIN_PASSWORD
 
