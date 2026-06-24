@@ -1,117 +1,102 @@
 import Link from "next/link"
 import Image from "next/image"
+import { OWEG_BRAND } from "@/lib/brand"
 
-/**
- * Shared footer for the public-facing vendor pages. Same content as the
- * inline footer that lived on the landing page.
- */
 export default function LandingFooter() {
   return (
-    <footer className="bg-gray-900 text-gray-400 py-16">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+    <footer className="border-t border-zinc-800 bg-zinc-950 text-zinc-400">
+      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mb-12 grid grid-cols-1 gap-12 md:grid-cols-4">
           <div>
             <Image
-              src="/Oweg.png"
-              alt="OWEG Logo"
+              src={OWEG_BRAND.logoPathLight}
+              alt="OWEG"
               width={140}
               height={48}
-              className="h-10 w-auto mb-6 brightness-0 invert"
+              className="mb-5 h-10 w-auto brightness-0 invert"
             />
-            <p className="text-sm leading-relaxed">
-              India&apos;s fastest-growing e-commerce platform for sellers. Start selling today!
+            <p className="max-w-xs text-sm leading-relaxed">
+              India&apos;s fastest-growing marketplace for sellers. List products, fulfil orders,
+              and get paid — all from one vendor portal.
             </p>
           </div>
+
           <div>
-            <h4 className="text-white font-semibold mb-5 text-lg">For Sellers</h4>
-            <ul className="space-y-3 text-sm">
+            <h4 className="mb-4 text-sm font-semibold uppercase tracking-wide text-white">
+              For sellers
+            </h4>
+            <ul className="space-y-2.5 text-sm">
               <li>
-                <Link
-                  href="/signup"
-                  className="hover:text-white transition-colors hover:translate-x-1 inline-block"
-                >
-                  Become a Seller
+                <Link href="/signup" className="transition hover:text-oweg-400">
+                  Become a seller
                 </Link>
               </li>
               <li>
-                <Link
-                  href="/login"
-                  className="hover:text-white transition-colors hover:translate-x-1 inline-block"
-                >
-                  Seller Login
+                <Link href="/login" className="transition hover:text-oweg-400">
+                  Seller login
                 </Link>
               </li>
               <li>
-                <Link
-                  href="/blog"
-                  className="hover:text-white transition-colors hover:translate-x-1 inline-block"
-                >
-                  Seller Resources
+                <Link href="/blog" className="transition hover:text-oweg-400">
+                  Seller resources
                 </Link>
               </li>
             </ul>
           </div>
+
           <div>
-            <h4 className="text-white font-semibold mb-5 text-lg">Company</h4>
-            <ul className="space-y-3 text-sm">
+            <h4 className="mb-4 text-sm font-semibold uppercase tracking-wide text-white">
+              Company
+            </h4>
+            <ul className="space-y-2.5 text-sm">
               <li>
-                <Link
-                  href="/about"
-                  className="hover:text-white transition-colors hover:translate-x-1 inline-block"
-                >
+                <Link href="/about" className="transition hover:text-oweg-400">
                   About
                 </Link>
               </li>
               <li>
-                <Link
-                  href="/blog"
-                  className="hover:text-white transition-colors hover:translate-x-1 inline-block"
-                >
+                <Link href="/blog" className="transition hover:text-oweg-400">
                   Blog
                 </Link>
               </li>
               <li>
-                <a
-                  href="#"
-                  className="hover:text-white transition-colors hover:translate-x-1 inline-block"
-                >
-                  Contact Us
+                <a href="#" className="transition hover:text-oweg-400">
+                  Contact us
                 </a>
               </li>
             </ul>
           </div>
+
           <div>
-            <h4 className="text-white font-semibold mb-5 text-lg">Legal</h4>
-            <ul className="space-y-3 text-sm">
+            <h4 className="mb-4 text-sm font-semibold uppercase tracking-wide text-white">
+              Legal
+            </h4>
+            <ul className="space-y-2.5 text-sm">
               <li>
-                <a
-                  href="#"
-                  className="hover:text-white transition-colors hover:translate-x-1 inline-block"
-                >
-                  Privacy Policy
+                <a href="#" className="transition hover:text-oweg-400">
+                  Privacy policy
                 </a>
               </li>
               <li>
-                <a
-                  href="#"
-                  className="hover:text-white transition-colors hover:translate-x-1 inline-block"
-                >
-                  Terms of Service
+                <a href="#" className="transition hover:text-oweg-400">
+                  Terms of service
                 </a>
               </li>
               <li>
-                <a
-                  href="#"
-                  className="hover:text-white transition-colors hover:translate-x-1 inline-block"
-                >
-                  Seller Agreement
+                <a href="#" className="transition hover:text-oweg-400">
+                  Seller agreement
                 </a>
               </li>
             </ul>
           </div>
         </div>
-        <div className="border-t border-gray-800 pt-8 text-center text-sm">
+
+        <div className="flex flex-col items-center justify-between gap-4 border-t border-zinc-800 pt-8 text-sm sm:flex-row">
           <p>&copy; {new Date().getFullYear()} OWEG. All rights reserved.</p>
+          <p className="text-zinc-500">
+            Built for vendors · Powered by{" "}
+            <span className="font-medium text-oweg-500">{OWEG_BRAND.primary}</span>
+          </p>
         </div>
       </div>
     </footer>
