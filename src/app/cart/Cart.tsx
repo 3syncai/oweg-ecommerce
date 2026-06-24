@@ -26,6 +26,7 @@ import {
   notifyRemoveItem,
 } from "@/lib/notifications";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
+import { warmRazorpayCheckout } from "@/lib/razorpay-warmup";
 interface CartItemUI {
   id: string;
   name: string;
@@ -663,6 +664,12 @@ const Cart: React.FC = () => {
   const shipping = calculateStatewiseShipping(subtotal);
   const total = subtotal + shipping;
   const activeCurrency = cartItems[0]?.currency ?? DEFAULT_CURRENCY;
+
+  useEffect(() => {
+    if (cartItems.length > 0) {
+      warmRazorpayCheckout({ prefetchMethods: true });
+    }
+  }, [cartItems.length]);
 
   // Recommended products from cart item relations (type/tag/category)
   type UIProduct = {

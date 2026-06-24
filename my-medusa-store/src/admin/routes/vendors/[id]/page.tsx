@@ -1,6 +1,5 @@
 "use client"
 
-import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { useEffect, useState } from "react"
 import { Container, Heading, Text, Button, Badge, Avatar } from "@medusajs/ui"
 import {
@@ -918,8 +917,5 @@ const VendorDetailPage = () => {
     )
 }
 
-export const config = defineRouteConfig({
-    label: "Vendor Details",
-})
-
+// Detail route — no sidebar label (dynamic /vendors/:id can't be linked in nav).
 export default VendorDetailPage

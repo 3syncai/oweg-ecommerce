@@ -11,6 +11,7 @@ import React, {
 } from "react";
 import { useAuth } from "@/contexts/AuthProvider";
 import { extractCartCount, type CartApiPayload } from "@/lib/cart-helpers";
+import { warmRazorpayCheckout } from "@/lib/razorpay-warmup";
 
 type CartSummaryContextValue = {
   count: number;
@@ -30,6 +31,7 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const { customer } = useAuth();
   const [count, setCount] = useState(0);
   const previousCustomerIdRef = useRef<string | undefined>(customer?.id);
+  const razorpayWarmedRef = useRef(false);
 
   const syncFromCartPayload = useCallback((payload?: CartApiPayload) => {
     const next = extractCartCount(payload);
@@ -83,6 +85,12 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
 
     previousCustomerIdRef.current = nextId;
   }, [customer?.id, refresh, restoreCount]);
+
+  useEffect(() => {
+    if (count <= 0 || razorpayWarmedRef.current) return;
+    razorpayWarmedRef.current = true;
+    warmRazorpayCheckout({ prefetchMethods: true });
+  }, [count]);
 
   const value = useMemo(
     () => ({
