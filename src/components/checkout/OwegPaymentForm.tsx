@@ -8,6 +8,11 @@ import {
   type CustomPaymentPayload,
   isMobileDevice,
 } from "@/lib/razorpay-custom-client";
+import {
+  getCachedRazorpayMethods,
+  prefetchRazorpayMethods,
+  type RazorpayMethodsPayload,
+} from "@/lib/razorpay-warmup";
 
 export type PaymentPrefill = {
   name?: string;
@@ -104,35 +109,44 @@ export const OwegPaymentForm = forwardRef<OwegPaymentFormHandle, OwegPaymentForm
 
     const isMobile = useMemo(() => isMobileDevice(), []);
 
+    const applyMethodsPayload = useCallback((data: RazorpayMethodsPayload | null) => {
+      if (!data) return;
+      const netbanking = data.netbanking;
+      if (netbanking && typeof netbanking === "object") {
+        const list = Object.entries(netbanking).map(([code, name]) => ({ code, name }));
+        if (list.length) {
+          setBanks(list);
+          setSelectedBank(list[0].code);
+        }
+      }
+      const walletMap = data.wallet;
+      if (walletMap && typeof walletMap === "object") {
+        const list = Object.entries(walletMap).map(([code, name]) => ({
+          code,
+          name: WALLET_LABELS[code] || name,
+        }));
+        if (list.length) {
+          setWallets(list);
+          setSelectedWallet(list[0].code);
+        }
+      }
+    }, []);
+
     useEffect(() => {
       if (!enabled) return;
+
+      const cached = getCachedRazorpayMethods();
+      if (cached) {
+        applyMethodsPayload(cached);
+        return;
+      }
+
       setMethodsLoading(true);
-      void fetch("/api/checkout/razorpay/methods")
-        .then((res) => res.json())
-        .then((data: { methods?: { netbanking?: Record<string, string>; wallet?: Record<string, string> } }) => {
-          const netbanking = data.methods?.netbanking;
-          if (netbanking && typeof netbanking === "object") {
-            const list = Object.entries(netbanking).map(([code, name]) => ({ code, name }));
-            if (list.length) {
-              setBanks(list);
-              setSelectedBank(list[0].code);
-            }
-          }
-          const walletMap = data.methods?.wallet;
-          if (walletMap && typeof walletMap === "object") {
-            const list = Object.entries(walletMap).map(([code, name]) => ({
-              code,
-              name: WALLET_LABELS[code] || name,
-            }));
-            if (list.length) {
-              setWallets(list);
-              setSelectedWallet(list[0].code);
-            }
-          }
-        })
+      void prefetchRazorpayMethods()
+        .then(applyMethodsPayload)
         .catch(() => undefined)
         .finally(() => setMethodsLoading(false));
-    }, [enabled]);
+    }, [enabled, applyMethodsPayload]);
 
     useEffect(() => {
       if (prefill.name && !cardName) setCardName(prefill.name);

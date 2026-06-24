@@ -17,10 +17,10 @@ import {
 } from "@/components/checkout/OwegPaymentForm";
 import {
   loadRazorpayCustomScript,
-  prefetchRazorpayConnections,
   submitCustomRazorpayPayment,
   type RazorpaySuccessResponse,
 } from "@/lib/razorpay-custom-client";
+import { warmRazorpayCheckout } from "@/lib/razorpay-warmup";
 import { getSiteOrigin } from "@/lib/razorpay";
 import {
   clearStaleBuyNowSnapshot,
@@ -64,6 +64,76 @@ type DraftOrderResponse = {
   codConfirmed?: boolean;
   codFast?: boolean;
 };
+
+const DRAFT_WARMUP_TTL_MS = 3 * 60 * 1000;
+
+type DraftWarmupEntry = {
+  fingerprint: string;
+  draft: DraftOrderResponse;
+  payableRupees: number;
+  at: number;
+};
+
+function buildCheckoutWarmupFingerprint(input: {
+  paymentMethod: string;
+  shipping: {
+    email?: string;
+    firstName?: string;
+    address1?: string;
+    postalCode?: string;
+    phone?: string;
+    state?: string;
+  };
+  billingSame: boolean;
+  referralCode: string;
+  coinDiscount: number;
+  oweg10Applied: boolean;
+  oweg10CanApply: boolean;
+  payableTotal: number;
+  cartId?: string;
+  isBuyNow: boolean;
+  buyNowVariantId?: string;
+  buyNowQty?: number;
+  buyNowPrice?: string;
+}): string {
+  return JSON.stringify({
+    pm: input.paymentMethod,
+    sh: {
+      email: input.shipping.email?.trim(),
+      firstName: input.shipping.firstName?.trim(),
+      address1: input.shipping.address1?.trim(),
+      postalCode: input.shipping.postalCode?.trim(),
+      phone: input.shipping.phone?.trim(),
+      state: input.shipping.state?.trim(),
+    },
+    bs: input.billingSame,
+    ref: input.referralCode.trim(),
+    coin: input.coinDiscount,
+    o10: input.oweg10Applied && input.oweg10CanApply,
+    pay: Math.round(input.payableTotal * 100) / 100,
+    cart: input.cartId,
+    bn: input.isBuyNow,
+    bv: input.buyNowVariantId,
+    bq: input.buyNowQty,
+    bp: input.buyNowPrice,
+  });
+}
+
+function isShippingCompleteForWarmup(shipping: {
+  email?: string;
+  firstName?: string;
+  address1?: string;
+  postalCode?: string;
+  phone?: string;
+}): boolean {
+  return Boolean(
+    shipping.email?.trim() &&
+      shipping.firstName?.trim() &&
+      shipping.address1?.trim() &&
+      shipping.postalCode?.trim() &&
+      shipping.phone?.trim()
+  );
+}
 
 type CustomerAddress = {
   id: string;
@@ -205,6 +275,9 @@ function CheckoutPageInner() {
   const autoCheckoutNoticeShownRef = useRef(false);
   const performCheckoutRef = useRef<(() => Promise<void>) | null>(null);
   const paymentFormRef = useRef<OwegPaymentFormHandle>(null);
+  const draftWarmupRef = useRef<DraftWarmupEntry | null>(null);
+  const draftWarmupInFlightRef = useRef<Promise<DraftOrderResponse | null> | null>(null);
+  const createDraftOrderRef = useRef<(() => Promise<DraftOrderResponse>) | null>(null);
 
   const [referralCode, setReferralCode] = useState("");
   const [referralCodeApplied, setReferralCodeApplied] = useState(false); // Track if auto-applied
@@ -1033,10 +1106,8 @@ function CheckoutPageInner() {
   ]);
 
   useEffect(() => {
-    if (paymentMethod !== "razorpay") return;
-    prefetchRazorpayConnections();
-    void loadRazorpayCustomScript().catch(() => undefined);
-  }, [paymentMethod]);
+    warmRazorpayCheckout({ prefetchMethods: true });
+  }, []);
 
   const formatInr = (value: number) => INR.format(value);
 
@@ -1116,6 +1187,139 @@ function CheckoutPageInner() {
     }
     return (await res.json()) as DraftOrderResponse;
   };
+
+  createDraftOrderRef.current = createDraftOrder;
+
+  const getCheckoutWarmupFingerprint = () =>
+    buildCheckoutWarmupFingerprint({
+      paymentMethod,
+      shipping,
+      billingSame,
+      referralCode,
+      coinDiscount,
+      oweg10Applied,
+      oweg10CanApply: oweg10Status.canApply,
+      payableTotal,
+      cartId: cart?.id,
+      isBuyNow,
+      buyNowVariantId: variantFromQuery,
+      buyNowQty: qtyFromQuery ? Number(qtyFromQuery) : undefined,
+      buyNowPrice: priceFromQuery || undefined,
+    });
+
+  const resolveDraftOrderForCheckout = async (): Promise<DraftOrderResponse> => {
+    const fingerprint = getCheckoutWarmupFingerprint();
+    const cached = draftWarmupRef.current;
+
+    if (
+      cached &&
+      cached.fingerprint === fingerprint &&
+      Date.now() - cached.at < DRAFT_WARMUP_TTL_MS
+    ) {
+      return cached.draft;
+    }
+
+    if (draftWarmupInFlightRef.current) {
+      const inFlight = await draftWarmupInFlightRef.current;
+      if (
+        inFlight &&
+        draftWarmupRef.current?.fingerprint === fingerprint &&
+        Date.now() - draftWarmupRef.current.at < DRAFT_WARMUP_TTL_MS
+      ) {
+        return inFlight;
+      }
+    }
+
+    draftWarmupRef.current = null;
+    return createDraftOrder();
+  };
+
+  useEffect(() => {
+    if (paymentMethod !== "razorpay") {
+      draftWarmupRef.current = null;
+      return;
+    }
+
+    const hasCartItems = (cart?.items?.length || 0) > 0;
+    const hasBuyNowItem = isBuyNow && (buyNowItem || variantFromQuery);
+    if (!hasCartItems && !hasBuyNowItem) {
+      draftWarmupRef.current = null;
+      return;
+    }
+
+    if (!isShippingCompleteForWarmup(shipping)) {
+      draftWarmupRef.current = null;
+      return;
+    }
+
+    if (processing || totalsLoading || !isOweg10StatusReady) return;
+
+    const fingerprint = getCheckoutWarmupFingerprint();
+    if (
+      draftWarmupRef.current?.fingerprint === fingerprint &&
+      Date.now() - draftWarmupRef.current.at < DRAFT_WARMUP_TTL_MS
+    ) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      if (paymentMethod !== "razorpay") return;
+      if (!isShippingCompleteForWarmup(shipping)) return;
+
+      const createDraft = createDraftOrderRef.current;
+      if (!createDraft) return;
+
+      const currentFingerprint = getCheckoutWarmupFingerprint();
+      if (
+        draftWarmupRef.current?.fingerprint === currentFingerprint &&
+        Date.now() - draftWarmupRef.current.at < DRAFT_WARMUP_TTL_MS
+      ) {
+        return;
+      }
+
+      const run = (async () => {
+        try {
+          const draft = await createDraft();
+          draftWarmupRef.current = {
+            fingerprint: currentFingerprint,
+            draft,
+            payableRupees: payableTotal,
+            at: Date.now(),
+          };
+          return draft;
+        } catch (err) {
+          console.warn("checkout draft warmup failed", err);
+          draftWarmupRef.current = null;
+          return null;
+        } finally {
+          draftWarmupInFlightRef.current = null;
+        }
+      })();
+
+      draftWarmupInFlightRef.current = run;
+    }, 900);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    paymentMethod,
+    shipping,
+    billingSame,
+    referralCode,
+    coinDiscount,
+    oweg10Applied,
+    oweg10Status.canApply,
+    payableTotal,
+    cart?.id,
+    cart?.items,
+    isBuyNow,
+    buyNowItem,
+    variantFromQuery,
+    qtyFromQuery,
+    priceFromQuery,
+    processing,
+    totalsLoading,
+    isOweg10StatusReady,
+  ]);
 
   const finalizeCodCheckout = (draft: DraftOrderResponse) => {
     void fetch("/api/checkout/cod", {
@@ -1286,7 +1490,7 @@ function CheckoutPageInner() {
       }
 
       const [draft] = await Promise.all([
-        createDraftOrder(),
+        resolveDraftOrderForCheckout(),
         paymentMethod === "razorpay" ? loadRazorpayCustomScript() : Promise.resolve(),
       ]);
       if (paymentMethod === "cod") {

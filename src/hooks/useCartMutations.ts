@@ -15,6 +15,7 @@ import type { CartApiPayload } from "@/lib/cart-helpers";
 import { useRouter } from "next/navigation";
 import { getGuestCartId, setGuestCartId } from "@/lib/guest-cart";
 import { clearStaleBuyNowSnapshot } from "@/lib/checkout-redirects";
+import { warmRazorpayCheckout } from "@/lib/razorpay-warmup";
 import { useAuth } from "@/contexts/AuthProvider";
 import {
   clearCartQueryCache,
@@ -103,6 +104,7 @@ export function useAddToCart() {
       return { previousCount, previousPayload };
     },
     onSuccess: (data) => {
+      warmRazorpayCheckout({ prefetchMethods: true });
       if (data) {
         syncFromCartPayload(data as unknown as Parameters<typeof syncFromCartPayload>[0]);
         writeCartQueryCache(
@@ -143,6 +145,7 @@ export function useAddToCartWithNotification(productName?: string) {
 
     try {
       clearStaleBuyNowSnapshot();
+      router.prefetch("/checkout");
       return await addToCart.mutateAsync({ variant_id, quantity: 1 });
     } catch (err) {
       const message =
