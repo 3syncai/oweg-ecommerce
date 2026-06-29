@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 import Image from 'next/image'
 import { ChevronRight, Heart, Plus, X } from 'lucide-react'
@@ -44,10 +44,8 @@ import {
   notifyWishlistLogin,
   notifyWishlistSuccess,
 } from '@/lib/notifications'
-import { clearStaleBuyNowSnapshot } from '@/lib/checkout-redirects'
 import { useAuth } from '@/contexts/AuthProvider'
 import { useCartSummary } from '@/contexts/CartProvider'
-import { writeCartQueryCache } from '@/hooks/useCart'
 import { useFlashSale } from '@/hooks/useFlashSale'
 
 const ProductSavingsExplorer = dynamic(() => import('./components/ProductSavingsExplorer'), {
@@ -130,7 +128,6 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const [compareDetails, setCompareDetails] = useState<Record<string, DetailedProductType | null>>({})
   const [compareDetailsLoading, setCompareDetailsLoading] = useState<Record<string, boolean>>({})
   const { count, syncFromCartPayload, bumpCount, restoreCount } = useCartSummary()
-  const queryClient = useQueryClient()
   const summaryScrollRef = useRef<HTMLDivElement | null>(null)
   const outOfStockToastRef = useRef<string | null>(null)
   const [wishlistBusy, setWishlistBusy] = useState(false)
@@ -1279,7 +1276,6 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
     const itemLabel = label ?? product?.title ?? "Item";
 
-    clearStaleBuyNowSnapshot();
     notifyCartAddSuccess(itemLabel, qty, goToCart);
     const previousCount = count;
     bumpCount(qty);
@@ -1307,7 +1303,6 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
       if (payload) {
         syncFromCartPayload(payload);
-        writeCartQueryCache(queryClient, customer?.id, payload as Record<string, unknown>);
       }
     } catch (err) {
       restoreCount(previousCount);
