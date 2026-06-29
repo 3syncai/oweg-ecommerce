@@ -184,17 +184,6 @@ export default function HelpSupportContent({ embedded = false }: HelpSupportCont
           <Mail className="h-4 w-4" />
           {SUPPORT_EMAIL}
         </a>
-        <p className="mt-3 text-sm text-gray-500">
-          WhatsApp:{" "}
-          <a
-            href={`https://wa.me/${WHATSAPP_NUMBER}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-semibold text-[#66C940] hover:underline"
-          >
-            +91 8797787877
-          </a>
-        </p>
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm md:p-6">
