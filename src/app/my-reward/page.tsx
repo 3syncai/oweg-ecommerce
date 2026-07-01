@@ -208,6 +208,12 @@ export default function MyRewardPage() {
             My Reward Tiers
           </div>
           <h1 className="text-2xl font-semibold">Earn coins, unlock perks, stay VIP.</h1>
+          <Link
+            href="/reward-policy"
+            className="inline-flex text-sm font-medium text-emerald-700 hover:text-emerald-800 hover:underline"
+          >
+            Read Reward Points Terms
+          </Link>
         </header>
 
         <section className="grid gap-4 sm:grid-cols-3">

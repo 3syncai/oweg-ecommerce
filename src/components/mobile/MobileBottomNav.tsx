@@ -160,6 +160,7 @@ const policyLinks = [
   { label: 'Returns Policy', href: '/returns-policy' },
   { label: 'Shipping Policy', href: '/shipping-policy' },
   { label: 'Coupon Code Policy', href: '/coupon-policy' },
+  { label: 'Reward', href: '/reward-policy' },
   { label: 'Privacy Policy', href: '/privacy-policy' },
 ];
 

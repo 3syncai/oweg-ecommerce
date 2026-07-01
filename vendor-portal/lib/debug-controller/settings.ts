@@ -77,3 +77,19 @@ export async function updateDebugControllerSettings(
   cacheExpiresAt = Date.now() + CACHE_TTL_MS;
   return next;
 }
+
+/** Curated subset safe to expose on the vendor portal without admin auth. */
+export function toPublicSiteSettings(settings: DebugControllerSettings) {
+  return {
+    siteStatus: settings.siteStatus,
+    disableRightClick: settings.disableRightClick,
+    disableTextSelect: settings.disableTextSelect,
+    disableDevToolsShortcuts: settings.disableDevToolsShortcuts,
+    enableRegistration: settings.enableRegistration,
+    showAnnouncementBanner: settings.showAnnouncementBanner,
+    announcementBanner: settings.announcementBanner,
+    maintenanceMessage: settings.maintenanceMessage,
+    maintenanceTitle: settings.maintenanceTitle,
+    cacheBustVersion: settings.cacheBustVersion,
+  };
+}

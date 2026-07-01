@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Pool } from "pg"
+import { guardDebugRoute } from "@/lib/debug-route-guard"
 
 /**
  * DEBUG ENDPOINT - Check affiliate wallet status
  * GET /api/affiliate/debug-wallet?code=AFFILIATE_CODE
  */
 export async function GET(req: NextRequest) {
+    const blocked = guardDebugRoute(req);
+    if (blocked) return blocked;
+
     const affiliateCode = req.nextUrl.searchParams.get("code")
 
     if (!affiliateCode) {

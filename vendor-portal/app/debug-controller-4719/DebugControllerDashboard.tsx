@@ -87,13 +87,15 @@ export default function DebugControllerDashboard() {
     setError("");
     try {
       const [settingsRes, statsRes] = await Promise.all([
-        fetch("/api/debug-controller/settings"),
+        fetch("/api/debug-controller/settings", {
+          headers: { "x-debug-controller-token": activeToken },
+        }),
         fetch("/api/debug-controller/stats", {
           headers: { "x-debug-controller-token": activeToken },
         }),
       ]);
 
-      if (!statsRes.ok) {
+      if (!settingsRes.ok || !statsRes.ok) {
         throw new Error("Failed to load protected data");
       }
 

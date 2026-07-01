@@ -13,7 +13,8 @@ type MiddlewareSettings = {
 
 function isMaintenanceBypass(pathname: string) {
   if (MAINTENANCE_BYPASS.has(pathname)) return true;
-  if (pathname.startsWith("/api/debug-controller")) return true;
+  if (pathname.startsWith("/api/debug-controller")) return true
+  if (pathname.startsWith("/api/site-settings")) return true;
   if (pathname.startsWith("/_next")) return true;
   if (pathname.startsWith("/favicon")) return true;
   return false;
@@ -21,7 +22,7 @@ function isMaintenanceBypass(pathname: string) {
 
 async function fetchDebugSettings(origin: string): Promise<MiddlewareSettings | null> {
   try {
-    const res = await fetch(`${origin}/api/debug-controller/settings`, {
+    const res = await fetch(`${origin}/api/site-settings`, {
       cache: "no-store",
       headers: { "x-debug-middleware": "1" },
     });

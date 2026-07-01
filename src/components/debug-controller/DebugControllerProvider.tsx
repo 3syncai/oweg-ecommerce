@@ -58,7 +58,7 @@ export function DebugControllerProvider({ children }: { children: ReactNode }) {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/debug-controller/settings", {
+      const res = await fetch("/api/site-settings", {
         cache: "no-store",
       });
       if (!res.ok) return;
