@@ -71,3 +71,23 @@ export function invalidateDebugSettingsCache() {
   cachedSettings = null;
   cacheExpiresAt = 0;
 }
+
+/** Curated subset safe to expose on the public storefront without admin auth. */
+export function toPublicSiteSettings(settings: DebugControllerSettings) {
+  return {
+    siteStatus: settings.siteStatus,
+    disableRightClick: settings.disableRightClick,
+    disableTextSelect: settings.disableTextSelect,
+    disableDevToolsShortcuts: settings.disableDevToolsShortcuts,
+    enableCheckout: settings.enableCheckout,
+    enableRegistration: settings.enableRegistration,
+    enableWhatsAppWidget: settings.enableWhatsAppWidget,
+    whatsappNumber: settings.whatsappNumber,
+    whatsappMessage: settings.whatsappMessage,
+    showAnnouncementBanner: settings.showAnnouncementBanner,
+    announcementBanner: settings.announcementBanner,
+    maintenanceMessage: settings.maintenanceMessage,
+    maintenanceTitle: settings.maintenanceTitle,
+    cacheBustVersion: settings.cacheBustVersion,
+  };
+}

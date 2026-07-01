@@ -48,7 +48,7 @@ type StatusVariant = "success" | "cod-pending" | "payment-pending";
 
 function resolveOrderTotalRupees(order: OrderSummary | null): number | undefined {
   const total = order?.display_totals?.grandTotal ?? order?.total;
-  return typeof total === "number" && total > 0 ? total : undefined;
+  return typeof total === "number" && total >= 0 ? total : undefined;
 }
 
 function OrderStatusIcon({ variant }: { variant: StatusVariant }) {
@@ -342,14 +342,15 @@ function OrderSuccessPageInner() {
   }
 
   const totalRupees = resolveOrderTotalRupees(order);
-  const displayTotal = totalRupees
-    ? formatOrderCurrency(totalRupees, order?.currency_code)
-    : "N/A";
+  const displayTotal =
+    totalRupees !== undefined
+      ? formatOrderCurrency(totalRupees, order?.currency_code)
+      : "N/A";
 
   useEffect(() => {
     if (order && isPaid) {
       const totalInRupees = resolveOrderTotalRupees(order);
-      if (totalInRupees && totalInRupees > 0) {
+      if (totalInRupees !== undefined && totalInRupees > 0) {
         const earned = parseFloat((totalInRupees * 0.01).toFixed(2));
         setCoinsEarned(earned);
       }

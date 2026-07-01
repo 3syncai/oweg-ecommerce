@@ -77,5 +77,5 @@ export const shippingPolicy: PolicyDocument = {
       ],
     },
   ],
-  footer: "All the orders on Oweg are to be delivered within 2-3 days, as per their respective location.",
+  footer: "Most orders ship within 1–3 days of confirmation. Delivery timelines vary by location and courier partner.",
 };

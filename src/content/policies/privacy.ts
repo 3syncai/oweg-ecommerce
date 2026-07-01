@@ -118,7 +118,7 @@ export const privacyPolicy: PolicyDocument = {
       title: "5. DO WE USE GOOGLE MAPS?",
       paragraphs: [
         "In Short: Yes, we use Google Maps for the purpose of providing better service.",
-        "This website, mobile application, or Facebook application uses Google Maps APIs. You may find the Google Maps APIs Terms of Service here. To better understand Google's Privacy Policy, please refer to this link.",
+        "This website, mobile application, or Facebook application uses Google Maps APIs. You may find the [Google Maps APIs Terms of Service](https://maps.google.com/help/terms_maps.html). To better understand Google's Privacy Policy, please refer to [Google's Privacy Policy](https://policies.google.com/privacy).",
         "By using our Maps API Implementation, you agree to be bound by Google's Terms of Service. You agree to allow us to obtain or cache your location. You may revoke your consent at anytime.",
       ],
     },

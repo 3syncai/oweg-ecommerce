@@ -7,22 +7,14 @@ import { getDebugControllerSettings } from "@/lib/debug-controller/settings";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const token = extractDebugAuthToken(req);
+  if (!verifyDebugControllerToken(token)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const settings = await getDebugControllerSettings();
-  return NextResponse.json({
-    settings: {
-      siteStatus: settings.siteStatus,
-      disableRightClick: settings.disableRightClick,
-      disableTextSelect: settings.disableTextSelect,
-      disableDevToolsShortcuts: settings.disableDevToolsShortcuts,
-      enableRegistration: settings.enableRegistration,
-      showAnnouncementBanner: settings.showAnnouncementBanner,
-      announcementBanner: settings.announcementBanner,
-      maintenanceMessage: settings.maintenanceMessage,
-      maintenanceTitle: settings.maintenanceTitle,
-      cacheBustVersion: settings.cacheBustVersion,
-    },
-  });
+  return NextResponse.json({ settings });
 }
 
 export async function PATCH(req: NextRequest) {

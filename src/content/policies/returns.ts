@@ -8,7 +8,7 @@ export const returnsPolicy: PolicyDocument = {
       title: "Return Policy",
       bullets: [
         "Please read all sections carefully to understand the conditions and cases under which returns will be accepted.",
-        "Those who return any product, the amount will be credited automatically in the Oweg cashback account which you can use for any further purchase.",
+        "Those who return any product may receive a replacement, exchange, or refund depending on the return outcome and original payment method. Refunds may be credited to your original payment source, Oweg Cash wallet, or as otherwise described in the Refund section below.",
         "Products are returnable within the applicable return window if you've received them in a condition that is physically damaged, has missing parts or accessories, defective or different from their description on the product detail page on oweg.in.",
         "If you report an issue with your Water purifier, Chimney, UPS inverter or Microwave, we may schedule a technician visit to your location.",
         "For products where installation is provided by the Company do not open the product packaging by yourself. Company's authorised personnel shall help in unboxing and installation of the product.",
@@ -143,7 +143,7 @@ export const returnsPolicy: PolicyDocument = {
     {
       title: "Refund",
       bullets: [
-        "We will take 48 hours to process the refund once the product has cleared the Quality Check. The refund amount will be credited to your bank account within 3-4 working days. In the case of certain public sector banks, it can take up to 10-15 working days. (oweg cashback account)",
+        "We will take 48 hours to process the refund once the product has cleared the Quality Check. The refund amount will be credited to your bank account within 3-4 working days. In the case of certain public sector banks, it can take up to 10-15 working days.",
         "If you have paid via Cash on Delivery (COD), a refund will be credited to the bank account provided by you at the time of initiation of returns",
         "If you have paid using a credit/debit card or via net banking, the refund will be credited back to the account you used to place the original order.",
         "Amount paid through Oweg Cash will credited back to Oweg Cash account.",

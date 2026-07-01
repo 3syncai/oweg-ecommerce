@@ -15,8 +15,8 @@ export const rewardPolicy: PolicyDocument = {
       title: "Earning Reward Points",
       bullets: [
         "In order to earn Reward Points on Oweg, You are required to place an order on the Platform, for a minimum of Rs.300 and above (the net order value will be taken into consideration which is total order value minus cancelled/returned item value ).",
-        "All Rewar Points earnings will be at the item level",
-        "For every Eligible Order in the Platform that You are eligible to earn 3 Reward Points, Oweg customers will earn 3X Reward Points. For example, for an order value of Rs 300 you earn 3 Points. Please note that the Reward Points earned will be on the actual order value excluding any instant discounts or cashbacks credited via payment partners. This will not be applicable for Super Partners and earning of Reward Points will be as per the respective Partner's guidelines.",
+        "All Reward Points earnings will be at the item level",
+        "Oweg customers earn 1 Reward Point for every Rs 100 of eligible net order value (1% earn rate). For example, for an order value of Rs 300 you earn 3 Points. Please note that the Reward Points earned will be on the actual order value excluding any instant discounts or cashbacks credited via payment partners. This will not be applicable for Super Partners and earning of Reward Points will be as per the respective Partner's guidelines.",
         "A maximum of 50 Reward Points can be earned in a single Eligible Order. For example, for an order value of Rs 2500 you earn 25 Reward Points. This scenario will not be applicable for Super Partners and will be applicable as per their Terms & Conditions.",
         "For purchases made or transactions done with Super Partners on their respective platforms, applicability of Reward Points earning and redemption on particular products/services will be at the discretion of the Super Partner and as per Super Partner's guidelines. Super Partner's terms and conditions, in addition to these Terms, shall be applicable to any transactions made on their platforms.",
         "Reward Points earned by you shall be linked to your phone number registered with Oweg.",
@@ -40,8 +40,8 @@ export const rewardPolicy: PolicyDocument = {
     {
       title: "Merging of Reward Points",
       bullets: [
-        "Reward Points from another account can be combined in case you have multiple accounts in your name, subject to verification to the satisfaction of Flipkart that the accounts are held by the same individual.",
-        "Reward Points from any other account cannot be combined which does not mention your name and is not verified to the satisfaction of Flipkart. Reward Points cannot be gifted or transferred.",
+        "Reward Points from another account can be combined in case you have multiple accounts in your name, subject to verification to the satisfaction of Oweg that the accounts are held by the same individual.",
+        "Reward Points from any other account cannot be combined which does not mention your name and is not verified to the satisfaction of Oweg. Reward Points cannot be gifted or transferred.",
       ],
     },
     {
