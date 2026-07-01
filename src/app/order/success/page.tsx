@@ -15,12 +15,14 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { formatOrderCurrency } from "@/lib/order-utils";
 
 type OrderSummary = {
   id: string;
   payment_status?: string;
   is_draft_order?: boolean;
   total?: number;
+  display_totals?: { grandTotal?: number };
   currency_code?: string;
   items?: Array<{
     id: string;
@@ -43,6 +45,11 @@ const INR = new Intl.NumberFormat("en-IN", {
 });
 
 type StatusVariant = "success" | "cod-pending" | "payment-pending";
+
+function resolveOrderTotalRupees(order: OrderSummary | null): number | undefined {
+  const total = order?.display_totals?.grandTotal ?? order?.total;
+  return typeof total === "number" && total > 0 ? total : undefined;
+}
 
 function OrderStatusIcon({ variant }: { variant: StatusVariant }) {
   if (variant === "success") {
@@ -322,11 +329,6 @@ function OrderSuccessPageInner() {
     setPolling(true);
   }, [autoPollingStarted, isCodPending, isConfirmingFlow, orderId, polling]);
 
-  function formatAmount(rawTotal?: number | undefined, codOrder?: boolean) {
-    if (rawTotal === undefined || rawTotal === null) return "N/A";
-    return INR.format(codOrder ? rawTotal : rawTotal / 100);
-  }
-
   function formatItemAmount(item: OrderLineItem) {
     if (!item) return "N/A";
     const qty = Math.max(1, Number(item.quantity) || 1);
@@ -339,27 +341,20 @@ function OrderSuccessPageInner() {
     return INR.format(lineTotal);
   }
 
-  const displayTotal = formatAmount(
-    typeof (order as OrderSummary & { paid_total?: number })?.paid_total === "number"
-      ? (order as OrderSummary & { paid_total?: number }).paid_total
-      : order?.total,
-    isCod
-  );
+  const totalRupees = resolveOrderTotalRupees(order);
+  const displayTotal = totalRupees
+    ? formatOrderCurrency(totalRupees, order?.currency_code)
+    : "N/A";
 
   useEffect(() => {
     if (order && isPaid) {
-      const rawTotal =
-        typeof (order as OrderSummary & { paid_total?: number })?.paid_total === "number"
-          ? (order as OrderSummary & { paid_total?: number }).paid_total
-          : order?.total;
-
-      if (rawTotal && rawTotal > 0) {
-        const totalInRupees = isCod ? rawTotal : rawTotal / 100;
+      const totalInRupees = resolveOrderTotalRupees(order);
+      if (totalInRupees && totalInRupees > 0) {
         const earned = parseFloat((totalInRupees * 0.01).toFixed(2));
         setCoinsEarned(earned);
       }
     }
-  }, [order, isPaid, isCod]);
+  }, [order, isPaid]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-emerald-50/40 px-4 py-10 md:py-14">
