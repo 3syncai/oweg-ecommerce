@@ -1,10 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { Pool } from 'pg';
+import { guardDebugRoute } from "@/lib/debug-route-guard";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
-    const { searchParams } = new URL(req.url);
+export async function GET(req: NextRequest) {
+    const blocked = guardDebugRoute(req);
+    if (blocked) return blocked;
+
+    const { searchParams } = req.nextUrl;
     const fsId = searchParams.get("fs_id");
     const locId = searchParams.get("loc_id");
 

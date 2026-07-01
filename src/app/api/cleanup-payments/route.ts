@@ -1,7 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
+import { guardDebugRoute } from "@/lib/debug-route-guard";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+    const blocked = guardDebugRoute(req);
+    if (blocked) return blocked;
     if (!process.env.DATABASE_URL) {
         return NextResponse.json({ error: 'DATABASE_URL not set' }, { status: 500 });
     }
@@ -59,7 +62,10 @@ export async function POST() {
     }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+    const blocked = guardDebugRoute(req);
+    if (blocked) return blocked;
+
     return NextResponse.json({
         instructions: "POST to this endpoint to delete test payment data from today"
     });

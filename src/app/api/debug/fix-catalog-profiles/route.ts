@@ -1,13 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { Pool } from 'pg';
 import crypto from "crypto";
+import { guardDebugRoute } from "@/lib/debug-route-guard";
 
 export const dynamic = "force-dynamic";
 
 // Hardcoded Default Profile ID (the only one that exists)
 const DEFAULT_PROFILE_ID = "sp_01KA3RBYCYGNZSNGGXY2MW5MFH";
 
-export async function GET(_req: Request) {
+export async function GET(req: NextRequest) {
+    const blocked = guardDebugRoute(req);
+    if (blocked) return blocked;
+
     if (!process.env.DATABASE_URL) {
         return NextResponse.json({ error: "No DB URL" }, { status: 400 });
     }

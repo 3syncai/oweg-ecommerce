@@ -620,15 +620,22 @@ export default function DebugControllerDashboard() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold">Existing Debug Endpoints</h2>
+          <h2 className="text-lg font-semibold">Legacy Debug Endpoints (Dev Only)</h2>
+          <p className="text-sm text-slate-400">
+            Disabled in production. In development, pass{" "}
+            <code className="text-slate-300">x-debug-controller-token</code> with
+            your debug-controller secret. Use the &quot;Cleanup test payments&quot;
+            button above instead of hitting{" "}
+            <code className="text-slate-300">/api/cleanup-payments</code> directly.
+          </p>
           <div className="grid sm:grid-cols-2 gap-2 text-sm">
             {[
               "/api/debug/fix-reservations?id=ORDER_ID",
-              "/api/debug/force-fulfill",
+              "/api/debug/force-fulfill?id=ORDER_ID",
               "/api/debug/fix-catalog-profiles",
-              "/api/debug/fix-profile-mismatch",
+              "/api/debug/fix-profile-mismatch?id=ORDER_ID",
               "/api/debug/fulfillment",
-              "/api/cleanup-payments",
+              "/api/affiliate/debug-wallet?code=AFFILIATE_CODE",
             ].map((endpoint) => (
               <code
                 key={endpoint}
@@ -638,6 +645,10 @@ export default function DebugControllerDashboard() {
               </code>
             ))}
           </div>
+          <p className="text-xs text-slate-500 break-all">
+            Example: curl -H &quot;x-debug-controller-token: YOUR_SECRET&quot;
+            &quot;http://localhost:3000/api/debug/fulfillment&quot;
+          </p>
         </section>
       </div>
     </div>

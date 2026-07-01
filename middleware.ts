@@ -9,6 +9,19 @@ const MAINTENANCE_BYPASS = new Set([
   "/debug-controller-4719",
 ])
 
+const GUARDED_DEBUG_ROUTE_PREFIXES = [
+  "/api/debug/",
+  "/api/cleanup-payments",
+  "/api/affiliate/debug-wallet",
+]
+
+function isProductionDebugRoute(pathname: string) {
+  if (pathname.startsWith("/api/debug-controller")) return false
+  return GUARDED_DEBUG_ROUTE_PREFIXES.some((prefix) =>
+    pathname.startsWith(prefix)
+  )
+}
+
 function isMaintenanceBypass(pathname: string) {
   if (MAINTENANCE_BYPASS.has(pathname)) return true
   if (pathname.startsWith("/api/debug-controller")) return true
@@ -20,6 +33,13 @@ function isMaintenanceBypass(pathname: string) {
 
 export async function middleware(req: NextRequest) {
   const { pathname, origin, searchParams } = req.nextUrl
+
+  if (
+    process.env.NODE_ENV === "production" &&
+    isProductionDebugRoute(pathname)
+  ) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
 
   if (!isMaintenanceBypass(pathname)) {
     try {
