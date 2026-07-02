@@ -1,24 +1,25 @@
 import { NextRequest, NextResponse } from "next/server"
 import { creditAdjustment, findSpendByReference, findSpendByReferenceAny } from "@/lib/wallet-ledger"
-import { requireWalletMutationAuth } from "@/lib/wallet-mutation-auth"
+import { requireInternalWalletMutationAuth } from "@/lib/wallet-mutation-auth"
 
 export const dynamic = "force-dynamic"
 
 /**
  * POST /api/store/wallet/refund-coin-discount
- * Refunds coins if payment was canceled/failed after discount was applied
+ * Refunds coins if payment was canceled/failed after discount was applied.
+ * Internal callers only.
  */
 export async function POST(req: NextRequest) {
     console.log("=== REFUND COIN DISCOUNT API CALLED ===")
 
     try {
-        const { auth, errorResponse } = await requireWalletMutationAuth(req)
+        const { errorResponse } = await requireInternalWalletMutationAuth(req)
         if (errorResponse) return errorResponse
 
         const body = await req.json()
         const { discount_code } = body
 
-        console.log("Refund request:", { discount_code, internal: auth.internal })
+        console.log("Refund request:", { discount_code })
 
         if (!discount_code) {
             return NextResponse.json(
@@ -28,9 +29,8 @@ export async function POST(req: NextRequest) {
         }
 
         try {
-            const customerId = auth.internal
-                ? (typeof body.customer_id === "string" ? body.customer_id.trim() : "")
-                : auth.customerId
+            const customerId =
+                typeof body.customer_id === "string" ? body.customer_id.trim() : ""
 
             const spend = customerId
                 ? await findSpendByReference({

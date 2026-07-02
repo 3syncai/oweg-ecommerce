@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { earnCoins, getPool } from "@/lib/wallet-ledger"
 import { creditPendingCoinsForOrder } from "@/lib/customer-affiliate-coins"
+import { verifyMedusaWebhookSecret } from "@/lib/medusa-webhook-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -24,16 +25,8 @@ export async function POST(req: NextRequest) {
     console.log("=== ORDER DELIVERED WEBHOOK ===")
 
     try {
-        const webhookSecret = process.env.MEDUSA_WEBHOOK_SECRET
-        const providedSecret = req.headers.get("x-webhook-secret")
-
-        if (webhookSecret && providedSecret !== webhookSecret) {
-            console.warn("Invalid webhook secret received")
-            return NextResponse.json(
-                { error: "Unauthorized - invalid webhook secret" },
-                { status: 401 }
-            )
-        }
+        const webhookAuthError = verifyMedusaWebhookSecret(req)
+        if (webhookAuthError) return webhookAuthError
 
         const body = await req.json()
         const orderId = body.order_id || body.data?.id || body.id

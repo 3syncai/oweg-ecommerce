@@ -3,6 +3,7 @@ import { cancelOrReverseCoinsForOrder } from "@/lib/customer-affiliate-coins"
 import { refundCoinSpendForOrder } from "@/lib/wallet-coin-order"
 import { getOrderById } from "@/lib/medusa-admin"
 import { internalApiHeaders } from "@/lib/store-customer-auth"
+import { verifyMedusaWebhookSecret } from "@/lib/medusa-webhook-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -28,14 +29,8 @@ export async function POST(req: NextRequest) {
     console.log("=== ORDER CANCELLATION WEBHOOK ===")
 
     try {
-        // Optional: Verify webhook secret
-        const webhookSecret = process.env.MEDUSA_WEBHOOK_SECRET
-        const authHeader = req.headers.get("x-webhook-secret")
-
-        if (webhookSecret && authHeader !== webhookSecret) {
-            console.warn("Invalid webhook secret")
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-        }
+        const webhookAuthError = verifyMedusaWebhookSecret(req)
+        if (webhookAuthError) return webhookAuthError
 
         const body = await req.json()
         console.log("Webhook payload:", JSON.stringify(body, null, 2))

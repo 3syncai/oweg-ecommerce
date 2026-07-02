@@ -15,3 +15,15 @@ export async function requireWalletMutationAuth(req: NextRequest) {
 
   return { auth, errorResponse: null };
 }
+
+export async function requireInternalWalletMutationAuth(req: NextRequest) {
+  const result = await requireWalletMutationAuth(req);
+  if (result.errorResponse) return result;
+  if (!result.auth.internal) {
+    return {
+      auth: null as never,
+      errorResponse: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+  return result;
+}

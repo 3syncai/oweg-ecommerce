@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { reverseEarned } from "@/lib/wallet-ledger"
-import { requireWalletMutationAuth } from "@/lib/wallet-mutation-auth"
+import { requireInternalWalletMutationAuth } from "@/lib/wallet-mutation-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     console.log("=== WALLET COIN REVERSAL ===")
 
     try {
-        const { errorResponse } = await requireWalletMutationAuth(req)
+        const { errorResponse } = await requireInternalWalletMutationAuth(req)
         if (errorResponse) return errorResponse
 
         const body = await req.json()

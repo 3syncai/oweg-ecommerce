@@ -169,6 +169,10 @@ export async function fetchRazorpayPayment(paymentId: string): Promise<RazorpayP
   return razorpayApiRequest<RazorpayPaymentEntity>(`/v1/payments/${paymentId}`, { method: "GET" });
 }
 
+export async function fetchRazorpayOrder(orderId: string): Promise<RazorpayOrderResponse> {
+  return razorpayApiRequest<RazorpayOrderResponse>(`/v1/orders/${orderId}`, { method: "GET" });
+}
+
 export async function fetchRazorpayMethods(): Promise<RazorpayMethodsResponse> {
   return razorpayApiRequest<RazorpayMethodsResponse>("/v1/methods", {
     method: "GET",

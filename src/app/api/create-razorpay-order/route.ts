@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createRazorpayOrder, getPublicRazorpayKey } from "@/lib/razorpay";
+import { createRazorpayOrder, fetchRazorpayOrder, getPublicRazorpayKey } from "@/lib/razorpay";
 import { loadCheckoutOrder, updateCheckoutOrderMetadata } from "@/lib/checkout-order";
 import { getPool } from "@/lib/wallet-ledger";
 
@@ -81,13 +81,40 @@ export async function POST(req: Request) {
     }
 
     const metadata = (order.metadata || {}) as Record<string, unknown>;
-    if (typeof metadata.razorpay_order_id === "string" && metadata.razorpay_order_id) {
-      return NextResponse.json({
-        orderId: metadata.razorpay_order_id,
-        key: getPublicRazorpayKey(),
-        amount: Math.round(totalRupees * 100),
-        currency,
-      });
+    const cachedRazorpayOrderId =
+      typeof metadata.razorpay_order_id === "string" ? metadata.razorpay_order_id : "";
+
+    if (cachedRazorpayOrderId) {
+      const expectedAmountPaise = Math.round(totalRupees * 100);
+      let cachedAmountPaise: number | null = null;
+
+      try {
+        const cachedOrder = await fetchRazorpayOrder(cachedRazorpayOrderId);
+        cachedAmountPaise = Math.round(Number(cachedOrder.amount) || 0);
+      } catch (err) {
+        if (isDev) {
+          console.warn("[create-razorpay-order] failed to fetch cached Razorpay order", err);
+        }
+      }
+
+      if (
+        cachedAmountPaise !== null &&
+        Math.abs(cachedAmountPaise - expectedAmountPaise) <= 100
+      ) {
+        return NextResponse.json({
+          orderId: cachedRazorpayOrderId,
+          key: getPublicRazorpayKey(),
+          amount: expectedAmountPaise,
+          currency,
+        });
+      }
+
+      if (isDev) {
+        console.log(
+          "[create-razorpay-order] cached Razorpay amount mismatch; creating fresh order",
+          { cachedAmountPaise, expectedAmountPaise }
+        );
+      }
     }
 
     const rzpOrder = await createRazorpayOrder(

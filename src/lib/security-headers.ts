@@ -30,10 +30,13 @@ function parseOrigin(url: string | undefined): string | null {
 }
 
 function getMedusaConnectOrigins(): string[] {
-  const origins = new Set<string>([
-    "http://localhost:9000",
-    "http://127.0.0.1:9000",
-  ]);
+  const isProduction = process.env.NODE_ENV === "production";
+  const origins = new Set<string>();
+
+  if (!isProduction) {
+    origins.add("http://localhost:9000");
+    origins.add("http://127.0.0.1:9000");
+  }
 
   for (const key of ["MEDUSA_BACKEND_URL", "NEXT_PUBLIC_MEDUSA_BACKEND_URL"]) {
     const origin = parseOrigin(process.env[key]);
