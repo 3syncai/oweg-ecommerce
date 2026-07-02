@@ -25,6 +25,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       process.env.NEXT_PUBLIC_APP_URL ||
       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
     const webhookSecret = process.env.MEDUSA_WEBHOOK_SECRET
+    const internalApiSecret = process.env.INTERNAL_API_SECRET
 
     if (request?.order_id) {
       await fetch(`${baseUrl}/api/webhooks/order-cancelled`, {
@@ -44,7 +45,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
       await fetch(`${baseUrl}/api/store/wallet/refund-coin-discount-order`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(internalApiSecret ? { "x-internal-api-secret": internalApiSecret } : {}),
+        },
         body: JSON.stringify({ order_id: request.order_id, reason: "return" }),
       })
     }

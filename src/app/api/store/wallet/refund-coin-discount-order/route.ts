@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrderById } from "@/lib/medusa-admin";
 import { refundCoinSpendForOrder } from "@/lib/wallet-coin-order";
+import { internalApiHeaders } from "@/lib/store-customer-auth";
+import { requireWalletMutationAuth } from "@/lib/wallet-mutation-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    const { errorResponse } = await requireWalletMutationAuth(req);
+    if (errorResponse) return errorResponse;
+
     const body = await req.json();
     const orderId = typeof body?.order_id === "string" ? body.order_id.trim() : "";
     const reasonRaw = typeof body?.reason === "string" ? body.reason.trim() : "";
@@ -48,7 +53,7 @@ export async function POST(req: NextRequest) {
         (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
       const refundRes = await fetch(`${baseUrl}/api/store/wallet/refund-coin-discount`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: internalApiHeaders(),
         body: JSON.stringify({ discount_code: discountCode }),
       });
       const data = await refundRes.json().catch(() => ({}));

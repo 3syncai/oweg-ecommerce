@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { creditAdjustment, findSpendByReference, findSpendByReferenceAny } from "@/lib/wallet-ledger"
+import { requireWalletMutationAuth } from "@/lib/wallet-mutation-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -11,10 +12,13 @@ export async function POST(req: NextRequest) {
     console.log("=== REFUND COIN DISCOUNT API CALLED ===")
 
     try {
-        const body = await req.json()
-        const { customer_id, discount_code } = body
+        const { auth, errorResponse } = await requireWalletMutationAuth(req)
+        if (errorResponse) return errorResponse
 
-        console.log("Refund request:", { customer_id, discount_code })
+        const body = await req.json()
+        const { discount_code } = body
+
+        console.log("Refund request:", { discount_code, internal: auth.internal })
 
         if (!discount_code) {
             return NextResponse.json(
@@ -24,9 +28,13 @@ export async function POST(req: NextRequest) {
         }
 
         try {
-            const spend = customer_id
+            const customerId = auth.internal
+                ? (typeof body.customer_id === "string" ? body.customer_id.trim() : "")
+                : auth.customerId
+
+            const spend = customerId
                 ? await findSpendByReference({
-                    customerId: customer_id,
+                    customerId,
                     referenceId: discount_code
                 })
                 : await findSpendByReferenceAny({
@@ -41,14 +49,14 @@ export async function POST(req: NextRequest) {
             }
 
             const resolvedCustomerId =
-                customer_id ||
+                customerId ||
                 ("customerId" in spend && typeof spend.customerId === "string"
                     ? spend.customerId
                     : undefined);
 
             if (!resolvedCustomerId) {
                 return NextResponse.json(
-                    { error: "customer_id required" },
+                    { error: "Unable to resolve customer for refund" },
                     { status: 400 }
                 );
             }

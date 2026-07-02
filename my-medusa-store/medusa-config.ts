@@ -2,6 +2,31 @@ import { loadEnv, defineConfig, Modules, ContainerRegistrationKeys } from "@medu
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd())
 
+const INSECURE_SECRETS = new Set(["", "supersecret", "changeme"])
+
+function resolveHttpSecret(
+  envValue: string | undefined,
+  name: "JWT_SECRET" | "COOKIE_SECRET",
+  devFallback: string
+): string {
+  const isProduction = process.env.NODE_ENV === "production"
+  const value = envValue?.trim()
+
+  if (isProduction) {
+    if (!value || INSECURE_SECRETS.has(value)) {
+      throw new Error(
+        `[medusa-config] ${name} must be set to a strong unique value in production.`
+      )
+    }
+    return value
+  }
+
+  return value || devFallback
+}
+
+const jwtSecret = resolveHttpSecret(process.env.JWT_SECRET, "JWT_SECRET", "dev-jwt-secret")
+const cookieSecret = resolveHttpSecret(process.env.COOKIE_SECRET, "COOKIE_SECRET", "dev-cookie-secret")
+
 export default defineConfig({
   projectConfig: {
     databaseUrl: process.env.DATABASE_URL,
@@ -42,8 +67,8 @@ export default defineConfig({
           "/^https:\\/\\/oweg-ecommerce-[a-z0-9-]+\\.vercel\\.app$/",
           "/^https:\\/\\/oweg-vendor-portal-[a-z0-9-]+\\.vercel\\.app$/",
         ].join(","),
-      jwtSecret: process.env.JWT_SECRET || "supersecret",
-      cookieSecret: process.env.COOKIE_SECRET || "supersecret",
+      jwtSecret,
+      cookieSecret,
     },
     cookieOptions: {
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",

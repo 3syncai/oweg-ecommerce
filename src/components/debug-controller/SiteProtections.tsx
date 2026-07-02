@@ -49,7 +49,9 @@ export default function SiteProtections() {
   const settings = useDebugControllerSettings();
   const pathname = usePathname() || "/";
   const bypass = shouldBypass(pathname);
+  const protectionsEnabled = process.env.NODE_ENV !== "production";
   const blockDevTools =
+    protectionsEnabled &&
     !bypass &&
     (settings.disableDevToolsShortcuts || settings.disableRightClick);
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
@@ -63,7 +65,7 @@ export default function SiteProtections() {
     if (bypass) return;
 
     const onContextMenu = (event: MouseEvent) => {
-      if (settings.disableRightClick) {
+      if (protectionsEnabled && settings.disableRightClick) {
         event.preventDefault();
       }
     };
@@ -82,7 +84,7 @@ export default function SiteProtections() {
       document.removeEventListener("contextmenu", onContextMenu);
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [bypass, blockDevTools, settings.disableRightClick]);
+  }, [bypass, blockDevTools, protectionsEnabled, settings.disableRightClick]);
 
   useEffect(() => {
     if (!blockDevTools) {
@@ -120,13 +122,13 @@ export default function SiteProtections() {
 
   useEffect(() => {
     const root = document.documentElement;
-    if (!bypass && settings.disableTextSelect) {
+    if (protectionsEnabled && !bypass && settings.disableTextSelect) {
       root.classList.add("debug-no-select");
     } else {
       root.classList.remove("debug-no-select");
     }
     return () => root.classList.remove("debug-no-select");
-  }, [bypass, settings.disableTextSelect]);
+  }, [bypass, protectionsEnabled, settings.disableTextSelect]);
 
   if (bypass) {
     return null;

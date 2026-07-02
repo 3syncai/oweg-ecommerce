@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { spendCoins } from "@/lib/wallet-ledger"
+import { requireWalletMutationAuth } from "@/lib/wallet-mutation-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -11,8 +12,14 @@ export async function POST(req: NextRequest) {
     console.log("=== WALLET REDEEM API CALLED ===")
 
     try {
+        const { auth, errorResponse } = await requireWalletMutationAuth(req)
+        if (errorResponse) return errorResponse
+
         const body = await req.json()
-        const { customer_id, order_id, amount } = body
+        const { order_id, amount } = body
+        const customer_id = auth.internal
+            ? (typeof body.customer_id === "string" ? body.customer_id.trim() : "")
+            : auth.customerId
 
         console.log("Redeem request:", { customer_id, order_id, amount })
 

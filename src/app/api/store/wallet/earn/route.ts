@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { earnCoins } from "@/lib/wallet-ledger"
+import { requireWalletMutationAuth } from "@/lib/wallet-mutation-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -13,8 +14,14 @@ export async function POST(req: NextRequest) {
     console.log("=== WALLET EARN API CALLED ===")
 
     try {
+        const { auth, errorResponse } = await requireWalletMutationAuth(req)
+        if (errorResponse) return errorResponse
+
         const body = await req.json()
-        const { customer_id, order_id, order_total } = body
+        const { order_id, order_total } = body
+        const customer_id = auth.internal
+            ? (typeof body.customer_id === "string" ? body.customer_id.trim() : "")
+            : auth.customerId
 
         console.log("Earn request:", { customer_id, order_id, order_total })
 

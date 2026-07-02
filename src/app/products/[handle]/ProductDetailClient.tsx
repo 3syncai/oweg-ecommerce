@@ -9,6 +9,7 @@ import { ShoppingCart, Heart, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DetailedProduct } from "@/lib/medusa";
 import { getImageUrlForNewTab } from "@/lib/image-utils";
+import { sanitizeProductHtml } from "@/lib/sanitize-product-html";
 
 type ProductDetailClientProps = {
   product: DetailedProduct;
@@ -207,7 +208,7 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                 </h2>
                 <div
                   className="text-gray-700 prose prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: product.description }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeProductHtml(product.description) }}
                 />
               </div>
             )}

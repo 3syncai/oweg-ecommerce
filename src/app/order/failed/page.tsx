@@ -25,6 +25,7 @@ function OrderFailedPageInner() {
         await fetch("/api/store/wallet/refund-coin-discount-order", {
           method: "POST",
           headers: { "content-type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ order_id: orderId, reason: "failed" }),
         });
       } catch {

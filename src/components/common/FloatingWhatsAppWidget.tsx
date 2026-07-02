@@ -13,7 +13,7 @@ export default function FloatingWhatsAppWidget() {
   const rawNumber =
     settings.whatsappNumber ||
     process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ||
-    "918797787877";
+    "";
   const rawMessage =
     settings.whatsappMessage ||
     process.env.NEXT_PUBLIC_WHATSAPP_MESSAGE ||

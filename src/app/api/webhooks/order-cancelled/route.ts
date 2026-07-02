@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { cancelOrReverseCoinsForOrder } from "@/lib/customer-affiliate-coins"
 import { refundCoinSpendForOrder } from "@/lib/wallet-coin-order"
 import { getOrderById } from "@/lib/medusa-admin"
+import { internalApiHeaders } from "@/lib/store-customer-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
 
         const reverseRes = await fetch(`${baseUrl}/api/store/wallet/reverse`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: internalApiHeaders(),
             body: JSON.stringify({
                 order_id: orderId,
                 reason: `Order ${event || "cancelled/refunded"}`
@@ -123,7 +124,7 @@ export async function POST(req: NextRequest) {
                 if (customerId && discountCode) {
                     const refundRes = await fetch(`${baseUrl}/api/store/wallet/refund-coin-discount`, {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
+                        headers: internalApiHeaders(),
                         body: JSON.stringify({
                             customer_id: customerId,
                             discount_code: discountCode
