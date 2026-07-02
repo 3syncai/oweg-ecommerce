@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { cancelOrReverseCoinsForOrder } from "@/lib/customer-affiliate-coins"
 import { refundCoinSpendForOrder } from "@/lib/wallet-coin-order"
 import { getOrderById } from "@/lib/medusa-admin"
+import { internalApiHeaders } from "@/lib/store-customer-auth"
+import { verifyMedusaWebhookSecret } from "@/lib/medusa-webhook-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -27,14 +29,8 @@ export async function POST(req: NextRequest) {
     console.log("=== ORDER CANCELLATION WEBHOOK ===")
 
     try {
-        // Optional: Verify webhook secret
-        const webhookSecret = process.env.MEDUSA_WEBHOOK_SECRET
-        const authHeader = req.headers.get("x-webhook-secret")
-
-        if (webhookSecret && authHeader !== webhookSecret) {
-            console.warn("Invalid webhook secret")
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-        }
+        const webhookAuthError = verifyMedusaWebhookSecret(req)
+        if (webhookAuthError) return webhookAuthError
 
         const body = await req.json()
         console.log("Webhook payload:", JSON.stringify(body, null, 2))
@@ -80,7 +76,7 @@ export async function POST(req: NextRequest) {
 
         const reverseRes = await fetch(`${baseUrl}/api/store/wallet/reverse`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: internalApiHeaders(),
             body: JSON.stringify({
                 order_id: orderId,
                 reason: `Order ${event || "cancelled/refunded"}`
@@ -123,7 +119,7 @@ export async function POST(req: NextRequest) {
                 if (customerId && discountCode) {
                     const refundRes = await fetch(`${baseUrl}/api/store/wallet/refund-coin-discount`, {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
+                        headers: internalApiHeaders(),
                         body: JSON.stringify({
                             customer_id: customerId,
                             discount_code: discountCode

@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { DetailedProduct as DetailedProductType } from '@/lib/medusa'
 import type { DescriptionLine, DescriptionTab } from '../types'
 import { formatPlainDescription, formatHtmlDescription } from '../utils/description'
+import { sanitizeProductHtml } from '@/lib/sanitize-product-html'
 import ReviewForm from './ReviewForm'
 import ReviewsList from './ReviewsList'
 
@@ -53,7 +54,9 @@ const DescriptionTabs = ({
               descriptionHasHtml ? (
                 <div
                   className="prose prose-sm max-w-none text-slate-700"
-                  dangerouslySetInnerHTML={{ __html: formatHtmlDescription(product.description) }}
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeProductHtml(formatHtmlDescription(product.description)),
+                  }}
                 />
               ) : (
                 <ul className="space-y-2 text-sm text-slate-700 leading-relaxed list-disc pl-5 marker:text-green-500">

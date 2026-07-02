@@ -49,3 +49,59 @@ export async function resolveAuthenticatedCustomerId(
 
   return { customerId, forbidden: false };
 }
+
+export const INTERNAL_API_SECRET_HEADER = "x-internal-api-secret";
+
+export function verifyInternalApiSecret(req: NextRequest): boolean {
+  const secret = process.env.INTERNAL_API_SECRET?.trim();
+  if (!secret) return false;
+
+  const headerSecret = req.headers.get(INTERNAL_API_SECRET_HEADER)?.trim();
+  if (headerSecret && headerSecret === secret) return true;
+
+  const authHeader = req.headers.get("authorization")?.trim();
+  if (authHeader === `Bearer ${secret}`) return true;
+
+  return false;
+}
+
+export function internalApiHeaders(
+  extra: Record<string, string> = {}
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...extra,
+  };
+  const secret = process.env.INTERNAL_API_SECRET?.trim();
+  if (secret) {
+    headers[INTERNAL_API_SECRET_HEADER] = secret;
+  }
+  return headers;
+}
+
+export type WalletMutationAuthResult =
+  | { ok: true; customerId: string | null; internal: true }
+  | { ok: true; customerId: string; internal: false }
+  | { ok: false; status: 401 | 403 };
+
+/**
+ * Wallet mutations accept either a logged-in store customer session or
+ * server-to-server calls authenticated with INTERNAL_API_SECRET.
+ */
+export async function authorizeWalletMutation(
+  req: NextRequest
+): Promise<WalletMutationAuthResult> {
+  if (verifyInternalApiSecret(req)) {
+    return { ok: true, customerId: null, internal: true };
+  }
+
+  const { customerId, forbidden } = await resolveAuthenticatedCustomerId(req);
+  if (forbidden) {
+    return { ok: false, status: 403 };
+  }
+  if (!customerId) {
+    return { ok: false, status: 401 };
+  }
+
+  return { ok: true, customerId, internal: false };
+}

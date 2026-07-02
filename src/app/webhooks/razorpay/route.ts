@@ -18,6 +18,7 @@ import {
   markCheckoutPaymentFailed,
   runPostConvertCheckoutSideEffects,
 } from "@/lib/checkout-order";
+import { internalApiHeaders } from "@/lib/store-customer-auth";
 
 type RazorpayPaymentEntity = {
   id?: string;
@@ -252,7 +253,7 @@ async function refundCoinsFromMetadata(options: {
       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
     await fetch(`${baseUrl}/api/store/wallet/refund-coin-discount`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: internalApiHeaders(),
       body: JSON.stringify({
         customer_id: customerId || undefined,
         discount_code: discountCode,

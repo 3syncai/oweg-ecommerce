@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrderById } from "@/lib/medusa-admin";
 import { refundCoinSpendForOrder } from "@/lib/wallet-coin-order";
+import { internalApiHeaders } from "@/lib/store-customer-auth";
+import { requireWalletMutationAuth } from "@/lib/wallet-mutation-auth";
+import {
+  assertOrderOwnedByCustomer,
+  isOrderEligibleForCustomerCoinRefund,
+  loadParsedOrder,
+} from "@/lib/wallet-order-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    const { auth, errorResponse } = await requireWalletMutationAuth(req);
+    if (errorResponse) return errorResponse;
+
     const body = await req.json();
     const orderId = typeof body?.order_id === "string" ? body.order_id.trim() : "";
     const reasonRaw = typeof body?.reason === "string" ? body.reason.trim() : "";
@@ -13,6 +23,18 @@ export async function POST(req: NextRequest) {
 
     if (!orderId) {
       return NextResponse.json({ error: "order_id required" }, { status: 400 });
+    }
+
+    if (!auth.internal) {
+      const ownership = await assertOrderOwnedByCustomer(orderId, auth.customerId);
+      if ("errorResponse" in ownership) return ownership.errorResponse;
+
+      if (!isOrderEligibleForCustomerCoinRefund(ownership.order)) {
+        return NextResponse.json(
+          { error: "Refund not allowed for this order state" },
+          { status: 403 }
+        );
+      }
     }
 
     const ledgerRefund = await refundCoinSpendForOrder({ orderId, reason });
@@ -43,13 +65,17 @@ export async function POST(req: NextRequest) {
       (metadata?.coin_discount_id as string | undefined);
 
     if (discountCode) {
+      const parsed = await loadParsedOrder(orderId);
       const baseUrl =
         process.env.NEXT_PUBLIC_APP_URL ||
         (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
       const refundRes = await fetch(`${baseUrl}/api/store/wallet/refund-coin-discount`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ discount_code: discountCode }),
+        headers: internalApiHeaders(),
+        body: JSON.stringify({
+          discount_code: discountCode,
+          customer_id: parsed?.customerId || undefined,
+        }),
       });
       const data = await refundRes.json().catch(() => ({}));
       return NextResponse.json({ success: true, refunded: data, legacy: true });

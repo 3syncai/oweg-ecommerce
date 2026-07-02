@@ -1,9 +1,18 @@
 import type { NextConfig } from "next";
+import { getSecurityHeaders } from "./src/lib/security-headers";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["evasive-laverne-semipaganish.ngrok-free.dev"],
   turbopack: {
     root: process.cwd(),
+  },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: getSecurityHeaders(),
+      },
+    ];
   },
   experimental: {
     optimizePackageImports: [
