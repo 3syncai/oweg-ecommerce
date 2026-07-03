@@ -662,7 +662,7 @@ function LoginPageInner() {
                     and{" "}
                     <Link
                       className="underline hover:text-slate-700 cursor-pointer"
-                      href="/privacy"
+                      href="/privacy-policy"
                     >
                       Privacy Policy
                     </Link>
