@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import {
-  calibrateDevToolsBaseline,
-  isDevToolsLikelyOpen,
+  evaluateDevToolsOpen,
+  handleViewportChanging,
+  handleViewportSettled,
   isDevToolsShortcut,
-  resetDevToolsBaseline,
+  resetDevToolsMonitor,
 } from "@/lib/debug-controller/devtools-guard";
 import { useDebugControllerSettings } from "./DebugControllerProvider";
 
@@ -18,6 +19,8 @@ const BYPASS_PREFIXES = [
 ];
 
 const DEVTOOLS_POLL_MS = 500;
+const INITIAL_CALIBRATION_DELAY_MS = 800;
+const RESIZE_RECALIBRATE_MS = 500;
 
 function shouldBypass(pathname: string) {
   return BYPASS_PREFIXES.some(
@@ -87,24 +90,44 @@ export default function SiteProtections() {
   useEffect(() => {
     if (!blockDevTools) {
       setDevtoolsOpen(false);
-      resetDevToolsBaseline();
+      resetDevToolsMonitor();
       return;
     }
 
-    calibrateDevToolsBaseline();
+    let initTimer: number | undefined;
+    let resizeTimer: number | undefined;
 
     const check = () => {
-      setDevtoolsOpen(isDevToolsLikelyOpen());
+      setDevtoolsOpen(evaluateDevToolsOpen());
     };
 
-    check();
+    initTimer = window.setTimeout(() => {
+      handleViewportSettled();
+      check();
+    }, INITIAL_CALIBRATION_DELAY_MS);
+
     const interval = window.setInterval(check, DEVTOOLS_POLL_MS);
-    window.addEventListener("resize", check);
+
+    const onViewportChange = () => {
+      handleViewportChanging();
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        handleViewportSettled();
+        setDevtoolsOpen(false);
+        check();
+      }, RESIZE_RECALIBRATE_MS);
+    };
+
+    window.addEventListener("resize", onViewportChange);
+    window.visualViewport?.addEventListener("resize", onViewportChange);
 
     return () => {
+      window.clearTimeout(initTimer);
+      window.clearTimeout(resizeTimer);
       window.clearInterval(interval);
-      window.removeEventListener("resize", check);
-      resetDevToolsBaseline();
+      window.removeEventListener("resize", onViewportChange);
+      window.visualViewport?.removeEventListener("resize", onViewportChange);
+      resetDevToolsMonitor();
     };
   }, [blockDevTools]);
 

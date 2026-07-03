@@ -5,9 +5,11 @@ import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import {
   calibrateDevToolsBaseline,
-  isDevToolsLikelyOpen,
+  evaluateDevToolsOpen,
+  handleViewportChanging,
+  handleViewportSettled,
   isDevToolsShortcut,
-  resetDevToolsBaseline,
+  resetDevToolsMonitor,
 } from "@/lib/debug-controller/devtools-guard";
 import { useDebugControllerSettings } from "./DebugControllerProvider";
 
@@ -18,6 +20,8 @@ const BYPASS_PREFIXES = [
 ];
 
 const DEVTOOLS_POLL_MS = 500;
+const INITIAL_CALIBRATION_DELAY_MS = 800;
+const RESIZE_RECALIBRATE_MS = 500;
 
 function shouldBypass(pathname: string) {
   return BYPASS_PREFIXES.some(
@@ -49,9 +53,7 @@ export default function SiteProtections() {
   const settings = useDebugControllerSettings();
   const pathname = usePathname() || "/";
   const bypass = shouldBypass(pathname);
-  const protectionsEnabled = process.env.NODE_ENV !== "production";
   const blockDevTools =
-    protectionsEnabled &&
     !bypass &&
     (settings.disableDevToolsShortcuts || settings.disableRightClick);
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
@@ -65,7 +67,7 @@ export default function SiteProtections() {
     if (bypass) return;
 
     const onContextMenu = (event: MouseEvent) => {
-      if (protectionsEnabled && settings.disableRightClick) {
+      if (settings.disableRightClick) {
         event.preventDefault();
       }
     };
@@ -84,29 +86,49 @@ export default function SiteProtections() {
       document.removeEventListener("contextmenu", onContextMenu);
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [bypass, blockDevTools, protectionsEnabled, settings.disableRightClick]);
+  }, [bypass, blockDevTools, settings.disableRightClick]);
 
   useEffect(() => {
     if (!blockDevTools) {
       setDevtoolsOpen(false);
-      resetDevToolsBaseline();
+      resetDevToolsMonitor();
       return;
     }
 
-    calibrateDevToolsBaseline();
+    let initTimer: number | undefined;
+    let resizeTimer: number | undefined;
 
     const check = () => {
-      setDevtoolsOpen(isDevToolsLikelyOpen());
+      setDevtoolsOpen(evaluateDevToolsOpen());
     };
 
-    check();
+    initTimer = window.setTimeout(() => {
+      handleViewportSettled();
+      check();
+    }, INITIAL_CALIBRATION_DELAY_MS);
+
     const interval = window.setInterval(check, DEVTOOLS_POLL_MS);
-    window.addEventListener("resize", check);
+
+    const onViewportChange = () => {
+      handleViewportChanging();
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        handleViewportSettled();
+        setDevtoolsOpen(false);
+        check();
+      }, RESIZE_RECALIBRATE_MS);
+    };
+
+    window.addEventListener("resize", onViewportChange);
+    window.visualViewport?.addEventListener("resize", onViewportChange);
 
     return () => {
+      window.clearTimeout(initTimer);
+      window.clearTimeout(resizeTimer);
       window.clearInterval(interval);
-      window.removeEventListener("resize", check);
-      resetDevToolsBaseline();
+      window.removeEventListener("resize", onViewportChange);
+      window.visualViewport?.removeEventListener("resize", onViewportChange);
+      resetDevToolsMonitor();
     };
   }, [blockDevTools]);
 
@@ -122,13 +144,13 @@ export default function SiteProtections() {
 
   useEffect(() => {
     const root = document.documentElement;
-    if (protectionsEnabled && !bypass && settings.disableTextSelect) {
+    if (!bypass && settings.disableTextSelect) {
       root.classList.add("debug-no-select");
     } else {
       root.classList.remove("debug-no-select");
     }
     return () => root.classList.remove("debug-no-select");
-  }, [bypass, protectionsEnabled, settings.disableTextSelect]);
+  }, [bypass, settings.disableTextSelect]);
 
   if (bypass) {
     return null;
