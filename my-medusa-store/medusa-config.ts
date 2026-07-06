@@ -85,7 +85,11 @@ export default defineConfig({
           "localhost",
           "127.0.0.1",
           ".trycloudflare.com",
-          "evasive-laverne-semipaganish.ngrok-free.dev"
+          ...(process.env.DEV_TUNNEL_HOST
+            ? [
+                process.env.DEV_TUNNEL_HOST.replace(/^https?:\/\//, "").split("/")[0],
+              ]
+            : []),
         ],
       },
     }),

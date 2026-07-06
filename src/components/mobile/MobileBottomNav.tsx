@@ -835,7 +835,7 @@ export default function MobileBottomNav() {
           {navItems.map((item) => {
             const active = navActiveKey === item.key;
             const shared =
-              'flex flex-col items-center gap-1.5 px-2.5 py-1.5 rounded-2xl text-[10.5px] font-medium tracking-[0.02em] transition-colors duration-200 flex-1';
+              'flex flex-col items-center gap-1 px-2 py-1.5 rounded-2xl text-[10.5px] font-medium tracking-[0.02em] transition-colors duration-200 flex-1 min-h-11 min-w-11 justify-center';
             const iconState = active
               ? item.accent
                 ? 'bg-gradient-to-br from-orange-500 to-amber-400 text-white shadow-[0_10px_28px_-16px_rgba(245,158,11,0.6)] border border-white/70'
@@ -844,7 +844,7 @@ export default function MobileBottomNav() {
             const content = (
               <>
                 <div
-                  className={`relative w-10 h-10 rounded-2xl flex items-center justify-center transition-transform duration-200 ${iconState}`}
+                  className={`relative min-w-11 min-h-11 w-11 h-11 rounded-2xl flex items-center justify-center transition-transform duration-200 ${iconState}`}
                 >
                   {item.icon}
                   {item.badge ? (

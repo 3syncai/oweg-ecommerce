@@ -183,7 +183,17 @@ const MOBILE_TOP_BANNERS: Array<{ src: string; href: string; alt: string }> = [
   { src: '/App_Banner-3.jpg', href: '/c/kitchen-appliances', alt: 'Shop kitchen appliances' },
 ];
 
-function MobileBanner({ src, href, alt}: { src: string; href: string; alt: string; unoptimized?: boolean }) {
+function MobileBanner({
+  src,
+  href,
+  alt,
+  priority = false,
+}: {
+  src: string;
+  href: string;
+  alt: string;
+  priority?: boolean;
+}) {
   return (
     <Link href={href} className="relative w-full h-34 overflow-hidden shadow-sm border border-gray-100 block">
       <Image
@@ -192,7 +202,7 @@ function MobileBanner({ src, href, alt}: { src: string; href: string; alt: strin
         fill
         className="object-container"
         sizes="(max-width: 768px) 100vw, 0px"
-        unoptimized
+        priority={priority}
       />
     </Link>
   );
@@ -282,9 +292,10 @@ function HeroBanner() {
                 src={slide.src}
                 alt={slide.label}
                 fill
-                unoptimized
+                priority={idx === 0}
                 onLoad={() => setHeroReady(true)}
                 className="object-container object-center"
+                sizes="100vw"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent md:from-black/30 md:via-black/10 md:to-transparent" />
             </Link>
@@ -349,8 +360,8 @@ function PromoBanners() {
             src={banner.image}
             alt={banner.alt}
             fill
-            unoptimized
             className="object-container"
+            sizes="(min-width: 1024px) 25vw, 100vw"
           />
         </Link>
       ))}
@@ -500,7 +511,6 @@ function MobileCategoryGrid({
                         fill
                         className="object-contain"
                         sizes="196px"
-                        unoptimized
                         onLoadingComplete={() =>
                           setImageLoaded((prev) => ({ ...prev, [cat.id]: true }))
                         }
@@ -902,13 +912,13 @@ export default function HomePage() {
           loading={categoriesQuery.isLoading}
         />
         <div className="md:hidden px-4 mb-6 space-y-4">
-          {MOBILE_TOP_BANNERS.map((banner) => (
+          {MOBILE_TOP_BANNERS.map((banner, index) => (
             <MobileBanner
               key={banner.src}
               src={banner.src}
               href={banner.href}
               alt={banner.alt}
-              unoptimized
+              priority={index === 0}
             />
           ))}
         </div>
@@ -1011,7 +1021,7 @@ export default function HomePage() {
                 aria-label={banner.alt}
                 className="relative h-48 overflow-hidden border border-gray-100 bg-white shadow transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
               >
-                <Image src={banner.image} alt={banner.alt} fill className="object-container" unoptimized />
+                <Image src={banner.image} alt={banner.alt} fill className="object-container" sizes="(min-width: 768px) 33vw, 100vw" />
               </Link>
             ))}
           </div>
