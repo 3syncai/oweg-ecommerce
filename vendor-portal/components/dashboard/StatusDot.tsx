@@ -15,9 +15,14 @@ const VARIANT_CLASSES: Record<StatusVariant, string> = {
 export const fulfillmentStatusVariant = (status?: string): StatusVariant => {
   switch (status) {
     case "delivered":
+    case "credited":
       return "success"
     case "shipped":
       return "info"
+    case "unlocking":
+      return "warning"
+    case "reversed":
+      return "error"
     case "canceled":
       return "error"
     case "pending":

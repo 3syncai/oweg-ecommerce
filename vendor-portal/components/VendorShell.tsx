@@ -16,7 +16,7 @@ import {
   XMark,
 } from "@medusajs/icons"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { vendorProfileApi, vendorOrdersApi } from "@/lib/api/client"
+import { vendorProfileApi, vendorPayoutsApi } from "@/lib/api/client"
 import { performVendorLogout } from "@/lib/vendor-session"
 import { OWEG_BRAND } from "@/lib/brand"
 import { useTheme } from "@/lib/theme"
@@ -158,12 +158,14 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
   useEffect(() => {
     const loadPayoutData = async () => {
       try {
-        const ordersData = await vendorOrdersApi.list().catch(() => ({ orders: [] }))
-        const orders = ordersData?.orders || []
-        const totalRevenue = orders.reduce((sum: number, order: any) => sum + (order.total || 0), 0)
-        setPayoutData({ totalRevenue, totalBalance: totalRevenue, loading: false })
+        const data = await vendorPayoutsApi.summary().catch(() => null)
+        const summary = data?.summary
+        const balance =
+          (summary?.available_balance || 0) + (summary?.unlocking_balance || 0)
+        setPayoutData({ totalRevenue: balance, totalBalance: balance, loading: false })
       } catch (error) {
         console.error("Failed to load payout data:", error)
+        setPayoutData((prev) => ({ ...prev, loading: false }))
       }
     }
     loadPayoutData()

@@ -1,5 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
+import { filterVendorVisibleOrders } from "../../../lib/vendor-order-visibility"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
@@ -49,6 +50,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
                 "id",
                 "customer_id",
                 "email",
+                "status",
+                "is_draft_order",
+                "metadata",
                 "summary",
                 "created_at",
                 "items.product_id",
@@ -66,14 +70,16 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         console.log(`[Customers API] Total orders in system: ${ordersData?.length || 0}`)
 
         // Filter orders that contain vendor's products
-        const vendorOrders = (ordersData || []).filter((order: any) => {
-            const items = order.items || []
-            return items.some((item: any) => {
-                const productId = item.product_id || item.variant?.product_id
-                const isVendorProduct = productId && vendorProductIds.includes(productId)
-                return isVendorProduct
+        const vendorOrders = filterVendorVisibleOrders(
+            (ordersData || []).filter((order: any) => {
+                const items = order.items || []
+                return items.some((item: any) => {
+                    const productId = item.product_id || item.variant?.product_id
+                    const isVendorProduct = productId && vendorProductIds.includes(productId)
+                    return isVendorProduct
+                })
             })
-        })
+        )
 
         console.log(`[Customers API] Found ${vendorOrders.length} orders with vendor products`)
 

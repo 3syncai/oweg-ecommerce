@@ -1,8 +1,8 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { Modules } from "@medusajs/framework/utils"
+import { Pool } from "pg"
 import { VENDOR_MODULE } from "../../../../modules/vendor"
-
 import VendorModuleService from "../../../../modules/vendor/service"
+import { getVendorEarningsSummary } from "../../../../lib/vendor-earnings"
 
 /**
  * Get pending payout summary for logged-in vendor
@@ -13,7 +13,6 @@ export async function GET(
     res: MedusaResponse
 ): Promise<void> {
     try {
-        // Get vendor ID from authenticated session
         const vendorUser = (req as any).vendor || (req as any).user
 
         if (!vendorUser?.vendor_id) {
@@ -23,7 +22,6 @@ export async function GET(
 
         const vendor_id = vendorUser.vendor_id
 
-        // Get vendor details for commission rate
         const vendorModuleService = req.scope.resolve(VENDOR_MODULE) as VendorModuleService
         const [vendor] = await vendorModuleService.listVendors({ id: vendor_id })
 
@@ -33,71 +31,27 @@ export async function GET(
         }
 
         const commission_rate = vendor.commission_rate || 2.0
+        const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 
-        // Get order module
-        // Get query service
-        const query = req.scope.resolve("query")
+        try {
+            const summary = await getVendorEarningsSummary(vendor_id, pool)
 
-        // Fetch all orders for this vendor using Remote Query
-        const { data: allOrders } = await query.graph({
-            entity: "order",
-            fields: ["id", "fulfillment_status", "total", "metadata"],
-            filters: {
-                metadata: {
-                    vendor_id: vendor_id,
+            res.json({
+                pending: {
+                    gross_amount: summary.available_balance + summary.unlocking_balance,
+                    commission_amount:
+                        (summary.available_balance + summary.unlocking_balance) *
+                        (commission_rate / 100),
+                    net_amount: summary.available_balance,
+                    unlocking_amount: summary.unlocking_balance,
+                    order_count: summary.unlocking.length + summary.credited_recent.length,
+                    commission_rate,
                 },
-            },
-        })
-
-        // Filter completed orders (no date restriction for testing)
-        const eligibleOrders = allOrders.filter((order: any) => {
-            const isFulfilled =
-                order.fulfillment_status === 'shipped' ||
-                order.fulfillment_status === 'delivered'
-            return isFulfilled
-        })
-
-        // Get existing paid orders
-
-        const { data: existingPayouts } = await query.graph({
-            entity: "vendor_payout",
-            fields: ["order_ids"],
-            filters: {
-                vendor_id: vendor_id,
-                status: "processed",
-            },
-        })
-
-        const paidOrderIds = new Set<string>()
-        existingPayouts.forEach((payout: any) => {
-            if (payout.order_ids && Array.isArray(payout.order_ids)) {
-                payout.order_ids.forEach((id: string) => paidOrderIds.add(id))
-            }
-        })
-
-        // Filter unpaid orders
-        const unpaidOrders = eligibleOrders.filter(
-            (order: any) => !paidOrderIds.has(order.id)
-        )
-
-        // Calculate pending amounts
-        const pending_gross = unpaidOrders.reduce(
-            (sum: number, order: any) => sum + (order.total || 0),
-            0
-        )
-
-        const pending_commission = (pending_gross * commission_rate) / 100
-        const pending_net = pending_gross - pending_commission
-
-        res.json({
-            pending: {
-                gross_amount: pending_gross,
-                commission_amount: pending_commission,
-                net_amount: pending_net,
-                order_count: unpaidOrders.length,
-                commission_rate,
-            },
-        })
+                summary,
+            })
+        } finally {
+            await pool.end().catch(() => {})
+        }
     } catch (error: any) {
         console.error("Pending payout calculation error:", error)
         res.status(500).json({

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { earnCoins, getPool } from "@/lib/wallet-ledger"
 import { creditPendingCoinsForOrder } from "@/lib/customer-affiliate-coins"
+import { scheduleVendorEarningsOnDelivery } from "@/lib/vendor-earnings"
 import { verifyMedusaWebhookSecret } from "@/lib/medusa-webhook-auth"
 
 export const dynamic = "force-dynamic"
@@ -42,6 +43,17 @@ export async function POST(req: NextRequest) {
         const pool = getPool()
 
         try {
+            // Vendor payout unlock timer (5 min after delivery)
+            let vendorEarningsResult: Awaited<
+                ReturnType<typeof scheduleVendorEarningsOnDelivery>
+            > | null = null
+            try {
+                vendorEarningsResult = await scheduleVendorEarningsOnDelivery(orderId, pool)
+                console.log("[vendor-earnings] delivery scheduled:", vendorEarningsResult)
+            } catch (vendorErr) {
+                console.error("[vendor-earnings] schedule on delivery failed:", vendorErr)
+            }
+
             const orderResult = await pool.query(
                 `SELECT customer_id FROM "order" WHERE id = $1`,
                 [orderId]
@@ -69,10 +81,11 @@ export async function POST(req: NextRequest) {
             const totalMinor = Math.round(totalRupees * 100)
 
             if (!customerId) {
-                return NextResponse.json(
-                    { error: "Order has no customer_id" },
-                    { status: 400 }
-                )
+                return NextResponse.json({
+                    success: true,
+                    message: `Vendor earnings scheduled for order ${orderId}`,
+                    vendor_earnings: vendorEarningsResult,
+                })
             }
 
             const coinsMinor = Math.round(totalMinor * COIN_EARNING_RATE)
@@ -187,7 +200,8 @@ export async function POST(req: NextRequest) {
                 amount: coinsMinor / 100,
                 customer_id: customerId,
                 affiliate_commission: affiliateCommissionTotal,
-                customer_affiliate: customerAffiliateResult
+                customer_affiliate: customerAffiliateResult,
+                vendor_earnings: vendorEarningsResult,
             })
         } catch (dbErr) {
             console.error("Database error in delivery webhook:", dbErr)

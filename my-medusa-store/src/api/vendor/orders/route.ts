@@ -1,6 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
-import { Modules } from "@medusajs/framework/utils"
+import { filterVendorVisibleOrders } from "../../../lib/vendor-order-visibility"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
@@ -51,6 +51,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         "display_id",
         "email",
         "status",
+        "is_draft_order",
+        "metadata",
         "summary",
         "currency_code",
         "created_at",
@@ -71,14 +73,16 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     console.log(`[Orders API] Total orders in system: ${ordersData?.length || 0}`)
 
-    // Filter orders that contain vendor's products
-    const vendorOrders = (ordersData || []).filter((order: any) => {
-      const items = order.items || []
-      return items.some((item: any) => {
-        const productId = item.product_id || item.variant?.product_id
-        return productId && vendorProductIds.includes(productId)
+    // Filter orders that contain vendor's products and exclude draft/unpaid checkouts
+    const vendorOrders = filterVendorVisibleOrders(
+      (ordersData || []).filter((order: any) => {
+        const items = order.items || []
+        return items.some((item: any) => {
+          const productId = item.product_id || item.variant?.product_id
+          return productId && vendorProductIds.includes(productId)
+        })
       })
-    })
+    )
 
     // Debug: Log first order structure to see actual data
     if (vendorOrders.length > 0) {
