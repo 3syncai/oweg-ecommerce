@@ -4,6 +4,8 @@ import { refundCoinSpendForOrder } from "@/lib/wallet-coin-order"
 import { getOrderById } from "@/lib/medusa-admin"
 import { internalApiHeaders } from "@/lib/store-customer-auth"
 import { verifyMedusaWebhookSecret } from "@/lib/medusa-webhook-auth"
+import { getPool } from "@/lib/wallet-ledger"
+import { reverseVendorEarningsForOrder } from "@/lib/vendor-earnings"
 
 export const dynamic = "force-dynamic"
 
@@ -143,13 +145,27 @@ export async function POST(req: NextRequest) {
             console.error("[customer-affiliate-coins] cancel/return failed:", err)
         }
 
+        let vendorEarningsReversal: Awaited<ReturnType<typeof reverseVendorEarningsForOrder>> | null = null
+        try {
+            const pool = getPool()
+            vendorEarningsReversal = await reverseVendorEarningsForOrder(
+                orderId,
+                pool,
+                event === "order.return_approved" ? "return" : "cancelled"
+            )
+            console.log("[vendor-earnings] reversal:", vendorEarningsReversal)
+        } catch (err) {
+            console.error("[vendor-earnings] reversal failed:", err)
+        }
+
         return NextResponse.json({
             success: true,
             event: event,
             order_id: orderId,
             coin_reversal: reverseData,
             coin_discount_refund: refundData,
-            customer_affiliate: customerAffiliateResult
+            customer_affiliate: customerAffiliateResult,
+            vendor_earnings: vendorEarningsReversal
         })
     } catch (error) {
         console.error("Order cancellation webhook error:", error)

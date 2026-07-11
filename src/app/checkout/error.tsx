@@ -1,0 +1,20 @@
+"use client";
+
+import RouteError from "@/components/errors/RouteError";
+
+export default function CheckoutError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  return (
+    <RouteError
+      error={error}
+      reset={reset}
+      title="Checkout unavailable"
+      description="We couldn't complete checkout right now. Your cart is safe — please try again."
+    />
+  );
+}

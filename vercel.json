@@ -14,16 +14,7 @@
       ]
     },
     {
-      "source": "/manifest",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/manifest+json"
-        }
-      ]
-    },
-    {
-      "source": "/site.webmanifest",
+      "source": "/manifest.webmanifest",
       "headers": [
         {
           "key": "Content-Type",

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Container, Heading, Text, Button } from "@medusajs/ui"
 import { MagnifyingGlass, ShoppingCart } from "@medusajs/icons"
 import VendorShell from "@/components/VendorShell"
@@ -8,7 +8,8 @@ import PageSkeleton from "@/components/PageSkeleton"
 import EmptyState from "@/components/EmptyState"
 import StatCard from "@/components/dashboard/StatCard"
 import StatusDot, { fulfillmentStatusVariant } from "@/components/dashboard/StatusDot"
-import { vendorOrdersApi } from "@/lib/api/client"
+import PayoutUnlockTimer from "@/components/PayoutUnlockTimer"
+import { vendorOrdersApi, vendorPayoutsApi, type VendorOrderEarning } from "@/lib/api/client"
 import { useRouter } from "next/navigation"
 
 type Order = {
@@ -35,10 +36,48 @@ const formatDate = (dateString: string) =>
 const VendorOrdersPage = () => {
   const router = useRouter()
   const [orders, setOrders] = useState<Order[]>([])
+  const [earningsByOrder, setEarningsByOrder] = useState<Record<string, VendorOrderEarning>>({})
+  const [payoutBalance, setPayoutBalance] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "delivered" | "shipped">("all")
+
+  const loadOrders = useCallback(async () => {
+    try {
+      const [data, payoutData] = await Promise.all([
+        vendorOrdersApi.list(),
+        vendorPayoutsApi.summary().catch(() => null),
+      ])
+      const nextOrders = data?.orders || []
+      setOrders(nextOrders)
+
+      const summary = payoutData?.summary
+      setPayoutBalance(
+        (summary?.available_balance || 0) + (summary?.unlocking_balance || 0)
+      )
+
+      const deliveredIds = nextOrders
+        .filter((order) => order.fulfillment_status === "delivered")
+        .map((order) => order.id)
+
+      if (deliveredIds.length > 0) {
+        const earningsData = await vendorPayoutsApi.earningsByOrders(deliveredIds)
+        setEarningsByOrder(earningsData.earnings || {})
+      } else {
+        setEarningsByOrder({})
+      }
+    } catch (e: any) {
+      if (e.status === 403) {
+        router.push("/pending")
+        return
+      }
+      setError(e?.message || "Failed to load orders")
+      console.error("Orders error:", e)
+    } finally {
+      setLoading(false)
+    }
+  }, [router])
 
   useEffect(() => {
     const vendorToken = localStorage.getItem("vendor_token")
@@ -47,40 +86,34 @@ const VendorOrdersPage = () => {
       return
     }
 
-    const loadOrders = async () => {
-      try {
-        const data = await vendorOrdersApi.list()
-        setOrders(data?.orders || [])
-      } catch (e: any) {
-        if (e.status === 403) {
-          router.push("/pending")
-          return
-        }
-        setError(e?.message || "Failed to load orders")
-        console.error("Orders error:", e)
-      } finally {
-        setLoading(false)
-      }
-    }
+    void loadOrders()
+  }, [router, loadOrders])
 
-    loadOrders()
-  }, [router])
+  useEffect(() => {
+    const hasUnlocking = Object.values(earningsByOrder).some(
+      (earning) => earning?.status === "UNLOCKING" && earning.unlock_at
+    )
+    if (!hasUnlocking) return
+
+    const intervalId = window.setInterval(() => {
+      void loadOrders()
+    }, 15000)
+
+    return () => window.clearInterval(intervalId)
+  }, [earningsByOrder, loadOrders])
 
   const stats = useMemo(() => {
     let pending = 0
     let completed = 0
-    let revenue = 0
 
     orders.forEach((order) => {
-      const total = typeof order.total === "number" ? order.total : order.total?.amount || 0
-      revenue += total
       const status = order.fulfillment_status || "pending"
       if (status === "pending" || status === "processing") pending += 1
       if (status === "shipped" || status === "delivered") completed += 1
     })
 
-    return { total: orders.length, pending, completed, revenue }
-  }, [orders])
+    return { total: orders.length, pending, completed, revenue: payoutBalance }
+  }, [orders, payoutBalance])
 
   const filteredOrders = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -129,7 +162,7 @@ const VendorOrdersPage = () => {
             </Heading>
             <Text className="mt-1 text-ui-fg-subtle">
               {stats.total > 0
-                ? `${stats.total} orders · ${stats.pending} pending · ${formatCurrency(stats.revenue)} revenue`
+                ? `${stats.total} orders · ${stats.pending} pending · ${formatCurrency(stats.revenue)} available payout`
                 : "Manage your customer orders"}
             </Text>
           </div>
@@ -170,7 +203,13 @@ const VendorOrdersPage = () => {
                   </span>
                 }
               />
-              <StatCard variant="hero" icon={<ShoppingCart />} label="Revenue" value={formatCurrency(stats.revenue)} subtext={<Text className="text-ui-fg-subtle">From all orders</Text>} />
+              <StatCard
+                variant="hero"
+                icon={<ShoppingCart />}
+                label="Available payout"
+                value={formatCurrency(stats.revenue)}
+                subtext={<Text className="text-ui-fg-subtle">After delivery unlock</Text>}
+              />
             </div>
 
             <div className="animate-fade-in-up flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -213,8 +252,8 @@ const VendorOrdersPage = () => {
                 </div>
               ) : (
                 <>
-                  <div className="hidden md:grid md:grid-cols-[100px_minmax(0,1fr)_120px_140px_100px] md:gap-4 border-b border-ui-border-base/70 bg-ui-bg-subtle/30 px-4 py-3">
-                    {["Order", "Customer", "Date", "Status", "Total"].map((h) => (
+                  <div className="hidden md:grid md:grid-cols-[100px_minmax(0,1fr)_120px_140px_160px_100px] md:gap-4 border-b border-ui-border-base/70 bg-ui-bg-subtle/30 px-4 py-3">
+                    {["Order", "Customer", "Date", "Status", "Payout", "Total"].map((h) => (
                       <Text key={h} size="small" weight="plus" className={`text-ui-fg-subtle ${h === "Total" ? "text-right" : ""}`}>
                         {h}
                       </Text>
@@ -224,11 +263,12 @@ const VendorOrdersPage = () => {
                     {filteredOrders.map((order) => {
                       const orderTotal = typeof order.total === "number" ? order.total : order.total?.amount || 0
                       const status = order.fulfillment_status || "pending"
+                      const earning = earningsByOrder[order.id]
 
                       return (
                         <div
                           key={order.id}
-                          className="grid grid-cols-1 gap-2 px-4 py-4 transition-colors hover:bg-ui-bg-subtle/60 md:grid-cols-[100px_minmax(0,1fr)_120px_140px_100px] md:items-center md:gap-4"
+                          className="grid grid-cols-1 gap-2 px-4 py-4 transition-colors hover:bg-ui-bg-subtle/60 md:grid-cols-[100px_minmax(0,1fr)_120px_140px_160px_100px] md:items-center md:gap-4"
                         >
                           <Text weight="plus">#{order.display_id || order.id.slice(0, 8)}</Text>
                           <div className="min-w-0 md:contents">
@@ -238,6 +278,24 @@ const VendorOrdersPage = () => {
                               <StatusDot variant={fulfillmentStatusVariant(status)} />
                               <Text size="small">{status}</Text>
                             </span>
+                            <div className="min-h-7">
+                              {status === "delivered" && earning?.status === "UNLOCKING" && earning.unlock_at ? (
+                                <PayoutUnlockTimer
+                                  unlockAt={earning.unlock_at}
+                                  onComplete={() => void loadOrders()}
+                                />
+                              ) : status === "delivered" && earning?.status === "CREDITED" ? (
+                                <Text size="small" className="text-emerald-600 font-medium">
+                                  +{formatCurrency(earning.net_amount)}
+                                </Text>
+                              ) : earning?.status === "REVERSED" ? (
+                                <Text size="small" className="text-red-600 font-medium">
+                                  {formatCurrency(earning.net_amount)}
+                                </Text>
+                              ) : (
+                                <Text size="small" className="text-ui-fg-muted">—</Text>
+                              )}
+                            </div>
                             <Text weight="plus" className="md:text-right">{formatCurrency(orderTotal)}</Text>
                           </div>
                         </div>

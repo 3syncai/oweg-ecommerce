@@ -14,6 +14,7 @@ import {
   vendorCustomersApi,
   vendorInventoryApi,
   vendorProfileApi,
+  vendorPayoutsApi,
 } from "@/lib/api/client"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -126,13 +127,25 @@ const VendorDashboardPage = () => {
       try {
         setLoading(true)
 
-        const [productsData, ordersData, customersData, inventoryData, profileData] =
+        const [productsData, ordersData, customersData, inventoryData, profileData, payoutData] =
           await Promise.all([
             vendorProductsApi.list().catch(() => ({ products: [] })),
             vendorOrdersApi.list().catch(() => ({ orders: [] })),
             vendorCustomersApi.list().catch(() => ({ customers: [] })),
             vendorInventoryApi.list().catch(() => ({ inventory: [] })),
             vendorProfileApi.getMe().catch(() => ({ vendor: null })),
+            vendorPayoutsApi.summary().catch(() => ({
+              summary: {
+                available_balance: 0,
+                unlocking_balance: 0,
+                total_credited: 0,
+                total_withdrawn: 0,
+                reversed_total: 0,
+                unlocking: [],
+                credited_recent: [],
+                reversed_recent: [],
+              },
+            })),
           ])
 
         setVendorInfo(profileData?.vendor || null)
@@ -165,19 +178,43 @@ const VendorDashboardPage = () => {
             o.fulfillment_status === "shipped" || o.fulfillment_status === "delivered"
         ).length
 
-        const totalRevenue = orders.reduce(
-          (sum: number, order: any) => sum + (order.total || 0),
-          0
-        )
+        const payoutSummary = payoutData?.summary
+        const payoutBalance =
+          (payoutSummary?.available_balance || 0) + (payoutSummary?.unlocking_balance || 0)
+        const payoutOrderCount =
+          (payoutSummary?.unlocking?.length || 0) +
+          (payoutSummary?.credited_recent?.length || 0) +
+          (payoutSummary?.reversed_recent?.length || 0)
+        const totalRevenue = payoutBalance
+        const avgOrderValue =
+          payoutOrderCount > 0 ? payoutBalance / payoutOrderCount : 0
 
-        const avgOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0
-
-        const recentOrders = orders
-          .sort(
-            (a: any, b: any) =>
-              new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          )
-          .slice(0, 5)
+        const recentOrders = [
+          ...(payoutSummary?.unlocking || []).map((item) => ({
+            id: item.order_id,
+            display_id: item.order_display_id,
+            total: item.net_amount,
+            fulfillment_status: "unlocking",
+            created_at: item.delivered_at || item.unlock_at,
+            email: "Payout unlocking",
+          })),
+          ...(payoutSummary?.credited_recent || []).map((item) => ({
+            id: item.order_id,
+            display_id: item.order_display_id,
+            total: item.net_amount,
+            fulfillment_status: "credited",
+            created_at: item.credited_at,
+            email: "Credited to payout",
+          })),
+          ...(payoutSummary?.reversed_recent || []).map((item) => ({
+            id: item.order_id,
+            display_id: item.order_display_id,
+            total: item.net_amount,
+            fulfillment_status: "reversed",
+            created_at: item.reversed_at,
+            email: "Order returned",
+          })),
+        ].slice(0, 5)
 
         const lowStockProducts = inventory
           .filter((item: any) => {
@@ -187,12 +224,14 @@ const VendorDashboardPage = () => {
           .slice(0, 5)
 
         const productOrderCount = new Map<string, number>()
-        orders.forEach((order: any) => {
-          ;(order.items || []).forEach((item: any) => {
-            const title = item.title || "Unknown Product"
-            productOrderCount.set(title, (productOrderCount.get(title) || 0) + 1)
+        if (payoutOrderCount > 0) {
+          orders.forEach((order: any) => {
+            ;(order.items || []).forEach((item: any) => {
+              const title = item.title || "Unknown Product"
+              productOrderCount.set(title, (productOrderCount.get(title) || 0) + 1)
+            })
           })
-        })
+        }
 
         const topProducts = Array.from(productOrderCount.entries())
           .map(([product, orderCount]) => ({ product, orders: orderCount }))
@@ -384,18 +423,19 @@ const VendorDashboardPage = () => {
           <StatCard
             variant="hero"
             icon={<CurrencyDollar />}
-            label="Total Revenue"
+            label="Available payout"
             value={formatCurrency(data.totalRevenue)}
             style={{ animationDelay: "80ms" }}
             className="animate-fade-in-up-slow"
             subtext={
-              data.totalOrders > 0 ? (
+              data.totalRevenue > 0 ? (
                 <Text className="text-ui-fg-subtle">
-                  Avg {formatCurrency(data.averageOrderValue)} per order · {data.totalOrders} total
-                  orders
+                  Avg {formatCurrency(data.averageOrderValue)} per credited order
                 </Text>
               ) : (
-                <Text className="text-ui-fg-subtle">Revenue will appear once you get orders</Text>
+                <Text className="text-ui-fg-subtle">
+                  Credited after delivery + 5-minute unlock
+                </Text>
               )
             }
           />
@@ -456,10 +496,10 @@ const VendorDashboardPage = () => {
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-5">
             <DashboardSection
-              title="Recent Orders"
+              title="Recent payout activity"
               action={
                 data.recentOrders.length > 0
-                  ? { label: "View all", onClick: () => router.push("/orders") }
+                  ? { label: "View payout", onClick: () => router.push("/payout") }
                   : undefined
               }
               style={{ animationDelay: "240ms" }}
@@ -468,15 +508,11 @@ const VendorDashboardPage = () => {
                 <div className="overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base divide-y divide-ui-border-base/70">
                   {data.recentOrders.map((order: any) => {
                     const status = order.fulfillment_status || "pending"
-                    const itemCount = (order.items || []).reduce(
-                      (sum: number, item: any) => sum + (item.quantity || 1),
-                      0
-                    )
 
                     return (
                       <Link
                         key={order.id}
-                        href="/orders"
+                        href="/payout"
                         className="group flex items-center justify-between gap-4 p-4 transition-all duration-200 hover:bg-ui-bg-subtle/80"
                       >
                         <div className="min-w-0 flex-1">
@@ -492,7 +528,6 @@ const VendorDashboardPage = () => {
                           </div>
                           <Text size="small" className="truncate text-ui-fg-subtle">
                             {order.email}
-                            {itemCount > 0 ? ` · ${itemCount} item${itemCount > 1 ? "s" : ""}` : ""}
                           </Text>
                         </div>
                         <div className="flex shrink-0 items-center gap-4">
@@ -502,7 +537,13 @@ const VendorDashboardPage = () => {
                               {status}
                             </Text>
                           </span>
-                          <Text weight="plus" className="min-w-[80px] text-right">
+                          <Text
+                            weight="plus"
+                            className={`min-w-[80px] text-right ${
+                              status === "reversed" ? "text-red-600" : status === "credited" ? "text-emerald-600" : ""
+                            }`}
+                          >
+                            {status === "credited" ? "+" : ""}
                             {formatCurrency(order.total || 0)}
                           </Text>
                           <ArrowUpRightMini className="hidden text-ui-fg-muted transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-ui-fg-base sm:block" />
@@ -515,11 +556,11 @@ const VendorDashboardPage = () => {
                 <EmptyState
                   accent="blue"
                   icon={<ShoppingCart />}
-                  title="No orders yet"
-                  description="When customers purchase your products, they'll show up here."
+                  title="No payout activity yet"
+                  description="Delivered orders appear here after the 5-minute unlock period."
                   primaryAction={{
-                    label: "View products",
-                    onClick: () => router.push("/products"),
+                    label: "View orders",
+                    onClick: () => router.push("/orders"),
                   }}
                 />
               )}

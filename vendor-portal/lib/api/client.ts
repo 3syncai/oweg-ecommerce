@@ -414,6 +414,77 @@ export const vendorOrdersApi = {
   },
 }
 
+export type VendorEarningsSummary = {
+  available_balance: number
+  unlocking_balance: number
+  total_credited: number
+  total_withdrawn: number
+  unlocking: Array<{
+    id: string
+    order_id: string
+    order_display_id: string | null
+    net_amount: number
+    gross_amount: number
+    unlock_at: string
+    delivered_at: string | null
+  }>
+  credited_recent: Array<{
+    id: string
+    order_id: string
+    order_display_id: string | null
+    net_amount: number
+    credited_at: string | null
+  }>
+  reversed_recent: Array<{
+    id: string
+    order_id: string
+    order_display_id: string | null
+    net_amount: number
+    reversed_at: string | null
+  }>
+  reversed_total: number
+}
+
+export type VendorOrderEarning = {
+  id: string
+  order_id: string
+  order_display_id: string | null
+  net_amount: number
+  gross_amount: number
+  status: 'UNLOCKING' | 'CREDITED' | 'PAID' | 'REVERSED'
+  unlock_at: string | null
+  credited_at: string | null
+}
+
+// Vendor Payouts API
+export const vendorPayoutsApi = {
+  summary: async () => {
+    return apiRequest<{ summary: VendorEarningsSummary; unlock_minutes: number }>(
+      '/vendor/payouts/summary'
+    )
+  },
+
+  sync: async () => {
+    return apiRequest<{
+      promoted: number
+      summary: VendorEarningsSummary
+      unlock_minutes: number
+    }>('/vendor/payouts/summary', { method: 'POST' })
+  },
+
+  earningsByOrders: async (orderIds: string[]) => {
+    if (orderIds.length === 0) return { earnings: {} as Record<string, VendorOrderEarning> }
+    const query = new URLSearchParams({ order_ids: orderIds.join(',') })
+    return apiRequest<{ earnings: Record<string, VendorOrderEarning> }>(
+      `/vendor/payouts/earnings-by-orders?${query.toString()}`
+    )
+  },
+
+  list: async () => {
+    return apiRequest<{ payouts: any[]; totals: any; count: number }>('/vendor/payouts')
+  },
+}
+
 // Vendor Categories API
 export const vendorCategoriesApi = {
   list: async (params?: { limit?: number; offset?: number }) => {

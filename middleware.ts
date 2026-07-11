@@ -6,6 +6,7 @@ import { getDebugControllerSettings } from "@/lib/debug-controller/settings"
 const GUARDED_AUTH_ROUTES = new Set(["/login", "/signup"])
 const MAINTENANCE_BYPASS = new Set([
   "/maintenance",
+  "/offline",
   "/debug-controller-4719",
 ])
 

@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
 import { Modules } from "@medusajs/framework/utils"
+import { filterVendorVisibleOrders } from "../../../lib/vendor-order-visibility"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
@@ -34,13 +35,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     // Get vendor orders
     const allOrders = await orderModuleService.listOrders({})
-    const vendorOrders = allOrders.filter((order: any) => {
-      const items = order.items || []
-      return items.some((item: any) => {
-        const productId = item.product_id || item.variant?.product_id
-        return productId && vendorProductIds.has(productId)
+    const vendorOrders = filterVendorVisibleOrders(
+      allOrders.filter((order: any) => {
+        const items = order.items || []
+        return items.some((item: any) => {
+          const productId = item.product_id || item.variant?.product_id
+          return productId && vendorProductIds.has(productId)
+        })
       })
-    })
+    )
 
     // Calculate stats
     const totalProducts = vendorProducts.length

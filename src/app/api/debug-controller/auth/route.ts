@@ -7,20 +7,36 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => null)) as { token?: string } | null;
-  const token = body?.token?.trim();
+  try {
+    const body = (await req.json().catch(() => null)) as { token?: string } | null;
+    const token = body?.token?.trim();
 
-  if (!verifyDebugControllerToken(token)) {
-    return NextResponse.json({ error: "Invalid access token" }, { status: 401 });
+    if (!verifyDebugControllerToken(token)) {
+      return NextResponse.json({ error: "Invalid access token" }, { status: 401 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[debug-controller/auth] configuration error:", error);
+    return NextResponse.json(
+      {
+        error:
+          "Debug controller secret is not configured correctly on this server. Set DEBUG_CONTROLLER_SECRET in production.",
+      },
+      { status: 503 }
+    );
   }
-
-  return NextResponse.json({ success: true });
 }
 
 export async function GET(req: NextRequest) {
-  const token = extractDebugAuthToken(req);
-  if (!verifyDebugControllerToken(token)) {
-    return NextResponse.json({ authenticated: false }, { status: 401 });
+  try {
+    const token = extractDebugAuthToken(req);
+    if (!verifyDebugControllerToken(token)) {
+      return NextResponse.json({ authenticated: false }, { status: 401 });
+    }
+    return NextResponse.json({ authenticated: true });
+  } catch (error) {
+    console.error("[debug-controller/auth] configuration error:", error);
+    return NextResponse.json({ authenticated: false }, { status: 503 });
   }
-  return NextResponse.json({ authenticated: true });
 }

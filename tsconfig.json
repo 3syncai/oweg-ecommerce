@@ -4,7 +4,8 @@
     "lib": [
       "dom",
       "dom.iterable",
-      "esnext"
+      "esnext",
+      "webworker"
     ],
     "allowJs": true,
     "skipLibCheck": true,
@@ -26,13 +27,15 @@
       "@/*": [
         "./src/*"
       ]
-    }
+    },
+    "types": [
+      "@serwist/next/typings"
+    ]
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
     "next-env.d.ts",
-    "src/app/sw.js",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
@@ -41,6 +44,8 @@
     "src/app/example",
     ".next",
     "my-medusa-store",
-    "vendor-portal"
+    "vendor-portal",
+    "public/sw.js",
+    "public/swe-worker*"
   ]
 }

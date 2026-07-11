@@ -1516,8 +1516,6 @@ function CheckoutPageInner() {
     await performCheckout();
   };
 
-  const cartItems = cart?.items || [];
-
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
@@ -1570,11 +1568,24 @@ function CheckoutPageInner() {
     void performCheckoutRef.current?.();
   }, [pendingLoginCheckout, customer?.id, isOweg10StatusReady, processing]);
 
+  const cartItems = cart?.items || [];
+  const payDisabled =
+    processing ||
+    (!isBuyNow && !cartItems.length) ||
+    (isBuyNow && !buyNowItem && !variantFromQuery);
+  const payButtonLabel = processing
+    ? "Processing Payment…"
+    : `Pay securely (${formatInr(payableTotal)})`;
+  const openCheckoutLogin = () => {
+    setCheckoutAfterLoginIntent(true);
+    setLoginModalOpen(true);
+  };
+
   return (
     <div className="bg-gray-50 min-h-screen">
-      <div className="max-w-6xl mx-auto px-4 py-10 pb-20">
+      <div className="max-w-6xl mx-auto px-4 py-10 pb-44 md:pb-20">
         <h1 className="text-2xl font-semibold text-slate-900 mb-6">Checkout</h1>
-        <form onSubmit={handleSubmit} className="grid lg:grid-cols-3 gap-6">
+        <form id="checkout-form" onSubmit={handleSubmit} className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             {!customer ? (
               <section className="bg-white rounded-xl shadow-sm border p-5 md:p-6 space-y-4">
@@ -2197,26 +2208,36 @@ function CheckoutPageInner() {
 
               <Button
                 type={customer ? "submit" : "button"}
-                className="w-full bg-green-600 hover:bg-green-700 text-white py-3"
-                onClick={
-                  customer
-                    ? undefined
-                    : () => {
-                        setCheckoutAfterLoginIntent(true);
-                        setLoginModalOpen(true);
-                      }
-                }
-                disabled={
-                  processing ||
-                  (!isBuyNow && !cartItems.length) ||
-                  (isBuyNow && !buyNowItem && !variantFromQuery)
-                }
+                className="hidden md:flex w-full bg-green-600 hover:bg-green-700 text-white py-3"
+                onClick={customer ? undefined : openCheckoutLogin}
+                disabled={payDisabled}
               >
-                {processing ? "Processing Payment…" : `Pay securely (${formatInr(payableTotal)})`}
+                {payButtonLabel}
               </Button>
             </section>
           </div>
         </form>
+
+        <div className="md:hidden fixed bottom-24 left-0 right-0 z-[500] border-t border-slate-200 rounded-t-2xl bg-white shadow-lg">
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-xs text-slate-500">Total payable</p>
+              <p className="text-lg font-bold text-green-600 truncate">{formatInr(payableTotal)}</p>
+              {totalsLoading ? (
+                <p className="text-[11px] text-slate-400">Updating totals…</p>
+              ) : null}
+            </div>
+            <Button
+              type={customer ? "submit" : "button"}
+              form={customer ? "checkout-form" : undefined}
+              className="shrink-0 min-h-11 bg-green-600 hover:bg-green-700 text-white px-5 py-3"
+              onClick={customer ? undefined : openCheckoutLogin}
+              disabled={payDisabled}
+            >
+              {processing ? "Processing…" : "Pay securely"}
+            </Button>
+          </div>
+        </div>
       </div>
       {loginModalOpen && (
         <div className="fixed inset-0 z-[999] bg-black/30 backdrop-blur-sm flex items-center justify-center px-4">

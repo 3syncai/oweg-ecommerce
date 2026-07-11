@@ -79,7 +79,6 @@ export function BrandLogoImage({
             fill
             sizes="160px"
             className="object-contain object-center"
-            unoptimized
             onError={onError}
           />
         </div>
@@ -106,7 +105,6 @@ export function BrandLogoImage({
         fill
         sizes={`${width}px`}
         className="object-contain object-center"
-        unoptimized
         onError={onError}
       />
     </div>

@@ -264,25 +264,29 @@ async function fetchStoreProducts(
   )
 }
 
-function api(path: string, init?: RequestInit) {
+function api(path: string, init?: RequestInit & { revalidate?: number }) {
   const base = MEDUSA_URL!.replace(/\/$/, "")
   const url = `${base}${path}`
   const publishableKey = getPublishableKey()
   const salesChannelId = getSalesChannelId()
+  const { revalidate, ...requestInit } = init ?? {}
   return fetch(url, {
-    // Force server-side fetch when called from route handlers
-    cache: "no-store",
-    ...init,
+    ...(revalidate !== undefined
+      ? { next: { revalidate } }
+      : { cache: "no-store" }),
+    ...requestInit,
     headers: {
       "content-type": "application/json",
       ...(publishableKey ? { "x-publishable-api-key": publishableKey } : {}),
       ...(salesChannelId ? { "x-sales-channel-id": salesChannelId } : {}),
-      ...(init?.headers || {}),
+      ...(requestInit.headers || {}),
     },
   })
 }
 
-export async function fetchCategories(): Promise<MedusaCategory[]> {
+export async function fetchCategories(options?: {
+  revalidate?: number;
+}): Promise<MedusaCategory[]> {
   const limit = 200
   const collected: MedusaCategory[] = []
   for (let offset = 0; offset < 2000; offset += limit) {
@@ -292,7 +296,10 @@ export async function fetchCategories(): Promise<MedusaCategory[]> {
       include_descendants_tree: "true",
       order: "rank",
     })
-    const res = await api(`/store/product-categories?${params.toString()}`)
+    const res = await api(
+      `/store/product-categories?${params.toString()}`,
+      options?.revalidate !== undefined ? { revalidate: options.revalidate } : undefined,
+    )
     if (!res.ok) throw new Error(`Failed categories: ${res.status}`)
     const data = await res.json()
     // Support v1 ({ product_categories }) and v2 ({ categories }) shapes
@@ -1291,6 +1298,72 @@ async function fetchAdminProductPrice(productId: string): Promise<number | undef
     console.warn("fetchAdminProductPrice failed", err)
     return undefined
   }
+}
+
+export type SitemapProductEntry = {
+  handle: string;
+  updatedAt?: Date;
+};
+
+export async function fetchProductSitemapEntries(
+  revalidate = 3600,
+): Promise<SitemapProductEntry[]> {
+  const limit = 100;
+  const entries: SitemapProductEntry[] = [];
+
+  for (let offset = 0; offset < 20_000; offset += limit) {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+      fields: "handle,updated_at",
+    });
+
+    const res = await api(`/store/products?${params.toString()}`, { revalidate });
+    if (!res.ok) break;
+
+    const data = (await res.json()) as {
+      products?: Array<{ handle?: string; updated_at?: string }>;
+    };
+    const page = data.products ?? [];
+    if (!page.length) break;
+
+    for (const product of page) {
+      if (!product.handle) continue;
+      entries.push({
+        handle: product.handle,
+        updatedAt: product.updated_at ? new Date(product.updated_at) : undefined,
+      });
+    }
+
+    if (page.length < limit) break;
+  }
+
+  return entries;
+}
+
+export function collectCategorySitemapPaths(categories: MedusaCategory[]): string[] {
+  const paths = new Set<string>();
+
+  const walk = (nodes: MedusaCategory[], prefix: string[] = []) => {
+    for (const node of nodes) {
+      if (!node.handle) continue;
+
+      const chain = [...prefix, node.handle];
+      paths.add(`/c/${chain.join("/")}`);
+
+      for (const child of node.category_children ?? []) {
+        if (!child.handle) continue;
+        paths.add(`/c/${node.handle}/${child.handle}`);
+      }
+
+      if (node.category_children?.length) {
+        walk(node.category_children, chain);
+      }
+    }
+  };
+
+  walk(categories);
+  return [...paths];
 }
 
 // fetchPriceOverrideForName function removed - using Medusa prices only
