@@ -10,8 +10,17 @@ const HOP_BY_HOP = new Set([
   "transfer-encoding",
   "upgrade",
   "host",
+]);
+
+/** Strip on responses — Node fetch may decompress the body but leave encoding headers. */
+const STRIP_RESPONSE_HEADERS = new Set([
+  ...HOP_BY_HOP,
+  "content-encoding",
   "content-length",
 ]);
+
+/** Do not ask upstream for compressed payloads we will re-serve to the browser. */
+const STRIP_REQUEST_HEADERS = new Set([...HOP_BY_HOP, "accept-encoding"]);
 
 export function getMedusaBackendUrl(): string {
   const url =
@@ -48,7 +57,8 @@ export async function proxyMedusaRequest(
 
   const headers = new Headers();
   req.headers.forEach((value, key) => {
-    if (HOP_BY_HOP.has(key.toLowerCase())) return;
+    const lower = key.toLowerCase();
+    if (STRIP_REQUEST_HEADERS.has(lower)) return;
     headers.set(key, value);
   });
 
@@ -77,11 +87,13 @@ export async function proxyMedusaRequest(
     const upstream = await fetch(targetUrl, init);
     const responseHeaders = new Headers();
     upstream.headers.forEach((value, key) => {
-      if (HOP_BY_HOP.has(key.toLowerCase())) return;
+      if (STRIP_RESPONSE_HEADERS.has(key.toLowerCase())) return;
       responseHeaders.set(key, value);
     });
 
-    return new NextResponse(upstream.body, {
+    const body = await upstream.arrayBuffer();
+
+    return new NextResponse(body, {
       status: upstream.status,
       statusText: upstream.statusText,
       headers: responseHeaders,

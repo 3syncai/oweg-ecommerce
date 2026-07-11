@@ -82,6 +82,7 @@ const VendorProductEditPage = () => {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [product, setProduct] = useState<Product | null>(null)
   const [variantSummary, setVariantSummary] = useState<VariantSummary | null>(null)
   const [categories, setCategories] = useState<CatalogCategory[]>([])
@@ -110,6 +111,7 @@ const VendorProductEditPage = () => {
     }
 
     const loadPageData = async () => {
+      setLoadError(null)
       try {
         const [productResponse, categoriesResponse, collectionsResponse, inventoryResponse] =
           await Promise.all([
@@ -227,9 +229,9 @@ const VendorProductEditPage = () => {
           return
         }
 
-        toast.error("Error", {
-          description: e?.message || "Failed to load product details",
-        })
+        const message = e?.message || "Failed to load product details"
+        setLoadError(message)
+        toast.error("Error", { description: message })
       } finally {
         setLoading(false)
       }
@@ -422,6 +424,15 @@ const VendorProductEditPage = () => {
     content = (
       <Container className="p-6">
         <Text>Loading product editor...</Text>
+      </Container>
+    )
+  } else if (loadError) {
+    content = (
+      <Container className="p-6">
+        <Text className="text-ui-fg-error">{loadError}</Text>
+        <Button className="mt-4" variant="secondary" onClick={() => router.push("/products")}>
+          Back to products
+        </Button>
       </Container>
     )
   } else if (!product) {
