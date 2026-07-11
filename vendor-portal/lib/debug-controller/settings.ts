@@ -38,40 +38,57 @@ export async function getDebugControllerSettings(
     return settings;
   }
 
-  await ensureDebugControllerTable();
-  const db = getDebugControllerPool();
-  const result = await db.query<{ value: Partial<DebugControllerSettings> }>(
-    `SELECT value FROM debug_controller_settings WHERE key = $1 LIMIT 1`,
-    [SETTINGS_KEY]
-  );
+  try {
+    await ensureDebugControllerTable();
+    const db = getDebugControllerPool();
+    const result = await db.query<{ value: Partial<DebugControllerSettings> }>(
+      `SELECT value FROM debug_controller_settings WHERE key = $1 LIMIT 1`,
+      [SETTINGS_KEY]
+    );
 
-  const settings = mergeSettings(result.rows[0]?.value);
-  cachedSettings = settings;
-  cacheExpiresAt = now + CACHE_TTL_MS;
-  return settings;
+    const settings = mergeSettings(result.rows[0]?.value);
+    cachedSettings = settings;
+    cacheExpiresAt = now + CACHE_TTL_MS;
+    return settings;
+  } catch (error) {
+    console.error("[debug-controller] failed to load settings:", error);
+    const settings = mergeSettings(null);
+    cachedSettings = settings;
+    cacheExpiresAt = now + CACHE_TTL_MS;
+    return settings;
+  }
 }
 
 export async function updateDebugControllerSettings(
   patch: Partial<DebugControllerSettings>
 ): Promise<DebugControllerSettings> {
   if (!isDatabaseConfigured()) {
-    throw new Error("DATABASE_URL is not configured — cannot persist debug settings");
+    throw new Error(
+      "DATABASE_URL is not configured on this deployment. Add it in Vercel → vendor-portal → Settings → Environment Variables."
+    );
   }
 
   const current = await getDebugControllerSettings({ bypassCache: true });
   const next = mergeSettings({ ...current, ...patch });
 
-  await ensureDebugControllerTable();
-  const db = getDebugControllerPool();
-  await db.query(
-    `
-      INSERT INTO debug_controller_settings (key, value, updated_at)
-      VALUES ($1, $2::jsonb, now())
-      ON CONFLICT (key)
-      DO UPDATE SET value = EXCLUDED.value, updated_at = now()
-    `,
-    [SETTINGS_KEY, JSON.stringify(next)]
-  );
+  try {
+    await ensureDebugControllerTable();
+    const db = getDebugControllerPool();
+    await db.query(
+      `
+        INSERT INTO debug_controller_settings (key, value, updated_at)
+        VALUES ($1, $2::jsonb, now())
+        ON CONFLICT (key)
+        DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+      `,
+      [SETTINGS_KEY, JSON.stringify(next)]
+    );
+  } catch (error) {
+    console.error("[debug-controller] failed to save settings:", error);
+    const message =
+      error instanceof Error ? error.message : "Database error while saving settings";
+    throw new Error(message);
+  }
 
   cachedSettings = next;
   cacheExpiresAt = Date.now() + CACHE_TTL_MS;

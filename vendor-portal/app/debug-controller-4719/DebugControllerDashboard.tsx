@@ -153,7 +153,10 @@ export default function DebugControllerDashboard() {
         headers: authHeaders,
         body: JSON.stringify(patch),
       });
-      if (!res.ok) throw new Error("Failed to update settings");
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || "Failed to update settings");
+      }
       const data = await res.json();
       setSettings(data.settings);
       showMessage("Settings updated");
