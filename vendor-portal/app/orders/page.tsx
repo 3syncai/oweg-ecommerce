@@ -62,7 +62,9 @@ const VendorOrdersPage = () => {
         .map((order) => order.id)
 
       if (deliveredIds.length > 0) {
-        const earningsData = await vendorPayoutsApi.earningsByOrders(deliveredIds)
+        const earningsData = await vendorPayoutsApi
+          .earningsByOrders(deliveredIds)
+          .catch(() => ({ earnings: {} as Record<string, VendorOrderEarning> }))
         setEarningsByOrder(earningsData.earnings || {})
       } else {
         setEarningsByOrder({})
