@@ -1,6 +1,18 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { Pool } from "pg"
 import { requireApprovedVendor } from "../_lib/guards"
 import { filterVendorVisibleOrders } from "../../../lib/vendor-order-visibility"
+import { getVendorEarningsByOrderIds } from "../../../lib/vendor-earnings"
+
+function getPool() {
+  const url = process.env.DATABASE_URL
+  if (!url) return null
+  const isLocal = /localhost|127\.0\.0\.1/.test(url)
+  return new Pool({
+    connectionString: url,
+    ssl: isLocal ? undefined : { rejectUnauthorized: false },
+  })
+}
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
@@ -83,7 +95,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
         console.log(`[Customers API] Found ${vendorOrders.length} orders with vendor products`)
 
-        // Aggregate customer data from vendor orders
+        const orderIds = vendorOrders.map((order: any) => order.id)
+        const pool = getPool()
+        const earningsByOrder = pool
+          ? await getVendorEarningsByOrderIds(auth.vendor_id, orderIds, pool).finally(() =>
+              pool.end().catch(() => {})
+            )
+          : {}
+
+        // Aggregate customer data from vendor orders (payout amounts, not raw order totals)
         const customerMap = new Map<string, {
             id: string
             email: string
@@ -92,6 +112,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
             phone?: string
             orders_count: number
             total_spent: number
+            order_value: number
             first_order_date: string
             last_order_date: string
         }>()
@@ -100,13 +121,14 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
             const customerId = order.customer_id || order.email || 'guest'
             const customerEmail = order.email || 'N/A'
 
-            // Use current_order_total - the correct field!
-            const orderTotal = order.summary?.current_order_total || 0
+            const orderTotal = Number(order.summary?.current_order_total) || 0
+            const payoutAmount = Number(earningsByOrder[order.id]?.net_amount) || 0
 
             if (customerMap.has(customerId)) {
                 const existing = customerMap.get(customerId)!
                 existing.orders_count++
-                existing.total_spent += orderTotal
+                existing.total_spent += payoutAmount
+                existing.order_value += orderTotal
 
                 // Update date ranges - convert to string to ensure type safety
                 const orderDate = typeof order.created_at === 'string' ? order.created_at : order.created_at.toISOString()
@@ -125,7 +147,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
                     last_name: order.customer?.last_name || order.shipping_address?.last_name,
                     phone: order.customer?.phone || order.shipping_address?.phone,
                     orders_count: 1,
-                    total_spent: orderTotal,
+                    total_spent: payoutAmount,
+                    order_value: orderTotal,
                     first_order_date: orderDate,
                     last_order_date: orderDate,
                 })

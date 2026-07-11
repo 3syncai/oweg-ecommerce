@@ -1,0 +1,100 @@
+import { NextRequest, NextResponse } from "next/server";
+
+const HOP_BY_HOP = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailers",
+  "transfer-encoding",
+  "upgrade",
+  "host",
+  "content-length",
+]);
+
+export function getMedusaBackendUrl(): string {
+  const url =
+    process.env.MEDUSA_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL ||
+    "";
+
+  if (!url) {
+    throw new Error(
+      "MEDUSA_BACKEND_URL is not configured. Set it in Vercel environment variables."
+    );
+  }
+
+  return url.replace(/\/+$/, "");
+}
+
+export async function proxyMedusaRequest(
+  req: NextRequest,
+  pathSegments: string[]
+): Promise<NextResponse> {
+  let backendBase: string;
+  try {
+    backendBase = getMedusaBackendUrl();
+  } catch (error) {
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : "Medusa backend not configured" },
+      { status: 503 }
+    );
+  }
+
+  const path = pathSegments.map(encodeURIComponent).join("/");
+  const search = req.nextUrl.search;
+  const targetUrl = `${backendBase}/${path}${search}`;
+
+  const headers = new Headers();
+  req.headers.forEach((value, key) => {
+    if (HOP_BY_HOP.has(key.toLowerCase())) return;
+    headers.set(key, value);
+  });
+
+  const publishableKey =
+    process.env.MEDUSA_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY;
+  if (publishableKey && !headers.has("x-publishable-api-key")) {
+    headers.set("x-publishable-api-key", publishableKey);
+  }
+
+  const init: RequestInit = {
+    method: req.method,
+    headers,
+    cache: "no-store",
+    redirect: "manual",
+  };
+
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    const body = await req.arrayBuffer();
+    if (body.byteLength > 0) {
+      init.body = body;
+    }
+  }
+
+  try {
+    const upstream = await fetch(targetUrl, init);
+    const responseHeaders = new Headers();
+    upstream.headers.forEach((value, key) => {
+      if (HOP_BY_HOP.has(key.toLowerCase())) return;
+      responseHeaders.set(key, value);
+    });
+
+    return new NextResponse(upstream.body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: responseHeaders,
+    });
+  } catch (error) {
+    console.error("[medusa-proxy] upstream failed:", targetUrl, error);
+    return NextResponse.json(
+      {
+        message: "Failed to reach Medusa backend",
+        backend: backendBase,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      { status: 502 }
+    );
+  }
+}

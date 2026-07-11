@@ -18,6 +18,7 @@ type Customer = {
   phone?: string
   orders_count: number
   total_spent: number
+  order_value?: number
   first_order_date: string
   last_order_date: string
 }
@@ -106,7 +107,7 @@ const VendorCustomersPage = () => {
             </Heading>
             <Text className="mt-1 text-ui-fg-subtle">
               {stats.total > 0
-                ? `${stats.total} customers · ${stats.orders} orders · ${formatCurrency(stats.revenue)} lifetime value`
+                ? `${stats.total} customers · ${stats.orders} orders · ${formatCurrency(stats.revenue)} vendor payout`
                 : "Customers who ordered your products"}
             </Text>
           </div>
@@ -126,7 +127,7 @@ const VendorCustomersPage = () => {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 animate-fade-in-up-slow">
               <StatCard icon={<Users />} label="Total customers" value={stats.total} subtext={<Text className="text-ui-fg-subtle">Unique buyers</Text>} />
               <StatCard icon={<Users />} label="Total orders" value={stats.orders} subtext={<Text className="text-ui-fg-subtle">Across all customers</Text>} />
-              <StatCard variant="hero" icon={<CurrencyDollar />} label="Lifetime revenue" value={formatCurrency(stats.revenue)} subtext={<Text className="text-ui-fg-subtle">From repeat buyers</Text>} />
+              <StatCard variant="hero" icon={<CurrencyDollar />} label="Vendor payout" value={formatCurrency(stats.revenue)} subtext={<Text className="text-ui-fg-subtle">Credited & unlocking earnings</Text>} />
             </div>
 
             <div className="animate-fade-in-up relative w-full sm:max-w-sm">
@@ -152,7 +153,7 @@ const VendorCustomersPage = () => {
               <>
                 <div className="animate-fade-in-up overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base">
                   <div className="hidden lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_120px_100px_120px_120px] lg:gap-4 border-b border-ui-border-base/70 bg-ui-bg-subtle/30 px-4 py-3">
-                    {["Customer", "Email", "Phone", "Orders", "Total spent", "Last order"].map((h) => (
+                    {["Customer", "Email", "Phone", "Orders", "Vendor payout", "Last order"].map((h) => (
                       <Text key={h} size="small" weight="plus" className="text-ui-fg-subtle">{h}</Text>
                     ))}
                   </div>
