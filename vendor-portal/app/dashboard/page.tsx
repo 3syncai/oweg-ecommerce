@@ -140,8 +140,10 @@ const VendorDashboardPage = () => {
                 unlocking_balance: 0,
                 total_credited: 0,
                 total_withdrawn: 0,
+                reversed_total: 0,
                 unlocking: [],
                 credited_recent: [],
+                reversed_recent: [],
               },
             })),
           ])
