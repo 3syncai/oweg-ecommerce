@@ -13,8 +13,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const settings = await getDebugControllerSettings();
-  return NextResponse.json({ settings });
+  try {
+    const settings = await getDebugControllerSettings();
+    return NextResponse.json({ settings });
+  } catch (error) {
+    console.error("[debug-controller/settings] GET failed:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to load settings" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function PATCH(req: NextRequest) {
@@ -28,10 +36,16 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
-  const { updateDebugControllerSettings } = await import(
-    "@/lib/debug-controller/settings"
-  );
-  const settings = await updateDebugControllerSettings(body);
-
-  return NextResponse.json({ success: true, settings });
+  try {
+    const { updateDebugControllerSettings } = await import(
+      "@/lib/debug-controller/settings"
+    );
+    const settings = await updateDebugControllerSettings(body);
+    return NextResponse.json({ success: true, settings });
+  } catch (error) {
+    console.error("[debug-controller/settings] PATCH failed:", error);
+    const message = error instanceof Error ? error.message : "Failed to update settings";
+    const status = message.includes("DATABASE_URL is not configured") ? 503 : 500;
+    return NextResponse.json({ error: message }, { status });
+  }
 }
