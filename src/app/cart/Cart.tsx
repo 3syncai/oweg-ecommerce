@@ -1073,7 +1073,7 @@ const Cart: React.FC = () => {
                           <p className="text-sm font-medium text-slate-800 line-clamp-2">{p.name}</p>
                           <div className="flex items-baseline gap-2">
                             <div className="text-base font-bold">{formatCurrency(p.price)}</div>
-                            <div className="text-xs text-slate-400 line-through">M.R.P: {formatCurrency(p.mrp)}</div>
+                            <div className="text-xs text-slate-400 line-through">{formatCurrency(p.mrp)}</div>
                           </div>
                         </div>
                       </Link>

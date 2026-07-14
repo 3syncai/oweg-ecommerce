@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">EM Locks</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .muted-outline { fill: none; stroke: var(--oweg-muted, #667085); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <rect class="outline" x="14" y="30" width="36" height="22" rx="4"/>
+  <path class="outline" d="M21 30v-8c0-6 5-11 11-11s11 5 11 11v8"/>
+  <rect class="outline" x="22" y="38" width="20" height="7" rx="2"/>
+  <path class="accent-stroke" d="M32 21h.1"/>
+  <path class="muted-outline" d="M18 52h28"/>
+
+</svg>

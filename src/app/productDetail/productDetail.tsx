@@ -47,6 +47,8 @@ import {
 import { useAuth } from '@/contexts/AuthProvider'
 import { useCartSummary } from '@/contexts/CartProvider'
 import { useFlashSale } from '@/hooks/useFlashSale'
+import HealthCareAgeGate from '@/components/modules/HealthCareAgeGate'
+import { productHasHealthCareCategory } from '@/lib/health-care-age-gate'
 
 const ProductSavingsExplorer = dynamic(() => import('./components/ProductSavingsExplorer'), {
   ssr: false,
@@ -1502,8 +1504,11 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
   const descriptionHasHtml = Boolean(product?.description && /<\/?[a-z][\s\S]*>/i.test(product.description))
 
+  const showHealthCareAgeGate = productHasHealthCareCategory(product?.categories)
+
   return (
     <div className="flex min-h-screen flex-col bg-[#f3f8f3] font-sans overflow-x-hidden touch-pan-y">
+      <HealthCareAgeGate enabled={showHealthCareAgeGate} />
       <style>{`
         :root {
           --detail-accent: #7bc24f;

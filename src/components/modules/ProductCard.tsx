@@ -170,7 +170,7 @@ export function ProductCard({
           <div className="flex items-baseline gap-2">
             <span className="text-lg font-bold text-gray-900">{inr.format(price)}</span>
             <span className="text-xs text-gray-500 line-through">
-              M.R.P: {inr.format(mrp)}
+              {inr.format(mrp)}
             </span>
           </div>
         </div>

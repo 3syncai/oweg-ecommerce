@@ -57,6 +57,12 @@ export function buildContentSecurityPolicy(): string {
     "https://*.amazonaws.com",
   ];
 
+  // Service workers fetch() image URLs; that requires connect-src, not only img-src.
+  const imageConnectOrigins = [
+    ...IMAGE_HOSTS.map((host) => `https://${host}`),
+    "https://*.amazonaws.com",
+  ];
+
   const scriptSrc = [
     "'self'",
     "'unsafe-inline'",
@@ -72,7 +78,7 @@ export function buildContentSecurityPolicy(): string {
     `script-src ${scriptSrc.join(" ")}`,
     "style-src 'self' 'unsafe-inline'",
     `img-src ${imageSources.join(" ")}`,
-    `connect-src 'self' ${[...medusaOrigins, ...RAZORPAY_ORIGINS].join(" ")}`,
+    `connect-src 'self' ${[...medusaOrigins, ...RAZORPAY_ORIGINS, ...imageConnectOrigins].join(" ")}`,
     "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com",
     "font-src 'self' data:",
     "object-src 'none'",

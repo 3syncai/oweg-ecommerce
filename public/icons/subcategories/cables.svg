@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Cables</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .muted-outline { fill: none; stroke: var(--oweg-muted, #667085); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <path class="outline" d="M24 47c-8-1-13-7-13-15c0-10 8-18 18-18s18 8 18 18c0 8-5 14-13 15"/>
+  <circle class="outline" cx="29" cy="32" r="10"/>
+  <path class="outline" d="M39 38l9 9"/>
+  <path class="outline" d="M46 44l5 5M50 40l-8 8"/>
+  <path class="accent-stroke" d="M18 44l-5 7M23 46l-3 7"/>
+
+</svg>

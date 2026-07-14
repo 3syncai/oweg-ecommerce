@@ -13,6 +13,11 @@ import { ProductGrid } from "@/components/modules/ProductGrid";
 import { useCategoryProducts } from "@/hooks/useCategoryProducts";
 import type { MedusaCategory } from "@/services/medusa";
 import { SectionHeading } from "@/components/ui/section-heading";
+import HealthCareAgeGate from "@/components/modules/HealthCareAgeGate";
+import {
+  isHealthCareCategoryHandle,
+  isHealthCarePath,
+} from "@/lib/health-care-age-gate";
 
 const PRODUCTS_PER_PAGE = 20;
 
@@ -62,6 +67,8 @@ export function CategoryPageClient({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const showHealthCareAgeGate =
+    isHealthCareCategoryHandle(categoryHandle) || isHealthCarePath(pathname);
 
   const parseNumberParam = useCallback((value: string | null) => {
     if (value === null) return undefined;
@@ -295,6 +302,7 @@ export function CategoryPageClient({
 
   return (
     <div className="bg-gray-50 min-h-screen">
+      <HealthCareAgeGate enabled={showHealthCareAgeGate} />
       <div className="container mx-auto px-4 py-6">
         <div className="flex gap-6">
           <aside

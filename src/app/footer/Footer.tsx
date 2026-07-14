@@ -90,7 +90,7 @@ const Footer = () => {
                 href="mailto:owegonline@oweg.in"
                 className="link-item group inline-block mt-4"
               >
-                <span className="link-text">owegonline@oweg.in</span>
+                <span className="link-text">Email Id - owegonline@oweg.in</span>
                 <span className="link-underline" />
               </a>
             </div>

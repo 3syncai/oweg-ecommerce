@@ -782,15 +782,19 @@ const Header: React.FC = () => {
     const rect = triggerEl.getBoundingClientRect();
     const gutter = 8;
     const preferredTop = rect.bottom + gutter;
-    const maxWidth = preferMaxWidth;
-    const minWidth = 220;
-    const viewportRight = window.innerWidth - 16;
-    const availableRight = Math.max(200, viewportRight - rect.left);
-    const width = Math.min(maxWidth, Math.max(minWidth, availableRight));
+    const edgePad = 16;
+    const minLeft = 8;
+    // Prefer full panel width; clamp only to the viewport — never by space-to-the-right of the trigger.
+    const width = Math.min(preferMaxWidth, Math.max(220, window.innerWidth - edgePad * 2));
     let left = rect.left;
-    if (left + width + 16 > window.innerWidth) {
-      left = Math.max(8, window.innerWidth - width - 16);
+    if (left + width + edgePad > window.innerWidth) {
+      // Right-align to the trigger when left-anchoring would overflow.
+      left = rect.right - width;
     }
+    left = Math.min(
+      Math.max(minLeft, left),
+      Math.max(minLeft, window.innerWidth - width - edgePad)
+    );
     const style: React.CSSProperties = {
       position: "fixed" as const,
       left,

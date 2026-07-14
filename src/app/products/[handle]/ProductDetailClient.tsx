@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { DetailedProduct } from "@/lib/medusa";
 import { getImageUrlForNewTab } from "@/lib/image-utils";
 import { sanitizeProductHtml } from "@/lib/sanitize-product-html";
+import HealthCareAgeGate from "@/components/modules/HealthCareAgeGate";
+import { productHasHealthCareCategory } from "@/lib/health-care-age-gate";
 
 type ProductDetailClientProps = {
   product: DetailedProduct;
@@ -24,6 +26,7 @@ const inr = new Intl.NumberFormat("en-IN", {
 export function ProductDetailClient({ product }: ProductDetailClientProps) {
   const [selectedImage, setSelectedImage] = useState(0);
   const [isAdding, setIsAdding] = useState(false);
+  const showHealthCareAgeGate = productHasHealthCareCategory(product.categories);
 
   const handleAddToCart = async () => {
     if (!product.variant_id) {
@@ -55,6 +58,7 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
 
   return (
     <div className="bg-white min-h-screen">
+      <HealthCareAgeGate enabled={showHealthCareAgeGate} />
       <div className="container mx-auto px-4 py-8">
         {/* Breadcrumb */}
         <nav className="text-sm text-gray-600 mb-6">

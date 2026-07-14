@@ -284,7 +284,7 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
                     ) : null}
                     {typeof product.mrp === "number" && product.mrp > (product.price || 0) ? (
                       <span className="text-xs text-gray-400 line-through">
-                        M.R.P: {currency.format(product.mrp)}
+                        {currency.format(product.mrp)}
                       </span>
                     ) : null}
                   </div>
