@@ -72,6 +72,10 @@ function StarRow({ count }: { count: number }) {
 function SearchPageContent() {
   const params = useSearchParams()
   const q = params.get("q")?.trim() || ""
+  const category = params.get("category")?.trim() || ""
+  const categoryId = params.get("categoryId")?.trim() || ""
+  const collection = params.get("collection")?.trim() || ""
+  const collectionId = params.get("collectionId")?.trim() || ""
 
   const [products, setProducts] = useState<SearchProduct[]>([])
   const [filtered, setFiltered] = useState<SearchProduct[]>([])
@@ -94,7 +98,13 @@ function SearchPageContent() {
     async function fetchProducts() {
       setLoading(true)
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
+        const query = new URLSearchParams({ q })
+        if (categoryId) query.set("categoryId", categoryId)
+        else if (category) query.set("category", category)
+        if (collectionId) query.set("collectionId", collectionId)
+        else if (collection) query.set("collection", collection)
+
+        const res = await fetch(`/api/search?${query.toString()}`)
         const data = await res.json()
         if (cancelled) return
         const result = Array.isArray(data) ? (data as SearchProduct[]) : []
@@ -115,7 +125,7 @@ function SearchPageContent() {
     return () => {
       cancelled = true
     }
-  }, [q])
+  }, [q, category, categoryId, collection, collectionId])
 
   const allBrands = useMemo(
     () => Array.from(new Set(products.map((p) => p.brand).filter(Boolean))) as string[],
@@ -350,7 +360,7 @@ function SearchPageContent() {
                             <span className="text-base font-bold text-slate-900">{priceFormatter.format(price)}</span>
                             {mrp > price && price > 0 ? <span className="text-xs text-slate-400 line-through">{priceFormatter.format(mrp)}</span> : null}
                           </div>
-                          <span className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition group-hover:bg-emerald-700">
+                          <span className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-green-600 px-3 py-2 text-xs font-semibold text-white transition group-hover:bg-green-700">
                             View Product
                           </span>
                         </div>

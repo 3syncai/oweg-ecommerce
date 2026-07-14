@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+<title id="title">Sassiest Health Care - Creative</title>
+<style>
+.outline{fill:none;stroke:#1F2A33;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
+.muted{fill:none;stroke:#667085;stroke-width:2.3;stroke-linecap:round;stroke-linejoin:round}
+.accent{fill:#66C940}
+.accent-stroke{fill:none;stroke:#66C940;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
+.soft{fill:#EAF8E7}
+.light{fill:#F7FBF5}
+.white{fill:#fff}
+</style>
+
+<defs>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#B7E4C7" flood-opacity="0.7"/>
+  </filter>
+</defs>
+<circle class="soft" cx="48" cy="48" r="34"/>
+<circle class="white" cx="48" cy="48" r="26" filter="url(#shadow)"/>
+<path class="outline" d="M37 28c-6 0-11 5-11 11c0 11 16 22 22 26c6-4 22-15 22-26c0-6-5-11-11-11c-5 0-8 2-11 7c-3-5-6-7-11-7z"/>
+<circle class="accent" cx="48" cy="50" r="8"/>
+<path d="M44 50h8M48 46v8" stroke="#fff" stroke-width="2.8" stroke-linecap="round"/>
+<path class="accent-stroke" d="M27 69c4 4 9 7 21 8c12-1 17-4 21-8"/>
+<circle class="accent" cx="28" cy="31" r="2.5"/>
+<circle class="accent" cx="68" cy="27" r="2"/>
+<path class="muted" d="M21 50h7M68 57h7"/>
+
+</svg>

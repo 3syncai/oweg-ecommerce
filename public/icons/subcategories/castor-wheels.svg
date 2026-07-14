@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+<title id="title">Castor Wheels - Creative</title>
+<style>
+.outline{fill:none;stroke:#1F2A33;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
+.muted{fill:none;stroke:#667085;stroke-width:2.3;stroke-linecap:round;stroke-linejoin:round}
+.accent{fill:#66C940}
+.accent-stroke{fill:none;stroke:#66C940;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
+.soft{fill:#EAF8E7}
+.light{fill:#F7FBF5}
+.white{fill:#fff}
+</style>
+
+<defs>
+  <filter id="shadow2" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#DDEFE2" flood-opacity="0.9"/>
+  </filter>
+</defs>
+<circle class="soft" cx="48" cy="48" r="34"/>
+<path class="white" d="M36 23h18c6 0 10 4 10 10v9c0 2-2 4-4 4H44l-4 5h-8v-8l4-4V33c0-6 4-10 10-10z" filter="url(#shadow2)"/>
+<path class="outline" d="M36 23h18c6 0 10 4 10 10v9c0 2-2 4-4 4H44l-4 5h-8v-8l4-4V33c0-6 4-10 10-10z"/>
+<circle class="white" cx="34" cy="61" r="13" filter="url(#shadow2)"/>
+<circle class="outline" cx="34" cy="61" r="13"/>
+<circle class="outline" cx="34" cy="61" r="5"/>
+<path class="accent-stroke" d="M27 54l14 14M41 54L27 68"/>
+<path class="outline" d="M54 23v9M59 28h-10"/>
+<path class="muted" d="M59 46l8 8"/>
+<circle class="accent" cx="67" cy="54" r="3"/>
+
+</svg>
