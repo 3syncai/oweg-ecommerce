@@ -43,6 +43,8 @@ const SUBCATEGORY_ICON_FILES = new Set([
   "cables",
   "em-locks",
   "biometric-devices",
+  "sassiest-health-care",
+  "castor-wheels",
 ]);
 
 const SLUG_ALIASES: Record<string, string> = {
@@ -101,6 +103,11 @@ const SLUG_ALIASES: Record<string, string> = {
   "surveillance-security-biometric-devices": "biometric-devices",
   biometric: "biometric-devices",
   "biometric-device": "biometric-devices",
+  "health-care-sassiest": "sassiest-health-care",
+  sassiest: "sassiest-health-care",
+  "castor-wheel": "castor-wheels",
+  "caster-wheels": "castor-wheels",
+  "caster-wheel": "castor-wheels",
 };
 
 export function resolveSubcategoryIconSlug(handle?: string, title?: string): string | null {

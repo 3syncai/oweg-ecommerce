@@ -130,7 +130,6 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const [compareDetails, setCompareDetails] = useState<Record<string, DetailedProductType | null>>({})
   const [compareDetailsLoading, setCompareDetailsLoading] = useState<Record<string, boolean>>({})
   const { count, syncFromCartPayload, bumpCount, restoreCount } = useCartSummary()
-  const summaryScrollRef = useRef<HTMLDivElement | null>(null)
   const outOfStockToastRef = useRef<string | null>(null)
   const [wishlistBusy, setWishlistBusy] = useState(false)
   const sourceTagParam = searchParams?.get('sourceTag')?.trim() || undefined
@@ -155,29 +154,6 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     router.push('/cart')
   }, [router])
 
-  // Capture wheel scrolling to exhaust summary content before page scroll
-  useEffect(() => {
-    const el = summaryScrollRef.current
-    if (!el) return
-
-    const onWheel = (event: WheelEvent) => {
-      if (!el) return
-      const delta = event.deltaY
-      const atTop = el.scrollTop <= 0
-      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight
-
-      // If there is still room to scroll inside the summary, consume the wheel event
-      if ((delta > 0 && !atBottom) || (delta < 0 && !atTop)) {
-        event.preventDefault()
-        el.scrollBy({ top: delta, behavior: 'auto' })
-      }
-    }
-
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => {
-      el.removeEventListener('wheel', onWheel)
-    }
-  }, [])
   const {
     data: productResponse,
     isLoading: productLoading,
@@ -1541,7 +1517,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           </div>
         ) : product ? (
           <>
-            {/* ====== MAIN TWO-COLUMN: LEFT = STICKY GALLERY, RIGHT = SCROLLABLE SUMMARY ====== */}
+            {/* ====== MAIN TWO-COLUMN: LEFT = STICKY GALLERY, RIGHT = PAGE-SCROLL SUMMARY ====== */}
             <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 mb-10 items-start max-w-full overflow-hidden">
               {/* LEFT: Sticky Image/Gallery */}
               <div className="relative lg:sticky lg:top-10 self-start w-full max-w-full overflow-hidden">
@@ -1568,12 +1544,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                 </div>
               </div>
 
-              {/* RIGHT: Scrollable Summary */}
-              <div
-                ref={summaryScrollRef}
-                className="w-full min-w-0 space-y-5 lg:pl-4 lg:pr-2 lg:max-h-[calc(100vh-160px)] lg:overflow-y-auto lg:pr-3 lg:-mr-3 lg:scrollbar-thin lg:scrollbar-thumb-transparent lg:scrollbar-track-transparent"
-                style={{ scrollbarWidth: 'none' }}
-              >
+              {/* RIGHT: Summary scrolls with the page (no nested scroll) */}
+              <div className="w-full min-w-0 space-y-5 lg:pl-4">
                 <ProductSummary
                   product={displayProduct ?? product}
                   brandName={brandName}

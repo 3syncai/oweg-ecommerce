@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { GitCompare, Heart, Minus, Plus, Share2, ShoppingCart } from 'lucide-react'
 import type { DetailedProduct as DetailedProductType } from '@/lib/medusa'
 import { isVariantPurchasable, resolveColorImageUrls } from '@/lib/medusa'
@@ -108,6 +108,48 @@ const ProductSummary = ({
   const rawSavings = displayMRP > displayPrice ? displayMRP - displayPrice : 0
   const visualOptionTitle = getVisualOptionTitle(product)
 
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  const [titleExpanded, setTitleExpanded] = useState(false)
+  const [titleOverflows, setTitleOverflows] = useState(false)
+
+  useLayoutEffect(() => {
+    setTitleExpanded(false)
+  }, [product.title])
+
+  useEffect(() => {
+    const el = titleRef.current
+    if (!el) return
+
+    const measure = () => {
+      if (titleExpanded) {
+        // While expanded, keep the toggle if we already know it overflows.
+        return
+      }
+      // Clamp is applied; overflow when full content taller than the clamped box.
+      setTitleOverflows(el.scrollHeight > el.clientHeight + 1)
+    }
+
+    measure()
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
+    ro?.observe(el)
+    window.addEventListener('resize', measure)
+    return () => {
+      ro?.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [product.title, titleExpanded])
+
+  // When collapsing after expand, re-measure overflow on next paint.
+  useEffect(() => {
+    if (titleExpanded) return
+    const el = titleRef.current
+    if (!el) return
+    const id = window.requestAnimationFrame(() => {
+      setTitleOverflows(el.scrollHeight > el.clientHeight + 1)
+    })
+    return () => window.cancelAnimationFrame(id)
+  }, [titleExpanded, product.title])
+
   return (
     <div className="space-y-5 lg:pl-4">
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs uppercase tracking-wide text-green-700">
@@ -135,7 +177,26 @@ const ProductSummary = ({
           </button>
         </div>
       </div>
-      <h1 className="text-2xl lg:text-3xl font-semibold text-slate-900">{product.title}</h1>
+      <div className="space-y-1">
+        <h1
+          ref={titleRef}
+          className={`text-2xl lg:text-3xl font-semibold text-slate-900 ${
+            titleExpanded ? '' : 'line-clamp-3'
+          }`}
+        >
+          {product.title}
+        </h1>
+        {(titleOverflows || titleExpanded) && (
+          <button
+            type="button"
+            onClick={() => setTitleExpanded((open) => !open)}
+            className="text-sm font-semibold text-green-700 hover:text-green-800 transition"
+            aria-expanded={titleExpanded}
+          >
+            {titleExpanded ? 'Show less' : 'Show more'}
+          </button>
+        )}
+      </div>
       {(product.discount > 0 || flashSaleInfo?.active) && (
         <div className="inline-flex items-center gap-2 flex-wrap">
           {flashSaleInfo?.active && (
@@ -300,55 +361,56 @@ const ProductSummary = ({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-6">
-        <div className="flex items-center border border-slate-200 rounded-full overflow-hidden">
-          <button
-            type="button"
-            onClick={() => onQuantityChange(-1)}
-            className="px-3 py-2 text-slate-600 hover:bg-slate-50"
-            aria-label="Decrease quantity"
-          >
-            <Minus className="w-4 h-4" />
-          </button>
-          <div className="px-4 text-base font-semibold text-slate-900">{quantity}</div>
-          <button
-            type="button"
-            onClick={() => onQuantityChange(1)}
-            className="px-3 py-2 text-slate-600 hover:bg-slate-50"
-            aria-label="Increase quantity"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="flex gap-3 flex-wrap">
-          <button
-            type="button"
-            onClick={onAddToCart}
-            disabled={!hasStock}
-            aria-disabled={!hasStock}
-            className={`inline-flex items-center gap-2 rounded-full px-6 py-3 text-white font-semibold shadow transition ${hasStock
-              ? 'bg-green-600 hover:bg-green-700'
-              : 'bg-slate-400 cursor-not-allowed opacity-70'
-              }`}
-          >
-            <ShoppingCart className="w-4 h-4" />
-            Add to cart
-          </button>
-          <button
-            type="button"
-            onClick={onBuyNow}
-            disabled={!hasStock}
-            aria-disabled={!hasStock}
-            className={`inline-flex items-center gap-2 rounded-full border px-6 py-3 font-semibold transition ${hasStock
-              ? 'border-green-600 text-green-700 hover:bg-green-50'
-              : 'border-slate-300 text-slate-400 cursor-not-allowed opacity-70'
-              }`}
-          >
-            Buy now
-          </button>
+      <div className="sticky bottom-0 z-20 -mx-1 mt-4 bg-[#f3f8f3] px-1 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+          <div className="flex items-center border border-slate-200 rounded-full overflow-hidden bg-white">
+            <button
+              type="button"
+              onClick={() => onQuantityChange(-1)}
+              className="px-3 py-2 text-slate-600 hover:bg-slate-50"
+              aria-label="Decrease quantity"
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+            <div className="px-4 text-base font-semibold text-slate-900">{quantity}</div>
+            <button
+              type="button"
+              onClick={() => onQuantityChange(1)}
+              className="px-3 py-2 text-slate-600 hover:bg-slate-50"
+              aria-label="Increase quantity"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex gap-3 flex-wrap">
+            <button
+              type="button"
+              onClick={onAddToCart}
+              disabled={!hasStock}
+              aria-disabled={!hasStock}
+              className={`inline-flex items-center gap-2 rounded-full px-6 py-3 text-white font-semibold shadow transition ${hasStock
+                ? 'bg-green-600 hover:bg-green-700'
+                : 'bg-slate-400 cursor-not-allowed opacity-70'
+                }`}
+            >
+              <ShoppingCart className="w-4 h-4" />
+              Add to cart
+            </button>
+            <button
+              type="button"
+              onClick={onBuyNow}
+              disabled={!hasStock}
+              aria-disabled={!hasStock}
+              className={`inline-flex items-center gap-2 rounded-full border px-6 py-3 font-semibold transition ${hasStock
+                ? 'border-green-600 text-green-700 hover:bg-green-50'
+                : 'border-slate-300 text-slate-400 cursor-not-allowed opacity-70'
+                }`}
+            >
+              Buy now
+            </button>
+          </div>
         </div>
       </div>
-
 
     </div>
   )

@@ -209,6 +209,8 @@ const Header: React.FC = () => {
 
   const [q, setQ] = React.useState("");
   const [suggestions, setSuggestions] = React.useState<{ id: string; name: string; image?: string; handle?: string }[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = React.useState(false);
+  const [suggestionsReady, setSuggestionsReady] = React.useState(false);
   const [showSuggest, setShowSuggest] = React.useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -734,40 +736,159 @@ const Header: React.FC = () => {
     }
   }, [fetchPlaceForPin, pinInput]);
 
-  // Debounced suggestions
-  React.useEffect(() => {
-    const id = setTimeout(() => {
-      if (q.trim().length < 2) {
-        setSuggestions([]);
-        return;
-      }
-      const params = new URLSearchParams({ q });
+  const buildSearchParams = React.useCallback(
+    (query: string, limit?: number) => {
+      const params = new URLSearchParams({ q: query.trim() });
+      if (typeof limit === "number") params.set("limit", String(limit));
       if (selectedFilter?.type === "category") {
-        if (selectedFilter.handle) params.append("category", selectedFilter.handle);
+        if (selectedFilter.id) params.append("categoryId", selectedFilter.id);
+        else if (selectedFilter.handle) params.append("category", selectedFilter.handle);
       } else if (selectedFilter?.type === "collection") {
         if (selectedFilter.id) params.append("collectionId", selectedFilter.id);
         else if (selectedFilter.handle) params.append("collection", selectedFilter.handle);
-      } else if (selectedFilter?.type === "all") {
-        // nothing
       }
-      fetch(`/api/medusa/search?${params.toString()}`)
+      return params;
+    },
+    [selectedFilter]
+  );
+
+  const navigateToSearch = React.useCallback(() => {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+    router.push(`/search?${buildSearchParams(trimmed).toString()}`);
+    setShowSuggest(false);
+  }, [q, router, buildSearchParams]);
+
+  // Debounced OpenSearch suggestions (same engine as /search results)
+  React.useEffect(() => {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) {
+      setSuggestions([]);
+      setSuggestionsLoading(false);
+      setSuggestionsReady(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    const id = setTimeout(() => {
+      setSuggestionsLoading(true);
+      setSuggestionsReady(false);
+      const params = buildSearchParams(trimmed, 8);
+
+      fetch(`/api/search?${params.toString()}`, { signal: controller.signal })
         .then((r) => r.json())
         .then((d) => {
-          type S = { id: string; name: string; image?: string; handle?: string };
-          const list: S[] = (d.products as S[] || [])
+          if (cancelled) return;
+          type Row = {
+            id?: string;
+            title?: string;
+            name?: string;
+            thumbnail?: string;
+            image?: string;
+            handle?: string;
+          };
+          const rows: Row[] = Array.isArray(d) ? d : [];
+          const list = rows
             .map((p) => ({
               id: String(p.id || "").trim(),
-              name: normalizeSuggestionText(p.name),
-              image: normalizeSuggestionImage((p as S).image),
-              handle: (p as S).handle,
+              name: normalizeSuggestionText(p.title || p.name || ""),
+              image: normalizeSuggestionImage(p.thumbnail || p.image),
+              handle: p.handle,
             }))
             .filter((p) => p.id && p.name);
           setSuggestions(list);
         })
-        .catch(() => setSuggestions([]));
-    }, 250);
-    return () => clearTimeout(id);
-  }, [q, selectedFilter, normalizeSuggestionImage, normalizeSuggestionText]);
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          const aborted =
+            typeof err === "object" &&
+            err !== null &&
+            "name" in err &&
+            (err as { name?: string }).name === "AbortError";
+          if (!aborted) setSuggestions([]);
+        })
+        .finally(() => {
+          if (cancelled) return;
+          setSuggestionsLoading(false);
+          setSuggestionsReady(true);
+        });
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(id);
+      controller.abort();
+    };
+  }, [q, buildSearchParams, normalizeSuggestionImage, normalizeSuggestionText]);
+
+  const showSuggestionsPanel =
+    showSuggest && q.trim().length >= 2 && (suggestionsLoading || suggestionsReady);
+
+  const renderSuggestionsPanel = (mobile: boolean) => {
+    if (!showSuggestionsPanel) return null;
+    const panelClass = mobile
+      ? "absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 max-h-[60vh] overflow-y-auto"
+      : "absolute top-full left-0 mt-1 z-50 w-full bg-white rounded-md shadow-lg ring-1 ring-black/5 max-h-[60vh] overflow-auto";
+
+    return (
+      <div className={panelClass} role="listbox" aria-label="Search suggestions">
+        {suggestionsLoading && (
+          <div className="space-y-2 px-3 py-3" aria-busy="true">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-2 animate-pulse">
+                <div className={`rounded bg-gray-200 ${mobile ? "h-10 w-10" : "h-9 w-9"}`} />
+                <div className="h-3 flex-1 rounded bg-gray-200" />
+              </div>
+            ))}
+          </div>
+        )}
+        {!suggestionsLoading && suggestions.length === 0 && (
+          <div className="px-4 py-3 text-sm text-gray-500">No products found</div>
+        )}
+        {!suggestionsLoading &&
+          suggestions.map((s) => {
+            const slug = encodeURIComponent(String(s.handle || s.id));
+            const href = `/productDetail/${slug}?id=${encodeURIComponent(String(s.id))}`;
+            return (
+              <Link
+                key={s.id}
+                href={href}
+                role="option"
+                className={
+                  mobile
+                    ? "flex items-center gap-3 px-4 py-2 hover:bg-gray-50"
+                    : "flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                }
+                onClick={() => setShowSuggest(false)}
+              >
+                {s.image ? (
+                  <Image
+                    src={s.image}
+                    alt={s.name}
+                    width={mobile ? 40 : 36}
+                    height={mobile ? 40 : 36}
+                    className={mobile ? "rounded-md object-cover" : "rounded object-cover"}
+                  />
+                ) : (
+                  <div className={mobile ? "w-10 h-10 rounded-md bg-gray-200" : "w-9 h-9 bg-gray-200 rounded"} />
+                )}
+                <div
+                  className={
+                    mobile
+                      ? "min-w-0 flex-1 text-sm text-header-text truncate"
+                      : "min-w-0 flex-1 text-sm text-gray-800 truncate"
+                  }
+                >
+                  {s.name}
+                </div>
+              </Link>
+            );
+          })}
+      </div>
+    );
+  };
 
   // compute dropdown position & size (smaller than before)
   // use position: fixed so portal remains stable during page scroll
@@ -1275,41 +1396,11 @@ const Header: React.FC = () => {
                       onFocus={() => setShowSuggest(true)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && q.trim()) {
-                          const params = new URLSearchParams({ q: q.trim() });
-                          if (selectedFilter?.type === "category" && selectedFilter.handle) {
-                            params.append("category", selectedFilter.handle);
-                          } else if (selectedFilter?.type === "collection") {
-                            if (selectedFilter.id) params.append("collectionId", selectedFilter.id);
-                            else if (selectedFilter.handle) params.append("collection", selectedFilter.handle);
-                          }
-                          router.push(`/search?${params.toString()}`);
-                          setShowSuggest(false);
+                          navigateToSearch();
                         }
                       }}
                     />
-                    {showSuggest && q.length >= 2 && suggestions.length > 0 && (
-                      <div className="absolute top-full left-0 mt-1 z-50 w-full bg-white rounded-md shadow-lg ring-1 ring-black/5 max-h-[60vh] overflow-auto">
-                        {suggestions.map((s) => {
-                          const slug = encodeURIComponent(String(s.handle || s.id))
-                          const href = `/productDetail/${slug}?id=${encodeURIComponent(String(s.id))}`
-                          return (
-                            <Link
-                              key={s.id}
-                              href={href}
-                              className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                              onClick={() => setShowSuggest(false)}
-                            >
-                              {s.image ? (
-                                <Image src={s.image} alt={s.name} width={36} height={36} className="rounded object-cover" />
-                              ) : (
-                                <div className="w-9 h-9 bg-gray-200 rounded" />
-                              )}
-                              <div className="min-w-0 flex-1 text-sm text-gray-800 truncate">{s.name}</div>
-                            </Link>
-                          )
-                        })}
-                      </div>
-                    )}
+                    {renderSuggestionsPanel(false)}
                   </div>
 
                   {/* Search Button - Square Green Button with Black Icon - Pixel Perfect */}
@@ -1317,29 +1408,11 @@ const Header: React.FC = () => {
                     className="h-10 w-10 rounded-r-md bg-header-accent hover:bg-[#6bb832] active:bg-[#5aa028] text-black p-0 flex items-center justify-center transition-colors focus:outline-none focus:ring-2 focus:ring-header-accent focus:ring-offset-0 focus:z-10 border border-l-0 border-gray-300"
                     type="button"
                     onClick={() => {
-                      if (q.trim()) {
-                        const params = new URLSearchParams({ q: q.trim() });
-                        if (selectedFilter?.type === "category" && selectedFilter.handle) {
-                          params.append("category", selectedFilter.handle);
-                        } else if (selectedFilter?.type === "collection") {
-                          if (selectedFilter.id) params.append("collectionId", selectedFilter.id);
-                          else if (selectedFilter.handle) params.append("collection", selectedFilter.handle);
-                        }
-                        router.push(`/search?${params.toString()}`);
-                        setShowSuggest(false);
-                      }
+                      navigateToSearch();
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && q.trim()) {
-                        const params = new URLSearchParams({ q: q.trim() });
-                        if (selectedFilter?.type === "category" && selectedFilter.handle) {
-                          params.append("category", selectedFilter.handle);
-                        } else if (selectedFilter?.type === "collection") {
-                          if (selectedFilter.id) params.append("collectionId", selectedFilter.id);
-                          else if (selectedFilter.handle) params.append("collection", selectedFilter.handle);
-                        }
-                        router.push(`/search?${params.toString()}`);
-                        setShowSuggest(false);
+                        navigateToSearch();
                       }
                     }}
                   >
@@ -1489,37 +1562,25 @@ const Header: React.FC = () => {
                           setShowSuggest(true);
                         }}
                         onFocus={() => setShowSuggest(true)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && q.trim()) {
+                            navigateToSearch();
+                          }
+                        }}
                         placeholder="Search products, categories..."
                         className="h-12 rounded-full border-gray-200 bg-white shadow-sm pr-14"
                       />
                       <div className="absolute inset-y-1 right-3 flex items-center">
-                        <div className="w-10 h-10 rounded-full bg-header-accent text-white flex items-center justify-center">
+                        <button
+                          type="button"
+                          aria-label="Search"
+                          onClick={() => navigateToSearch()}
+                          className="w-10 h-10 rounded-full bg-header-accent text-white flex items-center justify-center cursor-pointer"
+                        >
                           <Search className="w-5 h-5" />
-                        </div>
+                        </button>
                       </div>
-                      {showSuggest && q.length >= 2 && suggestions.length > 0 && (
-                        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 max-h-[60vh] overflow-y-auto">
-                          {suggestions.map((s) => {
-                            const slug = encodeURIComponent(String(s.handle || s.id));
-                            const href = `/productDetail/${slug}?id=${encodeURIComponent(String(s.id))}`;
-                            return (
-                              <Link
-                                key={s.id}
-                                href={href}
-                                className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50"
-                                onClick={() => setShowSuggest(false)}
-                              >
-                                {s.image ? (
-                                  <Image src={s.image} alt={s.name} width={40} height={40} className="rounded-md object-cover" />
-                                ) : (
-                                  <div className="w-10 h-10 rounded-md bg-gray-200" />
-                                )}
-                                <span className="min-w-0 flex-1 text-sm text-header-text truncate">{s.name}</span>
-                              </Link>
-                            );
-                          })}
-                        </div>
-                      )}
+                      {renderSuggestionsPanel(true)}
                     </div>
 
                     {/* Mobile Delivery Location / Category Label */}
