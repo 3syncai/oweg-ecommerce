@@ -51,7 +51,8 @@ const StatCard = ({
       </div>
 
       <Heading level="h2" className={clx(isHero ? "text-3xl md:text-4xl" : "text-2xl")}>
-        {value}
+        {/* Stringify so 0 isn't dropped by Heading treating children as falsy */}
+        {typeof value === "number" ? String(value) : value ?? "0"}
       </Heading>
 
       {subtext && (

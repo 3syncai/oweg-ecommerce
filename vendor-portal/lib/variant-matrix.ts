@@ -174,6 +174,32 @@ export function computeDiscountPercent(price: string, discountedPrice: string): 
   return Math.round(((basePrice - salePrice) / basePrice) * 1000) / 10
 }
 
+/** True when Medusa's implied Default option is the only structure (not a real Color/Size matrix). */
+export function isSimpleDefaultProduct(
+  options: Array<{ title: string; values?: string[] }>,
+  variants: Array<{ optionValues?: Record<string, string> }>
+): boolean {
+  if (variants.length > 1) return false
+  if (options.length === 0) return true
+  if (options.length > 1) return false
+
+  const title = (options[0]?.title || "").trim().toLowerCase()
+  if (title && title !== "default" && title !== "title") return false
+
+  const values = options[0]?.values || []
+  if (values.some((v) => (v || "").trim().toLowerCase() !== "default")) return false
+
+  const optionValues = variants[0]?.optionValues || {}
+  const entries = Object.entries(optionValues)
+  if (!entries.length) return true
+
+  return entries.every(
+    ([key, value]) =>
+      key.trim().toLowerCase() === "default" &&
+      (!(value || "").trim() || value.trim().toLowerCase() === "default")
+  )
+}
+
 export function createDefaultVariantRow(): VariantMatrixRow {
   return {
     title: "Default variant",

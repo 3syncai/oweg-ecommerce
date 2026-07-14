@@ -33,6 +33,27 @@ export const fulfillmentStatusVariant = (status?: string): StatusVariant => {
   }
 }
 
+export const returnStatusVariant = (status?: string): StatusVariant => {
+  switch ((status || "").toLowerCase()) {
+    case "approved":
+    case "refunded":
+    case "replaced":
+    case "received":
+    case "closed":
+      return "success"
+    case "pickup_initiated":
+    case "picked_up":
+      return "info"
+    case "pending_approval":
+    case "pending":
+      return "warning"
+    case "rejected":
+      return "error"
+    default:
+      return "neutral"
+  }
+}
+
 type StatusDotProps = {
   variant?: StatusVariant
   className?: string
