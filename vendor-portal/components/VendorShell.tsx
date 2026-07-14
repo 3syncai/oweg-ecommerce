@@ -13,6 +13,7 @@ import {
   ChevronRight,
   EllipsisHorizontal,
   CurrencyDollar,
+  ArrowPath,
   XMark,
 } from "@medusajs/icons"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
@@ -55,6 +56,13 @@ const navItems = [
     description: "",
     path: "/orders",
     icon: ShoppingCart,
+    type: "normal",
+  },
+  {
+    label: "Returns",
+    description: "",
+    path: "/returns",
+    icon: ArrowPath,
     type: "normal",
   },
   {

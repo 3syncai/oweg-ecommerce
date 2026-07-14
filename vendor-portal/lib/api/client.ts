@@ -575,3 +575,48 @@ export const vendorCustomersApi = {
   },
 }
 
+export type VendorReturnRequest = {
+  id: string
+  order_id: string
+  order_display_id: string | number | null
+  type: 'return' | 'replacement' | string
+  status: string
+  reason: string | null
+  notes: string | null
+  payment_type: string | null
+  refund_method: string | null
+  rejection_reason: string | null
+  approved_at: string | null
+  rejected_at: string | null
+  pickup_initiated_at: string | null
+  picked_up_at: string | null
+  received_at: string | null
+  refunded_at: string | null
+  shiprocket_awb: string | null
+  shiprocket_status: string | null
+  created_at: string
+  updated_at?: string
+  customer_email: string | null
+  customer_name: string | null
+  items: Array<{
+    id: string
+    order_item_id: string
+    quantity: number
+    condition?: string | null
+    reason?: string | null
+  }>
+  vendor_items: Array<{
+    id: string
+    title: string
+    quantity: number
+  }>
+  order_total: number | null
+}
+
+// Vendor Returns API
+export const vendorReturnsApi = {
+  list: async () => {
+    return apiRequest<{ return_requests: VendorReturnRequest[] }>('/vendor/returns')
+  },
+}
+

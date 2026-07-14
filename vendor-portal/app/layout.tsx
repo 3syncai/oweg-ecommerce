@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { Toaster } from "@medusajs/ui";
 import { ThemeProvider, themeBootstrapScript } from "@/lib/theme";
 import { DebugControllerProvider } from "@/components/debug-controller/DebugControllerProvider";
 import SiteProtections from "@/components/debug-controller/SiteProtections";
@@ -41,6 +42,7 @@ export default function RootLayout({
           <DebugControllerProvider>
             <SiteProtections />
             {children}
+            <Toaster />
           </DebugControllerProvider>
         </ThemeProvider>
       </body>

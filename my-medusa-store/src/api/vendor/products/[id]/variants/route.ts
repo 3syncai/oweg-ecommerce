@@ -8,6 +8,7 @@ import {
 import {
   fetchProductVariantMatrix,
   syncVariantInventoryLevels,
+  syncVendorProductOptionsAndVariants,
   syncVariantThumbnailsFromColorImages,
 } from "../../../../../lib/vendor-product-variants"
 
@@ -51,6 +52,7 @@ export async function PATCH(req: MedusaRequest, res: MedusaResponse) {
     const body = (req as { body?: Record<string, unknown> }).body || {}
     const {
       variants: variantUpdates,
+      options: optionUpdates,
       color_images,
       primary_visual_option,
       images,
@@ -63,7 +65,56 @@ export async function PATCH(req: MedusaRequest, res: MedusaResponse) {
       listPriceLists?: (filters: { status: string[] }) => Promise<Array<{ id: string; title?: string }>>
     }
 
-    if (Array.isArray(variantUpdates)) {
+    const wantsFullMatrixSync =
+      Array.isArray(optionUpdates) &&
+      optionUpdates.length > 0 &&
+      Array.isArray(variantUpdates)
+
+    if (wantsFullMatrixSync) {
+      const syncOptions = (optionUpdates as Array<Record<string, unknown>>)
+        .map((opt) => ({
+          title: typeof opt.title === "string" ? opt.title : "",
+          values: Array.isArray(opt.values)
+            ? opt.values.filter((v): v is string => typeof v === "string")
+            : [],
+        }))
+        .filter((opt) => opt.title && opt.values.length)
+
+      const syncVariants = (variantUpdates as Array<Record<string, unknown>>).map(
+        (variant) => {
+          const rawOptions =
+            variant.options && typeof variant.options === "object" && !Array.isArray(variant.options)
+              ? (variant.options as Record<string, string>)
+              : variant.option_values &&
+                  typeof variant.option_values === "object" &&
+                  !Array.isArray(variant.option_values)
+                ? (variant.option_values as Record<string, string>)
+                : {}
+
+          return {
+            id: typeof variant.id === "string" ? variant.id : undefined,
+            title: typeof variant.title === "string" ? variant.title : undefined,
+            sku: typeof variant.sku === "string" ? variant.sku : null,
+            manage_inventory: variant.manage_inventory !== false,
+            allow_backorder: variant.allow_backorder === true,
+            inventory_quantity:
+              typeof variant.inventory_quantity === "number"
+                ? variant.inventory_quantity
+                : undefined,
+            price: variant.price != null ? Number(variant.price) : undefined,
+            discounted_price:
+              variant.discounted_price != null ? Number(variant.discounted_price) : undefined,
+            options: Object.fromEntries(
+              Object.entries(rawOptions)
+                .filter(([, value]) => typeof value === "string" && value.trim())
+                .map(([key, value]) => [key, String(value).trim()])
+            ),
+          }
+        }
+      )
+
+      await syncVendorProductOptionsAndVariants(req, productId, syncOptions, syncVariants)
+    } else if (Array.isArray(variantUpdates)) {
       for (const variant of variantUpdates) {
         if (!variant || typeof variant !== "object") continue
         const variantId = typeof variant.id === "string" ? variant.id : null

@@ -15,6 +15,7 @@ import {
   vendorInventoryApi,
   vendorProfileApi,
   vendorPayoutsApi,
+  vendorReturnsApi,
 } from "@/lib/api/client"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -25,6 +26,7 @@ import {
   ArchiveBox,
   Plus,
   ArrowUpRightMini,
+  ArrowPath,
   Tag,
 } from "@medusajs/icons"
 
@@ -36,6 +38,8 @@ type DashboardData = {
   totalOrders: number
   pendingOrders: number
   completedOrders: number
+  totalReturns: number
+  pendingReturns: number
   totalRevenue: number
   totalCustomers: number
   averageOrderValue: number
@@ -63,6 +67,12 @@ const QUICK_ACTIONS = [
     label: "View Orders",
     description: "Process customer orders",
     icon: ShoppingCart,
+  },
+  {
+    href: "/returns",
+    label: "View Returns",
+    description: "Track return requests",
+    icon: ArrowPath,
   },
   {
     href: "/customers",
@@ -127,8 +137,15 @@ const VendorDashboardPage = () => {
       try {
         setLoading(true)
 
-        const [productsData, ordersData, customersData, inventoryData, profileData, payoutData] =
-          await Promise.all([
+        const [
+          productsData,
+          ordersData,
+          customersData,
+          inventoryData,
+          profileData,
+          payoutData,
+          returnsData,
+        ] = await Promise.all([
             vendorProductsApi.list().catch(() => ({ products: [] })),
             vendorOrdersApi.list().catch(() => ({ orders: [] })),
             vendorCustomersApi.list().catch(() => ({ customers: [] })),
@@ -146,6 +163,7 @@ const VendorDashboardPage = () => {
                 reversed_recent: [],
               },
             })),
+            vendorReturnsApi.list().catch(() => ({ return_requests: [] })),
           ])
 
         setVendorInfo(profileData?.vendor || null)
@@ -154,6 +172,10 @@ const VendorDashboardPage = () => {
         const orders = ordersData?.orders || []
         const customers = customersData?.customers || []
         const inventory = inventoryData?.inventory || []
+        const returnRequests = returnsData?.return_requests || []
+        const pendingReturns = returnRequests.filter(
+          (r: any) => r.status === "pending_approval"
+        ).length
 
         const publishedProducts = products.filter(
           (p: any) =>
@@ -258,6 +280,15 @@ const VendorDashboardPage = () => {
           })
         }
 
+        if (pendingReturns > 0) {
+          actionItems.push({
+            type: "warning",
+            variant: "warning",
+            message: `${pendingReturns} return${pendingReturns > 1 ? "s" : ""} awaiting approval`,
+            link: "/returns",
+          })
+        }
+
         if (lowStockProducts.length > 0) {
           actionItems.push({
             type: "warning",
@@ -284,6 +315,8 @@ const VendorDashboardPage = () => {
           totalOrders: orders.length,
           pendingOrders,
           completedOrders,
+          totalReturns: returnRequests.length,
+          pendingReturns,
           totalRevenue,
           totalCustomers: customers.length,
           averageOrderValue: avgOrderValue,
@@ -490,6 +523,28 @@ const VendorDashboardPage = () => {
               </div>
             }
           />
+
+          <Link href="/returns" className="block text-inherit no-underline">
+            <StatCard
+              icon={<ArrowPath />}
+              label="Returns"
+              value={data.totalReturns ?? 0}
+              style={{ animationDelay: "240ms" }}
+              className="animate-fade-in-up-slow h-full"
+              subtext={
+                <div className="flex flex-wrap gap-3">
+                  {(data.pendingReturns ?? 0) > 0 ? (
+                    <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
+                      <StatusDot variant="warning" />
+                      <Text size="small">{data.pendingReturns} pending</Text>
+                    </span>
+                  ) : (
+                    <Text className="text-ui-fg-subtle">Return requests</Text>
+                  )}
+                </div>
+              }
+            />
+          </Link>
         </div>
 
         {/* Lists + quick actions */}
