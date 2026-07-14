@@ -1483,7 +1483,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const showHealthCareAgeGate = productHasHealthCareCategory(product?.categories)
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#f3f8f3] font-sans overflow-x-hidden touch-pan-y">
+    <div className="flex min-h-screen flex-col bg-[#f3f8f3] font-sans overflow-x-clip touch-pan-y">
       <HealthCareAgeGate enabled={showHealthCareAgeGate} />
       <style>{`
         :root {
@@ -1518,7 +1518,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
         ) : product ? (
           <>
             {/* ====== MAIN TWO-COLUMN: LEFT = STICKY GALLERY, RIGHT = PAGE-SCROLL SUMMARY ====== */}
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 mb-10 items-start max-w-full overflow-hidden">
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 mb-10 items-start max-w-full overflow-clip">
               {/* LEFT: Sticky Image/Gallery */}
               <div className="relative lg:sticky lg:top-10 self-start w-full max-w-full overflow-hidden">
                 <ProductGallery

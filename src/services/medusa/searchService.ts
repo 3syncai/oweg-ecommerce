@@ -64,13 +64,14 @@ function buildScopeFilters(scope: ScopeFilters) {
   return filters
 }
 
-function buildPrimaryQuery(normalizedQuery: string, scope: ScopeFilters) {
+function buildUnifiedQuery(normalizedQuery: string, scope: ScopeFilters) {
   return {
     function_score: {
       query: {
         bool: {
           filter: buildScopeFilters(scope),
           should: [
+            // Primary-tier clauses (higher boosts)
             {
               multi_match: {
                 query: normalizedQuery,
@@ -103,7 +104,6 @@ function buildPrimaryQuery(normalizedQuery: string, scope: ScopeFilters) {
                 boost: 3,
               },
             },
-            // Fuzzy without custom analyzer (synonym_graph fields + analyzer override was unreliable).
             {
               multi_match: {
                 query: normalizedQuery,
@@ -116,40 +116,7 @@ function buildPrimaryQuery(normalizedQuery: string, scope: ScopeFilters) {
                 boost: 1.8,
               },
             },
-          ],
-          minimum_should_match: 1,
-        },
-      },
-      score_mode: "sum",
-      boost_mode: "sum",
-      functions: [
-        { filter: { term: { in_stock: true } }, weight: 2.0 },
-        { field_value_factor: { field: "popularity_score", factor: 0.15, missing: 0 } },
-        { field_value_factor: { field: "rating", factor: 0.2, missing: 0 } },
-        { field_value_factor: { field: "sales_30d", factor: 0.03, missing: 0 } },
-        {
-          gauss: {
-            created_at: {
-              origin: "now",
-              scale: "60d",
-              offset: "7d",
-              decay: 0.4,
-            },
-          },
-          weight: 0.4,
-        },
-      ],
-    },
-  }
-}
-
-function buildWideFallbackQuery(normalizedQuery: string, scope: ScopeFilters) {
-  return {
-    function_score: {
-      query: {
-        bool: {
-          filter: buildScopeFilters(scope),
-          should: [
+            // Wide-fallback clauses (lower boosts) — same round trip
             {
               multi_match: {
                 query: normalizedQuery,
@@ -180,9 +147,21 @@ function buildWideFallbackQuery(normalizedQuery: string, scope: ScopeFilters) {
       score_mode: "sum",
       boost_mode: "sum",
       functions: [
-        { filter: { term: { in_stock: true } }, weight: 1.7 },
-        { field_value_factor: { field: "popularity_score", factor: 0.08, missing: 0 } },
-        { field_value_factor: { field: "rating", factor: 0.1, missing: 0 } },
+        { filter: { term: { in_stock: true } }, weight: 2.0 },
+        { field_value_factor: { field: "popularity_score", factor: 0.15, missing: 0 } },
+        { field_value_factor: { field: "rating", factor: 0.2, missing: 0 } },
+        { field_value_factor: { field: "sales_30d", factor: 0.03, missing: 0 } },
+        {
+          gauss: {
+            created_at: {
+              origin: "now",
+              scale: "60d",
+              offset: "7d",
+              decay: 0.4,
+            },
+          },
+          weight: 0.4,
+        },
       ],
     },
   }
@@ -216,39 +195,37 @@ function mapHits(response: any): SearchHit[] {
   return hits.map((hit: any) => hit._source as SearchHit)
 }
 
+/** Single OpenSearch round trip (primary + wide clauses combined). */
 async function runSearch(normalizedQuery: string, scope: ScopeFilters, limit: number): Promise<SearchHit[]> {
   try {
-    const primaryResponse = await client.search({
+    const response = await client.search({
       index: "products",
       size: limit,
       _source: SOURCE_FIELDS,
       body: {
-        query: buildPrimaryQuery(normalizedQuery, scope) as any,
+        query: buildUnifiedQuery(normalizedQuery, scope) as any,
         track_total_hits: false,
       },
     })
-
-    const primaryHits = mapHits(primaryResponse)
-    if (primaryHits.length > 0) return primaryHits
+    return mapHits(response)
   } catch (error) {
-    console.error("❌ OpenSearch primary query error:", error)
-  }
-
-  try {
-    const fallbackResponse = await client.search({
-      index: "products",
-      size: limit,
-      _source: SOURCE_FIELDS,
-      body: {
-        query: buildWideFallbackQuery(normalizedQuery, scope) as any,
-        track_total_hits: false,
-      },
-    })
-    return mapHits(fallbackResponse)
-  } catch (error) {
-    console.error("❌ OpenSearch fallback query error:", error)
+    console.error("❌ OpenSearch query error:", error)
     return []
   }
+}
+
+function mergeHitsById(hitLists: SearchHit[][], limit: number): SearchHit[] {
+  const merged: SearchHit[] = []
+  const seen = new Set<string>()
+  for (const list of hitLists) {
+    for (const hit of list) {
+      if (!hit.id || seen.has(hit.id)) continue
+      seen.add(hit.id)
+      merged.push(hit)
+      if (merged.length >= limit) return merged
+    }
+  }
+  return merged
 }
 
 export async function searchProducts(query: string, options: SearchOptions = {}) {
@@ -279,21 +256,11 @@ export async function searchProducts(query: string, options: SearchOptions = {})
       if (hits.length > 0) return hits
     }
 
-    // Merge per-token hits so multi-word typos still match good tokens.
-    const parts = significantTokens(rewritten).split(" ").filter(Boolean)
+    // Parallel per-token merge (cap 4) — avoids sequential fan-out on misses.
+    const parts = significantTokens(rewritten).split(" ").filter(Boolean).slice(0, 4)
     if (parts.length > 1) {
-      const merged: SearchHit[] = []
-      const seen = new Set<string>()
-      for (const part of parts) {
-        const partHits = await runSearch(part, scope, limit)
-        for (const hit of partHits) {
-          if (!hit.id || seen.has(hit.id)) continue
-          seen.add(hit.id)
-          merged.push(hit)
-          if (merged.length >= limit) break
-        }
-        if (merged.length >= limit) break
-      }
+      const lists = await Promise.all(parts.map((part) => runSearch(part, scope, limit)))
+      const merged = mergeHitsById(lists, limit)
       if (merged.length > 0) return merged
     }
 
