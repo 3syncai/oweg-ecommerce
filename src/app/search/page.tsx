@@ -360,7 +360,7 @@ function SearchPageContent() {
                             <span className="text-base font-bold text-slate-900">{priceFormatter.format(price)}</span>
                             {mrp > price && price > 0 ? <span className="text-xs text-slate-400 line-through">{priceFormatter.format(mrp)}</span> : null}
                           </div>
-                          <span className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition group-hover:bg-emerald-700">
+                          <span className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-green-600 px-3 py-2 text-xs font-semibold text-white transition group-hover:bg-green-700">
                             View Product
                           </span>
                         </div>
