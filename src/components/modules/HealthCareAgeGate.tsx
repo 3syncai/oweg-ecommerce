@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
@@ -16,10 +16,21 @@ type HealthCareAgeGateProps = {
   enabled?: boolean;
 };
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+  ).filter((el) => !el.hasAttribute("disabled") && el.tabIndex !== -1);
+}
+
 export default function HealthCareAgeGate({
   enabled = true,
 }: HealthCareAgeGateProps) {
   const router = useRouter();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const [mounted, setMounted] = useState(false);
   // Start locked until client memory is read — avoids unprotected flash.
   const [verified, setVerified] = useState(false);
@@ -43,6 +54,56 @@ export default function HealthCareAgeGate({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+    const focusInitial = () => {
+      confirmButtonRef.current?.focus();
+    };
+    // Defer so the portal is committed before focusing.
+    const focusTimer = window.setTimeout(focusInitial, 0);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+
+      const focusable = getFocusableElements(dialog);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (event.shiftKey) {
+        if (active === first || !dialog.contains(active)) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !dialog.contains(active)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener("keydown", onKeyDown);
+      if (previouslyFocused?.isConnected) {
+        previouslyFocused.focus();
+      }
+    };
+  }, [open]);
+
   const handleConfirm = () => {
     writeHealthCareAgeVerified();
     setVerified(true);
@@ -60,6 +121,7 @@ export default function HealthCareAgeGate({
       role="presentation"
     >
       <div
+        ref={dialogRef}
         className="w-full max-w-[420px] rounded-3xl bg-white px-6 py-8 text-center shadow-2xl sm:px-8"
         role="dialog"
         aria-modal="true"
@@ -85,6 +147,7 @@ export default function HealthCareAgeGate({
         </h2>
 
         <button
+          ref={confirmButtonRef}
           type="button"
           onClick={handleConfirm}
           className="mt-6 inline-flex h-12 w-full cursor-pointer items-center justify-center rounded-full bg-[#2B235A] px-6 text-base font-semibold text-white transition hover:bg-[#221C48]"

@@ -54,14 +54,10 @@ export function buildContentSecurityPolicy(): string {
     "data:",
     "blob:",
     ...IMAGE_HOSTS.map((host) => `https://${host}`),
-    "https://*.amazonaws.com",
   ];
 
   // Service workers fetch() image URLs; that requires connect-src, not only img-src.
-  const imageConnectOrigins = [
-    ...IMAGE_HOSTS.map((host) => `https://${host}`),
-    "https://*.amazonaws.com",
-  ];
+  const imageConnectOrigins = IMAGE_HOSTS.map((host) => `https://${host}`);
 
   const scriptSrc = [
     "'self'",
