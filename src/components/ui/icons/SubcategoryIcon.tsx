@@ -37,6 +37,12 @@ const SUBCATEGORY_ICON_FILES = new Set([
   "electric-cookers",
   "jars-and-containers",
   "electric-ovens",
+  "cameras",
+  "video-door-phone",
+  "power-supply",
+  "cables",
+  "em-locks",
+  "biometric-devices",
 ]);
 
 const SLUG_ALIASES: Record<string, string> = {
@@ -81,6 +87,20 @@ const SLUG_ALIASES: Record<string, string> = {
   "chopper": "choppers",
   "immersion-rods": "immersion-rod",
   "kadhai": "kadai",
+  "surveillance-security-cameras": "cameras",
+  camera: "cameras",
+  "surveillance-security-video-door-phone": "video-door-phone",
+  "video-door-phones": "video-door-phone",
+  "video-door": "video-door-phone",
+  "surveillance-security-power-supply": "power-supply",
+  "power-supplies": "power-supply",
+  "surveillance-security-cables": "cables",
+  cable: "cables",
+  "surveillance-security-em-locks": "em-locks",
+  "em-lock": "em-locks",
+  "surveillance-security-biometric-devices": "biometric-devices",
+  biometric: "biometric-devices",
+  "biometric-device": "biometric-devices",
 };
 
 export function resolveSubcategoryIconSlug(handle?: string, title?: string): string | null {

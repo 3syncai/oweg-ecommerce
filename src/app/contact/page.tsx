@@ -17,7 +17,7 @@ const channels = [
     href: "mailto:owegonline@oweg.in",
   },
   {
-    title: "Visit / write",
+    title: "Visit",
     copy: "Ascent Retechno India Pvt Ltd Av Pride, B-12, Ground Floor, Opp. Rahul, International School, Nilemore 4th Road, Nalasopara West, Thane, Maharashtra - 401203.",
     action: "Open Maps",
     icon: MapPin,

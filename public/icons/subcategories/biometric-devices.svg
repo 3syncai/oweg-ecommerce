@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Biometric Devices</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .muted-outline { fill: none; stroke: var(--oweg-muted, #667085); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <rect class="outline" x="16" y="10" width="32" height="44" rx="5"/>
+  <path class="accent-stroke" d="M25 35c0-5 3-9 7-9s7 4 7 9"/>
+  <path class="accent-stroke" d="M29 43c-2-3-2-7-2-9c0-3 2-5 5-5s5 2 5 5c0 6-3 10-8 12"/>
+  <path class="accent-stroke" d="M32 34c0 8-3 12-7 14"/>
+  <path class="outline" d="M24 19h16"/>
+  <circle class="accent" cx="32" cy="20" r="1.5"/>
+
+</svg>

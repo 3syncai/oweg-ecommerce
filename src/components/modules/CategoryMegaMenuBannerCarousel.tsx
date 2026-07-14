@@ -8,6 +8,7 @@ import {
   type MegaMenuBannerSlide,
 } from "@/lib/mega-menu-banner-cache";
 
+/** Placeholder ratio used only by loading skeletons elsewhere. */
 export const MEGA_MENU_BANNER_ASPECT = 793 / 1983;
 export const MEGA_MENU_BANNER_ROTATE_MS = 3000;
 
@@ -26,6 +27,9 @@ export default function CategoryMegaMenuBannerCarousel({
 }: CategoryMegaMenuBannerCarouselProps) {
   const [activeIndex, setActiveIndex] = React.useState(0);
   const [paused, setPaused] = React.useState(false);
+  const [aspectByUrl, setAspectByUrl] = React.useState<Record<string, number>>(
+    {}
+  );
 
   React.useEffect(() => {
     setActiveIndex(0);
@@ -40,10 +44,45 @@ export default function CategoryMegaMenuBannerCarousel({
     return () => window.clearInterval(timer);
   }, [banners.length, paused]);
 
+  React.useEffect(() => {
+    let cancelled = false;
+    banners.forEach((banner) => {
+      const img = new Image();
+      img.onload = () => {
+        if (cancelled || !img.naturalWidth || !img.naturalHeight) return;
+        const ratio = img.naturalWidth / img.naturalHeight;
+        setAspectByUrl((prev) => {
+          if (prev[banner.image_url] === ratio) return prev;
+          return { ...prev, [banner.image_url]: ratio };
+        });
+      };
+      img.src = banner.image_url;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [banners]);
+
   if (!banners.length) return null;
 
+  const activeBanner = banners[activeIndex];
+  const knownActiveAspect =
+    activeBanner && aspectByUrl[activeBanner.image_url]
+      ? aspectByUrl[activeBanner.image_url]
+      : null;
+
   const linkClassName =
-    "block h-full w-full aspect-[793/1983] overflow-hidden rounded-lg border border-[#C8EAC0] bg-white";
+    "block w-full overflow-hidden rounded-lg border border-[#C8EAC0] bg-white";
+
+  const rememberAspect = (imageUrl: string, img: HTMLImageElement) => {
+    const { naturalWidth, naturalHeight } = img;
+    if (!naturalWidth || !naturalHeight) return;
+    const ratio = naturalWidth / naturalHeight;
+    setAspectByUrl((prev) => {
+      if (prev[imageUrl] === ratio) return prev;
+      return { ...prev, [imageUrl]: ratio };
+    });
+  };
 
   const handleNewTabClick =
     (bannerHref: string) => (event: React.MouseEvent<HTMLAnchorElement>) => {
@@ -54,61 +93,73 @@ export default function CategoryMegaMenuBannerCarousel({
 
   return (
     <div
-      className={`flex h-full min-h-0 flex-col ${className}`.trim()}
+      className={`flex w-full flex-col ${className}`.trim()}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
-      <div className="relative flex min-h-0 flex-1 justify-center w-full">
-        <div className="relative h-full max-w-full aspect-[793/1983] w-full">
-          {banners.map((banner, index) => {
-            const isActive = index === activeIndex;
-            const bannerHref = banner.link_url || "#";
-            const opensNewTab = banner.open_in_new_tab === true;
-            const image = (
-              <img
-                src={banner.image_url}
-                alt={banner.alt_text || "Category promotion"}
-                className="h-full w-full object-cover object-center"
-                loading={isActive ? "eager" : "lazy"}
-                decoding="async"
-              />
-            );
+      <div
+        className="relative w-full max-w-full"
+        style={
+          knownActiveAspect
+            ? { aspectRatio: String(knownActiveAspect) }
+            : undefined
+        }
+      >
+        {banners.map((banner, index) => {
+          const isActive = index === activeIndex;
+          const bannerHref = banner.link_url || "#";
+          const opensNewTab = banner.open_in_new_tab === true;
+          const image = (
+            <img
+              src={banner.image_url}
+              alt={banner.alt_text || "Category promotion"}
+              className={
+                isActive
+                  ? "block h-auto w-full"
+                  : "h-full w-full object-cover object-center"
+              }
+              loading={isActive ? "eager" : "lazy"}
+              decoding="async"
+              onLoad={(event) =>
+                rememberAspect(banner.image_url, event.currentTarget)
+              }
+            />
+          );
 
-            return (
-              <div
-                key={banner.id}
-                className={`absolute inset-0 transition-opacity duration-300 ${
-                  isActive
-                    ? "z-10 opacity-100"
-                    : "pointer-events-none z-0 opacity-0"
-                }`}
-                aria-hidden={!isActive}
-              >
-                {opensNewTab ? (
-                  <a
-                    href={bannerHref}
-                    target="_blank"
-                    rel="noopener noreferrer external"
-                    className={linkClassName}
-                    onClick={handleNewTabClick(bannerHref)}
-                    tabIndex={isActive ? 0 : -1}
-                  >
-                    {image}
-                  </a>
-                ) : (
-                  <Link
-                    href={bannerHref}
-                    className={linkClassName}
-                    onClick={onNavigate}
-                    tabIndex={isActive ? 0 : -1}
-                  >
-                    {image}
-                  </Link>
-                )}
-              </div>
-            );
-          })}
-        </div>
+          return (
+            <div
+              key={banner.id}
+              className={
+                isActive
+                  ? "relative z-10 w-full"
+                  : "pointer-events-none absolute inset-0 z-0 opacity-0 transition-opacity duration-300"
+              }
+              aria-hidden={!isActive}
+            >
+              {opensNewTab ? (
+                <a
+                  href={bannerHref}
+                  target="_blank"
+                  rel="noopener noreferrer external"
+                  className={isActive ? linkClassName : `${linkClassName} h-full`}
+                  onClick={handleNewTabClick(bannerHref)}
+                  tabIndex={isActive ? 0 : -1}
+                >
+                  {image}
+                </a>
+              ) : (
+                <Link
+                  href={bannerHref}
+                  className={isActive ? linkClassName : `${linkClassName} h-full`}
+                  onClick={onNavigate}
+                  tabIndex={isActive ? 0 : -1}
+                >
+                  {image}
+                </Link>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {banners.length > 1 ? (
@@ -119,7 +170,9 @@ export default function CategoryMegaMenuBannerCarousel({
               type="button"
               aria-label={`Show banner ${index + 1}`}
               className={`h-1.5 rounded-full transition-all ${
-                index === activeIndex ? "w-4 bg-[#66C940]" : "w-1.5 bg-[#66C940]/35"
+                index === activeIndex
+                  ? "w-4 bg-[#66C940]"
+                  : "w-1.5 bg-[#66C940]/35"
               }`}
               onClick={() => setActiveIndex(index)}
             />
@@ -129,3 +182,5 @@ export default function CategoryMegaMenuBannerCarousel({
     </div>
   );
 }
+
+

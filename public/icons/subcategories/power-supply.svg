@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Power Supply</title>
+  <style>
+    .outline { fill: none; stroke: var(--oweg-dark, #1F2A33); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .muted-outline { fill: none; stroke: var(--oweg-muted, #667085); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .accent { fill: var(--oweg-green, #66C940); }
+    .accent-stroke { fill: none; stroke: var(--oweg-green, #66C940); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .soft { fill: var(--oweg-soft, #EAF8E7); }
+  </style>
+
+  <rect class="outline" x="20" y="15" width="24" height="38" rx="4"/>
+  <path class="outline" d="M26 15v-5h12v5"/>
+  <path class="accent-stroke" d="M34 22l-8 14h7l-3 12l10-17h-7z"/>
+  <path class="muted-outline" d="M27 53h10"/>
+
+</svg>

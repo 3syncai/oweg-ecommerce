@@ -147,7 +147,9 @@ export default function CategoryMegaMenu({ category, onClose }: CategoryMegaMenu
         </p>
 
         <div
-          className="grid min-h-0 flex-1 grid-cols-1 gap-1 overflow-y-auto pr-1 scrollbar-hide sm:grid-cols-2"
+          className={`grid min-h-0 content-start items-start gap-1 overflow-y-auto pr-1 scrollbar-hide ${
+            category.children.length <= 3 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"
+          }`}
           onWheel={handleMenuWheel}
         >
           {category.children.map((sub) => (
@@ -176,8 +178,8 @@ export default function CategoryMegaMenu({ category, onClose }: CategoryMegaMenu
       </div>
 
       {showFeaturedPanel ? (
-        <aside className="hidden w-[180px] shrink-0 self-stretch sm:block">
-          <div className="flex h-full min-h-0 flex-col rounded-xl bg-[#EAF8E7] p-4">
+        <aside className="hidden w-[180px] shrink-0 self-start sm:block">
+          <div className="flex min-h-0 flex-col rounded-xl bg-[#EAF8E7] p-4">
             {config?.featured ? (
               <div className="shrink-0">
                 <p className="text-lg font-bold leading-tight text-[#1F2A33]">
@@ -190,20 +192,15 @@ export default function CategoryMegaMenu({ category, onClose }: CategoryMegaMenu
             ) : null}
 
             {banners.length > 0 ? (
-              <div
-                className={`min-h-0 flex-1 ${config?.featured ? "mt-3" : "mt-0"}`}
-              >
+              <div className={`w-full ${config?.featured ? "mt-3" : "mt-0"}`}>
                 <CategoryMegaMenuBannerCarousel
                   banners={banners}
                   onNavigate={onClose}
-                  className="h-full min-h-0"
+                  className="w-full"
                 />
               </div>
             ) : bannersLoading ? (
-              <div
-                className={`min-h-0 flex-1 ${config?.featured ? "mt-3" : "mt-0"}`}
-                aria-hidden
-              >
+              <div className={`w-full ${config?.featured ? "mt-3" : "mt-0"}`} aria-hidden>
                 <div className="aspect-[793/1983] w-full animate-pulse rounded-lg border border-[#C8EAC0] bg-white/70" />
               </div>
             ) : null}
