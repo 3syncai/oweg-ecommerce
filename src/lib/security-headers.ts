@@ -79,7 +79,8 @@ export function buildContentSecurityPolicy(): string {
     "font-src 'self' data:",
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self'",
+    // Razorpay checkout posts forms to api.razorpay.com and bank pages
+    "form-action 'self' https://api.razorpay.com https://checkout.razorpay.com https://*.razorpay.com",
     "frame-ancestors 'none'",
   ];
 
