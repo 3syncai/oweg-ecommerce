@@ -312,12 +312,20 @@ export default function VariantMatrixEditor({
   }
 
   const generateMatrix = () => {
+    const beforeCount = productOptions.filter((o) => o.title.trim()).length
     const normalized = normalizeProductOptions(productOptions)
     if (!normalized.length) {
       toast.error("Add options first", {
         description: "Example: Color = Black, Red and Size = S, M, L",
       })
       return
+    }
+
+    if (normalized.length < beforeCount) {
+      toast.info("Merged duplicate option names", {
+        description:
+          'Same titles (e.g. multiple "Set" rows) were combined into one option with all values.',
+      })
     }
 
     const totalCombos = normalized.reduce((acc, opt) => acc * opt.values.length, 1)
@@ -691,8 +699,10 @@ export default function VariantMatrixEditor({
             {showAdvancedOptions && (
               <div className="mt-3 rounded-xl border border-ui-border-base p-4">
                 <Text size="small" className="text-ui-fg-muted mb-3">
-                  For 3+ options (e.g. Color × Size × Material), define all values and build the
-                  full matrix.
+                  Use one row per option name. Put all values in the same row, comma-separated —
+                  e.g. Option <strong>Set</strong>, values{" "}
+                  <strong>Pack of 4, Pack of 8, Pack of 12</strong>. Do not repeat the same option
+                  title on multiple rows.
                 </Text>
                 <div className="space-y-3">
                   {productOptions.map((opt, index) => (

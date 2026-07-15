@@ -40,7 +40,13 @@ const VendorPayoutPage = () => {
         router.push("/pending")
         return
       }
-      setError(e?.message || "Failed to load payout data")
+      if (e.status === 404 || /cannot get \/vendor\/payouts/i.test(String(e?.message || ""))) {
+        setError(
+          "Payout API is missing on the production Medusa backend. Redeploy Medusa so /vendor/payouts returns the earnings summary."
+        )
+      } else {
+        setError(e?.message || "Failed to load payout data")
+      }
       console.error("Payout error:", e)
     } finally {
       setLoading(false)
@@ -94,8 +100,8 @@ const VendorPayoutPage = () => {
               {summary.unlocking_balance > 0
                 ? ` · ${formatCurrency(summary.unlocking_balance)} unlocking`
                 : ""}
-              {summary.reversed_total < 0
-                ? ` · ${formatCurrency(summary.reversed_total)} returned`
+              {summary.reversed_total !== 0
+                ? ` · ${formatCurrency(Math.abs(summary.reversed_total))} cancelled / returned`
                 : ""}
             </Text>
           </div>
@@ -180,7 +186,7 @@ const VendorPayoutPage = () => {
                 Returned orders
               </Heading>
               <Text size="small" className="mt-1 text-ui-fg-subtle">
-                Return amounts are deducted from your payout balance and never credited.
+                Cancelled or returned orders are not credited (₹0 payout).
               </Text>
             </div>
             <div className="divide-y divide-red-500/10">
@@ -192,9 +198,7 @@ const VendorPayoutPage = () => {
                   <Text weight="plus">
                     Order #{item.order_display_id || item.order_id.slice(0, 8)}
                   </Text>
-                  <Text className="text-red-600 font-medium">
-                    {formatCurrency(item.net_amount)}
-                  </Text>
+                  <Text className="text-ui-fg-muted font-medium">₹0 · no credit</Text>
                 </div>
               ))}
             </div>

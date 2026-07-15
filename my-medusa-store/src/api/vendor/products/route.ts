@@ -763,6 +763,20 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       name: error?.name,
     })
 
+    // Handle duplicate product option title (e.g. "Set" listed multiple times)
+    if (
+      error?.message &&
+      error.message.includes("already exists") &&
+      error.message.includes("Product option")
+    ) {
+      return res.status(400).json({
+        message:
+          'Each option name must be unique (e.g. one option called "Set" with values "Pack of 8, Pack of 12"). Do not add the same option title more than once.',
+        error: "duplicate_option_title",
+        details: error?.message,
+      })
+    }
+
     // Handle duplicate SKU error specifically
     if (error?.message && error.message.includes("already exists") && error.message.includes("sku")) {
       return res.status(400).json({

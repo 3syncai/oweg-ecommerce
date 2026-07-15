@@ -1,159 +1,68 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { Pool } from "pg"
 import { VENDOR_MODULE } from "../../../../modules/vendor"
 import VendorModuleService from "../../../../modules/vendor/service"
+import { getVendorPayableSnapshot } from "../../../../lib/vendor-earnings"
 
 /**
- * Calculate pending payout for a vendor
+ * Calculate payable amount for a vendor from vendor_earnings_log.
+ * Only CREDITED (timer finished) rows are payable — UNLOCKING stays pending.
+ *
  * POST /admin/vendor-payouts/calculate
  * Body: { vendor_id: string }
  */
 export async function POST(
-    req: MedusaRequest,
-    res: MedusaResponse
+  req: MedusaRequest,
+  res: MedusaResponse
 ): Promise<void> {
-    try {
-        const { vendor_id } = req.body as { vendor_id: string }
+  try {
+    const { vendor_id } = req.body as { vendor_id: string }
 
-        if (!vendor_id) {
-            res.status(400).json({ message: "vendor_id is required" })
-            return
-        }
-
-        // Get vendor details
-        const vendorModuleService = req.scope.resolve(VENDOR_MODULE) as VendorModuleService
-        const [vendor] = await vendorModuleService.listVendors({ id: vendor_id })
-
-        if (!vendor) {
-            res.status(404).json({ message: "Vendor not found" })
-            return
-        }
-
-        const commission_rate = vendor.commission_rate || 2.0
-
-        // Use SQL query to get vendor orders and revenue
-        const query = req.scope.resolve("query")
-
-        // Get all products by this vendor
-        const { data: vendorProducts } = await query.graph({
-            entity: "product",
-            fields: ["id", "variants.*"],
-            filters: {
-                metadata: {
-                    vendor_id: vendor_id
-                }
-            }
-        })
-
-        if (!vendorProducts || vendorProducts.length === 0) {
-            // No products = no revenue
-            res.json({
-                vendor_id,
-                vendor_name: vendor.store_name || vendor.name,
-                commission_rate,
-                total_revenue: 0,
-                commission: 0,
-                net_amount: 0,
-                order_count: 0,
-                order_ids: [],
-            })
-            return
-        }
-
-        // Extract all variant IDs for this vendor
-        const variantIds: string[] = []
-        vendorProducts.forEach((product: any) => {
-            product.variants?.forEach((variant: any) => {
-                if (variant.id) variantIds.push(variant.id)
-            })
-        })
-
-        if (variantIds.length === 0) {
-            res.json({
-                vendor_id,
-                vendor_name: vendor.store_name || vendor.name,
-                commission_rate,
-                total_revenue: 0,
-                commission: 0,
-                net_amount: 0,
-                order_count: 0,
-                order_ids: [],
-            })
-            return
-        }
-
-        // Get all orders with line items and fulfillments
-        const { data: orders } = await query.graph({
-            entity: "order",
-            fields: ["id", "display_id", "items.*", "fulfillments.*"]
-        })
-
-        // Calculate revenue from matching items
-        let total_revenue = 0
-        const vendor_order_ids: string[] = []
-        const processedOrders = new Set<string>()
-
-        console.log(`[Payout Debug] Total orders fetched: ${orders?.length || 0}`)
-        console.log(`[Payout Debug] Looking for variant IDs:`, variantIds.slice(0, 5), `... (${variantIds.length} total)`)
-
-        orders?.forEach((order: any) => {
-            // Check if order is delivered by looking at fulfillments
-            const hasDeliveredFulfillment = order.fulfillments?.some((f: any) =>
-                f.delivered_at !== null && f.delivered_at !== undefined
-            )
-            const hasShippedFulfillment = order.fulfillments?.some((f: any) =>
-                f.shipped_at !== null && f.shipped_at !== undefined
-            )
-            const isDelivered = hasDeliveredFulfillment || hasShippedFulfillment
-
-            console.log(`[Payout Debug] Order ${order.display_id}: fulfillments=${order.fulfillments?.length || 0}, isDelivered=${isDelivered}, items=${order.items?.length || 0}`)
-
-            if (!isDelivered) return
-
-            let orderHasVendorItem = false
-            let orderRevenue = 0
-
-            order.items?.forEach((item: any) => {
-                const itemVariantId = item.variant_id
-                const matchesVendor = variantIds.includes(itemVariantId)
-
-                console.log(`[Payout Debug]   Item variant: ${itemVariantId}, matches vendor: ${matchesVendor}`)
-
-                if (matchesVendor) {
-                    orderHasVendorItem = true
-                    const itemRevenue = (item.unit_price || 0) * (item.quantity || 1)
-                    orderRevenue += itemRevenue
-                    console.log(`[Payout Debug]   ✅ Matched! Revenue: ${itemRevenue}`)
-                }
-            })
-
-            if (orderHasVendorItem && !processedOrders.has(order.id)) {
-                processedOrders.add(order.id)
-                vendor_order_ids.push(order.id)
-                total_revenue += orderRevenue
-                console.log(`[Payout Debug] ✅ Order ${order.display_id} added to payout`)
-            }
-        })
-
-        const commission = (total_revenue * commission_rate) / 100
-        const net_amount = total_revenue - commission
-
-        console.log(`[Payout Calculate] Vendor: ${vendor.name}, Products: ${vendorProducts.length}, Variants: ${variantIds.length}, Orders: ${vendor_order_ids.length}, Revenue: ${total_revenue}`)
-
-        res.json({
-            vendor_id,
-            vendor_name: vendor.store_name || vendor.name,
-            commission_rate,
-            total_revenue,
-            commission,
-            net_amount,
-            order_count: vendor_order_ids.length,
-            order_ids: vendor_order_ids,
-        })
-    } catch (error: any) {
-        console.error("Calculate payout error:", error)
-        res.status(500).json({
-            message: "Failed to calculate payout",
-            error: error?.message || "Unknown error",
-        })
+    if (!vendor_id) {
+      res.status(400).json({ message: "vendor_id is required" })
+      return
     }
+
+    const vendorModuleService = req.scope.resolve(VENDOR_MODULE) as VendorModuleService
+    const [vendor] = await vendorModuleService.listVendors({ id: vendor_id })
+
+    if (!vendor) {
+      res.status(404).json({ message: "Vendor not found" })
+      return
+    }
+
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+
+    try {
+      const snapshot = await getVendorPayableSnapshot(vendor_id, pool)
+      const commission_rate = snapshot.commission_rate || vendor.commission_rate || 2.0
+
+      res.json({
+        vendor_id,
+        vendor_name: vendor.store_name || vendor.name,
+        commission_rate,
+        total_revenue: snapshot.total_revenue,
+        commission: snapshot.commission,
+        net_amount: snapshot.net_amount,
+        order_count: snapshot.order_count,
+        order_ids: snapshot.order_ids,
+        available_balance: snapshot.available_balance,
+        unlocking_balance: snapshot.unlocking_balance,
+        unlocking_count: snapshot.unlocking_count,
+        unlock_minutes: 5,
+        note:
+          snapshot.unlocking_count > 0
+            ? `${snapshot.unlocking_count} order(s) still in 5-min unlock — not payable yet`
+            : undefined,
+      })
+    } finally {
+      await pool.end().catch(() => {})
+    }
+  } catch (error: any) {
+    console.error("Calculate payout error:", error)
+    res.status(500).json({
+      message: "Failed to calculate payout",
+      error: error?.message || "Unknown error",
+    })
+  }
 }

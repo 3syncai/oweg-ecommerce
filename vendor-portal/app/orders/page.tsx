@@ -291,8 +291,8 @@ const VendorOrdersPage = () => {
                                   +{formatCurrency(earning.net_amount)}
                                 </Text>
                               ) : earning?.status === "REVERSED" ? (
-                                <Text size="small" className="text-red-600 font-medium">
-                                  {formatCurrency(earning.net_amount)}
+                                <Text size="small" className="text-ui-fg-muted">
+                                  ₹0 · cancelled
                                 </Text>
                               ) : (
                                 <Text size="small" className="text-ui-fg-muted">—</Text>

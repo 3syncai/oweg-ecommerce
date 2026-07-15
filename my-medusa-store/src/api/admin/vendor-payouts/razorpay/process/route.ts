@@ -1,9 +1,11 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { Pool } from "pg"
 import {
     createRazorpayContact,
     createRazorpayFundAccount,
     createRazorpayPayout
 } from "../../../../../lib/razorpay-payout"
+import { markVendorEarningsAsPaid } from "../../../../../lib/vendor-earnings"
 
 /**
  * Admin Automated Payout API
@@ -227,6 +229,17 @@ export async function POST(
             return payoutEntity
         })
 
+        // Mark CREDITED earnings as PAID so they leave vendor "available" balance
+        const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+        let markedPaid = 0
+        try {
+            markedPaid = await markVendorEarningsAsPaid(vendor_id, pool, order_ids)
+        } catch (markErr) {
+            console.error("Failed to mark earnings as PAID:", markErr)
+        } finally {
+            await pool.end().catch(() => {})
+        }
+
         res.status(201).json({
             success: true,
             message: "Payout processed successfully",
@@ -240,6 +253,7 @@ export async function POST(
                 utr: payout.utr,
                 fund_account_id: fundAccount.id,
                 contact_id: razorpayContactId,
+                earnings_marked_paid: markedPaid,
             },
         })
     } catch (error: any) {

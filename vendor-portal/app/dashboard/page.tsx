@@ -173,8 +173,9 @@ const VendorDashboardPage = () => {
         const customers = customersData?.customers || []
         const inventory = inventoryData?.inventory || []
         const returnRequests = returnsData?.return_requests || []
-        const pendingReturns = returnRequests.filter(
-          (r: any) => r.status === "pending_approval"
+        // Vendor list only includes admin-approved returns
+        const pendingReturns = returnRequests.filter((r: any) =>
+          ["approved", "pickup_initiated", "picked_up", "received"].includes(r.status)
         ).length
 
         const publishedProducts = products.filter(
@@ -284,7 +285,7 @@ const VendorDashboardPage = () => {
           actionItems.push({
             type: "warning",
             variant: "warning",
-            message: `${pendingReturns} return${pendingReturns > 1 ? "s" : ""} awaiting approval`,
+            message: `${pendingReturns} return${pendingReturns > 1 ? "s" : ""} in progress`,
             link: "/returns",
           })
         }
@@ -536,10 +537,10 @@ const VendorDashboardPage = () => {
                   {(data.pendingReturns ?? 0) > 0 ? (
                     <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
                       <StatusDot variant="warning" />
-                      <Text size="small">{data.pendingReturns} pending</Text>
+                      <Text size="small">{data.pendingReturns} in progress</Text>
                     </span>
                   ) : (
-                    <Text className="text-ui-fg-subtle">Return requests</Text>
+                    <Text className="text-ui-fg-subtle">Admin-approved returns</Text>
                   )}
                 </div>
               }
