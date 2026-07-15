@@ -70,6 +70,7 @@ const VENDOR_ALLOWED_LITERAL_ORIGINS = new Set<string>([
   "https://oweg-vendor-portal.vercel.app",
   "https://www.0weg.in",
   "https://0weg.in",
+  "https://vendor.0weg.in",
   "https://oweg-ecommerce-o3lv.vercel.app"
 ])
 

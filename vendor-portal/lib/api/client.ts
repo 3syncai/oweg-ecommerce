@@ -84,9 +84,20 @@ export async function apiRequest<T>(
       }
 
       const errorData = error.response?.data || { message: error.message }
+      let message =
+        (typeof errorData === "object" && errorData?.message) ||
+        (typeof errorData === "string" ? errorData : null) ||
+        "API request failed"
+
+      // Medusa Express 404 HTML: <pre>Cannot GET /vendor/returns</pre>
+      if (typeof message === "string" && message.includes("<")) {
+        const plain = message.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+        if (plain) message = plain
+      }
+
       throw new ApiError(
         error.response?.status || 0,
-        errorData.message || 'API request failed',
+        message,
         errorData
       )
     }
@@ -457,26 +468,46 @@ export type VendorOrderEarning = {
 }
 
 // Vendor Payouts API
+async function payoutRequestWithFallback<T>(
+  primary: { path: string; method?: string },
+  fallback: { path: string; method?: string }
+): Promise<T> {
+  try {
+    return await apiRequest<T>(primary.path, { method: primary.method || 'GET' })
+  } catch (error: any) {
+    // Hosted Medusa may not have /summary or /earnings-by-orders yet — use routes that exist.
+    if (error?.status === 404) {
+      return await apiRequest<T>(fallback.path, { method: fallback.method || 'GET' })
+    }
+    throw error
+  }
+}
+
 export const vendorPayoutsApi = {
   summary: async () => {
-    return apiRequest<{ summary: VendorEarningsSummary; unlock_minutes: number }>(
-      '/vendor/payouts/summary'
+    return payoutRequestWithFallback<{ summary: VendorEarningsSummary; unlock_minutes: number }>(
+      { path: '/vendor/payouts/summary' },
+      { path: '/vendor/payouts' }
     )
   },
 
   sync: async () => {
-    return apiRequest<{
+    return payoutRequestWithFallback<{
       promoted: number
       summary: VendorEarningsSummary
       unlock_minutes: number
-    }>('/vendor/payouts/summary', { method: 'POST' })
+    }>(
+      { path: '/vendor/payouts/summary', method: 'POST' },
+      { path: '/vendor/payouts', method: 'POST' }
+    )
   },
 
   earningsByOrders: async (orderIds: string[]) => {
     if (orderIds.length === 0) return { earnings: {} as Record<string, VendorOrderEarning> }
     const query = new URLSearchParams({ order_ids: orderIds.join(',') })
-    return apiRequest<{ earnings: Record<string, VendorOrderEarning> }>(
-      `/vendor/payouts/earnings-by-orders?${query.toString()}`
+    return payoutRequestWithFallback<{ earnings: Record<string, VendorOrderEarning> }>(
+      { path: `/vendor/payouts/earnings-by-orders?${query.toString()}` },
+      { path: `/vendor/payouts?${query.toString()}` }
     )
   },
 

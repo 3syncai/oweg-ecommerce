@@ -40,7 +40,13 @@ const VendorPayoutPage = () => {
         router.push("/pending")
         return
       }
-      setError(e?.message || "Failed to load payout data")
+      if (e.status === 404 || /cannot get \/vendor\/payouts/i.test(String(e?.message || ""))) {
+        setError(
+          "Payout API is missing on the production Medusa backend. Redeploy Medusa so /vendor/payouts returns the earnings summary."
+        )
+      } else {
+        setError(e?.message || "Failed to load payout data")
+      }
       console.error("Payout error:", e)
     } finally {
       setLoading(false)

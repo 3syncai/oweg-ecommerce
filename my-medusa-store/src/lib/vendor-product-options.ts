@@ -157,23 +157,34 @@ function normalizeProductOptions(
 ): ProductOptionInput[] {
   if (!options || !Array.isArray(options)) return []
 
-  return options
-    .map((opt) => {
-      const title = typeof opt?.title === "string" ? opt.title.trim() : ""
-      if (!title) return null
+  const byTitle = new Map<string, ProductOptionInput>()
 
-      const values = Array.isArray(opt.values)
-        ? opt.values
-            .map((value) => (typeof value === "string" ? value.trim() : ""))
-            .filter(Boolean)
-        : []
+  for (const opt of options) {
+    const title = typeof opt?.title === "string" ? opt.title.trim() : ""
+    if (!title) continue
 
-      const uniqueValues = Array.from(new Set(values))
-      if (!uniqueValues.length) return null
+    const values = Array.isArray(opt.values)
+      ? opt.values
+          .map((value) => (typeof value === "string" ? value.trim() : ""))
+          .filter(Boolean)
+      : []
 
-      return { title, values: uniqueValues }
-    })
-    .filter((opt): opt is ProductOptionInput => opt !== null)
+    const key = title.toLowerCase()
+    const existing = byTitle.get(key)
+    if (existing) {
+      byTitle.set(key, {
+        title: existing.title,
+        values: Array.from(new Set([...existing.values, ...values])),
+      })
+    } else if (values.length) {
+      byTitle.set(key, {
+        title,
+        values: Array.from(new Set(values)),
+      })
+    }
+  }
+
+  return Array.from(byTitle.values())
 }
 
 function deriveOptionsFromVariants(

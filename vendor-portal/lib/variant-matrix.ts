@@ -39,17 +39,41 @@ export function parseOptionValuesInput(input: string): string[] {
 }
 
 export function normalizeProductOptions(options: ProductOptionDef[]): ProductOptionDef[] {
-  const normalized: ProductOptionDef[] = []
+  const byTitle = new Map<string, ProductOptionDef>()
+
   for (const opt of options) {
     const title = opt.title.trim()
     if (!title) continue
+
     const fromInput = opt.valuesInput ? parseOptionValuesInput(opt.valuesInput) : []
     const fromValues = (opt.values || []).map((v) => v.trim()).filter(Boolean)
-    const values = Array.from(new Set([...fromValues, ...fromInput]))
-    if (!values.length) continue
-    normalized.push({ title, values, valuesInput: values.join(", ") })
+    const values = [...fromValues, ...fromInput]
+    if (!values.length && !byTitle.has(title.toLowerCase())) {
+      // Keep empty titles only if we need a placeholder row in the editor —
+      // skip empty-value options in the normalized list used for create/matrix.
+      continue
+    }
+
+    const key = title.toLowerCase()
+    const existing = byTitle.get(key)
+    if (existing) {
+      const merged = Array.from(new Set([...existing.values, ...values]))
+      byTitle.set(key, {
+        title: existing.title,
+        values: merged,
+        valuesInput: merged.join(", "),
+      })
+    } else if (values.length) {
+      const unique = Array.from(new Set(values))
+      byTitle.set(key, {
+        title,
+        values: unique,
+        valuesInput: unique.join(", "),
+      })
+    }
   }
-  return normalized
+
+  return Array.from(byTitle.values())
 }
 
 export function detectVisualOption(optionTitles: string[]): string | undefined {

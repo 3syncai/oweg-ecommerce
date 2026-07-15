@@ -24,13 +24,7 @@ const formatDate = (dateString: string) =>
 const formatStatus = (status?: string) =>
   (status || "unknown").replace(/_/g, " ")
 
-type StatusFilter =
-  | "all"
-  | "pending_approval"
-  | "approved"
-  | "in_transit"
-  | "refunded"
-  | "rejected"
+type StatusFilter = "all" | "approved" | "in_transit" | "refunded"
 
 const VendorReturnsPage = () => {
   const router = useRouter()
@@ -50,7 +44,14 @@ const VendorReturnsPage = () => {
         router.push("/pending")
         return
       }
-      setError(e?.message || "Failed to load returns")
+      // Production Medusa without /vendor/returns returns HTML 404 → generic "API request failed"
+      if (e.status === 404 || /cannot get \/vendor\/returns/i.test(String(e?.message || ""))) {
+        setError(
+          "Returns API is not available on the production backend yet. Redeploy the Medusa server so GET /vendor/returns is live."
+        )
+      } else {
+        setError(e?.message || "Failed to load returns")
+      }
       console.error("Returns error:", e)
     } finally {
       setLoading(false)
@@ -68,29 +69,24 @@ const VendorReturnsPage = () => {
   }, [router, loadReturns])
 
   const stats = useMemo(() => {
-    let pending = 0
-    let approved = 0
+    let inProgress = 0
     let refunded = 0
-    let rejected = 0
+    let pickup = 0
 
     returns.forEach((item) => {
       const status = item.status || ""
-      if (status === "pending_approval") pending += 1
-      else if (
-        status === "approved" ||
-        status === "pickup_initiated" ||
-        status === "picked_up" ||
-        status === "received"
-      ) {
-        approved += 1
-      } else if (status === "refunded" || status === "replaced" || status === "closed") {
+      if (["approved", "pickup_initiated", "picked_up", "received"].includes(status)) {
+        inProgress += 1
+      }
+      if (["pickup_initiated", "picked_up"].includes(status)) {
+        pickup += 1
+      }
+      if (["refunded", "replaced", "closed"].includes(status)) {
         refunded += 1
-      } else if (status === "rejected") {
-        rejected += 1
       }
     })
 
-    return { total: returns.length, pending, approved, refunded, rejected }
+    return { total: returns.length, inProgress, refunded, pickup }
   }, [returns])
 
   const filteredReturns = useMemo(() => {
@@ -99,7 +95,6 @@ const VendorReturnsPage = () => {
     return returns.filter((item) => {
       const status = item.status || ""
 
-      if (statusFilter === "pending_approval" && status !== "pending_approval") return false
       if (statusFilter === "approved") {
         if (!["approved", "pickup_initiated", "picked_up", "received"].includes(status)) {
           return false
@@ -111,7 +106,6 @@ const VendorReturnsPage = () => {
       if (statusFilter === "refunded") {
         if (!["refunded", "replaced", "closed"].includes(status)) return false
       }
-      if (statusFilter === "rejected" && status !== "rejected") return false
 
       if (!query) return true
 
@@ -130,17 +124,9 @@ const VendorReturnsPage = () => {
 
   const filterOptions = [
     { value: "all" as const, label: "All", count: stats.total },
-    { value: "pending_approval" as const, label: "Pending", count: stats.pending },
-    { value: "approved" as const, label: "In progress", count: stats.approved },
-    {
-      value: "in_transit" as const,
-      label: "Pickup",
-      count: returns.filter((r) =>
-        ["pickup_initiated", "picked_up"].includes(r.status || "")
-      ).length,
-    },
+    { value: "approved" as const, label: "In progress", count: stats.inProgress },
+    { value: "in_transit" as const, label: "Pickup", count: stats.pickup },
     { value: "refunded" as const, label: "Closed", count: stats.refunded },
-    { value: "rejected" as const, label: "Rejected", count: stats.rejected },
   ]
 
   let content
@@ -165,8 +151,8 @@ const VendorReturnsPage = () => {
             </Heading>
             <Text className="mt-1 text-ui-fg-subtle">
               {stats.total > 0
-                ? `${stats.total} return request${stats.total === 1 ? "" : "s"} · ${stats.pending} pending approval`
-                : "Return and replacement requests for your products"}
+                ? `${stats.total} approved return${stats.total === 1 ? "" : "s"} for your products`
+                : "Approved return and replacement requests for your products"}
             </Text>
           </div>
         </div>
@@ -176,7 +162,7 @@ const VendorReturnsPage = () => {
             accent="oweg"
             icon={<ArrowPath />}
             title="No returns yet"
-            description="When a customer requests a return or replacement on one of your orders, it will appear here."
+            description="When a customer requests a return and an admin approves it, it will appear here."
             primaryAction={{ label: "View orders", onClick: () => router.push("/orders") }}
             secondaryAction={{ label: "Go to dashboard", onClick: () => router.push("/dashboard") }}
           />
@@ -187,27 +173,27 @@ const VendorReturnsPage = () => {
                 icon={<ArrowPath />}
                 label="Total returns"
                 value={stats.total}
-                subtext={<Text className="text-ui-fg-subtle">All requests</Text>}
+                subtext={<Text className="text-ui-fg-subtle">Admin approved</Text>}
               />
               <StatCard
                 icon={<ArrowPath />}
-                label="Pending approval"
-                value={stats.pending}
+                label="In progress"
+                value={stats.inProgress}
                 subtext={
                   <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
-                    <StatusDot variant="warning" />
-                    <Text size="small">Awaiting admin</Text>
+                    <StatusDot variant="info" />
+                    <Text size="small">Approved / pickup</Text>
                   </span>
                 }
               />
               <StatCard
                 icon={<ArrowPath />}
-                label="In progress"
-                value={stats.approved}
+                label="Pickup"
+                value={stats.pickup}
                 subtext={
                   <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
-                    <StatusDot variant="info" />
-                    <Text size="small">Approved / pickup</Text>
+                    <StatusDot variant="warning" />
+                    <Text size="small">In transit</Text>
                   </span>
                 }
               />
