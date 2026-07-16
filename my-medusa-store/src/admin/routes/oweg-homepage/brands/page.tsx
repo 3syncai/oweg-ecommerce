@@ -452,7 +452,7 @@ const FeaturedBrandsPage = () => {
 }
 
 export const config = defineRouteConfig({
-  label: "Featured Brands",
+  label: "Featured Brand",
 })
 
 export default FeaturedBrandsPage

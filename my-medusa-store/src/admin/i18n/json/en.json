@@ -1,4 +1,7 @@
 {
+    "collections": {
+        "domain": "Brand"
+    },
     "login": {
         "title": "Sign in to OWEG Admin",
         "hint": "Use your admin credentials to access the dashboard",
