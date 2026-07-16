@@ -399,7 +399,7 @@ function normalizeOptionValueLabel(raw: string): string {
 
 function extractOptions($: cheerio.CheerioAPI, pageUrl: URL): ScrapedProductOption[] {
   const options: ScrapedProductOption[] = []
-  const root = $("#product").length ? $("#product") : $.root()
+  const root: cheerio.Cheerio<any> = $("#product").length ? $("#product") : $.root()
 
   root.find('select[name^="option"]').each((_, el) => {
     const select = $(el)
