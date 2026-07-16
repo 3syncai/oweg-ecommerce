@@ -46,6 +46,7 @@
     "adm-zip": "^0.5.17",
     "bcryptjs": "^3.0.3",
     "busboy": "^1.6.0",
+    "cheerio": "^1.0.0",
     "dotenv": "^16.4.5",
     "he": "^1.2.0",
     "lucide-react": "^0.554.0",

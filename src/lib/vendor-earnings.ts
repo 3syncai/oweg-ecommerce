@@ -261,6 +261,18 @@ export async function backfillVendorEarnings(
 
 /** Promote UNLOCKING rows to CREDITED once the 5-minute timer has elapsed. */
 export async function syncVendorEarningsStatuses(pool: Pool): Promise<number> {
+  // Cancel/return used to store negative nets — normalize so available balance never goes negative.
+  await pool.query(
+    `
+      UPDATE vendor_earnings_log
+      SET
+        net_amount = 0,
+        updated_at = NOW()
+      WHERE status = 'REVERSED'
+        AND net_amount < 0
+    `
+  );
+
   const result = await pool.query(
     `
       UPDATE vendor_earnings_log
@@ -280,7 +292,7 @@ export async function syncVendorEarningsStatuses(pool: Pool): Promise<number> {
 
 /**
  * Reverse vendor earnings when an order is returned/cancelled/refunded.
- * Blocks unlock/credit and stores a negative net amount for vendor UI.
+ * Status becomes REVERSED and net credit is cleared to 0 (not a negative balance).
  */
 export async function reverseVendorEarningsForOrder(
   orderId: string,
@@ -294,7 +306,7 @@ export async function reverseVendorEarningsForOrder(
       UPDATE vendor_earnings_log
       SET
         status = 'REVERSED',
-        net_amount = -ABS(net_amount),
+        net_amount = 0,
         credited_at = NULL,
         unlock_at = NULL,
         updated_at = NOW()
@@ -364,9 +376,9 @@ export async function getVendorEarningsSummary(
           SELECT
             COALESCE(SUM(CASE WHEN status = 'CREDITED' THEN net_amount ELSE 0 END), 0) AS credited_positive,
             COALESCE(SUM(CASE WHEN status = 'UNLOCKING' THEN net_amount ELSE 0 END), 0) AS unlocking_balance,
-            COALESCE(SUM(CASE WHEN status IN ('CREDITED', 'REVERSED') THEN net_amount ELSE 0 END), 0) AS available_balance,
+            COALESCE(SUM(CASE WHEN status = 'CREDITED' THEN net_amount ELSE 0 END), 0) AS available_balance,
             COALESCE(SUM(CASE WHEN status IN ('CREDITED', 'PAID') THEN net_amount ELSE 0 END), 0) AS total_credited,
-            COALESCE(SUM(CASE WHEN status = 'REVERSED' THEN net_amount ELSE 0 END), 0) AS reversed_total
+            COALESCE(SUM(CASE WHEN status = 'REVERSED' THEN ABS(gross_amount - commission_amount) ELSE 0 END), 0) AS reversed_total
           FROM vendor_earnings_log
           WHERE vendor_id = $1
         `,

@@ -6,7 +6,7 @@ import VendorShell from "@/components/VendorShell"
 import { useRouter } from "next/navigation"
 import { BrandAuthorizationField } from "@/components/BrandAuthorizationField"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
-import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorTypesApi, vendorInventoryApi } from "@/lib/api/client"
+import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorTypesApi, vendorInventoryApi, logApiFailure } from "@/lib/api/client"
 import {
   collectAllImageUrls,
   createDefaultVariantRow,
@@ -19,6 +19,7 @@ import {
   type VariantMatrixRow,
 } from "@/lib/variant-matrix"
 import { buildUsedSkuSet, validateProductSkus } from "@/lib/sku-validation"
+import { stripDescriptionSectionHeadings, toProductDescriptionHtml } from "@/lib/plain-description"
 import axios from "axios"
 
 type UploadedImage = {
@@ -140,6 +141,14 @@ const VendorProductNewPage = () => {
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null)
   const [brandAuthorizationFile, setBrandAuthorizationFile] = useState<File | null>(null)
   const [usedSkus, setUsedSkus] = useState<Set<string>>(new Set())
+  const [migrateUrl, setMigrateUrl] = useState("")
+  const [migrating, setMigrating] = useState(false)
+  const [migrateWarnings, setMigrateWarnings] = useState<string[]>([])
+  const [migrateReady, setMigrateReady] = useState(false)
+  const [migrateSourceMeta, setMigrateSourceMeta] = useState<{
+    source_url?: string
+    source?: string
+  } | null>(null)
   const menuRefs = React.useRef<{ [key: number]: HTMLDivElement | null }>({})
 
   useEffect(() => {
@@ -157,7 +166,7 @@ const VendorProductNewPage = () => {
         setUsedSkus(buildUsedSkuSet(data.inventory || []))
       }
     } catch (error) {
-      console.error("Failed to load existing SKUs:", error)
+      logApiFailure("Failed to load existing SKUs", error)
     }
   }
 
@@ -166,17 +175,135 @@ const VendorProductNewPage = () => {
       const token = localStorage.getItem("vendor_token")
       if (!token) return
 
-      const [categoriesData, collectionsData, typesData] = await Promise.all([
+      const [categoriesResult, collectionsResult, typesResult] = await Promise.allSettled([
         vendorCategoriesApi.list({ limit: 100 }),
         vendorCollectionsApi.list({ limit: 100 }),
         vendorTypesApi.list({ limit: 200 }),
       ])
 
-      setCategories(categoriesData.product_categories || [])
-      setCollections(collectionsData.collections || [])
-      setProductTypes(typesData.product_types || [])
+      if (categoriesResult.status === "fulfilled") {
+        setCategories(categoriesResult.value.product_categories || [])
+      } else {
+        logApiFailure("Failed to fetch categories", categoriesResult.reason)
+      }
+      if (collectionsResult.status === "fulfilled") {
+        setCollections(collectionsResult.value.collections || [])
+      } else {
+        logApiFailure("Failed to fetch collections", collectionsResult.reason)
+      }
+      if (typesResult.status === "fulfilled") {
+        setProductTypes(typesResult.value.product_types || [])
+      } else {
+        logApiFailure("Failed to fetch types", typesResult.reason)
+      }
     } catch (error) {
-      console.error("Failed to fetch data:", error)
+      logApiFailure("Failed to fetch organize data", error)
+    }
+  }
+
+  const handleMigrateFromOweg = async () => {
+    const url = migrateUrl.trim()
+    if (!url) {
+      toast.error("Error", { description: "Paste an oweg.in product URL first" })
+      return
+    }
+
+    setMigrating(true)
+    setMigrateWarnings([])
+    setMigrateReady(false)
+
+    try {
+      const result = await vendorProductsApi.migrateFromUrl(url)
+      const draft = result.draft
+      const uploadedImages: UploadedImage[] = (draft.uploadedImages || []).map((image) => ({
+        url: image.url,
+        key: image.key,
+        filename: image.filename,
+        originalName: image.originalName,
+        isThumbnail: image.url === draft.thumbnailUrl,
+      }))
+
+      const variants: VariantMatrixRow[] = (draft.variants?.length
+        ? draft.variants
+        : [createDefaultVariantRow()]
+      ).map((row) => ({
+        title: row.title || "Default variant",
+        sku: row.sku || draft.sku || "",
+        managedInventory: row.managedInventory ?? true,
+        allowBackorder: row.allowBackorder ?? true,
+        inventoryCount: row.inventoryCount || "",
+        price: row.price || draft.price || "",
+        discountedPrice: row.discountedPrice || draft.discounted_price || "",
+        optionValues: row.optionValues || {},
+      }))
+
+      const productOptions: ProductOptionDef[] = (draft.productOptions || []).map((opt) => ({
+        title: opt.title,
+        values: opt.values || [],
+        valuesInput: opt.valuesInput || (opt.values || []).join(", "),
+      }))
+
+      const hasVariants = Boolean(draft.hasVariants)
+      const primaryVisualOption =
+        detectVisualOption(productOptions.map((o) => o.title).filter(Boolean)) || ""
+
+      const colorImages: Record<string, UploadedImageRef[]> = {}
+      for (const [colorValue, images] of Object.entries(draft.colorImages || {})) {
+        colorImages[colorValue] = (images || []).map((image) => ({
+          url: image.url,
+          key: image.key,
+          filename: image.filename,
+          originalName: image.originalName,
+        }))
+      }
+
+      const colorImageCount = Object.values(colorImages).reduce(
+        (sum, imgs) => sum + imgs.length,
+        0
+      )
+      const nextWarnings = [...(result.warnings || [])]
+      if (hasVariants && !colorImageCount && !uploadedImages.length) {
+        nextWarnings.push("No images were returned from oweg.in / S3 upload")
+      } else if (hasVariants && !colorImageCount && uploadedImages.length) {
+        nextWarnings.push(
+          "Gallery images were fetched but could not be mapped to individual colors — add Photos by color manually"
+        )
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        title: draft.title || prev.title,
+        handle: draft.handle || prev.handle,
+        description: stripDescriptionSectionHeadings(draft.description || prev.description),
+        brand: draft.brand || prev.brand,
+        hasVariants,
+        productOptions,
+        variants,
+        uploadedImages: hasVariants ? [] : uploadedImages,
+        colorImages: hasVariants ? colorImages : {},
+        primaryVisualOption: hasVariants ? primaryVisualOption : "",
+        thumbnailUrl:
+          draft.thumbnailUrl ||
+          Object.values(colorImages).flat()[0]?.url ||
+          uploadedImages[0]?.url ||
+          null,
+      }))
+
+      setMigrateSourceMeta(draft.metadata || null)
+      setMigrateWarnings(nextWarnings)
+      setMigrateReady(true)
+      toast.success("Product fetched", {
+        description: colorImageCount
+          ? `Loaded ${colorImageCount} color photo(s). Review Photos by color, then Save now.`
+          : "Review the form, then click Save now or Publish.",
+      })
+    } catch (e: unknown) {
+      const err = e as { message?: string; data?: { message?: string } }
+      toast.error("Migrate failed", {
+        description: err?.data?.message || err?.message || "Could not import product from URL",
+      })
+    } finally {
+      setMigrating(false)
     }
   }
 
@@ -594,7 +721,9 @@ const VendorProductNewPage = () => {
       await vendorProductsApi.create({
         title: formData.title,
         subtitle: formData.subtitle || null,
-        description: formData.description || null,
+        description: formData.description
+          ? toProductDescriptionHtml(formData.description)
+          : null,
         handle: formData.handle || null,
         is_giftcard: false,
         discountable: formData.discountable !== false,
@@ -622,6 +751,12 @@ const VendorProductNewPage = () => {
           mid_code: formData.midCode || null,
           hs_code: formData.hsCode || null,
           country_of_origin: formData.countryOfOrigin || null,
+          ...(migrateSourceMeta?.source_url
+            ? {
+                source_url: migrateSourceMeta.source_url,
+                source: migrateSourceMeta.source || "oweg.in_scrape",
+              }
+            : {}),
           ...(Object.keys(serializedColorImages).length > 0
             ? {
                 color_images: serializedColorImages,
@@ -646,7 +781,10 @@ const VendorProductNewPage = () => {
         },
       })
 
-      toast.success("Success", { description: "Product created successfully" })
+      toast.success("Submitted for review", {
+        description:
+          "Product saved as draft. An admin must approve it under Vendor Requests before it appears on the store.",
+      })
       router.push("/products")
     } catch (e: unknown) {
       const err = e as { message?: string; data?: { message?: string; details?: string; error?: string } }
@@ -894,11 +1032,14 @@ const VendorProductNewPage = () => {
         <Label>
           Description <span className="text-ui-fg-muted">(Optional)</span>
         </Label>
+        <Text size="small" className="text-ui-fg-muted mb-1 block">
+          Plain text is fine — migrated products are converted from oweg HTML automatically.
+        </Text>
         <Textarea
           value={formData.description}
           onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, description: e.target.value })}
           placeholder="A warm and cozy jacket"
-          rows={4}
+          rows={10}
         />
       </div>
 
@@ -1487,15 +1628,79 @@ const VendorProductNewPage = () => {
               </Text>
             </div>
           </div>
-          <Button
-            variant="primary"
-            onClick={handleSubmit}
-            isLoading={loading}
-            disabled={!canPublish}
-            className="shrink-0"
-          >
-            Publish
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            {migrateReady && (
+              <Button
+                variant="secondary"
+                onClick={handleSubmit}
+                isLoading={loading}
+                disabled={!canPublish || migrating}
+              >
+                Save now
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              onClick={handleSubmit}
+              isLoading={loading}
+              disabled={!canPublish || migrating}
+              className="shrink-0"
+            >
+              Publish
+            </Button>
+          </div>
+        </div>
+
+        <div
+          id="migrate"
+          className="mb-6 scroll-mt-28 rounded-lg border border-ui-border-base bg-ui-bg-subtle p-4 md:p-5"
+        >
+          <Heading level="h2" className="mb-1">
+            Migrate from oweg.in
+          </Heading>
+          <Text size="small" className="text-ui-fg-muted mb-3">
+            Paste a product link from oweg.in. We&apos;ll pull title, description, prices, variants,
+            and images (uploaded to your S3), then prefill this form so you can review before saving.
+          </Text>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Input
+              value={migrateUrl}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMigrateUrl(e.target.value)}
+              placeholder="https://www.oweg.in/your-product-slug"
+              className="flex-1"
+              disabled={migrating}
+            />
+            <Button
+              variant="secondary"
+              onClick={handleMigrateFromOweg}
+              isLoading={migrating}
+              disabled={migrating || loading}
+              className="shrink-0"
+            >
+              Fetch product
+            </Button>
+          </div>
+          {migrateReady && (
+            <Text size="small" className="text-green-700 mt-3">
+              Product data loaded. Review the fields below, then click Save now or Publish.
+            </Text>
+          )}
+          {migrateWarnings.length > 0 && (
+            <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3">
+              <Text size="small" weight="plus" className="text-amber-900 mb-1">
+                Warnings
+              </Text>
+              <ul className="list-disc pl-5 space-y-1">
+                {migrateWarnings.map((warning) => (
+                  <li key={warning}>
+                    <Text size="small" className="text-amber-900">
+                      {warning}
+                    </Text>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         {renderBasicsSection()}
@@ -1506,11 +1711,21 @@ const VendorProductNewPage = () => {
           <Button variant="secondary" onClick={() => router.push("/products")} disabled={loading}>
             Cancel
           </Button>
+          {migrateReady && (
+            <Button
+              variant="secondary"
+              onClick={handleSubmit}
+              isLoading={loading}
+              disabled={!canPublish || migrating}
+            >
+              Save now
+            </Button>
+          )}
           <Button
             variant="primary"
             onClick={handleSubmit}
             isLoading={loading}
-            disabled={!canPublish}
+            disabled={!canPublish || migrating}
           >
             Publish product
           </Button>

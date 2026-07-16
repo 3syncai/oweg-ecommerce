@@ -23,6 +23,8 @@ type PendingPayout = {
     commission_rate: number
     order_count: number
     order_ids: string[]
+    unlocking_balance?: number
+    unlocking_count?: number
 }
 
 const VendorPayoutsPage = () => {
@@ -89,6 +91,8 @@ const VendorPayoutsPage = () => {
                         commission_rate: result.data.commission_rate || 0,
                         order_count: result.data.order_count || 0,
                         order_ids: result.data.order_ids || [],
+                        unlocking_balance: result.data.unlocking_balance || 0,
+                        unlocking_count: result.data.unlocking_count || 0,
                     }
                 }
             })
@@ -183,12 +187,16 @@ const VendorPayoutsPage = () => {
 
     return (
         <Container>
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-2">
                 <Heading level="h1">Vendor Payouts</Heading>
                 <Button variant="secondary" size="small" onClick={loadData}>
                     Refresh
                 </Button>
             </div>
+            <p className="text-sm text-ui-fg-subtle mb-6">
+                Pay only <strong>Available</strong> balance (after the 5-minute post-delivery unlock).
+                Unlocking amounts stay pending until the timer ends.
+            </p>
 
             {vendors.length === 0 ? (
                 <div className="text-center py-12">
@@ -200,10 +208,10 @@ const VendorPayoutsPage = () => {
                         <Table.Row>
                             <Table.HeaderCell>Vendor</Table.HeaderCell>
                             <Table.HeaderCell>Bank Details</Table.HeaderCell>
-                            <Table.HeaderCell>Orders</Table.HeaderCell>
-                            <Table.HeaderCell>Revenue</Table.HeaderCell>
+                            <Table.HeaderCell>Payable orders</Table.HeaderCell>
+                            <Table.HeaderCell>Unlocking (5 min)</Table.HeaderCell>
                             <Table.HeaderCell>Commission</Table.HeaderCell>
-                            <Table.HeaderCell>Net Payout</Table.HeaderCell>
+                            <Table.HeaderCell>Available to pay</Table.HeaderCell>
                             <Table.HeaderCell>Action</Table.HeaderCell>
                         </Table.Row>
                     </Table.Header>
@@ -212,6 +220,8 @@ const VendorPayoutsPage = () => {
                             const payout = pendingPayouts[vendor.id]
                             const hasPending = payout && payout.net_amount > 0
                             const hasBankDetails = vendor.bank_name && vendor.account_no && vendor.ifsc_code
+                            const unlockingBal = payout?.unlocking_balance || 0
+                            const unlockingCount = payout?.unlocking_count || 0
 
                             return (
                                 <Table.Row key={vendor.id}>
@@ -241,7 +251,18 @@ const VendorPayoutsPage = () => {
                                         )}
                                     </Table.Cell>
                                     <Table.Cell>
-                                        {payout ? formatCurrency(payout.total_revenue) : "-"}
+                                        {unlockingBal > 0 ? (
+                                            <div className="text-sm">
+                                                <span className="text-amber-600 font-medium">
+                                                    {formatCurrency(unlockingBal)}
+                                                </span>
+                                                <p className="text-xs text-gray-500">
+                                                    {unlockingCount} order{unlockingCount === 1 ? "" : "s"}
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <span className="text-gray-400">₹0</span>
+                                        )}
                                     </Table.Cell>
                                     <Table.Cell>
                                         {payout ? (

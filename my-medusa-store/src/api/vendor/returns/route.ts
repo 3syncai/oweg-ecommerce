@@ -23,12 +23,24 @@ export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
 
 /**
  * GET /vendor/returns
- * Lists return/replacement requests that include this vendor's products.
+ * Lists return/replacement requests for this vendor's products,
+ * only after admin has approved (pending requests stay hidden from vendors).
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res)
   const auth = await requireApprovedVendor(req, res)
   if (!auth) return
+
+  /** Shown to vendors once admin approves the return request. */
+  const VENDOR_VISIBLE_STATUSES = new Set([
+    "approved",
+    "pickup_initiated",
+    "picked_up",
+    "received",
+    "refunded",
+    "replaced",
+    "closed",
+  ])
 
   try {
     const query = req.scope.resolve("query")
@@ -55,8 +67,18 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       return res.json({ return_requests: [] })
     }
 
+    // Vendor only sees returns after admin approval (and later workflow statuses).
+    const approvedRequests = requests.filter(
+      (request: any) =>
+        request?.status && VENDOR_VISIBLE_STATUSES.has(String(request.status))
+    )
+
+    if (!approvedRequests.length) {
+      return res.json({ return_requests: [] })
+    }
+
     const orderIds = Array.from(
-      new Set(requests.map((r: any) => r.order_id).filter(Boolean))
+      new Set(approvedRequests.map((r: any) => r.order_id).filter(Boolean))
     ) as string[]
 
     const ordersById = new Map<string, any>()
@@ -99,7 +121,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       if (belongsToVendor) vendorOrderIds.add(orderId)
     }
 
-    const vendorRequests = requests.filter(
+    const vendorRequests = approvedRequests.filter(
       (request: any) => request.order_id && vendorOrderIds.has(request.order_id)
     )
 

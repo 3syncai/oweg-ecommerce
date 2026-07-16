@@ -8,6 +8,7 @@ import {
   parsePrimaryVisualOptionFromMetadata,
 } from "../../../../lib/variant-matrix"
 import { fetchProductVariantMatrix, type ProductVariantMatrix } from "../../../../lib/vendor-product-variants"
+import { releaseInventorySkusForProduct } from "../../../../lib/release-sku"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
@@ -362,8 +363,39 @@ export async function DELETE(req: MedusaRequest, res: MedusaResponse) {
       return res.status(403).json({ message: "Product does not belong to this vendor" })
     }
 
-    // Delete product (soft delete via status change or hard delete)
+    // Free inventory SKUs before soft-deleting the product. Variants cascade soft-delete
+    // (SKU unique index ignores deleted_at), but inventory items do not — without this,
+    // re-uploading the same SKU fails with duplicate_sku.
+    try {
+      const released = await releaseInventorySkusForProduct(req.scope, productId)
+      if (released.length > 0) {
+        console.log(
+          `♻️ Released ${released.length} inventory item(s) for deleted product ${productId}`
+        )
+      }
+    } catch (skuReleaseError: any) {
+      console.warn(
+        `Failed releasing inventory SKUs for product ${productId}:`,
+        skuReleaseError?.message
+      )
+    }
+
     await productModuleService.deleteProducts([productId])
+
+    try {
+      await client.delete({
+        index: PRODUCTS_INDEX,
+        id: productId,
+        refresh: true,
+      })
+    } catch (searchDeleteError: any) {
+      if (searchDeleteError?.meta?.statusCode !== 404) {
+        console.warn(
+          "Failed removing product from OpenSearch during vendor delete:",
+          searchDeleteError?.message
+        )
+      }
+    }
 
     return res.json({ message: "Product deleted successfully" })
   } catch (error: any) {

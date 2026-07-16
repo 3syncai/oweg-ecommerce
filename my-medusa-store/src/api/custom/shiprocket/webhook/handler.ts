@@ -1,8 +1,10 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
+import { Pool } from "pg"
 import ReturnModuleService from "../../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../../modules/returns"
 import { syncOrderReturnMetadata } from "../../../../services/sync-order-return-metadata"
+import { scheduleVendorEarningsOnDelivery } from "../../../../lib/vendor-earnings"
 
 function normalizeStatus(status: string) {
   const normalized = status.trim().toLowerCase()
@@ -106,6 +108,42 @@ export async function handleShiprocketWebhook(req: MedusaRequest, res: MedusaRes
         },
       })
       console.log(`[Order] Updated order ${match.id} metadata with status ${status}`)
+
+      // Start vendor payout 5-minute unlock timer on delivery
+      if (status === "delivered") {
+        const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+        try {
+          const result = await scheduleVendorEarningsOnDelivery(match.id, pool)
+          console.log(`[Order] Vendor earnings scheduled for ${match.id}:`, result)
+        } catch (earningsErr) {
+          console.error(
+            `[Order] Failed to schedule vendor earnings for ${match.id}:`,
+            earningsErr
+          )
+        } finally {
+          await pool.end().catch(() => {})
+        }
+
+        // Also notify storefront webhook (coins + earnings redundancy)
+        const frontendUrl = process.env.STOREFRONT_URL || process.env.NEXT_PUBLIC_APP_URL
+        if (frontendUrl) {
+          try {
+            await fetch(`${frontendUrl}/api/webhooks/order-delivered`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-webhook-secret": process.env.MEDUSA_WEBHOOK_SECRET || "",
+              },
+              body: JSON.stringify({
+                order_id: match.id,
+                event: "order.delivered",
+              }),
+            })
+          } catch (webhookErr) {
+            console.error(`[Order] storefront delivery webhook failed:`, webhookErr)
+          }
+        }
+      }
     }
   }
 

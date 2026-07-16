@@ -261,6 +261,18 @@ export async function backfillVendorEarnings(
 
 /** Promote UNLOCKING rows to CREDITED once the 5-minute timer has elapsed. */
 export async function syncVendorEarningsStatuses(pool: Pool): Promise<number> {
+  // Cancel/return used to store negative nets — normalize so available balance never goes negative.
+  await pool.query(
+    `
+      UPDATE vendor_earnings_log
+      SET
+        net_amount = 0,
+        updated_at = NOW()
+      WHERE status = 'REVERSED'
+        AND net_amount < 0
+    `
+  );
+
   const result = await pool.query(
     `
       UPDATE vendor_earnings_log
@@ -280,7 +292,7 @@ export async function syncVendorEarningsStatuses(pool: Pool): Promise<number> {
 
 /**
  * Reverse vendor earnings when an order is returned/cancelled/refunded.
- * Blocks unlock/credit and stores a negative net amount for vendor UI.
+ * Status becomes REVERSED and net credit is cleared to 0 (not a negative balance).
  */
 export async function reverseVendorEarningsForOrder(
   orderId: string,
@@ -294,7 +306,7 @@ export async function reverseVendorEarningsForOrder(
       UPDATE vendor_earnings_log
       SET
         status = 'REVERSED',
-        net_amount = -ABS(net_amount),
+        net_amount = 0,
         credited_at = NULL,
         unlock_at = NULL,
         updated_at = NOW()
@@ -311,6 +323,124 @@ export async function reverseVendorEarningsForOrder(
   }
 
   return { reversed, skipped: reversed === 0 };
+}
+
+/**
+ * Mark CREDITED earnings as PAID after admin processes a payout.
+ * If orderIds provided, only those rows; otherwise all CREDITED for the vendor.
+ */
+export async function markVendorEarningsAsPaid(
+  vendorId: string,
+  pool: Pool,
+  orderIds?: string[]
+): Promise<number> {
+  if (!vendorId) return 0;
+
+  const result =
+    orderIds && orderIds.length > 0
+      ? await pool.query(
+          `
+            UPDATE vendor_earnings_log
+            SET
+              status = 'PAID',
+              updated_at = NOW()
+            WHERE vendor_id = $1
+              AND status = 'CREDITED'
+              AND order_id = ANY($2::text[])
+            RETURNING id
+          `,
+          [vendorId, orderIds]
+        )
+      : await pool.query(
+          `
+            UPDATE vendor_earnings_log
+            SET
+              status = 'PAID',
+              updated_at = NOW()
+            WHERE vendor_id = $1
+              AND status = 'CREDITED'
+            RETURNING id
+          `,
+          [vendorId]
+        );
+
+  return result.rowCount ?? 0;
+}
+
+/** Payable snapshot for admin payout screen (CREDITED only — not still unlocking). */
+export async function getVendorPayableSnapshot(
+  vendorId: string,
+  pool: Pool
+): Promise<{
+  vendor_id: string;
+  total_revenue: number;
+  commission: number;
+  net_amount: number;
+  commission_rate: number;
+  order_count: number;
+  order_ids: string[];
+  unlocking_balance: number;
+  unlocking_count: number;
+  available_balance: number;
+}> {
+  await syncVendorEarningsStatuses(pool);
+
+  const credited = await pool.query<{
+    order_id: string;
+    gross_amount: string | number;
+    commission_amount: string | number;
+    net_amount: string | number;
+    commission_rate: string | number;
+  }>(
+    `
+      SELECT order_id, gross_amount, commission_amount, net_amount, commission_rate
+      FROM vendor_earnings_log
+      WHERE vendor_id = $1
+        AND status = 'CREDITED'
+        AND net_amount > 0
+      ORDER BY credited_at ASC NULLS LAST
+    `,
+    [vendorId]
+  );
+
+  const unlocking = await pool.query<{ cnt: string; balance: string }>(
+    `
+      SELECT
+        COUNT(*)::text AS cnt,
+        COALESCE(SUM(net_amount), 0)::text AS balance
+      FROM vendor_earnings_log
+      WHERE vendor_id = $1
+        AND status = 'UNLOCKING'
+    `,
+    [vendorId]
+  );
+
+  let totalRevenue = 0;
+  let commission = 0;
+  let netAmount = 0;
+  let commissionRate = 2;
+  const orderIds: string[] = [];
+
+  for (const row of credited.rows) {
+    totalRevenue += Number(row.gross_amount) || 0;
+    commission += Number(row.commission_amount) || 0;
+    netAmount += Number(row.net_amount) || 0;
+    commissionRate = Number(row.commission_rate) || commissionRate;
+    if (row.order_id) orderIds.push(row.order_id);
+  }
+
+  return {
+    vendor_id: vendorId,
+    total_revenue: totalRevenue,
+    commission,
+    net_amount: netAmount,
+    commission_rate: commissionRate,
+    order_count: orderIds.length,
+    order_ids: orderIds,
+    unlocking_balance: Number(unlocking.rows[0]?.balance) || 0,
+    unlocking_count: Number(unlocking.rows[0]?.cnt) || 0,
+    available_balance: netAmount,
+  };
 }
 
 async function fetchTotalWithdrawn(vendorId: string, pool: Pool): Promise<number> {
@@ -364,9 +494,9 @@ export async function getVendorEarningsSummary(
           SELECT
             COALESCE(SUM(CASE WHEN status = 'CREDITED' THEN net_amount ELSE 0 END), 0) AS credited_positive,
             COALESCE(SUM(CASE WHEN status = 'UNLOCKING' THEN net_amount ELSE 0 END), 0) AS unlocking_balance,
-            COALESCE(SUM(CASE WHEN status IN ('CREDITED', 'REVERSED') THEN net_amount ELSE 0 END), 0) AS available_balance,
+            COALESCE(SUM(CASE WHEN status = 'CREDITED' THEN net_amount ELSE 0 END), 0) AS available_balance,
             COALESCE(SUM(CASE WHEN status IN ('CREDITED', 'PAID') THEN net_amount ELSE 0 END), 0) AS total_credited,
-            COALESCE(SUM(CASE WHEN status = 'REVERSED' THEN net_amount ELSE 0 END), 0) AS reversed_total
+            COALESCE(SUM(CASE WHEN status = 'REVERSED' THEN ABS(gross_amount - commission_amount) ELSE 0 END), 0) AS reversed_total
           FROM vendor_earnings_log
           WHERE vendor_id = $1
         `,

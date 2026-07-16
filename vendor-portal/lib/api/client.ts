@@ -31,6 +31,17 @@ export class ApiError extends Error {
   }
 }
 
+/** Log API failures without passing Error objects (avoids Next.js console overlays). */
+export function logApiFailure(context: string, error: unknown) {
+  const message =
+    error instanceof ApiError
+      ? error.message
+      : error instanceof Error
+        ? error.message
+        : String(error)
+  console.warn(`${context}: ${message}`)
+}
+
 export async function apiRequest<T>(
   endpoint: string,
   options: AxiosRequestConfig = {}
@@ -70,12 +81,9 @@ export async function apiRequest<T>(
     // Handle network errors (CORS, connection refused, etc.)
     if (error instanceof AxiosError) {
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        console.error('Network error - Failed to fetch:', {
-          url,
-          endpoint,
-          apiUrl: API_URL,
-          error: error.message
-        })
+        console.warn(
+          `Network error: unable to reach backend at ${API_URL} (${endpoint})`
+        )
         throw new ApiError(
           0,
           `Network error: Unable to reach backend at ${API_URL}. Please check if the backend is running and CORS is configured correctly.`,
@@ -84,9 +92,20 @@ export async function apiRequest<T>(
       }
 
       const errorData = error.response?.data || { message: error.message }
+      let message =
+        (typeof errorData === "object" && errorData?.message) ||
+        (typeof errorData === "string" ? errorData : null) ||
+        "API request failed"
+
+      // Medusa Express 404 HTML: <pre>Cannot GET /vendor/returns</pre>
+      if (typeof message === "string" && message.includes("<")) {
+        const plain = message.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+        if (plain) message = plain
+      }
+
       throw new ApiError(
         error.response?.status || 0,
-        errorData.message || 'API request failed',
+        message,
         errorData
       )
     }
@@ -351,6 +370,57 @@ export const vendorProductsApi = {
     })
   },
 
+  migrateFromUrl: async (url: string) => {
+    return apiRequest<{
+      draft: {
+        title: string
+        handle: string
+        description: string
+        brand: string
+        hasVariants: boolean
+        productOptions: Array<{ title: string; values: string[]; valuesInput?: string }>
+        variants: Array<{
+          title: string
+          sku: string
+          managedInventory: boolean
+          allowBackorder: boolean
+          inventoryCount: string
+          price: string
+          discountedPrice: string
+          optionValues: Record<string, string>
+        }>
+        uploadedImages: Array<{
+          url: string
+          key: string
+          filename: string
+          originalName: string
+        }>
+        colorImages?: Record<
+          string,
+          Array<{
+            url: string
+            key: string
+            filename: string
+            originalName: string
+          }>
+        >
+        thumbnailUrl: string | null
+        sku?: string
+        price?: string
+        discounted_price?: string
+        metadata: {
+          source_url: string
+          source: string
+          brand?: string
+        }
+      }
+      warnings: string[]
+    }>('/vendor/products/migrate-from-url', {
+      method: 'POST',
+      data: { url },
+    })
+  },
+
   update: async (id: string, data: any) => {
     return apiRequest<{ product: any }>(`/vendor/products/${id}`, {
       method: 'PUT',
@@ -457,26 +527,46 @@ export type VendorOrderEarning = {
 }
 
 // Vendor Payouts API
+async function payoutRequestWithFallback<T>(
+  primary: { path: string; method?: string },
+  fallback: { path: string; method?: string }
+): Promise<T> {
+  try {
+    return await apiRequest<T>(primary.path, { method: primary.method || 'GET' })
+  } catch (error: any) {
+    // Hosted Medusa may not have /summary or /earnings-by-orders yet — use routes that exist.
+    if (error?.status === 404) {
+      return await apiRequest<T>(fallback.path, { method: fallback.method || 'GET' })
+    }
+    throw error
+  }
+}
+
 export const vendorPayoutsApi = {
   summary: async () => {
-    return apiRequest<{ summary: VendorEarningsSummary; unlock_minutes: number }>(
-      '/vendor/payouts/summary'
+    return payoutRequestWithFallback<{ summary: VendorEarningsSummary; unlock_minutes: number }>(
+      { path: '/vendor/payouts/summary' },
+      { path: '/vendor/payouts' }
     )
   },
 
   sync: async () => {
-    return apiRequest<{
+    return payoutRequestWithFallback<{
       promoted: number
       summary: VendorEarningsSummary
       unlock_minutes: number
-    }>('/vendor/payouts/summary', { method: 'POST' })
+    }>(
+      { path: '/vendor/payouts/summary', method: 'POST' },
+      { path: '/vendor/payouts', method: 'POST' }
+    )
   },
 
   earningsByOrders: async (orderIds: string[]) => {
     if (orderIds.length === 0) return { earnings: {} as Record<string, VendorOrderEarning> }
     const query = new URLSearchParams({ order_ids: orderIds.join(',') })
-    return apiRequest<{ earnings: Record<string, VendorOrderEarning> }>(
-      `/vendor/payouts/earnings-by-orders?${query.toString()}`
+    return payoutRequestWithFallback<{ earnings: Record<string, VendorOrderEarning> }>(
+      { path: `/vendor/payouts/earnings-by-orders?${query.toString()}` },
+      { path: `/vendor/payouts?${query.toString()}` }
     )
   },
 

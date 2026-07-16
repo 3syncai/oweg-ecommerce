@@ -99,12 +99,14 @@ export async function proxyMedusaRequest(
       headers: responseHeaders,
     });
   } catch (error) {
-    console.error("[medusa-proxy] upstream failed:", targetUrl, error);
+    // String-only log: console.error(Error) triggers Next.js red overlay in dev.
+    const detail = error instanceof Error ? error.message : String(error)
+    console.warn(`[medusa-proxy] upstream unavailable: ${targetUrl} (${detail})`)
     return NextResponse.json(
       {
         message: "Failed to reach Medusa backend",
         backend: backendBase,
-        error: error instanceof Error ? error.message : String(error),
+        error: detail,
       },
       { status: 502 }
     );
