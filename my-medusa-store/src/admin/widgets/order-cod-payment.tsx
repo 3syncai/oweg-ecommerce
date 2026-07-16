@@ -75,8 +75,6 @@ const OrderCodPaymentWidget = () => {
   const metadata = (order?.metadata || {}) as Record<string, unknown>
   const paymentMethod =
     typeof metadata.payment_method === "string" ? metadata.payment_method.toLowerCase() : ""
-  const codStatus =
-    typeof metadata.cod_status === "string" ? metadata.cod_status.toLowerCase() : ""
   const codPaymentStatus =
     typeof metadata.cod_payment_status === "string"
       ? metadata.cod_payment_status.toLowerCase()
