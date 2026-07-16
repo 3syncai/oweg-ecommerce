@@ -291,9 +291,11 @@ export function removeOptionValue(
   optionTitle: string,
   value: string
 ): ProductOptionDef[] {
+  const targetTitle = optionTitle.trim().toLowerCase()
+  const targetValue = value.trim().toLowerCase()
   return options.map((o) => {
-    if (o.title.trim() !== optionTitle) return o
-    const values = (o.values || []).filter((v) => v !== value)
+    if (o.title.trim().toLowerCase() !== targetTitle) return o
+    const values = (o.values || []).filter((v) => v.trim().toLowerCase() !== targetValue)
     return { ...o, values, valuesInput: values.join(", ") }
   })
 }

@@ -192,6 +192,9 @@ const VendorProductsPage = () => {
             <Button variant="secondary" onClick={() => router.push("/products/bulk-upload")}>
               Bulk Upload
             </Button>
+            <Button variant="secondary" onClick={() => router.push("/products/new#migrate")}>
+              Migrate from oweg.in
+            </Button>
             <Button variant="secondary" className="oweg-btn-primary" onClick={() => router.push("/products/new")}>
               <Plus />
               Create Product
