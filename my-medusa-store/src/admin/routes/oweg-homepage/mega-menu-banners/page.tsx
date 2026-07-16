@@ -563,11 +563,18 @@ const MegaMenuBannersPage = () => {
               <Table.Body>
                 {selectedCategory.banners.length === 0 ? (
                   <Table.Row>
-                    <Table.Cell colSpan={8}>
+                    <Table.Cell>
                       <Text size="small" className="text-ui-fg-subtle">
                         No banners for this category yet.
                       </Text>
                     </Table.Cell>
+                    <Table.Cell />
+                    <Table.Cell />
+                    <Table.Cell />
+                    <Table.Cell />
+                    <Table.Cell />
+                    <Table.Cell />
+                    <Table.Cell />
                   </Table.Row>
                 ) : (
                   selectedCategory.banners.map((banner) => (

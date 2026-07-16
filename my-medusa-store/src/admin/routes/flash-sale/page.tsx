@@ -4,6 +4,7 @@ import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { useEffect, useMemo, useState } from "react"
 import { Container, Heading, Text, Button, Badge, Input, Label, Checkbox, IconButton } from "@medusajs/ui"
 import { Plus, ClockSolid, MagnifyingGlass, XMark, Trash, Bolt, Funnel } from "@medusajs/icons"
+import { getAdminBackendUrl } from "../../lib/admin-backend"
 
 type FlashSaleItem = {
   id: string
@@ -94,7 +95,7 @@ const FlashSalePage = () => {
 
   const loadFlashSales = async () => {
     try {
-      const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const backend = getAdminBackendUrl()
       const response = await fetch(`${backend}/admin/flash-sale`, {
         credentials: "include",
       })
@@ -110,7 +111,7 @@ const FlashSalePage = () => {
 
   const loadCategories = async () => {
     try {
-      const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const backend = getAdminBackendUrl()
       const response = await fetch(`${backend}/admin/product-categories?limit=100`, {
         credentials: "include",
       })
@@ -129,7 +130,7 @@ const FlashSalePage = () => {
 
   const loadCollections = async () => {
     try {
-      const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const backend = getAdminBackendUrl()
       const response = await fetch(`${backend}/admin/collections?limit=100`, {
         credentials: "include",
       })
@@ -148,7 +149,7 @@ const FlashSalePage = () => {
 
   const loadTypes = async () => {
     try {
-      const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const backend = getAdminBackendUrl()
       const response = await fetch(`${backend}/admin/product-types?limit=100`, {
         credentials: "include",
       })
@@ -168,7 +169,7 @@ const FlashSalePage = () => {
   const loadProducts = async () => {
     setLoading(true)
     try {
-      const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const backend = getAdminBackendUrl()
       const params = new URLSearchParams()
       
       if (searchQuery) params.set("search", searchQuery)
@@ -235,7 +236,7 @@ const FlashSalePage = () => {
     setSaving(true)
     
     try {
-      const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const backend = getAdminBackendUrl()
       
       // Create items with variant_id, flash_sale_price, original_price, and expires_at
       const items = Array.from(formData.selectedProducts.entries()).map(([productId, data]) => {
@@ -284,7 +285,7 @@ const FlashSalePage = () => {
     if (!confirm("Are you sure you want to delete this flash sale?")) return
 
     try {
-      const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
+      const backend = getAdminBackendUrl()
       const response = await fetch(`${backend}/admin/flash-sale/${id}`, {
         method: "DELETE",
         credentials: "include",
@@ -997,6 +998,7 @@ const FlashSalePage = () => {
   
   export const config = defineRouteConfig({
     label: "Flash Sales",
+    icon: Bolt,
   })
   
   export default FlashSalePage

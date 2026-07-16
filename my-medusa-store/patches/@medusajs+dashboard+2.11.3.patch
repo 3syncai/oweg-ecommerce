@@ -1,0 +1,474 @@
+diff --git a/node_modules/@medusajs/dashboard/dist/app.js b/node_modules/@medusajs/dashboard/dist/app.js
+index 26667a0..b4977d9 100644
+--- a/node_modules/@medusajs/dashboard/dist/app.js
++++ b/node_modules/@medusajs/dashboard/dist/app.js
+@@ -93677,9 +93677,21 @@ var init_main_layout = __esm({
+           }
+         }
+       });
++      const routes = [...coreRoutes];
++      const flashSale = menuItems.find((item) => !item.nested && item.to === "/flash-sale");
++      if (flashSale) {
++        const ordersIdx = routes.findIndex((route2) => route2.to === "/orders");
++        const insertAt = ordersIdx >= 0 ? ordersIdx + 1 : 1;
++        routes.splice(insertAt, 0, {
++          to: flashSale.to,
++          label: flashSale.label,
++          icon: flashSale.icon ? flashSale.icon : /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_icons10.SquaresPlus, {}),
++          items: flashSale.items
++        });
++      }
+       return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("nav", { className: "flex flex-col gap-y-1 py-3", children: [
+         /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(Searchbar, {}),
+-        coreRoutes.map((route) => {
++        routes.map((route) => {
+           return /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(NavItem, { ...route }, route.to);
+         })
+       ] });
+@@ -93687,7 +93699,7 @@ var init_main_layout = __esm({
+     ExtensionRouteSection = () => {
+       const { t: t5 } = (0, import_react_i18next10.useTranslation)();
+       const { getMenu } = useExtension();
+-      const menuItems = getMenu("coreExtensions").filter((item) => !item.nested);
++      const menuItems = getMenu("coreExtensions").filter((item) => !item.nested && item.to !== "/flash-sale");
+       if (!menuItems.length) {
+         return null;
+       }
+@@ -155280,7 +155292,7 @@ var init_inventory_actions2 = __esm({
+ });
+ 
+ // src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
+-var import_ui297, import_react_table44, import_react229, import_react_i18next315, import_jsx_runtime434, columnHelper49, useInventoryTableColumns2;
++var import_ui297, import_react_table44, import_react229, import_react_i18next315, import_jsx_runtime434, columnHelper49, useInventoryTableColumns2, getInventoryDisplayTitle;
+ var init_use_inventory_table_columns2 = __esm({
+   "src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx"() {
+     "use strict";
+@@ -155290,8 +155302,20 @@ var init_use_inventory_table_columns2 = __esm({
+     import_react_i18next315 = require("react-i18next");
+     init_placeholder_cell2();
+     init_inventory_actions2();
++    init_thumbnail2();
+     import_jsx_runtime434 = require("react/jsx-runtime");
+     columnHelper49 = (0, import_react_table44.createColumnHelper)();
++    getInventoryDisplayTitle = (item) => {
++      const productTitle = item.variants?.[0]?.product?.title;
++      if (productTitle) {
++        return productTitle;
++      }
++      const variantTitle = item.variants?.[0]?.title;
++      if (variantTitle && variantTitle !== "Default variant") {
++        return variantTitle;
++      }
++      return item.title ?? null;
++    };
+     useInventoryTableColumns2 = () => {
+       const { t: t5 } = (0, import_react_i18next315.useTranslation)();
+       return (0, import_react229.useMemo)(
+@@ -155322,42 +155346,53 @@ var init_use_inventory_table_columns2 = __esm({
+           }),
+           columnHelper49.accessor("title", {
+             header: t5("fields.title"),
+-            cell: ({ getValue: getValue2 }) => {
+-              const title = getValue2();
+-              if (!title) {
++            size: 300,
++            maxSize: 320,
++            cell: ({ row }) => {
++              const item = row.original;
++              const displayTitle = getInventoryDisplayTitle(item);
++              const thumbnail = item.variants?.[0]?.product?.thumbnail ?? null;
++              if (!displayTitle && !thumbnail) {
+                 return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)(PlaceholderCell, {});
+               }
+-              return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "flex size-full items-center overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "truncate", children: title }) });
++              return /* @__PURE__ */ (0, import_jsx_runtime434.jsxs)("div", { className: "flex w-full min-w-0 max-w-[320px] items-center gap-x-3 overflow-hidden", children: [
++                /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "shrink-0", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)(Thumbnail, { src: thumbnail, alt: displayTitle ?? void 0, size: "small" }) }),
++                /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "min-w-0 flex-1 truncate", title: displayTitle ?? void 0, children: displayTitle || "-" })
++              ] });
+             }
+           }),
+           columnHelper49.accessor("sku", {
+             header: t5("fields.sku"),
++            size: 140,
++            minSize: 120,
+             cell: ({ getValue: getValue2 }) => {
+               const sku = getValue2();
+               if (!sku) {
+                 return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)(PlaceholderCell, {});
+               }
+-              return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "flex size-full items-center overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "truncate", children: sku }) });
++              return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "flex size-full min-w-[7rem] items-center overflow-hidden whitespace-nowrap", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "truncate", title: sku, children: sku }) });
+             }
+           }),
+           columnHelper49.accessor("reserved_quantity", {
+             header: t5("inventory.reserved"),
++            size: 100,
+             cell: ({ getValue: getValue2 }) => {
+               const quantity = getValue2();
+               if (Number.isNaN(quantity)) {
+                 return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)(PlaceholderCell, {});
+               }
+-              return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "flex size-full items-center overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "truncate", children: quantity }) });
++              return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "flex size-full items-center overflow-hidden whitespace-nowrap", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "truncate", children: quantity }) });
+             }
+           }),
+           columnHelper49.accessor("stocked_quantity", {
+             header: t5("fields.inStock"),
++            size: 100,
+             cell: ({ getValue: getValue2 }) => {
+               const quantity = getValue2();
+               if (Number.isNaN(quantity)) {
+                 return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)(PlaceholderCell, {});
+               }
+-              return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "flex size-full items-center overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "truncate", children: quantity }) });
++              return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "flex size-full items-center overflow-hidden whitespace-nowrap", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "truncate", children: quantity }) });
+             }
+           }),
+           columnHelper49.display({
+@@ -155546,7 +155581,8 @@ var init_inventory_list_table = __esm({
+         isError,
+         error
+       } = useInventoryItems({
+-        ...searchParams
++        ...searchParams,
++        fields: "id,title,sku,stocked_quantity,reserved_quantity,*variants,*variants.product"
+       });
+       const filters = useInventoryTableFilters();
+       const columns = useInventoryTableColumns2();
+diff --git a/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs b/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs
+index ba656d3..7644a7e 100644
+--- a/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs
++++ b/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs
+@@ -88935,9 +88935,21 @@ var CoreRouteSection = () => {
+       }
+     }
+   });
++  const routes = [...coreRoutes];
++  const flashSale = menuItems.find((item) => !item.nested && item.to === "/flash-sale");
++  if (flashSale) {
++    const ordersIdx = routes.findIndex((route2) => route2.to === "/orders");
++    const insertAt = ordersIdx >= 0 ? ordersIdx + 1 : 1;
++    routes.splice(insertAt, 0, {
++      to: flashSale.to,
++      label: flashSale.label,
++      icon: flashSale.icon ? flashSale.icon : /* @__PURE__ */ jsx13(SquaresPlus, {}),
++      items: flashSale.items
++    });
++  }
+   return /* @__PURE__ */ jsxs8("nav", { className: "flex flex-col gap-y-1 py-3", children: [
+     /* @__PURE__ */ jsx13(Searchbar, {}),
+-    coreRoutes.map((route) => {
++    routes.map((route) => {
+       return /* @__PURE__ */ jsx13(NavItem, { ...route }, route.to);
+     })
+   ] });
+@@ -88945,7 +88957,7 @@ var CoreRouteSection = () => {
+ var ExtensionRouteSection = () => {
+   const { t: t2 } = useTranslation9();
+   const { getMenu } = useExtension();
+-  const menuItems = getMenu("coreExtensions").filter((item) => !item.nested);
++  const menuItems = getMenu("coreExtensions").filter((item) => !item.nested && item.to !== "/flash-sale");
+   if (!menuItems.length) {
+     return null;
+   }
+diff --git a/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs b/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs
+index 7661107..f2978b1 100644
+--- a/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs
++++ b/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs
+@@ -4,6 +4,9 @@ import {
+ import {
+   PlaceholderCell
+ } from "./chunk-P3UUX2T6.mjs";
++import {
++  Thumbnail
++} from "./chunk-MNXC6Q4F.mjs";
+ import "./chunk-LQTHYS2Z.mjs";
+ import {
+   _DataTable,
+@@ -102,8 +105,19 @@ var InventoryActions = ({ item }) => {
+ };
+ 
+ // src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
+-import { jsx as jsx2 } from "react/jsx-runtime";
++import { jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
+ var columnHelper = createColumnHelper();
++var getInventoryDisplayTitle = (item) => {
++  const productTitle = item.variants?.[0]?.product?.title;
++  if (productTitle) {
++    return productTitle;
++  }
++  const variantTitle = item.variants?.[0]?.title;
++  if (variantTitle && variantTitle !== "Default variant") {
++    return variantTitle;
++  }
++  return item.title ?? null;
++};
+ var useInventoryTableColumns = () => {
+   const { t } = useTranslation2();
+   return useMemo(
+@@ -134,42 +148,53 @@ var useInventoryTableColumns = () => {
+       }),
+       columnHelper.accessor("title", {
+         header: t("fields.title"),
+-        cell: ({ getValue }) => {
+-          const title = getValue();
+-          if (!title) {
++        size: 300,
++        maxSize: 320,
++        cell: ({ row }) => {
++          const item = row.original;
++          const displayTitle = getInventoryDisplayTitle(item);
++          const thumbnail = item.variants?.[0]?.product?.thumbnail ?? null;
++          if (!displayTitle && !thumbnail) {
+             return /* @__PURE__ */ jsx2(PlaceholderCell, {});
+           }
+-          return /* @__PURE__ */ jsx2("div", { className: "flex size-full items-center overflow-hidden", children: /* @__PURE__ */ jsx2("span", { className: "truncate", children: title }) });
++          return /* @__PURE__ */ jsxs2("div", { className: "flex w-full min-w-0 max-w-[320px] items-center gap-x-3 overflow-hidden", children: [
++            /* @__PURE__ */ jsx2("div", { className: "shrink-0", children: /* @__PURE__ */ jsx2(Thumbnail, { src: thumbnail, alt: displayTitle ?? void 0, size: "small" }) }),
++            /* @__PURE__ */ jsx2("span", { className: "min-w-0 flex-1 truncate", title: displayTitle ?? void 0, children: displayTitle || "-" })
++          ] });
+         }
+       }),
+       columnHelper.accessor("sku", {
+         header: t("fields.sku"),
++        size: 140,
++        minSize: 120,
+         cell: ({ getValue }) => {
+           const sku = getValue();
+           if (!sku) {
+             return /* @__PURE__ */ jsx2(PlaceholderCell, {});
+           }
+-          return /* @__PURE__ */ jsx2("div", { className: "flex size-full items-center overflow-hidden", children: /* @__PURE__ */ jsx2("span", { className: "truncate", children: sku }) });
++          return /* @__PURE__ */ jsx2("div", { className: "flex size-full min-w-[7rem] items-center overflow-hidden whitespace-nowrap", children: /* @__PURE__ */ jsx2("span", { className: "truncate", title: sku, children: sku }) });
+         }
+       }),
+       columnHelper.accessor("reserved_quantity", {
+         header: t("inventory.reserved"),
++        size: 100,
+         cell: ({ getValue }) => {
+           const quantity = getValue();
+           if (Number.isNaN(quantity)) {
+             return /* @__PURE__ */ jsx2(PlaceholderCell, {});
+           }
+-          return /* @__PURE__ */ jsx2("div", { className: "flex size-full items-center overflow-hidden", children: /* @__PURE__ */ jsx2("span", { className: "truncate", children: quantity }) });
++          return /* @__PURE__ */ jsx2("div", { className: "flex size-full items-center overflow-hidden whitespace-nowrap", children: /* @__PURE__ */ jsx2("span", { className: "truncate", children: quantity }) });
+         }
+       }),
+       columnHelper.accessor("stocked_quantity", {
+         header: t("fields.inStock"),
++        size: 100,
+         cell: ({ getValue }) => {
+           const quantity = getValue();
+           if (Number.isNaN(quantity)) {
+             return /* @__PURE__ */ jsx2(PlaceholderCell, {});
+           }
+-          return /* @__PURE__ */ jsx2("div", { className: "flex size-full items-center overflow-hidden", children: /* @__PURE__ */ jsx2("span", { className: "truncate", children: quantity }) });
++          return /* @__PURE__ */ jsx2("div", { className: "flex size-full items-center overflow-hidden whitespace-nowrap", children: /* @__PURE__ */ jsx2("span", { className: "truncate", children: quantity }) });
+         }
+       }),
+       columnHelper.display({
+@@ -327,7 +352,8 @@ var InventoryListTable = () => {
+     isError,
+     error
+   } = useInventoryItems({
+-    ...searchParams
++    ...searchParams,
++    fields: "id,title,sku,stocked_quantity,reserved_quantity,*variants,*variants.product"
+   });
+   const filters = useInventoryTableFilters();
+   const columns = useInventoryTableColumns();
+diff --git a/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx b/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx
+index 5aa04ed..d87e2bd 100644
+--- a/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx
++++ b/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx
+@@ -298,10 +298,27 @@ const CoreRouteSection = () => {
+     }
+   })
+ 
++  // Promote Flash Sales into the core nav between Orders and Products
++  // (Medusa only places un-nested custom routes under Extensions by default).
++  const routes = [...coreRoutes]
++  const flashSale = menuItems.find(
++    (item) => !item.nested && item.to === "/flash-sale"
++  )
++  if (flashSale) {
++    const ordersIdx = routes.findIndex((route) => route.to === "/orders")
++    const insertAt = ordersIdx >= 0 ? ordersIdx + 1 : 1
++    routes.splice(insertAt, 0, {
++      to: flashSale.to,
++      label: flashSale.label,
++      icon: flashSale.icon ? flashSale.icon : <SquaresPlus />,
++      items: flashSale.items,
++    })
++  }
++
+   return (
+     <nav className="flex flex-col gap-y-1 py-3">
+       <Searchbar />
+-      {coreRoutes.map((route) => {
++      {routes.map((route) => {
+         return <NavItem key={route.to} {...route} />
+       })}
+     </nav>
+@@ -312,7 +329,9 @@ const ExtensionRouteSection = () => {
+   const { t } = useTranslation()
+   const { getMenu } = useExtension()
+ 
+-  const menuItems = getMenu("coreExtensions").filter((item) => !item.nested)
++  const menuItems = getMenu("coreExtensions").filter(
++    (item) => !item.nested && item.to !== "/flash-sale"
++  )
+ 
+   if (!menuItems.length) {
+     return null
+diff --git a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx
+index 7ef287c..d2d6988 100644
+--- a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx
++++ b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx
+@@ -33,6 +33,7 @@ export const InventoryListTable = () => {
+     error,
+   } = useInventoryItems({
+     ...searchParams,
++    fields: "id,title,sku,stocked_quantity,reserved_quantity,*variants,*variants.product",
+   })
+ 
+   const filters = useInventoryTableFilters()
+diff --git a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
+index c726fbf..76aa5fb 100644
+--- a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
++++ b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
+@@ -4,6 +4,7 @@ import { Checkbox } from "@medusajs/ui"
+ import { createColumnHelper } from "@tanstack/react-table"
+ import { useMemo } from "react"
+ import { useTranslation } from "react-i18next"
++import { Thumbnail } from "../../../../components/common/thumbnail"
+ import { PlaceholderCell } from "../../../../components/table/table-cells/common/placeholder-cell"
+ import { InventoryActions } from "./inventory-actions"
+ 
+@@ -11,13 +12,33 @@ import { InventoryActions } from "./inventory-actions"
+  * Adds missing properties to the InventoryItemDTO type.
+  */
+ interface ExtendedInventoryItem extends InventoryTypes.InventoryItemDTO {
+-  variants?: ProductVariantDTO[] | null
++  variants?: (ProductVariantDTO & {
++    product?: {
++      id?: string
++      title?: string | null
++      thumbnail?: string | null
++    } | null
++  })[] | null
+   stocked_quantity?: number
+   reserved_quantity?: number
+ }
+ 
+ const columnHelper = createColumnHelper<ExtendedInventoryItem>()
+ 
++function getInventoryDisplayTitle(item: ExtendedInventoryItem): string | null {
++  const productTitle = item.variants?.[0]?.product?.title
++  if (productTitle) {
++    return productTitle
++  }
++
++  const variantTitle = item.variants?.[0]?.title
++  if (variantTitle && variantTitle !== "Default variant") {
++    return variantTitle
++  }
++
++  return item.title ?? null
++}
++
+ export const useInventoryTableColumns = () => {
+   const { t } = useTranslation()
+ 
+@@ -53,22 +74,40 @@ export const useInventoryTableColumns = () => {
+       }),
+       columnHelper.accessor("title", {
+         header: t("fields.title"),
+-        cell: ({ getValue }) => {
+-          const title = getValue()
++        size: 300,
++        maxSize: 320,
++        cell: ({ row }) => {
++          const item = row.original
++          const displayTitle = getInventoryDisplayTitle(item)
++          const thumbnail = item.variants?.[0]?.product?.thumbnail ?? null
+ 
+-          if (!title) {
++          if (!displayTitle && !thumbnail) {
+             return <PlaceholderCell />
+           }
+ 
+           return (
+-            <div className="flex size-full items-center overflow-hidden">
+-              <span className="truncate">{title}</span>
++            <div className="flex w-full min-w-0 max-w-[320px] items-center gap-x-3 overflow-hidden">
++              <div className="shrink-0">
++                <Thumbnail
++                  src={thumbnail}
++                  alt={displayTitle ?? undefined}
++                  size="small"
++                />
++              </div>
++              <span
++                className="min-w-0 flex-1 truncate"
++                title={displayTitle ?? undefined}
++              >
++                {displayTitle || "-"}
++              </span>
+             </div>
+           )
+         },
+       }),
+       columnHelper.accessor("sku", {
+         header: t("fields.sku"),
++        size: 140,
++        minSize: 120,
+         cell: ({ getValue }) => {
+           const sku = getValue() as string
+ 
+@@ -77,14 +116,17 @@ export const useInventoryTableColumns = () => {
+           }
+ 
+           return (
+-            <div className="flex size-full items-center overflow-hidden">
+-              <span className="truncate">{sku}</span>
++            <div className="flex size-full min-w-[7rem] items-center overflow-hidden whitespace-nowrap">
++              <span className="truncate" title={sku}>
++                {sku}
++              </span>
+             </div>
+           )
+         },
+       }),
+       columnHelper.accessor("reserved_quantity", {
+         header: t("inventory.reserved"),
++        size: 100,
+         cell: ({ getValue }) => {
+           const quantity = getValue()
+ 
+@@ -93,7 +135,7 @@ export const useInventoryTableColumns = () => {
+           }
+ 
+           return (
+-            <div className="flex size-full items-center overflow-hidden">
++            <div className="flex size-full items-center overflow-hidden whitespace-nowrap">
+               <span className="truncate">{quantity}</span>
+             </div>
+           )
+@@ -101,6 +143,7 @@ export const useInventoryTableColumns = () => {
+       }),
+       columnHelper.accessor("stocked_quantity", {
+         header: t("fields.inStock"),
++        size: 100,
+         cell: ({ getValue }) => {
+           const quantity = getValue()
+ 
+@@ -109,7 +152,7 @@ export const useInventoryTableColumns = () => {
+           }
+ 
+           return (
+-            <div className="flex size-full items-center overflow-hidden">
++            <div className="flex size-full items-center overflow-hidden whitespace-nowrap">
+               <span className="truncate">{quantity}</span>
+             </div>
+           )
