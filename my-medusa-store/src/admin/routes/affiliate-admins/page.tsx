@@ -271,7 +271,7 @@ const AffiliateAdminsPage = () => {
 }
 
 export const config = defineRouteConfig({
-  label: "Partner Admins",
+  label: "Partner Admin",
 })
 
 export default AffiliateAdminsPage

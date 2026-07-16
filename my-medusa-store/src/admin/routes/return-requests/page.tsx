@@ -268,7 +268,7 @@ const ReturnRequestsPage = () => {
 }
 
 export const config = defineRouteConfig({
-  label: "Return Requests",
+  label: "Returns",
 })
 
 export default ReturnRequestsPage
