@@ -21,21 +21,25 @@ import {
 
 const PRODUCTS_PER_PAGE = 20;
 
-function extractBrandFromName(name: string) {
+function normalizeBrandKey(brand: string) {
+  return brand.trim().toLowerCase();
+}
+
+/** First-token-only fallback when product.brand is missing — never glues model names. */
+function brandFromProductName(name: string) {
   if (!name) return undefined;
-  const normalized = name.trim();
-  if (!normalized) return undefined;
-  const tokens = normalized.split(/\s+/);
-  if (tokens.length === 0) return undefined;
-  const first = tokens[0]?.replace(/[^A-Za-z0-9&]/g, "");
+  const first = name
+    .trim()
+    .split(/\s+/)[0]
+    ?.replace(/[^A-Za-z0-9&]/g, "");
   if (!first || first.length < 2) return undefined;
-
-  const second = tokens[1]?.replace(/[^A-Za-z0-9&]/g, "");
-  if (second && /^[A-Z]/.test(second) && second.length > 1) {
-    return `${first} ${second}`.trim();
-  }
-
   return first;
+}
+
+function resolveUiBrand(product: { name: string; brand?: string }) {
+  const fromField = product.brand?.trim();
+  if (fromField) return fromField;
+  return brandFromProductName(product.name);
 }
 
 const DEFAULT_BRAND_OPTIONS = [
@@ -115,9 +119,14 @@ export function CategoryPageClient({
   const derivedBrandOptions = useMemo(() => {
     const counts = new Map<string, number>();
     products.forEach((product) => {
-      const brand = extractBrandFromName(product.name);
+      const brand = resolveUiBrand(product);
       if (brand) {
-        counts.set(brand, (counts.get(brand) ?? 0) + 1);
+        const key = normalizeBrandKey(brand);
+        const existing = [...counts.keys()].find(
+          (label) => normalizeBrandKey(label) === key
+        );
+        const label = existing ?? brand;
+        counts.set(label, (counts.get(label) ?? 0) + 1);
       }
     });
     return Array.from(counts.entries())
@@ -136,11 +145,22 @@ export function CategoryPageClient({
     let filtered = [...products];
 
     if (filters.brands.length > 0) {
-      filtered = filtered.filter((product) =>
-        filters.brands.some((brand) =>
-          product.name.toLowerCase().includes(brand.toLowerCase())
-        )
+      const selected = new Set(
+        filters.brands.map((brand) => normalizeBrandKey(brand))
       );
+      filtered = filtered.filter((product) => {
+        const brand = resolveUiBrand(product);
+        if (brand && selected.has(normalizeBrandKey(brand))) {
+          return true;
+        }
+        // Only if brand could not be resolved, fall back to title substring
+        if (!brand) {
+          return filters.brands.some((selectedBrand) =>
+            product.name.toLowerCase().includes(selectedBrand.toLowerCase())
+          );
+        }
+        return false;
+      });
     }
 
     return filtered;

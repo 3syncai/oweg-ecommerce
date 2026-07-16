@@ -52,6 +52,7 @@ export type UIProduct = {
   handle?: string;
   opencartId?: string | number;
   inventory_quantity?: number;
+  brand?: string;
 };
 
 export type CategoryProductQueryParams = {

@@ -1118,6 +1118,41 @@ export function isMedusaProductInStock(p: MedusaProduct): boolean {
   return p.variants.some(isVariantPurchasable)
 }
 
+function firstTokenBrandFallback(title?: string | null): string | undefined {
+  if (!title) return undefined
+  const first = title
+    .trim()
+    .split(/\s+/)[0]
+    ?.replace(/[^A-Za-z0-9&]/g, "")
+  if (!first || first.length < 2) return undefined
+  return first
+}
+
+/** Manufacturer brand for filters/UI — never glues model tokens from the title. */
+export function resolveProductBrand(p: MedusaProduct): string | undefined {
+  const metadata = (p.metadata || {}) as Record<string, unknown>
+  const metaKeys = [
+    "brand",
+    "Brand",
+    "brand_name",
+    "BrandName",
+    "manufacturer",
+    "maker",
+  ] as const
+
+  for (const key of metaKeys) {
+    const value = metadata[key]
+    if (typeof value === "string" && value.trim()) {
+      return value.trim()
+    }
+  }
+
+  const collectionTitle = p.collection?.title?.trim()
+  if (collectionTitle) return collectionTitle
+
+  return firstTokenBrandFallback(p.title)
+}
+
 export function toUiProduct(p: MedusaProduct) {
   if (!p?.id || !p?.title) {
     console.warn("Incomplete product data:", p)
@@ -1146,6 +1181,7 @@ export function toUiProduct(p: MedusaProduct) {
     handle: p?.handle,
     category_ids: p?.categories?.map((c) => c.id).filter((id): id is string => !!id) || [],
     inventory_quantity: purchasableVariant?.inventory_quantity,
+    brand: resolveProductBrand(p),
   }
 }
 
