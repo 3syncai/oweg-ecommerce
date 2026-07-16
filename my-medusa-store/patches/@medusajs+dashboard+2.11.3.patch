@@ -2,7 +2,7 @@ diff --git a/node_modules/@medusajs/dashboard/dist/app.js b/node_modules/@medusa
 index 26667a0..0ba0c29 100644
 --- a/node_modules/@medusajs/dashboard/dist/app.js
 +++ b/node_modules/@medusajs/dashboard/dist/app.js
-@@ -93570,62 +93570,57 @@ var init_main_layout = __esm({
+@@ -93570,62 +93570,56 @@ var init_main_layout = __esm({
          }
        ) });
      };
@@ -107,13 +107,16 @@ index 26667a0..0ba0c29 100644
            const route = coreRoutes.find((route2) => route2.to === item.nested);
            if (route) {
 -            route.items?.push(item);
+-          }
+-        }
+-      });
 +            if (!route.items) {
 +              route.items = [];
 +            }
 +            route.items.push(item);
-           }
-         }
-       });
++          }
++        }
++      });
 +      const extensionByPath = new Map(
 +        menuItems.filter((item) => !item.nested).map((item) => [item.to, item])
 +      );
@@ -256,7 +259,7 @@ diff --git a/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs b/node_mod
 index ba656d3..74a09a6 100644
 --- a/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs
 +++ b/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs
-@@ -88828,62 +88828,57 @@ var Header = () => {
+@@ -88828,62 +88828,56 @@ var Header = () => {
      }
    ) });
  };
@@ -406,7 +409,7 @@ index ba656d3..74a09a6 100644
      return null;
    }
 diff --git a/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs b/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs
-index 7661107..f2978b1 100644
+index 7661107..c4a3b12 100644
 --- a/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs
 +++ b/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs
 @@ -4,6 +4,9 @@ import {
@@ -515,7 +518,7 @@ diff --git a/node_modules/@medusajs/dashboard/src/components/layout/main-layout/
 index 5aa04ed..0f66d16 100644
 --- a/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx
 +++ b/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx
-@@ -177,63 +177,60 @@ const Header = () => {
+@@ -177,63 +177,59 @@ const Header = () => {
    )
  }
  
@@ -703,7 +706,7 @@ index 5aa04ed..0f66d16 100644
    if (!menuItems.length) {
      return null
 diff --git a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx
-index 7ef287c..d2d6988 100644
+index 7ef287c..633200d 100644
 --- a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx
 +++ b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx
 @@ -33,6 +33,7 @@ export const InventoryListTable = () => {
@@ -715,7 +718,7 @@ index 7ef287c..d2d6988 100644
  
    const filters = useInventoryTableFilters()
 diff --git a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
-index c726fbf..76aa5fb 100644
+index c726fbf..ae1fa75 100644
 --- a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
 +++ b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
 @@ -4,6 +4,7 @@ import { Checkbox } from "@medusajs/ui"
