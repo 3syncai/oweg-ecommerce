@@ -209,6 +209,11 @@ function createBaseSearchParams(
   const params = new URLSearchParams()
   params.set("limit", String(normalizedLimit))
   params.set("fields", PRODUCT_LIST_FIELDS)
+  // Newest first so freshly published/migrated products aren't buried
+  // behind large brand collections (e.g. Bajaj has 100+ SKUs).
+  if (!extras.some(([key]) => key === "order")) {
+    params.set("order", "-created_at")
+  }
   for (const [key, value] of extras) {
     if (value !== undefined && value !== "") {
       params.append(key, value)

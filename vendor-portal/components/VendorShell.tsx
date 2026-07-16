@@ -157,7 +157,8 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
         const data = await vendorProfileApi.getMe()
         setVendorInfo(data?.vendor || null)
       } catch (error) {
-        console.error("Failed to load vendor info:", error)
+        const message = error instanceof Error ? error.message : String(error)
+        console.warn(`Failed to load vendor info: ${message}`)
       }
     }
     loadVendorInfo()
@@ -172,7 +173,8 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
           (summary?.available_balance || 0) + (summary?.unlocking_balance || 0)
         setPayoutData({ totalRevenue: balance, totalBalance: balance, loading: false })
       } catch (error) {
-        console.error("Failed to load payout data:", error)
+        const message = error instanceof Error ? error.message : String(error)
+        console.warn(`Failed to load payout data: ${message}`)
         setPayoutData((prev) => ({ ...prev, loading: false }))
       }
     }

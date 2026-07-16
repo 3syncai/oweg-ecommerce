@@ -232,14 +232,21 @@ export default function VariantMatrixEditor({
   }
 
   const removeColor = (color: string) => {
+    const colorKey = color.trim().toLowerCase()
     onProductOptionsChange(
       removeOptionValue(productOptions, resolvedVisualOption, color)
     )
     onVariantsChange(
-      variants.filter((row) => row.optionValues[resolvedVisualOption] !== color)
+      variants.filter(
+        (row) =>
+          (row.optionValues[resolvedVisualOption] || "").trim().toLowerCase() !== colorKey
+      )
     )
-    const nextImages = { ...colorImages }
-    delete nextImages[color]
+    const nextImages: Record<string, UploadedImageRef[]> = {}
+    for (const [key, images] of Object.entries(colorImages)) {
+      if (key.trim().toLowerCase() === colorKey) continue
+      nextImages[key] = images
+    }
     onColorImagesChange(nextImages)
   }
 

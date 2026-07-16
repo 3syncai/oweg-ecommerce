@@ -28,6 +28,10 @@ import {
   type VariantMatrixRow,
 } from "@/lib/variant-matrix"
 import { buildUsedSkuSet, validateProductSkus } from "@/lib/sku-validation"
+import {
+  htmlToEditableDescription,
+  toProductDescriptionHtml,
+} from "@/lib/plain-description"
 import { useParams, useRouter } from "next/navigation"
 
 type Product = {
@@ -190,7 +194,7 @@ const VendorProductEditPage = () => {
 
         const nextForm: EditFormData = {
           title: prod.title || "",
-          description: prod.description || "",
+          description: htmlToEditableDescription(prod.description || ""),
           handle: prod.handle || "",
           price: summary?.price != null ? String(summary.price) : "",
           discountedPrice: summary?.discounted_price != null ? String(summary.discounted_price) : "",
@@ -466,7 +470,9 @@ const VendorProductEditPage = () => {
       if (nonPriceFields.length > 0 || simplePriceChanged) {
         const payload = {
           title: formData.title.trim(),
-          description: formData.description.trim() || null,
+          description: formData.description.trim()
+            ? toProductDescriptionHtml(formData.description)
+            : null,
           handle: formData.handle.trim() || null,
           category_ids: formData.categoryId ? [formData.categoryId] : [],
           collection_id: formData.collectionId || null,

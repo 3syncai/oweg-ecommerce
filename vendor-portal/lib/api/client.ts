@@ -31,6 +31,17 @@ export class ApiError extends Error {
   }
 }
 
+/** Log API failures without passing Error objects (avoids Next.js console overlays). */
+export function logApiFailure(context: string, error: unknown) {
+  const message =
+    error instanceof ApiError
+      ? error.message
+      : error instanceof Error
+        ? error.message
+        : String(error)
+  console.warn(`${context}: ${message}`)
+}
+
 export async function apiRequest<T>(
   endpoint: string,
   options: AxiosRequestConfig = {}
@@ -70,12 +81,9 @@ export async function apiRequest<T>(
     // Handle network errors (CORS, connection refused, etc.)
     if (error instanceof AxiosError) {
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        console.error('Network error - Failed to fetch:', {
-          url,
-          endpoint,
-          apiUrl: API_URL,
-          error: error.message
-        })
+        console.warn(
+          `Network error: unable to reach backend at ${API_URL} (${endpoint})`
+        )
         throw new ApiError(
           0,
           `Network error: Unable to reach backend at ${API_URL}. Please check if the backend is running and CORS is configured correctly.`,
@@ -359,6 +367,57 @@ export const vendorProductsApi = {
     return apiRequest<{ product: any }>('/vendor/products', {
       method: 'POST',
       data,
+    })
+  },
+
+  migrateFromUrl: async (url: string) => {
+    return apiRequest<{
+      draft: {
+        title: string
+        handle: string
+        description: string
+        brand: string
+        hasVariants: boolean
+        productOptions: Array<{ title: string; values: string[]; valuesInput?: string }>
+        variants: Array<{
+          title: string
+          sku: string
+          managedInventory: boolean
+          allowBackorder: boolean
+          inventoryCount: string
+          price: string
+          discountedPrice: string
+          optionValues: Record<string, string>
+        }>
+        uploadedImages: Array<{
+          url: string
+          key: string
+          filename: string
+          originalName: string
+        }>
+        colorImages?: Record<
+          string,
+          Array<{
+            url: string
+            key: string
+            filename: string
+            originalName: string
+          }>
+        >
+        thumbnailUrl: string | null
+        sku?: string
+        price?: string
+        discounted_price?: string
+        metadata: {
+          source_url: string
+          source: string
+          brand?: string
+        }
+      }
+      warnings: string[]
+    }>('/vendor/products/migrate-from-url', {
+      method: 'POST',
+      data: { url },
     })
   },
 

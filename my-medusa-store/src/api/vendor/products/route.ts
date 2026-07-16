@@ -10,6 +10,7 @@ import {
   attachVariantThumbnails,
 } from "../../../lib/variant-matrix"
 import { syncVariantThumbnailsFromColorImages } from "../../../lib/vendor-product-variants"
+import { releaseOrphanInventorySkus } from "../../../lib/release-sku"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
@@ -474,6 +475,23 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     if (!hasAnyPrices) {
       console.warn('⚠️ WARNING: Product has no prices! All variants have empty prices array.')
+    }
+
+    // Free SKUs left on orphan inventory items from previously deleted products
+    // so vendors can re-upload the same product with the same SKUs.
+    try {
+      const skusToReuse = variantsWithThumbnails.map((v: any) => v?.sku)
+      const released = await releaseOrphanInventorySkus(req.scope, skusToReuse)
+      if (released.length > 0) {
+        console.log(
+          `♻️ Released ${released.length} orphan inventory item(s) before create for SKU reuse`
+        )
+      }
+    } catch (skuReleaseError: any) {
+      console.warn(
+        "Failed releasing orphan inventory SKUs before create:",
+        skuReleaseError?.message
+      )
     }
 
     // Create product using workflow with PENDING status for admin approval
