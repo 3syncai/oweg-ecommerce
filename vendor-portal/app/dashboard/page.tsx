@@ -462,15 +462,9 @@ const VendorDashboardPage = () => {
             style={{ animationDelay: "80ms" }}
             className="animate-fade-in-up-slow"
             subtext={
-              data.totalRevenue > 0 ? (
-                <Text className="text-ui-fg-subtle">
-                  Avg {formatCurrency(data.averageOrderValue)} per credited order
-                </Text>
-              ) : (
-                <Text className="text-ui-fg-subtle">
-                  Credited after delivery + 5-minute unlock
-                </Text>
-              )
+              <Text className="text-ui-fg-subtle">
+                Credited after delivery + 5-minute unlock
+              </Text>
             }
           />
 

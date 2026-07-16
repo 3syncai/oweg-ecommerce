@@ -15,6 +15,7 @@ import {
   CurrencyDollar,
   ArrowPath,
   XMark,
+  ChatBubble,
 } from "@medusajs/icons"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { vendorProfileApi, vendorPayoutsApi } from "@/lib/api/client"
@@ -22,6 +23,7 @@ import { performVendorLogout } from "@/lib/vendor-session"
 import { OWEG_BRAND } from "@/lib/brand"
 import { useTheme } from "@/lib/theme"
 import VendorSettingsModal from "@/components/VendorSettingsModal"
+import VendorNotifications from "@/components/VendorNotifications"
 
 type VendorInfo = {
   name?: string
@@ -101,6 +103,13 @@ const navItems = [
     description: "",
     path: "/payout",
     icon: CurrencyDollar,
+    type: "normal",
+  },
+  {
+    label: "Messages",
+    description: "",
+    path: "/messages",
+    icon: ChatBubble,
     type: "normal",
   },
 ]
@@ -412,23 +421,31 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
 
       {/* Main Content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Mobile Header */}
-        <div className="flex h-16 items-center gap-3 border-b border-oweg-500/10 bg-ui-bg-component px-4 shadow-sm md:hidden">
-          <button
-            type="button"
-            className="shrink-0 text-ui-fg-base"
-            onClick={() => setMobileMenuOpen(true)}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M3.75 6.75H20.25M3.75 12H20.25M3.75 17.25H20.25" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold text-ui-fg-base">
-              {vendorInfo?.store_name || "Your Store"}
+        {/* Top header — notifications */}
+        <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-oweg-500/10 bg-ui-bg-component px-4 shadow-sm md:h-16 md:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              className="shrink-0 text-ui-fg-base md:hidden"
+              onClick={() => setMobileMenuOpen(true)}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3.75 6.75H20.25M3.75 12H20.25M3.75 17.25H20.25" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <div className="min-w-0 md:hidden">
+              <div className="truncate text-sm font-semibold text-ui-fg-base">
+                {vendorInfo?.store_name || "Your Store"}
+              </div>
+              <div className="truncate text-xs text-ui-fg-muted">Vendor Portal</div>
             </div>
-            <div className="truncate text-xs text-ui-fg-muted">Vendor Portal</div>
+            <div className="hidden min-w-0 md:block">
+              <Text size="small" className="text-ui-fg-subtle">
+                Live payout updates appear here when payment is received
+              </Text>
+            </div>
           </div>
+          <VendorNotifications />
         </div>
 
         <main className="flex-1 overflow-y-auto bg-ui-bg-base bg-oweg-page">

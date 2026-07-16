@@ -15,6 +15,54 @@ import { ArrowPath, CheckCircle, CurrencyDollar, Clock } from "@medusajs/icons"
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(amount)
 
+function OrderCommissionLines({
+  grossAmount,
+  commissionAmount,
+  commissionRate,
+  netAmount,
+  netPrefix = "",
+  netClassName = "text-emerald-600 font-medium",
+}: {
+  grossAmount?: number
+  commissionAmount?: number
+  commissionRate?: number
+  netAmount: number
+  netPrefix?: string
+  netClassName?: string
+}) {
+  const hasBreakdown =
+    typeof grossAmount === "number" &&
+    grossAmount > 0 &&
+    (typeof commissionAmount === "number" || typeof commissionRate === "number")
+
+  if (!hasBreakdown) {
+    return (
+      <Text className={netClassName}>
+        {netPrefix}
+        {formatCurrency(netAmount)}
+      </Text>
+    )
+  }
+
+  const commission = Number(commissionAmount) || 0
+  const rate = Number(commissionRate) || 0
+
+  return (
+    <div className="text-right">
+      <Text className={netClassName}>
+        {netPrefix}
+        {formatCurrency(netAmount)}
+      </Text>
+      <Text size="small" className="text-ui-fg-subtle mt-0.5">
+        Sale {formatCurrency(grossAmount!)}
+        {commission > 0 || rate > 0
+          ? ` · Commission ${rate > 0 ? `${rate}%` : ""} −${formatCurrency(commission)}`
+          : " · No commission"}
+      </Text>
+    </div>
+  )
+}
+
 const VendorPayoutPage = () => {
   const router = useRouter()
   const [summary, setSummary] = useState<VendorEarningsSummary | null>(null)
@@ -169,10 +217,18 @@ const VendorPayoutPage = () => {
                       Order #{item.order_display_id || item.order_id.slice(0, 8)}
                     </Text>
                     <Text size="small" className="text-ui-fg-subtle">
-                      Net payout {formatCurrency(item.net_amount)}
+                      After unlock this credits to your available balance
                     </Text>
                   </div>
-                  <PayoutUnlockTimer unlockAt={item.unlock_at} onComplete={handleTimerComplete} />
+                  <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                    <OrderCommissionLines
+                      grossAmount={item.gross_amount}
+                      commissionAmount={item.commission_amount}
+                      commissionRate={item.commission_rate}
+                      netAmount={item.net_amount}
+                    />
+                    <PayoutUnlockTimer unlockAt={item.unlock_at} onComplete={handleTimerComplete} />
+                  </div>
                 </div>
               ))}
             </div>
@@ -221,9 +277,13 @@ const VendorPayoutPage = () => {
                   <Text weight="plus">
                     Order #{item.order_display_id || item.order_id.slice(0, 8)}
                   </Text>
-                  <Text className="text-emerald-600 font-medium">
-                    +{formatCurrency(item.net_amount)}
-                  </Text>
+                  <OrderCommissionLines
+                    grossAmount={item.gross_amount}
+                    commissionAmount={item.commission_amount}
+                    commissionRate={item.commission_rate}
+                    netAmount={item.net_amount}
+                    netPrefix="+"
+                  />
                 </div>
               ))}
             </div>
@@ -243,7 +303,10 @@ const VendorPayoutPage = () => {
 
         <GuideCard icon={<Clock />} title="Payout unlock" accent="oweg" className="animate-fade-in-up">
           <Text size="small" className="text-ui-fg-subtle">
-            <span className="font-medium text-ui-fg-base">After delivery:</span> a {unlockMinutes}-minute timer starts before the order amount is credited to your available payout balance.
+            <span className="font-medium text-ui-fg-base">After delivery:</span> a {unlockMinutes}-minute timer starts before the order amount is credited to your available payout balance. Platform commission is deducted from the sale before credit.
+          </Text>
+          <Text size="small" className="text-ui-fg-subtle">
+            <span className="font-medium text-ui-fg-base">Commission:</span> each order shows sale amount, commission cut, and your net credit so you always know what was deducted.
           </Text>
           <Text size="small" className="text-ui-fg-subtle">
             <span className="font-medium text-ui-fg-base">Returns:</span> if an order is returned during or after the unlock period, the payout is reversed and shown as a negative amount. It is never credited to your balance.

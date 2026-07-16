@@ -495,6 +495,8 @@ export type VendorEarningsSummary = {
     order_display_id: string | null
     net_amount: number
     gross_amount: number
+    commission_rate?: number
+    commission_amount?: number
     unlock_at: string
     delivered_at: string | null
   }>
@@ -503,6 +505,9 @@ export type VendorEarningsSummary = {
     order_id: string
     order_display_id: string | null
     net_amount: number
+    gross_amount?: number
+    commission_rate?: number
+    commission_amount?: number
     credited_at: string | null
   }>
   reversed_recent: Array<{

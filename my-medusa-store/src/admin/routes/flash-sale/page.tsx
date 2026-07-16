@@ -618,13 +618,13 @@ const FlashSalePage = () => {
                 </select>
               </div>
               <div>
-                <Label>Collection</Label>
+                <Label>Brand</Label>
                 <select
                   value={selectedCollection}
                   onChange={(e) => setSelectedCollection(e.target.value)}
                   className="w-full px-3 py-2 border border-ui-border-base bg-ui-bg-base rounded-md text-ui-fg-base focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/50 transition"
                 >
-                  <option value="">All Collections</option>
+                  <option value="">All Brands</option>
                   {collections.map((col) => (
                     <option key={col.id} value={col.id}>{col.title}</option>
                   ))}

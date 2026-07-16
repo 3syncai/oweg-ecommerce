@@ -8,6 +8,10 @@ import {
 } from "../../../../lib/vendor-earnings"
 import { VENDOR_MODULE } from "../../../../modules/vendor"
 import VendorModuleService from "../../../../modules/vendor/service"
+import {
+  getVendorCommissionDefaultRate,
+  resolveVendorCommissionRate,
+} from "../../../../lib/vendor-commission"
 
 function setCorsHeaders(res: MedusaResponse) {
   res.setHeader(
@@ -69,8 +73,19 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
     }
 
     const vendorModuleService = req.scope.resolve(VENDOR_MODULE) as VendorModuleService
-    const [vendor] = await vendorModuleService.listVendors({ id: auth.vendor_id })
-    const commission_rate = vendor?.commission_rate || 2.0
+    const [vendor, globalDefault] = await Promise.all([
+      vendorModuleService.listVendors({ id: auth.vendor_id }).then(([v]) => v),
+      getVendorCommissionDefaultRate(pool),
+    ])
+    const resolved = resolveVendorCommissionRate(
+      {
+        commission_override:
+          (vendor as { commission_override?: boolean } | undefined)?.commission_override === true,
+        commission_rate: vendor?.commission_rate ?? null,
+      },
+      globalDefault
+    )
+    const commission_rate = resolved.rate
 
     const summary = await getVendorEarningsSummary(auth.vendor_id, pool)
 
@@ -83,6 +98,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
         unlocking_amount: summary.unlocking_balance,
         order_count: summary.unlocking.length + summary.credited_recent.length,
         commission_rate,
+        commission_source: resolved.source,
       },
       summary,
       unlock_minutes: 5,
