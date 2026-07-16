@@ -3,6 +3,10 @@ import { Pool } from "pg"
 import { VENDOR_MODULE } from "../../../../modules/vendor"
 import VendorModuleService from "../../../../modules/vendor/service"
 import { getVendorPayableSnapshot } from "../../../../lib/vendor-earnings"
+import {
+  getVendorCommissionDefaultRate,
+  resolveVendorCommissionRate,
+} from "../../../../lib/vendor-commission"
 
 /**
  * Calculate payable amount for a vendor from vendor_earnings_log.
@@ -34,13 +38,42 @@ export async function POST(
     const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 
     try {
-      const snapshot = await getVendorPayableSnapshot(vendor_id, pool)
-      const commission_rate = snapshot.commission_rate || vendor.commission_rate || 2.0
+      const globalDefault = await getVendorCommissionDefaultRate(pool)
+      const resolved = resolveVendorCommissionRate(
+        {
+          commission_override: (vendor as { commission_override?: boolean }).commission_override === true,
+          commission_rate: vendor.commission_rate,
+        },
+        globalDefault
+      )
+      // Apply current policy on unpaid gross — earnings rows may still have an older rate (e.g. 0%).
+      const snapshot = await getVendorPayableSnapshot(vendor_id, pool, {
+        effectiveRate: resolved.rate,
+      })
+
+      // Keep unpaid CREDITED rows in sync with the rate we will actually deduct on pay.
+      if (snapshot.order_ids.length > 0) {
+        await pool.query(
+          `
+            UPDATE vendor_earnings_log
+            SET
+              commission_rate = $2,
+              commission_amount = ROUND((gross_amount::numeric * $2::numeric) / 100, 2),
+              net_amount = ROUND(gross_amount::numeric - (gross_amount::numeric * $2::numeric) / 100, 2),
+              updated_at = NOW()
+            WHERE vendor_id = $1
+              AND status = 'CREDITED'
+              AND order_id = ANY($3::text[])
+          `,
+          [vendor_id, resolved.rate, snapshot.order_ids]
+        )
+      }
 
       res.json({
         vendor_id,
         vendor_name: vendor.store_name || vendor.name,
-        commission_rate,
+        commission_rate: resolved.rate,
+        commission_source: resolved.source,
         total_revenue: snapshot.total_revenue,
         commission: snapshot.commission,
         net_amount: snapshot.net_amount,

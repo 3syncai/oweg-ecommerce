@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Container, Heading, Text, Button, Badge, Avatar } from "@medusajs/ui"
+import { Container, Heading, Text, Button, Badge, Avatar, Input, Label, Checkbox, toast } from "@medusajs/ui"
 import {
     CheckCircleSolid,
     XCircleSolid,
@@ -33,6 +33,7 @@ type PayoutCalculation = {
     vendor_id: string
     vendor_name: string
     commission_rate: number
+    commission_source?: "global" | "custom"
     gross_amount: number
     commission_amount: number
     net_amount: number
@@ -100,6 +101,7 @@ type Vendor = {
     cancel_cheque_url?: string | null
     cancel_cheque_signed_url?: string | null
     commission_rate?: number
+    commission_override?: boolean
     documents?: VendorDocument[]
     is_approved: boolean
     approved_at?: string | null
@@ -152,6 +154,12 @@ const VendorDetailPage = () => {
     const [transactionId, setTransactionId] = useState("")
     const [payoutNotes, setPayoutNotes] = useState("")
 
+    // Commission override state
+    const [globalDefaultRate, setGlobalDefaultRate] = useState<number | null>(null)
+    const [commissionOverride, setCommissionOverride] = useState(false)
+    const [commissionRateInput, setCommissionRateInput] = useState("")
+    const [commissionSaving, setCommissionSaving] = useState(false)
+
     useEffect(() => {
         // Extract vendor ID from URL path
         const pathParts = window.location.pathname.split('/')
@@ -164,6 +172,13 @@ const VendorDetailPage = () => {
             loadVendorDetails()
         }
     }, [vendorId])
+
+    useEffect(() => {
+        if (vendor && activeTab === "payouts") {
+            setCommissionOverride(vendor.commission_override ?? false)
+            setCommissionRateInput(String(vendor.commission_rate ?? globalDefaultRate ?? 2))
+        }
+    }, [vendor, activeTab, globalDefaultRate])
 
     const loadVendorDetails = async () => {
         setLoading(true)
@@ -232,6 +247,75 @@ const VendorDetailPage = () => {
         }
     }
 
+    const loadGlobalCommission = async () => {
+        try {
+            const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
+            const response = await fetch(`${backend}/admin/vendor-commission`, {
+                credentials: "include",
+            })
+
+            if (response.ok) {
+                const data = await response.json()
+                setGlobalDefaultRate(data.default_rate ?? 2)
+            }
+        } catch (error) {
+            console.error("Failed to load global commission:", error)
+        }
+    }
+
+    const handleSaveCommission = async () => {
+        if (!vendorId || !vendor) return
+
+        if (commissionOverride) {
+            const n = Number(commissionRateInput)
+            if (!Number.isFinite(n) || n < 0 || n > 100) {
+                toast.error("Enter a rate between 0 and 100")
+                return
+            }
+        }
+
+        setCommissionSaving(true)
+        try {
+            const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
+            const body: { commission_override: boolean; commission_rate?: number } = {
+                commission_override: commissionOverride,
+            }
+            if (commissionOverride) {
+                body.commission_rate = Number(commissionRateInput)
+            }
+
+            const response = await fetch(`${backend}/admin/vendors/${vendorId}/commission`, {
+                method: "PUT",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            })
+
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}))
+                throw new Error(data.message || "Failed to save commission")
+            }
+
+            const data = await response.json()
+            const updatedVendor = data.vendor
+            setVendor((prev) =>
+                prev
+                    ? {
+                          ...prev,
+                          commission_override: updatedVendor.commission_override,
+                          commission_rate: updatedVendor.commission_rate,
+                      }
+                    : prev
+            )
+            toast.success("Commission settings saved")
+        } catch (error: any) {
+            console.error("Failed to save commission:", error)
+            toast.error(error.message || "Failed to save commission")
+        } finally {
+            setCommissionSaving(false)
+        }
+    }
+
     const loadPayouts = async () => {
         if (!vendorId) return
 
@@ -268,7 +352,19 @@ const VendorDetailPage = () => {
 
             if (response.ok) {
                 const data = await response.json()
-                setCalculation(data.calculation)
+                setCalculation({
+                    vendor_id: data.vendor_id,
+                    vendor_name: data.vendor_name,
+                    commission_rate: data.commission_rate,
+                    commission_source: data.commission_source,
+                    gross_amount: data.total_revenue ?? data.gross_amount ?? 0,
+                    commission_amount: data.commission ?? data.commission_amount ?? 0,
+                    net_amount: data.net_amount ?? 0,
+                    order_count: data.order_count ?? 0,
+                    orders: Array.isArray(data.orders)
+                        ? data.orders
+                        : (data.order_ids || []).map((id: string) => ({ id })),
+                })
                 setShowPayoutModal(true)
             } else {
                 alert("Failed to calculate payout")
@@ -452,6 +548,7 @@ const VendorDetailPage = () => {
                             setActiveTab(tab.id)
                             if (tab.id === "payouts") {
                                 loadPayouts()
+                                loadGlobalCommission()
                             }
                         }}
                         style={{ gap: 8 }}
@@ -728,7 +825,44 @@ const VendorDetailPage = () => {
                             <InfoRow label="Bank Name" value={vendor.bank_name} />
                             <InfoRow label="Account Number" value={vendor.account_no} />
                             <InfoRow label="IFSC Code" value={vendor.ifsc_code} />
-                            <InfoRow label="Commission Rate" value={`${vendor.commission_rate || 2}%`} />
+                            <div style={{ padding: "12px 0" }}>
+                                <Text size="small" style={{ color: "var(--fg-muted)", marginBottom: 12 }}>
+                                    Commission
+                                </Text>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                                    <Checkbox
+                                        checked={commissionOverride}
+                                        onCheckedChange={(checked) => setCommissionOverride(checked === true)}
+                                    />
+                                    <Label style={{ fontSize: 14, cursor: "pointer" }}>Use custom commission</Label>
+                                </div>
+                                {commissionOverride ? (
+                                    <div style={{ marginBottom: 12 }}>
+                                        <Label style={{ marginBottom: 4, display: "block" }}>Custom rate (%)</Label>
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            max={100}
+                                            step="0.1"
+                                            value={commissionRateInput}
+                                            disabled={commissionSaving}
+                                            onChange={(e) => setCommissionRateInput(e.target.value)}
+                                        />
+                                    </div>
+                                ) : (
+                                    <Text size="small" style={{ marginBottom: 12, color: "var(--fg-muted)" }}>
+                                        Using global default: {globalDefaultRate ?? 2}%
+                                    </Text>
+                                )}
+                                <Button
+                                    variant="secondary"
+                                    size="small"
+                                    disabled={commissionSaving}
+                                    onClick={handleSaveCommission}
+                                >
+                                    {commissionSaving ? "Saving..." : "Save Commission"}
+                                </Button>
+                            </div>
                         </InfoCard>
                     </div>
 
@@ -822,7 +956,10 @@ const VendorDetailPage = () => {
                                         <Text>{formatCurrency(calculation.gross_amount)}</Text>
                                     </div>
                                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                        <Text>Commission ({calculation.commission_rate}%):</Text>
+                                        <Text>
+                                            Commission ({calculation.commission_rate}%{" "}
+                                            {calculation.commission_source === "custom" ? "custom" : "global"}):
+                                        </Text>
                                         <Text style={{ color: "var(--fg-muted)" }}>-{formatCurrency(calculation.commission_amount)}</Text>
                                     </div>
                                     <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 8, borderTop: "1px solid var(--border-base)" }}>

@@ -1,4 +1,8 @@
 import type { Pool } from "pg";
+import {
+  getVendorCommissionDefaultRate,
+  resolveVendorCommissionRate,
+} from "./vendor-commission";
 
 export const VENDOR_EARNINGS_UNLOCK_MINUTES = 5;
 
@@ -33,6 +37,8 @@ export type VendorEarningsSummary = {
     order_display_id: string | null;
     net_amount: number;
     gross_amount: number;
+    commission_rate: number;
+    commission_amount: number;
     unlock_at: string;
     delivered_at: string | null;
   }>;
@@ -41,6 +47,9 @@ export type VendorEarningsSummary = {
     order_id: string;
     order_display_id: string | null;
     net_amount: number;
+    gross_amount: number;
+    commission_rate: number;
+    commission_amount: number;
     credited_at: string | null;
   }>;
   reversed_recent: Array<{
@@ -101,12 +110,23 @@ async function fetchVendorCommissionRate(
   vendorId: string,
   pool: Pool
 ): Promise<number> {
-  const result = await pool.query<{ commission_rate: string | number | null }>(
-    `SELECT commission_rate FROM vendor WHERE id = $1 LIMIT 1`,
+  const result = await pool.query<{
+    commission_rate: string | number | null;
+    commission_override: boolean | null;
+  }>(
+    `SELECT commission_rate, commission_override FROM vendor WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
-  const rate = Number(result.rows[0]?.commission_rate);
-  return Number.isFinite(rate) ? rate : 2;
+  const row = result.rows[0];
+  const globalDefault = await getVendorCommissionDefaultRate(pool);
+  return resolveVendorCommissionRate(
+    {
+      commission_rate:
+        row?.commission_rate == null ? null : Number(row.commission_rate),
+      commission_override: row?.commission_override === true,
+    },
+    globalDefault
+  ).rate;
 }
 
 async function upsertVendorEarningRow(
@@ -367,10 +387,14 @@ export async function markVendorEarningsAsPaid(
   return result.rowCount ?? 0;
 }
 
-/** Payable snapshot for admin payout screen (CREDITED only — not still unlocking). */
+/** Payable snapshot for admin payout screen (CREDITED only — not still unlocking).
+ * Pass `effectiveRate` to apply the vendor's current commission policy on unpaid
+ * gross totals (earnings rows may still hold an older rate).
+ */
 export async function getVendorPayableSnapshot(
   vendorId: string,
-  pool: Pool
+  pool: Pool,
+  options?: { effectiveRate?: number }
 ): Promise<{
   vendor_id: string;
   total_revenue: number;
@@ -397,7 +421,7 @@ export async function getVendorPayableSnapshot(
       FROM vendor_earnings_log
       WHERE vendor_id = $1
         AND status = 'CREDITED'
-        AND net_amount > 0
+        AND (gross_amount > 0 OR net_amount > 0)
       ORDER BY credited_at ASC NULLS LAST
     `,
     [vendorId]
@@ -418,14 +442,27 @@ export async function getVendorPayableSnapshot(
   let totalRevenue = 0;
   let commission = 0;
   let netAmount = 0;
-  let commissionRate = 2;
+  let commissionRate =
+    options?.effectiveRate != null && Number.isFinite(options.effectiveRate)
+      ? Number(options.effectiveRate)
+      : 2;
   const orderIds: string[] = [];
+  const useLiveRate =
+    options?.effectiveRate != null && Number.isFinite(options.effectiveRate);
 
   for (const row of credited.rows) {
-    totalRevenue += Number(row.gross_amount) || 0;
-    commission += Number(row.commission_amount) || 0;
-    netAmount += Number(row.net_amount) || 0;
-    commissionRate = Number(row.commission_rate) || commissionRate;
+    const gross = Number(row.gross_amount) || 0;
+    if (gross <= 0) continue;
+    totalRevenue += gross;
+    if (useLiveRate) {
+      const liveCommission = (gross * commissionRate) / 100;
+      commission += liveCommission;
+      netAmount += gross - liveCommission;
+    } else {
+      commission += Number(row.commission_amount) || 0;
+      netAmount += Number(row.net_amount) || 0;
+      commissionRate = Number(row.commission_rate) || commissionRate;
+    }
     if (row.order_id) orderIds.push(row.order_id);
   }
 
@@ -480,6 +517,8 @@ export async function getVendorEarningsSummary(
             order_display_id,
             net_amount,
             gross_amount,
+            commission_rate,
+            commission_amount,
             unlock_at,
             delivered_at
           FROM vendor_earnings_log
@@ -504,7 +543,15 @@ export async function getVendorEarningsSummary(
       ),
       pool.query(
         `
-          SELECT id, order_id, order_display_id, net_amount, credited_at
+          SELECT
+            id,
+            order_id,
+            order_display_id,
+            net_amount,
+            gross_amount,
+            commission_rate,
+            commission_amount,
+            credited_at
           FROM vendor_earnings_log
           WHERE vendor_id = $1
             AND status = 'CREDITED'
@@ -541,6 +588,8 @@ export async function getVendorEarningsSummary(
       order_display_id: row.order_display_id,
       net_amount: Number(row.net_amount) || 0,
       gross_amount: Number(row.gross_amount) || 0,
+      commission_rate: Number(row.commission_rate) || 0,
+      commission_amount: Number(row.commission_amount) || 0,
       unlock_at: row.unlock_at,
       delivered_at: row.delivered_at,
     })),
@@ -549,6 +598,9 @@ export async function getVendorEarningsSummary(
       order_id: row.order_id,
       order_display_id: row.order_display_id,
       net_amount: Number(row.net_amount) || 0,
+      gross_amount: Number(row.gross_amount) || 0,
+      commission_rate: Number(row.commission_rate) || 0,
+      commission_amount: Number(row.commission_amount) || 0,
       credited_at: row.credited_at,
     })),
     reversed_recent: reversedRecentResult.rows.map((row) => ({

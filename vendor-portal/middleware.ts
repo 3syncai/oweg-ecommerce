@@ -66,6 +66,7 @@ export async function middleware(request: NextRequest) {
     "/profile",
     "/customers",
     "/payout",
+    "/messages",
     "/settings",
     "/search",
   ];

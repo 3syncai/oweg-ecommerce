@@ -71,46 +71,51 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
 
     const summary = await getVendorEarningsSummary(auth.vendor_id, pool)
 
-    // Best-effort legacy payout rows (older schema); ignore failures.
+    // Load payout rows via SQL (same table admin writes to) so notifications see Pay Now instantly.
     let payouts: unknown[] = []
     let totals = { total_credited: 0, total_commission: 0, total_gross: 0 }
     try {
-      const query = req.scope.resolve("query") as {
-        graph: (args: Record<string, unknown>) => Promise<{ data: any[] }>
-      }
-      const { data } = await query.graph({
-        entity: "vendor_payout",
-        fields: [
-          "id",
-          "amount",
-          "commission_amount",
-          "net_amount",
-          "commission_rate",
-          "currency_code",
-          "transaction_id",
-          "payment_method",
-          "status",
-          "notes",
-          "order_ids",
-          "created_at",
-        ],
-        filters: { vendor_id: auth.vendor_id },
-        pagination: { skip: 0, take: 100 },
-      })
-      payouts = data || []
+      const result = await pool.query(
+        `
+          SELECT
+            id,
+            amount,
+            commission_amount,
+            net_amount,
+            commission_rate,
+            currency_code,
+            transaction_id,
+            payment_method,
+            status,
+            notes,
+            order_ids,
+            created_at,
+            updated_at
+          FROM vendor_payout
+          WHERE vendor_id = $1
+          ORDER BY created_at DESC
+          LIMIT 100
+        `,
+        [auth.vendor_id]
+      )
+      payouts = result.rows || []
       totals = (payouts as any[]).reduce(
         (acc, payout) => {
-          if (payout.status === "processed") {
-            acc.total_credited += payout.net_amount || 0
-            acc.total_commission += payout.commission_amount || 0
-            acc.total_gross += payout.amount || 0
+          if (String(payout.status || "").toLowerCase() === "processed") {
+            acc.total_credited += Number(payout.net_amount) || 0
+            acc.total_commission += Number(payout.commission_amount) || 0
+            acc.total_gross += Number(payout.amount) || 0
           }
           return acc
         },
         { total_credited: 0, total_commission: 0, total_gross: 0 }
       )
-    } catch {
-      // vendor_payout entity may not exist — earnings summary is the source of truth
+    } catch (error: unknown) {
+      const pgError = error as { code?: string }
+      if (pgError?.code !== "42P01") {
+        console.warn("Vendor payouts list query failed:", error)
+      }
+      // Table missing — earnings summary is still the source of truth
     }
 
     res.json({

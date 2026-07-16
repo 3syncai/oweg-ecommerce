@@ -44,7 +44,8 @@ const Vendor = model.define("vendor", {
   cancel_cheque_url: model.text().nullable(),
 
   // Commission Settings
-  commission_rate: model.float().default(2.0), // Percentage commission rate (default 2%)
+  commission_rate: model.float().default(2.0),
+  commission_override: model.boolean().default(false),
 
   // Documents
   documents: model.json().nullable(), // Array of VendorDocument

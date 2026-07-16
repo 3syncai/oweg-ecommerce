@@ -48,7 +48,7 @@ const OrderReturnListBadgesWidget = () => {
         badge.setAttribute("data-oweg-return-badge", "true")
         badge.textContent = formatBadge(index[orderId])
         badge.className =
-          "ml-2 inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-orange-800"
+          "ml-2 inline-flex items-center rounded-full bg-orange-950/60 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-orange-200 ring-1 ring-orange-800/60"
 
         link.insertAdjacentElement("afterend", badge)
       })
