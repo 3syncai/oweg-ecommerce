@@ -1,12 +1,14 @@
 const STYLE_ID = "oweg-hide-sales-channel-column"
 const HIDDEN_ATTR = "data-oweg-hidden-sales-channel"
 
-type ListPage = "orders" | "products"
+type ListPage = "orders" | "products" | "customer-detail"
 
 function getActiveListPage(pathname: string): ListPage | null {
   const path = pathname.replace(/\/$/, "")
   if (path.endsWith("/orders") || path.endsWith("/app/orders")) return "orders"
   if (path.endsWith("/products") || path.endsWith("/app/products")) return "products"
+  // Customer detail: /app/customers/cus_...
+  if (/\/customers\/cus_[^/]+$/i.test(path)) return "customer-detail"
   return null
 }
 
