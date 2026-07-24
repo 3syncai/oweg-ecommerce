@@ -215,25 +215,16 @@ const VendorOrdersPage = () => {
   const openDetails = async (order: VendorOrder, withTracking = false) => {
     setDetailOrder(order)
     setTracking(null)
+    if (!withTracking) return
+
     setProcessing(`track:${order.id}`)
     try {
-      if (withTracking) {
-        const data = await vendorOrdersApi.track(order.id)
-        replaceOrder(data.order)
-        setDetailOrder(data.order)
-        setTracking(data.tracking)
-        return
-      }
-
-      const data = await vendorOrdersApi.get(order.id)
+      const data = await vendorOrdersApi.track(order.id)
       replaceOrder(data.order)
       setDetailOrder(data.order)
+      setTracking(data.tracking)
     } catch (e: any) {
-      if (withTracking) {
-        setTracking({ error: e?.message || "Tracking is unavailable" })
-      } else {
-        setError(e?.message || "Failed to load order details")
-      }
+      setTracking({ error: e?.message || "Tracking is unavailable" })
     } finally {
       setProcessing(null)
     }
