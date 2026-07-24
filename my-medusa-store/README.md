@@ -42,6 +42,40 @@ Visit the [Quickstart Guide](https://docs.medusajs.com/learn/installation) to se
 
 Visit the [Docs](https://docs.medusajs.com/learn/installation#get-started) to learn more about our system requirements.
 
+## Self-Shipping Tracking
+
+Self-shipping live tracking cannot work from an AWB alone. The Medusa backend must call the courier or aggregator API that owns that AWB.
+
+If the vendor booked the shipment through Shiprocket (for example Shiprocket + Shadowfax courier), choose `Shiprocket aggregator` in the vendor portal self-shipping form. The backend will use the configured `SHIPROCKET_EMAIL` / `SHIPROCKET_PASSWORD` and track the vendor-entered AWB through Shiprocket.
+
+For one-off carrier adapters, configure `SELF_SHIPPING_TRACKING_PROVIDERS` as JSON:
+
+```json
+{
+  "shadowfax": {
+    "aliases": ["Shadowfax", "Shadow Fax"],
+    "url": "https://carrier.example.com/track/{awb}",
+    "method": "GET",
+    "headers": {
+      "Authorization": "Bearer YOUR_TOKEN"
+    },
+    "tracking_url": "https://carrier.example.com/track/{awb}"
+  }
+}
+```
+
+For Shadowfax, the backend also supports these direct env vars:
+
+```bash
+SHADOWFAX_TRACKING_URL=https://shadowfax-api.example.com/track/{awb}
+SHADOWFAX_API_KEY=your-token
+SHADOWFAX_AUTH_HEADER=Authorization
+SHADOWFAX_AUTH_PREFIX=Bearer
+SHADOWFAX_PUBLIC_TRACKING_URL=https://shadowfax.in/track-order/{awb}
+```
+
+If a vendor enters a courier that is not configured, the portal shows a public tracking link when known, but live status/checkpoints remain unavailable until that carrier API or an aggregator is connected.
+
 ## What is Medusa
 
 Medusa is a set of commerce modules and tools that allow you to build rich, reliable, and performant commerce applications without reinventing core commerce logic. The modules can be customized and used to build advanced ecommerce stores, marketplaces, or any product that needs foundational commerce primitives. All modules are open-source and freely available on npm.
