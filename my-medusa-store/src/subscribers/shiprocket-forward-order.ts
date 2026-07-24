@@ -1,5 +1,5 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
-import { Modules } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import ShiprocketService from "../services/shiprocket"
 
 export default async function shiprocketForwardOrderSubscriber({
@@ -19,6 +19,26 @@ export default async function shiprocketForwardOrderSubscriber({
     const order = await orderModuleService.retrieveOrder(data.id, {
       relations: ["items", "shipping_address", "billing_address"],
     })
+
+    const productIds = Array.from(
+      new Set((order.items || []).map((item: any) => item.product_id).filter(Boolean))
+    )
+    if (productIds.length) {
+      try {
+        const pgConnection = container.resolve(ContainerRegistrationKeys.PG_CONNECTION)
+        const vendorProducts = await pgConnection.raw(
+          `SELECT id FROM product WHERE id = ANY(?) AND metadata->>'vendor_id' IS NOT NULL LIMIT 1`,
+          [productIds]
+        )
+        if (vendorProducts?.rows?.length) {
+          console.log(`[Shiprocket] Skipping auto-forward for vendor order ${order.id}`)
+          return
+        }
+      } catch (vendorCheckError: any) {
+        console.warn(`[Shiprocket] Vendor product check failed for ${order.id}:`, vendorCheckError?.message)
+      }
+    }
+
     console.log(`[Shiprocket] Building forward shipment for order ${order.id}`)
 
     const pickupLocation = process.env.SHIPROCKET_PICKUP_LOCATION

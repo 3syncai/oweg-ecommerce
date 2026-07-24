@@ -476,11 +476,64 @@ export const vendorProductsApi = {
 // Vendor Orders API
 export const vendorOrdersApi = {
   list: async () => {
-    return apiRequest<{ orders: any[] }>('/vendor/orders')
+    return apiRequest<{ orders: any[]; counts?: Record<string, number> }>('/vendor/orders')
   },
 
   get: async (id: string) => {
     return apiRequest<{ order: any }>(`/vendor/orders/${id}`)
+  },
+
+  accept: async (id: string) => {
+    return apiRequest<{ order: any }>(`/vendor/orders/${id}/accept`, {
+      method: 'POST',
+    })
+  },
+
+  chooseEasyShipping: async (id: string) => {
+    return apiRequest<{ order: any }>(`/vendor/orders/${id}/shipping`, {
+      method: 'POST',
+      data: { method: 'easy' },
+    })
+  },
+
+  chooseSelfShipping: async (
+    id: string,
+    data: {
+      courier_partner_name: string
+      tracking_source?: 'shiprocket' | 'carrier_api' | 'manual'
+      awb: string
+      dispatch_rate: number
+      packing_info: string
+    }
+  ) => {
+    return apiRequest<{ order: any }>(`/vendor/orders/${id}/shipping`, {
+      method: 'POST',
+      data: { method: 'self', ...data },
+    })
+  },
+
+  generateInvoice: async (id: string) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
+    const response = await axios({
+      url: `${API_URL}/vendor/orders/${id}/invoice`,
+      method: 'POST',
+      responseType: 'blob',
+      headers: {
+        ...(PUBLISHABLE_KEY ? { 'x-publishable-api-key': PUBLISHABLE_KEY } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    })
+    return response.data as Blob
+  },
+
+  markReadyToDispatch: async (id: string) => {
+    return apiRequest<{ order: any }>(`/vendor/orders/${id}/rtd`, {
+      method: 'POST',
+    })
+  },
+
+  track: async (id: string) => {
+    return apiRequest<{ order: any; tracking: any }>(`/vendor/orders/${id}/track`)
   },
 }
 
