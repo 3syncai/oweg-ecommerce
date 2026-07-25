@@ -1,22 +1,20 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
 import { filterVendorVisibleOrders } from "../../../lib/vendor-order-visibility"
-
-// CORS headers helper
-function setCorsHeaders(res: MedusaResponse) {
-  res.setHeader('Access-Control-Allow-Origin', process.env.VENDOR_CORS || 'http://localhost:4000')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
-  res.setHeader('Access-Control-Allow-Credentials', 'true')
-}
+import {
+  formatVendorOrder,
+  getVendorProductIds,
+  setVendorOrderCorsHeaders,
+  type VendorOrderStage,
+} from "../../../lib/vendor-order-workflow"
 
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
-  setCorsHeaders(res)
+  setVendorOrderCorsHeaders(res)
   return res.status(200).end()
 }
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
-  setCorsHeaders(res)
+  setVendorOrderCorsHeaders(res)
   const auth = await requireApprovedVendor(req, res)
   if (!auth) return
 
@@ -24,23 +22,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     console.log(`[Orders API] Starting for vendor: ${auth.vendor_id}`)
     const query = req.scope.resolve("query")
 
-    // Use query module to efficiently get vendor's product IDs with metadata filter
-    const { data: vendorProducts } = await query.graph({
-      entity: "product",
-      fields: ["id"],
-      filters: {
-        metadata: {
-          vendor_id: auth.vendor_id
-        }
-      }
-    })
-
-    if (!vendorProducts || vendorProducts.length === 0) {
+    const vendorProductIds = await getVendorProductIds(req, auth.vendor_id)
+    if (vendorProductIds.length === 0) {
       console.log(`[Orders API] No products found for vendor ${auth.vendor_id}`)
       return res.json({ orders: [] })
     }
 
-    const vendorProductIds = vendorProducts.map((p: any) => p.id)
     console.log(`[Orders API] Found ${vendorProductIds.length} vendor products`)
 
     // Get orders with items efficiently using query module
@@ -56,6 +43,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         "summary",
         "currency_code",
         "created_at",
+        "updated_at",
+        "customer_id",
+        "shipping_address.*",
+        "billing_address.*",
         "items.id",
         "items.title",
         "items.variant_title",
@@ -63,6 +54,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         "items.unit_price",
         "items.product_id",
         "items.variant.product_id",
+        "items.variant_sku",
         "fulfillments.id",
         "fulfillments.shipped_at",
         "fulfillments.delivered_at",
@@ -89,36 +81,28 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       console.log(`[Orders API] Sample order structure:`, JSON.stringify(vendorOrders[0], null, 2))
     }
 
-    // Format orders with proper total
-    const formattedOrders = vendorOrders.map((order: any) => {
-      // Calculate fulfillment status
-      let fulfillmentStatus = 'pending'
-      const fulfillments = order.fulfillments || []
+    const formattedOrders = vendorOrders.map((order: any) =>
+      formatVendorOrder(order, auth.vendor_id, vendorProductIds)
+    )
 
-      if (fulfillments.length > 0) {
-        if (fulfillments.some((f: any) => f.delivered_at)) {
-          fulfillmentStatus = 'delivered'
-        }
-        else if (fulfillments.some((f: any) => f.shipped_at && !f.canceled_at)) {
-          fulfillmentStatus = 'shipped'
-        }
-        else if (fulfillments.every((f: any) => f.canceled_at)) {
-          fulfillmentStatus = 'canceled'
-        }
-        else {
-          fulfillmentStatus = 'processing'
-        }
+    const counts = formattedOrders.reduce(
+      (acc: Record<VendorOrderStage | "total", number>, order: any) => {
+        acc.total += 1
+        acc[order.vendor_stage as VendorOrderStage] += 1
+        return acc
+      },
+      {
+        total: 0,
+        to_accept: 0,
+        to_pack: 0,
+        to_dispatch: 0,
+        in_transit: 0,
+        delivered: 0,
       }
-
-      return {
-        ...order,
-        total: order.summary?.current_order_total || 0,
-        fulfillment_status: fulfillmentStatus
-      }
-    })
+    )
 
     console.log(`[Orders API] Returning ${formattedOrders.length} orders`)
-    return res.json({ orders: formattedOrders })
+    return res.json({ orders: formattedOrders, counts })
   } catch (error: any) {
     console.error("Vendor orders list error:", error)
     return res.status(500).json({ message: error?.message || "Failed to list orders" })
