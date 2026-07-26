@@ -233,6 +233,7 @@ export const generateInvoice = async (order: any) => {
       fontFamily: "Helvetica-Bold",
     },
     tdText: { fontSize: 8, color: "#222222" },
+    left: { textAlign: "left" },
     right: { textAlign: "right" },
     center: { textAlign: "center" },
     totalsWrap: { marginTop: 12, alignItems: "flex-end" },
@@ -270,47 +271,37 @@ export const generateInvoice = async (order: any) => {
     footerText: { fontSize: 7, color: "#888888" },
   })
 
+  const textAlignStyle = (align: "left" | "center" | "right" = "left") => {
+    if (align === "right") return styles.right
+    if (align === "center") return styles.center
+    return styles.left
+  }
+
   const HeaderCell = ({
     width,
     children,
-    align,
+    align = "left",
   }: {
     width: number
     children: string
     align?: "left" | "center" | "right"
   }) => (
     <View style={[styles.cell, { width }]}>
-      <Text
-        style={[
-          styles.thText,
-          align === "right" ? styles.right : null,
-          align === "center" ? styles.center : null,
-        ]}
-      >
-        {children}
-      </Text>
+      <Text style={[styles.thText, textAlignStyle(align)]}>{children}</Text>
     </View>
   )
 
   const DataCell = ({
     width,
     children,
-    align,
+    align = "left",
   }: {
     width: number
     children: string | number
     align?: "left" | "center" | "right"
   }) => (
     <View style={[styles.cell, { width }]}>
-      <Text
-        style={[
-          styles.tdText,
-          align === "right" ? styles.right : null,
-          align === "center" ? styles.center : null,
-        ]}
-      >
-        {String(children)}
-      </Text>
+      <Text style={[styles.tdText, textAlignStyle(align)]}>{String(children)}</Text>
     </View>
   )
 
