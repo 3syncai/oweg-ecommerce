@@ -629,7 +629,7 @@ export const vendorPayoutsApi = {
   },
 
   list: async () => {
-    return apiRequest<{ payouts: any[]; totals: any; count: number }>('/vendor/payouts')
+    return apiRequest<{ summary?: VendorEarningsSummary; payouts: any[]; totals: any; count: number }>('/vendor/payouts')
   },
 }
 

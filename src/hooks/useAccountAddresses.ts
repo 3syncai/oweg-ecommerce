@@ -3,9 +3,11 @@
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthProvider";
+import { withDerivedAddressName } from "@/lib/customer-address-name";
 
 export type CustomerAddress = {
   id: string;
+  address_name?: string;
   first_name?: string;
   last_name?: string;
   phone?: string;
@@ -22,6 +24,7 @@ export type CustomerAddress = {
 };
 
 export type CustomerAddressInput = {
+  address_name?: string;
   first_name?: string;
   last_name?: string;
   phone?: string;
@@ -79,7 +82,7 @@ export function useAccountAddresses() {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(input),
+        body: JSON.stringify(withDerivedAddressName(input as Record<string, unknown>)),
       });
       if (res.status === 401) throw new Error("Please sign in to save an address.");
       if (!res.ok) throw new Error("Unable to save address right now.");
@@ -102,7 +105,7 @@ export function useAccountAddresses() {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(input),
+        body: JSON.stringify(withDerivedAddressName(input as Record<string, unknown>)),
       });
       if (res.status === 401) throw new Error("Please sign in to update an address.");
       if (!res.ok) throw new Error("Unable to update address right now.");

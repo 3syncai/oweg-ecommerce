@@ -197,16 +197,22 @@ const VendorOrdersPage = () => {
 
   const filteredOrders = useMemo(() => {
     const query = search.trim().toLowerCase()
-    return orders.filter((order) => {
-      if (selectedStage !== "total" && order.vendor_stage !== selectedStage) return false
-      if (!query) return true
-      return (
-        String(order.id).toLowerCase().includes(query) ||
-        String(order.display_id || "").toLowerCase().includes(query) ||
-        String(order.email || "").toLowerCase().includes(query) ||
-        (order.product_names || []).join(" ").toLowerCase().includes(query)
+    return orders
+      .filter((order) => {
+        if (selectedStage !== "total" && order.vendor_stage !== selectedStage) return false
+        if (!query) return true
+        return (
+          String(order.id).toLowerCase().includes(query) ||
+          String(order.display_id || "").toLowerCase().includes(query) ||
+          String(order.email || "").toLowerCase().includes(query) ||
+          (order.product_names || []).join(" ").toLowerCase().includes(query)
+        )
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.created_at || 0).getTime() -
+          new Date(a.created_at || 0).getTime()
       )
-    })
   }, [orders, search, selectedStage])
 
   const pageCount = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE))
@@ -215,25 +221,16 @@ const VendorOrdersPage = () => {
   const openDetails = async (order: VendorOrder, withTracking = false) => {
     setDetailOrder(order)
     setTracking(null)
+    if (!withTracking) return
+
     setProcessing(`track:${order.id}`)
     try {
-      if (withTracking) {
-        const data = await vendorOrdersApi.track(order.id)
-        replaceOrder(data.order)
-        setDetailOrder(data.order)
-        setTracking(data.tracking)
-        return
-      }
-
-      const data = await vendorOrdersApi.get(order.id)
+      const data = await vendorOrdersApi.track(order.id)
       replaceOrder(data.order)
       setDetailOrder(data.order)
+      setTracking(data.tracking)
     } catch (e: any) {
-      if (withTracking) {
-        setTracking({ error: e?.message || "Tracking is unavailable" })
-      } else {
-        setError(e?.message || "Failed to load order details")
-      }
+      setTracking({ error: e?.message || "Tracking is unavailable" })
     } finally {
       setProcessing(null)
     }

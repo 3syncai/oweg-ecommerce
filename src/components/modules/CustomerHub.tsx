@@ -389,6 +389,7 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
       province: form.state,
       postal_code: form.postalCode,
       country_code: form.countryCode || "IN",
+      address_name: isShipping ? "Home" : "Billing",
       ...(isShipping ? { is_default_shipping: true } : { is_default_billing: true }),
     };
 

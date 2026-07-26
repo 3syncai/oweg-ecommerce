@@ -1,6 +1,7 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import ShiprocketService from "../services/shiprocket"
+import { isShiprocketEligibleOrder } from "../lib/vendor-order-visibility"
 
 export default async function shiprocketForwardOrderSubscriber({
   event: { data },
@@ -19,6 +20,13 @@ export default async function shiprocketForwardOrderSubscriber({
     const order = await orderModuleService.retrieveOrder(data.id, {
       relations: ["items", "shipping_address", "billing_address"],
     })
+
+    if (!isShiprocketEligibleOrder(order as any)) {
+      console.log(
+        `[Shiprocket] Skipping auto-forward for ineligible order ${order.id} (draft/unpaid/failed/unconfirmed)`
+      )
+      return
+    }
 
     const productIds = Array.from(
       new Set((order.items || []).map((item: any) => item.product_id).filter(Boolean))

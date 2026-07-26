@@ -28,6 +28,7 @@ import {
   getCheckoutSuccessPath,
 } from "@/lib/checkout-redirects";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
+import { findMatchingCustomerAddress } from "@/lib/customer-address-dedupe";
 
 type CartItem = {
   id: string;
@@ -117,22 +118,6 @@ function buildCheckoutWarmupFingerprint(input: {
     bq: input.buyNowQty,
     bp: input.buyNowPrice,
   });
-}
-
-function isShippingCompleteForWarmup(shipping: {
-  email?: string;
-  firstName?: string;
-  address1?: string;
-  postalCode?: string;
-  phone?: string;
-}): boolean {
-  return Boolean(
-    shipping.email?.trim() &&
-      shipping.firstName?.trim() &&
-      shipping.address1?.trim() &&
-      shipping.postalCode?.trim() &&
-      shipping.phone?.trim()
-  );
 }
 
 type CustomerAddress = {
@@ -722,7 +707,7 @@ function CheckoutPageInner() {
     countryCode: "IN",
   });
   const [billing, setBilling] = useState({ ...shipping });
-  const [_addresses, setAddresses] = useState<CustomerAddress[]>([]);
+  const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
   const [defaultAddress, setDefaultAddress] = useState<CustomerAddress | null>(null);
   const [addressTouched, setAddressTouched] = useState(false);
   const [saveAsDefault, setSaveAsDefault] = useState(false);
@@ -867,18 +852,30 @@ function CheckoutPageInner() {
       country_code: shipping.countryCode || "IN",
       is_default_shipping: true,
       is_default_billing: true,
+      address_name: "Home",
     };
+
+    const matched =
+      defaultAddress ||
+      findMatchingCustomerAddress(addresses, {
+        address_1: payload.address_1,
+        address_2: payload.address_2,
+        city: payload.city,
+        postal_code: payload.postal_code,
+        country_code: payload.country_code,
+      });
 
     try {
       setSavingAddress(true);
-      if (defaultAddress?.id) {
-        await fetch(`/api/medusa/customer-addresses/${encodeURIComponent(defaultAddress.id)}`, {
+      if (matched?.id) {
+        await fetch(`/api/medusa/customer-addresses/${encodeURIComponent(matched.id)}`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           credentials: "include",
           body: JSON.stringify(payload),
         });
       } else {
+        // API upserts if a matching row already exists server-side
         await fetch("/api/medusa/customer-addresses", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -1165,7 +1162,7 @@ function CheckoutPageInner() {
     console.log('🛒 [Frontend Debug] createDraftOrder Payload:', requestPayload);
 
     if (saveAsDefault) {
-      void saveDefaultAddress();
+      await saveDefaultAddress();
     }
 
     const res = await fetch("/api/checkout/draft-order", {
@@ -1234,92 +1231,8 @@ function CheckoutPageInner() {
     return createDraftOrder();
   };
 
-  useEffect(() => {
-    if (paymentMethod !== "razorpay") {
-      draftWarmupRef.current = null;
-      return;
-    }
-
-    const hasCartItems = (cart?.items?.length || 0) > 0;
-    const hasBuyNowItem = isBuyNow && (buyNowItem || variantFromQuery);
-    if (!hasCartItems && !hasBuyNowItem) {
-      draftWarmupRef.current = null;
-      return;
-    }
-
-    if (!isShippingCompleteForWarmup(shipping)) {
-      draftWarmupRef.current = null;
-      return;
-    }
-
-    if (processing || totalsLoading || !isOweg10StatusReady) return;
-
-    const fingerprint = getCheckoutWarmupFingerprint();
-    if (
-      draftWarmupRef.current?.fingerprint === fingerprint &&
-      Date.now() - draftWarmupRef.current.at < DRAFT_WARMUP_TTL_MS
-    ) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      if (paymentMethod !== "razorpay") return;
-      if (!isShippingCompleteForWarmup(shipping)) return;
-
-      const createDraft = createDraftOrderRef.current;
-      if (!createDraft) return;
-
-      const currentFingerprint = getCheckoutWarmupFingerprint();
-      if (
-        draftWarmupRef.current?.fingerprint === currentFingerprint &&
-        Date.now() - draftWarmupRef.current.at < DRAFT_WARMUP_TTL_MS
-      ) {
-        return;
-      }
-
-      const run = (async () => {
-        try {
-          const draft = await createDraft();
-          draftWarmupRef.current = {
-            fingerprint: currentFingerprint,
-            draft,
-            payableRupees: payableTotal,
-            at: Date.now(),
-          };
-          return draft;
-        } catch (err) {
-          console.warn("checkout draft warmup failed", err);
-          draftWarmupRef.current = null;
-          return null;
-        } finally {
-          draftWarmupInFlightRef.current = null;
-        }
-      })();
-
-      draftWarmupInFlightRef.current = run;
-    }, 900);
-
-    return () => window.clearTimeout(timer);
-  }, [
-    paymentMethod,
-    shipping,
-    billingSame,
-    referralCode,
-    coinDiscount,
-    oweg10Applied,
-    oweg10Status.canApply,
-    payableTotal,
-    cart?.id,
-    cart?.items,
-    isBuyNow,
-    buyNowItem,
-    variantFromQuery,
-    qtyFromQuery,
-    priceFromQuery,
-    processing,
-    totalsLoading,
-    isOweg10StatusReady,
-  ]);
+  // Razorpay drafts are created only when the user clicks Pay (getOrCreateCheckoutDraft),
+  // not on shipping-field warmup — abandoned online attempts were flooding Draft Orders.
 
   const finalizeCodCheckout = (draft: DraftOrderResponse) => {
     void fetch("/api/checkout/cod", {
@@ -1448,6 +1361,15 @@ function CheckoutPageInner() {
         }).catch(() => undefined);
         await refundCoinsForOrder(draft.medusaOrderId);
         router.push(`${RAZORPAY_FAILED}?orderId=${encodeURIComponent(draft.medusaOrderId)}`);
+      },
+      onDismiss: async () => {
+        await fetch("/api/checkout/payment-failed", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ medusaOrderId: draft.medusaOrderId }),
+        }).catch(() => undefined);
+        await refundCoinsForOrder(draft.medusaOrderId);
+        setProcessing(false);
       },
     });
 
