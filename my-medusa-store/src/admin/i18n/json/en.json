@@ -2,6 +2,19 @@
     "collections": {
         "domain": "Brand"
     },
+    "fields": {
+        "collection": "Brand"
+    },
+    "products": {
+        "fields": {
+            "collection": {
+                "label": "Brand"
+            }
+        },
+        "columns": {
+            "collection": "Brand"
+        }
+    },
     "login": {
         "title": "Sign in to OWEG Admin",
         "hint": "Use your admin credentials to access the dashboard",

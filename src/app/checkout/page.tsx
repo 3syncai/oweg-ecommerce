@@ -28,6 +28,7 @@ import {
   getCheckoutSuccessPath,
 } from "@/lib/checkout-redirects";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
+import { findMatchingCustomerAddress } from "@/lib/customer-address-dedupe";
 
 type CartItem = {
   id: string;
@@ -706,7 +707,7 @@ function CheckoutPageInner() {
     countryCode: "IN",
   });
   const [billing, setBilling] = useState({ ...shipping });
-  const [_addresses, setAddresses] = useState<CustomerAddress[]>([]);
+  const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
   const [defaultAddress, setDefaultAddress] = useState<CustomerAddress | null>(null);
   const [addressTouched, setAddressTouched] = useState(false);
   const [saveAsDefault, setSaveAsDefault] = useState(false);
@@ -851,18 +852,30 @@ function CheckoutPageInner() {
       country_code: shipping.countryCode || "IN",
       is_default_shipping: true,
       is_default_billing: true,
+      address_name: "Home",
     };
+
+    const matched =
+      defaultAddress ||
+      findMatchingCustomerAddress(addresses, {
+        address_1: payload.address_1,
+        address_2: payload.address_2,
+        city: payload.city,
+        postal_code: payload.postal_code,
+        country_code: payload.country_code,
+      });
 
     try {
       setSavingAddress(true);
-      if (defaultAddress?.id) {
-        await fetch(`/api/medusa/customer-addresses/${encodeURIComponent(defaultAddress.id)}`, {
+      if (matched?.id) {
+        await fetch(`/api/medusa/customer-addresses/${encodeURIComponent(matched.id)}`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           credentials: "include",
           body: JSON.stringify(payload),
         });
       } else {
+        // API upserts if a matching row already exists server-side
         await fetch("/api/medusa/customer-addresses", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -1149,7 +1162,7 @@ function CheckoutPageInner() {
     console.log('🛒 [Frontend Debug] createDraftOrder Payload:', requestPayload);
 
     if (saveAsDefault) {
-      void saveDefaultAddress();
+      await saveDefaultAddress();
     }
 
     const res = await fetch("/api/checkout/draft-order", {

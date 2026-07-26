@@ -197,16 +197,22 @@ const VendorOrdersPage = () => {
 
   const filteredOrders = useMemo(() => {
     const query = search.trim().toLowerCase()
-    return orders.filter((order) => {
-      if (selectedStage !== "total" && order.vendor_stage !== selectedStage) return false
-      if (!query) return true
-      return (
-        String(order.id).toLowerCase().includes(query) ||
-        String(order.display_id || "").toLowerCase().includes(query) ||
-        String(order.email || "").toLowerCase().includes(query) ||
-        (order.product_names || []).join(" ").toLowerCase().includes(query)
+    return orders
+      .filter((order) => {
+        if (selectedStage !== "total" && order.vendor_stage !== selectedStage) return false
+        if (!query) return true
+        return (
+          String(order.id).toLowerCase().includes(query) ||
+          String(order.display_id || "").toLowerCase().includes(query) ||
+          String(order.email || "").toLowerCase().includes(query) ||
+          (order.product_names || []).join(" ").toLowerCase().includes(query)
+        )
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.created_at || 0).getTime() -
+          new Date(a.created_at || 0).getTime()
       )
-    })
   }, [orders, search, selectedStage])
 
   const pageCount = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE))

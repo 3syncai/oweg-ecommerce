@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withDerivedAddressName } from "@/lib/customer-address-name";
 import { extractErrorPayload, medusaStoreFetch } from "@/lib/medusa-auth";
 
 function toErrorMessage(errorPayload: unknown, fallback: string) {
@@ -61,17 +62,22 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
     body = {};
   }
 
+  const payload =
+    body && typeof body === "object"
+      ? withDerivedAddressName(body as Record<string, unknown>)
+      : body;
+
   try {
     const res = await medusaStoreFetch(`/store/customers/me/addresses/${encodeURIComponent(addressId)}`, {
       method: "POST",
       forwardedCookie,
       headers: { Cookie: forwardedCookie },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
-      const payload = await extractErrorPayload(res);
-      const message = toErrorMessage(payload, "Unable to update address");
+      const payloadErr = await extractErrorPayload(res);
+      const message = toErrorMessage(payloadErr, "Unable to update address");
       return NextResponse.json({ error: message }, { status: res.status });
     }
 
