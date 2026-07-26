@@ -12,10 +12,19 @@ import {
   type VendorShippingMethod,
 } from "../../../../../lib/vendor-order-workflow"
 import { isShiprocketEligibleOrder } from "../../../../../lib/vendor-order-visibility"
+import {
+  ensureVendorShiprocketPickup,
+  retrieveVendorOrThrow,
+} from "../../../../../lib/vendor-shiprocket-pickup"
 
 type ShippingBody = {
   method?: VendorShippingMethod
+  courier_id?: number | string
   courier_partner_name?: string
+  weight?: number | string
+  length?: number | string
+  breadth?: number | string
+  height?: number | string
   tracking_source?: "shiprocket" | "carrier_api" | "manual"
   awb?: string
   tracking_id?: string
@@ -63,17 +72,105 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
             "Order is not ready for Shiprocket (draft, unpaid, failed payment, or unconfirmed COD).",
         })
       }
+
+      const courierIdRaw = body.courier_id
+      const courierId =
+        courierIdRaw != null && String(courierIdRaw).trim() !== ""
+          ? Number(courierIdRaw)
+          : NaN
+      const courierName = String(body.courier_partner_name || "").trim()
+
+      if (!Number.isFinite(courierId) || courierId <= 0) {
+        return res.status(400).json({
+          message: "Select a courier partner (courier_id) for Easy Shipping",
+        })
+      }
+
+      const vendor = await retrieveVendorOrThrow(req, auth.vendor_id)
+      let vendorPickup
+      try {
+        vendorPickup = await ensureVendorShiprocketPickup(req, vendor)
+      } catch (e: any) {
+        return res.status(400).json({
+          message: e?.message || "Vendor pickup address incomplete",
+        })
+      }
+
+      const packageWeight = Number(body.weight)
+      const packageLength = Number(body.length)
+      const packageBreadth = Number(body.breadth)
+      const packageHeight = Number(body.height)
+
       const vendorItems = pickVendorItems(result.order, result.vendorProductIds)
       const shiprocket = new ShiprocketService()
       const response = await shiprocket.createForwardShipment(
-        buildShiprocketForwardPayload(result.order, vendorItems, auth.vendor_id) as any
+        buildShiprocketForwardPayload(result.order, vendorItems, auth.vendor_id, {
+          courier_id: courierId,
+          courier_name: courierName || null,
+          pickup_location: vendorPickup.pickup_location,
+          weight: Number.isFinite(packageWeight) && packageWeight > 0 ? packageWeight : null,
+          length: Number.isFinite(packageLength) && packageLength > 0 ? packageLength : null,
+          breadth: Number.isFinite(packageBreadth) && packageBreadth > 0 ? packageBreadth : null,
+          height: Number.isFinite(packageHeight) && packageHeight > 0 ? packageHeight : null,
+        }) as any
       )
+
+      const shipmentId =
+        (response as any)?.shipment_id ||
+        (response as any)?.data?.shipment_id ||
+        null
+      let awb =
+        (response as any)?.awb ||
+        (response as any)?.awb_code ||
+        (response as any)?.data?.awb ||
+        null
+      let assignWarning: string | null = null
+
+      if (shipmentId && !awb) {
+        try {
+          const assigned = await shiprocket.assignAwb(shipmentId, courierId)
+          awb =
+            (assigned as any)?.response?.data?.awb_code ||
+            (assigned as any)?.awb_code ||
+            (assigned as any)?.awb ||
+            awb
+        } catch (assignError: any) {
+          const msg = String(assignError?.message || "")
+          console.warn("[Shiprocket] AWB assign after create failed:", msg)
+          if (/KYC/i.test(msg)) {
+            return res.status(400).json({
+              message:
+                "Shiprocket blocked AWB assignment: complete KYC on your Shiprocket account (Settings → KYC), then try Easy Shipping again.",
+              shiprocket_order_id:
+                (response as any)?.order_id || (response as any)?.data?.order_id || null,
+              shiprocket_shipment_id: shipmentId,
+              detail: msg,
+            })
+          }
+          assignWarning = msg
+        }
+      }
 
       patch = {
         ...patch,
-        shiprocket_order_id: (response as any)?.order_id || (response as any)?.data?.order_id || null,
-        shiprocket_awb: (response as any)?.awb || (response as any)?.data?.awb || null,
-        shiprocket_status: "created",
+        shiprocket_order_id:
+          (response as any)?.order_id || (response as any)?.data?.order_id || null,
+        shiprocket_shipment_id: shipmentId,
+        shiprocket_awb: awb,
+        shiprocket_status: awb ? "awb_assigned" : "created",
+        easy_courier_id: courierId,
+        easy_courier_partner: courierName.slice(0, 120) || null,
+        easy_pickup_location: vendorPickup.pickup_location,
+        easy_pickup_pincode: vendorPickup.pin_code,
+        easy_package_weight:
+          Number.isFinite(packageWeight) && packageWeight > 0 ? packageWeight : null,
+        easy_package_length:
+          Number.isFinite(packageLength) && packageLength > 0 ? packageLength : null,
+        easy_package_breadth:
+          Number.isFinite(packageBreadth) && packageBreadth > 0 ? packageBreadth : null,
+        easy_package_height:
+          Number.isFinite(packageHeight) && packageHeight > 0 ? packageHeight : null,
+        easy_assign_warning: assignWarning,
       }
     } else {
       const courier = String(body.courier_partner_name || "").trim()

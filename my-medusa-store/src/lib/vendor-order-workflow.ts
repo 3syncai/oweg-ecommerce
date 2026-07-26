@@ -15,8 +15,11 @@ export type VendorOrderWorkflow = {
   accepted_at?: string
   shipping_method?: VendorShippingMethod
   shiprocket_order_id?: string | null
+  shiprocket_shipment_id?: string | number | null
   shiprocket_awb?: string | null
   shiprocket_status?: string | null
+  easy_courier_id?: number | null
+  easy_courier_partner?: string | null
   self_courier_partner?: string | null
   self_tracking_source?: "shiprocket" | "carrier_api" | "manual" | null
   self_awb?: string | null
@@ -159,6 +162,68 @@ export function getPaymentType(order: OrderLike) {
   return method === "cod" ? "PostPaid" : "Prepaid"
 }
 
+/** Coerce Medusa item quantity to a positive int for Shiprocket `units`. */
+export function getItemUnits(item: any): number {
+  const candidates = [
+    item?.quantity,
+    item?.detail?.quantity,
+    item?.raw_quantity,
+    item?.detail?.raw_quantity,
+    item?.quantity?.value,
+    item?.detail?.quantity?.value,
+    item?.raw_quantity?.value,
+    item?.detail?.raw_quantity?.value,
+    item?.quantity?.numeric,
+    item?.detail?.quantity?.numeric,
+  ]
+
+  for (const raw of candidates) {
+    if (raw == null || typeof raw === "object") continue
+    const n = typeof raw === "string" ? parseFloat(raw) : Number(raw)
+    if (Number.isFinite(n) && n > 0) return Math.max(1, Math.round(n))
+  }
+
+  // BigNumber-like objects: { value: "1", precision: 20 }
+  for (const obj of [
+    item?.quantity,
+    item?.detail?.quantity,
+    item?.raw_quantity,
+    item?.detail?.raw_quantity,
+  ]) {
+    if (obj && typeof obj === "object" && obj.value != null) {
+      const n = typeof obj.value === "string" ? parseFloat(obj.value) : Number(obj.value)
+      if (Number.isFinite(n) && n > 0) return Math.max(1, Math.round(n))
+    }
+  }
+
+  return 1
+}
+
+export function getItemUnitPrice(item: any): number {
+  const candidates = [
+    item?.unit_price,
+    item?.detail?.unit_price,
+    item?.unit_price?.value,
+    item?.raw_unit_price?.value,
+    item?.detail?.unit_price?.value,
+  ]
+
+  for (const raw of candidates) {
+    if (raw == null || typeof raw === "object") continue
+    const n = typeof raw === "string" ? parseFloat(raw) : Number(raw)
+    if (Number.isFinite(n) && n >= 0) return n
+  }
+
+  for (const obj of [item?.unit_price, item?.raw_unit_price, item?.detail?.unit_price]) {
+    if (obj && typeof obj === "object" && obj.value != null) {
+      const n = typeof obj.value === "string" ? parseFloat(obj.value) : Number(obj.value)
+      if (Number.isFinite(n) && n >= 0) return n
+    }
+  }
+
+  return 0
+}
+
 export function pickVendorItems(order: OrderLike, vendorProductIds: string[]) {
   const ids = new Set(vendorProductIds)
   return (order.items || []).filter((item) => {
@@ -234,10 +299,15 @@ export async function getVendorOrderOrRespond(
       "items.title",
       "items.variant_title",
       "items.quantity",
+      "items.raw_quantity",
+      "items.detail.quantity",
+      "items.detail.raw_quantity",
       "items.unit_price",
+      "items.raw_unit_price",
       "items.product_id",
       "items.variant.product_id",
       "items.variant_sku",
+      "items.variant.sku",
       "fulfillments.id",
       "fulfillments.shipped_at",
       "fulfillments.delivered_at",
@@ -267,32 +337,58 @@ export async function updateVendorOrderWorkflow(
   return metadata
 }
 
-export function buildShiprocketForwardPayload(order: OrderLike, vendorItems: any[], vendorId: string) {
-  const pickupLocation = process.env.SHIPROCKET_PICKUP_LOCATION
+export function buildShiprocketForwardPayload(
+  order: OrderLike,
+  vendorItems: any[],
+  vendorId: string,
+  options?: {
+    courier_id?: number | string | null
+    courier_name?: string | null
+    pickup_location?: string | null
+    weight?: number | null
+    length?: number | null
+    breadth?: number | null
+    height?: number | null
+  }
+) {
+  const pickupLocation =
+    String(options?.pickup_location || "").trim() ||
+    process.env.SHIPROCKET_PICKUP_LOCATION ||
+    ""
   if (!pickupLocation) {
-    throw new Error("SHIPROCKET_PICKUP_LOCATION is required for forward shipments.")
+    throw new Error(
+      "Shiprocket pickup location is missing. Complete vendor store address or set SHIPROCKET_PICKUP_LOCATION."
+    )
   }
 
   const defaultLength = Number(process.env.SHIPROCKET_DEFAULT_LENGTH || 10)
   const defaultBreadth = Number(process.env.SHIPROCKET_DEFAULT_BREADTH || 10)
   const defaultHeight = Number(process.env.SHIPROCKET_DEFAULT_HEIGHT || 10)
   const defaultWeight = Number(process.env.SHIPROCKET_DEFAULT_WEIGHT || 0.5)
+
+  const length =
+    options?.length != null && Number(options.length) > 0 ? Number(options.length) : defaultLength
+  const breadth =
+    options?.breadth != null && Number(options.breadth) > 0 ? Number(options.breadth) : defaultBreadth
+  const height =
+    options?.height != null && Number(options.height) > 0 ? Number(options.height) : defaultHeight
+  const weight =
+    options?.weight != null && Number(options.weight) > 0 ? Number(options.weight) : defaultWeight
   const address = order.shipping_address || order.billing_address || {}
   const firstName = address.first_name || "Customer"
   const lastName = address.last_name || "Customer"
   const phoneDigits = String(address.phone || "").replace(/\D/g, "")
   const billingPhone = phoneDigits.length > 10 ? phoneDigits.slice(-10) : phoneDigits
   const subTotal = vendorItems.reduce(
-    (sum, item) => sum + Number(item.unit_price || 0) * Number(item.quantity || 0),
+    (sum, item) => sum + getItemUnitPrice(item) * getItemUnits(item),
     0
   )
 
-  return {
+  const payload: Record<string, unknown> = {
     order_id: `${order.id}-${vendorId.slice(-8)}`,
-    order_date: new Date(order.created_at || Date.now()).toISOString(),
+    order_date: new Date(order.created_at || Date.now()).toISOString().slice(0, 10),
     pickup_location: pickupLocation,
     billing_customer_name: `${firstName} ${lastName}`.trim(),
-    billing_first_name: firstName,
     billing_last_name: lastName,
     billing_address: address.address_1 || "",
     billing_address_2: address.address_2 || "",
@@ -303,19 +399,39 @@ export function buildShiprocketForwardPayload(order: OrderLike, vendorItems: any
     billing_email: order.email || "",
     billing_phone: billingPhone,
     shipping_is_billing: true,
-    length: defaultLength,
-    breadth: defaultBreadth,
-    height: defaultHeight,
-    weight: defaultWeight,
-    order_items: vendorItems.map((item) => ({
-      name: item.title || "Item",
-      sku: item.variant_sku || item.id || "SKU",
-      units: item.quantity,
-      selling_price: item.unit_price || 0,
-    })),
+    length,
+    breadth,
+    height,
+    weight,
+    order_items: vendorItems.map((item) => {
+      const units = Number(getItemUnits(item))
+      const sellingPrice = Number(getItemUnitPrice(item))
+      return {
+        name: String(item.title || "Item"),
+        sku: String(item.variant_sku || item.variant?.sku || item.id || "SKU"),
+        units: Number.isFinite(units) && units > 0 ? units : 1,
+        selling_price: Number.isFinite(sellingPrice) && sellingPrice >= 0 ? sellingPrice : 0,
+      }
+    }),
     payment_method: getPaymentType(order) === "PostPaid" ? "COD" : "Prepaid",
     sub_total: subTotal,
   }
+
+  if (!Array.isArray(payload.order_items) || (payload.order_items as any[]).length === 0) {
+    throw new Error("Cannot create Shiprocket order: no vendor line items with units")
+  }
+
+  console.log(
+    "[Shiprocket] Forward payload items:",
+    JSON.stringify(payload.order_items)
+  )
+
+  const courierId = options?.courier_id != null ? Number(options.courier_id) : NaN
+  if (Number.isFinite(courierId) && courierId > 0) {
+    payload.courier_id = courierId
+  }
+
+  return payload
 }
 
 export function extractTrackingStatus(payload: any): string {

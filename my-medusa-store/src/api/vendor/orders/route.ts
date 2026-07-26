@@ -51,6 +51,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         "items.title",
         "items.variant_title",
         "items.quantity",
+        "items.detail.quantity",
         "items.unit_price",
         "items.product_id",
         "items.variant.product_id",

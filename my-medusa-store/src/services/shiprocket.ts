@@ -64,6 +64,81 @@ class ShiprocketService {
     })
   }
 
+  async getServiceability(params: {
+    pickup_postcode: string
+    delivery_postcode: string
+    weight?: number
+    length?: number
+    breadth?: number
+    height?: number
+    cod?: boolean
+  }) {
+    const token = await this.getToken()
+    const weight = params.weight ?? Number(process.env.SHIPROCKET_DEFAULT_WEIGHT || 0.5)
+    const query = new URLSearchParams({
+      pickup_postcode: String(params.pickup_postcode),
+      delivery_postcode: String(params.delivery_postcode),
+      weight: String(weight),
+      cod: params.cod ? "1" : "0",
+    })
+    if (params.length != null && Number.isFinite(params.length) && params.length > 0) {
+      query.set("length", String(params.length))
+    }
+    if (params.breadth != null && Number.isFinite(params.breadth) && params.breadth > 0) {
+      query.set("breadth", String(params.breadth))
+    }
+    if (params.height != null && Number.isFinite(params.height) && params.height > 0) {
+      query.set("height", String(params.height))
+    }
+    return await this.request<Record<string, unknown>>(
+      `/courier/serviceability/?${query.toString()}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    )
+  }
+
+  async listPickupLocations() {
+    const token = await this.getToken()
+    return await this.request<Record<string, unknown>>(`/settings/company/pickup`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+  }
+
+  async addPickupLocation(payload: Record<string, unknown>) {
+    console.log("[Shiprocket] Adding pickup location", payload.pickup_location)
+    const token = await this.getToken()
+    return await this.request<Record<string, unknown>>(`/settings/company/addpickup`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async assignAwb(shipmentId: string | number, courierId: number) {
+    const token = await this.getToken()
+    return await this.request<Record<string, unknown>>(`/courier/assign/awb`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        shipment_id: shipmentId,
+        courier_id: courierId,
+      }),
+    })
+  }
+
   async createReversePickup(payload: Record<string, unknown>) {
     console.log("[Shiprocket] Creating reverse pickup")
     const token = await this.getToken()
