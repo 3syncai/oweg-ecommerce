@@ -223,7 +223,7 @@ export async function markCheckoutPaymentFailed(
     console.warn("markCheckoutPaymentFailed: releaseOrderInventoryReservations failed", orderId, err);
   });
 
-  const failedMetadata = {
+  const failedMetadata: Record<string, unknown> = {
     ...metadata,
     ...extraMetadata,
     razorpay_payment_status:
