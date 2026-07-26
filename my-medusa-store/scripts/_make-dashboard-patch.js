@@ -8,8 +8,10 @@ const modRoot = path.join("node_modules", "@medusajs", "dashboard")
 const files = [
   "dist/app.js",
   "dist/chunk-HQKKXLCX.mjs",
+  "dist/customer-detail-ATJGSJTH.mjs",
   "dist/inventory-list-I7IXI4KC.mjs",
   "src/components/layout/main-layout/main-layout.tsx",
+  "src/routes/customers/customer-detail/components/customer-address-section/customer-address-section.tsx",
   "src/routes/inventory/inventory-list/components/inventory-list-table.tsx",
   "src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx",
 ]

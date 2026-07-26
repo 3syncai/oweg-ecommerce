@@ -8,6 +8,7 @@ import { consumeOweg10Reservation, syncOweg10ConsumedCustomerMetadata } from "@/
 import { logPendingCoinsForOrder } from "@/lib/customer-affiliate-coins";
 import { getPool } from "@/lib/wallet-ledger";
 import { getCheckoutGuardResponse } from "@/lib/debug-controller/guards";
+import { ensurePlacedOrderFulfillmentReady } from "@/lib/medusa-payment";
 
 export const dynamic = "force-dynamic";
 
@@ -312,6 +313,8 @@ export async function POST(req: Request) {
           }
         }
       }
+      // Idempotent: repair older COD orders that converted without reservations
+      await ensurePlacedOrderFulfillmentReady(finalOrderId);
       scheduleCodSideEffects(finalOrderId, metadata);
       return NextResponse.json({ ok: true, medusaOrderId: finalOrderId, status: "confirmed" });
     }
@@ -378,6 +381,9 @@ export async function POST(req: Request) {
     }
 
     scheduleCodSideEffects(finalOrderId, confirmedMetadata);
+
+    // Same readiness as Razorpay: allocate stock so vendors can fulfill / To Accept
+    await ensurePlacedOrderFulfillmentReady(finalOrderId);
 
     return NextResponse.json({ ok: true, medusaOrderId: finalOrderId, status: "confirmed" });
   } catch (err) {

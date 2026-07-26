@@ -8,8 +8,7 @@ import {
   runPostConvertCheckoutSideEffects,
 } from "@/lib/checkout-order";
 import {
-  ensureOrderShippingMethod,
-  ensureOrderReservations,
+  ensurePlacedOrderFulfillmentReady,
   finalizeRazorpayOrderPayment,
   resolveOrderPayableAmountMinor,
 } from "@/lib/medusa-payment";
@@ -209,8 +208,7 @@ export async function POST(req: Request) {
     // This is critical for Medusa v2 fulfillment to work correctly.
     // Without reservations, fulfillment items will be empty.
     console.log("razorpay confirm: Ensuring order readiness...");
-    await ensureOrderShippingMethod(finalOrderId);
-    await ensureOrderReservations(finalOrderId);
+    await ensurePlacedOrderFulfillmentReady(finalOrderId);
 
     // Create payment records + sync Medusa admin "Captured" status
     let paymentCreated = false;

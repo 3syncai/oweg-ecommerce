@@ -489,6 +489,24 @@ export async function ensureOrderReservations(orderId: string) {
 }
 
 /**
+ * Shared post-convert readiness for both Razorpay and COD.
+ * Without shipping method + reservations, Medusa fulfillment lines stay empty
+ * and Admin looks like it needs manual inventory allocate.
+ */
+export async function ensurePlacedOrderFulfillmentReady(orderId: string) {
+    if (!orderId?.trim()) {
+        return {
+            shipping: { success: false as const, error: "missing_order_id" },
+            reservations: { success: false as const, error: "missing_order_id" },
+        };
+    }
+    console.log(`ensurePlacedOrderFulfillmentReady: ${orderId}`);
+    const shipping = await ensureOrderShippingMethod(orderId);
+    const reservations = await ensureOrderReservations(orderId);
+    return { shipping, reservations };
+}
+
+/**
  * Release any inventory reservations tied to an order's line items.
  * Used when online payment fails/abandons so stock is not held for a non-order.
  */
