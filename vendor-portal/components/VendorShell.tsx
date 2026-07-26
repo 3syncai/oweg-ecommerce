@@ -75,7 +75,7 @@ const navItems = [
     type: "parent",
     children: [
       {
-        label: "Collections",
+        label: "Brand",
         path: "/products/collections",
       },
       {

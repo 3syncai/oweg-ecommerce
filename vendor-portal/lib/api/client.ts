@@ -489,11 +489,73 @@ export const vendorOrdersApi = {
     })
   },
 
-  chooseEasyShipping: async (id: string) => {
+  chooseEasyShipping: async (
+    id: string,
+    data: {
+      courier_id: number
+      courier_partner_name?: string
+      weight?: number
+      length?: number
+      breadth?: number
+      height?: number
+    }
+  ) => {
     return apiRequest<{ order: any }>(`/vendor/orders/${id}/shipping`, {
       method: 'POST',
-      data: { method: 'easy' },
+      data: { method: 'easy', ...data },
     })
+  },
+
+  listCouriers: async (
+    id: string,
+    params?: {
+      weight?: number
+      length?: number
+      breadth?: number
+      height?: number
+    }
+  ) => {
+    const query = new URLSearchParams()
+    if (params?.weight != null) query.set('weight', String(params.weight))
+    if (params?.length != null) query.set('length', String(params.length))
+    if (params?.breadth != null) query.set('breadth', String(params.breadth))
+    if (params?.height != null) query.set('height', String(params.height))
+    const qs = query.toString()
+    return apiRequest<{
+      couriers: Array<{
+        courier_id: number
+        courier_name: string
+        rate: number | null
+        etd: string | null
+        freight_charge: number | null
+        rto_charges: number | null
+        cod_charges: number | null
+        charge_weight: number | null
+        cod: boolean
+        is_surface: boolean
+        rating: number | null
+      }>
+      pickup_postcode: string
+      pickup_city?: string
+      pickup_address?: string
+      delivery_postcode: string
+      weight: number
+      length: number
+      breadth: number
+      height: number
+      volumetric_weight?: number
+      applied_weight?: number
+      package_source?: 'product' | 'default' | 'manual'
+      suggested_package?: {
+        weight: number
+        length: number
+        breadth: number
+        height: number
+        source: 'product' | 'default'
+        notes?: string
+      }
+      count: number
+    }>(`/vendor/orders/${id}/couriers${qs ? `?${qs}` : ''}`)
   },
 
   chooseSelfShipping: async (

@@ -87,14 +87,37 @@ export default async function shiprocketForwardOrderSubscriber({
       breadth: defaultBreadth,
       height: defaultHeight,
       weight: defaultWeight,
-      order_items: (order.items || []).map((item: any) => ({
-        name: item.title || "Item",
-        sku: item.variant_sku || item.id || "SKU",
-        units: item.quantity,
-        selling_price: item.unit_price || 0,
-      })),
+      order_items: (order.items || []).map((item: any) => {
+        const unitsRaw =
+          item?.quantity?.value ?? item?.raw_quantity?.value ?? item?.quantity
+        const unitsNum =
+          typeof unitsRaw === "string" ? parseFloat(unitsRaw) : Number(unitsRaw)
+        const units =
+          Number.isFinite(unitsNum) && unitsNum > 0 ? Math.max(1, Math.round(unitsNum)) : 1
+        const priceRaw = item?.unit_price?.value ?? item?.unit_price
+        const priceNum =
+          typeof priceRaw === "string" ? parseFloat(priceRaw) : Number(priceRaw)
+        return {
+          name: item.title || "Item",
+          sku: item.variant_sku || item.id || "SKU",
+          units,
+          selling_price: Number.isFinite(priceNum) && priceNum >= 0 ? priceNum : 0,
+        }
+      }),
       payment_method: paymentMethod,
-      sub_total: (order.items || []).reduce((sum: number, item: any) => sum + (item.unit_price || 0) * item.quantity, 0),
+      sub_total: (order.items || []).reduce((sum: number, item: any) => {
+        const unitsRaw =
+          item?.quantity?.value ?? item?.raw_quantity?.value ?? item?.quantity
+        const unitsNum =
+          typeof unitsRaw === "string" ? parseFloat(unitsRaw) : Number(unitsRaw)
+        const units =
+          Number.isFinite(unitsNum) && unitsNum > 0 ? Math.max(1, Math.round(unitsNum)) : 1
+        const priceRaw = item?.unit_price?.value ?? item?.unit_price
+        const priceNum =
+          typeof priceRaw === "string" ? parseFloat(priceRaw) : Number(priceRaw)
+        const price = Number.isFinite(priceNum) && priceNum >= 0 ? priceNum : 0
+        return sum + price * units
+      }, 0),
     }
 
     const response = await shiprocket.createForwardShipment(payload as any)
