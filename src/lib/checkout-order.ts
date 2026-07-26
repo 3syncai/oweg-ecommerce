@@ -1,11 +1,13 @@
 import {
   convertDraftOrder,
+  deleteDraftOrder,
   getDraftOrderById,
   getOrderById,
   updateDraftOrderMetadata,
   updateOrderMetadata,
 } from "@/lib/medusa-admin";
 import { applyCoinDiscountToOrder, syncOrderShippingAmount, syncOrderTaxInclusivePricing } from "@/lib/order-discount";
+import { releaseOrderInventoryReservations } from "@/lib/medusa-payment";
 import { releaseOweg10Reservation } from "@/lib/oweg10";
 
 export type CheckoutOrderRecord = Record<string, unknown> & {
@@ -97,6 +99,15 @@ export async function ensurePlacedCheckoutOrder(orderId: string): Promise<{
   if (!loaded.isDraft) {
     return { orderId: loaded.order.id || orderId, order: loaded.order, converted: false };
   }
+
+  // Authorize convert so Medusa middleware allows it after verified payment.
+  // Without this, unpaid Razorpay drafts stay blocked (inventory protection).
+  const metadata = (loaded.order.metadata || {}) as Record<string, unknown>;
+  await updateCheckoutOrderMetadata(orderId, true, {
+    ...metadata,
+    checkout_convert_authorized: true,
+    checkout_convert_authorized_at: new Date().toISOString(),
+  });
 
   const converted = await convertCheckoutDraftToPlacedOrder(orderId);
   if (!converted) return null;
@@ -207,7 +218,12 @@ export async function markCheckoutPaymentFailed(
     await releaseOweg10Reservation(customerId, reservationToken).catch(() => undefined);
   }
 
-  await updateCheckoutOrderMetadata(orderId, loaded.isDraft, {
+  // Free any Medusa stock holds before delete — failed pay must not keep inventory reserved.
+  await releaseOrderInventoryReservations(orderId).catch((err) => {
+    console.warn("markCheckoutPaymentFailed: releaseOrderInventoryReservations failed", orderId, err);
+  });
+
+  const failedMetadata = {
     ...metadata,
     ...extraMetadata,
     razorpay_payment_status:
@@ -215,6 +231,25 @@ export async function markCheckoutPaymentFailed(
         ? extraMetadata.razorpay_payment_status
         : "failed",
     checkout_status: "payment_failed",
+    checkout_failed_at: new Date().toISOString(),
+    checkout_convert_authorized: false,
     oweg10_pending: metadata.oweg10_applied ? false : metadata.oweg10_pending,
-  });
+  };
+
+  await updateCheckoutOrderMetadata(orderId, loaded.isDraft, failedMetadata);
+
+  // Remove abandoned online drafts from the active Draft Orders pile so they are
+  // not confused with real COD drafts in Medusa admin. Metadata is stamped first
+  // for any audit/logging that already ran.
+  if (loaded.isDraft) {
+    const paymentMethod =
+      typeof failedMetadata.payment_method === "string"
+        ? String(failedMetadata.payment_method).toLowerCase()
+        : "";
+    if (paymentMethod !== "cod") {
+      await deleteDraftOrder(orderId).catch((err) => {
+        console.warn("markCheckoutPaymentFailed: deleteDraftOrder failed", orderId, err);
+      });
+    }
+  }
 }

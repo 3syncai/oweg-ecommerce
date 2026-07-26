@@ -11,6 +11,7 @@ import {
   updateVendorOrderWorkflow,
   type VendorShippingMethod,
 } from "../../../../../lib/vendor-order-workflow"
+import { isShiprocketEligibleOrder } from "../../../../../lib/vendor-order-visibility"
 
 type ShippingBody = {
   method?: VendorShippingMethod
@@ -56,6 +57,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
 
     if (method === "easy") {
+      if (!isShiprocketEligibleOrder(result.order as any)) {
+        return res.status(409).json({
+          message:
+            "Order is not ready for Shiprocket (draft, unpaid, failed payment, or unconfirmed COD).",
+        })
+      }
       const vendorItems = pickVendorItems(result.order, result.vendorProductIds)
       const shiprocket = new ShiprocketService()
       const response = await shiprocket.createForwardShipment(
