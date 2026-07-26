@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
+import { loadCheckoutOrder } from "@/lib/checkout-order";
 import { applyCoinDiscountToOrder, syncOrderShippingAmount, syncOrderTaxInclusivePricing } from "@/lib/order-discount";
 import { finalizeCoinSpendForOrder } from "@/lib/wallet-coin-order";
 import { OWEG10_CODE } from "@/lib/oweg10-shared";
@@ -47,6 +48,36 @@ function extractOrder(data: unknown): MedusaOrder | null {
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
+}
+
+/**
+ * Only COD drafts may be confirmed here. Razorpay / failed online attempts must not
+ * be force-converted into COD (that was leaking cancelled online pays into Shiprocket COD).
+ */
+function assertEligibleForCodConfirm(metadata: Record<string, unknown>): string | null {
+  const paymentMethod =
+    typeof metadata.payment_method === "string" ? metadata.payment_method.toLowerCase().trim() : "";
+  const checkoutStatus =
+    typeof metadata.checkout_status === "string" ? metadata.checkout_status.toLowerCase().trim() : "";
+  const razorpayStatus =
+    typeof metadata.razorpay_payment_status === "string"
+      ? metadata.razorpay_payment_status.toLowerCase().trim()
+      : "";
+
+  if (checkoutStatus === "payment_failed") {
+    return "This checkout failed online payment and cannot be confirmed as COD.";
+  }
+
+  if (razorpayStatus === "failed" || razorpayStatus === "created") {
+    return "This order has an unpaid or failed online payment and cannot be confirmed as COD.";
+  }
+
+  // Allow explicit COD, or legacy drafts with no payment_method set.
+  if (paymentMethod && paymentMethod !== "cod") {
+    return `This order is marked as ${paymentMethod} and cannot be confirmed as COD.`;
+  }
+
+  return null;
 }
 
 function oweg10ConflictResponse(reason: string) {
@@ -226,18 +257,30 @@ export async function POST(req: Request) {
     if (!medusaOrderId) return badRequest("medusaOrderId is required");
 
     let order: MedusaOrder | null = null;
-    const orderRes = await getOrderById(medusaOrderId);
-    if (orderRes.ok && orderRes.data) {
-      order = extractOrder(orderRes.data);
-    }
-
-    if (!order && orderRes.status !== 404) {
-      if (orderRes.status === 0) {
+    const loaded = await loadCheckoutOrder(medusaOrderId);
+    if (loaded?.order?.id) {
+      order = loaded.order as MedusaOrder;
+    } else {
+      const orderRes = await getOrderById(medusaOrderId);
+      if (orderRes.ok && orderRes.data) {
+        order = extractOrder(orderRes.data);
+      }
+      if (!order && orderRes.status !== 404 && orderRes.status === 0) {
         return NextResponse.json(
           { error: "Medusa admin backend is temporarily unavailable. Please retry." },
           { status: 503 }
         );
       }
+    }
+
+    if (!order?.id) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    let metadata = (order.metadata || {}) as Record<string, unknown>;
+    const eligibilityError = assertEligibleForCodConfirm(metadata);
+    if (eligibilityError) {
+      return badRequest(eligibilityError);
     }
 
     if (isDraftOrder(order)) {
@@ -249,13 +292,12 @@ export async function POST(req: Request) {
       if (order?.id) {
         medusaOrderId = order.id;
       }
+      if (!order?.id) {
+        return NextResponse.json({ error: "Order not found" }, { status: 404 });
+      }
+      metadata = (order.metadata || metadata) as Record<string, unknown>;
     }
 
-    if (!order?.id) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 });
-    }
-
-    const metadata = (order.metadata || {}) as Record<string, unknown>;
     const codStatus = typeof metadata.cod_status === "string" ? metadata.cod_status : undefined;
     let finalOrderId = order.id;
 

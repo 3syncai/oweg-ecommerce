@@ -5,7 +5,6 @@ import { NextResponse } from "next/server";
 import { verifyRazorpaySignature } from "@/lib/razorpay";
 import { finalizeCoinSpendForOrder, refundCoinSpendForOrder } from "@/lib/wallet-coin-order";
 import {
-  convertDraftOrder,
   registerOrderTransaction,
   setOrderPaidTotal,
   setOrderPaymentStatus,
@@ -13,7 +12,7 @@ import {
   registerOrderPaymentV2,
 } from "@/lib/medusa-admin";
 import {
-  extractCheckoutOrder,
+  ensurePlacedCheckoutOrder,
   loadCheckoutOrder,
   markCheckoutPaymentFailed,
   runPostConvertCheckoutSideEffects,
@@ -411,11 +410,12 @@ export async function POST(req: Request) {
     let placedOrderId = medusaOrderId;
     try {
       if (isDraft) {
-        const converted = await convertDraftOrder(medusaOrderId);
-        const convertedOrder = converted.data ? extractCheckoutOrder(converted.data) : null;
-        if (converted.ok && convertedOrder?.id) {
-          placedOrderId = convertedOrder.id;
-          await runPostConvertCheckoutSideEffects(placedOrderId, metadata);
+        const placed = await ensurePlacedCheckoutOrder(medusaOrderId);
+        if (placed?.orderId) {
+          placedOrderId = placed.orderId;
+          if (placed.converted) {
+            await runPostConvertCheckoutSideEffects(placedOrderId, metadata);
+          }
         }
       }
 

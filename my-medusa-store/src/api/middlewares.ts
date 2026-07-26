@@ -4,7 +4,9 @@ import type {
   MedusaResponse,
   MedusaNextFunction,
 } from "@medusajs/framework/http"
+import { Modules } from "@medusajs/framework/utils"
 import cors from "cors"
+import { isBlockedFromDraftConvert } from "../lib/vendor-order-visibility"
 
 /**
  * Cross-origin cookie middleware for Chrome/Safari.
@@ -151,6 +153,52 @@ function vendorCorsMiddleware(
   })(req as any, res as any, next as any)
 }
 
+/**
+ * Prevent converting failed/incomplete Razorpay drafts to orders.
+ * Convert is when Medusa reserves inventory — blocking here protects stock.
+ */
+async function blockFailedOnlineDraftConvert(
+  req: MedusaRequest,
+  res: MedusaResponse,
+  next: MedusaNextFunction
+) {
+  try {
+    const path = (req.originalUrl || req.url || "").split("?")[0]
+    const match = path.match(/\/admin\/draft-orders\/([^/]+)\/convert-to-order\/?$/)
+    const orderId = match?.[1] || (req.params as { id?: string })?.id
+    if (!orderId) return next()
+
+    const orderModule = req.scope.resolve(Modules.ORDER) as {
+      retrieveOrder: (
+        id: string,
+        config?: { select?: string[] }
+      ) => Promise<{
+        id: string
+        status?: string
+        is_draft_order?: boolean
+        payment_status?: string
+        metadata?: Record<string, unknown> | null
+      }>
+    }
+
+    const order = await orderModule.retrieveOrder(orderId, {
+      select: ["id", "status", "is_draft_order", "payment_status", "metadata"],
+    })
+
+    if (isBlockedFromDraftConvert(order)) {
+      return res.status(409).json({
+        type: "not_allowed",
+        message:
+          "Cannot convert this draft: online payment failed or was never completed. Converting would reserve inventory for a non-paid order.",
+      })
+    }
+  } catch (err) {
+    console.warn("[blockFailedOnlineDraftConvert] lookup failed; allowing convert path", err)
+  }
+
+  return next()
+}
+
 export default defineMiddlewares({
   routes: [
     {
@@ -160,6 +208,11 @@ export default defineMiddlewares({
     {
       matcher: "/admin",
       middlewares: [crossOriginCookieMiddleware],
+    },
+    {
+      method: ["POST"],
+      matcher: "/admin/draft-orders/*/convert-to-order",
+      middlewares: [blockFailedOnlineDraftConvert],
     },
     {
       matcher: "/vendor",

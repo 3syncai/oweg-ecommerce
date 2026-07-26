@@ -488,6 +488,81 @@ export async function ensureOrderReservations(orderId: string) {
     }
 }
 
+/**
+ * Release any inventory reservations tied to an order's line items.
+ * Used when online payment fails/abandons so stock is not held for a non-order.
+ */
+export async function releaseOrderInventoryReservations(orderId: string) {
+    if (!orderId?.trim()) return { success: false as const, error: "missing_order_id", released: 0 };
+    if (!process.env.DATABASE_URL) return { success: false as const, error: "No DB URL", released: 0 };
+
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const reservationsRes = await client.query(
+            `SELECT ri.id, ri.inventory_item_id, ri.location_id, ri.quantity
+             FROM reservation_item ri
+             INNER JOIN order_item oi ON oi.item_id = ri.line_item_id
+             WHERE oi.order_id = $1`,
+            [orderId]
+        );
+
+        const rows = reservationsRes.rows as Array<{
+            id: string;
+            inventory_item_id: string;
+            location_id: string;
+            quantity: string | number;
+        }>;
+
+        if (!rows.length) {
+            await client.query("COMMIT");
+            client.release();
+            await pool.end();
+            return { success: true as const, released: 0 };
+        }
+
+        console.log(
+            `📦 Releasing ${rows.length} inventory reservation(s) for failed/abandoned order ${orderId}`
+        );
+
+        for (const row of rows) {
+            const qty = Number(row.quantity) || 0;
+
+            await client.query(`DELETE FROM reservation_item WHERE id = $1`, [row.id]);
+
+            if (qty > 0 && row.inventory_item_id && row.location_id) {
+                await client.query(
+                    `UPDATE inventory_level
+                     SET reserved_quantity = GREATEST(0, COALESCE(reserved_quantity, 0) - $1),
+                         updated_at = now()
+                     WHERE inventory_item_id = $2
+                       AND location_id = $3`,
+                    [qty, row.inventory_item_id, row.location_id]
+                );
+            }
+        }
+
+        await client.query("COMMIT");
+        client.release();
+        await pool.end();
+        console.log(`✅ Released ${rows.length} reservation(s) for ${orderId}`);
+        return { success: true as const, released: rows.length };
+    } catch (err) {
+        try {
+            await client.query("ROLLBACK");
+        } catch {
+            // ignore
+        }
+        client.release();
+        await pool.end();
+        console.error("❌ Failed to release order inventory reservations:", err);
+        return { success: false as const, error: String(err), released: 0 };
+    }
+}
+
 export type FinalizeRazorpayPaymentInput = {
     orderId: string;
     amountMinor: number;

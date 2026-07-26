@@ -150,6 +150,8 @@ export async function submitCustomRazorpayPayment(options: {
   payload: CustomPaymentPayload;
   onSuccess?: (response: RazorpaySuccessResponse) => void;
   onFailure?: (error: unknown) => void;
+  /** Fired when the user closes / abandons the payment UI without success. */
+  onDismiss?: () => void;
 }): Promise<void> {
   await loadRazorpayCustomScript();
 
@@ -171,18 +173,42 @@ export async function submitCustomRazorpayPayment(options: {
   );
 
   const redirect = usesRedirect(options.payload);
+  let settled = false;
+
+  const failOnce = (error: unknown) => {
+    if (settled) return;
+    settled = true;
+    options.onFailure?.(error);
+  };
+
+  const dismissOnce = () => {
+    if (settled) return;
+    settled = true;
+    if (options.onDismiss) {
+      options.onDismiss();
+    } else {
+      options.onFailure?.({ reason: "dismissed" });
+    }
+  };
 
   const razorpay = new RazorpayCtor({
     key: options.key,
     callback_url: options.callbackUrl,
     redirect,
     handler: (response: RazorpaySuccessResponse) => {
+      if (settled) return;
+      settled = true;
       options.onSuccess?.(response);
+    },
+    modal: {
+      ondismiss: () => {
+        dismissOnce();
+      },
     },
   });
 
   razorpay.on("payment.failed", (response: unknown) => {
-    options.onFailure?.(response);
+    failOnce(response);
   });
 
   razorpay.createPayment(paymentData);
