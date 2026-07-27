@@ -25,7 +25,8 @@ export function isMaharashtra(state?: string | null): boolean {
 }
 
 export function calculateStatewiseShipping(subtotal: number, _state?: string | null): number {
-  if (subtotal > 1000) return 0;
-  return SHIPPING_CHARGE_RUPEES;
+  if (!Number.isFinite(subtotal) || subtotal <= 0) return 0
+  if (subtotal > 1000) return 0
+  return SHIPPING_CHARGE_RUPEES
 }
 

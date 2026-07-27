@@ -84,13 +84,18 @@ function SearchPageContent() {
   const [products, setProducts] = useState<SearchProduct[]>([])
   const [filtered, setFiltered] = useState<SearchProduct[]>([])
   const [totalCount, setTotalCount] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const [minRating, setMinRating] = useState<number | null>(null)
   const [selectedBrands, setSelectedBrands] = useState<string[]>([])
   const [priceRange, setPriceRange] = useState<string | null>(null)
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / SEARCH_PAGE_SIZE))
+  const totalPages = Math.max(
+    1,
+    Math.ceil(totalCount / SEARCH_PAGE_SIZE),
+    hasMore ? requestedPage + 1 : requestedPage
+  )
   const currentPage = Math.min(requestedPage, totalPages)
 
   useEffect(() => {
@@ -98,6 +103,7 @@ function SearchPageContent() {
       setProducts([])
       setFiltered([])
       setTotalCount(0)
+      setHasMore(false)
       return
     }
 
@@ -127,11 +133,13 @@ function SearchPageContent() {
         setProducts(result)
         setFiltered(result)
         setTotalCount(typeof data?.count === "number" ? data.count : result.length)
+        setHasMore(data?.hasMore === true)
       } catch {
         if (!cancelled) {
           setProducts([])
           setFiltered([])
           setTotalCount(0)
+          setHasMore(false)
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -203,7 +211,9 @@ function SearchPageContent() {
               <p className="mt-1 text-sm text-slate-600">
                 {loading
                   ? "Looking for the best matches..."
-                  : `${totalCount} product${totalCount === 1 ? "" : "s"} found`}
+                  : hasFilters
+                    ? `${filtered.length} on this page · ${totalCount} from search`
+                    : `${totalCount} product${totalCount === 1 ? "" : "s"} found`}
               </p>
             </div>
           </div>
@@ -314,7 +324,7 @@ function SearchPageContent() {
                       <ChevronLeft className="h-4 w-4" /> Prev
                     </button>
                     <span className="text-sm text-slate-600">Page {currentPage} of {totalPages}</span>
-                    <button type="button" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-40">
+                    <button type="button" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages || !hasMore} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-40">
                       Next <ChevronRight className="h-4 w-4" />
                     </button>
                   </div>

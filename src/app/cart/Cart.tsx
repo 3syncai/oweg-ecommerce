@@ -1165,11 +1165,21 @@ const Cart: React.FC = () => {
               </div>
 
               <div className="px-4 md:px-6 pb-4 md:pb-6 pt-0">
-                <Link href="/checkout" className="block">
-                  <Button className={`w-full h-11 md:h-12 text-sm md:text-base ${cartCta}`}>
+                {cartItems.length === 0 ? (
+                  <Button
+                    className={`w-full h-11 md:h-12 text-sm md:text-base ${cartCta}`}
+                    disabled
+                    aria-disabled="true"
+                  >
                     Proceed to checkout
                   </Button>
-                </Link>
+                ) : (
+                  <Link href="/checkout" className="block">
+                    <Button className={`w-full h-11 md:h-12 text-sm md:text-base ${cartCta}`}>
+                      Proceed to checkout
+                    </Button>
+                  </Link>
+                )}
               </div>
             </div>
           </div>
