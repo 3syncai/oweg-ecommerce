@@ -147,18 +147,18 @@ export async function GET(req: NextRequest) {
           if (category?.id) {
             sourceCategoryId = category.id;
             sourceCategoryHandle = category.handle;
-            products = await fetchProductsByCategoryId(category.id, perSourceLimit);
+            products = (await fetchProductsByCategoryId(category.id, perSourceLimit)).products;
           }
           if (!products?.length) {
-            products = await fetchProductsByTag(source.label, perSourceLimit);
+            products = (await fetchProductsByTag(source.label, perSourceLimit)).products;
           }
         } else if (source.kind === "type") {
-          products = await fetchProductsByType(source.label, perSourceLimit);
+          products = (await fetchProductsByType(source.label, perSourceLimit)).products;
           if (!products?.length) {
-            products = await fetchProductsByTag(source.label, perSourceLimit);
+            products = (await fetchProductsByTag(source.label, perSourceLimit)).products;
           }
         } else {
-          products = await fetchProductsByTag(source.label, perSourceLimit);
+          products = (await fetchProductsByTag(source.label, perSourceLimit)).products;
         }
 
         products.forEach((product, idx) => {

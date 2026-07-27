@@ -667,7 +667,7 @@ const Cart: React.FC = () => {
 
   useEffect(() => {
     if (cartItems.length > 0) {
-      warmRazorpayCheckout({ prefetchMethods: true });
+      warmRazorpayCheckout();
     }
   }, [cartItems.length]);
 
@@ -846,105 +846,173 @@ const Cart: React.FC = () => {
     };
   }, [cartItems]);
 
+  const cartCard =
+    "rounded-2xl border border-slate-200/50 bg-white/95 shadow-[0_10px_40px_-12px_rgba(44,52,47,0.12)]";
+  const cartField =
+    "h-11 rounded-xl border-slate-200/90 bg-white shadow-none transition-[border-color,box-shadow] placeholder:text-slate-400 focus-visible:border-[var(--oweg-green)] focus-visible:ring-[3px] focus-visible:ring-[var(--oweg-green)]/20";
+  const cartCta =
+    "bg-[var(--oweg-green)] hover:bg-[var(--oweg-green-dark)] text-white font-semibold rounded-xl shadow-md shadow-[var(--oweg-green)]/20 transition-all duration-200 active:scale-[0.99]";
+  const cartOutline =
+    "rounded-xl border-slate-200/80 bg-white text-[#2c342f] hover:border-[var(--oweg-green)]/50 hover:bg-[#f2f9ef] hover:text-[var(--oweg-green-dark)] transition-all duration-200";
+  const cartStepper =
+    "cart-stepper flex items-center overflow-hidden rounded-xl border border-slate-200/80 bg-white";
+
   return (
-    <div className="min-h-screen flex flex-col bg-white text-slate-900">
-      <main className="flex-1 bg-[url('/grid-bg.svg')] bg-white/40">
-        <div className="container mx-auto px-4 py-10">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-3 mb-8">
-            <Link href="/" className="text-sm text-slate-500 hover:text-slate-700 transition">
+    <div className="cart-ui oweg-page min-h-screen flex flex-col text-[#2c342f]">
+      <main className="flex-1">
+        <div className="container mx-auto px-4 py-8 md:py-10 pb-44 md:pb-16">
+          <div className="flex items-center gap-3 mb-6 md:mb-8">
+            <Link href="/" className="text-sm text-slate-500 hover:text-[#2c342f] transition">
               Home
             </Link>
             <ChevronRight className="w-4 h-4 text-slate-400" />
-            <span className="text-sm font-medium bg-green-100 text-green-700 px-3 py-1 rounded">
+            <span className="text-sm font-medium bg-[#f0f5ef] text-[var(--oweg-green-dark)] px-3 py-1 rounded-full">
               Cart
             </span>
           </div>
 
-          {/* Cart Table */}
-          <div className="bg-white rounded-xl border shadow-sm mb-8 overflow-hidden">
-            <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-4 border-b bg-slate-50 text-slate-600 font-medium">
+          <div className="mb-7 md:mb-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--oweg-green-dark)] mb-2">
+              Your bag
+            </p>
+            <h1 className="text-3xl md:text-[2rem] font-bold text-[#2c342f]">Cart</h1>
+            <p className="mt-1.5 text-sm text-slate-500">
+              Review items, apply a coupon, then proceed to checkout.
+            </p>
+          </div>
+
+          <div className="mb-8 space-y-3">
+            <div className="hidden md:grid grid-cols-12 gap-4 px-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
               <div className="col-span-6">Product</div>
               <div className="col-span-2">Price</div>
-              <div className="col-span-2">Quantity</div>
+              <div className="col-span-2 text-center">Quantity</div>
               <div className="col-span-2 text-right">Subtotal</div>
             </div>
 
-            <div className="space-y-4 px-2 py-6 md:px-6">
-              {cartItems.length === 0 && (
-                <div className="text-center py-8 text-slate-500">Your cart is empty.</div>
-              )}
-              {cartItems.map((item) => {
-                const isRemoving = !!removingIds[item.id];
-                const isUpdating = !!updatingIds[item.id];
-                const controlsDisabled = isRemoving || isUpdating;
-                return (
-                  <div
-                    key={item.id}
-                    className={`flex flex-col md:flex-row items-center gap-4 md:gap-6 p-4 md:p-0 md:py-4 bg-white rounded transition-all transform ${mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
-                      } ${isRemoving ? "opacity-0 scale-95" : ""}`}
-                    style={{ transitionDuration: "320ms" }}
-                  >
-                    {/* Product */}
-                    <div className="flex items-center gap-4 w-full md:w-3/5">
-                      <button
-                        onClick={() => removeItem(item)}
-                        title="Remove item"
-                        className={`text-red-500 hover:bg-red-50 rounded-full p-1 transition ${isRemoving ? "opacity-50 cursor-not-allowed" : ""
-                          }`}
-                        aria-label={`Remove ${item.name}`}
-                        type="button"
-                        disabled={isRemoving}
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
+            {cartItems.length === 0 && (
+              <div className={`${cartCard} px-6 py-12 text-center text-slate-500`}>
+                Your cart is empty.
+              </div>
+            )}
+            {cartItems.map((item) => {
+              const isRemoving = !!removingIds[item.id];
+              const isUpdating = !!updatingIds[item.id];
+              const controlsDisabled = isRemoving || isUpdating;
+              return (
+                <div
+                  key={item.id}
+                  className={`cart-line-card ${cartCard} flex flex-col md:flex-row md:items-center gap-4 md:gap-6 p-4 md:px-5 md:py-5 transition-all transform ${
+                    mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
+                  } ${isRemoving ? "opacity-0 scale-95" : ""}`}
+                  style={{ transitionDuration: "320ms" }}
+                >
+                  <div className="flex items-center gap-3 md:gap-4 w-full md:w-3/5 min-w-0">
+                    <button
+                      onClick={() => removeItem(item)}
+                      title="Remove item"
+                      className={`shrink-0 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl p-2 transition ${
+                        isRemoving ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
+                      aria-label={`Remove ${item.name}`}
+                      type="button"
+                      disabled={isRemoving}
+                    >
+                      <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
+                    </button>
 
-                      <div className="w-20 h-20 flex-shrink-0 rounded overflow-hidden bg-slate-100 flex items-center justify-center shadow-sm">
-                        {item.image ? (
-                          <Image src={item.image} alt={item.name} width={80} height={80} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="text-slate-400">No image</div>
-                        )}
-                      </div>
-
-                      <div className="flex-1">
-                        <div className="text-sm md:text-base font-medium text-slate-800 line-clamp-2">
-                          {item.name}
-                        </div>
-                        <div className="text-xs text-slate-500 mt-1 hidden md:block">
-                          SKU: {item.id}
-                        </div>
-                      </div>
+                    <div className="w-[72px] h-[72px] flex-shrink-0 rounded-xl overflow-hidden bg-[#f0f5ef] flex items-center justify-center">
+                      {item.image ? (
+                        <Image
+                          src={item.image}
+                          alt={item.name}
+                          width={80}
+                          height={80}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="text-xs text-slate-400">No image</div>
+                      )}
                     </div>
 
-                    {/* Price (desktop) */}
-                    <div className="hidden md:flex md:w-1/6 items-center justify-between md:justify-start md:pl-4">
-                      <div className="text-sm md:text-base font-medium">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm md:text-[15px] font-semibold text-[#2c342f] line-clamp-2">
+                        {item.name}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-1 hidden md:block">
+                        SKU · {item.id}
+                      </div>
+                      <div className="md:hidden mt-1 text-sm font-medium text-slate-600">
                         {formatCurrency(item.price, item.currency || activeCurrency)}
                       </div>
                     </div>
+                  </div>
 
-                    {/* Quantity (desktop) */}
-                    <div className="hidden md:flex md:w-1/6 items-center justify-center">
-                      <div className="flex items-center border rounded-md overflow-hidden">
+                  <div className="hidden md:flex md:w-1/6 items-center justify-start">
+                    <div className="text-sm md:text-base font-medium text-[#2c342f]">
+                      {formatCurrency(item.price, item.currency || activeCurrency)}
+                    </div>
+                  </div>
+
+                  <div className="hidden md:flex md:w-1/6 items-center justify-center">
+                    <div className={cartStepper}>
+                      <button
+                        onClick={() => updateQuantity(item.id, item.quantity - 1, item.name)}
+                        aria-label="Decrease"
+                        className={`px-3 py-2.5 text-slate-500 transition ${
+                          controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                        }`}
+                        type="button"
+                        disabled={controlsDisabled}
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <div className="px-3 text-sm font-semibold w-10 text-center text-[#2c342f]">
+                        {item.quantity}
+                      </div>
+                      <button
+                        onClick={() => updateQuantity(item.id, item.quantity + 1, item.name)}
+                        aria-label="Increase"
+                        className={`px-3 py-2.5 text-slate-500 transition ${
+                          controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                        }`}
+                        type="button"
+                        disabled={controlsDisabled}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="hidden md:flex md:w-1/6 items-center justify-end">
+                    <div className="text-sm md:text-base font-bold text-[#2c342f]">
+                      {formatCurrency(item.price * item.quantity, item.currency || activeCurrency)}
+                    </div>
+                  </div>
+
+                  <div className="w-full md:hidden border-t border-slate-100 pt-3 space-y-3 text-sm text-slate-600">
+                    <div className="flex items-center justify-between">
+                      <span>Quantity</span>
+                      <div className={cartStepper}>
                         <button
                           onClick={() => updateQuantity(item.id, item.quantity - 1, item.name)}
                           aria-label="Decrease"
-                          className={`px-3 py-2 hover:bg-slate-50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
-                            }`}
+                          className={`px-3 py-2 text-slate-500 transition ${
+                            controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                          }`}
                           type="button"
                           disabled={controlsDisabled}
                         >
                           <Minus className="w-4 h-4" />
                         </button>
-                        <div className="px-4 text-sm font-medium w-12 text-center">
+                        <div className="px-3 text-sm font-semibold w-10 text-center text-[#2c342f]">
                           {item.quantity}
                         </div>
                         <button
                           onClick={() => updateQuantity(item.id, item.quantity + 1, item.name)}
                           aria-label="Increase"
-                          className={`px-3 py-2 hover:bg-slate-50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
-                            }`}
+                          className={`px-3 py-2 text-slate-500 transition ${
+                            controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                          }`}
                           type="button"
                           disabled={controlsDisabled}
                         >
@@ -952,112 +1020,64 @@ const Cart: React.FC = () => {
                         </button>
                       </div>
                     </div>
-
-                    {/* Subtotal (desktop) */}
-                    <div className="hidden md:flex md:w-1/6 items-center justify-end md:pr-4">
-                      <div className="text-sm md:text-base font-semibold">
+                    <div className="flex justify-between">
+                      <span>Subtotal</span>
+                      <span className="font-bold text-[#2c342f]">
                         {formatCurrency(item.price * item.quantity, item.currency || activeCurrency)}
-                      </div>
-                    </div>
-
-                    {/* Mobile price/quantity/subtotal */}
-                    <div className="w-full md:hidden border-t pt-3 space-y-3 text-sm text-slate-600">
-                      <div className="flex justify-between">
-                        <span>Price</span>
-                        <span className="font-semibold text-slate-900">
-                          {formatCurrency(item.price, item.currency || activeCurrency)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Quantity</span>
-                        <div className="flex items-center border rounded-md overflow-hidden">
-                          <button
-                            onClick={() => updateQuantity(item.id, item.quantity - 1, item.name)}
-                            aria-label="Decrease"
-                            className={`px-3 py-2 hover:bg-slate-50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
-                              }`}
-                            type="button"
-                            disabled={controlsDisabled}
-                          >
-                            <Minus className="w-4 h-4" />
-                          </button>
-                          <div className="px-4 text-sm font-medium w-12 text-center">
-                            {item.quantity}
-                          </div>
-                          <button
-                            onClick={() => updateQuantity(item.id, item.quantity + 1, item.name)}
-                            aria-label="Increase"
-                            className={`px-3 py-2 hover:bg-slate-50 transition ${controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
-                              }`}
-                            type="button"
-                            disabled={controlsDisabled}
-                          >
-                            <Plus className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Subtotal</span>
-                        <span className="font-semibold text-slate-900">
-                          {formatCurrency(item.price * item.quantity, item.currency || activeCurrency)}
-                        </span>
-                      </div>
+                      </span>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Cart totals and actions */}
-          <div className="grid md:grid-cols-2 gap-8 mb-12 md:mb-12 pb-40 md:pb-0 items-start">
-            {/* Left: actions/coupon + recommended */}
+          <div className="grid md:grid-cols-2 gap-6 md:gap-8 mb-12 pb-40 md:pb-0 items-start">
             <div className="space-y-6 order-2 md:order-none">
-              <div className="flex flex-wrap gap-4">
-                <Button variant="outline" className="px-6 py-3 border-slate-200 hover:border-green-400 hover:text-green-700 transition">
-                  <Link href="/">Return To Shop</Link>
+              <div className="flex flex-wrap gap-3">
+                <Button variant="outline" className={`px-5 py-3 h-11 ${cartOutline}`}>
+                  <Link href="/">Return to shop</Link>
                 </Button>
                 <Button
                   variant="outline"
-                  className="px-6 py-3 border-slate-200 hover:border-green-400 hover:text-green-700 transition"
+                  className={`px-5 py-3 h-11 ${cartOutline}`}
                   onClick={notifyCartUpdated}
                 >
-                  Update Cart
+                  Update cart
                 </Button>
               </div>
 
-              <div className="flex gap-4 items-center">
+              <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
                 <Input
                   type="text"
-                  placeholder="Coupon Code"
+                  placeholder="Coupon code"
                   value={couponCode}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCouponCode(e.target.value)}
-                  className="flex-1"
+                  className={`flex-1 ${cartField}`}
                 />
-                <Button
-                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 transition"
-                  onClick={handleApplyCoupon}
-                >
-                  Apply Coupon
+                <Button className={`${cartCta} px-6 h-11 shrink-0`} onClick={handleApplyCoupon}>
+                  Apply coupon
                 </Button>
               </div>
 
-              <div className="space-y-4">
-                <h2 className="text-lg font-semibold">Customers Who Brought Items in Your Recent History Also Bought</h2>
+              <div className={`${cartCard} p-5 md:p-6 space-y-4`}>
+                <h2 className="text-lg font-semibold text-[#2c342f]">
+                  Customers Who Brought Items in Your Recent History Also Bought
+                </h2>
                 {loadingRecommended && (
                   <div className="text-sm text-slate-500">Finding related products…</div>
                 )}
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
                   {recommended.map((p) => {
                     const slug = encodeURIComponent(String(p.handle || p.id));
-                    const href = `/ productDetail / ${slug}?id = ${encodeURIComponent(String(p.id))} `;
+                    const href = `/productDetail/${slug}?id=${encodeURIComponent(String(p.id))}`;
                     return (
                       <Link
                         key={p.id}
                         href={href}
-                        className="border rounded-lg overflow-hidden bg-white hover:shadow-lg transition transform hover:-translate-y-1"
+                        className="rounded-xl border border-slate-200/60 overflow-hidden bg-white hover:border-[var(--oweg-green)]/40 hover:shadow-[0_12px_32px_-12px_rgba(44,52,47,0.14)] transition-all duration-200"
                       >
-                        <div className="relative aspect-[3/2] bg-slate-50">
+                        <div className="relative aspect-[3/2] bg-[#f7faf5]">
                           <Image
                             src={p.image}
                             alt={p.name}
@@ -1065,12 +1085,14 @@ const Cart: React.FC = () => {
                             height={200}
                             className="w-full h-full object-contain p-2"
                           />
-                          <div className="absolute top-3 left-3 flex gap-2">
-                            <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold">{p.discount}% off</span>
+                          <div className="absolute top-2.5 left-2.5 flex gap-2">
+                            <span className="bg-[var(--oweg-green-dark)] text-white px-2 py-0.5 rounded-full text-[11px] font-semibold">
+                              {p.discount}% off
+                            </span>
                           </div>
                         </div>
                         <div className="p-3 space-y-1">
-                          <p className="text-sm font-medium text-slate-800 line-clamp-2">{p.name}</p>
+                          <p className="text-sm font-medium text-[#2c342f] line-clamp-2">{p.name}</p>
                           <div className="flex items-baseline gap-2">
                             <div className="text-base font-bold">{formatCurrency(p.price)}</div>
                             <div className="text-xs text-slate-400 line-through">{formatCurrency(p.mrp)}</div>
@@ -1086,61 +1108,65 @@ const Cart: React.FC = () => {
               </div>
             </div>
 
-            {/* Right: cart total (collapsible on mobile, sticky on desktop) */}
-            <div className="border-t md:border border-slate-200 rounded-t-2xl md:rounded-xl bg-white shadow-lg md:shadow-sm order-1 md:order-none fixed md:sticky md:top-28 bottom-24 md:bottom-auto left-0 right-0 md:left-auto md:right-auto md:relative z-[500] md:z-auto">
-              {/* Mobile: Collapsible header with total */}
+            <div
+              className={`cart-summary-panel order-1 md:order-none fixed md:sticky md:top-28 bottom-24 md:bottom-auto left-0 right-0 md:left-auto md:right-auto md:relative z-[500] md:z-auto rounded-t-2xl md:rounded-2xl border border-slate-200/50 bg-white/95 md:bg-white/95 shadow-[0_10px_40px_-12px_rgba(44,52,47,0.16)] md:shadow-[0_10px_40px_-12px_rgba(44,52,47,0.12)]`}
+            >
               <div className="md:hidden">
                 <button
                   type="button"
                   onClick={() => setCheckoutExpanded(!checkoutExpanded)}
-                  className="w-full flex items-center justify-between p-3 active:bg-slate-50 transition-colors"
+                  className="w-full flex items-center justify-between p-3.5 active:bg-[#f7faf5] transition-colors"
                   aria-label={checkoutExpanded ? "Collapse cart summary" : "Expand cart summary"}
                   aria-expanded={checkoutExpanded}
                 >
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold">Cart Total</h3>
-                    <span className="text-sm font-bold text-green-600">{formatCurrency(total, activeCurrency)}</span>
+                  <div className="flex items-center gap-2.5">
+                    <h3 className="text-sm font-semibold text-[#2c342f]">Cart Total</h3>
+                    <span className="text-sm font-bold text-[var(--oweg-green-dark)]">
+                      {formatCurrency(total, activeCurrency)}
+                    </span>
                   </div>
                   {checkoutExpanded ? (
-                    <ChevronDown className="w-4 h-4 text-slate-600" />
+                    <ChevronDown className="w-4 h-4 text-slate-500" />
                   ) : (
-                    <ChevronUp className="w-4 h-4 text-slate-600" />
+                    <ChevronUp className="w-4 h-4 text-slate-500" />
                   )}
                 </button>
               </div>
 
-              {/* Desktop: Always visible header */}
-              <h3 className="hidden md:block text-xl font-semibold mb-6 p-6 pb-0">Cart Total</h3>
+              <h3 className="hidden md:block text-xl font-semibold text-[#2c342f] p-6 pb-0">
+                Cart Total
+              </h3>
 
-              {/* Content wrapper with smooth transition */}
               <div
-                className={`transition-all duration-300 ease-in-out ${checkoutExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 overflow-hidden"
-                  } md:max-h-none md:opacity-100`}
+                className={`transition-all duration-300 ease-in-out ${
+                  checkoutExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 overflow-hidden"
+                } md:max-h-none md:opacity-100`}
               >
-                <div className="px-4 md:px-6 pt-0 pb-3 md:pt-6 md:pb-6 space-y-3 md:space-y-4">
-                  <div className="flex justify-between items-center border-b pb-2 md:pb-3 pt-3 md:pt-0">
-                    <span className="text-xs md:text-sm text-slate-600">Subtotal:</span>
-                    <span className="text-xs md:text-sm font-medium">{formatCurrency(subtotal, activeCurrency)}</span>
+                <div className="px-4 md:px-6 pt-0 pb-3 md:pt-6 md:pb-4 space-y-3 md:space-y-4">
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-2.5 md:pb-3 pt-3 md:pt-0">
+                    <span className="text-xs md:text-sm text-slate-500">Subtotal</span>
+                    <span className="text-xs md:text-sm font-semibold text-[#2c342f]">
+                      {formatCurrency(subtotal, activeCurrency)}
+                    </span>
                   </div>
-                  <div className="flex justify-between items-center border-b pb-2 md:pb-3 pt-2 md:pt-3">
-                    <span className="text-xs md:text-sm text-slate-600">Shipping:</span>
-                    <span className="text-xs md:text-sm font-medium">
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-2.5 md:pb-3 pt-1 md:pt-0">
+                    <span className="text-xs md:text-sm text-slate-500">Shipping</span>
+                    <span className="text-xs md:text-sm font-semibold text-[#2c342f]">
                       {shipping === 0 ? "Free" : formatCurrency(shipping, activeCurrency)}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center pt-2 md:pt-3 pb-0">
-                    <span className="text-sm md:text-base text-slate-700 font-medium">Total:</span>
-                    <span className="text-base md:text-lg font-bold">{formatCurrency(total, activeCurrency)}</span>
+                  <div className="flex justify-between items-center pt-1 md:pt-1">
+                    <span className="text-sm md:text-base font-semibold text-[#2c342f]">Total</span>
+                    <span className="text-lg md:text-xl font-bold text-[#2c342f]">
+                      {formatCurrency(total, activeCurrency)}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Proceed button - always visible */}
-              <div className="px-4 md:px-6 pb-4 md:pb-6 pt-0 md:pt-0">
+              <div className="px-4 md:px-6 pb-4 md:pb-6 pt-0">
                 <Link href="/checkout" className="block">
-                  <Button
-                    className="w-full bg-green-600 hover:bg-green-700 text-white py-3 md:py-4 text-sm md:text-base transition shadow-md hover:shadow-lg"
-                  >
+                  <Button className={`w-full h-11 md:h-12 text-sm md:text-base ${cartCta}`}>
                     Proceed to checkout
                   </Button>
                 </Link>

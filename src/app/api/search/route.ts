@@ -47,8 +47,17 @@ function mapOpenSearchHit(hit: SearchHit): SearchApiProduct {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const query = searchParams.get("q")
-  const rawLimit = Number(searchParams.get("limit") || "48")
-  const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 100)) : 48
+  const pageRaw = Number(searchParams.get("page") || "1")
+  const pageSizeRaw = Number(
+    searchParams.get("pageSize") || searchParams.get("limit") || "24"
+  )
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1
+  const pageSize = Number.isFinite(pageSizeRaw)
+    ? Math.max(1, Math.min(pageSizeRaw, 100))
+    : 24
+  // OpenSearch max_result_window is typically 10000; keep from+size under it.
+  const MAX_SEARCH_OFFSET = 9900
+  const offset = Math.min((page - 1) * pageSize, MAX_SEARCH_OFFSET)
 
   const category = searchParams.get("category") || undefined
   const categoryIdParam = searchParams.get("categoryId") || undefined
@@ -78,35 +87,38 @@ export async function GET(req: NextRequest) {
       collectionId = resolved?.id
     }
 
-    // Primary: OpenSearch (fast + ranked) — use typo-rewritten query
     const openSearchResults = await searchProductsOpenSearch(searchQuery, {
-      limit,
+      limit: pageSize,
+      offset,
       categoryId,
       collectionId,
-      // If id resolve failed, still try title match in the index
       category: !categoryId ? category : undefined,
-    }).catch(() => [] as SearchHit[])
+    }).catch(() => ({ hits: [] as SearchHit[], total: 0 }))
 
-    if (Array.isArray(openSearchResults) && openSearchResults.length > 0) {
-      const inStockOS = openSearchResults
-        .filter(isInStockHit)
-        .map(mapOpenSearchHit)
+    if (Array.isArray(openSearchResults.hits) && openSearchResults.hits.length > 0) {
+      const inStockOS = openSearchResults.hits.filter(isInStockHit).map(mapOpenSearchHit)
 
-      // Only short-circuit when we still have in-stock hits; otherwise fall through.
       if (inStockOS.length > 0) {
-        return NextResponse.json(inStockOS)
+        const count = Math.max(openSearchResults.total, offset + inStockOS.length)
+        return NextResponse.json({
+          products: inStockOS,
+          count,
+          page,
+          pageSize,
+          hasMore: offset + pageSize < count,
+        })
       }
     }
 
-    // Fallback: direct Medusa search (prevents empty results when index is stale)
     try {
-      const medusaProducts = await searchProductsMedusa({
+      const medusaResult = await searchProductsMedusa({
         q: searchQuery,
-        limit,
+        limit: pageSize,
+        offset,
         categoryId,
         collectionId,
       })
-      const fallbackResults: SearchApiProduct[] = medusaProducts
+      const fallbackResults: SearchApiProduct[] = medusaResult.products
         .filter(isMedusaProductInStock)
         .map((product) => {
           const ui = toUiProduct(product)
@@ -125,10 +137,23 @@ export async function GET(req: NextRequest) {
           }
         })
 
-      return NextResponse.json(fallbackResults)
+      const count = Math.max(medusaResult.count, offset + fallbackResults.length)
+      return NextResponse.json({
+        products: fallbackResults,
+        count,
+        page,
+        pageSize,
+        hasMore: offset + pageSize < count,
+      })
     } catch (medusaError) {
       console.error("❌ Medusa search fallback error:", medusaError)
-      return NextResponse.json([])
+      return NextResponse.json({
+        products: [],
+        count: 0,
+        page,
+        pageSize,
+        hasMore: false,
+      })
     }
   } catch (error) {
     console.error("❌ Search API error:", error)

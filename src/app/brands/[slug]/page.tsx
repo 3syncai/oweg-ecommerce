@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
-import { ArrowLeft, ChevronRight, Loader2} from "lucide-react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, ChevronLeft, ChevronRight, Loader2} from "lucide-react";
 import { ProductCard } from "@/components/modules/ProductCard";
 import {
   getCollectionLogoScale,
@@ -35,6 +35,7 @@ type UiProduct = {
 
 export default function BrandDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const slug = decodeURIComponent(
     Array.isArray(params?.slug) ? params.slug[0] : (params?.slug as string | undefined) || ""
@@ -44,9 +45,15 @@ export default function BrandDetailPage() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [collection, setCollection] = useState<Collection | null>(null);
   const [products, setProducts] = useState<UiProduct[]>([]);
+  const [productCount, setProductCount] = useState(0);
   const [loadingCollections, setLoadingCollections] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const BRAND_PAGE_SIZE = 24;
+  const requestedPage = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+  const totalPages = Math.max(1, Math.ceil(productCount / BRAND_PAGE_SIZE));
+  const currentPage = Math.min(requestedPage, totalPages);
 
   // Load all collections once
   useEffect(() => {
@@ -94,22 +101,28 @@ export default function BrandDetailPage() {
       try {
         setLoadingProducts(true);
         setError(null);
-        const res = await fetch(`/api/medusa/products?collectionId=${encodeURIComponent(collection.id)}&limit=120`, {
-          cache: "no-store",
-        });
+        const offset = (requestedPage - 1) * BRAND_PAGE_SIZE;
+        const res = await fetch(
+          `/api/medusa/products?collectionId=${encodeURIComponent(collection.id)}&limit=${BRAND_PAGE_SIZE}&offset=${offset}`,
+          { cache: "no-store" }
+        );
         if (!res.ok) throw new Error("Unable to load products");
         const data = await res.json();
         setProducts((data.products || []) as UiProduct[]);
+        setProductCount(
+          typeof data.count === "number" ? data.count : (data.products || []).length
+        );
       } catch (err) {
         setError("Could not load products for this brand.");
         setProducts([]);
-        console.log(err)
+        setProductCount(0);
+        console.log(err);
       } finally {
         setLoadingProducts(false);
       }
     };
     loadProducts();
-  }, [collection?.id]);
+  }, [collection?.id, requestedPage]);
 
   const logo = useMemo(
     () =>
@@ -192,7 +205,6 @@ export default function BrandDetailPage() {
           ) : (
             [...products]
               .sort((a, b) => {
-                // Sort in-stock products first, out-of-stock last
                 const aInStock = typeof a.inventory_quantity === 'number' && a.inventory_quantity > 0;
                 const bInStock = typeof b.inventory_quantity === 'number' && b.inventory_quantity > 0;
                 if (aInStock && !bInStock) return -1;
@@ -202,6 +214,42 @@ export default function BrandDetailPage() {
               .map((p) => <ProductCard key={p.id} {...p} />)
           )}
         </section>
+
+        {totalPages > 1 && products.length > 0 ? (
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => {
+                const next = new URLSearchParams(searchParams.toString());
+                if (currentPage - 1 <= 1) next.delete("page");
+                else next.set("page", String(currentPage - 1));
+                const qs = next.toString();
+                router.replace(qs ? `?${qs}` : window.location.pathname, { scroll: false });
+              }}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-40"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Prev
+            </button>
+            <span className="text-sm text-gray-600">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() => {
+                const next = new URLSearchParams(searchParams.toString());
+                next.set("page", String(currentPage + 1));
+                router.replace(`?${next.toString()}`, { scroll: false });
+              }}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-40"
+            >
+              Next
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

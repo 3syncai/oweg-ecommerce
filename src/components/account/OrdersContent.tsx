@@ -240,7 +240,9 @@ function OrderCard({
 
 export default function OrdersContent({ embedded = false }: OrdersContentProps) {
   const { customer } = useAuth();
-  const { orders, counts, loading, error, refresh } = useAccountOrdersSummary();
+  const [listPage, setListPage] = useState(1);
+  const { orders, counts, loading, error, refresh, totalPages, page, hasMore } =
+    useAccountOrdersSummary({ page: listPage, pageSize: 15 });
   const [activeStat, setActiveStat] = useState<StatusFilter>("all");
   const [dropdownStatus, setDropdownStatus] = useState<DropdownStatusFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -409,25 +411,50 @@ export default function OrdersContent({ embedded = false }: OrdersContentProps) 
 
       {showSkeleton ? (
         <OrdersSkeleton />
-      ) : filteredOrders.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-10 text-center">
-          <p className="text-base font-semibold text-[#1F2A33]">
-            {orders.length === 0 ? "You have no orders yet." : "No orders match your filters."}
-          </p>
-          {orders.length === 0 ? (
-            <Link
-              href="/"
-              className="mt-4 inline-flex items-center justify-center rounded-full bg-[#66C940] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#5ab838]"
-            >
-              Continue shopping
-            </Link>
-          ) : null}
-        </div>
       ) : (
         <div className="space-y-4">
-          {filteredOrders.map((order, index) => (
-            <OrderCard key={order.id} order={order} index={index} />
-          ))}
+          {filteredOrders.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-10 text-center">
+              <p className="text-base font-semibold text-[#1F2A33]">
+                {orders.length === 0 ? "You have no orders yet." : "No orders match your filters."}
+              </p>
+              {orders.length === 0 ? (
+                <Link
+                  href="/"
+                  className="mt-4 inline-flex items-center justify-center rounded-full bg-[#66C940] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#5ab838]"
+                >
+                  Continue shopping
+                </Link>
+              ) : null}
+            </div>
+          ) : (
+            filteredOrders.map((order, index) => (
+              <OrderCard key={order.id} order={order} index={index} />
+            ))
+          )}
+          {totalPages > 1 ? (
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={page <= 1 || loading}
+                onClick={() => setListPage((p) => Math.max(1, p - 1))}
+                className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-[#1F2A33] disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-gray-600">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={!hasMore || loading}
+                onClick={() => setListPage((p) => p + 1)}
+                className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-[#1F2A33] disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
     </div>

@@ -1,10 +1,10 @@
-"use client"
+﻿"use client"
 
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 import { useEffect, useMemo, useState } from "react"
-import { Heart, SearchX, SlidersHorizontal, Star } from "lucide-react"
+import { ChevronLeft, ChevronRight, Heart, SearchX, SlidersHorizontal, Star } from "lucide-react"
 import Image from "next/image"
 
 type SearchProduct = {
@@ -20,6 +20,8 @@ type SearchProduct = {
   discount?: number
 }
 
+const SEARCH_PAGE_SIZE = 24
+
 const priceFormatter = new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",
@@ -28,11 +30,11 @@ const priceFormatter = new Intl.NumberFormat("en-IN", {
 })
 
 const PRICE_OPTIONS = [
-  { label: "Under ₹1,000", value: "under1000" },
-  { label: "₹1,000 - ₹5,000", value: "1000-5000" },
-  { label: "₹5,000 - ₹10,000", value: "5000-10000" },
-  { label: "₹10,000 - ₹20,000", value: "10000-20000" },
-  { label: "Over ₹20,000", value: "over20000" },
+  { label: "Under \u20B91,000", value: "under1000" },
+  { label: "\u20B91,000 - \u20B95,000", value: "1000-5000" },
+  { label: "\u20B95,000 - \u20B910,000", value: "5000-10000" },
+  { label: "\u20B910,000 - \u20B920,000", value: "10000-20000" },
+  { label: "Over \u20B920,000", value: "over20000" },
 ] as const
 
 function toSafePrice(value: SearchProduct["price"]): number {
@@ -70,26 +72,32 @@ function StarRow({ count }: { count: number }) {
 }
 
 function SearchPageContent() {
+  const router = useRouter()
   const params = useSearchParams()
   const q = params.get("q")?.trim() || ""
   const category = params.get("category")?.trim() || ""
   const categoryId = params.get("categoryId")?.trim() || ""
   const collection = params.get("collection")?.trim() || ""
   const collectionId = params.get("collectionId")?.trim() || ""
+  const requestedPage = Math.max(1, parseInt(params.get("page") || "1", 10) || 1)
 
   const [products, setProducts] = useState<SearchProduct[]>([])
   const [filtered, setFiltered] = useState<SearchProduct[]>([])
+  const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(false)
 
   const [minRating, setMinRating] = useState<number | null>(null)
   const [selectedBrands, setSelectedBrands] = useState<string[]>([])
-  const [showAllBrands, setShowAllBrands] = useState(false)
   const [priceRange, setPriceRange] = useState<string | null>(null)
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / SEARCH_PAGE_SIZE))
+  const currentPage = Math.min(requestedPage, totalPages)
 
   useEffect(() => {
     if (!q) {
       setProducts([])
       setFiltered([])
+      setTotalCount(0)
       return
     }
 
@@ -98,7 +106,11 @@ function SearchPageContent() {
     async function fetchProducts() {
       setLoading(true)
       try {
-        const query = new URLSearchParams({ q })
+        const query = new URLSearchParams({
+          q,
+          page: String(requestedPage),
+          pageSize: String(SEARCH_PAGE_SIZE),
+        })
         if (categoryId) query.set("categoryId", categoryId)
         else if (category) query.set("category", category)
         if (collectionId) query.set("collectionId", collectionId)
@@ -107,13 +119,19 @@ function SearchPageContent() {
         const res = await fetch(`/api/search?${query.toString()}`)
         const data = await res.json()
         if (cancelled) return
-        const result = Array.isArray(data) ? (data as SearchProduct[]) : []
+        const result = Array.isArray(data)
+          ? (data as SearchProduct[])
+          : Array.isArray(data?.products)
+            ? (data.products as SearchProduct[])
+            : []
         setProducts(result)
         setFiltered(result)
+        setTotalCount(typeof data?.count === "number" ? data.count : result.length)
       } catch {
         if (!cancelled) {
           setProducts([])
           setFiltered([])
+          setTotalCount(0)
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -121,30 +139,23 @@ function SearchPageContent() {
     }
 
     fetchProducts()
-
     return () => {
       cancelled = true
     }
-  }, [q, category, categoryId, collection, collectionId])
+  }, [q, category, categoryId, collection, collectionId, requestedPage])
 
   const allBrands = useMemo(
     () => Array.from(new Set(products.map((p) => p.brand).filter(Boolean))) as string[],
     [products]
   )
-
-  const visibleBrands = showAllBrands ? allBrands : allBrands.slice(0, 8)
+  const visibleBrands = allBrands.slice(0, 8)
 
   useEffect(() => {
     let result = [...products]
-
-    if (minRating) {
-      result = result.filter((p) => (p.rating || 0) >= minRating)
-    }
-
+    if (minRating) result = result.filter((p) => (p.rating || 0) >= minRating)
     if (selectedBrands.length > 0) {
       result = result.filter((p) => p.brand && selectedBrands.includes(p.brand))
     }
-
     if (priceRange) {
       result = result.filter((p) => {
         const price = toSafePrice(p.price)
@@ -156,22 +167,27 @@ function SearchPageContent() {
         return true
       })
     }
-
     setFiltered(result)
   }, [minRating, selectedBrands, priceRange, products])
 
   const hasFilters = !!minRating || selectedBrands.length > 0 || !!priceRange
-
   const toggleBrand = (brand: string) => {
     setSelectedBrands((prev) =>
       prev.includes(brand) ? prev.filter((item) => item !== brand) : [...prev, brand]
     )
   }
-
   const clearFilters = () => {
     setMinRating(null)
     setSelectedBrands([])
     setPriceRange(null)
+  }
+  const goToPage = (page: number) => {
+    const safe = Math.max(1, Math.min(page, totalPages))
+    const next = new URLSearchParams(params.toString())
+    if (safe <= 1) next.delete("page")
+    else next.set("page", String(safe))
+    router.replace(`/search?${next.toString()}`, { scroll: false })
+    window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
   return (
@@ -187,14 +203,9 @@ function SearchPageContent() {
               <p className="mt-1 text-sm text-slate-600">
                 {loading
                   ? "Looking for the best matches..."
-                  : `${filtered.length} product${filtered.length === 1 ? "" : "s"} found`}
+                  : `${totalCount} product${totalCount === 1 ? "" : "s"} found`}
               </p>
             </div>
-            {hasFilters ? (
-              <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                Filters applied
-              </span>
-            ) : null}
           </div>
         </div>
 
@@ -206,58 +217,29 @@ function SearchPageContent() {
                 Filters
               </h2>
               {hasFilters ? (
-                <button
-                  onClick={clearFilters}
-                  className="text-xs font-semibold text-rose-600 transition hover:text-rose-700"
-                >
-                  Clear all
-                </button>
+                <button onClick={clearFilters} className="text-xs font-semibold text-rose-600">Clear all</button>
               ) : null}
             </div>
-
             <div className="space-y-5">
-
-
               {allBrands.length > 0 ? (
                 <section>
                   <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Brand</h3>
                   <div className="space-y-1">
                     {visibleBrands.map((brand) => (
                       <label key={brand} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 hover:bg-slate-50">
-                        <input
-                          type="checkbox"
-                          checked={selectedBrands.includes(brand)}
-                          onChange={() => toggleBrand(brand)}
-                          className="h-4 w-4 accent-emerald-600"
-                        />
+                        <input type="checkbox" checked={selectedBrands.includes(brand)} onChange={() => toggleBrand(brand)} className="h-4 w-4 accent-emerald-600" />
                         <span className="text-sm text-slate-700">{brand}</span>
                       </label>
                     ))}
                   </div>
-
-                  {allBrands.length > 8 ? (
-                    <button
-                      onClick={() => setShowAllBrands((prev) => !prev)}
-                      className="mt-2 text-xs font-semibold text-emerald-700 transition hover:text-emerald-800"
-                    >
-                      {showAllBrands ? "See less" : "See more"}
-                    </button>
-                  ) : null}
                 </section>
               ) : null}
-
               <section>
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Price</h3>
                 <div className="space-y-1">
                   {PRICE_OPTIONS.map((option) => (
                     <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 hover:bg-slate-50">
-                      <input
-                        type="radio"
-                        name="price"
-                        checked={priceRange === option.value}
-                        onChange={() => setPriceRange(priceRange === option.value ? null : option.value)}
-                        className="h-4 w-4 accent-emerald-600"
-                      />
+                      <input type="radio" name="price" checked={priceRange === option.value} onChange={() => setPriceRange(priceRange === option.value ? null : option.value)} className="h-4 w-4 accent-emerald-600" />
                       <span className="text-sm text-slate-700">{option.label}</span>
                     </label>
                   ))}
@@ -274,101 +256,70 @@ function SearchPageContent() {
                     <div className="h-48 animate-pulse bg-slate-100" />
                     <div className="space-y-3 p-4">
                       <div className="h-4 w-5/6 animate-pulse rounded bg-slate-100" />
-                      <div className="h-3 w-2/3 animate-pulse rounded bg-slate-100" />
-                      <div className="h-6 w-1/3 animate-pulse rounded bg-slate-100" />
                     </div>
                   </div>
                 ))}
               </div>
-            ) : filtered.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500">
-                  <SearchX className="h-6 w-6" />
-                </div>
-                <h2 className="text-xl font-semibold text-slate-900">No results found</h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  {hasFilters ? "Try removing some filters to broaden your search." : `No products match "${q}" yet.`}
-                </p>
-                {hasFilters ? (
-                  <button
-                    onClick={clearFilters}
-                    className="mt-4 rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
-                  >
-                    Clear filters
-                  </button>
-                ) : null}
-              </div>
             ) : (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
-                {filtered.map((product) => {
-                  const price = toSafePrice(product.price)
-                  const mrp = toSafeAmount(product.mrp)
-                  const discount = typeof product.discount === "number"
-                    ? product.discount
-                    : (mrp > price && price > 0 ? Math.round(((mrp - price) / mrp) * 100) : 0)
-                  const href = `/productDetail/${product.handle || product.id}?id=${encodeURIComponent(product.id)}`
-
-                  return (
-                    <Link
-                      key={product.id}
-                      href={href}
-                      className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
-                    >
-                      <div className="relative h-48 overflow-hidden bg-slate-50">
-                        {product.thumbnail ? (
-                          <Image
-                            src={product.thumbnail}
-                            alt={product.title || "Product"}
-                            fill
-                            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                            className="h-full w-full object-contain p-3 transition duration-300 group-hover:scale-[1.03]"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-sm text-slate-400">No Image</div>
-                        )}
-
-                        {discount > 0 ? (
-                          <span className="absolute left-2 top-2 rounded-full bg-rose-600 px-2 py-1 text-[10px] font-semibold text-white">
-                            {discount}% off
-                          </span>
-                        ) : null}
-
-                        <button
-                          onClick={(event) => event.preventDefault()}
-                          className="absolute bottom-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-600 shadow-sm"
-                          aria-label="Wishlist"
-                        >
-                          <Heart className="h-4 w-4" />
-                        </button>
-                      </div>
-
-                      <div className="flex flex-1 flex-col p-3">
-                        <h3 className="line-clamp-2 min-h-10 text-sm font-semibold text-slate-900 transition group-hover:text-emerald-700">
-                          {product.title || "Untitled product"}
-                        </h3>
-                        <p className="mt-1 line-clamp-1 text-xs text-slate-500">{product.description || ""}</p>
-
-                        {typeof product.rating === "number" && product.rating > 0 ? (
-                          <div className="mt-2 inline-flex items-center gap-1 text-xs text-slate-600">
-                            <StarRow count={Math.round(product.rating)} />
-                            <span>{product.rating.toFixed(1)}</span>
+              <>
+                {filtered.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+                    <SearchX className="mx-auto mb-3 h-6 w-6 text-slate-500" />
+                    <h2 className="text-xl font-semibold text-slate-900">No results found</h2>
+                    <p className="mt-2 text-sm text-slate-600">
+                      {hasFilters ? "Try removing some filters." : `No products match "${q}" yet.`}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+                    {filtered.map((product) => {
+                      const price = toSafePrice(product.price)
+                      const mrp = toSafeAmount(product.mrp)
+                      const discount = typeof product.discount === "number"
+                        ? product.discount
+                        : (mrp > price && price > 0 ? Math.round(((mrp - price) / mrp) * 100) : 0)
+                      const href = `/productDetail/${product.handle || product.id}?id=${encodeURIComponent(product.id)}`
+                      return (
+                        <Link key={product.id} href={href} className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
+                          <div className="relative h-48 overflow-hidden bg-slate-50">
+                            {product.thumbnail ? (
+                              <Image src={product.thumbnail} alt={product.title || "Product"} fill className="object-contain p-3" sizes="(max-width: 640px) 50vw, 25vw" />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-sm text-slate-400">No image</div>
+                            )}
+                            {discount > 0 ? (
+                              <span className="absolute left-2 top-2 rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">{discount}% off</span>
+                            ) : null}
+                            <button type="button" className="absolute right-2 top-2 rounded-full bg-white/90 p-1.5 text-slate-500" aria-label="Wishlist" onClick={(e) => e.preventDefault()}>
+                              <Heart className="h-4 w-4" />
+                            </button>
                           </div>
-                        ) : null}
-
-                        <div className="mt-auto pt-3">
-                          <div className="flex items-end gap-2">
-                            <span className="text-base font-bold text-slate-900">{priceFormatter.format(price)}</span>
-                            {mrp > price && price > 0 ? <span className="text-xs text-slate-400 line-through">{priceFormatter.format(mrp)}</span> : null}
+                          <div className="flex flex-1 flex-col gap-1.5 p-3.5">
+                            {product.brand ? <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">{product.brand}</p> : null}
+                            <h3 className="line-clamp-2 text-sm font-semibold text-slate-900">{product.title}</h3>
+                            {typeof product.rating === "number" && product.rating > 0 ? <StarRow count={Math.min(5, Math.round(product.rating))} /> : null}
+                            <div className="mt-auto flex items-baseline gap-2 pt-1">
+                              <span className="text-base font-bold text-slate-900">{priceFormatter.format(price)}</span>
+                              {mrp > price ? <span className="text-xs text-slate-400 line-through">{priceFormatter.format(mrp)}</span> : null}
+                            </div>
                           </div>
-                          <span className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-green-600 px-3 py-2 text-xs font-semibold text-white transition group-hover:bg-green-700">
-                            View Product
-                          </span>
-                        </div>
-                      </div>
-                    </Link>
-                  )
-                })}
-              </div>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
+                {totalPages > 1 ? (
+                  <div className="mt-8 flex items-center justify-center gap-3">
+                    <button type="button" onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-40">
+                      <ChevronLeft className="h-4 w-4" /> Prev
+                    </button>
+                    <span className="text-sm text-slate-600">Page {currentPage} of {totalPages}</span>
+                    <button type="button" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-40">
+                      Next <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : null}
+              </>
             )}
           </main>
         </div>

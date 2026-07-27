@@ -398,12 +398,25 @@ export async function findSpendByReferenceAny(options: {
   };
 }
 
-export async function getWalletSnapshot(options: { customerId: string }) {
+export async function getWalletSnapshot(options: {
+  customerId: string;
+  limit?: number;
+  offset?: number;
+}) {
   const actual = await withTransaction(async (client) => {
     return reconcileAccountBalance(client, options.customerId);
   });
   const display = Math.max(actual, 0);
   const pendingAdjustment = actual < 0 ? Math.abs(actual) : 0;
+
+  const limitRaw = options.limit ?? 50;
+  const offsetRaw = options.offset ?? 0;
+  const limit = Number.isFinite(limitRaw)
+    ? Math.max(1, Math.min(Math.floor(limitRaw), 100))
+    : 50;
+  const offset = Number.isFinite(offsetRaw)
+    ? Math.max(0, Math.floor(offsetRaw))
+    : 0;
 
   const pool = getPool();
   const tx = await pool.query(
@@ -411,7 +424,11 @@ export async function getWalletSnapshot(options: { customerId: string }) {
      FROM wallet_ledger
      WHERE customer_id = $1
      ORDER BY created_at DESC
-     LIMIT 50`,
+     LIMIT $2 OFFSET $3`,
+    [options.customerId, limit, offset]
+  );
+  const txCount = await pool.query(
+    `SELECT COUNT(*)::int AS count FROM wallet_ledger WHERE customer_id = $1`,
     [options.customerId]
   );
 
@@ -430,6 +447,8 @@ export async function getWalletSnapshot(options: { customerId: string }) {
     [options.customerId]
   );
 
+  const transactionCount = Number(txCount.rows[0]?.count || 0);
+
   return {
     actual_balance_minor: actual,
     display_balance_minor: display,
@@ -438,6 +457,10 @@ export async function getWalletSnapshot(options: { customerId: string }) {
     lifetime_spent_minor: Number(sums.rows[0]?.spent || 0),
     recent_earn_minor: Math.abs(Number(recentEarn.rows[0]?.amount || 0)),
     transactions: tx.rows as Array<Record<string, unknown>>,
+    transaction_count: transactionCount,
+    transaction_limit: limit,
+    transaction_offset: offset,
+    has_more_transactions: offset + tx.rows.length < transactionCount,
   };
 }
 

@@ -3,10 +3,16 @@ import { normalizeSearchQuery, rewriteSearchTypos } from "@/lib/search-query-nor
 
 export type SearchOptions = {
   limit?: number
+  offset?: number
   categoryId?: string
   collectionId?: string
   /** Match against indexed category_titles when id is unknown (handle/title). */
   category?: string
+}
+
+export type SearchProductsResult = {
+  hits: SearchHit[]
+  total: number
 }
 
 const SOURCE_FIELDS = [
@@ -196,21 +202,36 @@ function mapHits(response: any): SearchHit[] {
 }
 
 /** Single OpenSearch round trip (primary + wide clauses combined). */
-async function runSearch(normalizedQuery: string, scope: ScopeFilters, limit: number): Promise<SearchHit[]> {
+async function runSearch(
+  normalizedQuery: string,
+  scope: ScopeFilters,
+  limit: number,
+  offset = 0
+): Promise<{ hits: SearchHit[]; total: number }> {
   try {
     const response = await client.search({
       index: "products",
+      from: Math.max(0, offset),
       size: limit,
       _source: SOURCE_FIELDS,
       body: {
         query: buildUnifiedQuery(normalizedQuery, scope) as any,
-        track_total_hits: false,
+        track_total_hits: true,
       },
     })
-    return mapHits(response)
+    const body = response.body ?? response
+    const hits = mapHits(response)
+    const totalRaw = body.hits?.total
+    const total =
+      typeof totalRaw === "number"
+        ? totalRaw
+        : typeof totalRaw?.value === "number"
+          ? totalRaw.value
+          : hits.length + Math.max(0, offset)
+    return { hits, total }
   } catch (error) {
     console.error("❌ OpenSearch query error:", error)
-    return []
+    return { hits: [], total: 0 }
   }
 }
 
@@ -228,10 +249,18 @@ function mergeHitsById(hitLists: SearchHit[][], limit: number): SearchHit[] {
   return merged
 }
 
-export async function searchProducts(query: string, options: SearchOptions = {}) {
+export async function searchProducts(
+  query: string,
+  options: SearchOptions = {}
+): Promise<SearchProductsResult> {
   const rawNormalized = normalizeSearchQuery(query)
   const rewritten = rewriteSearchTypos(rawNormalized)
   const limit = Math.max(1, Math.min(options.limit ?? 48, 100))
+  const MAX_SEARCH_OFFSET = 9900
+  const rawOffset = Number.isFinite(options.offset as number)
+    ? Math.floor(options.offset as number)
+    : 0
+  const offset = Math.max(0, Math.min(rawOffset, MAX_SEARCH_OFFSET))
   const scope: ScopeFilters = {
     categoryId: options.categoryId,
     collectionId: options.collectionId,
@@ -239,36 +268,46 @@ export async function searchProducts(query: string, options: SearchOptions = {})
   }
 
   try {
-    if (!rawNormalized) return []
+    if (!rawNormalized) return { hits: [], total: 0 }
 
     // Prefer typo-corrected query first.
-    let hits = await runSearch(rewritten, scope, limit)
-    if (hits.length > 0) return hits
+    let result = await runSearch(rewritten, scope, limit, offset)
+    if (result.hits.length > 0) return result
 
     if (rewritten !== rawNormalized) {
-      hits = await runSearch(rawNormalized, scope, limit)
-      if (hits.length > 0) return hits
+      result = await runSearch(rawNormalized, scope, limit, offset)
+      if (result.hits.length > 0) return result
     }
 
     const tokensOnly = significantTokens(rewritten)
     if (tokensOnly && tokensOnly !== rewritten) {
-      hits = await runSearch(tokensOnly, scope, limit)
-      if (hits.length > 0) return hits
+      result = await runSearch(tokensOnly, scope, limit, offset)
+      if (result.hits.length > 0) return result
     }
 
     // Parallel per-token merge (cap 4) — avoids sequential fan-out on misses.
     const parts = significantTokens(rewritten).split(" ").filter(Boolean).slice(0, 4)
     if (parts.length > 1) {
-      const lists = await Promise.all(parts.map((part) => runSearch(part, scope, limit)))
-      const merged = mergeHitsById(lists, limit)
-      if (merged.length > 0) return merged
+      const lists = await Promise.all(
+        parts.map((part) => runSearch(part, scope, limit + offset, 0))
+      )
+      const merged = mergeHitsById(
+        lists.map((l) => l.hits),
+        limit + offset
+      )
+      if (merged.length > 0) {
+        return {
+          hits: merged.slice(offset, offset + limit),
+          total: Math.max(...lists.map((l) => l.total), merged.length),
+        }
+      }
     }
 
     console.log("⚠️ No results found for query:", rawNormalized, "(rewritten:", rewritten + ")")
-    return []
+    return { hits: [], total: 0 }
   } catch (error) {
-    console.error("❌ OpenSearch error:", error)
-    return []
+    console.error("❌ searchProducts error:", error)
+    return { hits: [], total: 0 }
   }
 }
 

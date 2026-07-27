@@ -1,7 +1,4 @@
-import {
-  loadRazorpayCustomScript,
-  prefetchRazorpayConnections,
-} from "@/lib/razorpay-custom-client";
+import { loadRazorpayScript, prefetchRazorpayConnections } from "@/lib/razorpay-client";
 
 export type RazorpayMethodsPayload = {
   netbanking?: Record<string, string>;
@@ -12,22 +9,18 @@ let sdkWarmStarted = false;
 let methodsCache: RazorpayMethodsPayload | null = null;
 let methodsPromise: Promise<RazorpayMethodsPayload | null> | null = null;
 
-/** Preconnect + load Razorpay custom checkout SDK (idempotent). */
-export function warmRazorpayCheckout(options?: { prefetchMethods?: boolean }): void {
+/** Preconnect + load Razorpay Standard Checkout SDK (idempotent). */
+export function warmRazorpayCheckout(_options?: { prefetchMethods?: boolean }): void {
   if (typeof window === "undefined") return;
 
   if (!sdkWarmStarted) {
     sdkWarmStarted = true;
     prefetchRazorpayConnections();
-    void loadRazorpayCustomScript().catch(() => undefined);
-  }
-
-  if (options?.prefetchMethods !== false) {
-    void prefetchRazorpayMethods().catch(() => undefined);
+    void loadRazorpayScript().catch(() => undefined);
   }
 }
 
-/** Fetch banks/wallets once and cache for the payment form. */
+/** Fetch banks/wallets once and cache (legacy custom form support). */
 export async function prefetchRazorpayMethods(): Promise<RazorpayMethodsPayload | null> {
   if (methodsCache) return methodsCache;
   if (methodsPromise) return methodsPromise;
