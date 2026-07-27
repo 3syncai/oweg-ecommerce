@@ -126,7 +126,10 @@ export function CategoryPageClient({
     queryFilters
   );
 
-  const products = pageData?.products ?? [];
+  const products = useMemo(
+    () => pageData?.products ?? [],
+    [pageData?.products]
+  );
   const serverCount = pageData?.count ?? products.length;
   const serverHasMore = pageData?.hasMore ?? false;
   const brandFilterActive = filters.brands.length > 0;
