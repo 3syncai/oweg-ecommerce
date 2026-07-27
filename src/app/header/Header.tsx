@@ -525,6 +525,8 @@ const Header: React.FC = () => {
 
   // timers to control delayed hide (prevents disappearing while moving mouse)
   const hideTimerRef = React.useRef<number | null>(null);
+  /** True while user is interacting with mega-menu scrollbar/list (prevents hide+remount snap). */
+  const megaMenuPointerActiveRef = React.useRef(false);
   const allHideTimerRef = React.useRef<number | null>(null);
   const categoryActivateTimerRef = React.useRef<number | null>(null);
   const activeCategoryIdRef = React.useRef<string | null>(null);
@@ -968,8 +970,12 @@ const Header: React.FC = () => {
   // increased default delay slightly so user moving mouse has buffer
   const startHideTimer = React.useCallback(
     (delay = 400) => {
+      if (megaMenuPointerActiveRef.current) return;
       clearHideTimer();
-      hideTimerRef.current = window.setTimeout(() => setActiveCategoryId(null), delay);
+      hideTimerRef.current = window.setTimeout(() => {
+        if (megaMenuPointerActiveRef.current) return;
+        setActiveCategoryId(null);
+      }, delay);
     },
     [clearHideTimer]
   );
@@ -1023,7 +1029,10 @@ const Header: React.FC = () => {
       if (profileMenuRef.current && !profileMenuRef.current.contains(target)) {
         setProfileMenuOpen(false);
       }
-      if (!target.closest("[data-nav-category]")) {
+      if (
+        !target.closest("[data-nav-category]") &&
+        !target.closest("[data-category-mega-menu]")
+      ) {
         // start a short delay before closing active category to allow mouse to enter portal
         startHideTimer();
       }
@@ -1031,6 +1040,19 @@ const Header: React.FC = () => {
     document.addEventListener("click", handleClickOutside);
     return () => document.removeEventListener("click", handleClickOutside);
   }, [startHideTimer]);
+
+  React.useEffect(() => {
+    const endPointer = () => {
+      if (!megaMenuPointerActiveRef.current) return;
+      megaMenuPointerActiveRef.current = false;
+    };
+    document.addEventListener("pointerup", endPointer);
+    document.addEventListener("pointercancel", endPointer);
+    return () => {
+      document.removeEventListener("pointerup", endPointer);
+      document.removeEventListener("pointercancel", endPointer);
+    };
+  }, []);
 
   React.useEffect(() => {
     const shouldLock = mobileMenuOpen || pinModalOpen;
@@ -1042,13 +1064,16 @@ const Header: React.FC = () => {
     };
   }, [mobileMenuOpen, pinModalOpen]);
 
-  // Dropdown portal for active category
-  const CategoryPortal: React.FC = () => {
+  // Dropdown portal for active category (inline element — NOT a nested component —
+  // so Header re-renders do not remount the menu and reset scrollTop).
+  const categoryMegaMenuPortal = (() => {
     if (!activeCategoryId) return null;
     const active = allDesktopCategories.find((c) => c.id === activeCategoryId);
     if (!active || !mountedRef.current) return null;
     const trigger = triggersRef.current[activeCategoryId] ?? null;
     const style = computeDropdownStyle(trigger, 680, true);
+    const panelMax = typeof style.maxHeight === "number" ? style.maxHeight : 480;
+    const listMaxHeightPx = Math.max(200, Math.min(360, panelMax - 176));
 
     return createPortal(
       <div
@@ -1057,31 +1082,39 @@ const Header: React.FC = () => {
         aria-hidden={!active}
       >
         <div
+          data-category-mega-menu
           // actual visible panel handles hover/focus
           onMouseEnter={() => {
             clearCategoryActivateTimer();
             clearHideTimer();
           }}
-          onMouseLeave={() => startHideTimer()}
+          onMouseLeave={() => {
+            startHideTimer();
+          }}
           style={{
             ...style,
             pointerEvents: "auto",
-            overflowY: "auto",
+            overflowY: "hidden",
             display: "flex",
             flexDirection: "column",
           }}
-          className="relative min-h-0 rounded-xl bg-white shadow-2xl ring-1 ring-black/5 p-3 border border-gray-100 transition-transform duration-160 scrollbar-hide before:content-[''] before:absolute before:-top-3.5 before:left-0 before:right-0 before:h-3.5"
+          className="relative min-h-0 rounded-xl bg-white shadow-2xl ring-1 ring-black/5 p-3 border border-gray-100 transition-transform duration-160 before:content-[''] before:absolute before:-top-3.5 before:left-0 before:right-0 before:h-3.5"
           role="menu"
         >
           <CategoryMegaMenu
             category={active}
             onClose={() => setActiveCategoryId(null)}
+            listMaxHeightPx={listMaxHeightPx}
+            onListPointerActiveChange={(activePtr) => {
+              megaMenuPointerActiveRef.current = activePtr;
+              if (activePtr) clearHideTimer();
+            }}
           />
         </div>
       </div>,
       document.body
     );
-  };
+  })();
 
   // Portal for "All" dropdown (overflow categories)
   const AllPortal: React.FC = () => {
@@ -1852,7 +1885,7 @@ const Header: React.FC = () => {
       </div>
 
       {/* Render dropdown portals (so they're never clipped by nav overflow) */}
-      <CategoryPortal />
+      {categoryMegaMenuPortal}
       <AllPortal />
       <CartPreviewPortal />
 
