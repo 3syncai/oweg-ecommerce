@@ -88,7 +88,6 @@ function SearchPageContent() {
 
   const [minRating, setMinRating] = useState<number | null>(null)
   const [selectedBrands, setSelectedBrands] = useState<string[]>([])
-  const [showAllBrands, setShowAllBrands] = useState(false)
   const [priceRange, setPriceRange] = useState<string | null>(null)
 
   const totalPages = Math.max(1, Math.ceil(totalCount / SEARCH_PAGE_SIZE))
@@ -149,7 +148,7 @@ function SearchPageContent() {
     () => Array.from(new Set(products.map((p) => p.brand).filter(Boolean))) as string[],
     [products]
   )
-  const visibleBrands = showAllBrands ? allBrands : allBrands.slice(0, 8)
+  const visibleBrands = allBrands.slice(0, 8)
 
   useEffect(() => {
     let result = [...products]
