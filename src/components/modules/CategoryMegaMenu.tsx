@@ -59,9 +59,18 @@ function resolvePopularItems(category: MegaMenuCategory) {
 type CategoryMegaMenuProps = {
   category: MegaMenuCategory;
   onClose: () => void;
+  /** Pixel max-height for the subcategory list scroll area. */
+  listMaxHeightPx?: number;
+  /** Called when user presses/releases pointer on the scrollable list (scrollbar drag). */
+  onListPointerActiveChange?: (active: boolean) => void;
 };
 
-export default function CategoryMegaMenu({ category, onClose }: CategoryMegaMenuProps) {
+export default function CategoryMegaMenu({
+  category,
+  onClose,
+  listMaxHeightPx = 360,
+  onListPointerActiveChange,
+}: CategoryMegaMenuProps) {
   const config = getCategoryMegaMenuConfig(category.handle);
   const popularItems = resolvePopularItems(category);
   const parentHandle = category.handle || "";
@@ -104,21 +113,12 @@ export default function CategoryMegaMenu({ category, onClose }: CategoryMegaMenu
     config?.featured || banners.length > 0 || (bannersLoading && categoryHandle)
   );
 
-  const handleMenuWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    const el = event.currentTarget;
-    const { scrollTop, scrollHeight, clientHeight } = el;
-    const delta = event.deltaY;
-    const atTop = scrollTop <= 0;
-    const atBottom = scrollTop + clientHeight >= scrollHeight;
-    if ((delta < 0 && atTop) || (delta > 0 && atBottom)) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  };
+  const subcategoryCols =
+    category.children.length <= 3 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2";
 
   return (
-    <div className="flex min-h-0 flex-1 gap-4 overflow-hidden p-1">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 gap-4 overflow-x-hidden p-1">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
         <h3 className="shrink-0 px-2 pb-3 text-base font-semibold text-[#1F2A33]">{category.title}</h3>
 
         {popularItems.length > 0 ? (
@@ -147,22 +147,25 @@ export default function CategoryMegaMenu({ category, onClose }: CategoryMegaMenu
         </p>
 
         <div
-          className={`grid min-h-0 content-start items-start gap-1 overflow-y-auto pr-1 scrollbar-hide ${
-            category.children.length <= 3 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"
-          }`}
-          onWheel={handleMenuWheel}
+          className="min-h-0 touch-pan-y overflow-y-auto overscroll-contain pr-1"
+          style={{ maxHeight: listMaxHeightPx }}
+          onPointerDown={() => onListPointerActiveChange?.(true)}
+          onPointerUp={() => onListPointerActiveChange?.(false)}
+          onPointerCancel={() => onListPointerActiveChange?.(false)}
         >
-          {category.children.map((sub) => (
-            <Link
-              key={sub.id}
-              href={getSubcategoryHref(parentHandle, sub.handle)}
-              className={itemClassName}
-              onClick={onClose}
-            >
-              <SubcategoryIcon handle={sub.handle} title={sub.title} className="w-6 h-6" />
-              <span className="min-w-0 flex-1 truncate leading-snug">{sub.title}</span>
-            </Link>
-          ))}
+          <div className={`grid content-start items-start gap-1 ${subcategoryCols}`}>
+            {category.children.map((sub) => (
+              <Link
+                key={sub.id}
+                href={getSubcategoryHref(parentHandle, sub.handle)}
+                className={itemClassName}
+                onClick={onClose}
+              >
+                <SubcategoryIcon handle={sub.handle} title={sub.title} className="w-6 h-6" />
+                <span className="min-w-0 flex-1 truncate leading-snug">{sub.title}</span>
+              </Link>
+            ))}
+          </div>
         </div>
 
         <div className="mt-4 shrink-0 border-t border-gray-100 pt-3 px-2">
