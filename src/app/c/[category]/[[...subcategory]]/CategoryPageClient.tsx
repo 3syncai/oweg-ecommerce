@@ -128,6 +128,8 @@ export function CategoryPageClient({
 
   const products = pageData?.products ?? [];
   const serverCount = pageData?.count ?? products.length;
+  const serverHasMore = pageData?.hasMore ?? false;
+  const brandFilterActive = filters.brands.length > 0;
 
   const derivedBrandOptions = useMemo(() => {
     const counts = new Map<string, number>();
@@ -178,8 +180,11 @@ export function CategoryPageClient({
     return filtered;
   }, [products, filters.brands]);
 
-  const totalPages = Math.max(1, Math.ceil(serverCount / PRODUCTS_PER_PAGE));
-  const currentPage = Math.min(requestedPage, totalPages);
+  const pagesFromCount = Math.max(1, Math.ceil(serverCount / PRODUCTS_PER_PAGE));
+  const totalPages = serverHasMore
+    ? Math.max(pagesFromCount, Math.min(requestedPage, pagesFromCount) + 1)
+    : pagesFromCount;
+  const currentPage = Math.min(Math.max(1, requestedPage), totalPages);
 
   const activeSourceHandle =
     selectedSubcategory?.handle ||
@@ -320,11 +325,20 @@ export function CategoryPageClient({
 
   const headingDescription = isLoading
     ? "Loading products…"
-    : `${serverCount} products available`;
+    : brandFilterActive
+      ? `${filteredProducts.length} matching on this page · ${serverCount} in category`
+      : `${serverCount} products available`;
 
-  const resultsRangeStart =
-    filteredProducts.length === 0 ? 0 : pageOffset + 1;
-  const resultsRangeEnd = pageOffset + filteredProducts.length;
+  const resultsRangeStart = brandFilterActive
+    ? filteredProducts.length === 0
+      ? 0
+      : 1
+    : filteredProducts.length === 0
+      ? 0
+      : pageOffset + 1;
+  const resultsRangeEnd = brandFilterActive
+    ? filteredProducts.length
+    : pageOffset + filteredProducts.length;
 
   return (
     <div className="bg-gray-50 min-h-screen">
@@ -377,11 +391,12 @@ export function CategoryPageClient({
               showEmpty={!isLoading && filteredProducts.length === 0}
             />
 
-            {!isLoading && filteredProducts.length > 0 && (
+            {!isLoading && totalPages > 1 && (
               <CategoryPagination
                 currentPage={currentPage}
                 totalPages={totalPages}
                 onPageChange={goToPage}
+                hasMore={serverHasMore}
               />
             )}
           </main>

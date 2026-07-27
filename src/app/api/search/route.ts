@@ -12,6 +12,11 @@ import {
   findCollectionByTitleOrHandle,
 } from "@/lib/medusa"
 import { rewriteSearchTypos } from "@/lib/search-query-normalize"
+import {
+  MEDUSA_LIST_MAX_LIMIT,
+  overfetchLimit,
+  sliceFilteredPage,
+} from "@/lib/paginated-in-stock"
 
 export type SearchApiProduct = {
   id: string
@@ -96,29 +101,34 @@ export async function GET(req: NextRequest) {
     }).catch(() => ({ hits: [] as SearchHit[], total: 0 }))
 
     if (Array.isArray(openSearchResults.hits) && openSearchResults.hits.length > 0) {
+      // in_stock is filtered in OpenSearch; keep post-filter for stale index docs.
       const inStockOS = openSearchResults.hits.filter(isInStockHit).map(mapOpenSearchHit)
 
       if (inStockOS.length > 0) {
-        const count = Math.max(openSearchResults.total, offset + inStockOS.length)
+        const count = openSearchResults.total
         return NextResponse.json({
           products: inStockOS,
           count,
           page,
           pageSize,
           hasMore: offset + pageSize < count,
+          countIsApproximate: inStockOS.length < openSearchResults.hits.length,
         })
       }
     }
 
     try {
+      // Medusa list max is 60; align page size so we never slice past the fetch window.
+      const medusaPageSize = Math.min(pageSize, MEDUSA_LIST_MAX_LIMIT)
+      const fetchLimit = overfetchLimit(medusaPageSize, MEDUSA_LIST_MAX_LIMIT)
       const medusaResult = await searchProductsMedusa({
         q: searchQuery,
-        limit: pageSize,
+        limit: fetchLimit,
         offset,
         categoryId,
         collectionId,
       })
-      const fallbackResults: SearchApiProduct[] = medusaResult.products
+      const fallbackFiltered: SearchApiProduct[] = medusaResult.products
         .filter(isMedusaProductInStock)
         .map((product) => {
           const ui = toUiProduct(product)
@@ -137,13 +147,22 @@ export async function GET(req: NextRequest) {
           }
         })
 
-      const count = Math.max(medusaResult.count, offset + fallbackResults.length)
+      const sliced = sliceFilteredPage({
+        filtered: fallbackFiltered,
+        fetchedCount: medusaResult.products.length,
+        pageLimit: medusaPageSize,
+        offset,
+        fetchLimit,
+        upstreamCount: medusaResult.count,
+      })
+
       return NextResponse.json({
-        products: fallbackResults,
-        count,
+        products: sliced.products,
+        count: sliced.count,
         page,
-        pageSize,
-        hasMore: offset + pageSize < count,
+        pageSize: medusaPageSize,
+        hasMore: sliced.hasMore,
+        countIsApproximate: sliced.countIsApproximate,
       })
     } catch (medusaError) {
       console.error("❌ Medusa search fallback error:", medusaError)
@@ -151,8 +170,9 @@ export async function GET(req: NextRequest) {
         products: [],
         count: 0,
         page,
-        pageSize,
+        pageSize: Math.min(pageSize, MEDUSA_LIST_MAX_LIMIT),
         hasMore: false,
+        countIsApproximate: false,
       })
     }
   } catch (error) {

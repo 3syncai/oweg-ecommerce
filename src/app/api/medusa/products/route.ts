@@ -12,6 +12,11 @@ import {
   type MedusaProductListResult,
 } from "@/lib/medusa"
 import { getPriceListPrices } from "@/lib/price-lists"
+import {
+  MEDUSA_LIST_MAX_LIMIT,
+  overfetchLimit,
+  sliceFilteredPage,
+} from "@/lib/paginated-in-stock"
 
 export const dynamic = "force-dynamic"
 
@@ -61,6 +66,7 @@ function setCachedList(key: string, payload: unknown) {
   listCache.set(key, { expires: Date.now() + LIST_CACHE_TTL_MS, payload })
 }
 
+
 const EMPTY_LIST: MedusaProductListResult = { products: [], count: 0 }
 
 export async function GET(req: NextRequest) {
@@ -86,6 +92,7 @@ export async function GET(req: NextRequest) {
     const offsetRaw = Number(searchParams.get("offset") || 0)
     const normalizedOffset =
       Number.isFinite(offsetRaw) && offsetRaw > 0 ? Math.floor(offsetRaw) : 0
+    const fetchLimit = overfetchLimit(normalizedLimit, MEDUSA_LIST_MAX_LIMIT)
     const priceMinParam = searchParams.get("priceMin")
     const priceMaxParam = searchParams.get("priceMax")
     const priceMin = priceMinParam !== null ? Number(priceMinParam) : undefined
@@ -101,17 +108,18 @@ export async function GET(req: NextRequest) {
         limit: normalizedLimit,
         offset: normalizedOffset,
         hasMore: false,
+        countIsApproximate: false,
       })
     }
 
     let listResult: MedusaProductListResult = EMPTY_LIST
     if (type) {
-      listResult = await fetchProductsByType(type, normalizedLimit, normalizedOffset)
+      listResult = await fetchProductsByType(type, fetchLimit, normalizedOffset)
       if (!listResult.products.length) {
         const cat = await findCategoryByTitleOrHandle(type)
         if (cat?.id) {
           try {
-            listResult = await fetchProductsByCategoryId(cat.id, normalizedLimit, {
+            listResult = await fetchProductsByCategoryId(cat.id, fetchLimit, {
               offset: normalizedOffset,
             })
           } catch (err) {
@@ -120,12 +128,12 @@ export async function GET(req: NextRequest) {
         }
       }
     } else if (tag) {
-      listResult = await fetchProductsByTag(tag, normalizedLimit, normalizedOffset)
+      listResult = await fetchProductsByTag(tag, fetchLimit, normalizedOffset)
       if (!listResult.products.length) {
         const cat = await findCategoryByTitleOrHandle(tag)
         if (cat?.id) {
           try {
-            listResult = await fetchProductsByCategoryId(cat.id, normalizedLimit, {
+            listResult = await fetchProductsByCategoryId(cat.id, fetchLimit, {
               offset: normalizedOffset,
             })
           } catch (err) {
@@ -148,9 +156,10 @@ export async function GET(req: NextRequest) {
           limit: normalizedLimit,
           offset: normalizedOffset,
           hasMore: false,
+          countIsApproximate: false,
         })
       }
-      listResult = await fetchProductsByCollectionId(colId, normalizedLimit, normalizedOffset)
+      listResult = await fetchProductsByCollectionId(colId, fetchLimit, normalizedOffset)
     } else {
       const catId =
         categoryId ||
@@ -166,9 +175,10 @@ export async function GET(req: NextRequest) {
           limit: normalizedLimit,
           offset: normalizedOffset,
           hasMore: false,
+          countIsApproximate: false,
         })
       }
-      listResult = await fetchProductsByCategoryId(catId, normalizedLimit, {
+      listResult = await fetchProductsByCategoryId(catId, fetchLimit, {
         includeSubcategories,
         offset: normalizedOffset,
       })
@@ -183,6 +193,7 @@ export async function GET(req: NextRequest) {
         count: medusaCount,
         limit: normalizedLimit,
         offset: normalizedOffset,
+        fetchLimit,
       })
     }
 
@@ -224,15 +235,22 @@ export async function GET(req: NextRequest) {
       ui = ui.filter((product) => product.limitedDeal)
     }
 
-    const count = Math.max(medusaCount, ui.length + normalizedOffset)
-    const hasMore = normalizedOffset + normalizedLimit < count
+    const page = sliceFilteredPage({
+      filtered: ui,
+      fetchedCount: products.length,
+      pageLimit: normalizedLimit,
+      offset: normalizedOffset,
+      fetchLimit,
+      upstreamCount: medusaCount,
+    })
 
     const payload = {
-      products: ui,
-      count,
+      products: page.products,
+      count: page.count,
       limit: normalizedLimit,
       offset: normalizedOffset,
-      hasMore,
+      hasMore: page.hasMore,
+      countIsApproximate: page.countIsApproximate,
     }
     if (cacheKey) {
       setCachedList(cacheKey, payload)

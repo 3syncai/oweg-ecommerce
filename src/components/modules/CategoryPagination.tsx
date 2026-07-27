@@ -6,6 +6,8 @@ type CategoryPaginationProps = {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+  /** When false, Next is disabled even if currentPage < totalPages. */
+  hasMore?: boolean;
 };
 
 function buildPageItems(current: number, total: number): Array<number | "ellipsis"> {
@@ -41,10 +43,12 @@ export function CategoryPagination({
   currentPage,
   totalPages,
   onPageChange,
+  hasMore = true,
 }: CategoryPaginationProps) {
   if (totalPages <= 1) return null;
 
   const items = buildPageItems(currentPage, totalPages);
+  const canGoNext = currentPage < totalPages && hasMore;
 
   return (
     <nav
@@ -70,11 +74,12 @@ export function CategoryPagination({
               key={item}
               type="button"
               onClick={() => onPageChange(item)}
+              disabled={item > currentPage && !hasMore}
               className={`min-w-[2.25rem] rounded-lg px-3 py-2 text-sm transition-colors ${
                 item === currentPage
                   ? "bg-[#7AC943] text-white font-semibold"
                   : "text-gray-700 hover:text-[#7AC943]"
-              }`}
+              } disabled:opacity-40 disabled:cursor-not-allowed`}
               aria-current={item === currentPage ? "page" : undefined}
             >
               {item}
@@ -86,7 +91,7 @@ export function CategoryPagination({
       <button
         type="button"
         onClick={() => onPageChange(currentPage + 1)}
-        disabled={currentPage >= totalPages}
+        disabled={!canGoNext}
         className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
       >
         Next

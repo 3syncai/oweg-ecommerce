@@ -48,7 +48,11 @@ function significantTokens(normalizedQuery: string): string {
 }
 
 function buildScopeFilters(scope: ScopeFilters) {
-  const filters: Record<string, unknown>[] = [{ term: { status: "published" } }]
+  const filters: Record<string, unknown>[] = [
+    { term: { status: "published" } },
+    // Keep storefront totals/pagination aligned with sellable hits.
+    { term: { in_stock: true } },
+  ]
 
   if (scope.categoryId?.trim()) {
     filters.push({ term: { category_ids: scope.categoryId.trim() } })
