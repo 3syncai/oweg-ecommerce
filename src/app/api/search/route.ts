@@ -118,7 +118,9 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-      const fetchLimit = overfetchLimit(pageSize, MEDUSA_LIST_MAX_LIMIT)
+      // Medusa list max is 60; align page size so we never slice past the fetch window.
+      const medusaPageSize = Math.min(pageSize, MEDUSA_LIST_MAX_LIMIT)
+      const fetchLimit = overfetchLimit(medusaPageSize, MEDUSA_LIST_MAX_LIMIT)
       const medusaResult = await searchProductsMedusa({
         q: searchQuery,
         limit: fetchLimit,
@@ -148,7 +150,7 @@ export async function GET(req: NextRequest) {
       const sliced = sliceFilteredPage({
         filtered: fallbackFiltered,
         fetchedCount: medusaResult.products.length,
-        pageLimit: pageSize,
+        pageLimit: medusaPageSize,
         offset,
         fetchLimit,
         upstreamCount: medusaResult.count,
@@ -158,7 +160,7 @@ export async function GET(req: NextRequest) {
         products: sliced.products,
         count: sliced.count,
         page,
-        pageSize,
+        pageSize: medusaPageSize,
         hasMore: sliced.hasMore,
         countIsApproximate: sliced.countIsApproximate,
       })
@@ -168,7 +170,7 @@ export async function GET(req: NextRequest) {
         products: [],
         count: 0,
         page,
-        pageSize,
+        pageSize: Math.min(pageSize, MEDUSA_LIST_MAX_LIMIT),
         hasMore: false,
         countIsApproximate: false,
       })

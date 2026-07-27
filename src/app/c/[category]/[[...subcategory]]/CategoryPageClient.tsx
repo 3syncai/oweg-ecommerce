@@ -180,12 +180,11 @@ export function CategoryPageClient({
     return filtered;
   }, [products, filters.brands]);
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(serverCount / PRODUCTS_PER_PAGE),
-    serverHasMore ? requestedPage + 1 : requestedPage
-  );
-  const currentPage = Math.min(requestedPage, totalPages);
+  const pagesFromCount = Math.max(1, Math.ceil(serverCount / PRODUCTS_PER_PAGE));
+  const totalPages = serverHasMore
+    ? Math.max(pagesFromCount, Math.min(requestedPage, pagesFromCount) + 1)
+    : pagesFromCount;
+  const currentPage = Math.min(Math.max(1, requestedPage), totalPages);
 
   const activeSourceHandle =
     selectedSubcategory?.handle ||

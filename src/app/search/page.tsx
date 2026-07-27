@@ -91,12 +91,11 @@ function SearchPageContent() {
   const [selectedBrands, setSelectedBrands] = useState<string[]>([])
   const [priceRange, setPriceRange] = useState<string | null>(null)
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(totalCount / SEARCH_PAGE_SIZE),
-    hasMore ? requestedPage + 1 : requestedPage
-  )
-  const currentPage = Math.min(requestedPage, totalPages)
+  const pagesFromCount = Math.max(1, Math.ceil(totalCount / SEARCH_PAGE_SIZE))
+  const totalPages = hasMore
+    ? Math.max(pagesFromCount, Math.min(requestedPage, pagesFromCount) + 1)
+    : pagesFromCount
+  const currentPage = Math.min(Math.max(1, requestedPage), totalPages)
 
   useEffect(() => {
     if (!q) {

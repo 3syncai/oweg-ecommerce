@@ -3,11 +3,13 @@ export const MEDUSA_LIST_MAX_LIMIT = 60
 
 /**
  * Request enough upstream rows that stock/price/deals filters still fill a page.
- * Capped at MEDUSA_LIST_MAX_LIMIT.
+ * Caps pageLimit to maxLimit first so fetchLimit is never smaller than the effective page size
+ * (callers must use min(pageLimit, maxLimit) as their slice page size when pageLimit > maxLimit).
  */
 export function overfetchLimit(pageLimit: number, maxLimit = MEDUSA_LIST_MAX_LIMIT): number {
   const safePage = Number.isFinite(pageLimit) && pageLimit > 0 ? Math.floor(pageLimit) : 24
-  return Math.min(maxLimit, Math.max(safePage * 3, safePage))
+  const cappedPage = Math.min(safePage, maxLimit)
+  return Math.min(maxLimit, Math.max(cappedPage * 3, cappedPage))
 }
 
 export type SliceFilteredPageInput<T> = {
