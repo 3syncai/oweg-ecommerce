@@ -36,8 +36,12 @@ export async function GET(req: NextRequest) {
 
     const limitRaw = Number(req.nextUrl.searchParams.get("limit") || "20");
     const offsetRaw = Number(req.nextUrl.searchParams.get("offset") || "0");
-    const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 100)) : 20;
-    const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? Math.floor(offsetRaw) : 0;
+    const limit = Number.isFinite(limitRaw)
+      ? Math.max(1, Math.min(Math.floor(limitRaw), 100))
+      : 20;
+    const offset = Number.isFinite(offsetRaw)
+      ? Math.max(0, Math.floor(offsetRaw))
+      : 0;
 
     const snapshot = await getWalletSnapshot({ customerId, limit, offset });
     const actualBalance = snapshot.actual_balance_minor / 100;

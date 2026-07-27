@@ -146,10 +146,7 @@ export default function MyRewardPage() {
                 <div>
                   <p className="text-xs text-purple-800 font-semibold">Lifetime Earned</p>
                   <p className="text-lg font-bold text-purple-900">
-                    {((wallet?.transactions || [])
-                      .filter((t: any) => t.transaction_type === 'EARN')
-                      .reduce((acc: number, curr: any) => acc + Math.abs(Number(curr.amount)), 0)
-                    ).toFixed(0)}
+                    {Math.round(Number(wallet?.lifetime_earned) || 0)}
                   </p>
                 </div>
               </div>

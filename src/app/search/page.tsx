@@ -260,52 +260,54 @@ function SearchPageContent() {
                   </div>
                 ))}
               </div>
-            ) : filtered.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-                <SearchX className="mx-auto mb-3 h-6 w-6 text-slate-500" />
-                <h2 className="text-xl font-semibold text-slate-900">No results found</h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  {hasFilters ? "Try removing some filters." : `No products match "${q}" yet.`}
-                </p>
-              </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
-                  {filtered.map((product) => {
-                    const price = toSafePrice(product.price)
-                    const mrp = toSafeAmount(product.mrp)
-                    const discount = typeof product.discount === "number"
-                      ? product.discount
-                      : (mrp > price && price > 0 ? Math.round(((mrp - price) / mrp) * 100) : 0)
-                    const href = `/productDetail/${product.handle || product.id}?id=${encodeURIComponent(product.id)}`
-                    return (
-                      <Link key={product.id} href={href} className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
-                        <div className="relative h-48 overflow-hidden bg-slate-50">
-                          {product.thumbnail ? (
-                            <Image src={product.thumbnail} alt={product.title || "Product"} fill className="object-contain p-3" sizes="(max-width: 640px) 50vw, 25vw" />
-                          ) : (
-                            <div className="flex h-full items-center justify-center text-sm text-slate-400">No image</div>
-                          )}
-                          {discount > 0 ? (
-                            <span className="absolute left-2 top-2 rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">{discount}% off</span>
-                          ) : null}
-                          <button type="button" className="absolute right-2 top-2 rounded-full bg-white/90 p-1.5 text-slate-500" aria-label="Wishlist" onClick={(e) => e.preventDefault()}>
-                            <Heart className="h-4 w-4" />
-                          </button>
-                        </div>
-                        <div className="flex flex-1 flex-col gap-1.5 p-3.5">
-                          {product.brand ? <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">{product.brand}</p> : null}
-                          <h3 className="line-clamp-2 text-sm font-semibold text-slate-900">{product.title}</h3>
-                          {typeof product.rating === "number" && product.rating > 0 ? <StarRow count={Math.min(5, Math.round(product.rating))} /> : null}
-                          <div className="mt-auto flex items-baseline gap-2 pt-1">
-                            <span className="text-base font-bold text-slate-900">{priceFormatter.format(price)}</span>
-                            {mrp > price ? <span className="text-xs text-slate-400 line-through">{priceFormatter.format(mrp)}</span> : null}
+                {filtered.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+                    <SearchX className="mx-auto mb-3 h-6 w-6 text-slate-500" />
+                    <h2 className="text-xl font-semibold text-slate-900">No results found</h2>
+                    <p className="mt-2 text-sm text-slate-600">
+                      {hasFilters ? "Try removing some filters." : `No products match "${q}" yet.`}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+                    {filtered.map((product) => {
+                      const price = toSafePrice(product.price)
+                      const mrp = toSafeAmount(product.mrp)
+                      const discount = typeof product.discount === "number"
+                        ? product.discount
+                        : (mrp > price && price > 0 ? Math.round(((mrp - price) / mrp) * 100) : 0)
+                      const href = `/productDetail/${product.handle || product.id}?id=${encodeURIComponent(product.id)}`
+                      return (
+                        <Link key={product.id} href={href} className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
+                          <div className="relative h-48 overflow-hidden bg-slate-50">
+                            {product.thumbnail ? (
+                              <Image src={product.thumbnail} alt={product.title || "Product"} fill className="object-contain p-3" sizes="(max-width: 640px) 50vw, 25vw" />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-sm text-slate-400">No image</div>
+                            )}
+                            {discount > 0 ? (
+                              <span className="absolute left-2 top-2 rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">{discount}% off</span>
+                            ) : null}
+                            <button type="button" className="absolute right-2 top-2 rounded-full bg-white/90 p-1.5 text-slate-500" aria-label="Wishlist" onClick={(e) => e.preventDefault()}>
+                              <Heart className="h-4 w-4" />
+                            </button>
                           </div>
-                        </div>
-                      </Link>
-                    )
-                  })}
-                </div>
+                          <div className="flex flex-1 flex-col gap-1.5 p-3.5">
+                            {product.brand ? <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">{product.brand}</p> : null}
+                            <h3 className="line-clamp-2 text-sm font-semibold text-slate-900">{product.title}</h3>
+                            {typeof product.rating === "number" && product.rating > 0 ? <StarRow count={Math.min(5, Math.round(product.rating))} /> : null}
+                            <div className="mt-auto flex items-baseline gap-2 pt-1">
+                              <span className="text-base font-bold text-slate-900">{priceFormatter.format(price)}</span>
+                              {mrp > price ? <span className="text-xs text-slate-400 line-through">{priceFormatter.format(mrp)}</span> : null}
+                            </div>
+                          </div>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
                 {totalPages > 1 ? (
                   <div className="mt-8 flex items-center justify-center gap-3">
                     <button type="button" onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-40">

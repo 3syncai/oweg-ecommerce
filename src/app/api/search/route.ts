@@ -55,7 +55,9 @@ export async function GET(req: NextRequest) {
   const pageSize = Number.isFinite(pageSizeRaw)
     ? Math.max(1, Math.min(pageSizeRaw, 100))
     : 24
-  const offset = (page - 1) * pageSize
+  // OpenSearch max_result_window is typically 10000; keep from+size under it.
+  const MAX_SEARCH_OFFSET = 9900
+  const offset = Math.min((page - 1) * pageSize, MAX_SEARCH_OFFSET)
 
   const category = searchParams.get("category") || undefined
   const categoryIdParam = searchParams.get("categoryId") || undefined

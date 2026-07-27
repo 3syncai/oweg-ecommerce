@@ -409,8 +409,14 @@ export async function getWalletSnapshot(options: {
   const display = Math.max(actual, 0);
   const pendingAdjustment = actual < 0 ? Math.abs(actual) : 0;
 
-  const limit = Math.max(1, Math.min(options.limit ?? 50, 100));
-  const offset = Math.max(0, Math.floor(options.offset ?? 0));
+  const limitRaw = options.limit ?? 50;
+  const offsetRaw = options.offset ?? 0;
+  const limit = Number.isFinite(limitRaw)
+    ? Math.max(1, Math.min(Math.floor(limitRaw), 100))
+    : 50;
+  const offset = Number.isFinite(offsetRaw)
+    ? Math.max(0, Math.floor(offsetRaw))
+    : 0;
 
   const pool = getPool();
   const tx = await pool.query(

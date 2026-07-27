@@ -101,12 +101,6 @@ export async function openRazorpayCheckout(options: {
 
   let settled = false;
 
-  const failOnce = (error: unknown) => {
-    if (settled) return;
-    settled = true;
-    void options.onFailure?.(error);
-  };
-
   const dismissOnce = () => {
     if (settled) return;
     settled = true;
@@ -139,8 +133,10 @@ export async function openRazorpayCheckout(options: {
     },
   });
 
-  razorpay.on?.("payment.failed", (response: unknown) => {
-    failOnce(response);
+  // payment.failed is non-terminal: Standard Checkout allows retries in the same
+  // modal. Only handler (success) or modal.ondismiss should settle the session.
+  razorpay.on?.("payment.failed", () => {
+    /* intentionally ignore — wait for retry success or dismiss */
   });
 
   razorpay.open();

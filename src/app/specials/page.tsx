@@ -1,7 +1,7 @@
 'use client';
 
 import React, { Suspense } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { ProductCard } from '@/components/modules/ProductCard';
@@ -50,13 +50,14 @@ function SpecialsPageContent() {
     queryKey: ['specials-page', requestedPage],
     queryFn: () => fetchSpecialsPage(requestedPage),
     staleTime: 1000 * 60 * 5,
+    placeholderData: keepPreviousData,
   });
 
   const products = specialsQuery.data?.products ?? [];
   const count = specialsQuery.data?.count ?? 0;
   const totalPages = Math.max(1, Math.ceil(count / SPECIALS_PAGE_SIZE));
   const currentPage = Math.min(requestedPage, totalPages);
-  const loading = specialsQuery.isLoading;
+  const loading = specialsQuery.isLoading && !specialsQuery.isPlaceholderData;
   const hasError = specialsQuery.error;
 
   const goToPage = (page: number) => {

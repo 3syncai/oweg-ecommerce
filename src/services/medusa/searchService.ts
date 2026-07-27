@@ -256,7 +256,11 @@ export async function searchProducts(
   const rawNormalized = normalizeSearchQuery(query)
   const rewritten = rewriteSearchTypos(rawNormalized)
   const limit = Math.max(1, Math.min(options.limit ?? 48, 100))
-  const offset = Math.max(0, Math.floor(options.offset ?? 0))
+  const MAX_SEARCH_OFFSET = 9900
+  const rawOffset = Number.isFinite(options.offset as number)
+    ? Math.floor(options.offset as number)
+    : 0
+  const offset = Math.max(0, Math.min(rawOffset, MAX_SEARCH_OFFSET))
   const scope: ScopeFilters = {
     categoryId: options.categoryId,
     collectionId: options.collectionId,
