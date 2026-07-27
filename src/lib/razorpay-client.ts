@@ -2,9 +2,21 @@ const RAZORPAY_SCRIPT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 
 let scriptLoadPromise: Promise<void> | null = null;
 
+export type RazorpaySuccessResponse = {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+};
+
+type RazorpayInstance = {
+  open: () => void;
+  close?: () => void;
+  on?: (event: string, handler: (response: unknown) => void) => void;
+};
+
 declare global {
   interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open: () => void; close?: () => void };
+    Razorpay?: new (options: Record<string, unknown>) => RazorpayInstance;
   }
 }
 
@@ -63,4 +75,73 @@ export function prefetchRazorpayConnections(): void {
     link.crossOrigin = "anonymous";
     document.head.appendChild(link);
   }
+}
+
+/** Open Razorpay Standard Checkout modal (method selection happens inside Razorpay). */
+export async function openRazorpayCheckout(options: {
+  key: string;
+  amountMinor: number;
+  currency: string;
+  orderId: string;
+  name?: string;
+  description?: string;
+  prefill?: { name?: string; email?: string; contact?: string };
+  callbackUrl?: string;
+  notes?: Record<string, string>;
+  onSuccess?: (response: RazorpaySuccessResponse) => void | Promise<void>;
+  onFailure?: (error: unknown) => void | Promise<void>;
+  onDismiss?: () => void | Promise<void>;
+}): Promise<void> {
+  await loadRazorpayScript();
+
+  const RazorpayCtor = window.Razorpay;
+  if (!RazorpayCtor) {
+    throw new Error("Razorpay checkout SDK unavailable");
+  }
+
+  let settled = false;
+
+  const failOnce = (error: unknown) => {
+    if (settled) return;
+    settled = true;
+    void options.onFailure?.(error);
+  };
+
+  const dismissOnce = () => {
+    if (settled) return;
+    settled = true;
+    if (options.onDismiss) {
+      void options.onDismiss();
+    } else {
+      void options.onFailure?.({ reason: "dismissed" });
+    }
+  };
+
+  const razorpay = new RazorpayCtor({
+    key: options.key,
+    amount: options.amountMinor,
+    currency: options.currency,
+    order_id: options.orderId,
+    name: options.name || "OWEG",
+    description: options.description || "Order payment",
+    prefill: options.prefill || {},
+    notes: options.notes || {},
+    ...(options.callbackUrl ? { callback_url: options.callbackUrl } : {}),
+    handler: (response: RazorpaySuccessResponse) => {
+      if (settled) return;
+      settled = true;
+      void options.onSuccess?.(response);
+    },
+    modal: {
+      ondismiss: () => {
+        dismissOnce();
+      },
+    },
+  });
+
+  razorpay.on?.("payment.failed", (response: unknown) => {
+    failOnce(response);
+  });
+
+  razorpay.open();
 }

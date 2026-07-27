@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "sonner/dist/styles.css";
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700&display=swap");
 
 /* Custom scrollbar styles */
 @layer utilities {
@@ -68,6 +69,50 @@ html.debug-devtools-blocked body > *:not(.debug-devtools-shield) {
   --oweg-green: #7ac943;
   --oweg-green-dark: #6bb832;
   --oweg-green-light: #8fd957;
+}
+
+/* Checkout / Cart shared page surface — Manrope / Plus Jakarta Sans */
+.checkout-ui,
+.cart-ui,
+.oweg-page {
+  font-family: Manrope, system-ui, sans-serif;
+  color: #2c342f;
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(122, 201, 67, 0.14), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(143, 217, 87, 0.1), transparent 50%),
+    linear-gradient(180deg, #f7faf5 0%, #eef4eb 45%, #f4f7f2 100%);
+}
+
+.checkout-ui h1,
+.checkout-ui h2,
+.cart-ui h1,
+.cart-ui h2,
+.cart-ui h3,
+.oweg-page h1,
+.oweg-page h2,
+.oweg-page h3 {
+  font-family: "Plus Jakarta Sans", Manrope, system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* Cart — soft line cards + sticky summary (class hooks only) */
+.cart-ui .cart-line-card {
+  transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.2s ease;
+}
+
+.cart-ui .cart-line-card:hover {
+  box-shadow: 0 16px 48px -14px rgba(44, 52, 47, 0.14);
+  border-color: rgba(122, 201, 67, 0.28);
+}
+
+.cart-ui .cart-stepper button:not(:disabled):hover {
+  background: #f2f9ef;
+  color: var(--oweg-green-dark);
+}
+
+.cart-ui .cart-summary-panel {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 /* Custom animations */

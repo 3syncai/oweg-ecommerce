@@ -89,7 +89,7 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   useEffect(() => {
     if (count <= 0 || razorpayWarmedRef.current) return;
     razorpayWarmedRef.current = true;
-    warmRazorpayCheckout({ prefetchMethods: true });
+    warmRazorpayCheckout();
   }, [count]);
 
   const value = useMemo(

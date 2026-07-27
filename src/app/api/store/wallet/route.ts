@@ -34,7 +34,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(emptyWalletResponse, { status: 200 });
     }
 
-    const snapshot = await getWalletSnapshot({ customerId });
+    const limitRaw = Number(req.nextUrl.searchParams.get("limit") || "20");
+    const offsetRaw = Number(req.nextUrl.searchParams.get("offset") || "0");
+    const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 100)) : 20;
+    const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? Math.floor(offsetRaw) : 0;
+
+    const snapshot = await getWalletSnapshot({ customerId, limit, offset });
     const actualBalance = snapshot.actual_balance_minor / 100;
     const displayBalance = snapshot.display_balance_minor / 100;
     const pendingAdjustment = snapshot.pending_adjustment_minor / 100;
@@ -59,6 +64,8 @@ export async function GET(req: NextRequest) {
       pending_coins: 0,
       locked_coins: 0,
       next_unlock: null,
+      transaction_count: snapshot.transaction_count,
+      has_more_transactions: snapshot.has_more_transactions,
       transactions: snapshot.transactions.map((t: { amount?: string | number; status?: string }) => ({
         ...t,
         amount: (parseFloat(String(t.amount)) || 0) / 100,

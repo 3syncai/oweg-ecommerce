@@ -240,7 +240,9 @@ function OrderCard({
 
 export default function OrdersContent({ embedded = false }: OrdersContentProps) {
   const { customer } = useAuth();
-  const { orders, counts, loading, error, refresh } = useAccountOrdersSummary();
+  const [listPage, setListPage] = useState(1);
+  const { orders, counts, loading, error, refresh, totalPages, page, hasMore } =
+    useAccountOrdersSummary({ page: listPage, pageSize: 15 });
   const [activeStat, setActiveStat] = useState<StatusFilter>("all");
   const [dropdownStatus, setDropdownStatus] = useState<DropdownStatusFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -428,6 +430,29 @@ export default function OrdersContent({ embedded = false }: OrdersContentProps) 
           {filteredOrders.map((order, index) => (
             <OrderCard key={order.id} order={order} index={index} />
           ))}
+          {totalPages > 1 ? (
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={page <= 1 || loading}
+                onClick={() => setListPage((p) => Math.max(1, p - 1))}
+                className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-[#1F2A33] disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-gray-600">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={!hasMore || loading}
+                onClick={() => setListPage((p) => p + 1)}
+                className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-[#1F2A33] disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
     </div>

@@ -57,10 +57,19 @@ export type UIProduct = {
 
 export type CategoryProductQueryParams = {
   limit?: number;
+  offset?: number;
   priceMin?: number;
   priceMax?: number;
   dealsOnly?: boolean;
   includeSubcategories?: boolean;
+};
+
+export type CategoryProductsPage = {
+  products: UIProduct[];
+  count: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
 };
 
 /**
@@ -99,17 +108,20 @@ export async function getCategoryByHandle(
 }
 
 /**
- * Fetch products for a category with price overrides from MySQL
+ * Fetch a page of products for a category
  */
 export async function getProductsByCategoryService(
   categoryId: string,
   params?: CategoryProductQueryParams
-): Promise<UIProduct[]> {
+): Promise<CategoryProductsPage> {
   const search = new URLSearchParams({
     categoryId,
-    limit: String(params?.limit ?? 50),
+    limit: String(params?.limit ?? 20),
   });
 
+  if (params?.offset !== undefined) {
+    search.set("offset", String(params.offset));
+  }
   if (params?.priceMin !== undefined) {
     search.set("priceMin", String(params.priceMin));
   }
@@ -132,7 +144,15 @@ export async function getProductsByCategoryService(
   }
 
   const data = await response.json();
-  return data.products || [];
+  const products = (data.products || []) as UIProduct[];
+  const limit = typeof data.limit === "number" ? data.limit : params?.limit ?? 20;
+  const offset = typeof data.offset === "number" ? data.offset : params?.offset ?? 0;
+  const count =
+    typeof data.count === "number" ? data.count : products.length + offset;
+  const hasMore =
+    typeof data.hasMore === "boolean" ? data.hasMore : offset + products.length < count;
+
+  return { products, count, limit, offset, hasMore };
 }
 
 /**

@@ -9,9 +9,9 @@ import {
   toUiProduct,
   isMedusaProductInStock,
   type MedusaProduct,
+  type MedusaProductListResult,
 } from "@/lib/medusa"
 import { getPriceListPrices } from "@/lib/price-lists"
-// MySQL import removed - using Medusa prices only
 
 export const dynamic = "force-dynamic"
 
@@ -22,7 +22,20 @@ const listCache = new Map<string, CachedList>()
 
 function buildCacheKey(searchParams: URLSearchParams) {
   const normalized = new URLSearchParams()
-  ;["category", "categoryId", "collection", "collectionId", "tag", "type", "limit", "priceMin", "priceMax", "dealsOnly", "includeSubcategories"].forEach((key) => {
+  ;[
+    "category",
+    "categoryId",
+    "collection",
+    "collectionId",
+    "tag",
+    "type",
+    "limit",
+    "offset",
+    "priceMin",
+    "priceMax",
+    "dealsOnly",
+    "includeSubcategories",
+  ].forEach((key) => {
     const value = searchParams.get(key)
     if (value !== null && value !== undefined && value !== "") {
       normalized.set(key, value)
@@ -41,13 +54,14 @@ function getCachedList(key: string) {
 }
 
 function setCachedList(key: string, payload: unknown) {
-  // Simple pruning to avoid unbounded growth
   if (listCache.size >= MAX_CACHE_ENTRIES) {
     const oldestKey = listCache.keys().next().value
     if (oldestKey) listCache.delete(oldestKey)
   }
   listCache.set(key, { expires: Date.now() + LIST_CACHE_TTL_MS, payload })
 }
+
+const EMPTY_LIST: MedusaProductListResult = { products: [], count: 0 }
 
 export async function GET(req: NextRequest) {
   try {
@@ -69,6 +83,9 @@ export async function GET(req: NextRequest) {
     const type = searchParams.get("type")
     const limit = Number(searchParams.get("limit") || 24)
     const normalizedLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 60) : 24
+    const offsetRaw = Number(searchParams.get("offset") || 0)
+    const normalizedOffset =
+      Number.isFinite(offsetRaw) && offsetRaw > 0 ? Math.floor(offsetRaw) : 0
     const priceMinParam = searchParams.get("priceMin")
     const priceMaxParam = searchParams.get("priceMax")
     const priceMin = priceMinParam !== null ? Number(priceMinParam) : undefined
@@ -76,32 +93,41 @@ export async function GET(req: NextRequest) {
     const dealsOnly = searchParams.get("dealsOnly") === "1"
     const includeSubcategories = searchParams.get("includeSubcategories") === "1"
     const debugRaw =
-      process.env.NODE_ENV !== "production" &&
-      searchParams.get("debug") === "1"
-    if (!category && !categoryId && !collection && !collectionId && !tag && !type) return NextResponse.json({ products: [] })
+      process.env.NODE_ENV !== "production" && searchParams.get("debug") === "1"
+    if (!category && !categoryId && !collection && !collectionId && !tag && !type) {
+      return NextResponse.json({
+        products: [],
+        count: 0,
+        limit: normalizedLimit,
+        offset: normalizedOffset,
+        hasMore: false,
+      })
+    }
 
-    let products: MedusaProduct[] = []
+    let listResult: MedusaProductListResult = EMPTY_LIST
     if (type) {
-      products = await fetchProductsByType(type, normalizedLimit)
-      // Fallback: if no products by type, try category with same label
-      if (!products || products.length === 0) {
+      listResult = await fetchProductsByType(type, normalizedLimit, normalizedOffset)
+      if (!listResult.products.length) {
         const cat = await findCategoryByTitleOrHandle(type)
         if (cat?.id) {
           try {
-            products = await fetchProductsByCategoryId(cat.id, normalizedLimit)
+            listResult = await fetchProductsByCategoryId(cat.id, normalizedLimit, {
+              offset: normalizedOffset,
+            })
           } catch (err) {
             console.warn("fallback fetchProductsByCategoryId failed (type)", err)
           }
         }
       }
     } else if (tag) {
-      products = await fetchProductsByTag(tag, normalizedLimit)
-      // Fallback: if no products by tag, try matching a category with the same label
-      if (!products || products.length === 0) {
+      listResult = await fetchProductsByTag(tag, normalizedLimit, normalizedOffset)
+      if (!listResult.products.length) {
         const cat = await findCategoryByTitleOrHandle(tag)
         if (cat?.id) {
           try {
-            products = await fetchProductsByCategoryId(cat.id, normalizedLimit)
+            listResult = await fetchProductsByCategoryId(cat.id, normalizedLimit, {
+              offset: normalizedOffset,
+            })
           } catch (err) {
             console.warn("fallback fetchProductsByCategoryId failed (tag)", err)
           }
@@ -115,8 +141,16 @@ export async function GET(req: NextRequest) {
           const col = await findCollectionByTitleOrHandle(collection)
           return col?.id
         })())
-      if (!colId) return NextResponse.json({ products: [] })
-      products = await fetchProductsByCollectionId(colId, normalizedLimit)
+      if (!colId) {
+        return NextResponse.json({
+          products: [],
+          count: 0,
+          limit: normalizedLimit,
+          offset: normalizedOffset,
+          hasMore: false,
+        })
+      }
+      listResult = await fetchProductsByCollectionId(colId, normalizedLimit, normalizedOffset)
     } else {
       const catId =
         categoryId ||
@@ -125,39 +159,49 @@ export async function GET(req: NextRequest) {
           const cat = await findCategoryByTitleOrHandle(category)
           return cat?.id
         })())
-      if (!catId) return NextResponse.json({ products: [] })
-      products = await fetchProductsByCategoryId(catId, normalizedLimit, { includeSubcategories })
+      if (!catId) {
+        return NextResponse.json({
+          products: [],
+          count: 0,
+          limit: normalizedLimit,
+          offset: normalizedOffset,
+          hasMore: false,
+        })
+      }
+      listResult = await fetchProductsByCategoryId(catId, normalizedLimit, {
+        includeSubcategories,
+        offset: normalizedOffset,
+      })
     }
+
+    const products = listResult.products
+    const medusaCount = listResult.count
+
     if (debugRaw) {
-      return NextResponse.json({ products })
+      return NextResponse.json({
+        products,
+        count: medusaCount,
+        limit: normalizedLimit,
+        offset: normalizedOffset,
+      })
     }
 
     const normalizedPriceMin =
-      typeof priceMin === "number" && Number.isFinite(priceMin)
-        ? priceMin
-        : undefined
+      typeof priceMin === "number" && Number.isFinite(priceMin) ? priceMin : undefined
     const normalizedPriceMax =
-      typeof priceMax === "number" && Number.isFinite(priceMax)
-        ? priceMax
-        : undefined
+      typeof priceMax === "number" && Number.isFinite(priceMax) ? priceMax : undefined
 
-    // Fetch price list (Special Prices) to apply discounts
     const priceListPrices = await getPriceListPrices()
-    
-    // Filter out products that are completely out of stock before mapping
     const inStockProducts = products.filter(isMedusaProductInStock)
 
     let ui: ReturnType<typeof toUiProduct>[] = inStockProducts.map((product: MedusaProduct) => {
-      // Apply price list discount if available
       const variantId = product.variants?.[0]?.id
       if (variantId && priceListPrices.has(variantId) && product.variants?.[0]) {
-        // Both price list and variant prices are in Rupees (major units) usually
         const discountedPrice = priceListPrices.get(variantId)!
-        
-        // Prioritize Medusa's computed original_price, fallback to raw variant price
-        const originalPrice = product.price?.original_price || product.variants[0].prices?.[0]?.amount || discountedPrice
-        
-        // Create product with price override (in Rupees)
+        const originalPrice =
+          product.price?.original_price ||
+          product.variants[0].prices?.[0]?.amount ||
+          discountedPrice
         const productWithDiscount: typeof product = {
           ...product,
           price: {
@@ -165,30 +209,9 @@ export async function GET(req: NextRequest) {
             original_price: originalPrice,
           },
         }
-        
-        // computeUiPrice (inside toUiProduct) now handles the "x100 MRP" correction globally
-        const uiProduct = toUiProduct(productWithDiscount)
-        
-        console.log('💰 [PRICE DEBUG]', {
-          title: product.title?.substring(0, 35),
-          discountedPrice,
-          originalPrice,
-          '→ UI_price': uiProduct.price,
-          '→ UI_mrp': uiProduct.mrp,
-          '→ UI_discount': uiProduct.discount + '%'
-        })
-        return uiProduct
+        return toUiProduct(productWithDiscount)
       }
-      const uiProduct = toUiProduct(product)
-      console.log('💰 [PRICE DEBUG]', {
-        title: product.title?.substring(0, 35),
-        medusa_calculated: product.price?.calculated_price,
-        medusa_original: product.price?.original_price,
-        '→ UI_price': uiProduct.price,
-        '→ UI_mrp': uiProduct.mrp,
-        '→ UI_discount': uiProduct.discount + '%'
-      })
-      return uiProduct
+      return toUiProduct(product)
     })
 
     if (normalizedPriceMin !== undefined) {
@@ -201,11 +224,16 @@ export async function GET(req: NextRequest) {
       ui = ui.filter((product) => product.limitedDeal)
     }
 
+    const count = Math.max(medusaCount, ui.length + normalizedOffset)
+    const hasMore = normalizedOffset + normalizedLimit < count
 
-    // Out of stock products have already been filtered out before mapping
-    
-    
-    const payload = { products: ui }
+    const payload = {
+      products: ui,
+      count,
+      limit: normalizedLimit,
+      offset: normalizedOffset,
+      hasMore,
+    }
     if (cacheKey) {
       setCachedList(cacheKey, payload)
     }
@@ -218,9 +246,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
-
-// PriceOverride type and caching removed - using Medusa prices only
-
-
-
-// buildPriceOverrides function removed - using Medusa prices only

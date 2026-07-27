@@ -36,8 +36,6 @@ type OrdersResponse = {
   count?: number;
 };
 
-const ENDPOINT = "/api/medusa/orders?limit=100&offset=0";
-
 export type AccountOrderBucket = keyof Omit<AccountOrderCounts, "all">;
 
 export function resolveOrderBucket(order: AccountOrder): AccountOrderBucket {
@@ -66,9 +64,9 @@ export function resolveOrderBucket(order: AccountOrder): AccountOrderBucket {
   return "processing";
 }
 
-function buildOrderCounts(orders: AccountOrder[]): AccountOrderCounts {
+function buildOrderCounts(orders: AccountOrder[], totalCount: number): AccountOrderCounts {
   const counts: AccountOrderCounts = {
-    all: orders.length,
+    all: totalCount,
     processing: 0,
     shipped: 0,
     delivered: 0,
@@ -93,32 +91,52 @@ function computeTotalSpent(orders: AccountOrder[]): number {
   }, 0);
 }
 
-export function useAccountOrdersSummary() {
+export function useAccountOrdersSummary(options?: {
+  page?: number;
+  pageSize?: number;
+}) {
   const { customer } = useAuth();
+  const page = Math.max(1, options?.page ?? 1);
+  const pageSize = Math.max(1, Math.min(options?.pageSize ?? 15, 50));
+  const offset = (page - 1) * pageSize;
 
-  const ordersQuery = useQuery<AccountOrder[]>({
-    queryKey: ["account-orders-summary", customer?.id],
+  const ordersQuery = useQuery<{ orders: AccountOrder[]; count: number }>({
+    queryKey: ["account-orders-summary", customer?.id, page, pageSize],
     enabled: Boolean(customer?.id),
     staleTime: 60 * 1000,
     queryFn: async () => {
-      const res = await fetch(ENDPOINT, {
-        cache: "no-store",
-        credentials: "include",
-      });
-      if (res.status === 401) return [];
+      const res = await fetch(
+        `/api/medusa/orders?limit=${pageSize}&offset=${offset}`,
+        {
+          cache: "no-store",
+          credentials: "include",
+        }
+      );
+      if (res.status === 401) return { orders: [], count: 0 };
       if (!res.ok) throw new Error("Unable to load orders");
       const data = (await res.json()) as OrdersResponse;
-      return Array.isArray(data.orders) ? data.orders : [];
+      const orders = Array.isArray(data.orders) ? data.orders : [];
+      const count =
+        typeof data.count === "number" ? data.count : orders.length + offset;
+      return { orders, count };
     },
   });
 
-  const orders = ordersQuery.data ?? [];
+  const orders = ordersQuery.data?.orders ?? [];
+  const count = ordersQuery.data?.count ?? 0;
 
-  const counts = useMemo(() => buildOrderCounts(orders), [orders]);
+  const counts = useMemo(() => buildOrderCounts(orders, count), [orders, count]);
   const totalSpent = useMemo(() => computeTotalSpent(orders), [orders]);
+  const totalPages = Math.max(1, Math.ceil(count / pageSize));
+  const hasMore = page < totalPages;
 
   return {
     orders,
+    count,
+    page,
+    pageSize,
+    totalPages,
+    hasMore,
     counts,
     totalSpent,
     loading: ordersQuery.isLoading,

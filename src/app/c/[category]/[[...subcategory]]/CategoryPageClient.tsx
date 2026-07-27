@@ -99,6 +99,9 @@ export function CategoryPageClient({
     category.name ||
     "Products";
 
+  const requestedPage = Math.max(1, parseInt(searchParams?.get("page") || "1", 10) || 1);
+  const pageOffset = (requestedPage - 1) * PRODUCTS_PER_PAGE;
+
   const includeSubcategories = !selectedSubcategory;
   const queryFilters = useMemo(
     () => ({
@@ -106,15 +109,25 @@ export function CategoryPageClient({
       priceMax: filters.priceMax,
       dealsOnly: filters.dealsOnly,
       includeSubcategories,
-      limit: includeSubcategories ? 60 : 50,
+      limit: PRODUCTS_PER_PAGE,
+      offset: pageOffset,
     }),
-    [filters.priceMin, filters.priceMax, filters.dealsOnly, includeSubcategories]
+    [
+      filters.priceMin,
+      filters.priceMax,
+      filters.dealsOnly,
+      includeSubcategories,
+      pageOffset,
+    ]
   );
 
-  const { data: products = [], isLoading } = useCategoryProducts(
+  const { data: pageData, isLoading } = useCategoryProducts(
     activeCategoryId,
     queryFilters
   );
+
+  const products = pageData?.products ?? [];
+  const serverCount = pageData?.count ?? products.length;
 
   const derivedBrandOptions = useMemo(() => {
     const counts = new Map<string, number>();
@@ -153,7 +166,6 @@ export function CategoryPageClient({
         if (brand && selected.has(normalizeBrandKey(brand))) {
           return true;
         }
-        // Only if brand could not be resolved, fall back to title substring
         if (!brand) {
           return filters.brands.some((selectedBrand) =>
             product.name.toLowerCase().includes(selectedBrand.toLowerCase())
@@ -166,14 +178,8 @@ export function CategoryPageClient({
     return filtered;
   }, [products, filters.brands]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE));
-  const requestedPage = Math.max(1, parseInt(searchParams?.get("page") || "1", 10) || 1);
+  const totalPages = Math.max(1, Math.ceil(serverCount / PRODUCTS_PER_PAGE));
   const currentPage = Math.min(requestedPage, totalPages);
-
-  const paginatedProducts = useMemo(() => {
-    const start = (currentPage - 1) * PRODUCTS_PER_PAGE;
-    return filteredProducts.slice(start, start + PRODUCTS_PER_PAGE);
-  }, [filteredProducts, currentPage]);
 
   const activeSourceHandle =
     selectedSubcategory?.handle ||
@@ -187,12 +193,12 @@ export function CategoryPageClient({
     : undefined;
 
   const enrichedProducts = useMemo(() => {
-    return paginatedProducts.map((product) => ({
+    return filteredProducts.map((product) => ({
       ...product,
       sourceCategoryId: activeCategoryId,
       sourceCategoryHandle: normalizedHandle,
     }));
-  }, [paginatedProducts, activeCategoryId, normalizedHandle]);
+  }, [filteredProducts, activeCategoryId, normalizedHandle]);
 
   const handleFilterChange = useCallback(
     (partial: Partial<FilterState>) => {
@@ -314,11 +320,11 @@ export function CategoryPageClient({
 
   const headingDescription = isLoading
     ? "Loading products…"
-    : `${filteredProducts.length} products available`;
+    : `${serverCount} products available`;
 
   const resultsRangeStart =
-    filteredProducts.length === 0 ? 0 : (currentPage - 1) * PRODUCTS_PER_PAGE + 1;
-  const resultsRangeEnd = Math.min(currentPage * PRODUCTS_PER_PAGE, filteredProducts.length);
+    filteredProducts.length === 0 ? 0 : pageOffset + 1;
+  const resultsRangeEnd = pageOffset + filteredProducts.length;
 
   return (
     <div className="bg-gray-50 min-h-screen">

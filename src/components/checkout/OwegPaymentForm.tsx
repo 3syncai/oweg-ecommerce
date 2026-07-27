@@ -213,7 +213,7 @@ export const OwegPaymentForm = forwardRef<OwegPaymentFormHandle, OwegPaymentForm
 
     if (!enabled) {
       return (
-        <div className="rounded-lg border border-dashed p-4 text-sm text-slate-500">
+        <div className="rounded-xl border border-dashed border-[var(--oweg-green)]/35 bg-[#f7faf5] p-4 text-sm text-slate-600">
           Cash on delivery — pay when your order arrives. No online payment needed.
         </div>
       );
@@ -226,6 +226,9 @@ export const OwegPaymentForm = forwardRef<OwegPaymentFormHandle, OwegPaymentForm
       { id: "wallet", label: "Wallet" },
     ];
 
+    const fieldClass =
+      "h-11 rounded-xl border-slate-200/90 bg-white shadow-none focus-visible:border-[var(--oweg-green)] focus-visible:ring-[3px] focus-visible:ring-[var(--oweg-green)]/20";
+
     return (
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
@@ -234,10 +237,10 @@ export const OwegPaymentForm = forwardRef<OwegPaymentFormHandle, OwegPaymentForm
               key={tab.id}
               type="button"
               onClick={() => setMethod(tab.id)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 ${
                 method === tab.id
-                  ? "bg-green-600 text-white border-green-600"
-                  : "bg-white text-slate-700 border-slate-200 hover:border-green-500"
+                  ? "bg-[var(--oweg-green)] text-white border-[var(--oweg-green)] shadow-sm shadow-[var(--oweg-green)]/25"
+                  : "bg-white text-slate-700 border-slate-200/80 hover:border-[var(--oweg-green)]/50 hover:bg-[#f2f9ef]"
               }`}
             >
               {tab.label}
@@ -260,25 +263,25 @@ export const OwegPaymentForm = forwardRef<OwegPaymentFormHandle, OwegPaymentForm
                       key={app.id}
                       type="button"
                       onClick={() => setSelectedUpiApp(app.package)}
-                      className={`rounded-xl border p-3 text-left transition-all ${
+                      className={`rounded-xl border p-3.5 text-left transition-all duration-200 ${
                         selectedUpiApp === app.package
-                          ? "border-green-600 ring-1 ring-green-600 bg-green-50"
-                          : "border-slate-200 hover:border-green-400"
+                          ? "border-[var(--oweg-green)] ring-1 ring-[var(--oweg-green)] bg-[#f2f9ef]"
+                          : "border-slate-200/80 hover:border-[var(--oweg-green)]/50 bg-white"
                       }`}
                     >
                       <span
                         className="inline-block h-2 w-2 rounded-full mr-2"
                         style={{ backgroundColor: app.color }}
                       />
-                      <span className="text-sm font-medium text-slate-900">{app.label}</span>
+                      <span className="text-sm font-medium text-[#2c342f]">{app.label}</span>
                     </button>
                   ))}
                 </div>
               </>
             ) : (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
-                <p className="text-sm font-medium text-slate-900">Scan QR with any UPI app</p>
-                <p className="text-xs text-slate-600">
+              <div className="rounded-xl border border-slate-200/70 bg-[#f7faf5] p-4 space-y-2">
+                <p className="text-sm font-semibold text-[#2c342f]">Scan QR with any UPI app</p>
+                <p className="text-xs text-slate-600 leading-relaxed">
                   After you click Pay, a QR code will open. Scan it with PhonePe, Google Pay, or any
                   UPI app on your phone.
                 </p>
@@ -290,36 +293,39 @@ export const OwegPaymentForm = forwardRef<OwegPaymentFormHandle, OwegPaymentForm
         {method === "card" && (
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <label className="text-xs font-medium text-slate-600 mb-1 block">Name on card</label>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Name on card</label>
               <Input
                 value={cardName}
                 onChange={(e) => setCardName(e.target.value)}
                 placeholder="Cardholder name"
                 autoComplete="cc-name"
+                className={fieldClass}
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="text-xs font-medium text-slate-600 mb-1 block">Card number</label>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Card number</label>
               <Input
                 value={cardNumber}
                 onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
                 placeholder="1234 5678 9012 3456"
                 inputMode="numeric"
                 autoComplete="cc-number"
+                className={fieldClass}
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-600 mb-1 block">Expiry</label>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Expiry</label>
               <Input
                 value={cardExpiry}
                 onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
                 placeholder="MM/YY"
                 inputMode="numeric"
                 autoComplete="cc-exp"
+                className={fieldClass}
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-600 mb-1 block">CVV</label>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">CVV</label>
               <Input
                 value={cardCvv}
                 onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
@@ -327,6 +333,7 @@ export const OwegPaymentForm = forwardRef<OwegPaymentFormHandle, OwegPaymentForm
                 inputMode="numeric"
                 autoComplete="cc-csc"
                 type="password"
+                className={fieldClass}
               />
             </div>
             <p className="sm:col-span-2 text-[11px] text-slate-500">
@@ -337,9 +344,9 @@ export const OwegPaymentForm = forwardRef<OwegPaymentFormHandle, OwegPaymentForm
 
         {method === "netbanking" && (
           <div className="space-y-2">
-            <label className="text-xs font-medium text-slate-600 block">Select bank</label>
+            <label className="text-xs font-semibold text-slate-600 block">Select bank</label>
             <select
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm"
+              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm h-11 focus:outline-none focus:border-[var(--oweg-green)] focus:ring-[3px] focus:ring-[var(--oweg-green)]/20"
               value={selectedBank}
               onChange={(e) => setSelectedBank(e.target.value)}
             >
@@ -355,17 +362,17 @@ export const OwegPaymentForm = forwardRef<OwegPaymentFormHandle, OwegPaymentForm
 
         {method === "wallet" && (
           <div className="space-y-2">
-            <label className="text-xs font-medium text-slate-600 block">Select wallet</label>
+            <label className="text-xs font-semibold text-slate-600 block">Select wallet</label>
             <div className="grid grid-cols-2 gap-2">
               {wallets.map((wallet) => (
                 <button
                   key={wallet.code}
                   type="button"
                   onClick={() => setSelectedWallet(wallet.code)}
-                  className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                  className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all duration-200 ${
                     selectedWallet === wallet.code
-                      ? "border-green-600 bg-green-50 text-green-800"
-                      : "border-slate-200 hover:border-green-400 text-slate-800"
+                      ? "border-[var(--oweg-green)] bg-[#f2f9ef] text-[#2a5d00] ring-1 ring-[var(--oweg-green)]"
+                      : "border-slate-200/80 hover:border-[var(--oweg-green)]/50 text-slate-800 bg-white"
                   }`}
                 >
                   {wallet.name}

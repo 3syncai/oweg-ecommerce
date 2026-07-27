@@ -4,15 +4,15 @@ import { useQuery } from "@tanstack/react-query";
 import {
   getProductsByCategoryService,
   type CategoryProductQueryParams,
-  type UIProduct,
+  type CategoryProductsPage,
 } from "@/services/medusa";
 
 export function useCategoryProducts(
   categoryId: string | undefined,
   query: CategoryProductQueryParams = {},
-  initialData?: UIProduct[]
+  initialData?: CategoryProductsPage
 ) {
-  return useQuery<UIProduct[], Error>({
+  return useQuery<CategoryProductsPage, Error>({
     queryKey: ["category-products", categoryId, query],
     queryFn: () => {
       if (!categoryId) throw new Error("Category ID required");
@@ -24,4 +24,3 @@ export function useCategoryProducts(
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }
-

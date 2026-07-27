@@ -201,13 +201,23 @@ type ProductFetchOptions = {
   includeType?: boolean
 }
 
+export type MedusaProductListResult = {
+  products: MedusaProduct[]
+  count: number
+}
+
 function createBaseSearchParams(
   limit: number,
-  extras: Array<[string, string | undefined]> = []
+  extras: Array<[string, string | undefined]> = [],
+  offset = 0
 ) {
   const normalizedLimit = Math.max(1, Math.min(limit, 60))
+  const normalizedOffset = Math.max(0, Math.floor(Number.isFinite(offset) ? offset : 0))
   const params = new URLSearchParams()
   params.set("limit", String(normalizedLimit))
+  if (normalizedOffset > 0) {
+    params.set("offset", String(normalizedOffset))
+  }
   params.set("fields", PRODUCT_LIST_FIELDS)
   // Newest first so freshly published/migrated products aren't buried
   // behind large brand collections (e.g. Bajaj has 100+ SKUs).
@@ -229,7 +239,7 @@ function cloneParams(params: URLSearchParams) {
 async function fetchStoreProducts(
   baseParams: URLSearchParams,
   _options?: ProductFetchOptions
-) {
+): Promise<MedusaProductListResult> {
   const attempts: URLSearchParams[] = []
 
   // Medusa v2: Just use fields, no expand or currency_code parameters
@@ -247,7 +257,12 @@ async function fetchStoreProducts(
     lastStatus = res.status
     if (res.ok) {
       const data = await res.json()
-      return (data.products || data || []) as MedusaProduct[]
+      const products = (data.products || data || []) as MedusaProduct[]
+      const count =
+        typeof data.count === "number" && Number.isFinite(data.count)
+          ? data.count
+          : products.length
+      return { products, count }
     }
 
     // Capture response body for troubleshooting but continue trying fallbacks
@@ -501,14 +516,19 @@ export async function findCollectionByTitleOrHandle(
 export async function searchProducts(params: {
   q: string
   limit?: number
+  offset?: number
   categoryId?: string
   collectionId?: string
-}): Promise<MedusaProduct[]> {
-  const baseParams = createBaseSearchParams(params.limit ?? 10, [
-    ["q", params.q],
-    ["category_id", params.categoryId],
-    ["collection_id", params.collectionId],
-  ])
+}): Promise<MedusaProductListResult> {
+  const baseParams = createBaseSearchParams(
+    params.limit ?? 10,
+    [
+      ["q", params.q],
+      ["category_id", params.categoryId],
+      ["collection_id", params.collectionId],
+    ],
+    params.offset ?? 0
+  )
   return await fetchStoreProducts(baseParams)
 }
 
@@ -546,23 +566,27 @@ export async function fetchCategoryById(categoryId: string): Promise<MedusaCateg
 
 export async function fetchProductsByCategoryIds(
   categoryIds: string[],
-  limit = 20
-): Promise<MedusaProduct[]> {
+  limit = 20,
+  offset = 0
+): Promise<MedusaProductListResult> {
   const uniqueIds = Array.from(new Set(categoryIds.filter(Boolean)))
-  if (uniqueIds.length === 0) return []
-  if (uniqueIds.length === 1) return fetchProductsByCategoryId(uniqueIds[0], limit)
+  if (uniqueIds.length === 0) return { products: [], count: 0 }
+  if (uniqueIds.length === 1) return fetchProductsByCategoryId(uniqueIds[0], limit, { offset })
 
   const extras: Array<[string, string]> = uniqueIds.map((id) => ["category_id[]", id])
   const candidates = [
-    createBaseSearchParams(limit, extras),
-    createBaseSearchParams(limit, uniqueIds.map((id) => ["category_id", id] as [string, string])),
+    createBaseSearchParams(limit, extras, offset),
+    createBaseSearchParams(limit, uniqueIds.map((id) => ["category_id", id] as [string, string]), offset),
   ]
 
   for (const params of candidates) {
     try {
-      const items = await fetchStoreProducts(params)
-      if (Array.isArray(items) && items.length) {
-        return dedupeMedusaProducts(items).slice(0, limit)
+      const result = await fetchStoreProducts(params)
+      if (Array.isArray(result.products) && result.products.length) {
+        return {
+          products: dedupeMedusaProducts(result.products).slice(0, limit),
+          count: result.count,
+        }
       }
     } catch {
       // try next candidate / fallback below
@@ -572,33 +596,41 @@ export async function fetchProductsByCategoryIds(
   const perCategoryLimit = Math.min(60, Math.max(limit, Math.ceil(limit / uniqueIds.length)))
   const batches = await Promise.all(
     uniqueIds.map((id) =>
-      fetchProductsByCategoryId(id, perCategoryLimit).catch(() => [] as MedusaProduct[])
+      fetchProductsByCategoryId(id, perCategoryLimit).catch(
+        () => ({ products: [] as MedusaProduct[], count: 0 })
+      )
     )
   )
-  return dedupeMedusaProducts(batches.flat()).slice(0, limit)
+  const merged = dedupeMedusaProducts(batches.flatMap((b) => b.products))
+  const count = batches.reduce((sum, b) => sum + (b.count || 0), 0)
+  return {
+    products: merged.slice(offset, offset + limit),
+    count: count || merged.length,
+  }
 }
 
 export async function fetchProductsByCategoryId(
   categoryId: string,
   limit = 20,
-  options?: { includeSubcategories?: boolean }
-): Promise<MedusaProduct[]> {
+  options?: { includeSubcategories?: boolean; offset?: number }
+): Promise<MedusaProductListResult> {
+  const offset = options?.offset ?? 0
   if (options?.includeSubcategories) {
     const category = (await fetchCategoryById(categoryId)) || undefined
     const categoryIds = category ? collectDescendantCategoryIds(category) : [categoryId]
-    return fetchProductsByCategoryIds(categoryIds, limit)
+    return fetchProductsByCategoryIds(categoryIds, limit, offset)
   }
 
   const candidates = [
-    createBaseSearchParams(limit, [["category_id[]", categoryId]]),
-    createBaseSearchParams(limit, [["category_id", categoryId]]),
+    createBaseSearchParams(limit, [["category_id[]", categoryId]], offset),
+    createBaseSearchParams(limit, [["category_id", categoryId]], offset),
   ]
 
   let lastError: Error | undefined
   for (const params of candidates) {
     try {
-      const items = await fetchStoreProducts(params)
-      if (Array.isArray(items)) return items
+      const result = await fetchStoreProducts(params)
+      if (Array.isArray(result.products)) return result
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err))
     }
@@ -606,17 +638,21 @@ export async function fetchProductsByCategoryId(
   throw lastError ?? new Error("Failed products")
 }
 
-export async function fetchProductsByCollectionId(collectionId: string, limit = 20) {
+export async function fetchProductsByCollectionId(
+  collectionId: string,
+  limit = 20,
+  offset = 0
+): Promise<MedusaProductListResult> {
   const candidates = [
-    createBaseSearchParams(limit, [["collection_id[]", collectionId]]),
-    createBaseSearchParams(limit, [["collection_id", collectionId]]),
+    createBaseSearchParams(limit, [["collection_id[]", collectionId]], offset),
+    createBaseSearchParams(limit, [["collection_id", collectionId]], offset),
   ]
 
   let lastError: Error | undefined
   for (const params of candidates) {
     try {
-      const items = await fetchStoreProducts(params)
-      if (Array.isArray(items)) return items
+      const result = await fetchStoreProducts(params)
+      if (Array.isArray(result.products)) return result
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err))
     }
@@ -624,19 +660,23 @@ export async function fetchProductsByCollectionId(collectionId: string, limit = 
   throw lastError ?? new Error("Failed products by collection")
 }
 
-export async function fetchProductsByTag(tagValue: string, limit = 20) {
+export async function fetchProductsByTag(
+  tagValue: string,
+  limit = 20,
+  offset = 0
+): Promise<MedusaProductListResult> {
   const norm = (s: string) =>
     s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, "")
   const wanted = norm(tagValue)
 
   // 1) Try direct tag filters first (some Medusa versions support these)
   for (const url of [
-    createBaseSearchParams(limit, [["tags[]", tagValue]]),
-    createBaseSearchParams(limit, [["tag", tagValue]]),
+    createBaseSearchParams(limit, [["tags[]", tagValue]], offset),
+    createBaseSearchParams(limit, [["tag", tagValue]], offset),
   ]) {
     try {
-      const items = await fetchStoreProducts(url)
-      if (Array.isArray(items) && items.length) return items
+      const result = await fetchStoreProducts(url)
+      if (Array.isArray(result.products) && result.products.length) return result
     } catch {
       // move to next fallback
     }
@@ -651,12 +691,12 @@ export async function fetchProductsByTag(tagValue: string, limit = 20) {
       const match = tagsArr.find((t) => norm(t.value || t.handle || "") === wanted)
       if (match?.id) {
         for (const url of [
-          createBaseSearchParams(limit, [["tag_id[]", match.id]]),
-          createBaseSearchParams(limit, [["tag_id", match.id]]),
+          createBaseSearchParams(limit, [["tag_id[]", match.id]], offset),
+          createBaseSearchParams(limit, [["tag_id", match.id]], offset),
         ]) {
           try {
-            const items = await fetchStoreProducts(url)
-            if (Array.isArray(items) && items.length) return items
+            const result = await fetchStoreProducts(url)
+            if (Array.isArray(result.products) && result.products.length) return result
           } catch {
             // continue to next fallback
           }
@@ -668,7 +708,7 @@ export async function fetchProductsByTag(tagValue: string, limit = 20) {
   }
 
   // No products found for this tag — return empty rather than leaking unfiltered results
-  return []
+  return { products: [], count: 0 }
 }
 
 export type MedusaProductType = {
@@ -677,7 +717,11 @@ export type MedusaProductType = {
   handle?: string
 }
 
-export async function fetchProductsByType(typeValue: string, limit = 20) {
+export async function fetchProductsByType(
+  typeValue: string,
+  limit = 20,
+  offset = 0
+): Promise<MedusaProductListResult> {
   const norm = (s: string) =>
     s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, "")
   const wanted = norm(typeValue)
@@ -702,12 +746,12 @@ export async function fetchProductsByType(typeValue: string, limit = 20) {
       const match = typesArr.find((t) => matches(t.value || t.handle || ""))
       if (match?.id) {
         for (const url of [
-          createBaseSearchParams(limit, [["type_id[]", match.id]]),
-          createBaseSearchParams(limit, [["type_id", match.id]]),
+          createBaseSearchParams(limit, [["type_id[]", match.id]], offset),
+          createBaseSearchParams(limit, [["type_id", match.id]], offset),
         ]) {
           try {
-            const items = await fetchStoreProducts(url, { includeType: true })
-            if (Array.isArray(items) && items.length) return items
+            const result = await fetchStoreProducts(url, { includeType: true })
+            if (Array.isArray(result.products) && result.products.length) return result
           } catch {
             // try next candidate or fallback
           }
@@ -720,18 +764,23 @@ export async function fetchProductsByType(typeValue: string, limit = 20) {
 
   // 2) Fallback: expand type and filter client-side (best effort)
   try {
-    const items = await fetchStoreProducts(
-      createBaseSearchParams(Math.max(limit, 50)),
+    const result = await fetchStoreProducts(
+      createBaseSearchParams(Math.max(limit + offset, 50), [], 0),
       { includeType: true }
     )
-    const filtered = items.filter((p) => matches(p.type?.value || p.type?.handle || ""))
-    if (filtered.length) return filtered.slice(0, limit)
+    const filtered = result.products.filter((p) => matches(p.type?.value || p.type?.handle || ""))
+    if (filtered.length) {
+      return {
+        products: filtered.slice(offset, offset + limit),
+        count: filtered.length,
+      }
+    }
   } catch (err) {
     console.warn("fetchProductsByType expand fallback failed", err)
   }
 
   // 3) Last fallback: return empty to avoid 500s; route can try category fallback
-  return []
+  return { products: [], count: 0 }
 }
 
 // Fetch whether a collection has at least one product in a given category
@@ -750,8 +799,8 @@ export async function hasProductsForCollectionCategory(
     ]),
   ]) {
     try {
-      const items = await fetchStoreProducts(params)
-      if (Array.isArray(items) && items.length > 0) return true
+      const result = await fetchStoreProducts(params)
+      if (Array.isArray(result.products) && result.products.length > 0) return true
     } catch {
       // try next combination
     }

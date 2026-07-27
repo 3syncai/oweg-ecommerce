@@ -12,14 +12,10 @@ import { useAuth } from "@/contexts/AuthProvider";
 import { buildSignupUrl } from "@/lib/auth-redirect";
 import { calculateOweg10Discount, OWEG10_CODE } from "@/lib/oweg10-shared";
 import {
-  OwegPaymentForm,
-  type OwegPaymentFormHandle,
-} from "@/components/checkout/OwegPaymentForm";
-import {
-  loadRazorpayCustomScript,
-  submitCustomRazorpayPayment,
+  loadRazorpayScript,
+  openRazorpayCheckout,
   type RazorpaySuccessResponse,
-} from "@/lib/razorpay-custom-client";
+} from "@/lib/razorpay-client";
 import { warmRazorpayCheckout } from "@/lib/razorpay-warmup";
 import { getSiteOrigin } from "@/lib/razorpay";
 import {
@@ -259,7 +255,6 @@ function CheckoutPageInner() {
   const [checkoutAfterLoginIntent, setCheckoutAfterLoginIntent] = useState(false);
   const autoCheckoutNoticeShownRef = useRef(false);
   const performCheckoutRef = useRef<(() => Promise<void>) | null>(null);
-  const paymentFormRef = useRef<OwegPaymentFormHandle>(null);
   const draftWarmupRef = useRef<DraftWarmupEntry | null>(null);
   const draftWarmupInFlightRef = useRef<Promise<DraftOrderResponse | null> | null>(null);
   const createDraftOrderRef = useRef<(() => Promise<DraftOrderResponse>) | null>(null);
@@ -1103,7 +1098,7 @@ function CheckoutPageInner() {
   ]);
 
   useEffect(() => {
-    warmRazorpayCheckout({ prefetchMethods: true });
+    warmRazorpayCheckout();
   }, []);
 
   const formatInr = (value: number) => INR.format(value);
@@ -1285,13 +1280,7 @@ function CheckoutPageInner() {
     }
   };
 
-  const handleCustomRazorpay = async (draft: DraftOrderResponse, payableRupees: number) => {
-    const paymentPayload = paymentFormRef.current?.getPaymentPayload();
-    const validationError = paymentFormRef.current?.getValidationError();
-    if (!paymentPayload || validationError) {
-      throw new Error(validationError || "Complete payment details before paying");
-    }
-
+  const handleStandardRazorpay = async (draft: DraftOrderResponse, payableRupees: number) => {
     let createData: {
       key: string;
       amount: number;
@@ -1336,17 +1325,18 @@ function CheckoutPageInner() {
 
     const email = shipping.email || billing.email;
     const contact = shipping.phone || billing.phone;
+    const name = `${shipping.firstName} ${shipping.lastName}`.trim();
 
-    await submitCustomRazorpayPayment({
+    await openRazorpayCheckout({
       key: createData.key,
       amountMinor,
       currency: createData.currency,
       orderId: createData.orderId,
-      medusaOrderId: draft.medusaOrderId,
-      email,
-      contact,
+      name: "OWEG",
+      description: `Order ${draft.medusaOrderId}`,
+      prefill: { name, email, contact },
       callbackUrl,
-      payload: paymentPayload,
+      notes: { medusaOrderId: draft.medusaOrderId },
       onSuccess: async (response) => {
         await confirmRazorpayPayment(draft, response, amountMinor, createData.currency);
         router.push(
@@ -1414,13 +1404,13 @@ function CheckoutPageInner() {
 
       const [draft] = await Promise.all([
         resolveDraftOrderForCheckout(),
-        paymentMethod === "razorpay" ? loadRazorpayCustomScript() : Promise.resolve(),
+        paymentMethod === "razorpay" ? loadRazorpayScript() : Promise.resolve(),
       ]);
       if (paymentMethod === "cod") {
         finalizeCodCheckout(draft);
         return;
       }
-      await handleCustomRazorpay(draft, payableTotal);
+      await handleStandardRazorpay(draft, payableTotal);
     } catch (err) {
       console.error(err);
       toast.error(err instanceof Error ? err.message : "Checkout failed");
@@ -1503,21 +1493,40 @@ function CheckoutPageInner() {
     setLoginModalOpen(true);
   };
 
+  const checkoutCard =
+    "rounded-2xl border border-slate-200/50 bg-white/95 p-5 md:p-7 space-y-5 shadow-[0_10px_40px_-12px_rgba(44,52,47,0.12)] transition-shadow duration-300 hover:shadow-[0_16px_48px_-14px_rgba(44,52,47,0.16)]";
+  const checkoutField =
+    "h-11 rounded-xl border-slate-200/90 bg-white shadow-none transition-[border-color,box-shadow] placeholder:text-slate-400 focus-visible:border-[var(--oweg-green)] focus-visible:ring-[3px] focus-visible:ring-[var(--oweg-green)]/20";
+  const checkoutCta =
+    "bg-[var(--oweg-green)] hover:bg-[var(--oweg-green-dark)] text-white font-semibold rounded-xl shadow-md shadow-[var(--oweg-green)]/20 transition-all duration-200 active:scale-[0.99] disabled:opacity-60";
+  const paymentTabActive =
+    "border-[var(--oweg-green)] bg-[var(--oweg-green)] text-white shadow-sm shadow-[var(--oweg-green)]/25";
+  const paymentTabIdle =
+    "border-slate-200/80 bg-white text-slate-700 hover:border-[var(--oweg-green)]/50 hover:bg-[#f2f9ef]";
+
   return (
-    <div className="bg-gray-50 min-h-screen">
-      <div className="max-w-6xl mx-auto px-4 py-10 pb-44 md:pb-20">
-        <h1 className="text-2xl font-semibold text-slate-900 mb-6">Checkout</h1>
-        <form id="checkout-form" onSubmit={handleSubmit} className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+    <div className="checkout-ui min-h-screen">
+      <div className="max-w-6xl mx-auto px-4 py-8 md:py-10 pb-44 md:pb-20">
+        <div className="mb-7 md:mb-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--oweg-green-dark)] mb-2">
+            Secure checkout
+          </p>
+          <h1 className="text-3xl md:text-[2rem] font-bold text-[#2c342f]">Checkout</h1>
+          <p className="mt-1.5 text-sm text-slate-500">
+            Confirm your address and payment — almost there.
+          </p>
+        </div>
+        <form id="checkout-form" onSubmit={handleSubmit} className="grid lg:grid-cols-3 gap-5 md:gap-7">
+          <div className="lg:col-span-2 space-y-5 md:space-y-6">
             {!customer ? (
-              <section className="bg-white rounded-xl shadow-sm border p-5 md:p-6 space-y-4">
-                <h2 className="text-lg font-semibold text-slate-900">Login required to continue checkout</h2>
+              <section className={checkoutCard}>
+                <h2 className="text-lg font-semibold text-[#2c342f]">Login required to continue checkout</h2>
                 <p className="text-sm text-slate-600">
                   Please sign in first.
                 </p>
                 <Button
                   type="button"
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className={checkoutCta}
                   onClick={() => {
                     setCheckoutAfterLoginIntent(false);
                     setLoginModalOpen(true);
@@ -1528,27 +1537,34 @@ function CheckoutPageInner() {
               </section>
             ) : (
               <>
-            <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-slate-900">Shipping details</h2>
-                <span className="text-xs text-slate-500">All fields required</span>
+            <section className={checkoutCard}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#2c342f]">Shipping details</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Where should we deliver this order?</p>
+                </div>
+                <span className="shrink-0 rounded-full bg-[#f0f5ef] px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                  Required
+                </span>
               </div>
               {showSaveDefault && customer?.id && (
-                <label className="flex items-center gap-2 text-sm text-slate-600">
+                <label className="flex items-center gap-2.5 text-sm text-slate-600 rounded-xl bg-[#f7faf5] border border-slate-200/60 px-3 py-2.5">
                   <input
                     type="checkbox"
                     checked={saveAsDefault}
                     onChange={(e) => setSaveAsDefault(e.target.checked)}
                     disabled={savingAddress}
+                    className="h-4 w-4 rounded border-slate-300 text-[var(--oweg-green)] focus:ring-[var(--oweg-green)]"
                   />
                   <span>Save this as default address for next time</span>
                   {savingAddress && <span className="text-xs text-slate-400">Saving...</span>}
                 </label>
               )}
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid md:grid-cols-2 gap-3.5 md:gap-4">
                 <Input
                   required
                   placeholder="First name"
+                  className={checkoutField}
                   value={shipping.firstName}
                   onChange={(e) => {
                     setAddressTouched(true);
@@ -1557,6 +1573,7 @@ function CheckoutPageInner() {
                 />
                 <Input
                   placeholder="Last name"
+                  className={checkoutField}
                   value={shipping.lastName}
                   onChange={(e) => {
                     setAddressTouched(true);
@@ -1573,13 +1590,18 @@ function CheckoutPageInner() {
                   inputMode="email"
                   title="Enter a valid email address"
                   readOnly={!!customer?.email}
-                  className={customer?.email ? "bg-gray-100 cursor-not-allowed" : undefined}
+                  className={
+                    customer?.email
+                      ? `${checkoutField} bg-slate-50 cursor-not-allowed`
+                      : checkoutField
+                  }
                   aria-readonly={!!customer?.email}
                 />
                 <Input
                   required
                   type="tel"
                   placeholder="Phone"
+                  className={checkoutField}
                   value={shipping.phone}
                   onChange={(e) => {
                     setAddressTouched(true);
@@ -1593,7 +1615,7 @@ function CheckoutPageInner() {
                 <Input
                   required
                   placeholder="Address line 1"
-                  className="md:col-span-2"
+                  className={`md:col-span-2 ${checkoutField}`}
                   value={shipping.address1}
                   onChange={(e) => {
                     setAddressTouched(true);
@@ -1602,7 +1624,7 @@ function CheckoutPageInner() {
                 />
                 <Input
                   placeholder="Address line 2"
-                  className="md:col-span-2"
+                  className={`md:col-span-2 ${checkoutField}`}
                   value={shipping.address2}
                   onChange={(e) => {
                     setAddressTouched(true);
@@ -1612,6 +1634,7 @@ function CheckoutPageInner() {
                 <Input
                   required
                   placeholder="City"
+                  className={checkoutField}
                   value={shipping.city}
                   onChange={(e) => {
                     setAddressTouched(true);
@@ -1622,6 +1645,7 @@ function CheckoutPageInner() {
                   <Input
                     required
                     placeholder="State"
+                    className={checkoutField}
                     value={shipping.state}
                     autoComplete="off"
                     onFocus={() => setStateDropdownOpen(true)}
@@ -1635,13 +1659,13 @@ function CheckoutPageInner() {
                     }}
                   />
                   {stateDropdownOpen && (
-                    <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-white shadow-lg">
+                    <div className="absolute z-20 mt-1.5 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200/80 bg-white shadow-xl">
                       {shippingStateSuggestions.length > 0 ? (
                         shippingStateSuggestions.map((stateName) => (
                           <button
                             key={stateName}
                             type="button"
-                            className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                            className="w-full px-3.5 py-2.5 text-left text-sm text-slate-700 hover:bg-[#f2f9ef] transition-colors"
                             onMouseDown={() => {
                               setAddressTouched(true);
                               setShipping((prev) => ({ ...prev, state: stateName }));
@@ -1660,6 +1684,7 @@ function CheckoutPageInner() {
                 <Input
                   required
                   placeholder="PIN code"
+                  className={checkoutField}
                   value={shipping.postalCode}
                   onChange={(e) => {
                     setAddressTouched(true);
@@ -1673,10 +1698,13 @@ function CheckoutPageInner() {
               </div>
             </section>
 
-            <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-slate-900">Billing details</h2>
-                <label className="flex items-center gap-2 text-sm text-slate-600">
+            <section className={checkoutCard}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#2c342f]">Billing details</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Invoice address for this order</p>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-slate-600 shrink-0 rounded-full bg-[#f7faf5] border border-slate-200/60 px-3 py-1.5">
                   <input
                     type="checkbox"
                     checked={billingSame}
@@ -1687,20 +1715,23 @@ function CheckoutPageInner() {
                         setBilling({ ...shipping });
                       }
                     }}
+                    className="h-4 w-4 rounded border-slate-300 text-[var(--oweg-green)] focus:ring-[var(--oweg-green)]"
                   />
                   Same as shipping
                 </label>
               </div>
               {!billingSame && (
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid md:grid-cols-2 gap-3.5 md:gap-4">
                   <Input
                     required
                     placeholder="First name"
+                    className={checkoutField}
                     value={billing.firstName}
                     onChange={(e) => setBilling({ ...billing, firstName: e.target.value })}
                   />
                   <Input
                     placeholder="Last name"
+                    className={checkoutField}
                     value={billing.lastName}
                     onChange={(e) => setBilling({ ...billing, lastName: e.target.value })}
                   />
@@ -1714,13 +1745,18 @@ function CheckoutPageInner() {
                     inputMode="email"
                     title="Enter a valid email address"
                     readOnly={!!customer?.email}
-                    className={customer?.email ? "bg-gray-100 cursor-not-allowed" : undefined}
+                    className={
+                      customer?.email
+                        ? `${checkoutField} bg-slate-50 cursor-not-allowed`
+                        : checkoutField
+                    }
                     aria-readonly={!!customer?.email}
                   />
                   <Input
                     required
                     type="tel"
                     placeholder="Phone"
+                    className={checkoutField}
                     value={billing.phone}
                     onChange={(e) => setBilling({ ...billing, phone: toDigits(e.target.value, 10) })}
                     inputMode="numeric"
@@ -1731,19 +1767,20 @@ function CheckoutPageInner() {
                   <Input
                     required
                     placeholder="Address line 1"
-                    className="md:col-span-2"
+                    className={`md:col-span-2 ${checkoutField}`}
                     value={billing.address1}
                     onChange={(e) => setBilling({ ...billing, address1: e.target.value })}
                   />
                   <Input
                     placeholder="Address line 2"
-                    className="md:col-span-2"
+                    className={`md:col-span-2 ${checkoutField}`}
                     value={billing.address2}
                     onChange={(e) => setBilling({ ...billing, address2: e.target.value })}
                   />
                   <Input
                     required
                     placeholder="City"
+                    className={checkoutField}
                     value={billing.city}
                     onChange={(e) => setBilling({ ...billing, city: e.target.value })}
                   />
@@ -1751,6 +1788,7 @@ function CheckoutPageInner() {
                     <Input
                       required
                       placeholder="State"
+                      className={checkoutField}
                       value={billing.state}
                       autoComplete="off"
                       onFocus={() => setBillingStateDropdownOpen(true)}
@@ -1763,13 +1801,13 @@ function CheckoutPageInner() {
                       }}
                     />
                     {billingStateDropdownOpen && (
-                      <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-white shadow-lg">
+                      <div className="absolute z-20 mt-1.5 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200/80 bg-white shadow-xl">
                         {billingStateSuggestions.length > 0 ? (
                           billingStateSuggestions.map((stateName) => (
                             <button
                               key={stateName}
                               type="button"
-                              className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                              className="w-full px-3.5 py-2.5 text-left text-sm text-slate-700 hover:bg-[#f2f9ef] transition-colors"
                               onMouseDown={() => {
                                 setBilling((prev) => ({ ...prev, state: stateName }));
                                 setBillingStateDropdownOpen(false);
@@ -1787,6 +1825,7 @@ function CheckoutPageInner() {
                   <Input
                     required
                     placeholder="PIN code"
+                    className={checkoutField}
                     value={billing.postalCode}
                     onChange={(e) => setBilling({ ...billing, postalCode: toDigits(e.target.value, 6) })}
                     inputMode="numeric"
@@ -1798,27 +1837,28 @@ function CheckoutPageInner() {
               )}
             </section>
 
-            <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
+            <section className={checkoutCard}>
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold text-slate-900">Payment</h2>
+                <div>
+                  <h2 className="text-lg font-semibold text-[#2c342f]">Payment</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Choose how you want to pay</p>
+                </div>
                 <Image
                   src="/razorpay_logo.png"
                   alt="Secured by Razorpay"
                   width={88}
                   height={24}
                   unoptimized
-                  className="opacity-80"
+                  className="opacity-70"
                 />
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 p-1 rounded-2xl bg-[#f0f5ef] border border-slate-200/50">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("razorpay")}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                    paymentMethod === "razorpay"
-                      ? "border-green-600 bg-green-50 text-green-800"
-                      : "border-slate-200 text-slate-700 hover:border-green-400"
+                  className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all duration-200 ${
+                    paymentMethod === "razorpay" ? paymentTabActive : paymentTabIdle
                   }`}
                 >
                   Pay online
@@ -1826,41 +1866,45 @@ function CheckoutPageInner() {
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("cod")}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                    paymentMethod === "cod"
-                      ? "border-green-600 bg-green-50 text-green-800"
-                      : "border-slate-200 text-slate-700 hover:border-green-400"
+                  className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all duration-200 ${
+                    paymentMethod === "cod" ? paymentTabActive : paymentTabIdle
                   }`}
                 >
                   Cash on delivery
                 </button>
               </div>
 
-              <OwegPaymentForm
-                ref={paymentFormRef}
-                enabled={paymentMethod === "razorpay"}
-                prefill={{
-                  name: `${shipping.firstName} ${shipping.lastName}`.trim(),
-                  email: shipping.email,
-                  contact: shipping.phone,
-                }}
-              />
+              {paymentMethod === "razorpay" ? (
+                <div className="rounded-xl border border-slate-200/60 bg-[#f7faf5] px-4 py-3.5 space-y-1">
+                  <p className="text-sm font-medium text-[#2c342f]">
+                    You&apos;ll pay securely with Razorpay
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    After you tap Pay securely, Razorpay opens so you can choose UPI, card, net
+                    banking, wallet, and other methods in their up-to-date payment window.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-600 rounded-xl border border-slate-200/60 bg-[#f7faf5] px-4 py-3.5">
+                  Cash on delivery — pay when your order arrives. No online payment needed.
+                </p>
+              )}
             </section>
 
-            <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
-              <h2 className="text-lg font-semibold text-slate-900">Referral code</h2>
+            <section className={checkoutCard}>
+              <h2 className="text-lg font-semibold text-[#2c342f]">Referral code</h2>
               {referralLoading ? (
                 <p className="text-sm text-slate-500">Loading referral code...</p>
               ) : referralCodeApplied && referralCode ? (
-                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3">
+                <div className="flex items-center justify-between bg-[#f2f9ef] border border-[var(--oweg-green)]/25 rounded-xl p-3.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-green-600 text-lg">✓</span>
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--oweg-green)]/15 text-[var(--oweg-green-dark)] text-sm font-bold">✓</span>
                     <div>
-                      <p className="text-sm font-medium text-green-800">Referral code applied and locked</p>
-                      <p className="text-xs text-green-600 font-semibold">{referralCode} {referralAgentName ? `(${referralAgentName})` : ""}</p>
+                      <p className="text-sm font-medium text-[#2a5d00]">Referral code applied and locked</p>
+                      <p className="text-xs text-[var(--oweg-green-dark)] font-semibold">{referralCode} {referralAgentName ? `(${referralAgentName})` : ""}</p>
                     </div>
                   </div>
-                  <span className="text-xs text-green-700 bg-green-100 px-2 py-1 rounded">Locked</span>
+                  <span className="text-xs text-[#2a5d00] bg-white/80 border border-[var(--oweg-green)]/20 px-2.5 py-1 rounded-full font-medium">Locked</span>
                 </div>
               ) : (
                 <div className="flex gap-2">
@@ -1868,13 +1912,13 @@ function CheckoutPageInner() {
                     placeholder="Enter referral code (optional)"
                     value={referralCode}
                     onChange={(e) => setReferralCode(e.target.value)}
-                    className="uppercase flex-1"
+                    className={`uppercase flex-1 ${checkoutField}`}
                   />
                   <Button 
                     type="button" 
                     onClick={handleApplyReferral}
                     disabled={referralValidating || !referralCode.trim()}
-                    className="bg-slate-900 text-white hover:bg-slate-800"
+                    className="rounded-xl bg-[#2c342f] text-white hover:bg-[#1f2622] px-5"
                   >
                     {referralValidating ? "Checking..." : "Apply"}
                   </Button>
@@ -1884,21 +1928,21 @@ function CheckoutPageInner() {
 
             {/* AFFILIATE CODE (customer-shared "?ref=") — independent of the
                 referral code section above. */}
-            <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-3">
+            <section className={`${checkoutCard} space-y-3`}>
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Do you have an affiliate code?</h2>
+                <h2 className="text-lg font-semibold text-[#2c342f]">Do you have an affiliate code?</h2>
                 <p className="text-xs text-slate-500 mt-1">
                   Got a code from a friend or a shared OWEG product link? Add it here so they get rewarded for the referral.
                 </p>
               </div>
 
               {affiliateCodeApplied && affiliateCode ? (
-                <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                <div className="flex items-center justify-between bg-[#f2f9ef] border border-[var(--oweg-green)]/25 rounded-xl p-3.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-emerald-600 text-lg">✓</span>
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--oweg-green)]/15 text-[var(--oweg-green-dark)] text-sm font-bold">✓</span>
                     <div>
-                      <p className="text-sm font-medium text-emerald-800">Affiliate code applied</p>
-                      <p className="text-xs text-emerald-700 font-mono font-semibold">
+                      <p className="text-sm font-medium text-[#2a5d00]">Affiliate code applied</p>
+                      <p className="text-xs text-[var(--oweg-green-dark)] font-mono font-semibold">
                         {affiliateCode}{affiliateName ? ` · ${affiliateName}` : ""}
                       </p>
                     </div>
@@ -1906,7 +1950,7 @@ function CheckoutPageInner() {
                   <button
                     type="button"
                     onClick={handleClearAffiliate}
-                    className="text-xs text-emerald-700 hover:text-emerald-900 underline"
+                    className="text-xs text-[var(--oweg-green-dark)] hover:text-[#2a5d00] underline underline-offset-2"
                   >
                     Change
                   </button>
@@ -1921,14 +1965,14 @@ function CheckoutPageInner() {
                         setAffiliateCode(e.target.value.toUpperCase());
                         if (affiliateError) setAffiliateError(null);
                       }}
-                      className="uppercase flex-1 font-mono tracking-wider"
+                      className={`uppercase flex-1 font-mono tracking-wider ${checkoutField}`}
                       maxLength={32}
                     />
                     <Button
                       type="button"
                       onClick={handleApplyAffiliate}
                       disabled={affiliateValidating || !affiliateCode.trim()}
-                      className="bg-emerald-600 text-white hover:bg-emerald-700"
+                      className={`px-5 ${checkoutCta}`}
                     >
                       {affiliateValidating ? "Checking..." : "Apply"}
                     </Button>
@@ -1942,8 +1986,8 @@ function CheckoutPageInner() {
 
             {/* WALLET COINS SECTION */}
             {customer && (
-              <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4">
-                <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+              <section className={checkoutCard}>
+                <h2 className="text-lg font-semibold text-[#2c342f] flex items-center gap-2">
                   <img src="/uploads/coin/oweg_bag.png" alt="Wallet" className="w-8 h-8" />
                   Wallet Coins
                 </h2>
@@ -1953,11 +1997,11 @@ function CheckoutPageInner() {
                   <div className="space-y-3">
                     {/* Available Balance */}
                     {walletBalance > 0 && (
-                      <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between bg-amber-50/90 border border-amber-200/70 rounded-xl p-3.5">
                         <div>
-                          <p className="text-sm font-medium text-amber-800">Available Balance</p>
-                          <p className="text-lg font-bold text-amber-700">{Math.round(walletBalance)} coins</p>
-                          <p className="text-xs text-amber-600">1 coin = ₹1 discount</p>
+                          <p className="text-sm font-medium text-amber-900">Available Balance</p>
+                          <p className="text-lg font-bold text-amber-800">{Math.round(walletBalance)} coins</p>
+                          <p className="text-xs text-amber-700/80">1 coin = ₹1 discount</p>
                         </div>
                         {walletExpiring > 0 && (
                           <div className="text-right">
@@ -1967,7 +2011,7 @@ function CheckoutPageInner() {
                       </div>
                     )}
                     {walletAdjustmentMessage && (
-                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                      <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200/70 rounded-xl p-2.5">
                         {walletAdjustmentMessage}
                       </div>
                     )}
@@ -1975,12 +2019,12 @@ function CheckoutPageInner() {
 
 
                     {/* Redemption Limit Info */}
-                    <div className="text-xs text-slate-500 bg-slate-50 rounded p-2">
-                      <p>Max redeemable for this order: <strong>{maxRedeemable} coins</strong></p>
+                    <div className="text-xs text-slate-500 bg-[#f7faf5] rounded-xl p-2.5 border border-slate-200/50">
+                      <p>Max redeemable for this order: <strong className="text-slate-700">{maxRedeemable} coins</strong></p>
                       <p className="text-slate-400">Limit based on order value (₹{orderTotal.toFixed(0)})</p>
                     </div>
 
-                    <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-slate-50">
+                    <label className="flex items-center gap-3 p-3.5 border border-slate-200/70 rounded-xl cursor-pointer hover:bg-[#f7faf5] transition-colors">
                       <input
                         type="checkbox"
                         checked={useCoins}
@@ -2004,30 +2048,30 @@ function CheckoutPageInner() {
                             setCoinsToUse(0);
                           }
                         }}
-                        className="w-4 h-4 text-green-600"
+                        className="w-4 h-4 text-[var(--oweg-green)] rounded border-slate-300 focus:ring-[var(--oweg-green)]"
                         disabled={!walletCanRedeem || maxUsableCoins <= 0}
                       />
                       <div className="flex-1">
-                        <p className="text-sm font-medium text-slate-800">
+                        <p className="text-sm font-medium text-[#2c342f]">
                           Use {maxUsableCoins} coins
                         </p>
-                        <p className="text-xs text-green-600">
+                        <p className="text-xs text-[var(--oweg-green-dark)] font-medium">
                           Save ₹{maxUsableCoins}
                         </p>
                       </div>
                     </label>
 
                     {useCoins && (
-                      <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg p-3">
-                        <span className="text-green-600">✓</span>
-                        <p className="text-sm text-green-800">
+                      <div className="flex items-center gap-2 bg-[#f2f9ef] border border-[var(--oweg-green)]/25 rounded-xl p-3.5">
+                        <span className="text-[var(--oweg-green-dark)]">✓</span>
+                        <p className="text-sm text-[#2a5d00]">
                           <strong>₹{coinDiscount.toFixed(2)}</strong> will be deducted from your wallet after payment succeeds
                         </p>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="text-sm text-slate-500 bg-slate-50 rounded-lg p-3">
+                  <div className="text-sm text-slate-500 bg-[#f7faf5] rounded-xl p-3.5 border border-slate-200/50">
                     <p>No coins available yet.</p>
                     <p className="text-xs mt-1 flex items-center gap-1">Earn 2% coins on every purchase! <img src="/uploads/coin/oweg_bag.png" alt="coins" className="w-4 h-4 inline" /></p>
                   </div>
@@ -2039,24 +2083,24 @@ function CheckoutPageInner() {
           </div>
 
           <div className="lg:col-span-1 space-y-4">
-            <section className="bg-white rounded-xl shadow-sm border p-4 md:p-6 space-y-4 sticky top-6">
+            <section className={`${checkoutCard} sticky top-6`}>
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-slate-900">Order summary</h2>
-                {loadingCart && <span className="text-xs text-slate-500">LoadingΓÇª</span>}
+                <h2 className="text-lg font-semibold text-[#2c342f]">Order summary</h2>
+                {loadingCart && <span className="text-xs text-slate-500">Loading…</span>}
               </div>
-              <div className="divide-y border rounded-lg">
+              <div className="divide-y divide-slate-100 rounded-xl border border-slate-200/60 overflow-hidden bg-[#fafcf9]">
                 {cartItems.map((item) => (
-                  <div key={item.id} className="flex items-center gap-3 p-3">
-                    <div className="h-14 w-14 rounded bg-slate-100 relative overflow-hidden">
+                  <div key={item.id} className="flex items-center gap-3 p-3.5">
+                    <div className="h-14 w-14 rounded-xl bg-white border border-slate-100 relative overflow-hidden shadow-sm">
                       {item.thumbnail ? (
                         <Image src={item.thumbnail} alt={item.title} fill className="object-contain" />
                       ) : null}
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-slate-900 line-clamp-2">{item.title}</p>
-                      <p className="text-xs text-slate-500">Qty {item.quantity}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-[#2c342f] line-clamp-2">{item.title}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Qty {item.quantity}</p>
                     </div>
-                    <div className="text-sm font-semibold text-slate-900">
+                    <div className="text-sm font-semibold text-[#2c342f]">
                       {formatInr((item.unit_price || 0) * (item.quantity || 1))}
                     </div>
                   </div>
@@ -2067,16 +2111,16 @@ function CheckoutPageInner() {
               </div>
               {customer ? (
                 oweg10Status.canApply ? (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+                  <div className="rounded-xl border border-[var(--oweg-green)]/30 bg-[#f2f9ef] p-4">
                     <label className="flex items-start gap-3 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={oweg10Applied}
                         onChange={(e) => setOweg10Applied(e.target.checked)}
-                        className="mt-1 h-4 w-4 text-emerald-600"
+                        className="mt-1 h-4 w-4 rounded text-[var(--oweg-green)] border-slate-300 focus:ring-[var(--oweg-green)]"
                       />
                       <div className="space-y-1">
-                        <p className="text-sm font-semibold text-emerald-900">
+                        <p className="text-sm font-semibold text-[#2a5d00]">
                           Apply {OWEG10_CODE} for 10% off
                         </p>
                       </div>
@@ -2088,49 +2132,52 @@ function CheckoutPageInner() {
                   </div>
                 ) : null
               ) : (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                <div className="rounded-xl border border-slate-200/70 bg-[#f7faf5] px-4 py-3 text-xs text-slate-600">
                   Sign in to unlock the one-time {OWEG10_CODE} 10% offer.
                 </div>
               )}
-              <div className="space-y-2 text-sm text-slate-700">
+              <div className="space-y-2.5 text-sm text-slate-600">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span className="font-semibold">{formatInr(activeTotals.subtotal)}</span>
+                  <span className="font-semibold text-[#2c342f]">{formatInr(activeTotals.subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Shipping</span>
-                  <span className="font-semibold">
+                  <span className="font-semibold text-[#2c342f]">
                     {activeTotals.shipping === 0 ? "Free" : formatInr(activeTotals.shipping)}
                   </span>
                 </div>
                 {oweg10Discount > 0 && (
-                  <div className="flex justify-between text-emerald-700">
+                  <div className="flex justify-between text-[var(--oweg-green-dark)]">
                     <span>{OWEG10_CODE} discount</span>
                     <span className="font-semibold">-{formatInr(oweg10Discount)}</span>
                   </div>
                 )}
                 {/* Coin Discount Line */}
                 {useCoins && coinDiscount > 0 && (
-                  <div className="flex justify-between text-green-600">
+                  <div className="flex justify-between text-[var(--oweg-green-dark)]">
                     <span><img src="/uploads/coin/coin.png" alt="Coin" className="w-5 h-5 inline-block object-contain mr-1" /> Coin Discount</span>
                     <span className="font-semibold">-{formatInr(coinDiscount)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-base font-semibold text-slate-900 pt-2 border-t">
+                <div className="flex justify-between text-base font-bold text-[#2c342f] pt-3 mt-1 border-t border-slate-200/80">
                   <span>Total</span>
-                  <span>{formatInr(payableTotal)}</span>
+                  <span className="text-lg">{formatInr(payableTotal)}</span>
                 </div>
                 {totalsLoading && <div className="text-xs text-slate-500">Refreshing totals...</div>}
                 {totalWarning && (
-                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">
+                  <div className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl p-2.5">
                     {totalWarning}
                   </div>
                 )}
               </div>
 
+              <p className="text-[11px] text-center text-amber-700/90 font-medium">
+                Review before you pay
+              </p>
               <Button
                 type={customer ? "submit" : "button"}
-                className="hidden md:flex w-full bg-green-600 hover:bg-green-700 text-white py-3"
+                className={`hidden md:flex w-full py-3.5 text-base ${checkoutCta}`}
                 onClick={customer ? undefined : openCheckoutLogin}
                 disabled={payDisabled}
               >
@@ -2140,11 +2187,11 @@ function CheckoutPageInner() {
           </div>
         </form>
 
-        <div className="md:hidden fixed bottom-24 left-0 right-0 z-[500] border-t border-slate-200 rounded-t-2xl bg-white shadow-lg">
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <div className="md:hidden fixed bottom-24 left-0 right-0 z-[500] border-t border-slate-200/80 rounded-t-2xl bg-white/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(44,52,47,0.12)]">
+          <div className="flex items-center justify-between gap-3 px-4 py-3.5">
             <div className="min-w-0">
               <p className="text-xs text-slate-500">Total payable</p>
-              <p className="text-lg font-bold text-green-600 truncate">{formatInr(payableTotal)}</p>
+              <p className="text-lg font-bold text-[var(--oweg-green-dark)] truncate">{formatInr(payableTotal)}</p>
               {totalsLoading ? (
                 <p className="text-[11px] text-slate-400">Updating totals…</p>
               ) : null}
@@ -2152,7 +2199,7 @@ function CheckoutPageInner() {
             <Button
               type={customer ? "submit" : "button"}
               form={customer ? "checkout-form" : undefined}
-              className="shrink-0 min-h-11 bg-green-600 hover:bg-green-700 text-white px-5 py-3"
+              className={`shrink-0 min-h-11 px-5 py-3 ${checkoutCta}`}
               onClick={customer ? undefined : openCheckoutLogin}
               disabled={payDisabled}
             >
@@ -2162,16 +2209,16 @@ function CheckoutPageInner() {
         </div>
       </div>
       {loginModalOpen && (
-        <div className="fixed inset-0 z-[999] bg-black/30 backdrop-blur-sm flex items-center justify-center px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-100 p-6 space-y-4">
+        <div className="fixed inset-0 z-[999] bg-black/35 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-100 p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Sign in to continue</h2>
-                <p className="text-xs text-gray-600">Log in to place your order securely.</p>
+                <h2 className="text-lg font-semibold text-[#2c342f]">Sign in to continue</h2>
+                <p className="text-xs text-slate-600">Log in to place your order securely.</p>
               </div>
               <button
                 type="button"
-                className="text-sm text-gray-500 hover:text-gray-800"
+                className="text-sm text-slate-500 hover:text-slate-800"
                 onClick={() => {
                   setLoginModalOpen(false);
                   setCheckoutAfterLoginIntent(false);
@@ -2185,6 +2232,7 @@ function CheckoutPageInner() {
                 required
                 type="email"
                 placeholder="Email"
+                className={checkoutField}
                 value={loginEmail}
                 onChange={(e) => setLoginEmail(e.target.value)}
               />
@@ -2192,17 +2240,18 @@ function CheckoutPageInner() {
                 required
                 type="password"
                 placeholder="Password"
+                className={checkoutField}
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
               />
               {loginError && (
-                <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
                   {loginError}
                 </div>
               )}
               <Button
                 type="submit"
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                className={`w-full py-3 ${checkoutCta}`}
                 disabled={loginBusy}
               >
                 {loginBusy ? "Signing in..." : "Login & continue"}

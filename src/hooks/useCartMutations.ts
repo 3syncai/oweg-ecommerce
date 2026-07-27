@@ -104,7 +104,7 @@ export function useAddToCart() {
       return { previousCount, previousPayload };
     },
     onSuccess: (data) => {
-      warmRazorpayCheckout({ prefetchMethods: true });
+      warmRazorpayCheckout();
       if (data) {
         syncFromCartPayload(data as unknown as Parameters<typeof syncFromCartPayload>[0]);
         writeCartQueryCache(

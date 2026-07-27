@@ -789,7 +789,11 @@ const Header: React.FC = () => {
             image?: string;
             handle?: string;
           };
-          const rows: Row[] = Array.isArray(d) ? d : [];
+          const rows: Row[] = Array.isArray(d)
+            ? d
+            : Array.isArray(d?.products)
+              ? d.products
+              : [];
           const list = rows
             .map((p) => ({
               id: String(p.id || "").trim(),

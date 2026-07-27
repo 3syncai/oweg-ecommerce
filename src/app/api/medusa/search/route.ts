@@ -32,9 +32,15 @@ export async function GET(req: NextRequest) {
       colId = c?.id
     }
 
-  const prods = await searchProducts({ q, limit, categoryId: catId, collectionId: colId })
-  const ui = prods.filter(isMedusaProductInStock).map((p) => toUiProduct(p))
-    return NextResponse.json({ products: ui })
+  const result = await searchProducts({ q, limit, categoryId: catId, collectionId: colId })
+  const ui = result.products.filter(isMedusaProductInStock).map((p) => toUiProduct(p))
+    return NextResponse.json({
+      products: ui,
+      count: result.count,
+      limit,
+      offset: 0,
+      hasMore: limit < result.count,
+    })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "failed"
     return NextResponse.json({ error: msg }, { status: 500 })
