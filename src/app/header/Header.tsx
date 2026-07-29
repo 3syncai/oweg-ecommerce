@@ -178,7 +178,16 @@ const Header: React.FC = () => {
   const [isMobile, setIsMobile] = React.useState(false);
   const [viewportWidth, setViewportWidth] = React.useState(1280);
   const [desktopNavWidth, setDesktopNavWidth] = React.useState(0);
-  const [, setShowTopBarMobile] = React.useState(true);
+  const [showTopBarMobile, setShowTopBarMobile] = React.useState(true);
+  const [showDesktopCategories, setShowDesktopCategories] = React.useState(true);
+  const lastMobileScrollYRef = React.useRef(0);
+  const chromeIgnoreUntilRef = React.useRef(0);
+
+  const readMobileScrollY = React.useCallback(() => {
+    if (typeof document === "undefined") return 0;
+    const se = document.scrollingElement;
+    return se?.scrollTop || window.pageYOffset || window.scrollY || 0;
+  }, []);
   const [mobilePincode, setMobilePincode] = React.useState("");
   const [mobilePlace, setMobilePlace] = React.useState<string | null>(null);
   const [pinModalOpen, setPinModalOpen] = React.useState(false);
@@ -199,6 +208,18 @@ const Header: React.FC = () => {
   // dropdown states for portal:
   const [activeCategoryId, setActiveCategoryId] = React.useState<string | null>(null);
   const [allOpen, setAllOpen] = React.useState(false);
+
+  const setScrollChromeVisible = React.useCallback((visible: boolean) => {
+    setShowTopBarMobile(visible);
+    setShowDesktopCategories(visible);
+    if (!visible) {
+      setActiveCategoryId(null);
+      setAllOpen(false);
+    }
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.owegScrollChrome = visible ? "show" : "hide";
+    }
+  }, []);
 
   const [selectedFilter, setSelectedFilter] = React.useState<
     | { type: "collection"; id?: string; handle?: string; title: string }
@@ -652,17 +673,56 @@ const Header: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
-    if (!isMobile) {
-      setShowTopBarMobile(true);
-      return;
-    }
+    let ticking = false;
     const handleScroll = () => {
-      setShowTopBarMobile(window.scrollY < 10);
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(() => {
+        const now = Date.now();
+        if (now < chromeIgnoreUntilRef.current) {
+          ticking = false;
+          return;
+        }
+        const y = readMobileScrollY();
+        const delta = y - lastMobileScrollYRef.current;
+        let nextVisible: boolean | null = null;
+        if (y < 24) {
+          nextVisible = true;
+        } else if (delta > 8) {
+          nextVisible = false;
+        } else if (delta < -8) {
+          nextVisible = true;
+        } else {
+          // Keep anchor so slow scrolls accumulate past the threshold.
+          ticking = false;
+          return;
+        }
+
+        const current =
+          typeof document !== "undefined" && document.documentElement.dataset.owegScrollChrome === "hide"
+            ? false
+            : true;
+        if (nextVisible !== current) {
+          chromeIgnoreUntilRef.current = Date.now() + 280;
+          setScrollChromeVisible(nextVisible);
+        }
+        lastMobileScrollYRef.current = y;
+        ticking = false;
+      });
     };
+    lastMobileScrollYRef.current = readMobileScrollY();
+    setScrollChromeVisible(true);
     handleScroll();
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [isMobile]);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    document.addEventListener("scroll", handleScroll, { passive: true, capture: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      document.removeEventListener("scroll", handleScroll, true);
+      if (typeof document !== "undefined") {
+        delete document.documentElement.dataset.owegScrollChrome;
+      }
+    };
+  }, [readMobileScrollY, setScrollChromeVisible]);
 
   const fetchPlaceForPin = React.useCallback(async (pin: string) => {
     try {
@@ -1591,7 +1651,16 @@ const Header: React.FC = () => {
 
                 {!isMobileSimplifiedHeader && (
                   <>
-                    <div className="mt-1 relative mobile-search-bar">
+                    <div
+                      className={`overflow-hidden transition-[max-height,opacity,transform,margin] duration-300 ease-out ${
+                        showTopBarMobile
+                          ? "max-h-40 opacity-100 translate-y-0 mt-1"
+                          : "max-h-0 opacity-0 -translate-y-2 mt-0 pointer-events-none"
+                      }`}
+                      aria-hidden={!showTopBarMobile}
+                      inert={!showTopBarMobile}
+                    >
+                    <div className="relative mobile-search-bar">
                       <Input
                         value={q}
                         onChange={(e) => {
@@ -1644,14 +1713,24 @@ const Header: React.FC = () => {
                         </div>
                       </div>
                     ) : null}
+                    </div>
                   </>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Navigation Bar */}
-          <nav className="bg-header-nav-bg hidden md:block">
+          {/* Navigation Bar — collapses on scroll down to free product space */}
+          <nav
+            className={`bg-header-nav-bg hidden md:block overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out ${
+              showDesktopCategories
+                ? "max-h-[220px] opacity-100 translate-y-0"
+                : "max-h-0 opacity-0 -translate-y-2 pointer-events-none"
+            }`}
+            aria-hidden={!showDesktopCategories}
+            inert={!showDesktopCategories}
+            data-desktop-category-nav
+          >
             <div ref={desktopNavRef} className="w-full px-4 sm:px-6 lg:px-8">
               <div className="py-1 relative" data-nav-scroll>
                 {/* Desktop categories in balanced 2-row grid */}
