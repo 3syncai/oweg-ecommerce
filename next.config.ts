@@ -114,7 +114,9 @@ const nextConfig: NextConfig = {
     ],
   },
   images: {
-    unoptimized: process.env.NODE_ENV === "development",
+    // Bypass Vercel Image Optimization (402 when quota exceeded).
+    // S3/CDN URLs are already production-ready. Set NEXT_IMAGE_OPTIMIZE=1 to re-enable later.
+    unoptimized: process.env.NEXT_IMAGE_OPTIMIZE !== "1",
     remotePatterns: buildRemotePatterns(),
   },
 };
