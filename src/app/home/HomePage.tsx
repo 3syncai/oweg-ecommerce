@@ -536,6 +536,7 @@ function MobileCategoryGrid({
         ref={panelRef}
         data-home-category-strip
         aria-hidden={!stripVisible}
+        inert={!stripVisible}
         className={`z-30 bg-gray-50/95 backdrop-blur-sm border-b border-gray-100 px-4 pt-1 pb-2 transition-[transform,opacity] duration-300 ease-out will-change-transform ${
           isPinned ? 'fixed left-0 right-0' : 'relative'
         } ${stripVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
@@ -842,14 +843,14 @@ export default function HomePage() {
         },
         {
           key: 'loading-2',
-          title: 'Home Appliances',
+          title: 'Loading products',
           products: [],
           loading: true,
           isPersonalized: false,
         },
         {
           key: 'loading-3',
-          title: 'Kitchen Appliances',
+          title: 'More to explore',
           products: [],
           loading: true,
           isPersonalized: false,
@@ -1206,7 +1207,6 @@ export default function HomePage() {
               title={spotlightSection.title}
               products={spotlightSection.products}
               sourceTag={spotlightSection.sourceTag}
-              loading={homeFeedQuery.isLoading}
               paddingClass="px-2 md:px-4"
             />
           ) : null}

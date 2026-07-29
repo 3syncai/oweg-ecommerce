@@ -12,7 +12,10 @@ export async function GET() {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unable to build home feed";
-    return NextResponse.json({ error: message, sections: [], spotlight: null, popular: null }, { status: 500 });
+    console.error("home feed failed", err);
+    return NextResponse.json(
+      { error: "Unable to load home feed", sections: [], spotlight: null, popular: null },
+      { status: 500 }
+    );
   }
 }

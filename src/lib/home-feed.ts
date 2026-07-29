@@ -35,6 +35,8 @@ const MAX_SECTIONS = 6;
 const MAX_PER_SECTION = 12;
 const PER_CATEGORY_FETCH = 24;
 const MAX_CATEGORIES_TO_PROBE = 16;
+const CATEGORY_FETCH_CONCURRENCY = 4;
+const CATEGORY_FETCH_TIMEOUT_MS = 8000;
 
 function humanizeHandle(handle?: string | null) {
   if (!handle) return "Products";
@@ -78,6 +80,73 @@ function sortAndSlice(products: MedusaProduct[], limit = MAX_PER_SECTION): HomeF
     .slice(0, limit);
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const current = nextIndex++;
+      results[current] = await mapper(items[current], current);
+    }
+  }
+
+  const poolSize = Math.max(1, Math.min(concurrency, items.length || 1));
+  await Promise.all(Array.from({ length: poolSize }, () => worker()));
+  return results;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("category fetch timeout")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
+type FilledSection = HomeFeedSection & { stockCount: number };
+
+async function fetchCategorySection(cat: MedusaCategory): Promise<FilledSection | null> {
+  if (!cat.id) return null;
+  try {
+    const list = await withTimeout(
+      fetchProductsByCategoryId(cat.id, PER_CATEGORY_FETCH, {
+        includeSubcategories: true,
+      }),
+      CATEGORY_FETCH_TIMEOUT_MS
+    );
+    const products = Array.isArray(list.products) ? list.products : [];
+    if (!products.length) return null;
+    const ranked = sortAndSlice(products, MAX_PER_SECTION);
+    if (!ranked.length) return null;
+    const handle = cat.handle || undefined;
+    const title = categoryTitle(cat);
+    return {
+      key: handle || cat.id,
+      title,
+      handle,
+      href: handle ? `/c/${encodeURIComponent(handle)}` : undefined,
+      products: ranked,
+      sourceTag: `category:${handle || cat.id}`,
+      stockCount: ranked.filter((p) => (p.inventory_quantity ?? 0) > 0).length,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function buildHomeFeed(): Promise<HomeFeedResult> {
   const categories = await fetchCategories({ revalidate: 120 });
   const roots = categories
@@ -90,36 +159,12 @@ export async function buildHomeFeed(): Promise<HomeFeedResult> {
     })
     .slice(0, MAX_CATEGORIES_TO_PROBE);
 
-  const settled = await Promise.all(
-    roots.map(async (cat) => {
-      if (!cat.id) return null;
-      try {
-        const list = await fetchProductsByCategoryId(cat.id, PER_CATEGORY_FETCH, {
-          includeSubcategories: true,
-        });
-        const products = Array.isArray(list.products) ? list.products : [];
-        if (!products.length) return null;
-        const ranked = sortAndSlice(products, MAX_PER_SECTION);
-        if (!ranked.length) return null;
-        const handle = cat.handle || undefined;
-        const title = categoryTitle(cat);
-        return {
-          key: handle || cat.id,
-          title,
-          handle,
-          href: handle ? `/c/${encodeURIComponent(handle)}` : undefined,
-          products: ranked,
-          sourceTag: `category:${handle || cat.id}`,
-          stockCount: ranked.filter((p) => (p.inventory_quantity ?? 0) > 0).length,
-        };
-      } catch {
-        return null;
-      }
-    })
+  const settled = await mapWithConcurrency(roots, CATEGORY_FETCH_CONCURRENCY, (cat) =>
+    fetchCategorySection(cat)
   );
 
   const filled = settled
-    .filter((section): section is NonNullable<typeof section> => Boolean(section))
+    .filter((section): section is FilledSection => Boolean(section))
     .sort((a, b) => {
       if (b.stockCount !== a.stockCount) return b.stockCount - a.stockCount;
       return b.products.length - a.products.length;
@@ -167,3 +212,4 @@ export async function buildHomeFeed(): Promise<HomeFeedResult> {
     },
   };
 }
+

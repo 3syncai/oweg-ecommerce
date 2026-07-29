@@ -188,14 +188,6 @@ const Header: React.FC = () => {
     const se = document.scrollingElement;
     return se?.scrollTop || window.pageYOffset || window.scrollY || 0;
   }, []);
-
-  const setScrollChromeVisible = React.useCallback((visible: boolean) => {
-    setShowTopBarMobile(visible);
-    setShowDesktopCategories(visible);
-    if (typeof document !== "undefined") {
-      document.documentElement.dataset.owegScrollChrome = visible ? "show" : "hide";
-    }
-  }, []);
   const [mobilePincode, setMobilePincode] = React.useState("");
   const [mobilePlace, setMobilePlace] = React.useState<string | null>(null);
   const [pinModalOpen, setPinModalOpen] = React.useState(false);
@@ -216,6 +208,18 @@ const Header: React.FC = () => {
   // dropdown states for portal:
   const [activeCategoryId, setActiveCategoryId] = React.useState<string | null>(null);
   const [allOpen, setAllOpen] = React.useState(false);
+
+  const setScrollChromeVisible = React.useCallback((visible: boolean) => {
+    setShowTopBarMobile(visible);
+    setShowDesktopCategories(visible);
+    if (!visible) {
+      setActiveCategoryId(null);
+      setAllOpen(false);
+    }
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.owegScrollChrome = visible ? "show" : "hide";
+    }
+  }, []);
 
   const [selectedFilter, setSelectedFilter] = React.useState<
     | { type: "collection"; id?: string; handle?: string; title: string }
@@ -676,13 +680,12 @@ const Header: React.FC = () => {
       window.requestAnimationFrame(() => {
         const now = Date.now();
         if (now < chromeIgnoreUntilRef.current) {
-          lastMobileScrollYRef.current = readMobileScrollY();
           ticking = false;
           return;
         }
         const y = readMobileScrollY();
         const delta = y - lastMobileScrollYRef.current;
-        let nextVisible = true;
+        let nextVisible: boolean | null = null;
         if (y < 24) {
           nextVisible = true;
         } else if (delta > 8) {
@@ -690,7 +693,7 @@ const Header: React.FC = () => {
         } else if (delta < -8) {
           nextVisible = true;
         } else {
-          lastMobileScrollYRef.current = y;
+          // Keep anchor so slow scrolls accumulate past the threshold.
           ticking = false;
           return;
         }
@@ -1655,6 +1658,7 @@ const Header: React.FC = () => {
                           : "max-h-0 opacity-0 -translate-y-2 mt-0 pointer-events-none"
                       }`}
                       aria-hidden={!showTopBarMobile}
+                      inert={!showTopBarMobile}
                     >
                     <div className="relative mobile-search-bar">
                       <Input
@@ -1724,6 +1728,7 @@ const Header: React.FC = () => {
                 : "max-h-0 opacity-0 -translate-y-2 pointer-events-none"
             }`}
             aria-hidden={!showDesktopCategories}
+            inert={!showDesktopCategories}
             data-desktop-category-nav
           >
             <div ref={desktopNavRef} className="w-full px-4 sm:px-6 lg:px-8">
