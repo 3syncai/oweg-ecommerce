@@ -422,6 +422,13 @@ function MobileCategoryGrid({
   loading: boolean;
 }) {
   const [imageLoaded, setImageLoaded] = useState<Record<string, boolean>>({});
+  const [stripVisible, setStripVisible] = useState(true);
+  const [isPinned, setIsPinned] = useState(false);
+  const [stripHeight, setStripHeight] = useState(0);
+  const isPinnedRef = useRef(false);
+  const stripHeightRef = useRef(0);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const normalize = (value?: string) =>
     (value || '')
       .toLowerCase()
@@ -439,93 +446,191 @@ function MobileCategoryGrid({
       scrollRef.current.scrollBy({ left: 240, behavior: 'smooth' });
     }
   };
+
+  const readHeaderHeight = () => {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--app-header-height');
+    const parsed = Number.parseFloat(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 136;
+  };
+
+  // Follow shared header chrome signal so search + categories hide/show together.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncFromChrome = () => {
+      const chrome = document.documentElement.dataset.owegScrollChrome;
+      const nextVisible = chrome !== 'hide';
+      setStripVisible((prev) => {
+        if (prev === nextVisible) return prev;
+        return nextVisible;
+      });
+    };
+    syncFromChrome();
+    const observer = new MutationObserver(syncFromChrome);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-oweg-scroll-chrome'],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(() => {
+        const headerH = readHeaderHeight();
+        const sentinelTop = sentinelRef.current?.getBoundingClientRect().top ?? 0;
+        const nextPinned = sentinelTop <= headerH + 1;
+        if (nextPinned !== isPinnedRef.current) {
+          isPinnedRef.current = nextPinned;
+          setIsPinned(nextPinned);
+        }
+        ticking = false;
+      });
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      document.removeEventListener('scroll', onScroll, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!panelRef.current) return;
+    const el = panelRef.current;
+    const apply = () => {
+      // Measure natural height while visible to keep spacer accurate.
+      const h = el.scrollHeight || el.getBoundingClientRect().height || 0;
+      if (h > 0) {
+        stripHeightRef.current = h;
+        setStripHeight(h);
+      }
+    };
+    apply();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(apply) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', apply);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', apply);
+    };
+  }, []);
+
   return (
-    <div className="md:hidden px-4 mb-4 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          
-          <h3 className="text-lg font-semibold text-gray-900">Shop by category</h3>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={scrollLeft}
-            className="w-9 h-9 rounded-full border border-emerald-200 text-emerald-700 bg-emerald-50 flex items-center justify-center shadow-sm"
-            aria-label="Scroll categories left"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={scrollRight}
-            className="w-9 h-9 rounded-full border border-emerald-200 text-emerald-700 bg-emerald-50 flex items-center justify-center shadow-sm"
-            aria-label="Scroll categories right"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+    <div className="md:hidden mb-4">
+      <div ref={sentinelRef} data-home-category-sentinel aria-hidden className="h-0 w-full" />
+      {isPinned ? (
+        <div
+          aria-hidden
+          style={{
+            height: stripVisible ? stripHeight : 0,
+            transition: 'height 300ms ease-out',
+          }}
+        />
+      ) : null}
+      <div
+        ref={panelRef}
+        data-home-category-strip
+        aria-hidden={!stripVisible}
+        className={`z-30 bg-gray-50/95 backdrop-blur-sm border-b border-gray-100 px-4 pt-1 pb-2 transition-[transform,opacity] duration-300 ease-out will-change-transform ${
+          isPinned ? 'fixed left-0 right-0' : 'relative'
+        } ${stripVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+        style={{
+          top: isPinned ? 'var(--app-header-height, 136px)' : undefined,
+          transform: stripVisible ? 'translateY(0)' : 'translateY(-110%)',
+        }}
+      >
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Shop by category</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={scrollLeft}
+                className="w-9 h-9 rounded-full border border-emerald-200 text-emerald-700 bg-emerald-50 flex items-center justify-center shadow-sm"
+                aria-label="Scroll categories left"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={scrollRight}
+                className="w-9 h-9 rounded-full border border-emerald-200 text-emerald-700 bg-emerald-50 flex items-center justify-center shadow-sm"
+                aria-label="Scroll categories right"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          {loading ? (
+            <div className="flex gap-3 overflow-x-auto scrollbar-hidden pb-1" ref={scrollRef} aria-label="Loading categories">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div
+                  key={`cat-skeleton-${idx}`}
+                  className="group flex flex-col items-center min-w-[104px] max-w-[104px] text-center gap-2 animate-pulse"
+                >
+                  <div className="relative w-24 h-24 rounded-full bg-emerald-50 border border-emerald-100 shadow-inner" />
+                  <div className="h-3 w-20 rounded bg-gray-200" />
+                </div>
+              ))}
+            </div>
+          ) : categories.length === 0 ? (
+            <div className="text-sm text-gray-500 py-2">Categories will appear here soon.</div>
+          ) : (
+            <div className="flex gap-3 overflow-x-auto scrollbar-hidden pb-1" ref={scrollRef}>
+              {categories.map((cat) => (
+                <Link
+                  key={cat.id}
+                  href={cat.handle ? `/c/${encodeURIComponent(cat.handle)}` : '#'}
+                  className="group flex flex-col items-center min-w-[118px] max-w-[118px] text-center"
+                >
+                  {(() => {
+                    const slug = normalize(cat.handle) || normalize(cat.title);
+                    const mappedImage = categoryImageMap[slug] || categoryImageMap[cat.handle || ''];
+                    const tokens = slug.split('-').filter(Boolean);
+                    const keywordHit = categoryImageKeywords.find(({ includes }) =>
+                      includes.every((kw) => tokens.some((t) => t.includes(kw)))
+                    );
+                    const displayImage =
+                      mappedImage ||
+                      (keywordHit ? keywordHit.image : undefined) ||
+                      '/oweg_logo.png';
+                    const loaded = imageLoaded[cat.id];
+                    return (
+                      <div className="relative w-28 h-28 flex items-center justify-center overflow-hidden transition-transform duration-200 group-hover:-translate-y-1">
+                        {!loaded && (
+                          <div className="absolute inset-2 rounded-full bg-gradient-to-br from-gray-100 via-white to-gray-100 animate-pulse" />
+                        )}
+                        {displayImage ? (
+                          <Image
+                            src={displayImage}
+                            alt={cat.title}
+                            fill
+                            className="object-contain"
+                            sizes="196px"
+                            onLoadingComplete={() =>
+                              setImageLoaded((prev) => ({ ...prev, [cat.id]: true }))
+                            }
+                            onLoad={() => setImageLoaded((prev) => ({ ...prev, [cat.id]: true }))}
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gray-100 rounded-xl" />
+                        )}
+                      </div>
+                    );
+                  })()}
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-            {loading ? (
-        <div className="flex gap-3 overflow-x-auto scrollbar-hidden pb-1" ref={scrollRef} aria-label="Loading categories">
-          {Array.from({ length: 6 }).map((_, idx) => (
-            <div
-              key={`cat-skeleton-${idx}`}
-              className="group flex flex-col items-center min-w-[104px] max-w-[104px] text-center gap-2 animate-pulse"
-            >
-              <div className="relative w-24 h-24 rounded-full bg-emerald-50 border border-emerald-100 shadow-inner" />
-              <div className="h-3 w-20 rounded bg-gray-200" />
-            </div>
-          ))}
-        </div>
-      ) : categories.length === 0 ? (
-        <div className="text-sm text-gray-500 py-2">Categories will appear here soon.</div>
-      ) : (
-        <div className="flex gap-3 overflow-x-auto scrollbar-hidden pb-1" ref={scrollRef}>
-          {categories.map((cat) => (
-            <Link
-              key={cat.id}
-              href={cat.handle ? `/c/${encodeURIComponent(cat.handle)}` : '#'}
-              className="group flex flex-col items-center min-w-[118px] max-w-[118px] text-center"
-            >
-              {(() => {
-                const slug = normalize(cat.handle) || normalize(cat.title);
-                const mappedImage = categoryImageMap[slug] || categoryImageMap[cat.handle || ''];
-                const tokens = slug.split('-').filter(Boolean);
-                const keywordHit = categoryImageKeywords.find(({ includes }) =>
-                  includes.every((kw) => tokens.some((t) => t.includes(kw)))
-                );
-                const displayImage =
-                  mappedImage ||
-                  (keywordHit ? keywordHit.image : undefined) ||
-                  '/oweg_logo.png';
-                const loaded = imageLoaded[cat.id];
-                return (
-                  <div className="relative w-28 h-28 flex items-center justify-center overflow-hidden transition-transform duration-200 group-hover:-translate-y-1">
-                    {!loaded && (
-                      <div className="absolute inset-2 rounded-full bg-gradient-to-br from-gray-100 via-white to-gray-100 animate-pulse" />
-                    )}
-                    {displayImage ? (
-                      <Image
-                        src={displayImage}
-                        alt={cat.title}
-                        fill
-                        className="object-contain"
-                        sizes="196px"
-                        onLoadingComplete={() =>
-                          setImageLoaded((prev) => ({ ...prev, [cat.id]: true }))
-                        }
-                        onLoad={() => setImageLoaded((prev) => ({ ...prev, [cat.id]: true }))}
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-gray-100 rounded-xl" />
-                    )}
-                  </div>
-                );
-              })()}
-            </Link>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -590,30 +695,30 @@ export default function HomePage() {
     void hydratePlace();
   }, [pincode, placeName]);
 
-  const showDefaultSections = !customer || !hasPreferences;
+  type FeedSectionPayload = {
+    key: string;
+    title: string;
+    handle?: string;
+    href?: string;
+    products: UIProduct[];
+    sourceTag: string;
+  };
 
-  const nonStickQuery = useQuery({
-    queryKey: ['home-products', 'Non-Stick Cookwares'],
-    queryFn: () => fetchProducts({ tag: 'Non-Stick Cookwares', limit: 40 }),
-    staleTime: 1000 * 60 * 5,
-    enabled: showDefaultSections,
-  });
-  const fanQuery = useQuery({
-    queryKey: ['home-products', 'Fans'],
-    queryFn: () => fetchProducts({ tag: 'Fans', limit: 40 }),
-    staleTime: 1000 * 60 * 5,
-    enabled: showDefaultSections,
-  });
-  const mensQuery = useQuery({
-    queryKey: ['home-products', 'Mens Cloths'],
-    queryFn: () => fetchProducts({ tag: 'Mens Cloths', limit: 20 }),
-    staleTime: 1000 * 60 * 5,
-    enabled: showDefaultSections,
-  });
-  const bagsQuery = useQuery({
-    queryKey: ['home-products', 'Bags'],
-    queryFn: () => fetchProducts({ tag: 'Bags', limit: 40 }),
-    staleTime: 1000 * 60 * 5,
+  type HomeFeedPayload = {
+    sections: FeedSectionPayload[];
+    spotlight: FeedSectionPayload | null;
+    popular: FeedSectionPayload | null;
+    meta?: { categoriesTried: number; categoriesWithProducts: number; totalProducts: number };
+  };
+
+  const homeFeedQuery = useQuery({
+    queryKey: ['home-feed'],
+    queryFn: async (): Promise<HomeFeedPayload> => {
+      const res = await fetch('/api/home/feed', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Unable to load home feed');
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 2,
   });
 
   const personalizedSections = useMemo(() => {
@@ -644,31 +749,55 @@ export default function HomePage() {
       placeholderData: (prev: UIProduct[] | undefined) => prev,
     })),
   });
-  const defaultSections = [
-    {
-      title: 'Non-Stick Cookwares',
-      products: nonStickQuery.data ?? [],
-      loading: nonStickQuery.isLoading,
-      sourceTag: 'Non-Stick Cookwares',
-      isPersonalized: false,
-    },
-    {
-      title: 'Fans',
-      products: fanQuery.data ?? [],
-      loading: fanQuery.isLoading,
-      sourceTag: 'Fans',
-      isPersonalized: false,
-    },
-    {
-      title: 'Mens Cloths',
-      products: mensQuery.data ?? [],
-      loading: mensQuery.isLoading,
-      sourceTag: 'Mens Cloths',
-      isPersonalized: false,
-    },
-  ];
+
+  const autoSections = useMemo(() => {
+    const feed = homeFeedQuery.data;
+    if (!feed) return [] as Array<{
+      title: string;
+      products: UIProduct[];
+      loading: boolean;
+      sourceTag?: string;
+      isPersonalized: boolean;
+      key: string;
+    }>;
+
+    const rows: Array<{
+      title: string;
+      products: UIProduct[];
+      loading: boolean;
+      sourceTag?: string;
+      isPersonalized: boolean;
+      key: string;
+    }> = [];
+
+    if (feed.popular?.products?.length) {
+      rows.push({
+        key: feed.popular.key || 'popular-picks',
+        title: feed.popular.title,
+        products: feed.popular.products,
+        loading: false,
+        sourceTag: feed.popular.sourceTag,
+        isPersonalized: false,
+      });
+    }
+
+    for (const section of feed.sections || []) {
+      if (!section?.products?.length) continue;
+      rows.push({
+        key: section.key || section.title,
+        title: section.title,
+        products: section.products,
+        loading: false,
+        sourceTag: section.sourceTag,
+        isPersonalized: false,
+      });
+    }
+
+    return rows;
+  }, [homeFeedQuery.data]);
 
   const personalizedSectionsData = personalizedSections.map((section, idx) => ({
+    key: section.key,
     title: section.title,
     products: personalizedQueries[idx]?.data ?? [],
     loading:
@@ -684,8 +813,56 @@ export default function HomePage() {
     personalizedSections.length > 0 &&
     personalizedSectionsData.some((section) => section.loading);
 
-  const sectionsToRender =
-    showDefaultSections || personalizedSectionsData.length === 0 ? defaultSections : personalizedSectionsData;
+  const sectionsToRender = useMemo(() => {
+    const personalizedFilled = personalizedSectionsData.filter(
+      (section) => section.loading || (section.products?.length ?? 0) > 0
+    );
+    const seen = new Set<string>();
+    const merged: typeof autoSections = [];
+
+    const push = (section: (typeof autoSections)[number]) => {
+      const key = (section.key || section.title || '').toLowerCase();
+      if (!key || seen.has(key)) return;
+      if (!section.loading && !(section.products?.length > 0)) return;
+      seen.add(key);
+      merged.push(section);
+    };
+
+    personalizedFilled.forEach(push);
+    autoSections.forEach(push);
+
+    if (merged.length === 0 && homeFeedQuery.isLoading) {
+      return [
+        {
+          key: 'loading-1',
+          title: 'Popular picks',
+          products: [],
+          loading: true,
+          isPersonalized: false,
+        },
+        {
+          key: 'loading-2',
+          title: 'Home Appliances',
+          products: [],
+          loading: true,
+          isPersonalized: false,
+        },
+        {
+          key: 'loading-3',
+          title: 'Kitchen Appliances',
+          products: [],
+          loading: true,
+          isPersonalized: false,
+        },
+      ];
+    }
+
+    return merged;
+  }, [autoSections, personalizedSectionsData, homeFeedQuery.isLoading]);
+
+  const spotlightSection = homeFeedQuery.data?.spotlight?.products?.length
+    ? homeFeedQuery.data.spotlight
+    : null;
 
   const categoriesQuery = useQuery({
     queryKey: ['home-categories'],
@@ -770,22 +947,21 @@ export default function HomePage() {
   // Category images use public assets only in mobile grid.
   const loading =
     sectionsToRender.some((section) => section.loading) ||
-    bagsQuery.isLoading;
-  const defaultProductsError = nonStickQuery.error || fanQuery.error || mensQuery.error;
+    homeFeedQuery.isLoading ||
+    personalizedLoading;
+  const feedError = homeFeedQuery.error;
   const personalizedError = personalizedQueries.find((q) => q?.error)?.error;
-  const errorMessage = showDefaultSections
-    ? defaultProductsError instanceof Error
-      ? defaultProductsError.message
-      : defaultProductsError
+  const errorMessage =
+    feedError instanceof Error
+      ? feedError.message
+      : feedError
         ? 'Unable to load products'
-        : null
-      : personalizedError instanceof Error
-        ? personalizedError.message
-        : personalizedError
-          ? 'Unable to load your picks'
-          : null;
-  const additionalError = bagsQuery.error;
-  const displayError = errorMessage || (additionalError ? 'Unable to load featured items' : null);
+        : personalizedError instanceof Error
+          ? personalizedError.message
+          : personalizedError
+            ? 'Unable to load your picks'
+            : null;
+  const displayError = errorMessage;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -973,7 +1149,7 @@ export default function HomePage() {
         ) : null}
 
         {sectionsToRender.map((section, idx) => (
-          <div key={`${section.title}-${idx}`}>
+          <div key={`${section.key || section.title}-${idx}`}>
             <ProductCarousel
               title={section.title}
               products={section.products}
@@ -985,13 +1161,13 @@ export default function HomePage() {
                 <PromoBanners />
               </div>
             )}
-            {section.title === 'Fans' && (
+            {idx === 2 && (
               <div className="md:hidden px-4 mb-4 space-y-4">
                 <MobileBanner src="/App_Banner-5.png" href="/c/home-appliances" alt="Shop home appliances" />
                 <MobileBanner src="/App_Banner-6.png" href="/c/ceiling-fans" alt="Shop ceiling fans" />
               </div>
             )}
-            {section.title === 'Mens Cloths' && (
+            {idx === 3 && (
               <div className="md:hidden px-4 mt-4 space-y-4">
                 <MobileBanner
                   src="/App_Banner-7.png"
@@ -1025,13 +1201,15 @@ export default function HomePage() {
               </Link>
             ))}
           </div>
-          <ProductCarousel
-            title="Bags"
-            products={bagsQuery.data ?? []}
-            sourceTag="Bags"
-            loading={bagsQuery.isLoading}
-            paddingClass="px-2 md:px-4"
-          />
+          {spotlightSection ? (
+            <ProductCarousel
+              title={spotlightSection.title}
+              products={spotlightSection.products}
+              sourceTag={spotlightSection.sourceTag}
+              loading={homeFeedQuery.isLoading}
+              paddingClass="px-2 md:px-4"
+            />
+          ) : null}
         </div>
         {brandCollectionsQuery.isLoading ? (
           <div className="px-4 mt-10">
