@@ -527,8 +527,9 @@ function MobileCategoryGrid({
         <div
           aria-hidden
           style={{
-            height: stripVisible ? stripHeight : 0,
-            transition: 'height 300ms ease-out',
+            // Keep spacer stable while pinned — collapsing it with chrome hide/show
+            // jumps scrollY and fights the header chrome loop.
+            height: stripHeight,
           }}
         />
       ) : null}

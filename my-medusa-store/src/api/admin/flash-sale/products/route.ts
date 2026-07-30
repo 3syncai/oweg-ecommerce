@@ -2,87 +2,275 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { Client } from "pg"
 
+type CategoryRow = {
+  id: string
+  parent_category_id?: string | null
+}
+
+/**
+ * Selected category + all descendants (products often hang off leaf categories
+ * while admins filter by a parent like "Hardware").
+ * Prefers SQL mpath when a DB client is available; falls back to module list.
+ */
+async function expandCategoryIds(
+  productModuleService: any,
+  rootCategoryId: string,
+  dbClient?: Client | null
+): Promise<string[]> {
+  if (dbClient) {
+    try {
+      const result = await dbClient.query(
+        `WITH root AS (
+           SELECT id, mpath
+           FROM product_category
+           WHERE id = $1 AND deleted_at IS NULL
+         )
+         SELECT c.id
+         FROM product_category c
+         CROSS JOIN root r
+         WHERE c.deleted_at IS NULL
+           AND (
+             c.id = r.id
+             OR (r.mpath IS NOT NULL AND r.mpath <> '' AND c.mpath LIKE r.mpath || '%')
+             OR c.parent_category_id = r.id
+           )`,
+        [rootCategoryId]
+      )
+      const ids = result.rows.map((r: { id: string }) => r.id).filter(Boolean)
+      if (ids.length) {
+        return Array.from(new Set(ids))
+      }
+    } catch (err: any) {
+      console.warn(
+        "[Flash Sale Products] SQL category expand failed:",
+        err?.message
+      )
+    }
+  }
+
+  let allCategories: CategoryRow[] = []
+
+  try {
+    if (typeof productModuleService.listProductCategories === "function") {
+      allCategories =
+        (await productModuleService.listProductCategories(
+          {},
+          { take: 10_000 }
+        )) || []
+    }
+  } catch (err: any) {
+    console.warn(
+      "[Flash Sale Products] listProductCategories failed:",
+      err?.message
+    )
+  }
+
+  if (!allCategories.length) {
+    return [rootCategoryId]
+  }
+
+  const childrenByParent = new Map<string, string[]>()
+  for (const cat of allCategories) {
+    const parentId = cat.parent_category_id
+    if (!parentId) continue
+    const list = childrenByParent.get(parentId) || []
+    list.push(cat.id)
+    childrenByParent.set(parentId, list)
+  }
+
+  const ids = new Set<string>([rootCategoryId])
+  const queue = [rootCategoryId]
+  while (queue.length) {
+    const current = queue.shift()!
+    for (const childId of childrenByParent.get(current) || []) {
+      if (ids.has(childId)) continue
+      ids.add(childId)
+      queue.push(childId)
+    }
+  }
+
+  return Array.from(ids)
+}
+
+/**
+ * Resolve product IDs linked to any of the given category IDs via the
+ * product↔category join table (avoids listProducts without relations).
+ * Returns null if the join table could not be queried.
+ */
+async function productIdsForCategories(
+  dbClient: Client,
+  categoryIds: string[]
+): Promise<Set<string> | null> {
+  if (!categoryIds.length) return new Set()
+
+  const tableCandidates = [
+    "product_category_product",
+    "product_product_category",
+  ]
+  const columnCombos = [
+    { product: "product_id", category: "product_category_id" },
+    { product: "product_id", category: "category_id" },
+  ]
+
+  const placeholders = categoryIds.map((_, i) => `$${i + 1}`).join(",")
+
+  for (const table of tableCandidates) {
+    for (const cols of columnCombos) {
+      try {
+        const result = await dbClient.query(
+          `SELECT DISTINCT ${cols.product} AS product_id
+           FROM ${table}
+           WHERE ${cols.category} IN (${placeholders})`,
+          categoryIds
+        )
+        const productIds = new Set<string>()
+        for (const row of result.rows) {
+          if (row.product_id) productIds.add(row.product_id)
+        }
+        return productIds
+      } catch {
+        // wrong table/columns — try next
+      }
+    }
+  }
+
+  return null
+}
+
 // Get products with filters for flash sale selection
 export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
   let dbClient: Client | null = null
-  
+
   try {
     const productModuleService = req.scope.resolve(Modules.PRODUCT)
     const queryParams = req.query
-    
+
     const { category, collection, type, search, limit = "100" } = queryParams
     const limitNum = parseInt(limit as string) || 100
-    
-    // Fetch all products (or use search if provided). We hard-filter to
-    // status=published so admins can only pick live products into a flash
-    // sale; draft / proposed / rejected products never appear in the picker.
+    const categoryId =
+      typeof category === "string" && category.trim() ? category.trim() : ""
+
+    const databaseUrl = process.env.DATABASE_URL
+    if (!databaseUrl) {
+      throw new Error("DATABASE_URL environment variable is not set")
+    }
+
+    dbClient = new Client({ connectionString: databaseUrl })
+    await dbClient.connect()
+
+    // When filtering by category, resolve parent + descendants and restrict
+    // to products linked in the join table before other filters.
+    let categoryProductIds: Set<string> | null = null
+    let categoryIdsForFallback: string[] = []
+    if (categoryId) {
+      categoryIdsForFallback = await expandCategoryIds(
+        productModuleService,
+        categoryId,
+        dbClient
+      )
+      categoryProductIds = await productIdsForCategories(
+        dbClient,
+        categoryIdsForFallback
+      )
+      console.log(
+        `[Flash Sale Products] Category ${categoryId} → ${categoryIdsForFallback.length} category ids, linked products: ${
+          categoryProductIds ? categoryProductIds.size : "sql-miss"
+        }`
+      )
+    }
+
+    // Fetch published products (search when provided).
+    // Prefer listing by category-linked IDs so count is not capped by default take.
+    const LIST_TAKE = 10_000
     let allProducts: any[] = []
 
-    if (search) {
-      allProducts = await productModuleService.listProducts({
-        q: search as string,
-        status: ["published"],
-      })
+    if (categoryId && categoryProductIds && categoryProductIds.size === 0 && !search) {
+      allProducts = []
+    } else if (categoryId && categoryProductIds && categoryProductIds.size > 0 && !search) {
+      const ids = Array.from(categoryProductIds)
+      allProducts = await productModuleService.listProducts(
+        {
+          id: ids,
+          status: ["published"],
+        },
+        { take: ids.length || 1 }
+      )
+    } else if (search) {
+      allProducts = await productModuleService.listProducts(
+        {
+          q: search as string,
+          status: ["published"],
+        },
+        {
+          take: LIST_TAKE,
+          ...(categoryId && categoryProductIds === null
+            ? { relations: ["categories"] }
+            : {}),
+        }
+      )
+    } else if (categoryId && categoryProductIds === null) {
+      allProducts = await productModuleService.listProducts(
+        {
+          status: ["published"],
+        },
+        { take: LIST_TAKE, relations: ["categories"] }
+      )
     } else {
-      allProducts = await productModuleService.listProducts({
-        status: ["published"],
-      })
+      allProducts = await productModuleService.listProducts(
+        {
+          status: ["published"],
+        },
+        { take: LIST_TAKE }
+      )
     }
-    
-    // Filter products in memory based on category, collection, and type
+
     let filteredProducts = allProducts
-    
-    if (category) {
-      filteredProducts = filteredProducts.filter((product: any) => {
-        return product.categories?.some((cat: any) => cat.id === category) || false
-      })
+
+    if (categoryId) {
+      if (categoryProductIds) {
+        filteredProducts = filteredProducts.filter((product: any) =>
+          categoryProductIds!.has(product.id)
+        )
+      } else {
+        const idSet = new Set(categoryIdsForFallback)
+        filteredProducts = filteredProducts.filter((product: any) =>
+          product.categories?.some((cat: any) => idSet.has(cat.id))
+        )
+      }
     }
-    
+
     if (collection) {
       filteredProducts = filteredProducts.filter((product: any) => {
-        return product.collection_id === collection || 
-               product.collections?.some((col: any) => col.id === collection) || false
+        return (
+          product.collection_id === collection ||
+          product.collections?.some((col: any) => col.id === collection) ||
+          false
+        )
       })
     }
-    
+
     if (type) {
       filteredProducts = filteredProducts.filter((product: any) => {
-        return product.type_id === type || product.type?.id === type || false
+        return (
+          product.type_id === type || product.type?.id === type || false
+        )
       })
     }
-    
-    // Apply limit after filtering
+
+    const totalCount = filteredProducts.length
     filteredProducts = filteredProducts.slice(0, limitNum)
-    
-    // Get product IDs
+
     const productIds = filteredProducts.map((p: any) => p.id).filter(Boolean)
-    
+
     if (productIds.length === 0) {
-      return res.json({ products: [] })
+      return res.json({ products: [], count: 0, limit: limitNum })
     }
-    
-    // Map prices directly from database
+
     const pricesMap = new Map<string, number>()
-    
+
     try {
-      // Connect to database
-      const databaseUrl = process.env.DATABASE_URL
-      if (!databaseUrl) {
-        throw new Error("DATABASE_URL environment variable is not set")
-      }
-      
-      dbClient = new Client({
-        connectionString: databaseUrl,
-      })
-      await dbClient.connect()
-      
-      console.log(`[Flash Sale Products] Querying database for prices of ${productIds.length} products...`)
-      
-      // Based on the actual database structure:
-      // product_variant -> product_variant_price_set (variant_id) -> price_set (id) -> price (price_set_id)
       const placeholders = productIds.map((_, i) => `$${i + 1}`).join(",")
-      
-      // Query: variant -> link table -> price_set -> price
+
       const priceQuery = `
         SELECT DISTINCT ON (pv.product_id)
           pv.product_id,
@@ -97,142 +285,56 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
           AND p.amount IS NOT NULL
           AND p.amount > 0
           AND p.deleted_at IS NULL
-        ORDER BY pv.product_id, 
+        ORDER BY pv.product_id,
                  CASE WHEN p.currency_code = 'inr' THEN 0 ELSE 1 END,
                  p.amount ASC
       `
-      
-      console.log(`[Flash Sale Products] Executing price query for ${productIds.length} products...`)
+
       const result = await dbClient.query(priceQuery, productIds)
-      
-      console.log(`[Flash Sale Products] Query returned ${result.rows.length} price rows`)
-      
-      // Map prices: product_id -> amount (prefer INR)
-      // Amount is already in rupees, not in cents/paise
+
       result.rows.forEach((row: any) => {
         if (row.product_id && row.amount) {
-          // Convert amount to number (it might be a string from database)
-          const amount = typeof row.amount === 'string' ? parseFloat(row.amount) : Number(row.amount)
-          
+          const amount =
+            typeof row.amount === "string"
+              ? parseFloat(row.amount)
+              : Number(row.amount)
+
           if (isNaN(amount) || amount <= 0) {
-            return // Skip invalid amounts
+            return
           }
-          
+
           const existingPrice = pricesMap.get(row.product_id)
           const isInr = row.currency_code?.toLowerCase() === "inr"
-          
+
           if (!existingPrice) {
             pricesMap.set(row.product_id, amount)
           } else if (isInr) {
-            // Replace with INR price (prefer INR)
             pricesMap.set(row.product_id, amount)
           }
         }
       })
-      
-      console.log(`[Flash Sale Products] Mapped ${pricesMap.size} prices from ${result.rows.length} rows`)
-      
-      // If still no prices, log table structure for debugging
-      if (pricesMap.size === 0 && result.rows.length === 0) {
-        console.log(`[Flash Sale Products] No prices found. Checking data structure...`)
-        
-        // Check if variants exist
-        const debugProductIds = productIds.slice(0, 5)
-        const debugPlaceholders = debugProductIds.map((_, i) => `$${i + 1}`).join(",")
-        const variantCheck = await dbClient.query(`
-          SELECT pv.id, pv.product_id
-          FROM product_variant pv
-          WHERE pv.product_id IN (${debugPlaceholders})
-          LIMIT 5
-        `, debugProductIds)
-        
-        console.log(`[Flash Sale Products] Sample variants (${variantCheck.rows.length}):`, variantCheck.rows)
-        
-        // Check if link table has data
-        if (variantCheck.rows.length > 0) {
-          const variantIds = variantCheck.rows.map((r: any) => r.id)
-          const linkCheck = await dbClient.query(`
-            SELECT pvps.variant_id, pvps.price_set_id
-            FROM product_variant_price_set pvps
-            WHERE pvps.variant_id IN (${variantIds.map((_, i) => `$${i + 1}`).join(",")})
-            LIMIT 5
-          `, variantIds.slice(0, 5))
-          
-          console.log(`[Flash Sale Products] Sample links (${linkCheck.rows.length}):`, linkCheck.rows)
-          
-          // Check if prices exist for those price sets
-          if (linkCheck.rows.length > 0) {
-            const priceSetIds = linkCheck.rows.map((r: any) => r.price_set_id)
-            const priceCheck = await dbClient.query(`
-              SELECT p.price_set_id, p.amount, p.currency_code
-              FROM price p
-              WHERE p.price_set_id IN (${priceSetIds.map((_, i) => `$${i + 1}`).join(",")})
-                AND p.deleted_at IS NULL
-              LIMIT 10
-            `, priceSetIds.slice(0, 10))
-            
-            console.log(`[Flash Sale Products] Sample prices (${priceCheck.rows.length}):`, priceCheck.rows)
-          }
-        }
-      }
-      
-      console.log(`[Flash Sale Products] Final: Mapped ${pricesMap.size} prices for ${productIds.length} products`)
-      if (pricesMap.size > 0) {
-        const sampleEntries = Array.from(pricesMap.entries()).slice(0, 5)
-        console.log(`[Flash Sale Products] Sample prices:`, sampleEntries.map(([productId, amount]) => ({
-          product_id: productId,
-          amount: amount,
-          amount_display: `₹${amount}` // Amount is already in rupees, no conversion needed
-        })))
-      } else {
-        console.warn(`[Flash Sale Products] WARNING: No prices mapped! All products will show ₹0`)
-      }
     } catch (dbError: any) {
-      console.error("[Flash Sale Products] Database query error:", dbError.message)
-      console.error("[Flash Sale Products] Error stack:", dbError.stack)
-      
-      // Try alternative query structure if the first one fails
-      if (dbClient) {
-        try {
-          console.log(`[Flash Sale Products] Trying alternative query structure...`)
-          
-          // Alternative: Check what tables actually exist
-          const tableCheck = await dbClient.query(`
-            SELECT table_name 
-            FROM information_schema.tables 
-            WHERE table_schema = 'public' 
-            AND (table_name LIKE '%price%' OR table_name LIKE '%variant%' OR table_name LIKE '%money%')
-            ORDER BY table_name
-          `)
-          
-          console.log(`[Flash Sale Products] Available tables:`, tableCheck.rows.map((r: any) => r.table_name))
-        } catch (checkError: any) {
-          console.error("[Flash Sale Products] Table check failed:", checkError.message)
-        }
-      }
-    } finally {
-      if (dbClient) {
-        await dbClient.end()
-        dbClient = null
-      }
+      console.error(
+        "[Flash Sale Products] Price query error:",
+        dbError.message
+      )
     }
-    
-    // Format products for response
+
     const formattedProducts = filteredProducts.map((product: any) => {
-      // Get price from map
       let price = 0
       if (pricesMap.has(product.id)) {
         const priceAmount = pricesMap.get(product.id) || 0
-        // Amount from database is already in rupees (not in cents/paise)
-        // Convert to number if it's a string
-        price = typeof priceAmount === 'string' ? parseFloat(priceAmount) : priceAmount
+        price =
+          typeof priceAmount === "string"
+            ? parseFloat(priceAmount)
+            : priceAmount
       }
-      
-      // Get first variant ID (products typically have at least one variant)
-      const variantId = product.variants && product.variants.length > 0 
-        ? product.variants[0].id 
-        : null
-      
+
+      const variantId =
+        product.variants && product.variants.length > 0
+          ? product.variants[0].id
+          : null
+
       return {
         id: product.id,
         title: product.title,
@@ -242,16 +344,27 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
         variant_id: variantId,
       }
     })
-    
-    return res.json({ products: formattedProducts })
+
+    return res.json({
+      products: formattedProducts,
+      count: totalCount,
+      limit: limitNum,
+    })
   } catch (error: any) {
     console.error("Error fetching products:", error)
-    return res.status(500).json({ 
+    return res.status(500).json({
       message: "Failed to fetch products",
-      error: error.message 
+      ...(process.env.NODE_ENV !== "production"
+        ? { error: error?.message }
+        : {}),
     })
   } finally {
-    // Connection already closed in inner finally block
-    // No need to close again
+    if (dbClient) {
+      try {
+        await dbClient.end()
+      } catch {
+        // ignore close errors
+      }
+    }
   }
 }

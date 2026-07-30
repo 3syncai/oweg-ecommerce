@@ -182,6 +182,8 @@ const Header: React.FC = () => {
   const [showDesktopCategories, setShowDesktopCategories] = React.useState(true);
   const lastMobileScrollYRef = React.useRef(0);
   const chromeIgnoreUntilRef = React.useRef(0);
+  const expandedHeaderHeightRef = React.useRef(0);
+  const chromeHiddenRef = React.useRef(false);
 
   const readMobileScrollY = React.useCallback(() => {
     if (typeof document === "undefined") return 0;
@@ -212,6 +214,7 @@ const Header: React.FC = () => {
   const setScrollChromeVisible = React.useCallback((visible: boolean) => {
     setShowTopBarMobile(visible);
     setShowDesktopCategories(visible);
+    chromeHiddenRef.current = !visible;
     if (!visible) {
       setActiveCategoryId(null);
       setAllOpen(false);
@@ -344,7 +347,16 @@ const Header: React.FC = () => {
 
     const syncHeaderHeight = () => {
       const height = headerEl.getBoundingClientRect().height || 0;
-      document.documentElement.style.setProperty("--app-header-height", `${height}px`);
+      // While chrome is collapsing/expanding, keep --app-header-height on the
+      // expanded size so main padding does not jump and fight the scroll chrome loop.
+      if (!chromeHiddenRef.current && height > 0) {
+        expandedHeaderHeightRef.current = height;
+      }
+      const applied =
+        chromeHiddenRef.current && expandedHeaderHeightRef.current > 0
+          ? expandedHeaderHeightRef.current
+          : height;
+      document.documentElement.style.setProperty("--app-header-height", `${applied}px`);
     };
 
     syncHeaderHeight();
@@ -361,7 +373,7 @@ const Header: React.FC = () => {
       if (observer) observer.disconnect();
       document.documentElement.style.removeProperty("--app-header-height");
     };
-  }, [isMobile, oweg10Visible]);
+  }, [isMobile, oweg10Visible, readMobileScrollY]);
 
   React.useEffect(() => {
     const navEl = desktopNavRef.current;
@@ -703,8 +715,18 @@ const Header: React.FC = () => {
             ? false
             : true;
         if (nextVisible !== current) {
-          chromeIgnoreUntilRef.current = Date.now() + 280;
+          chromeIgnoreUntilRef.current = Date.now() + 420;
           setScrollChromeVisible(nextVisible);
+          // Re-anchor after layout/transitions so induced scrollY does not bounce chrome.
+          window.requestAnimationFrame(() => {
+            lastMobileScrollYRef.current = readMobileScrollY();
+            window.requestAnimationFrame(() => {
+              lastMobileScrollYRef.current = readMobileScrollY();
+            });
+          });
+          window.setTimeout(() => {
+            lastMobileScrollYRef.current = readMobileScrollY();
+          }, 350);
         }
         lastMobileScrollYRef.current = y;
         ticking = false;

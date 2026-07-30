@@ -47,6 +47,17 @@ function significantTokens(normalizedQuery: string): string {
     .join(" ")
 }
 
+/** Explicit fuzziness for short catalog tokens (3–6 chars); AUTO otherwise. */
+function fuzzinessForQuery(normalizedQuery: string): 1 | 2 | "AUTO" {
+  const tokens = normalizedQuery.split(" ").filter(Boolean)
+  if (tokens.length === 0) return "AUTO"
+  const shortCatalog = tokens.every((t) => t.length >= 3 && t.length <= 6)
+  if (!shortCatalog) return "AUTO"
+  // Single short token: allow up to 2 edits (fane→fan, faan→fan after collapse)
+  if (tokens.length === 1) return 2
+  return 1
+}
+
 function buildScopeFilters(scope: ScopeFilters) {
   const filters: Record<string, unknown>[] = [
     { term: { status: "published" } },
@@ -75,6 +86,8 @@ function buildScopeFilters(scope: ScopeFilters) {
 }
 
 function buildUnifiedQuery(normalizedQuery: string, scope: ScopeFilters) {
+  const fuzziness = fuzzinessForQuery(normalizedQuery)
+
   return {
     function_score: {
       query: {
@@ -119,8 +132,9 @@ function buildUnifiedQuery(normalizedQuery: string, scope: ScopeFilters) {
                 query: normalizedQuery,
                 fields: ["title^5", "brand^3"],
                 type: "best_fields",
-                fuzziness: "AUTO",
+                fuzziness,
                 prefix_length: 1,
+                fuzzy_transpositions: true,
                 max_expansions: 50,
                 operator: "or",
                 boost: 1.8,
@@ -142,8 +156,9 @@ function buildUnifiedQuery(normalizedQuery: string, scope: ScopeFilters) {
                 query: normalizedQuery,
                 fields: ["title^4", "brand^2"],
                 type: "best_fields",
-                fuzziness: "AUTO",
+                fuzziness,
                 prefix_length: 0,
+                fuzzy_transpositions: true,
                 max_expansions: 50,
                 operator: "or",
                 minimum_should_match: 1,
