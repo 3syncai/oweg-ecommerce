@@ -31,7 +31,7 @@ async function expandCategoryIds(
          WHERE c.deleted_at IS NULL
            AND (
              c.id = r.id
-             OR c.mpath LIKE r.mpath || r.id || '.%'
+             OR (r.mpath IS NOT NULL AND r.mpath <> '' AND c.mpath LIKE r.mpath || '%')
              OR c.parent_category_id = r.id
            )`,
         [rootCategoryId]
@@ -180,29 +180,47 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
     }
 
     // Fetch published products (search when provided).
-    // If category SQL join failed, load categories relation for in-memory match.
-    const needCategoryRelation =
-      !!categoryId && categoryProductIds === null
-
+    // Prefer listing by category-linked IDs so count is not capped by default take.
+    const LIST_TAKE = 10_000
     let allProducts: any[] = []
-    const listConfig = needCategoryRelation
-      ? { relations: ["categories"] }
-      : undefined
 
-    if (search) {
+    if (categoryId && categoryProductIds && categoryProductIds.size === 0 && !search) {
+      allProducts = []
+    } else if (categoryId && categoryProductIds && categoryProductIds.size > 0 && !search) {
+      const ids = Array.from(categoryProductIds)
+      allProducts = await productModuleService.listProducts(
+        {
+          id: ids,
+          status: ["published"],
+        },
+        { take: ids.length || 1 }
+      )
+    } else if (search) {
       allProducts = await productModuleService.listProducts(
         {
           q: search as string,
           status: ["published"],
         },
-        listConfig
+        {
+          take: LIST_TAKE,
+          ...(categoryId && categoryProductIds === null
+            ? { relations: ["categories"] }
+            : {}),
+        }
+      )
+    } else if (categoryId && categoryProductIds === null) {
+      allProducts = await productModuleService.listProducts(
+        {
+          status: ["published"],
+        },
+        { take: LIST_TAKE, relations: ["categories"] }
       )
     } else {
       allProducts = await productModuleService.listProducts(
         {
           status: ["published"],
         },
-        listConfig
+        { take: LIST_TAKE }
       )
     }
 
@@ -336,7 +354,9 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
     console.error("Error fetching products:", error)
     return res.status(500).json({
       message: "Failed to fetch products",
-      error: error.message,
+      ...(process.env.NODE_ENV !== "production"
+        ? { error: error?.message }
+        : {}),
     })
   } finally {
     if (dbClient) {

@@ -74,9 +74,13 @@ async function main() {
       status = "FAIL"
       note = "baseline has hits; typo empty"
       failed += 1
+    } else if (ov === 0) {
+      status = "FAIL"
+      note = "no top-5 id overlap with baseline"
+      failed += 1
     } else {
       status = "PASS"
-      note = ov > 0 ? "ok" : "products but no top-5 overlap"
+      note = "ok"
       passed += 1
     }
 
