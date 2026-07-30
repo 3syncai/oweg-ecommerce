@@ -1,6 +1,9 @@
 /**
  * UI-only: hide Medusa admin sidebar store header + Search (⌘K).
  * Settings sticky back header stays visible and is pointed at admin home.
+ *
+ * Also restores broken lg:/max-lg: Tailwind variants when the Medusa admin
+ * client CSS emits utilities twice (late .hidden / .flex-col overrides).
  */
 
 const STYLE_ID = "oweg-sidebar-chrome-hide"
@@ -39,6 +42,24 @@ function ensureStyles() {
 
   // Re-write styles so older bundles pick up the narrowed selector after hot reload
   style.textContent = `
+    /* Fix: .medusa client CSS emits @tailwind utilities twice; late base
+       utilities override responsive variants (lg:flex, lg:flex-row, …).
+       Without this, desktop sidebar stays display:none OR (if forced flex)
+       the shell stays flex-col and main content is clipped below the fold. */
+    @media (min-width: 1024px) {
+      .lg\\:flex {
+        display: flex !important;
+      }
+      .lg\\:flex-row {
+        flex-direction: row !important;
+      }
+    }
+    @media not all and (min-width: 1024px) {
+      .max-lg\\:flex {
+        display: flex !important;
+      }
+    }
+
     /* Main store header only (grid trigger) — keep Settings back header */
     aside .sticky.top-0:has([class*="grid-cols-[24px_1fr_15px]"]) {
       display: none !important;

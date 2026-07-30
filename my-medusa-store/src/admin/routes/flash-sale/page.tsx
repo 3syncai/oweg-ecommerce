@@ -55,6 +55,7 @@ const FlashSalePage = () => {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
+  const [productsCount, setProductsCount] = useState(0)
   const [categories, setCategories] = useState<Category[]>([])
   const [collections, setCollections] = useState<Collection[]>([])
   const [types, setTypes] = useState<ProductType[]>([])
@@ -183,7 +184,11 @@ const FlashSalePage = () => {
 
       if (response.ok) {
         const data = await response.json()
-        setProducts(data.products || [])
+        const list = data.products || []
+        setProducts(list)
+        setProductsCount(
+          typeof data.count === "number" ? data.count : list.length
+        )
       }
     } catch (error) {
       console.error("Failed to fetch products:", error)
@@ -655,6 +660,13 @@ const FlashSalePage = () => {
               <Heading level="h3">
                 Select Products
               </Heading>
+              {!loading && (
+                <Badge color="grey">
+                  {productsCount > products.length
+                    ? `Showing ${products.length} of ${productsCount}`
+                    : `${productsCount} product${productsCount === 1 ? "" : "s"}`}
+                </Badge>
+              )}
               {formData.selectedProducts.size > 0 && (
                 <Badge color="orange">{formData.selectedProducts.size} selected</Badge>
               )}

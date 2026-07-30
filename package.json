@@ -11,7 +11,9 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "type-check": "tsc --noEmit",
-    "generate:pwa-assets": "python3 scripts/generate-pwa-assets.py"
+    "generate:pwa-assets": "python3 scripts/generate-pwa-assets.py",
+    "test:search-normalize": "node --experimental-strip-types --test src/lib/search-query-normalize.test.ts",
+    "test:search-typos-live": "node --experimental-strip-types scripts/verify-search-typos.ts"
   },
   "dependencies": {
     "@opensearch-project/opensearch": "^3.5.1",
