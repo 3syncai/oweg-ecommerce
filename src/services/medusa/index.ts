@@ -21,7 +21,12 @@ export type MedusaProduct = {
   handle?: string;
   thumbnail?: string | null;
   images?: { url: string }[];
-  categories?: Array<{ id: string; handle?: string; name?: string; title?: string }>;
+  categories?: Array<{
+    id: string;
+    handle?: string;
+    name?: string;
+    title?: string;
+  }>;
   tags?: Array<{ id: string; value?: string; handle?: string }>;
   type?: { id: string; value?: string; handle?: string };
   collection?: { id?: string; title?: string; handle?: string };
@@ -92,11 +97,11 @@ export async function getCategoriesService(): Promise<MedusaCategory[]> {
  * Find a category by its handle or title via API route
  */
 export async function getCategoryByHandle(
-  handle: string
+  handle: string,
 ): Promise<MedusaCategory | undefined> {
   const response = await fetch(
     `/api/medusa/categories?handle=${encodeURIComponent(handle)}`,
-    { cache: "no-store" }
+    { cache: "no-store" },
   );
 
   if (!response.ok) {
@@ -112,7 +117,7 @@ export async function getCategoryByHandle(
  */
 export async function getProductsByCategoryService(
   categoryId: string,
-  params?: CategoryProductQueryParams
+  params?: CategoryProductQueryParams,
 ): Promise<CategoryProductsPage> {
   const search = new URLSearchParams({
     categoryId,
@@ -145,12 +150,16 @@ export async function getProductsByCategoryService(
 
   const data = await response.json();
   const products = (data.products || []) as UIProduct[];
-  const limit = typeof data.limit === "number" ? data.limit : params?.limit ?? 20;
-  const offset = typeof data.offset === "number" ? data.offset : params?.offset ?? 0;
+  const limit =
+    typeof data.limit === "number" ? data.limit : (params?.limit ?? 20);
+  const offset =
+    typeof data.offset === "number" ? data.offset : (params?.offset ?? 0);
   const count =
     typeof data.count === "number" ? data.count : products.length + offset;
   const hasMore =
-    typeof data.hasMore === "boolean" ? data.hasMore : offset + products.length < count;
+    typeof data.hasMore === "boolean"
+      ? data.hasMore
+      : offset + products.length < count;
 
   return { products, count, limit, offset, hasMore };
 }
@@ -159,7 +168,7 @@ export async function getProductsByCategoryService(
  * Get subcategories for a parent category
  */
 export function getSubcategories(
-  parentCategory: MedusaCategory
+  parentCategory: MedusaCategory,
 ): MedusaCategory[] {
   return parentCategory.category_children || [];
 }
@@ -168,7 +177,7 @@ export function getSubcategories(
  * Build category hierarchy for navigation
  */
 export function buildCategoryTree(
-  categories: MedusaCategory[]
+  categories: MedusaCategory[],
 ): MedusaCategory[] {
   const categoryMap = new Map<string, MedusaCategory>();
   const rootCategories: MedusaCategory[] = [];
@@ -183,11 +192,8 @@ export function buildCategoryTree(
   // Second pass: build tree
   categories.forEach((cat) => {
     if (!cat?.id) return;
-    
-    const parentId =
-      cat.parent_category_id ||
-      cat.parent_category?.id ||
-      null;
+
+    const parentId = cat.parent_category_id || cat.parent_category?.id || null;
 
     if (!parentId) {
       rootCategories.push(categoryMap.get(cat.id)!);
@@ -202,4 +208,3 @@ export function buildCategoryTree(
 
   return rootCategories;
 }
-

@@ -35,6 +35,7 @@ import { toast } from "sonner";
 import AccountDropdown from "@/components/modules/AccountDropdown";
 import GuestAccountDropdown from "@/components/modules/GuestAccountDropdown";
 import LogoutConfirmModal from "@/components/account/LogoutConfirmModal";
+import PincodeModal from "@/components/PincodeModal";
 import { usePreferences } from "@/hooks/usePreferences";
 import { reorderByPreferences } from "@/lib/personalization";
 import WalletBalance from "@/components/wallet/WalletBalance";
@@ -347,15 +348,12 @@ const Header: React.FC = () => {
 
     const syncHeaderHeight = () => {
       const height = headerEl.getBoundingClientRect().height || 0;
-      // While chrome is collapsing/expanding, keep --app-header-height on the
-      // expanded size so main padding does not jump and fight the scroll chrome loop.
       if (!chromeHiddenRef.current && height > 0) {
         expandedHeaderHeightRef.current = height;
       }
-      const applied =
-        chromeHiddenRef.current && expandedHeaderHeightRef.current > 0
-          ? expandedHeaderHeightRef.current
-          : height;
+      // Always match the visual header. Keeping the expanded height while chrome
+      // is hidden left an empty gap where the category row used to be.
+      const applied = height > 0 ? height : expandedHeaderHeightRef.current;
       document.documentElement.style.setProperty("--app-header-height", `${applied}px`);
     };
 
@@ -652,7 +650,7 @@ const Header: React.FC = () => {
         if (!cancelled) {
           setNavCategories(withChildren);
           setOverflowCategories(withoutChildren);
-          prefetchMegaMenuBannersForCategories(withChildren, 4);
+          prefetchMegaMenuBannersForCategories(withChildren, 12);
         }
       } catch {
         if (!cancelled) {
@@ -691,12 +689,19 @@ const Header: React.FC = () => {
       ticking = true;
       window.requestAnimationFrame(() => {
         const now = Date.now();
-        if (now < chromeIgnoreUntilRef.current) {
+        const yProbe = readMobileScrollY();
+        const deltaProbe = yProbe - lastMobileScrollYRef.current;
+        const ignoreActive = now < chromeIgnoreUntilRef.current;
+        // Allow scroll-up to interrupt the post-hide ignore window so categories
+        // can reappear on a sudden reverse scroll.
+        const interruptHideWithUp =
+          ignoreActive && chromeHiddenRef.current && deltaProbe < -8;
+        if (ignoreActive && !interruptHideWithUp) {
           ticking = false;
           return;
         }
-        const y = readMobileScrollY();
-        const delta = y - lastMobileScrollYRef.current;
+        const y = yProbe;
+        const delta = deltaProbe;
         let nextVisible: boolean | null = null;
         if (y < 24) {
           nextVisible = true;
@@ -747,16 +752,13 @@ const Header: React.FC = () => {
   }, [readMobileScrollY, setScrollChromeVisible]);
 
   const fetchPlaceForPin = React.useCallback(async (pin: string) => {
+    // Same-origin proxy — CSP connect-src blocks direct browser calls to api.postalpincode.in
     try {
-      const res = await fetch(`https://api.postalpincode.in/pincode/${encodeURIComponent(pin)}`);
+      const res = await fetch(`/api/pincode/${encodeURIComponent(pin)}`);
       if (!res.ok) return null;
-      const data = await res.json();
-      const office = Array.isArray(data) ? data[0]?.PostOffice?.[0] : null;
-      const name = office?.Name;
-      const district = office?.District;
-      const state = office?.State;
-      const place = [name, district, state].filter(Boolean).join(", ");
-      return place || null;
+      const data = (await res.json()) as { place?: string | null };
+      const place = typeof data?.place === "string" && data.place.trim() ? data.place.trim() : null;
+      return place;
     } catch {
       return null;
     }
@@ -1649,7 +1651,11 @@ const Header: React.FC = () => {
                       type="button"
                       aria-label="Open menu"
                       className=" border-grey-200 text-[#7AC943] flex items-center justify-center"
-                      onClick={() => setMobileMenuOpen(true)}
+                      onClick={() => {
+                        window.dispatchEvent(
+                          new CustomEvent("oweg:open-mobile-categories")
+                        );
+                      }}
                     >
                       <Menu className="w-6 h-6" />
                     </button>
@@ -1990,70 +1996,20 @@ const Header: React.FC = () => {
       <AllPortal />
       <CartPreviewPortal />
 
-      {pinModalOpen && mountedRef.current &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[160] bg-black/40 flex items-center justify-center px-4"
-            onClick={() => {
-              if (!pinSaving) setPinModalOpen(false);
-            }}
-          >
-            <div
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Update delivery pincode</h3>
-                  <p className="text-sm text-gray-600 mt-1">Enter your area pincode to personalize delivery.</p>
-                </div>
-                <button
-                  type="button"
-                  className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-700"
-                  onClick={() => setPinModalOpen(false)}
-                  disabled={pinSaving}
-                  aria-label="Close"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="mt-4 space-y-2">
-                <label className="text-sm font-medium text-gray-800">Pincode</label>
-                <Input
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value)}
-                  placeholder="Enter pincode"
-                  inputMode="numeric"
-                  maxLength={10}
-                />
-                {pinError ? <p className="text-sm text-rose-600">{pinError}</p> : null}
-              </div>
-
-              <div className="mt-4 flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setPinModalOpen(false)}
-                  disabled={pinSaving}
-                  className="min-w-[96px]"
-                  type="button"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => { void handleSavePincode(); }}
-                  disabled={pinSaving}
-                  className="min-w-[96px]"
-                  type="button"
-                >
-                  {pinSaving ? "Saving..." : "Save"}
-                </Button>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )
-      }
+      <PincodeModal
+        open={pinModalOpen && mountedRef.current}
+        onClose={() => {
+          if (!pinSaving) setPinModalOpen(false);
+        }}
+        value={pinInput}
+        onChange={setPinInput}
+        onSave={() => {
+          void handleSavePincode();
+        }}
+        saving={pinSaving}
+        error={pinError}
+        placeHint={mobilePlace}
+      />
 
       {/* Internal styles (no external file) */}
       <style jsx global>{`

@@ -543,18 +543,8 @@ export async function POST(req: Request) {
 
     const finalTotal = Math.max(0, itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees);
 
-    try {
-      await syncOrderTaxInclusivePricing(medusaOrderId, {
-        expectedGrandTotal: finalTotal,
-        shippingRupees: shippingCharge,
-        coinDiscountRupees,
-        oweg10DiscountRupees,
-      });
-    } catch (taxErr) {
-      console.warn("Failed to sync tax-inclusive pricing on draft order:", taxErr);
-    }
-
-    // COD fast path: return after draft creation (~1 API call). Convert + confirm runs on success page.
+    // COD fast path: return after draft creation.
+    // Tax sync is owned solely by /api/checkout/cod (runCodSideEffects) to avoid races.
     if (paymentMethod === "cod") {
       return NextResponse.json({
         medusaOrderId,
@@ -566,6 +556,17 @@ export async function POST(req: Request) {
         coinDiscountApplied: coinDiscountRupees,
         oweg10DiscountApplied: oweg10DiscountRupees,
       });
+    }
+
+    try {
+      await syncOrderTaxInclusivePricing(medusaOrderId, {
+        expectedGrandTotal: finalTotal,
+        shippingRupees: shippingCharge,
+        coinDiscountRupees,
+        oweg10DiscountRupees,
+      });
+    } catch (taxErr) {
+      console.warn("Failed to sync tax-inclusive pricing on draft order:", taxErr);
     }
 
     let converted = false;

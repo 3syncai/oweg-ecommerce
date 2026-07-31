@@ -14,7 +14,10 @@ type PageProps = {
   }>;
 };
 
-export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+  searchParams,
+}: PageProps): Promise<Metadata> {
   const { handle } = await params;
   const { id } = await searchParams;
 
@@ -31,11 +34,15 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
 
   return {
     title: `${product.title} | OWEG`,
-    description: product.subtitle || product.description || `Buy ${product.title} at OWEG`,
+    description:
+      product.subtitle || product.description || `Buy ${product.title} at OWEG`,
   };
 }
 
-export default async function ProductDetailPage({ params, searchParams }: PageProps) {
+export default async function ProductDetailPage({
+  params,
+  searchParams,
+}: PageProps) {
   const { handle } = await params;
   const { id } = await searchParams;
 
@@ -50,4 +57,3 @@ export default async function ProductDetailPage({ params, searchParams }: PagePr
 
   return <ProductDetailClient product={product} />;
 }
-

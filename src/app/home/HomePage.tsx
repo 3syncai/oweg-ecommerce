@@ -179,7 +179,6 @@ const BAG_SECTION_BANNERS = [
 
 const MOBILE_TOP_BANNERS: Array<{ src: string; href: string; alt: string }> = [
   { src: '/App_Banner-1.jpg', href: '/specials', alt: 'Explore Specials' },
-  { src: '/App_Banner-2.jpg', href: '/vendors/sellerjoin', alt: 'Join as vendor' },
   { src: '/App_Banner-3.jpg', href: '/c/kitchen-appliances', alt: 'Shop kitchen appliances' },
 ];
 
@@ -378,298 +377,6 @@ type MobileCategory = {
   rank?: number;
 };
 
-const categoryImageMap: Record<string, string> = {
-  'home-appliances': '/Home Appliances.png',
-  'kitchen-appliances': '/Kitchen Appliances.png',
-  'beauty-personal-care': '/beauty-personal-care.png',
-  'beauty-and-personal-care': '/beauty-personal-care.png',
-  'computer-mobile': '/Computer & Mobile v1.png',
-  'computer-mobile-accessories': '/Computer & Mobile v1.png',
-  'computer-and-mobile-accessories': '/Computer & Mobile v1.png',
-  'computer-mobile-acc': '/Computer & Mobile v1.png',
-  'mobile-accessories': '/Computer & Mobile v1.png',
-  hardware: '/Hardwear-01.png',
-  'hard-wear': '/Hardwear-01.png',
-  bags: '/Bags-01.png',
-  clothing: '/Clothing-01.png',
-  'security-surveillance': '/security & surveillance.png',
-  'surveillance-security': '/security & surveillance.png',
-  'surveillance-and-security': '/security & surveillance.png',
-  'security-and-surveillance': '/security & surveillance.png',
-  'toys-and-games': '/Toysandgames.png',
-  jewellery: '/Jewellery.png',
-  umbrella: '/Umbrella.png',
-  umbrellas: '/Umbrella.png',
-  'health-care': '/Sassiest-Health-Care.png',
-  health: '/Sassiest-Health-Care.png',
-  stationery: '/Stationery.png',
-  stationary: '/Stationery.png',
-};
-
-const categoryImageKeywords: Array<{ image: string; includes: string[] }> = [
-  { image: '/Computer & Mobile v1.png', includes: ['computer', 'mobile'] },
-  { image: '/Computer & Mobile v1.png', includes: ['mobile', 'accessor'] },
-  { image: '/Computer & Mobile v1.png', includes: ['computer', 'accessor'] },
-  { image: '/security & surveillance.png', includes: ['security'] },
-  { image: '/security & surveillance.png', includes: ['surveillance'] },
-];
-
-function MobileCategoryGrid({
-  categories,
-  loading,
-}: {
-  categories: MobileCategory[];
-  loading: boolean;
-}) {
-  const [imageLoaded, setImageLoaded] = useState<Record<string, boolean>>({});
-  const [stripVisible, setStripVisible] = useState(true);
-  const [isPinned, setIsPinned] = useState(false);
-  const [stripHeight, setStripHeight] = useState(0);
-  const isPinnedRef = useRef(false);
-  const stripHeightRef = useRef(0);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const normalize = (value?: string) =>
-    (value || '')
-      .toLowerCase()
-      .replace(/&/g, 'and')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const scrollLeft = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: -240, behavior: 'smooth' });
-    }
-  };
-  const scrollRight = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: 240, behavior: 'smooth' });
-    }
-  };
-
-  const readHeaderHeight = () => {
-    const raw = getComputedStyle(document.documentElement).getPropertyValue('--app-header-height');
-    const parsed = Number.parseFloat(raw);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 136;
-  };
-
-  // Follow shared header chrome signal so search + categories hide/show together.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const syncFromChrome = () => {
-      const chrome = document.documentElement.dataset.owegScrollChrome;
-      const nextVisible = chrome !== 'hide';
-      setStripVisible((prev) => {
-        if (prev === nextVisible) return prev;
-        return nextVisible;
-      });
-    };
-    syncFromChrome();
-    const observer = new MutationObserver(syncFromChrome);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-oweg-scroll-chrome'],
-    });
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    let ticking = false;
-    const onScroll = () => {
-      if (ticking) return;
-      ticking = true;
-      window.requestAnimationFrame(() => {
-        const headerH = readHeaderHeight();
-        const sentinelTop = sentinelRef.current?.getBoundingClientRect().top ?? 0;
-        const nextPinned = sentinelTop <= headerH + 1;
-        if (nextPinned !== isPinnedRef.current) {
-          isPinnedRef.current = nextPinned;
-          setIsPinned(nextPinned);
-        }
-        ticking = false;
-      });
-    };
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      document.removeEventListener('scroll', onScroll, true);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!panelRef.current) return;
-    const el = panelRef.current;
-    const apply = () => {
-      // Measure natural height while visible to keep spacer accurate.
-      const h = el.scrollHeight || el.getBoundingClientRect().height || 0;
-      if (h > 0) {
-        stripHeightRef.current = h;
-        setStripHeight(h);
-      }
-    };
-    apply();
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(apply) : null;
-    ro?.observe(el);
-    window.addEventListener('resize', apply);
-    return () => {
-      ro?.disconnect();
-      window.removeEventListener('resize', apply);
-    };
-  }, []);
-
-  return (
-    <div className="md:hidden mb-4">
-      <div ref={sentinelRef} data-home-category-sentinel aria-hidden className="h-0 w-full" />
-      {isPinned ? (
-        <div
-          aria-hidden
-          style={{
-            // Keep spacer stable while pinned — collapsing it with chrome hide/show
-            // jumps scrollY and fights the header chrome loop.
-            height: stripHeight,
-          }}
-        />
-      ) : null}
-      <div
-        ref={panelRef}
-        data-home-category-strip
-        aria-hidden={!stripVisible}
-        inert={!stripVisible}
-        className={`z-30 bg-gray-50/95 backdrop-blur-sm border-b border-gray-100 px-4 pt-1 pb-2 transition-[transform,opacity] duration-300 ease-out will-change-transform ${
-          isPinned ? 'fixed left-0 right-0' : 'relative'
-        } ${stripVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
-        style={{
-          top: isPinned ? 'var(--app-header-height, 136px)' : undefined,
-          transform: stripVisible ? 'translateY(0)' : 'translateY(-110%)',
-        }}
-      >
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Shop by category</h3>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={scrollLeft}
-                className="w-9 h-9 rounded-full border border-emerald-200 text-emerald-700 bg-emerald-50 flex items-center justify-center shadow-sm"
-                aria-label="Scroll categories left"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={scrollRight}
-                className="w-9 h-9 rounded-full border border-emerald-200 text-emerald-700 bg-emerald-50 flex items-center justify-center shadow-sm"
-                aria-label="Scroll categories right"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-          {loading ? (
-            <div className="flex gap-3 overflow-x-auto scrollbar-hidden pb-1" ref={scrollRef} aria-label="Loading categories">
-              {Array.from({ length: 6 }).map((_, idx) => (
-                <div
-                  key={`cat-skeleton-${idx}`}
-                  className="group flex flex-col items-center min-w-[104px] max-w-[104px] text-center gap-2 animate-pulse"
-                >
-                  <div className="relative w-24 h-24 rounded-full bg-emerald-50 border border-emerald-100 shadow-inner" />
-                  <div className="h-3 w-20 rounded bg-gray-200" />
-                </div>
-              ))}
-            </div>
-          ) : categories.length === 0 ? (
-            <div className="text-sm text-gray-500 py-2">Categories will appear here soon.</div>
-          ) : (
-            <div className="flex gap-3 overflow-x-auto scrollbar-hidden pb-1" ref={scrollRef}>
-              {categories.map((cat) => (
-                <Link
-                  key={cat.id}
-                  href={cat.handle ? `/c/${encodeURIComponent(cat.handle)}` : '#'}
-                  className="group flex flex-col items-center min-w-[118px] max-w-[118px] text-center"
-                >
-                  {(() => {
-                    const slug = normalize(cat.handle) || normalize(cat.title);
-                    const mappedImage = categoryImageMap[slug] || categoryImageMap[cat.handle || ''];
-                    const tokens = slug.split('-').filter(Boolean);
-                    const keywordHit = categoryImageKeywords.find(({ includes }) =>
-                      includes.every((kw) => tokens.some((t) => t.includes(kw)))
-                    );
-                    const displayImage =
-                      mappedImage ||
-                      (keywordHit ? keywordHit.image : undefined) ||
-                      '/oweg_logo.png';
-                    const loaded = imageLoaded[cat.id];
-                    return (
-                      <div className="relative w-28 h-28 flex items-center justify-center overflow-hidden transition-transform duration-200 group-hover:-translate-y-1">
-                        {!loaded && (
-                          <div className="absolute inset-2 rounded-full bg-gradient-to-br from-gray-100 via-white to-gray-100 animate-pulse" />
-                        )}
-                        {displayImage ? (
-                          <Image
-                            src={displayImage}
-                            alt={cat.title}
-                            fill
-                            className="object-contain"
-                            sizes="196px"
-                            onLoadingComplete={() =>
-                              setImageLoaded((prev) => ({ ...prev, [cat.id]: true }))
-                            }
-                            onLoad={() => setImageLoaded((prev) => ({ ...prev, [cat.id]: true }))}
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gray-100 rounded-xl" />
-                        )}
-                      </div>
-                    );
-                  })()}
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MobileJoinCard() {
-  return (
-    <div className="md:hidden px-4">
-      <div className="rounded-2xl bg-gradient-to-r from-emerald-600 via-lime-500 to-emerald-500 text-white shadow-lg p-4 border border-white/20">
-        <div className="flex items-start gap-3">
-          <div className="flex-1 space-y-1">
-            <p className="text-[11px] uppercase tracking-[0.28em] text-white/80">Join OWEG</p>
-            <h3 className="text-xl font-semibold">Become a vendor or partner</h3>
-            <p className="text-xs text-white/80">Set up your shop, earn as an agent, and manage orders from one place.</p>
-          </div>
-          <div className="rounded-full bg-white/15 p-3 shadow-inner">
-            <Image src="/oweg_logo.png" alt="OWEG" width={42} height={42} className="object-contain" />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-2 mt-4">
-          <Link
-            href="/vendor-portal"
-            className="text-sm font-semibold rounded-xl bg-white text-emerald-700 px-3 py-2 text-center shadow-sm hover:shadow transition"
-          >
-            Start as Vendor
-          </Link>
-          <a
-            href="mailto:owegonline@oweg.in?subject=Join%20OWEG%20as%20Agent%20or%20Partner"
-            className="text-sm font-semibold rounded-xl border border-white/70 text-white px-3 py-2 text-center hover:bg-white/10 transition"
-          >
-            Agent / Partner
-          </a>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function HomePage() {
   const { customer } = useAuth();
   const { preferences, hasPreferences, loading: prefLoading, saving: prefSaving, savePreferences } = usePreferences();
@@ -716,7 +423,7 @@ export default function HomePage() {
   const homeFeedQuery = useQuery({
     queryKey: ['home-feed'],
     queryFn: async (): Promise<HomeFeedPayload> => {
-      const res = await fetch('/api/home/feed', { cache: 'no-store' });
+      const res = await fetch('/api/home/feed');
       if (!res.ok) throw new Error('Unable to load home feed');
       return res.json();
     },
@@ -869,7 +576,7 @@ export default function HomePage() {
   const categoriesQuery = useQuery({
     queryKey: ['home-categories'],
     queryFn: async () => {
-      const res = await fetch('/api/medusa/categories', { cache: 'no-store' });
+      const res = await fetch('/api/medusa/categories');
       if (!res.ok) {
         throw new Error('Unable to load categories');
       }
@@ -946,7 +653,6 @@ export default function HomePage() {
     [mobileCategories]
   );
 
-  // Category images use public assets only in mobile grid.
   const loading =
     sectionsToRender.some((section) => section.loading) ||
     homeFeedQuery.isLoading ||
@@ -981,15 +687,11 @@ export default function HomePage() {
   const fetchPlaceName = async (pin: string) => {
     try {
       setPlaceLoading(true);
-      const res = await fetch(`https://api.postalpincode.in/pincode/${encodeURIComponent(pin)}`);
+      const res = await fetch(`/api/pincode/${encodeURIComponent(pin)}`);
       if (!res.ok) return null;
-      const data = await res.json();
-      const office = Array.isArray(data) ? data[0]?.PostOffice?.[0] : null;
-      const name = office?.Name;
-      const district = office?.District;
-      const state = office?.State;
-      const place = [name, district, state].filter(Boolean).join(', ');
-      return place || null;
+      const data = (await res.json()) as { place?: string | null };
+      const place = typeof data?.place === "string" && data.place.trim() ? data.place.trim() : null;
+      return place;
     } catch {
       return null;
     } finally {
@@ -1085,10 +787,6 @@ export default function HomePage() {
           )}
         </div>
 
-        <MobileCategoryGrid
-          categories={mobileCategories}
-          loading={categoriesQuery.isLoading}
-        />
         <div className="md:hidden px-4 mb-6 space-y-4">
           {MOBILE_TOP_BANNERS.map((banner, index) => (
             <MobileBanner
@@ -1265,7 +963,6 @@ export default function HomePage() {
         <div className="md:hidden px-4 mb-8">
           <MobileBanner src="/App_Banner-9.png" href="/c/kitchen-appliances" alt="Shop kitchen appliances" />
         </div>
-        <MobileJoinCard />
         {loading && (
           <div className="px-4 py-3">
             <div className="w-full rounded-2xl bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 animate-pulse h-14" />

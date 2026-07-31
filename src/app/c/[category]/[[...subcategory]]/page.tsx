@@ -19,7 +19,9 @@ const safeDecode = (value?: string) => {
   }
 };
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
   const { category, subcategory } = await params;
   const decodedCategory = safeDecode(category) || "";
   const decodedSubcat = safeDecode(subcategory?.[0]);
@@ -37,7 +39,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function CategoryPage({ params }: PageProps) {
-  const { category: categoryParam, subcategory: subcategoryParam } = await params;
+  const { category: categoryParam, subcategory: subcategoryParam } =
+    await params;
   const decodedCategoryParam = safeDecode(categoryParam) || categoryParam;
 
   // Find the main category (server-side)
@@ -56,7 +59,7 @@ export default async function CategoryPage({ params }: PageProps) {
     const subcatHandle = safeDecode(subcategoryParam[0]) || subcategoryParam[0];
     selectedSubcategory =
       subcategories.find(
-        (sub) => sub.handle === subcatHandle || sub.id === subcatHandle
+        (sub) => sub.handle === subcatHandle || sub.id === subcatHandle,
       ) || (await findCategoryByTitleOrHandle(subcatHandle));
 
     if (!selectedSubcategory) {

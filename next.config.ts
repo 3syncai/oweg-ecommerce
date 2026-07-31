@@ -4,8 +4,9 @@ import type { NextConfig } from "next";
 import { getSecurityHeaders } from "./src/lib/security-headers";
 
 const revision =
-  spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf-8" }).stdout?.trim() ||
-  crypto.randomUUID();
+  spawnSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf-8",
+  }).stdout?.trim() || crypto.randomUUID();
 
 const withSerwist = withSerwistInit({
   swSrc: "src/sw.ts",
@@ -22,30 +23,43 @@ const withSerwist = withSerwistInit({
   ],
 });
 
-type RemotePattern = NonNullable<NextConfig["images"]>["remotePatterns"] extends
-  | (infer T)[]
-  | undefined
+type RemotePattern = NonNullable<
+  NextConfig["images"]
+>["remotePatterns"] extends (infer T)[] | undefined
   ? T
   : never;
 
 function buildRemotePatterns(): RemotePattern[] {
   const patterns: RemotePattern[] = [
     { protocol: "https", hostname: "images.unsplash.com" },
-    { protocol: "https", hostname: "medusa-public-images.s3.eu-west-1.amazonaws.com" },
+    {
+      protocol: "https",
+      hostname: "medusa-public-images.s3.eu-west-1.amazonaws.com",
+    },
     { protocol: "https", hostname: "medusa-public-images.s3.amazonaws.com" },
     { protocol: "http", hostname: "localhost", port: "9000" },
     { protocol: "http", hostname: "127.0.0.1", port: "9000" },
     { protocol: "https", hostname: "www.oweg.in" },
     { protocol: "https", hostname: "oweg.in" },
-    { protocol: "https", hostname: "oweg-product-images.s3.ap-south-1.amazonaws.com" },
-    { protocol: "https", hostname: "oweg-product-images-new.s3.ap-south-1.amazonaws.com" },
-    { protocol: "https", hostname: "oweg-media-mumbai-krj-2025.s3.ap-south-1.amazonaws.com" },
+    {
+      protocol: "https",
+      hostname: "oweg-product-images.s3.ap-south-1.amazonaws.com",
+    },
+    {
+      protocol: "https",
+      hostname: "oweg-product-images-new.s3.ap-south-1.amazonaws.com",
+    },
+    {
+      protocol: "https",
+      hostname: "oweg-media-mumbai-krj-2025.s3.ap-south-1.amazonaws.com",
+    },
     { protocol: "https", hostname: "via.placeholder.com" },
   ];
 
   const seen = new Set(
-    patterns.map((pattern) =>
-      `${pattern.protocol}://${pattern.hostname}${"port" in pattern && pattern.port ? `:${pattern.port}` : ""}`,
+    patterns.map(
+      (pattern) =>
+        `${pattern.protocol}://${pattern.hostname}${"port" in pattern && pattern.port ? `:${pattern.port}` : ""}`,
     ),
   );
 
@@ -82,7 +96,9 @@ function buildAllowedDevOrigins(): string[] {
   if (!raw) return [];
 
   try {
-    const hostname = raw.includes("://") ? new URL(raw).hostname : raw.replace(/\/.*$/, "");
+    const hostname = raw.includes("://")
+      ? new URL(raw).hostname
+      : raw.replace(/\/.*$/, "");
     return hostname ? [hostname] : [];
   } catch {
     const hostname = raw.replace(/^https?:\/\//, "").split("/")[0];
