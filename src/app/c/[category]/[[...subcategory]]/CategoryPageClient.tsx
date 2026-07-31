@@ -99,7 +99,10 @@ export function CategoryPageClient({
     category.name ||
     "Products";
 
-  const requestedPage = Math.max(1, parseInt(searchParams?.get("page") || "1", 10) || 1);
+  const requestedPage = Math.max(
+    1,
+    parseInt(searchParams?.get("page") || "1", 10) || 1,
+  );
   const pageOffset = (requestedPage - 1) * PRODUCTS_PER_PAGE;
 
   const includeSubcategories = !selectedSubcategory;
@@ -118,17 +121,17 @@ export function CategoryPageClient({
       filters.dealsOnly,
       includeSubcategories,
       pageOffset,
-    ]
+    ],
   );
 
   const { data: pageData, isLoading } = useCategoryProducts(
     activeCategoryId,
-    queryFilters
+    queryFilters,
   );
 
   const products = useMemo(
     () => pageData?.products ?? [],
-    [pageData?.products]
+    [pageData?.products],
   );
   const serverCount = pageData?.count ?? products.length;
   const serverHasMore = pageData?.hasMore ?? false;
@@ -141,7 +144,7 @@ export function CategoryPageClient({
       if (brand) {
         const key = normalizeBrandKey(brand);
         const existing = [...counts.keys()].find(
-          (label) => normalizeBrandKey(label) === key
+          (label) => normalizeBrandKey(label) === key,
         );
         const label = existing ?? brand;
         counts.set(label, (counts.get(label) ?? 0) + 1);
@@ -164,7 +167,7 @@ export function CategoryPageClient({
 
     if (filters.brands.length > 0) {
       const selected = new Set(
-        filters.brands.map((brand) => normalizeBrandKey(brand))
+        filters.brands.map((brand) => normalizeBrandKey(brand)),
       );
       filtered = filtered.filter((product) => {
         const brand = resolveUiBrand(product);
@@ -173,7 +176,7 @@ export function CategoryPageClient({
         }
         if (!brand) {
           return filters.brands.some((selectedBrand) =>
-            product.name.toLowerCase().includes(selectedBrand.toLowerCase())
+            product.name.toLowerCase().includes(selectedBrand.toLowerCase()),
           );
         }
         return false;
@@ -183,7 +186,10 @@ export function CategoryPageClient({
     return filtered;
   }, [products, filters.brands]);
 
-  const pagesFromCount = Math.max(1, Math.ceil(serverCount / PRODUCTS_PER_PAGE));
+  const pagesFromCount = Math.max(
+    1,
+    Math.ceil(serverCount / PRODUCTS_PER_PAGE),
+  );
   const totalPages = serverHasMore
     ? Math.max(pagesFromCount, Math.min(requestedPage, pagesFromCount) + 1)
     : pagesFromCount;
@@ -219,9 +225,11 @@ export function CategoryPageClient({
       const nextParams = new URLSearchParams(searchParams?.toString());
       nextParams.delete("page");
       const next = nextParams.toString();
-      router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+      router.replace(next ? `${pathname}?${next}` : pathname, {
+        scroll: false,
+      });
     },
-    [pathname, router, searchParams]
+    [pathname, router, searchParams],
   );
 
   const goToPage = useCallback(
@@ -235,10 +243,12 @@ export function CategoryPageClient({
         nextParams.set("page", String(safePage));
       }
       const next = nextParams.toString();
-      router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+      router.replace(next ? `${pathname}?${next}` : pathname, {
+        scroll: false,
+      });
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
-    [pathname, router, searchParams, totalPages]
+    [pathname, router, searchParams, totalPages],
   );
 
   useEffect(() => {
@@ -297,7 +307,7 @@ export function CategoryPageClient({
         }
         const res = await fetch(
           `/api/medusa/deal-of-the-day?${params.toString()}`,
-          { cache: "no-store" }
+          { cache: "no-store" },
         );
         if (!res.ok) {
           throw new Error(`Failed to load deals: ${res.status}`);
@@ -307,9 +317,7 @@ export function CategoryPageClient({
         const preview = Array.isArray(data.products) ? data.products : [];
         setDealPreview(preview);
         setDealCount(
-          typeof data.total === "number"
-            ? data.total
-            : preview.length
+          typeof data.total === "number" ? data.total : preview.length,
         );
       } catch (error) {
         if (!cancelled) {
@@ -348,9 +356,7 @@ export function CategoryPageClient({
       <HealthCareAgeGate enabled={showHealthCareAgeGate} />
       <div className="container mx-auto px-4 py-6">
         <div className="flex gap-6">
-          <aside
-            className="hidden lg:block flex-shrink-0 w-80 sticky self-start z-10 top-[calc(var(--app-header-height,136px)+1rem)] max-h-[calc(100vh-var(--app-header-height,136px)-2rem)] overflow-y-auto overscroll-contain"
-          >
+          <aside className="hidden lg:block flex-shrink-0 w-80 sticky self-start z-10 top-[calc(var(--app-header-height,136px)+1rem)] max-h-[calc(100vh-var(--app-header-height,136px)-2rem)] overflow-y-auto overscroll-contain">
             <FilterSidebar
               categoryHandle={categoryHandle}
               subcategories={subcategories}

@@ -2,16 +2,36 @@ import { Leaf, ShieldCheck, Sparkles, Truck, Users } from "lucide-react";
 
 const stats = [
   { label: "Orders Delivered", value: "2.1M+", detail: "across 450+ cities" },
-  { label: "Verified Sellers", value: "12k", detail: "quality-checked partners" },
+  {
+    label: "Verified Sellers",
+    value: "12k",
+    detail: "quality-checked partners",
+  },
   { label: "Avg. Delivery", value: "36 hrs", detail: "pan-India metros" },
   { label: "Customer Love", value: "4.8 ★", detail: "service rating" },
 ];
 
 const values = [
-  { icon: ShieldCheck, title: "Trust First", copy: "We vet every product, price, and partner so you never worry about what shows up at your door." },
-  { icon: Truck, title: "Arrives Ready", copy: "From careful packaging to proactive tracking, we ship like it's meant for us." },
-  { icon: Leaf, title: "Better Impact", copy: "We prioritize energy-efficient appliances, low-waste packaging, and greener delivery partners." },
-  { icon: Users, title: "Human Help", copy: "Real people on chat, call, and doorstep support—no endless IVR loops." },
+  {
+    icon: ShieldCheck,
+    title: "Trust First",
+    copy: "We vet every product, price, and partner so you never worry about what shows up at your door.",
+  },
+  {
+    icon: Truck,
+    title: "Arrives Ready",
+    copy: "From careful packaging to proactive tracking, we ship like it's meant for us.",
+  },
+  {
+    icon: Leaf,
+    title: "Better Impact",
+    copy: "We prioritize energy-efficient appliances, low-waste packaging, and greener delivery partners.",
+  },
+  {
+    icon: Users,
+    title: "Human Help",
+    copy: "Real people on chat, call, and doorstep support—no endless IVR loops.",
+  },
 ];
 
 export default function AboutPage() {
@@ -32,8 +52,9 @@ export default function AboutPage() {
             We make premium appliances feel personal, fast, and joyful to buy.
           </h1>
           <p className="text-lg text-gray-600 max-w-3xl">
-            From kitchen wins to everyday essentials, OWEG blends curated products, intuitive shopping, and reliable delivery.
-            We obsess over every detail so you can plug in, power up, and get back to living.
+            From kitchen wins to everyday essentials, OWEG blends curated
+            products, intuitive shopping, and reliable delivery. We obsess over
+            every detail so you can plug in, power up, and get back to living.
           </p>
         </header>
 
@@ -43,7 +64,9 @@ export default function AboutPage() {
               key={stat.label}
               className="rounded-2xl border border-emerald-100 bg-white/80 backdrop-blur shadow-sm px-4 py-5 flex flex-col gap-1"
             >
-              <div className="text-2xl font-semibold text-gray-900">{stat.value}</div>
+              <div className="text-2xl font-semibold text-gray-900">
+                {stat.value}
+              </div>
               <div className="text-sm text-gray-700">{stat.label}</div>
               <div className="text-xs text-gray-500">{stat.detail}</div>
             </div>
@@ -54,13 +77,23 @@ export default function AboutPage() {
           <div className="space-y-4">
             <h2 className="text-2xl font-semibold">What keeps us building</h2>
             <p className="text-gray-600 leading-relaxed">
-              We started OWEG because appliance shopping felt stale—too many tabs, unclear specs, no support after delivery.
-              Our answer: sharp storytelling, transparent prices, and hands-on service. We’re always shipping new features
-              that make buying feel closer to using.
+              We started OWEG because appliance shopping felt stale—too many
+              tabs, unclear specs, no support after delivery. Our answer: sharp
+              storytelling, transparent prices, and hands-on service. We’re
+              always shipping new features that make buying feel closer to
+              using.
             </p>
             <div className="flex flex-wrap gap-2 text-xs">
-              {["Same-day metro delivery", "Quality score on every listing", "Live order concierge", "Green packaging where possible"].map((pill) => (
-                <span key={pill} className="rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 px-3 py-1 font-semibold">
+              {[
+                "Same-day metro delivery",
+                "Quality score on every listing",
+                "Live order concierge",
+                "Green packaging where possible",
+              ].map((pill) => (
+                <span
+                  key={pill}
+                  className="rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 px-3 py-1 font-semibold"
+                >
                   {pill}
                 </span>
               ))}
@@ -72,13 +105,22 @@ export default function AboutPage() {
               Zero-tricks pricing
             </div>
             <p className="text-lg font-semibold text-gray-900">
-              We price-match smartly, display total landed cost upfront, and keep warranty terms on every product page.
+              We price-match smartly, display total landed cost upfront, and
+              keep warranty terms on every product page.
             </p>
             <div className="grid grid-cols-2 gap-3 text-sm text-gray-700">
-              <div className="rounded-2xl bg-white p-4 border border-gray-100 shadow-sm">Warranty tracking inside your account</div>
-              <div className="rounded-2xl bg-white p-4 border border-gray-100 shadow-sm">Technician-ready installation notes</div>
-              <div className="rounded-2xl bg-white p-4 border border-gray-100 shadow-sm">Pickup-ready returns with packaging help</div>
-              <div className="rounded-2xl bg-white p-4 border border-gray-100 shadow-sm">Human chat for part replacements</div>
+              <div className="rounded-2xl bg-white p-4 border border-gray-100 shadow-sm">
+                Warranty tracking inside your account
+              </div>
+              <div className="rounded-2xl bg-white p-4 border border-gray-100 shadow-sm">
+                Technician-ready installation notes
+              </div>
+              <div className="rounded-2xl bg-white p-4 border border-gray-100 shadow-sm">
+                Pickup-ready returns with packaging help
+              </div>
+              <div className="rounded-2xl bg-white p-4 border border-gray-100 shadow-sm">
+                Human chat for part replacements
+              </div>
             </div>
           </div>
         </section>
@@ -93,8 +135,12 @@ export default function AboutPage() {
                 <item.icon className="w-6 h-6" />
               </div>
               <div className="space-y-1.5">
-                <h3 className="text-lg font-semibold text-gray-900">{item.title}</h3>
-                <p className="text-sm text-gray-600 leading-relaxed">{item.copy}</p>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {item.title}
+                </h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  {item.copy}
+                </p>
               </div>
             </div>
           ))}

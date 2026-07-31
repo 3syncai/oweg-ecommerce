@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import crypto from "crypto";
 import {
   updateOrderMetadata,
@@ -67,6 +67,111 @@ function verifyCheckoutSignature(payload: {
     .update(`${payload.razorpay_order_id}|${payload.razorpay_payment_id}`)
     .digest("hex");
   return generated === payload.razorpay_signature;
+}
+
+async function runPostPaidSideEffects(finalOrderId: string, amountMinor?: number) {
+  // AFFILIATE COMMISSION: Call the commission webhook for hierarchy support
+  if (typeof amountMinor === "number") {
+    try {
+      console.log("razorpay confirm: Triggering commission webhook for hierarchy...");
+
+      const pool = getPool();
+      if (!pool) throw new Error("Database not configured");
+
+      const customerResult = await pool.query(
+        `SELECT 
+           c.id, 
+           c.email, 
+           c.first_name || ' ' || c.last_name as name,
+           COALESCE(cr.referral_code, c.metadata->>'referral_code') as referral_code
+         FROM "order" o
+         JOIN customer c ON o.customer_id = c.id
+         LEFT JOIN customer_referral cr ON cr.customer_id = c.id
+         WHERE o.id = $1`,
+        [finalOrderId]
+      );
+
+      const customer = customerResult.rows[0];
+      const affiliateCode = customer?.referral_code;
+
+      if (affiliateCode) {
+        console.log(`razorpay confirm: Found affiliate code ${affiliateCode}, calling webhook...`);
+
+        const itemsResult = await pool.query(
+          `SELECT 
+             oi.id, 
+             pv.product_id,
+             oi.quantity,
+             oli.unit_price,
+             p.title as product_name
+           FROM order_item oi
+           JOIN order_line_item oli ON oi.item_id = oli.id
+           LEFT JOIN product_variant pv ON oli.variant_id = pv.id
+           LEFT JOIN product p ON pv.product_id = p.id
+           WHERE oi.order_id = $1`,
+          [finalOrderId]
+        );
+
+        const webhookUrl = process.env.AFFILIATE_WEBHOOK_URL;
+
+        if (!webhookUrl) {
+          console.error("razorpay confirm: ⚠️ AFFILIATE_WEBHOOK_URL not set, skipping commission webhook");
+        } else {
+          await Promise.all(
+            itemsResult.rows.map(async (item) => {
+              const unitPrice = parseFloat(item.unit_price || 0);
+              const itemAmount = unitPrice * (item.quantity || 1);
+
+              const payload = {
+                order_id: finalOrderId,
+                affiliate_code: affiliateCode,
+                product_id: item.product_id,
+                product_name: item.product_name,
+                quantity: item.quantity,
+                item_price: unitPrice / 100,
+                order_amount: itemAmount,
+                status: "PENDING",
+                customer_id: customer.id,
+                customer_name: customer.name,
+                customer_email: customer.email,
+              };
+
+              console.log(`razorpay confirm: Sending webhook for ${item.product_name}...`);
+
+              try {
+                const response = await fetch(webhookUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                });
+
+                if (response.ok) {
+                  const result = await response.json();
+                  console.log(`✅ Webhook success for ${item.product_name}:`, result);
+                } else {
+                  const error = await response.text();
+                  console.error(`❌ Webhook failed for ${item.product_name}:`, error);
+                }
+              } catch (fetchErr) {
+                console.error(`❌ Webhook fetch error for ${item.product_name}:`, fetchErr);
+              }
+            })
+          );
+        }
+      } else {
+        console.log("razorpay confirm: No affiliate code, skipping commission");
+      }
+    } catch (affiliateErr) {
+      console.error("razorpay confirm: ⚠️ Affiliate webhook failed:", affiliateErr);
+    }
+  }
+
+  try {
+    const result = await logPendingCoinsForOrder(finalOrderId);
+    console.log("[customer-affiliate-coins] razorpay confirm:", result);
+  } catch (err) {
+    console.error("[customer-affiliate-coins] razorpay confirm failed:", err);
+  }
 }
 
 export async function POST(req: Request) {
@@ -205,8 +310,6 @@ export async function POST(req: Request) {
     }
 
     // FORCE RESERVATIONS AND SHIPPING METHOD
-    // This is critical for Medusa v2 fulfillment to work correctly.
-    // Without reservations, fulfillment items will be empty.
     console.log("razorpay confirm: Ensuring order readiness...");
     await ensurePlacedOrderFulfillmentReady(finalOrderId);
 
@@ -279,110 +382,10 @@ export async function POST(req: Request) {
       console.error("Coin spend error:", coinError);
     }
 
-    // AFFILIATE COMMISSION: Call the commission webhook for hierarchy support
-    if (typeof amountMinor === "number") {
-      try {
-        console.log("razorpay confirm: Triggering commission webhook for hierarchy...");
-
-        const pool = getPool();
-        if (!pool) throw new Error('Database not configured');
-
-        // Get customer and order item info
-        const customerResult = await pool.query(
-          `SELECT 
-             c.id, 
-             c.email, 
-             c.first_name || ' ' || c.last_name as name,
-             COALESCE(cr.referral_code, c.metadata->>'referral_code') as referral_code
-           FROM "order" o
-           JOIN customer c ON o.customer_id = c.id
-           LEFT JOIN customer_referral cr ON cr.customer_id = c.id
-           WHERE o.id = $1`,
-          [finalOrderId]
-        );
-
-        const customer = customerResult.rows[0];
-        const affiliateCode = customer?.referral_code;
-
-        if (affiliateCode) {
-          console.log(`razorpay confirm: Found affiliate code ${affiliateCode}, calling webhook...`);
-
-          // Get order items
-          const itemsResult = await pool.query(
-            `SELECT 
-               oi.id, 
-               pv.product_id,
-               oi.quantity,
-               oli.unit_price,
-               p.title as product_name
-             FROM order_item oi
-             JOIN order_line_item oli ON oi.item_id = oli.id
-             LEFT JOIN product_variant pv ON oli.variant_id = pv.id
-             LEFT JOIN product p ON pv.product_id = p.id
-             WHERE oi.order_id = $1`,
-            [finalOrderId]
-          );
-
-          // Call webhook for each item (same as Medusa subscriber)
-          const webhookUrl = process.env.AFFILIATE_WEBHOOK_URL;
-
-          if (!webhookUrl) {
-            console.error("razorpay confirm: ⚠️ AFFILIATE_WEBHOOK_URL not set, skipping commission webhook");
-          } else {
-            for (const item of itemsResult.rows) {
-              const unitPrice = parseFloat(item.unit_price || 0);
-              const itemAmount = unitPrice * (item.quantity || 1);
-
-              const payload = {
-                order_id: finalOrderId,
-                affiliate_code: affiliateCode,
-                product_id: item.product_id,
-                product_name: item.product_name,
-                quantity: item.quantity,
-                item_price: unitPrice / 100, // Convert to rupees
-                order_amount: itemAmount,
-                status: "PENDING",
-                customer_id: customer.id,
-                customer_name: customer.name,
-                customer_email: customer.email,
-              };
-
-              console.log(`razorpay confirm: Sending webhook for ${item.product_name}...`);
-
-              try {
-                const response = await fetch(webhookUrl, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(payload),
-                });
-
-                if (response.ok) {
-                  const result = await response.json();
-                  console.log(`✅ Webhook success for ${item.product_name}:`, result);
-                } else {
-                  const error = await response.text();
-                  console.error(`❌ Webhook failed for ${item.product_name}:`, error);
-                }
-              } catch (fetchErr) {
-                console.error(`❌ Webhook fetch error for ${item.product_name}:`, fetchErr);
-              }
-            }
-          }
-        } else {
-          console.log("razorpay confirm: No affiliate code, skipping commission");
-        }
-      } catch (affiliateErr) {
-        console.error("razorpay confirm: ⚠️ Affiliate webhook failed:", affiliateErr);
-      }
-    }
-
-    // Customer-affiliate coins (separate from agent affiliate above)
-    try {
-      const result = await logPendingCoinsForOrder(finalOrderId);
-      console.log("[customer-affiliate-coins] razorpay confirm:", result);
-    } catch (err) {
-      console.error("[customer-affiliate-coins] razorpay confirm failed:", err);
-    }
+    // Non-blocking: affiliate webhooks + customer-affiliate coins after response
+    after(() => {
+      void runPostPaidSideEffects(finalOrderId, amountMinor);
+    });
 
     return NextResponse.json({ ok: true, paymentCreated, medusaOrderId: finalOrderId });
   } catch (err) {

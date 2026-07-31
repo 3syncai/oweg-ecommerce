@@ -92,24 +92,23 @@ export async function fetchLocationByPincode(
       throw new Error("Invalid pincode");
     }
 
-    const response = await fetch(
-      `https://api.postalpincode.in/pincode/${cleanPincode}`
-    );
+    const response = await fetch(`/api/pincode/${cleanPincode}`);
 
     if (!response.ok) throw new Error("Pincode lookup failed");
 
-    const data = await response.json();
+    const data = (await response.json()) as { place?: string | null };
+    const place = typeof data?.place === "string" ? data.place.trim() : "";
+    if (!place) return null;
 
-    if (data[0]?.Status === "Success" && data[0]?.PostOffice?.length > 0) {
-      const postOffice = data[0].PostOffice[0];
-      return {
-        city: postOffice.District || postOffice.Name || "Unknown",
-        state: postOffice.State || "Unknown",
-        pincode: cleanPincode,
-      };
-    }
-
-    return null;
+    // place format: "Name, District, State"
+    const parts = place.split(",").map((p) => p.trim()).filter(Boolean);
+    const city = parts[1] || parts[0] || "Unknown";
+    const state = parts[2] || parts[parts.length - 1] || "Unknown";
+    return {
+      city,
+      state,
+      pincode: cleanPincode,
+    };
   } catch (error) {
     console.error("Pincode lookup error:", error);
     return null;

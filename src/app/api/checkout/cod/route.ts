@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
 import { loadCheckoutOrder } from "@/lib/checkout-order";
 import { applyCoinDiscountToOrder, syncOrderShippingAmount, syncOrderTaxInclusivePricing } from "@/lib/order-discount";
@@ -314,7 +314,11 @@ export async function POST(req: Request) {
         }
       }
       // Idempotent: repair older COD orders that converted without reservations
-      await ensurePlacedOrderFulfillmentReady(finalOrderId);
+      after(() => {
+        void ensurePlacedOrderFulfillmentReady(finalOrderId).catch((err) => {
+          console.error("cod confirm: fulfillment readiness failed (idempotent)", err);
+        });
+      });
       scheduleCodSideEffects(finalOrderId, metadata);
       return NextResponse.json({ ok: true, medusaOrderId: finalOrderId, status: "confirmed" });
     }
@@ -382,8 +386,12 @@ export async function POST(req: Request) {
 
     scheduleCodSideEffects(finalOrderId, confirmedMetadata);
 
-    // Same readiness as Razorpay: allocate stock so vendors can fulfill / To Accept
-    await ensurePlacedOrderFulfillmentReady(finalOrderId);
+    // Allocate stock async so success UI can flip to confirmed without waiting
+    after(() => {
+      void ensurePlacedOrderFulfillmentReady(finalOrderId).catch((err) => {
+        console.error("cod confirm: fulfillment readiness failed", err);
+      });
+    });
 
     return NextResponse.json({ ok: true, medusaOrderId: finalOrderId, status: "confirmed" });
   } catch (err) {

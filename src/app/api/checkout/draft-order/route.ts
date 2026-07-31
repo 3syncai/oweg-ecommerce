@@ -3,7 +3,7 @@
 
 
 import { cookies, headers } from "next/headers";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { createDraftOrder, readStoreCart } from "@/lib/medusa-admin";
 import {
   runPostConvertCheckoutSideEffects,
@@ -543,19 +543,19 @@ export async function POST(req: Request) {
 
     const finalTotal = Math.max(0, itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees);
 
-    try {
-      await syncOrderTaxInclusivePricing(medusaOrderId, {
-        expectedGrandTotal: finalTotal,
-        shippingRupees: shippingCharge,
-        coinDiscountRupees,
-        oweg10DiscountRupees,
-      });
-    } catch (taxErr) {
-      console.warn("Failed to sync tax-inclusive pricing on draft order:", taxErr);
-    }
-
-    // COD fast path: return after draft creation (~1 API call). Convert + confirm runs on success page.
+    // COD fast path: return after draft creation. Tax sync + convert run async / on confirm.
     if (paymentMethod === "cod") {
+      after(() => {
+        void syncOrderTaxInclusivePricing(medusaOrderId, {
+          expectedGrandTotal: finalTotal,
+          shippingRupees: shippingCharge,
+          coinDiscountRupees,
+          oweg10DiscountRupees,
+        }).catch((taxErr) => {
+          console.warn("Failed to sync tax-inclusive pricing on COD draft order:", taxErr);
+        });
+      });
+
       return NextResponse.json({
         medusaOrderId,
         total: finalTotal,
@@ -566,6 +566,17 @@ export async function POST(req: Request) {
         coinDiscountApplied: coinDiscountRupees,
         oweg10DiscountApplied: oweg10DiscountRupees,
       });
+    }
+
+    try {
+      await syncOrderTaxInclusivePricing(medusaOrderId, {
+        expectedGrandTotal: finalTotal,
+        shippingRupees: shippingCharge,
+        coinDiscountRupees,
+        oweg10DiscountRupees,
+      });
+    } catch (taxErr) {
+      console.warn("Failed to sync tax-inclusive pricing on draft order:", taxErr);
     }
 
     let converted = false;

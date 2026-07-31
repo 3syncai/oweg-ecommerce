@@ -102,6 +102,7 @@ function OrderSuccessPageInner() {
   const [loading, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
   const [autoPollingStarted, setAutoPollingStarted] = useState(false);
+  const [initialOrderChecked, setInitialOrderChecked] = useState(false);
   const [coinsEarned, setCoinsEarned] = useState<number | null>(null);
   const pollAttempts = useRef(0);
   const clearedCartRef = useRef(false);
@@ -182,11 +183,20 @@ function OrderSuccessPageInner() {
   }, [orderId, isConfirmingFlow, isCodCheckout]);
 
   useEffect(() => {
+    setInitialOrderChecked(false);
+    setAutoPollingStarted(false);
+    setPolling(false);
+    pollAttempts.current = 0;
+  }, [orderId]);
+
+  useEffect(() => {
     if (!orderId) return;
     let mounted = true;
     (async () => {
       const o = await fetchOrder();
-      if (mounted && o) setOrder(o);
+      if (!mounted) return;
+      if (o) setOrder(o);
+      setInitialOrderChecked(true);
     })();
     return () => {
       mounted = false;
@@ -317,17 +327,28 @@ function OrderSuccessPageInner() {
 
   useEffect(() => {
     if (!orderId || !isConfirmingFlow || isCodCheckout) return;
+    // Wait for first order fetch so we skip polling when already paid
+    if (!initialOrderChecked) return;
     if (isPaidOnline || polling || autoPollingStarted) return;
     setAutoPollingStarted(true);
     setPolling(true);
-  }, [autoPollingStarted, isCodCheckout, isConfirmingFlow, isPaidOnline, orderId, polling]);
+  }, [
+    autoPollingStarted,
+    initialOrderChecked,
+    isCodCheckout,
+    isConfirmingFlow,
+    isPaidOnline,
+    orderId,
+    polling,
+  ]);
 
   useEffect(() => {
     if (!orderId || !isConfirmingFlow || !isCodPending) return;
+    if (!initialOrderChecked) return;
     if (polling || autoPollingStarted) return;
     setAutoPollingStarted(true);
     setPolling(true);
-  }, [autoPollingStarted, isCodPending, isConfirmingFlow, orderId, polling]);
+  }, [autoPollingStarted, initialOrderChecked, isCodPending, isConfirmingFlow, orderId, polling]);
 
   function formatItemAmount(item: OrderLineItem) {
     if (!item) return "N/A";

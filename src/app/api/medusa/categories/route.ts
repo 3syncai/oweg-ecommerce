@@ -15,8 +15,16 @@ export async function GET(req: NextRequest) {
     }
 
     // Otherwise return all categories
-    const categories = await fetchCategories();
-    return NextResponse.json({ categories });
+    const categories = await fetchCategories({ revalidate: 120 });
+    return NextResponse.json(
+      { categories },
+      {
+        headers: {
+          "Cache-Control":
+            "public, max-age=120, s-maxage=120, stale-while-revalidate=600",
+        },
+      },
+    );
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "failed";
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -30,9 +30,13 @@ export default function CategoryMegaMenuBannerCarousel({
   const [aspectByUrl, setAspectByUrl] = React.useState<Record<string, number>>(
     {}
   );
+  const [loadedByUrl, setLoadedByUrl] = React.useState<Record<string, boolean>>(
+    {}
+  );
 
   React.useEffect(() => {
     setActiveIndex(0);
+    setLoadedByUrl({});
     preloadMegaMenuBannerImages(banners);
   }, [banners]);
 
@@ -55,6 +59,9 @@ export default function CategoryMegaMenuBannerCarousel({
           if (prev[banner.image_url] === ratio) return prev;
           return { ...prev, [banner.image_url]: ratio };
         });
+        setLoadedByUrl((prev) =>
+          prev[banner.image_url] ? prev : { ...prev, [banner.image_url]: true }
+        );
       };
       img.src = banner.image_url;
     });
@@ -69,10 +76,13 @@ export default function CategoryMegaMenuBannerCarousel({
   const knownActiveAspect =
     activeBanner && aspectByUrl[activeBanner.image_url]
       ? aspectByUrl[activeBanner.image_url]
-      : null;
+      : MEGA_MENU_BANNER_ASPECT;
+  const activeLoaded = Boolean(
+    activeBanner && loadedByUrl[activeBanner.image_url]
+  );
 
   const linkClassName =
-    "block w-full overflow-hidden rounded-lg border border-[#C8EAC0] bg-white";
+    "relative block w-full overflow-hidden rounded-lg border border-[#C8EAC0] bg-[#EAF8E7]";
 
   const rememberAspect = (imageUrl: string, img: HTMLImageElement) => {
     const { naturalWidth, naturalHeight } = img;
@@ -82,6 +92,9 @@ export default function CategoryMegaMenuBannerCarousel({
       if (prev[imageUrl] === ratio) return prev;
       return { ...prev, [imageUrl]: ratio };
     });
+    setLoadedByUrl((prev) =>
+      prev[imageUrl] ? prev : { ...prev, [imageUrl]: true }
+    );
   };
 
   const handleNewTabClick =
@@ -99,12 +112,14 @@ export default function CategoryMegaMenuBannerCarousel({
     >
       <div
         className="relative w-full max-w-full"
-        style={
-          knownActiveAspect
-            ? { aspectRatio: String(knownActiveAspect) }
-            : undefined
-        }
+        style={{ aspectRatio: String(knownActiveAspect) }}
       >
+        {!activeLoaded ? (
+          <div
+            className="absolute inset-0 z-[5] animate-pulse rounded-lg border border-[#C8EAC0] bg-white/80"
+            aria-hidden
+          />
+        ) : null}
         {banners.map((banner, index) => {
           const isActive = index === activeIndex;
           const bannerHref = banner.link_url || "#";
@@ -115,11 +130,14 @@ export default function CategoryMegaMenuBannerCarousel({
               alt={banner.alt_text || "Category promotion"}
               className={
                 isActive
-                  ? "block h-auto w-full"
-                  : "h-full w-full object-cover object-center"
+                  ? `absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-200 ${
+                      loadedByUrl[banner.image_url] ? "opacity-100" : "opacity-0"
+                    }`
+                  : "absolute inset-0 h-full w-full object-cover object-center opacity-0"
               }
               loading={isActive ? "eager" : "lazy"}
               decoding="async"
+              fetchPriority={isActive ? "high" : "low"}
               onLoad={(event) =>
                 rememberAspect(banner.image_url, event.currentTarget)
               }
@@ -131,7 +149,7 @@ export default function CategoryMegaMenuBannerCarousel({
               key={banner.id}
               className={
                 isActive
-                  ? "relative z-10 w-full"
+                  ? "absolute inset-0 z-10 w-full"
                   : "pointer-events-none absolute inset-0 z-0 opacity-0 transition-opacity duration-300"
               }
               aria-hidden={!isActive}
@@ -141,7 +159,7 @@ export default function CategoryMegaMenuBannerCarousel({
                   href={bannerHref}
                   target="_blank"
                   rel="noopener noreferrer external"
-                  className={isActive ? linkClassName : `${linkClassName} h-full`}
+                  className={`${linkClassName} h-full`}
                   onClick={handleNewTabClick(bannerHref)}
                   tabIndex={isActive ? 0 : -1}
                 >
@@ -150,7 +168,7 @@ export default function CategoryMegaMenuBannerCarousel({
               ) : (
                 <Link
                   href={bannerHref}
-                  className={isActive ? linkClassName : `${linkClassName} h-full`}
+                  className={`${linkClassName} h-full`}
                   onClick={onNavigate}
                   tabIndex={isActive ? 0 : -1}
                 >

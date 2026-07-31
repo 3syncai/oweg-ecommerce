@@ -2,14 +2,13 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthProvider";
-import { buildSignupUrl } from "@/lib/auth-redirect";
+import CustomerLoginModal from "@/components/auth/CustomerLoginModal";
 import { calculateOweg10Discount, OWEG10_CODE } from "@/lib/oweg10-shared";
 import {
   loadRazorpayScript,
@@ -17,7 +16,6 @@ import {
   type RazorpaySuccessResponse,
 } from "@/lib/razorpay-client";
 import { warmRazorpayCheckout } from "@/lib/razorpay-warmup";
-import { getSiteOrigin } from "@/lib/razorpay";
 import {
   clearStaleBuyNowSnapshot,
   getCheckoutFailedPath,
@@ -212,7 +210,7 @@ function getStateSuggestions(queryValue: string): string[] {
 function CheckoutPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { customer, setCustomer, refresh } = useAuth();
+  const { customer } = useAuth();
   const isBuyNow = searchParams?.get("buyNow") === "1";
   const variantFromQuery =
     searchParams?.get("variant_id") ||
@@ -232,11 +230,8 @@ function CheckoutPageInner() {
   } | null>(null);
   const [loadingCart, setLoadingCart] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [paymentReceivedOverlay, setPaymentReceivedOverlay] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [loginBusy, setLoginBusy] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "cod">("razorpay");
   const [oweg10Applied, setOweg10Applied] = useState(false);
   const [oweg10Status, setOweg10Status] = useState<{
@@ -1156,8 +1151,11 @@ function CheckoutPageInner() {
 
     console.log('🛒 [Frontend Debug] createDraftOrder Payload:', requestPayload);
 
+    // Don't block draft creation on address save latency
     if (saveAsDefault) {
-      await saveDefaultAddress();
+      void saveDefaultAddress().catch((err) => {
+        console.warn("Failed to save default address during checkout", err);
+      });
     }
 
     const res = await fetch("/api/checkout/draft-order", {
@@ -1223,8 +1221,107 @@ function CheckoutPageInner() {
     }
 
     draftWarmupRef.current = null;
-    return createDraftOrder();
+    const draft = await createDraftOrder();
+    draftWarmupRef.current = {
+      fingerprint,
+      draft,
+      payableRupees: payableTotal,
+      at: Date.now(),
+    };
+    return draft;
   };
+
+  // COD-only: warm draft in background so Pay is near-instant.
+  // Razorpay drafts stay click-only to avoid abandoned-order flood.
+  useEffect(() => {
+    if (paymentMethod !== "cod") {
+      draftWarmupRef.current = null;
+      draftWarmupInFlightRef.current = null;
+      return;
+    }
+    if (!customer?.id) return;
+
+    const shippingReady =
+      !!shipping.email?.trim() &&
+      !!shipping.firstName?.trim() &&
+      !!shipping.address1?.trim() &&
+      !!shipping.postalCode?.trim() &&
+      !!shipping.phone?.trim();
+    if (!shippingReady) return;
+
+    const hasCartItems = (cart?.items?.length || 0) > 0;
+    const hasBuyNowItem = isBuyNow && !!(buyNowItem || variantFromQuery);
+    if (!(isBuyNow ? hasBuyNowItem : hasCartItems)) return;
+
+    const fingerprint = getCheckoutWarmupFingerprint();
+    const cached = draftWarmupRef.current;
+    if (
+      cached &&
+      cached.fingerprint === fingerprint &&
+      Date.now() - cached.at < DRAFT_WARMUP_TTL_MS
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      const create = createDraftOrderRef.current;
+      if (!create) return;
+
+      const warmPromise = create()
+        .then((draft) => {
+          if (cancelled) return null;
+          const stillCurrent = getCheckoutWarmupFingerprint() === fingerprint;
+          if (!stillCurrent) return null;
+          draftWarmupRef.current = {
+            fingerprint,
+            draft,
+            payableRupees: payableTotal,
+            at: Date.now(),
+          };
+          return draft;
+        })
+        .catch((err) => {
+          console.warn("COD draft warmup failed", err);
+          return null;
+        })
+        .finally(() => {
+          if (draftWarmupInFlightRef.current === warmPromise) {
+            draftWarmupInFlightRef.current = null;
+          }
+        });
+
+      draftWarmupInFlightRef.current = warmPromise;
+    }, 700);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fingerprint deps listed explicitly
+  }, [
+    paymentMethod,
+    customer?.id,
+    shipping.email,
+    shipping.firstName,
+    shipping.address1,
+    shipping.postalCode,
+    shipping.phone,
+    shipping.state,
+    billingSame,
+    referralCode,
+    coinDiscount,
+    oweg10Applied,
+    oweg10Status.canApply,
+    payableTotal,
+    cart?.id,
+    isBuyNow,
+    buyNowItem,
+    variantFromQuery,
+    qtyFromQuery,
+    priceFromQuery,
+  ]);
 
   // Razorpay drafts are created only when the user clicks Pay (getOrCreateCheckoutDraft),
   // not on shipping-field warmup — abandoned online attempts were flooding Draft Orders.
@@ -1257,13 +1354,15 @@ function CheckoutPageInner() {
     }
   };
 
-  const confirmRazorpayPayment = async (
+  const finalizeRazorpayCheckout = (
     draft: DraftOrderResponse,
     response: RazorpaySuccessResponse,
     amountMinor: number,
     currency: string
   ) => {
-    const res = await fetch("/api/checkout/razorpay/confirm", {
+    setPaymentReceivedOverlay(true);
+    setProcessing(true);
+    void fetch("/api/checkout/razorpay/confirm", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -1274,10 +1373,13 @@ function CheckoutPageInner() {
         amount_minor: amountMinor,
         currency,
       }),
+      keepalive: true,
+    }).catch((err) => {
+      console.error("razorpay background confirm failed", err);
     });
-    if (!res.ok) {
-      console.error("razorpay confirm failed", await res.text().catch(() => ""));
-    }
+    router.push(
+      `${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}&confirming=1`
+    );
   };
 
   const handleStandardRazorpay = async (draft: DraftOrderResponse, payableRupees: number) => {
@@ -1318,15 +1420,13 @@ function CheckoutPageInner() {
     if (amountMinor <= 0) {
       throw new Error("Invalid payment amount. Please refresh and try again.");
     }
-    const origin = getSiteOrigin(typeof window !== "undefined" ? window.location.origin : undefined);
-    const callbackUrl = `${origin}/api/checkout/razorpay/callback?orderId=${encodeURIComponent(
-      draft.medusaOrderId
-    )}`;
 
     const email = shipping.email || billing.email;
     const contact = shipping.phone || billing.phone;
     const name = `${shipping.firstName} ${shipping.lastName}`.trim();
 
+    // Handler-only: omit callback_url so Razorpay does not show its 3s redirect screen.
+    // HTTP callback route + webhooks remain as server-side backups.
     await openRazorpayCheckout({
       key: createData.key,
       amountMinor,
@@ -1335,24 +1435,23 @@ function CheckoutPageInner() {
       name: "OWEG",
       description: `Order ${draft.medusaOrderId}`,
       prefill: { name, email, contact },
-      callbackUrl,
       notes: { medusaOrderId: draft.medusaOrderId },
-      onSuccess: async (response) => {
-        await confirmRazorpayPayment(draft, response, amountMinor, createData.currency);
-        router.push(
-          `${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}&confirming=1`
-        );
+      onSuccess: (response) => {
+        finalizeRazorpayCheckout(draft, response, amountMinor, createData.currency);
       },
       onFailure: async () => {
+        setPaymentReceivedOverlay(false);
         await fetch("/api/checkout/payment-failed", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ medusaOrderId: draft.medusaOrderId }),
         }).catch(() => undefined);
         await refundCoinsForOrder(draft.medusaOrderId);
+        setProcessing(false);
         router.push(`${RAZORPAY_FAILED}?orderId=${encodeURIComponent(draft.medusaOrderId)}`);
       },
       onDismiss: async () => {
+        setPaymentReceivedOverlay(false);
         await fetch("/api/checkout/payment-failed", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -1362,8 +1461,8 @@ function CheckoutPageInner() {
         setProcessing(false);
       },
     });
-
-    setProcessing(false);
+    // Keep processing=true while Razorpay modal is open so the form does not
+    // flash if the user pays and the handler redirects immediately.
   };
 
   const performCheckout = async () => {
@@ -1428,50 +1527,6 @@ function CheckoutPageInner() {
     await performCheckout();
   };
 
-  const handleLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError(null);
-    if (!loginEmail || !loginPassword) {
-      setLoginError("Enter email and password to continue.");
-      return;
-    }
-    try {
-      setLoginBusy(true);
-      const res = await fetch("/api/medusa/auth/login", {
-        method: "POST",
-        headers: { "content-type": "application/json", "Cache-Control": "no-store" },
-        credentials: "include",
-        body: JSON.stringify({ identifier: loginEmail.trim(), password: loginPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        const msg = data?.error || "Login failed. Check your details.";
-        setLoginError(msg);
-        toast.error(msg);
-        return;
-      }
-      if (data?.customer) {
-        setCustomer(data.customer);
-      } else {
-        await refresh();
-      }
-      toast.success("Logged in. Continue checkout.");
-      setLoginModalOpen(false);
-      setLoginPassword("");
-      if (checkoutAfterLoginIntent) {
-        setPendingLoginCheckout(true);
-      } else {
-        setPendingLoginCheckout(false);
-      }
-      setCheckoutAfterLoginIntent(false);
-    } catch (err) {
-      console.error(err);
-      setLoginError("Login failed. Please try again.");
-    } finally {
-      setLoginBusy(false);
-    }
-  };
-
   performCheckoutRef.current = performCheckout;
 
   useEffect(() => {
@@ -1486,8 +1541,12 @@ function CheckoutPageInner() {
     (!isBuyNow && !cartItems.length) ||
     (isBuyNow && !buyNowItem && !variantFromQuery);
   const payButtonLabel = processing
-    ? "Processing Payment…"
-    : `Pay securely (${formatInr(payableTotal)})`;
+    ? paymentMethod === "cod"
+      ? "Placing order…"
+      : "Processing Payment…"
+    : paymentMethod === "cod"
+      ? `Place COD order (${formatInr(payableTotal)})`
+      : `Pay securely (${formatInr(payableTotal)})`;
   const openCheckoutLogin = () => {
     setCheckoutAfterLoginIntent(true);
     setLoginModalOpen(true);
@@ -2173,7 +2232,9 @@ function CheckoutPageInner() {
               </div>
 
               <p className="text-[11px] text-center text-amber-700/90 font-medium">
-                Review before you pay
+                {paymentMethod === "cod"
+                  ? "Review before you place your order"
+                  : "Review before you pay"}
               </p>
               <Button
                 type={customer ? "submit" : "button"}
@@ -2203,74 +2264,49 @@ function CheckoutPageInner() {
               onClick={customer ? undefined : openCheckoutLogin}
               disabled={payDisabled}
             >
-              {processing ? "Processing…" : "Pay securely"}
+              {processing
+                ? paymentMethod === "cod"
+                  ? "Placing order…"
+                  : "Processing…"
+                : paymentMethod === "cod"
+                  ? "Place COD order"
+                  : "Pay securely"}
             </Button>
           </div>
         </div>
       </div>
-      {loginModalOpen && (
-        <div className="fixed inset-0 z-[999] bg-black/35 backdrop-blur-sm flex items-center justify-center px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-100 p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-[#2c342f]">Sign in to continue</h2>
-                <p className="text-xs text-slate-600">Log in to place your order securely.</p>
-              </div>
-              <button
-                type="button"
-                className="text-sm text-slate-500 hover:text-slate-800"
-                onClick={() => {
-                  setLoginModalOpen(false);
-                  setCheckoutAfterLoginIntent(false);
-                }}
-              >
-                Close
-              </button>
-            </div>
-            <form onSubmit={handleLoginSubmit} className="space-y-3">
-              <Input
-                required
-                type="email"
-                placeholder="Email"
-                className={checkoutField}
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-              />
-              <Input
-                required
-                type="password"
-                placeholder="Password"
-                className={checkoutField}
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-              />
-              {loginError && (
-                <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
-                  {loginError}
-                </div>
-              )}
-              <Button
-                type="submit"
-                className={`w-full py-3 ${checkoutCta}`}
-                disabled={loginBusy}
-              >
-                {loginBusy ? "Signing in..." : "Login & continue"}
-              </Button>
-              <p className="text-xs text-gray-500">
-                New here?{" "}
-                <Link
-                  href={buildSignupUrl(
-                    `/checkout${searchParams?.toString() ? `?${searchParams.toString()}` : ""}`
-                  )}
-                  className="text-emerald-700 font-semibold"
-                >
-                  Create an account
-                </Link>
-              </p>
-            </form>
+      <CustomerLoginModal
+        open={loginModalOpen}
+        onClose={() => {
+          setLoginModalOpen(false);
+          setCheckoutAfterLoginIntent(false);
+        }}
+        signupRedirectPath={`/checkout${searchParams?.toString() ? `?${searchParams.toString()}` : ""}`}
+        onSuccess={() => {
+          setLoginModalOpen(false);
+          if (checkoutAfterLoginIntent) {
+            setPendingLoginCheckout(true);
+          } else {
+            setPendingLoginCheckout(false);
+          }
+          setCheckoutAfterLoginIntent(false);
+        }}
+      />
+      {paymentReceivedOverlay ? (
+        <div
+          className="fixed inset-0 z-[2000] flex items-center justify-center bg-white/95 backdrop-blur-sm px-6"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="max-w-sm text-center space-y-3">
+            <div className="mx-auto h-12 w-12 rounded-full border-2 border-[var(--oweg-green)] border-t-transparent animate-spin" />
+            <p className="text-lg font-semibold text-[#2c342f]">Payment received</p>
+            <p className="text-sm text-slate-600">
+              Confirming your order — this only takes a moment.
+            </p>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -33,10 +33,58 @@ export type HomeFeedResult = {
 
 const MAX_SECTIONS = 6;
 const MAX_PER_SECTION = 12;
-const PER_CATEGORY_FETCH = 24;
-const MAX_CATEGORIES_TO_PROBE = 16;
-const CATEGORY_FETCH_CONCURRENCY = 4;
+const PER_CATEGORY_FETCH = 12;
+const MAX_CATEGORIES_TO_PROBE = 8;
+const CATEGORY_FETCH_CONCURRENCY = 6;
 const CATEGORY_FETCH_TIMEOUT_MS = 8000;
+const HOME_FEED_CACHE_TTL_MS = 60_000;
+
+type HomeFeedCacheEntry = {
+  expiresAt: number;
+  value: HomeFeedResult;
+};
+
+type HomeFeedGlobalCache = {
+  cache: HomeFeedCacheEntry | null;
+  inFlight: Promise<HomeFeedResult> | null;
+};
+
+const homeFeedGlobal: HomeFeedGlobalCache = (() => {
+  const g = globalThis as typeof globalThis & {
+    __owegHomeFeedCache?: HomeFeedGlobalCache;
+  };
+  if (!g.__owegHomeFeedCache) {
+    g.__owegHomeFeedCache = { cache: null, inFlight: null };
+  }
+  return g.__owegHomeFeedCache;
+})();
+
+export async function buildHomeFeedCached(): Promise<{
+  feed: HomeFeedResult;
+  cacheHit: boolean;
+}> {
+  const now = Date.now();
+  if (homeFeedGlobal.cache && homeFeedGlobal.cache.expiresAt > now) {
+    return { feed: homeFeedGlobal.cache.value, cacheHit: true };
+  }
+  if (homeFeedGlobal.inFlight) {
+    const feed = await homeFeedGlobal.inFlight;
+    return { feed, cacheHit: true };
+  }
+  homeFeedGlobal.inFlight = buildHomeFeed()
+    .then((feed) => {
+      homeFeedGlobal.cache = {
+        value: feed,
+        expiresAt: Date.now() + HOME_FEED_CACHE_TTL_MS,
+      };
+      return feed;
+    })
+    .finally(() => {
+      homeFeedGlobal.inFlight = null;
+    });
+  const feed = await homeFeedGlobal.inFlight;
+  return { feed, cacheHit: false };
+}
 
 function humanizeHandle(handle?: string | null) {
   if (!handle) return "Products";
