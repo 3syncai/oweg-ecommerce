@@ -37,6 +37,7 @@ import GuestAccountDropdown from "@/components/modules/GuestAccountDropdown";
 import LogoutConfirmModal from "@/components/account/LogoutConfirmModal";
 import PincodeModal from "@/components/PincodeModal";
 import { usePreferences } from "@/hooks/usePreferences";
+import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { reorderByPreferences } from "@/lib/personalization";
 import WalletBalance from "@/components/wallet/WalletBalance";
 
@@ -173,9 +174,36 @@ const Header: React.FC = () => {
   );
   const [browseOpen, setBrowseOpen] = React.useState(false);
   const [expandedCol, setExpandedCol] = React.useState<string | null>(null);
-  const [navCategories, setNavCategories] = React.useState<NavCategory[]>([]);
-  const [overflowCategories, setOverflowCategories] = React.useState<NavCategory[]>([]);
-  const [navCatsLoading, setNavCatsLoading] = React.useState(true);
+  const [hasMounted, setHasMounted] = React.useState(false);
+  const storeCategoriesQuery = useStoreCategories();
+  const preferredCategoryOrder = React.useMemo(
+    () => preferences?.categories ?? [],
+    [preferences?.categories]
+  );
+  const reorderNav = React.useCallback(
+    (items: NavCategory[]) => reorderByPreferences(items, (item) => item.title || item.handle, preferredCategoryOrder),
+    [preferredCategoryOrder]
+  );
+  const { navCategories, overflowCategories } = React.useMemo(() => {
+    const raw = storeCategoriesQuery.data;
+    if (!raw?.length) {
+      return { navCategories: [] as NavCategory[], overflowCategories: [] as NavCategory[] };
+    }
+    const { withChildren, withoutChildren } = buildNavCategories(raw as MedusaCategory[]);
+    return {
+      navCategories: reorderNav(withChildren),
+      overflowCategories: reorderNav(withoutChildren),
+    };
+  }, [storeCategoriesQuery.data, reorderNav]);
+  const navCatsLoading =
+    !hasMounted ||
+    storeCategoriesQuery.isPending ||
+    (storeCategoriesQuery.isFetching && !storeCategoriesQuery.data);
+  const navCatsEmpty =
+    hasMounted &&
+    storeCategoriesQuery.isFetched &&
+    !storeCategoriesQuery.isPending &&
+    !navCatsLoading;
   const [isMobile, setIsMobile] = React.useState(false);
   const [viewportWidth, setViewportWidth] = React.useState(1280);
   const [desktopNavWidth, setDesktopNavWidth] = React.useState(0);
@@ -199,14 +227,6 @@ const Header: React.FC = () => {
   const [pinError, setPinError] = React.useState<string | null>(null);
   const locationLabel = mobilePlace || mobilePincode || "Select location";
   const hasSavedLocation = Boolean(mobilePincode || mobilePlace);
-  const preferredCategoryOrder = React.useMemo(
-    () => preferences?.categories ?? [],
-    [preferences?.categories]
-  );
-  const reorderNav = React.useCallback(
-    (items: NavCategory[]) => reorderByPreferences(items, (item) => item.title || item.handle, preferredCategoryOrder),
-    [preferredCategoryOrder]
-  );
 
   // dropdown states for portal:
   const [activeCategoryId, setActiveCategoryId] = React.useState<string | null>(null);
@@ -337,10 +357,13 @@ const Header: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
-    if (!preferredCategoryOrder.length) return;
-    setNavCategories((prev) => reorderNav(prev));
-    setOverflowCategories((prev) => reorderNav(prev));
-  }, [preferredCategoryOrder, reorderNav]);
+    setHasMounted(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (!navCategories.length) return;
+    prefetchMegaMenuBannersForCategories(navCategories, 1);
+  }, [navCategories]);
 
   React.useEffect(() => {
     const headerEl = headerRootRef.current;
@@ -604,14 +627,6 @@ const Header: React.FC = () => {
     return () => window.removeEventListener("focus", handleFocus);
   }, [refreshCart]);
 
-  // Refresh cart periodically to keep count in sync
-  React.useEffect(() => {
-    const interval = setInterval(() => {
-      void refreshCart();
-    }, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
-  }, [refreshCart]);
-
   // Invalidate cache when cart count changes
   React.useEffect(() => {
     if (cartPreviewCache.current && cartPreviewCache.current.cartCount !== cartCount) {
@@ -622,50 +637,6 @@ const Header: React.FC = () => {
       }
     }
   }, [cartCount, cartPreviewOpen, fetchCartPreview]);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    fetch("/api/medusa/collections")
-      .then((r) => r.json())
-      .then(() => {
-        if (cancelled) return;
-        // Collections loading removed - not used in dropdown anymore, using navCategories instead
-      })
-      .catch(() => { })
-      .finally(() => { });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    async function loadNavCategories() {
-      try {
-        const res = await fetch("/api/medusa/categories", { cache: "no-store" });
-        if (!res.ok) throw new Error("failed categories");
-        const data = await res.json();
-        const raw = Array.isArray(data.categories) ? (data.categories as MedusaCategory[]) : [];
-        const { withChildren, withoutChildren } = buildNavCategories(raw);
-        if (!cancelled) {
-          setNavCategories(withChildren);
-          setOverflowCategories(withoutChildren);
-          prefetchMegaMenuBannersForCategories(withChildren, 12);
-        }
-      } catch {
-        if (!cancelled) {
-          setNavCategories([]);
-          setOverflowCategories([]);
-        }
-      } finally {
-        if (!cancelled) setNavCatsLoading(false);
-      }
-    }
-    loadNavCategories();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   React.useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
@@ -1250,9 +1221,9 @@ const Header: React.FC = () => {
                   <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
                 </Link>
               ))
-            ) : (
+            ) : navCatsEmpty ? (
               <div className="px-3 py-2 text-sm text-gray-500">No additional categories</div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>,
@@ -1862,9 +1833,9 @@ const Header: React.FC = () => {
                       })}
                     </div>
                   </div>
-                ) : (
+                ) : navCatsEmpty ? (
                   <div className="py-3 text-sm text-gray-500">No categories found.</div>
-                )}
+                ) : null}
               </div>
             </div>
           </nav>
@@ -1978,9 +1949,9 @@ const Header: React.FC = () => {
                           </div>
                         );
                       })
-                    ) : (
+                    ) : navCatsEmpty ? (
                       <div className="py-3 text-sm text-gray-500">No categories available</div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -2011,143 +1982,6 @@ const Header: React.FC = () => {
         placeHint={mobilePlace}
       />
 
-      {/* Internal styles (no external file) */}
-      <style jsx global>{`
-        @font-face {
-          font-family: "OPTIHandelGothic-Light";
-          src: url("/fonts/OPTIHandelGothic-Light.woff2") format("woff2");
-          font-weight: 300;
-          font-style: normal;
-          font-display: swap;
-        }
-        :root {
-          --header-accent: #7AC943;
-          --header-top-bg: #000000;
-          --header-top-text: #ffffff;
-          --header-bg: #ffffff;
-          --header-nav-bg: #efefef;
-          --header-text: #111827;
-          --header-muted: #6b7280;
-        }
-        .header-root {
-          position: fixed !important;
-          top: 0;
-          left: 0;
-          right: 0;
-          font-family: "OPTIHandelGothic-Light", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-            Roboto, "Helvetica Neue", Arial;
-          -webkit-font-smoothing: antialiased;
-          -moz-osx-font-smoothing: grayscale;
-        }
-        .header-root button,
-        .header-root .cursor-pointer {
-          cursor: pointer !important;
-        }
-        .bg-header-top-bg {
-          background: var(--header-top-bg);
-        }
-        .text-header-top-text {
-          color: var(--header-top-text);
-        }
-        .bg-header-bg {
-          background: var(--header-bg);
-        }
-        .bg-header-nav-bg {
-          background: var(--header-nav-bg);
-        }
-        .text-header-text {
-          color: var(--header-text);
-        }
-        .text-header-muted {
-          color: var(--header-muted);
-        }
-        .text-header-accent {
-          color: var(--header-accent);
-        }
-        .bg-header-accent {
-          background: var(--header-accent);
-        }
-        .logo-link:hover {
-          transform: translateY(-2px);
-          transition: transform 220ms ease;
-        }
-        [data-nav-scroll] {
-          scrollbar-width: none;
-          -ms-overflow-style: none;
-        }
-        [data-nav-scroll]::-webkit-scrollbar {
-          display: none;
-        }
-        .scrollbar-hide {
-          scrollbar-width: none;
-          -ms-overflow-style: none;
-        }
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-        /* Ensure cart preview is fully opaque */
-        [data-cart-preview] {
-          background-color: #ffffff !important;
-          opacity: 1 !important;
-          isolation: isolate;
-        }
-        /* Force white background on cart preview portal */
-        body > div[style*="z-index: 9999"] {
-          background-color: #ffffff !important;
-          opacity: 1 !important;
-        }
-        .location-block .text-header-text {
-          color: var(--header-text);
-        }
-        .location-block .text-header-text:first-child {
-          color: var(--header-muted);
-        }
-        .nav-link {
-          position: relative;
-          color: var(--header-text);
-        }
-        .nav-link::after {
-          content: "";
-          position: absolute;
-          left: 0;
-          bottom: 6px;
-          height: 2px;
-          width: 0%;
-          background: var(--header-accent);
-          transform-origin: left center;
-          transition: width 260ms cubic-bezier(.2,.9,.2,1), opacity 200ms ease;
-          opacity: 0;
-        }
-        .nav-link:hover {
-          color: var(--header-accent);
-        }
-        .nav-link:hover::after {
-          width: 100%;
-          opacity: 1;
-        }
-        .nav-link.nav-link-active::after {
-          width: 100%;
-          opacity: 1;
-        }
-        .bg-header-top-bg a:hover {
-          color: var(--header-accent) !important;
-        }
-        .group-hover\\:text-header-accent:hover,
-        .group:hover .group-hover\\:text-header-accent {
-          color: var(--header-accent);
-        }
-        input::placeholder {
-          color: rgba(0, 0, 0, 0.45);
-        }
-        @media (max-width: 768px) {
-          .nav-link::after {
-            bottom: 4px;
-          }
-          body.category-overlay-open .mobile-search-bar {
-            display: none;
-          }
-        }
-      `}</style>
       <LogoutConfirmModal
         open={logoutModalOpen}
         onClose={() => setLogoutModalOpen(false)}

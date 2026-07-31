@@ -8,7 +8,7 @@ const SETTINGS_KEY = "global";
 
 let cachedSettings: DebugControllerSettings | null = null;
 let cacheExpiresAt = 0;
-const CACHE_TTL_MS = 5_000;
+const CACHE_TTL_MS = 60_000;
 
 function mergeSettings(
   partial: Partial<DebugControllerSettings> | null | undefined

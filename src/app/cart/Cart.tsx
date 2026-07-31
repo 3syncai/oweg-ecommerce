@@ -789,7 +789,7 @@ const Cart: React.FC = () => {
         const seenOrderedKeys = new Set<string>();
         const perItemQueues = perItemContexts.map((ctxs) => [...ctxs]);
         let madeProgress = true;
-        const PICK_LIMIT = 20;
+        const PICK_LIMIT = 4;
         while (madeProgress && picks.length < PICK_LIMIT) {
           madeProgress = false;
           for (const queue of perItemQueues) {
@@ -812,30 +812,23 @@ const Cart: React.FC = () => {
           return;
         }
 
-        const results = await Promise.all(
-          picks.map(async (p) => {
-            try {
-              const r = await fetch(`/api/medusa/products?${p.kind}=${encodeURIComponent(p.v)}&limit=12`, { cache: "no-store" });
-              if (!r.ok) return { products: [] } as { products: UIProduct[] };
-              return (await r.json()) as { products: UIProduct[] };
-            } catch {
-              return { products: [] } as { products: UIProduct[] };
-            }
-          })
-        );
-
-        const seen = new Set<string | number>();
-        const flat: UIProduct[] = [];
-        for (const res of results) {
-          for (const p of res.products || []) {
-            if (excludeIds.has(String(p.id))) continue;
-            const key = `${p.id}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            flat.push(p);
-          }
+        const contexts = picks.map((p) => `${p.kind}:${p.v}`).join(",");
+        const exclude = Array.from(excludeIds)
+          .filter(Boolean)
+          .map(String)
+          .join(",");
+        const params = new URLSearchParams({
+          contexts,
+          exclude,
+          limit: "12",
+        });
+        const r = await fetch(`/api/medusa/cart-recommendations?${params.toString()}`);
+        if (!r.ok) {
+          if (!cancelled) setRecommended([]);
+          return;
         }
-        if (!cancelled) setRecommended(flat.slice(0, 9));
+        const data = (await r.json()) as { products?: UIProduct[] };
+        if (!cancelled) setRecommended((data.products || []).slice(0, 9));
       } finally {
         if (!cancelled) setLoadingRecommended(false);
       }

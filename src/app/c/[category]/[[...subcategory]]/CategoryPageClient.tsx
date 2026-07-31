@@ -12,12 +12,17 @@ import {
 import { ProductGrid } from "@/components/modules/ProductGrid";
 import { useCategoryProducts } from "@/hooks/useCategoryProducts";
 import type { MedusaCategory } from "@/services/medusa";
+import type { CategoryProductsPage } from "@/services/medusa";
 import { SectionHeading } from "@/components/ui/section-heading";
 import HealthCareAgeGate from "@/components/modules/HealthCareAgeGate";
 import {
   isHealthCareCategoryHandle,
   isHealthCarePath,
 } from "@/lib/health-care-age-gate";
+import type {
+  CategoryDealPreview,
+  CategoryPreviewMap,
+} from "@/lib/category-listing";
 
 const PRODUCTS_PER_PAGE = 20;
 
@@ -59,6 +64,9 @@ type CategoryPageClientProps = {
   selectedSubcategory?: MedusaCategory;
   categoryHandle: string;
   subcategoryHandle?: string;
+  initialProducts?: CategoryProductsPage;
+  initialDeals?: { products: CategoryDealPreview[]; total: number };
+  initialCategoryPreviews?: CategoryPreviewMap;
 };
 
 export function CategoryPageClient({
@@ -67,6 +75,9 @@ export function CategoryPageClient({
   selectedSubcategory,
   categoryHandle,
   subcategoryHandle,
+  initialProducts,
+  initialDeals,
+  initialCategoryPreviews,
 }: CategoryPageClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -88,8 +99,10 @@ export function CategoryPageClient({
     priceMax: parseNumberParam(searchParams?.get("price_max")),
     dealsOnly: searchParams?.get("deals") === "1",
   }));
-  const [dealPreview, setDealPreview] = useState<DealPreview[]>([]);
-  const [dealCount, setDealCount] = useState(0);
+  const [dealPreview, setDealPreview] = useState<DealPreview[]>(
+    () => (initialDeals?.products as DealPreview[]) || []
+  );
+  const [dealCount, setDealCount] = useState(() => initialDeals?.total ?? 0);
 
   const activeCategoryId = selectedSubcategory?.id || category.id;
   const categoryTitle =
@@ -127,6 +140,14 @@ export function CategoryPageClient({
   const { data: pageData, isLoading } = useCategoryProducts(
     activeCategoryId,
     queryFilters,
+    initialProducts &&
+      queryFilters.offset === (initialProducts.offset ?? 0) &&
+      queryFilters.limit === (initialProducts.limit ?? PRODUCTS_PER_PAGE) &&
+      Boolean(queryFilters.dealsOnly) === Boolean(filters.dealsOnly) &&
+      queryFilters.priceMin === filters.priceMin &&
+      queryFilters.priceMax === filters.priceMax
+      ? initialProducts
+      : undefined,
   );
 
   const products = useMemo(
@@ -288,6 +309,8 @@ export function CategoryPageClient({
   ]);
 
   useEffect(() => {
+    if (initialDeals) return;
+
     let cancelled = false;
 
     async function loadDealPreview() {
@@ -307,7 +330,6 @@ export function CategoryPageClient({
         }
         const res = await fetch(
           `/api/medusa/deal-of-the-day?${params.toString()}`,
-          { cache: "no-store" },
         );
         if (!res.ok) {
           throw new Error(`Failed to load deals: ${res.status}`);
@@ -332,7 +354,7 @@ export function CategoryPageClient({
     return () => {
       cancelled = true;
     };
-  }, [activeCategoryId, includeSubcategories]);
+  }, [activeCategoryId, includeSubcategories, initialDeals]);
 
   const headingDescription = isLoading
     ? "Loading products…"
@@ -376,6 +398,7 @@ export function CategoryPageClient({
                 <CategoryHeader
                   categoryHandle={categoryHandle}
                   subcategories={subcategories}
+                  initialPreviews={initialCategoryPreviews}
                 />
               </div>
             )}

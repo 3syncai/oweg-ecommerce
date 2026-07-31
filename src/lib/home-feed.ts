@@ -176,8 +176,11 @@ async function fetchCategorySection(cat: MedusaCategory): Promise<FilledSection 
       CATEGORY_FETCH_TIMEOUT_MS
     );
     const products = Array.isArray(list.products) ? list.products : [];
-    if (!products.length) return null;
-    const ranked = sortAndSlice(products, MAX_PER_SECTION);
+    // Prefer in-stock products for carousels; fall back to all if none in stock
+    const inStock = products.filter(isMedusaProductInStock);
+    const pool = inStock.length > 0 ? inStock : products;
+    if (!pool.length) return null;
+    const ranked = sortAndSlice(pool, MAX_PER_SECTION);
     if (!ranked.length) return null;
     const handle = cat.handle || undefined;
     const title = categoryTitle(cat);

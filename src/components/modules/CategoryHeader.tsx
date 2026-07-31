@@ -11,16 +11,29 @@ import type { MedusaCategory } from "@/services/medusa";
 type CategoryHeaderProps = {
   categoryHandle: string;
   subcategories: MedusaCategory[];
+  initialPreviews?: Record<string, string | { image: string; productId?: string }>;
 };
 
 export function CategoryHeader({
   categoryHandle,
   subcategories,
+  initialPreviews,
 }: CategoryHeaderProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
-  const [previewImages, setPreviewImages] = useState<Record<string, string>>({});
+  const [previewImages, setPreviewImages] = useState<Record<string, string>>(() => {
+    if (!initialPreviews) return {};
+    const normalized: Record<string, string> = {};
+    Object.entries(initialPreviews).forEach(([key, value]) => {
+      if (typeof value === "string") {
+        normalized[key] = value;
+      } else if (value?.image) {
+        normalized[key] = value.image;
+      }
+    });
+    return normalized;
+  });
 
   const updateScrollState = useCallback(() => {
     const node = scrollContainerRef.current;
@@ -71,9 +84,7 @@ export function CategoryHeader({
         const params = new URLSearchParams({
           categoryIds: ids.join(","),
         });
-        const res = await fetch(`/api/medusa/category-previews?${params.toString()}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(`/api/medusa/category-previews?${params.toString()}`);
         if (!res.ok) return;
         const data = await res.json();
         if (cancelled) return;

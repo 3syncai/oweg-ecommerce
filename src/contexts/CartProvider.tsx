@@ -11,7 +11,6 @@ import React, {
 } from "react";
 import { useAuth } from "@/contexts/AuthProvider";
 import { extractCartCount, type CartApiPayload } from "@/lib/cart-helpers";
-import { warmRazorpayCheckout } from "@/lib/razorpay-warmup";
 
 type CartSummaryContextValue = {
   count: number;
@@ -27,11 +26,12 @@ type CartProviderProps = {
   children: React.ReactNode;
 };
 
+let cartRefreshInFlight: Promise<void> | null = null;
+
 const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const { customer } = useAuth();
   const [count, setCount] = useState(0);
   const previousCustomerIdRef = useRef<string | undefined>(customer?.id);
-  const razorpayWarmedRef = useRef(false);
 
   const syncFromCartPayload = useCallback((payload?: CartApiPayload) => {
     const next = extractCartCount(payload);
@@ -48,26 +48,35 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   }, []);
 
   const refresh = useCallback(async () => {
-    try {
-      const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
-      const res = await fetch("/api/medusa/cart", {
-        cache: "no-store",
-        credentials: "include",
-        headers: {
-          ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
-        },
-      });
-      if (!res.ok) return;
-      const data = (await res.json()) as CartApiPayload;
-
-      if (data.guestCartId && typeof window !== "undefined" && typeof data.guestCartId === "string") {
-        localStorage.setItem("guest_cart_id", data.guestCartId);
-      }
-
-      syncFromCartPayload(data);
-    } catch (err) {
-      console.error("Failed to refresh cart", err);
+    if (cartRefreshInFlight) {
+      await cartRefreshInFlight;
+      return;
     }
+    cartRefreshInFlight = (async () => {
+      try {
+        const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
+        const res = await fetch("/api/medusa/cart", {
+          cache: "no-store",
+          credentials: "include",
+          headers: {
+            ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
+          },
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as CartApiPayload;
+
+        if (data.guestCartId && typeof window !== "undefined" && typeof data.guestCartId === "string") {
+          localStorage.setItem("guest_cart_id", data.guestCartId);
+        }
+
+        syncFromCartPayload(data);
+      } catch (err) {
+        console.error("Failed to refresh cart", err);
+      } finally {
+        cartRefreshInFlight = null;
+      }
+    })();
+    await cartRefreshInFlight;
   }, [syncFromCartPayload]);
 
   useEffect(() => {
@@ -85,12 +94,6 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
 
     previousCustomerIdRef.current = nextId;
   }, [customer?.id, refresh, restoreCount]);
-
-  useEffect(() => {
-    if (count <= 0 || razorpayWarmedRef.current) return;
-    razorpayWarmedRef.current = true;
-    warmRazorpayCheckout();
-  }, [count]);
 
   const value = useMemo(
     () => ({

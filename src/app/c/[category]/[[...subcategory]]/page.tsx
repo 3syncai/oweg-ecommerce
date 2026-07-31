@@ -2,13 +2,21 @@ import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CategoryPageClient } from "./CategoryPageClient";
 import { findCategoryByTitleOrHandle } from "@/lib/medusa";
+import {
+  buildCategoryDealPreview,
+  buildCategoryPreviewImages,
+  buildCategoryProductsPage,
+} from "@/lib/category-listing";
 
 type PageProps = {
   params: Promise<{
     category: string;
     subcategory?: string[];
   }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+const PRODUCTS_PER_PAGE = 20;
 
 const safeDecode = (value?: string) => {
   if (!value) return value;
@@ -18,6 +26,11 @@ const safeDecode = (value?: string) => {
     return value;
   }
 };
+
+function firstParam(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
 
 export async function generateMetadata({
   params,
@@ -38,9 +51,10 @@ export async function generateMetadata({
   };
 }
 
-export default async function CategoryPage({ params }: PageProps) {
+export default async function CategoryPage({ params, searchParams }: PageProps) {
   const { category: categoryParam, subcategory: subcategoryParam } =
     await params;
+  const query = await searchParams;
   const decodedCategoryParam = safeDecode(categoryParam) || categoryParam;
 
   // Find the main category (server-side)
@@ -67,6 +81,44 @@ export default async function CategoryPage({ params }: PageProps) {
     }
   }
 
+  const activeCategoryId = selectedSubcategory?.id || category.id;
+  const includeSubcategories = !selectedSubcategory;
+  const pageRaw = Number(firstParam(query.page) || "1");
+  const requestedPage = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
+  const priceMinRaw = firstParam(query.price_min);
+  const priceMaxRaw = firstParam(query.price_max);
+  const priceMin = priceMinRaw !== undefined ? Number(priceMinRaw) : undefined;
+  const priceMax = priceMaxRaw !== undefined ? Number(priceMaxRaw) : undefined;
+  const dealsOnly = firstParam(query.deals) === "1";
+  const pageOffset = (requestedPage - 1) * PRODUCTS_PER_PAGE;
+
+  const subcategoryIds = subcategories
+    .map((sub) => sub.id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+  const [initialProducts, initialDeals, initialCategoryPreviews] =
+    await Promise.all([
+      buildCategoryProductsPage({
+        categoryId: activeCategoryId,
+        includeSubcategories,
+        limit: PRODUCTS_PER_PAGE,
+        offset: pageOffset,
+        priceMin:
+          typeof priceMin === "number" && Number.isFinite(priceMin)
+            ? priceMin
+            : undefined,
+        priceMax:
+          typeof priceMax === "number" && Number.isFinite(priceMax)
+            ? priceMax
+            : undefined,
+        dealsOnly,
+      }).catch(() => undefined),
+      buildCategoryDealPreview(activeCategoryId, includeSubcategories, 6).catch(
+        () => ({ products: [], total: 0 })
+      ),
+      buildCategoryPreviewImages(subcategoryIds).catch(() => ({})),
+    ]);
+
   return (
     <CategoryPageClient
       category={category}
@@ -74,6 +126,9 @@ export default async function CategoryPage({ params }: PageProps) {
       selectedSubcategory={selectedSubcategory}
       categoryHandle={categoryParam}
       subcategoryHandle={subcategoryParam?.[0]}
+      initialProducts={initialProducts}
+      initialDeals={initialDeals}
+      initialCategoryPreviews={initialCategoryPreviews}
     />
   );
 }

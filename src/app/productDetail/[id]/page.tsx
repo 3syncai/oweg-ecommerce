@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { cache } from "react"
 import { notFound } from "next/navigation"
 import ProductDetailPage from "../productDetail"
 import { fetchProductDetail, type DetailedProduct } from "@/lib/medusa"
@@ -20,28 +21,28 @@ type SearchParams = {
   id?: string
 }
 
-async function resolveProduct(
-  slug: string,
-  queryId?: string
-): Promise<{ product: DetailedProduct; resolvedKey: string } | null> {
-  const productIdFromQuery = decodeURIComponent(queryId || "")
-  const slugValue = decodeURIComponent(slug || "")
+const resolveProduct = cache(
+  async (
+    slug: string,
+    queryId?: string
+  ): Promise<{ product: DetailedProduct; resolvedKey: string } | null> => {
+    const productIdFromQuery = decodeURIComponent(queryId || "")
+    const slugValue = decodeURIComponent(slug || "")
 
-  let resolvedKey = productIdFromQuery || slugValue
-  let product = resolvedKey
-    ? await fetchProductDetail(resolvedKey, { bypassCache: true })
-    : null
+    let resolvedKey = productIdFromQuery || slugValue
+    let product = resolvedKey ? await fetchProductDetail(resolvedKey) : null
 
-  if (!product && productIdFromQuery && slugValue && productIdFromQuery !== slugValue) {
-    product = await fetchProductDetail(slugValue, { bypassCache: true })
-    if (product) {
-      resolvedKey = slugValue
+    if (!product && productIdFromQuery && slugValue && productIdFromQuery !== slugValue) {
+      product = await fetchProductDetail(slugValue)
+      if (product) {
+        resolvedKey = slugValue
+      }
     }
-  }
 
-  if (!product) return null
-  return { product, resolvedKey }
-}
+    if (!product) return null
+    return { product, resolvedKey }
+  }
+)
 
 export async function generateMetadata({
   params,

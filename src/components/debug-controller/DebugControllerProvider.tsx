@@ -58,9 +58,7 @@ export function DebugControllerProvider({ children }: { children: ReactNode }) {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/site-settings", {
-        cache: "no-store",
-      });
+      const res = await fetch("/api/site-settings");
       if (!res.ok) return;
       const data = (await res.json()) as { settings?: PublicSettings };
       if (data.settings) {
@@ -73,7 +71,7 @@ export function DebugControllerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 30_000);
+    const interval = setInterval(load, 5 * 60_000);
     return () => clearInterval(interval);
   }, [load]);
 
