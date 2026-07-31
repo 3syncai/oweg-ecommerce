@@ -42,6 +42,7 @@ export async function GET(
     const res = await fetch(url, {
       headers: { Accept: "application/json" },
       cache: "no-store",
+      signal: AbortSignal.timeout(4000),
     });
     if (!res.ok) {
       return NextResponse.json(

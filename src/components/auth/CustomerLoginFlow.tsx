@@ -123,6 +123,10 @@ export default function CustomerLoginFlow({
     return "unknown";
   };
 
+  const normalizePhoneDigits = (value: string) => value.replace(/[\s-()]/g, "");
+
+  const phoneE164 = () => `${countryCode}${normalizePhoneDigits(identifier)}`;
+
   const handleIdentifierChange = (value: string) => {
     setIdentifier(value);
     setInputType(detectInputType(value));
@@ -146,7 +150,7 @@ export default function CustomerLoginFlow({
       return setError("Please enter your email or mobile number");
     }
     if (inputType === "phone") {
-      const cleaned = identifier.replace(/[\s-()]/g, "");
+      const cleaned = normalizePhoneDigits(identifier);
       if (cleaned.length < 10) {
         return setError("Please enter a valid mobile number");
       }
@@ -183,7 +187,7 @@ export default function CustomerLoginFlow({
             : "/api/medusa/auth/login-otp/verify";
         const payload =
           inputType === "phone"
-            ? { phone: `${countryCode}${identifier}`, otp: otp.trim() }
+            ? { phone: phoneE164(), otp: otp.trim() }
             : { email: otpRequestedFor, otp: otp.trim() };
         const res = await fetch(endpoint, {
           method: "POST",
@@ -236,9 +240,7 @@ export default function CustomerLoginFlow({
     try {
       setBusy(true);
       const fullIdentifier =
-        inputType === "phone"
-          ? `${countryCode}${identifier}`
-          : identifier.trim();
+        inputType === "phone" ? phoneE164() : identifier.trim();
 
       const res = await fetch("/api/medusa/auth/login", {
         method: "POST",
@@ -300,7 +302,7 @@ export default function CustomerLoginFlow({
         },
         credentials: "include",
         body: JSON.stringify(
-          isPhoneFlow ? { phone: `${countryCode}${identifier}` } : { email },
+          isPhoneFlow ? { phone: phoneE164() } : { email },
         ),
       });
 
@@ -327,7 +329,7 @@ export default function CustomerLoginFlow({
       }
 
       setOtpSent(true);
-      setOtpRequestedFor(isPhoneFlow ? `${countryCode}${identifier}` : email);
+      setOtpRequestedFor(isPhoneFlow ? phoneE164() : email);
       setCooldown(30);
       toast.success(
         getApiMessage(
@@ -423,6 +425,7 @@ export default function CustomerLoginFlow({
       <div className={`mb-6 ${isModal ? "mb-5" : "mb-8"} flex items-start justify-between gap-3`}>
         <div>
           <h1
+            id="customer-login-title"
             className={`font-bold mb-1 ${isModal ? "text-2xl" : "text-3xl"}`}
             style={{ color: BRAND }}
           >

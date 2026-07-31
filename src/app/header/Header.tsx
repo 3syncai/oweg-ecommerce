@@ -1651,7 +1651,11 @@ const Header: React.FC = () => {
                       type="button"
                       aria-label="Open menu"
                       className=" border-grey-200 text-[#7AC943] flex items-center justify-center"
-                      onClick={() => setMobileMenuOpen(true)}
+                      onClick={() => {
+                        window.dispatchEvent(
+                          new CustomEvent("oweg:open-mobile-categories")
+                        );
+                      }}
                     >
                       <Menu className="w-6 h-6" />
                     </button>

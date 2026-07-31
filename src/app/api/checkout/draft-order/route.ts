@@ -3,7 +3,7 @@
 
 
 import { cookies, headers } from "next/headers";
-import { NextResponse, after } from "next/server";
+import { NextResponse } from "next/server";
 import { createDraftOrder, readStoreCart } from "@/lib/medusa-admin";
 import {
   runPostConvertCheckoutSideEffects,
@@ -543,19 +543,9 @@ export async function POST(req: Request) {
 
     const finalTotal = Math.max(0, itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees);
 
-    // COD fast path: return after draft creation. Tax sync + convert run async / on confirm.
+    // COD fast path: return after draft creation.
+    // Tax sync is owned solely by /api/checkout/cod (runCodSideEffects) to avoid races.
     if (paymentMethod === "cod") {
-      after(() => {
-        void syncOrderTaxInclusivePricing(medusaOrderId, {
-          expectedGrandTotal: finalTotal,
-          shippingRupees: shippingCharge,
-          coinDiscountRupees,
-          oweg10DiscountRupees,
-        }).catch((taxErr) => {
-          console.warn("Failed to sync tax-inclusive pricing on COD draft order:", taxErr);
-        });
-      });
-
       return NextResponse.json({
         medusaOrderId,
         total: finalTotal,

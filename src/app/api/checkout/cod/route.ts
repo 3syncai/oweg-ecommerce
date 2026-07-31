@@ -9,6 +9,7 @@ import { logPendingCoinsForOrder } from "@/lib/customer-affiliate-coins";
 import { getPool } from "@/lib/wallet-ledger";
 import { getCheckoutGuardResponse } from "@/lib/debug-controller/guards";
 import { ensurePlacedOrderFulfillmentReady } from "@/lib/medusa-payment";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 export const dynamic = "force-dynamic";
 
@@ -91,16 +92,6 @@ function oweg10ConflictResponse(reason: string) {
     },
     { status: 409 }
   );
-}
-
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 5000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 async function runCodSideEffects(finalOrderId: string, metadata: Record<string, unknown>) {
@@ -314,11 +305,11 @@ export async function POST(req: Request) {
         }
       }
       // Idempotent: repair older COD orders that converted without reservations
-      after(() => {
-        void ensurePlacedOrderFulfillmentReady(finalOrderId).catch((err) => {
+      after(() =>
+        ensurePlacedOrderFulfillmentReady(finalOrderId).catch((err) => {
           console.error("cod confirm: fulfillment readiness failed (idempotent)", err);
-        });
-      });
+        })
+      );
       scheduleCodSideEffects(finalOrderId, metadata);
       return NextResponse.json({ ok: true, medusaOrderId: finalOrderId, status: "confirmed" });
     }
@@ -387,11 +378,11 @@ export async function POST(req: Request) {
     scheduleCodSideEffects(finalOrderId, confirmedMetadata);
 
     // Allocate stock async so success UI can flip to confirmed without waiting
-    after(() => {
-      void ensurePlacedOrderFulfillmentReady(finalOrderId).catch((err) => {
+    after(() =>
+      ensurePlacedOrderFulfillmentReady(finalOrderId).catch((err) => {
         console.error("cod confirm: fulfillment readiness failed", err);
-      });
-    });
+      })
+    );
 
     return NextResponse.json({ ok: true, medusaOrderId: finalOrderId, status: "confirmed" });
   } catch (err) {

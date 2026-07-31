@@ -22,7 +22,6 @@ import {
   Instagram,
   Linkedin,
   LogOut,
-  MapPin,
   Phone,
   ShoppingBag,
   Store,
@@ -518,6 +517,17 @@ export default function MobileBottomNav() {
     setSidebarOverlayOpen(false);
     setExpandedCatId(null);
   }, [categoryOpen]);
+
+  useEffect(() => {
+    const openCategories = () => {
+      setProfileOpen(false);
+      setCategoryOpen(true);
+    };
+    window.addEventListener("oweg:open-mobile-categories", openCategories);
+    return () => {
+      window.removeEventListener("oweg:open-mobile-categories", openCategories);
+    };
+  }, []);
   useEffect(() => {
     if (!sidebarOverlayOpen) return;
     if (!selectedCategoryId) return;
@@ -1027,7 +1037,8 @@ export default function MobileBottomNav() {
                 className="absolute left-1/2 top-0 z-10 flex -translate-x-1/2 -translate-y-[38%] flex-col items-center"
                 onClick={(e) => {
                   e.preventDefault();
-                  if (profile.href) goNav(profile.href);
+                  setCategoryOpen(false);
+                  setProfileOpen(true);
                 }}
               >
                 <span

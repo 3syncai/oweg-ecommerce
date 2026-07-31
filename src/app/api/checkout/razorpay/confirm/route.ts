@@ -16,6 +16,7 @@ import { finalizeCoinSpendForOrder } from "@/lib/wallet-coin-order";
 import { OWEG10_CODE } from "@/lib/oweg10-shared";
 import { consumeOweg10Reservation, syncOweg10ConsumedCustomerMetadata } from "@/lib/oweg10";
 import { logPendingCoinsForOrder } from "@/lib/customer-affiliate-coins";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { Pool } from 'pg';
 
 // Shared pool instance at module level to avoid creating multiple connections per request
@@ -139,11 +140,15 @@ async function runPostPaidSideEffects(finalOrderId: string, amountMinor?: number
               console.log(`razorpay confirm: Sending webhook for ${item.product_name}...`);
 
               try {
-                const response = await fetch(webhookUrl, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(payload),
-                });
+                const response = await fetchWithTimeout(
+                  webhookUrl,
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                  },
+                  5000
+                );
 
                 if (response.ok) {
                   const result = await response.json();
@@ -383,9 +388,7 @@ export async function POST(req: Request) {
     }
 
     // Non-blocking: affiliate webhooks + customer-affiliate coins after response
-    after(() => {
-      void runPostPaidSideEffects(finalOrderId, amountMinor);
-    });
+    after(() => runPostPaidSideEffects(finalOrderId, amountMinor));
 
     return NextResponse.json({ ok: true, paymentCreated, medusaOrderId: finalOrderId });
   } catch (err) {

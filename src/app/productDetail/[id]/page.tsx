@@ -87,7 +87,7 @@ export default async function ProductDetailRoute({
             name: category.title,
             path: category.handle
               ? `/c/${encodeURIComponent(category.handle)}`
-              : "/c",
+              : `/c/${encodeURIComponent(category.id)}`,
           },
         ]
       : []),
