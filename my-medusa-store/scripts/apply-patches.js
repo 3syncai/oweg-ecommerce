@@ -122,8 +122,10 @@ function main() {
   }
 
   if (applyOnce()) {
-    // Still run patch-package so it records success for other packages / tooling
-    tryPatchPackage()
+    // Best-effort for other packages; never fail install if dashboard is already patched
+    if (!tryPatchPackage()) {
+      log("patch-package reported an error, but dashboard patch is already present — continuing")
+    }
     return
   }
 

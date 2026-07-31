@@ -24,6 +24,8 @@ type Product = {
   metadata?: {
     approval_status?: string
     vendor_id?: string
+    tax_code?: string | null
+    gst_rate?: number | string | null
   }
 }
 
@@ -345,9 +347,12 @@ const VendorProductsPage = () => {
                 </div>
               ) : (
                 <>
-                  <div className="hidden md:grid md:grid-cols-[minmax(0,1fr)_140px_120px_80px] gap-4 border-b border-ui-border-base/70 bg-ui-bg-subtle/30 px-4 py-3">
+                  <div className="hidden md:grid md:grid-cols-[minmax(0,1fr)_110px_140px_120px_80px] gap-4 border-b border-ui-border-base/70 bg-ui-bg-subtle/30 px-4 py-3">
                     <Text size="small" weight="plus" className="text-ui-fg-subtle">
                       Product
+                    </Text>
+                    <Text size="small" weight="plus" className="text-ui-fg-subtle">
+                      GST
                     </Text>
                     <Text size="small" weight="plus" className="text-ui-fg-subtle">
                       Status
@@ -363,6 +368,11 @@ const VendorProductsPage = () => {
                   <div className="divide-y divide-ui-border-base/70">
                     {filteredProducts.map((product) => {
                       const status = resolveProductStatus(product)
+                      const taxCode =
+                        product.metadata?.tax_code ||
+                        (product.metadata?.gst_rate != null
+                          ? `GST_${product.metadata.gst_rate}`
+                          : null)
 
                       return (
                         <div
@@ -376,7 +386,7 @@ const VendorProductsPage = () => {
                               router.push(`/products/${product.id}`)
                             }
                           }}
-                          className="group grid grid-cols-1 gap-3 px-4 py-4 transition-all duration-200 hover:bg-ui-bg-subtle/70 md:grid-cols-[minmax(0,1fr)_140px_120px_80px] md:items-center md:gap-4 cursor-pointer"
+                          className="group grid grid-cols-1 gap-3 px-4 py-4 transition-all duration-200 hover:bg-ui-bg-subtle/70 md:grid-cols-[minmax(0,1fr)_110px_140px_120px_80px] md:items-center md:gap-4 cursor-pointer"
                         >
                           <div className="flex min-w-0 items-center gap-3">
                             <ProductThumbnail product={product} />
@@ -393,6 +403,15 @@ const VendorProductsPage = () => {
                           </div>
 
                           <div className="md:contents">
+                            <div className="flex items-center gap-2 md:block">
+                              <Text size="xsmall" className="text-ui-fg-muted md:hidden">
+                                GST
+                              </Text>
+                              <Text size="small" className="text-ui-fg-base">
+                                {taxCode || "—"}
+                              </Text>
+                            </div>
+
                             <div className="flex items-center gap-2 md:block">
                               <Text size="xsmall" className="text-ui-fg-muted md:hidden">
                                 Status

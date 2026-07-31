@@ -13,6 +13,9 @@ export type VendorShippingMethod = "easy" | "self"
 export type VendorOrderWorkflow = {
   stage?: VendorOrderStage
   accepted_at?: string
+  vendor_name?: string | null
+  store_name?: string | null
+  vendor_email?: string | null
   shipping_method?: VendorShippingMethod
   shiprocket_order_id?: string | null
   shiprocket_shipment_id?: string | number | null
@@ -20,6 +23,13 @@ export type VendorOrderWorkflow = {
   shiprocket_status?: string | null
   easy_courier_id?: number | null
   easy_courier_partner?: string | null
+  /** Optional vendor-entered tracking / label links (Easy or Self) */
+  tracking_number?: string | null
+  tracking_url?: string | null
+  label_url?: string | null
+  /** Medusa fulfillment created when vendor marks RTD */
+  medusa_fulfillment_id?: string | null
+  medusa_shipped_at?: string | null
   self_courier_partner?: string | null
   self_tracking_source?: "shiprocket" | "carrier_api" | "manual" | null
   self_awb?: string | null
@@ -154,6 +164,22 @@ export function getVendorOrderStatusLabel(stage: VendorOrderStage) {
   if (stage === "to_dispatch") return "Not shipped"
   if (stage === "in_transit") return "On the way"
   return "Delivered"
+}
+
+/** Admin-facing acceptance / fulfillment label for a vendor on an order. */
+export function getAdminVendorAcceptanceLabel(workflow: VendorOrderWorkflow) {
+  if (workflow.accepted_at || (workflow.stage && workflow.stage !== "to_accept")) {
+    if (workflow.stage === "delivered") return "Delivered by vendor"
+    if (workflow.stage === "in_transit") return "Accepted — in transit"
+    if (workflow.stage === "to_dispatch") return "Accepted — ready to dispatch"
+    if (workflow.stage === "to_pack") return "Accepted by vendor"
+    return "Accepted by vendor"
+  }
+  return "Awaiting vendor acceptance"
+}
+
+export function isVendorAccepted(workflow: VendorOrderWorkflow) {
+  return Boolean(workflow.accepted_at || (workflow.stage && workflow.stage !== "to_accept"))
 }
 
 export function getPaymentType(order: OrderLike) {

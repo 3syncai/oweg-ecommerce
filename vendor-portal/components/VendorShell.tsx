@@ -16,9 +16,10 @@ import {
   ArrowPath,
   XMark,
   ChatBubble,
+  ChartBar,
 } from "@medusajs/icons"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { vendorProfileApi, vendorPayoutsApi } from "@/lib/api/client"
+import { vendorProfileApi, vendorPayoutsApi, vendorOrdersApi } from "@/lib/api/client"
 import { performVendorLogout } from "@/lib/vendor-session"
 import { OWEG_BRAND } from "@/lib/brand"
 import { useTheme } from "@/lib/theme"
@@ -106,6 +107,13 @@ const navItems = [
     type: "normal",
   },
   {
+    label: "Reports",
+    description: "",
+    path: "/reports",
+    icon: ChartBar,
+    type: "normal",
+  },
+  {
     label: "Messages",
     description: "",
     path: "/messages",
@@ -128,6 +136,7 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
   const [expandedItems, setExpandedItems] = useState<string[]>(["Products"])
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [logoutPromptOpen, setLogoutPromptOpen] = useState(false)
+  const [toAcceptCount, setToAcceptCount] = useState(0)
 
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
 
@@ -189,6 +198,46 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
     }
     loadPayoutData()
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadToAcceptCount = async () => {
+      try {
+        const data = await vendorOrdersApi.list()
+        if (cancelled) return
+        const fromCounts = data?.counts?.to_accept
+        if (typeof fromCounts === "number") {
+          setToAcceptCount(fromCounts)
+          return
+        }
+        const orders = Array.isArray(data?.orders) ? data.orders : []
+        setToAcceptCount(
+          orders.filter(
+            (order: { vendor_stage?: string }) =>
+              String(order?.vendor_stage || "").toLowerCase() === "to_accept"
+          ).length
+        )
+      } catch {
+        // Keep last known count if the request fails
+      }
+    }
+
+    void loadToAcceptCount()
+    const intervalId = window.setInterval(loadToAcceptCount, 15000)
+    const onOrdersChanged = () => {
+      void loadToAcceptCount()
+    }
+    window.addEventListener("oweg:vendor-orders-changed", onOrdersChanged)
+    window.addEventListener("focus", onOrdersChanged)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      window.removeEventListener("oweg:vendor-orders-changed", onOrdersChanged)
+      window.removeEventListener("focus", onOrdersChanged)
+    }
+  }, [pathname])
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -307,6 +356,14 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
                       <item.icon />
                     </span>
                     <span className="flex-1 font-medium">{item.label}</span>
+                    {item.path === "/orders" && toAcceptCount > 0 && (
+                      <span
+                        className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-oweg-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
+                        aria-label={`${toAcceptCount} orders to accept`}
+                      >
+                        {toAcceptCount > 99 ? "99+" : toAcceptCount}
+                      </span>
+                    )}
                     {item.description && (
                       <span className="text-xs text-ui-fg-muted">{item.description}</span>
                     )}

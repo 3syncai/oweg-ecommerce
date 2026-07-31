@@ -1,5 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../../../_lib/guards"
+import { VENDOR_MODULE } from "../../../../../modules/vendor"
+import VendorModuleService from "../../../../../modules/vendor/service"
 import {
   formatVendorOrder,
   getVendorOrderOrRespond,
@@ -30,9 +32,25 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       return res.status(409).json({ message: "Order is already accepted" })
     }
 
+    let vendorName: string | null = null
+    let storeName: string | null = null
+    let vendorEmail: string | null = null
+    try {
+      const vendorService = req.scope.resolve(VENDOR_MODULE) as VendorModuleService
+      const vendor = await vendorService.retrieveVendor(auth.vendor_id)
+      vendorName = vendor?.name || null
+      storeName = vendor?.store_name || null
+      vendorEmail = vendor?.email || null
+    } catch {
+      // Acceptance still proceeds if vendor profile lookup fails
+    }
+
     const metadata = await updateVendorOrderWorkflow(req, result.order, auth.vendor_id, {
       stage: "to_pack",
       accepted_at: new Date().toISOString(),
+      vendor_name: vendorName,
+      store_name: storeName,
+      vendor_email: vendorEmail,
     })
 
     return res.json({

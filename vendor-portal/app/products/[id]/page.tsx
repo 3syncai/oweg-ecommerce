@@ -15,6 +15,7 @@ import {
 } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
+import GstTaxCodeField from "@/components/GstTaxCodeField"
 import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorInventoryApi } from "@/lib/api/client"
 import {
   collectAllImageUrls,
@@ -78,6 +79,8 @@ type EditFormData = {
   discountedPrice: string
   categoryId: string
   collectionId: string
+  taxCode: string
+  gstRate: string
   vendorRemark: string
 }
 
@@ -89,6 +92,8 @@ const EMPTY_FORM: EditFormData = {
   discountedPrice: "",
   categoryId: "",
   collectionId: "",
+  taxCode: "",
+  gstRate: "",
   vendorRemark: "",
 }
 
@@ -191,6 +196,11 @@ const VendorProductEditPage = () => {
           prod?.collection?.id ||
           prod?.metadata?.collection_id ||
           ""
+        const existingTaxCode = String(prod?.metadata?.tax_code || "")
+        const existingGstRate =
+          prod?.metadata?.gst_rate != null && prod?.metadata?.gst_rate !== ""
+            ? String(prod.metadata.gst_rate)
+            : ""
 
         const nextForm: EditFormData = {
           title: prod.title || "",
@@ -200,6 +210,8 @@ const VendorProductEditPage = () => {
           discountedPrice: summary?.discounted_price != null ? String(summary.discounted_price) : "",
           categoryId: existingCategoryId,
           collectionId: existingCollectionId,
+          taxCode: existingTaxCode,
+          gstRate: existingGstRate,
           vendorRemark: "",
         }
 
@@ -273,6 +285,8 @@ const VendorProductEditPage = () => {
     if (formData.discountedPrice.trim() !== initialFormData.discountedPrice.trim()) changes.push("discounted_price")
     if (formData.categoryId !== initialFormData.categoryId) changes.push("category")
     if (formData.collectionId !== initialFormData.collectionId) changes.push("collection")
+    if (formData.taxCode !== initialFormData.taxCode) changes.push("tax_code")
+    if (formData.gstRate !== initialFormData.gstRate) changes.push("gst_rate")
 
     return changes
   }, [formData, initialFormData])
@@ -488,6 +502,11 @@ const VendorProductEditPage = () => {
             categories: formData.categoryId ? [formData.categoryId] : [],
             collection_id: formData.collectionId || null,
             collection_title: selectedCollectionTitle || null,
+            tax_code: formData.taxCode || null,
+            gst_rate:
+              formData.gstRate !== "" && formData.gstRate != null
+                ? Number(formData.gstRate)
+                : null,
             last_vendor_changed_fields: changedFields,
           },
         }
@@ -658,19 +677,34 @@ const VendorProductEditPage = () => {
               </div>
 
               <div className="space-y-2">
-                <Label>Collection</Label>
+                <Label>Brand</Label>
                 <select
                   value={formData.collectionId}
                   onChange={(e) => handleFieldChange("collectionId", e.target.value)}
                   className="h-10 w-full rounded-md border border-ui-border-base bg-ui-bg-base px-3 text-sm text-ui-fg-base outline-none transition focus:ring-2 focus:ring-ui-border-interactive"
                 >
-                  <option value="">Select collection</option>
+                  <option value="">Select brand</option>
                   {collections.map((collection) => (
                     <option key={collection.id} value={collection.id}>
                       {collection.title}
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <GstTaxCodeField
+                  value={formData.taxCode}
+                  suggestFrom={formData.title}
+                  required={false}
+                  onChange={(code, rate) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      taxCode: code,
+                      gstRate: rate == null ? "" : String(rate),
+                    }))
+                  }
+                />
               </div>
 
               <div className="space-y-2 md:col-span-2">

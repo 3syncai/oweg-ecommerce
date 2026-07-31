@@ -3,13 +3,20 @@
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
-import { Container, Heading, Text, Button, Input } from "@medusajs/ui"
+import { Container, Heading, Text, Button, Input, clx } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
 import EmptyState from "@/components/EmptyState"
 import StatCard from "@/components/dashboard/StatCard"
 import StatusDot from "@/components/dashboard/StatusDot"
 import { vendorInventoryApi } from "@/lib/api/client"
-import { MagnifyingGlass, PencilSquare, Check, XMark, ArchiveBox } from "@medusajs/icons"
+import {
+  MagnifyingGlass,
+  PencilSquare,
+  Check,
+  XMark,
+  ArchiveBox,
+  TriangleRightMini,
+} from "@medusajs/icons"
 
 type InventoryItem = {
   product_id: string
@@ -22,6 +29,16 @@ type InventoryItem = {
   stock_quantity: number
   location_name: string
   manage_inventory: boolean
+}
+
+type ProductGroup = {
+  product_id: string
+  product_title: string
+  product_thumbnail: string | null
+  variants: InventoryItem[]
+  totalStock: number
+  outOfStock: number
+  lowStock: number
 }
 
 const StockStatus = ({ quantity }: { quantity: number }) => {
@@ -51,24 +68,24 @@ const StockStatus = ({ quantity }: { quantity: number }) => {
   )
 }
 
-const ProductThumbnail = ({ item }: { item: InventoryItem }) => {
-  if (item.product_thumbnail) {
+const ProductThumbnail = ({
+  title,
+  thumbnail,
+}: {
+  title: string
+  thumbnail: string | null
+}) => {
+  if (thumbnail) {
     return (
       <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-ui-border-base/70 bg-ui-bg-base-hover">
-        <Image
-          src={item.product_thumbnail}
-          alt={item.product_title}
-          fill
-          className="object-cover"
-          unoptimized
-        />
+        <Image src={thumbnail} alt={title} fill className="object-cover" unoptimized />
       </div>
     )
   }
 
   return (
     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-ui-border-base/70 bg-ui-bg-base-hover text-xs font-semibold text-ui-fg-muted">
-      {item.product_title?.[0]?.toUpperCase() || "P"}
+      {title?.[0]?.toUpperCase() || "P"}
     </div>
   )
 }
@@ -81,6 +98,7 @@ export default function InventoryPage() {
   const [editValue, setEditValue] = useState<number>(0)
   const [saving, setSaving] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     fetchInventory()
@@ -139,14 +157,24 @@ export default function InventoryPage() {
     }
   }
 
+  const toggleExpanded = (productId: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(productId)) next.delete(productId)
+      else next.add(productId)
+      return next
+    })
+  }
+
   const stats = useMemo(() => {
     const outOfStock = inventory.filter((item) => item.stock_quantity === 0).length
     const lowStock = inventory.filter(
       (item) => item.stock_quantity > 0 && item.stock_quantity < 10
     ).length
     const inStock = inventory.filter((item) => item.stock_quantity >= 10).length
+    const productCount = new Set(inventory.map((i) => i.product_id)).size
 
-    return { total: inventory.length, outOfStock, lowStock, inStock }
+    return { total: inventory.length, productCount, outOfStock, lowStock, inStock }
   }, [inventory])
 
   const filteredInventory = useMemo(() => {
@@ -161,6 +189,41 @@ export default function InventoryPage() {
     )
   }, [inventory, searchQuery])
 
+  const productGroups = useMemo(() => {
+    const map = new Map<string, ProductGroup>()
+
+    for (const item of filteredInventory) {
+      const existing = map.get(item.product_id)
+      if (existing) {
+        existing.variants.push(item)
+        existing.totalStock += item.stock_quantity
+        if (item.stock_quantity === 0) existing.outOfStock += 1
+        else if (item.stock_quantity < 10) existing.lowStock += 1
+      } else {
+        map.set(item.product_id, {
+          product_id: item.product_id,
+          product_title: item.product_title,
+          product_thumbnail: item.product_thumbnail,
+          variants: [item],
+          totalStock: item.stock_quantity,
+          outOfStock: item.stock_quantity === 0 ? 1 : 0,
+          lowStock:
+            item.stock_quantity > 0 && item.stock_quantity < 10 ? 1 : 0,
+        })
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) =>
+      a.product_title.localeCompare(b.product_title)
+    )
+  }, [filteredInventory])
+
+  // Auto-expand products that match search when searching variants
+  useEffect(() => {
+    if (!searchQuery.trim()) return
+    setExpandedIds(new Set(productGroups.map((g) => g.product_id)))
+  }, [searchQuery, productGroups])
+
   const content = (
     <Container className="mx-auto max-w-7xl p-4 md:p-6 space-y-5 md:space-y-6">
       <div
@@ -173,7 +236,7 @@ export default function InventoryPage() {
           </Heading>
           <Text className="mt-1 text-ui-fg-subtle">
             {stats.total > 0
-              ? `${stats.total} variant${stats.total > 1 ? "s" : ""} tracked · ${stats.lowStock} low stock`
+              ? `${stats.productCount} product${stats.productCount > 1 ? "s" : ""} · ${stats.total} variant${stats.total > 1 ? "s" : ""} · ${stats.lowStock} low stock`
               : "Manage stock levels for your products"}
           </Text>
         </div>
@@ -186,9 +249,9 @@ export default function InventoryPage() {
         >
           <StatCard
             icon={<ArchiveBox />}
-            label="Total items"
-            value={stats.total}
-            subtext={<Text className="text-ui-fg-subtle">Variants tracked</Text>}
+            label="Products"
+            value={stats.productCount}
+            subtext={<Text className="text-ui-fg-subtle">{stats.total} variants</Text>}
           />
           <StatCard
             icon={<ArchiveBox />}
@@ -247,35 +310,16 @@ export default function InventoryPage() {
           className="animate-fade-in-up overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base"
           style={{ animationDelay: "120ms" }}
         >
-          <div className="grid grid-cols-12 gap-4 border-b border-ui-border-base/70 bg-ui-bg-subtle/30 px-4 py-3">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="col-span-2 h-3 rounded-md bg-ui-bg-base-hover animate-pulse" />
-            ))}
-          </div>
           <div>
-            {Array.from({ length: 6 }).map((_, r) => (
+            {Array.from({ length: 5 }).map((_, r) => (
               <div
                 key={r}
-                className="grid grid-cols-12 items-center gap-4 border-b border-ui-border-base/70 px-4 py-4 last:border-b-0"
+                className="flex items-center gap-3 border-b border-ui-border-base/70 px-4 py-4 last:border-b-0"
               >
-                <div className="col-span-1">
-                  <div className="h-10 w-10 rounded-lg bg-ui-bg-base-hover animate-pulse" />
-                </div>
-                <div className="col-span-3 space-y-2">
-                  <div className="h-3 w-3/4 rounded-md bg-ui-bg-base-hover animate-pulse" />
-                  <div className="h-3 w-1/2 rounded-md bg-ui-bg-base-hover/70 animate-pulse" />
-                </div>
-                <div className="col-span-2">
-                  <div className="h-3 w-2/3 rounded-md bg-ui-bg-base-hover animate-pulse" />
-                </div>
-                <div className="col-span-2">
-                  <div className="h-5 w-20 rounded-full bg-ui-bg-base-hover animate-pulse" />
-                </div>
-                <div className="col-span-2">
-                  <div className="h-3 w-12 rounded-md bg-ui-bg-base-hover animate-pulse" />
-                </div>
-                <div className="col-span-2 flex justify-end">
-                  <div className="h-8 w-8 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                <div className="h-10 w-10 rounded-lg bg-ui-bg-base-hover animate-pulse" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 w-1/3 rounded-md bg-ui-bg-base-hover animate-pulse" />
+                  <div className="h-3 w-1/5 rounded-md bg-ui-bg-base-hover/70 animate-pulse" />
                 </div>
               </div>
             ))}
@@ -285,7 +329,7 @@ export default function InventoryPage() {
             <Text size="small">Loading inventory…</Text>
           </div>
         </div>
-      ) : filteredInventory.length === 0 ? (
+      ) : productGroups.length === 0 ? (
         searchQuery ? (
           <EmptyState
             accent="gray"
@@ -319,126 +363,175 @@ export default function InventoryPage() {
             className="animate-fade-in-up overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base"
             style={{ animationDelay: "120ms" }}
           >
-            <div className="hidden md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_140px_140px_100px_80px] md:gap-4 border-b border-ui-border-base/70 bg-ui-bg-subtle/30 px-4 py-3">
-              <Text size="small" weight="plus" className="text-ui-fg-subtle">
-                Product
-              </Text>
-              <Text size="small" weight="plus" className="text-ui-fg-subtle">
-                Variant / SKU
-              </Text>
-              <Text size="small" weight="plus" className="text-ui-fg-subtle">
-                Location
-              </Text>
-              <Text size="small" weight="plus" className="text-ui-fg-subtle">
-                Stock status
-              </Text>
-              <Text size="small" weight="plus" className="text-ui-fg-subtle">
-                Quantity
-              </Text>
-              <Text size="small" weight="plus" className="text-right text-ui-fg-subtle">
-                Actions
-              </Text>
-            </div>
-
             <div className="divide-y divide-ui-border-base/70">
-              {filteredInventory.map((item) => (
-                <div
-                  key={item.variant_id}
-                  className="grid grid-cols-1 gap-3 px-4 py-4 transition-colors hover:bg-ui-bg-subtle/60 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_140px_140px_100px_80px] md:items-center md:gap-4"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <ProductThumbnail item={item} />
-                    <Text weight="plus" className="truncate">
-                      {item.product_title}
-                    </Text>
-                  </div>
+              {productGroups.map((group) => {
+                const expanded = expandedIds.has(group.product_id)
+                const summaryStatus =
+                  group.outOfStock === group.variants.length
+                    ? "error"
+                    : group.lowStock > 0 || group.outOfStock > 0
+                      ? "warning"
+                      : "success"
 
-                  <div className="md:contents">
-                    <div className="min-w-0">
-                      <Text size="xsmall" className="text-ui-fg-muted md:hidden">
-                        Variant / SKU
-                      </Text>
-                      <Text size="small">{item.variant_title || "Default"}</Text>
-                      {item.variant_sku && (
-                        <Text size="xsmall" className="font-mono text-ui-fg-subtle">
-                          {item.variant_sku}
+                return (
+                  <div key={group.product_id}>
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(group.product_id)}
+                      className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-ui-bg-subtle/60"
+                    >
+                      <TriangleRightMini
+                        className={clx(
+                          "shrink-0 text-ui-fg-muted transition-transform",
+                          expanded && "rotate-90"
+                        )}
+                      />
+                      <ProductThumbnail
+                        title={group.product_title}
+                        thumbnail={group.product_thumbnail}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <Text weight="plus" className="truncate">
+                          {group.product_title}
                         </Text>
-                      )}
-                    </div>
+                        <Text size="small" className="text-ui-fg-subtle">
+                          {group.variants.length} size
+                          {group.variants.length > 1 ? "s" : ""} · {group.totalStock}{" "}
+                          total units
+                        </Text>
+                      </div>
+                      <div className="hidden sm:flex items-center gap-3 shrink-0">
+                        {group.outOfStock > 0 && (
+                          <span className="inline-flex items-center gap-1.5 text-sm text-ui-fg-subtle">
+                            <StatusDot variant="error" />
+                            {group.outOfStock} out
+                          </span>
+                        )}
+                        {group.lowStock > 0 && (
+                          <span className="inline-flex items-center gap-1.5 text-sm text-ui-fg-subtle">
+                            <StatusDot variant="warning" />
+                            {group.lowStock} low
+                          </span>
+                        )}
+                        <StatusDot variant={summaryStatus} />
+                      </div>
+                    </button>
 
-                    <div>
-                      <Text size="xsmall" className="text-ui-fg-muted md:hidden">
-                        Location
-                      </Text>
-                      <span className="inline-flex rounded-full border border-ui-border-base/70 bg-ui-bg-subtle/50 px-2.5 py-1 text-xs text-ui-fg-subtle">
-                        {item.location_name}
-                      </span>
-                    </div>
-
-                    <div>
-                      <Text size="xsmall" className="text-ui-fg-muted md:hidden">
-                        Stock status
-                      </Text>
-                      <StockStatus quantity={item.stock_quantity} />
-                    </div>
-
-                    <div>
-                      <Text size="xsmall" className="text-ui-fg-muted md:hidden">
-                        Quantity
-                      </Text>
-                      {editingId === item.variant_id ? (
-                        <Input
-                          type="number"
-                          min={0}
-                          value={editValue}
-                          onChange={(e) => setEditValue(parseInt(e.target.value) || 0)}
-                          className="h-8 w-24"
-                          autoFocus
-                        />
-                      ) : (
-                        <Text className="font-mono text-sm">{item.stock_quantity}</Text>
-                      )}
-                    </div>
-
-                    <div className="flex justify-end">
-                      {editingId === item.variant_id ? (
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="small"
-                            variant="primary"
-                            onClick={() => handleSave(item.variant_id)}
-                            disabled={saving}
+                    {expanded && (
+                      <div className="border-t border-ui-border-base/50 bg-ui-bg-subtle/25">
+                        <div className="hidden md:grid md:grid-cols-[minmax(0,1.2fr)_140px_140px_100px_80px] md:gap-4 border-b border-ui-border-base/50 px-4 py-2 pl-14">
+                          <Text size="xsmall" weight="plus" className="text-ui-fg-muted">
+                            Variant / SKU
+                          </Text>
+                          <Text size="xsmall" weight="plus" className="text-ui-fg-muted">
+                            Location
+                          </Text>
+                          <Text size="xsmall" weight="plus" className="text-ui-fg-muted">
+                            Stock status
+                          </Text>
+                          <Text size="xsmall" weight="plus" className="text-ui-fg-muted">
+                            Quantity
+                          </Text>
+                          <Text
+                            size="xsmall"
+                            weight="plus"
+                            className="text-right text-ui-fg-muted"
                           >
-                            {saving ? "..." : <Check />}
-                          </Button>
-                          <Button
-                            size="small"
-                            variant="secondary"
-                            onClick={handleCancel}
-                            disabled={saving}
-                          >
-                            <XMark />
-                          </Button>
+                            Edit
+                          </Text>
                         </div>
-                      ) : (
-                        <Button
-                          size="small"
-                          variant="transparent"
-                          onClick={() => handleEdit(item)}
-                          className="text-ui-fg-subtle hover:text-ui-fg-base"
-                        >
-                          <PencilSquare />
-                        </Button>
-                      )}
-                    </div>
+
+                        <div className="divide-y divide-ui-border-base/40">
+                          {group.variants.map((item) => (
+                            <div
+                              key={item.variant_id}
+                              className="grid grid-cols-1 gap-3 px-4 py-3 pl-14 md:grid-cols-[minmax(0,1.2fr)_140px_140px_100px_80px] md:items-center md:gap-4"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="min-w-0">
+                                <Text size="small">{item.variant_title || "Default"}</Text>
+                                {item.variant_sku && (
+                                  <Text size="xsmall" className="font-mono text-ui-fg-subtle">
+                                    {item.variant_sku}
+                                  </Text>
+                                )}
+                              </div>
+
+                              <div>
+                                <span className="inline-flex rounded-full border border-ui-border-base/70 bg-ui-bg-base px-2.5 py-1 text-xs text-ui-fg-subtle">
+                                  {item.location_name}
+                                </span>
+                              </div>
+
+                              <div>
+                                <StockStatus quantity={item.stock_quantity} />
+                              </div>
+
+                              <div>
+                                {editingId === item.variant_id ? (
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={editValue}
+                                    onChange={(e) =>
+                                      setEditValue(parseInt(e.target.value) || 0)
+                                    }
+                                    className="h-8 w-24"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <Text className="font-mono text-sm">
+                                    {item.stock_quantity}
+                                  </Text>
+                                )}
+                              </div>
+
+                              <div className="flex justify-end">
+                                {editingId === item.variant_id ? (
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      size="small"
+                                      variant="primary"
+                                      onClick={() => handleSave(item.variant_id)}
+                                      disabled={saving}
+                                    >
+                                      {saving ? "..." : <Check />}
+                                    </Button>
+                                    <Button
+                                      size="small"
+                                      variant="secondary"
+                                      onClick={handleCancel}
+                                      disabled={saving}
+                                    >
+                                      <XMark />
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <Button
+                                    size="small"
+                                    variant="transparent"
+                                    onClick={() => handleEdit(item)}
+                                    className="text-ui-fg-subtle hover:text-ui-fg-base"
+                                  >
+                                    <PencilSquare />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
 
           <Text size="small" className="text-ui-fg-muted">
-            Showing {filteredInventory.length} of {inventory.length} items
+            Showing {productGroups.length} product
+            {productGroups.length > 1 ? "s" : ""} · {filteredInventory.length} variant
+            {filteredInventory.length > 1 ? "s" : ""}
           </Text>
         </>
       )}

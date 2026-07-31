@@ -44,7 +44,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     let tracking: any = null
     let status = normalizeTrackingStatus(workflow.shiprocket_status || workflow.stage)
     let metadata = result.order.metadata
-    const awb = workflow.shipping_method === "easy" ? workflow.shiprocket_awb : workflow.self_awb
+    const awb =
+      workflow.shipping_method === "easy"
+        ? workflow.shiprocket_awb || workflow.tracking_number
+        : workflow.self_awb || workflow.tracking_number
 
     if (workflow.shipping_method === "easy" && awb) {
       const shiprocket = new ShiprocketService()
@@ -63,26 +66,53 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         })
         tracking = summarizeTrackingPayload({
           provider: "easy",
-          courierPartnerName: "Shiprocket",
+          courierPartnerName: workflow.easy_courier_partner || "Shiprocket",
           awb: String(awb),
           payload,
           status,
         })
+        tracking.tracking_url = workflow.tracking_url || tracking.tracking_url || null
+        tracking.label_url = workflow.label_url || null
       } catch (trackingError: any) {
         tracking = summarizeTrackingPayload({
           provider: "easy",
-          courierPartnerName: "Shiprocket",
+          courierPartnerName: workflow.easy_courier_partner || "Shiprocket",
           awb: String(awb),
           status: status || "not_shipped",
           error: trackingError?.message || "Tracking is unavailable",
         })
+        tracking.tracking_url = workflow.tracking_url || null
+        tracking.label_url = workflow.label_url || null
+      }
+    } else if (workflow.shipping_method === "easy") {
+      // Booked on Shiprocket but AWB not assigned yet (common with KYC / assign failures)
+      tracking = {
+        provider: "easy",
+        courier_partner_name: workflow.easy_courier_partner || "Shiprocket",
+        awb: null,
+        status: normalizeTrackingStatus(workflow.shiprocket_status || "created"),
+        status_label: "AWB pending",
+        source: "shiprocket",
+        error:
+          "Shiprocket shipment was created, but AWB was not assigned yet. Complete Shiprocket KYC or re-book Easy Shipping to get tracking.",
+        checkpoints: [],
+        shiprocket_order_id: workflow.shiprocket_order_id || null,
+        shiprocket_shipment_id: workflow.shiprocket_shipment_id || null,
+        tracking_url: workflow.tracking_url || null,
+        label_url: workflow.label_url || null,
       }
     } else if (workflow.shipping_method === "self") {
       tracking = await trackSelfShipment({
         courierPartnerName: workflow.self_courier_partner || null,
-        awb: workflow.self_awb || null,
+        awb: workflow.self_awb || workflow.tracking_number || null,
         trackingSource: workflow.self_tracking_source || null,
       })
+      if (workflow.tracking_url) {
+        tracking.tracking_url = workflow.tracking_url
+      }
+      if (workflow.label_url) {
+        tracking.label_url = workflow.label_url
+      }
 
       status = normalizeTrackingStatus(tracking?.status || status)
       const nextStage = stageFromTracking(status)
@@ -94,10 +124,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       }
     } else {
       tracking = summarizeTrackingPayload({
-        provider: "self",
-        courierPartnerName: workflow.self_courier_partner || null,
-        awb: workflow.self_awb || null,
+        provider: "none",
+        courierPartnerName: null,
+        awb: null,
         status: status || "not_shipped",
+        error: "No shipping method selected yet",
       })
     }
 

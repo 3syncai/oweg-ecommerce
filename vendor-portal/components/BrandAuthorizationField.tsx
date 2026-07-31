@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react"
 import { Input, Text, toast } from "@medusajs/ui"
-import axios from "axios"
+import { vendorBrandsApi } from "@/lib/api/client"
 
 interface BrandAuthorizationProps {
     brand: string
@@ -58,30 +58,21 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
             const token = localStorage.getItem("vendor_token")
             if (!token) return
 
-            const API_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
-            const response = await axios.get(
-                `${API_URL}/vendor/brands/check-authorization`,
-                {
-                    params: { brand_name: brandName },
-                    headers: { Authorization: `Bearer ${token}` }
-                }
-            )
-
-            const status = response.data.status || (response.data.requires_authorization ? "missing" : "authorized")
+            const data = await vendorBrandsApi.checkAuthorization(brandName)
+            const status =
+                data.status || (data.requires_authorization ? "missing" : "authorized")
 
             if (status === "pending") {
                 setAuthStatus("pending")
                 onFileSelect(null)
                 setAuthorizationFile(null)
-                // Block progress: not authorized, but doesn't need upload (needs approval)
-                // We set needsAuthorization=true so parent blocks "Next" if not authorized
-                onAuthorizationStatusChange(false, true) 
+                onAuthorizationStatusChange(false, true)
             } else if (status === "authorized") {
                 setAuthStatus("authorized")
                 setAuthorizationFile(null)
                 onFileSelect(null)
                 onAuthorizationStatusChange(true, false)
-            } else { // missing or other
+            } else {
                 setAuthStatus("needs_upload")
                 setAuthorizationFile(null)
                 onFileSelect(null)
@@ -89,10 +80,12 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
             }
         } catch (error) {
             console.error("Brand authorization check error:", error)
-            // Fail closed: Block progress on error
-            setAuthStatus("idle") 
+            setAuthStatus("idle")
             onAuthorizationStatusChange(false, false)
-            toast.error("Error", { description: "Failed to verify brand authorization. Please check connection." })
+            toast.error("Error", {
+                description:
+                    "Failed to verify brand authorization. Is Medusa running on :9000?",
+            })
         }
     }
 

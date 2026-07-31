@@ -5,6 +5,7 @@ import { Heading, Text, Button, Input, Textarea, Label, Switch, toast, clx } fro
 import VendorShell from "@/components/VendorShell"
 import { useRouter } from "next/navigation"
 import { BrandAuthorizationField } from "@/components/BrandAuthorizationField"
+import GstTaxCodeField from "@/components/GstTaxCodeField"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
 import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorTypesApi, vendorInventoryApi, logApiFailure } from "@/lib/api/client"
 import {
@@ -56,6 +57,8 @@ type ProductFormData = {
   weight: string
   midCode: string
   hsCode: string
+  taxCode: string
+  gstRate: string
   countryOfOrigin: string
   brand: string
 
@@ -96,6 +99,7 @@ const VendorProductNewPage = () => {
   // Collection combobox state
   const [collectionInput, setCollectionInput] = useState<string>("")
   const [showCollectionDrop, setShowCollectionDrop] = useState(false)
+  const [tagDraft, setTagDraft] = useState("")
 
   // Title-case helper
   const toTitleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
@@ -116,6 +120,8 @@ const VendorProductNewPage = () => {
     weight: "",
     midCode: "",
     hsCode: "",
+    taxCode: "",
+    gstRate: "",
     countryOfOrigin: "",
     brand: "",
     discountable: true,
@@ -575,6 +581,11 @@ const VendorProductNewPage = () => {
       return
     }
 
+    if (!formData.taxCode?.trim()) {
+      toast.error("Error", { description: "Tax Code (GST) is required" })
+      return
+    }
+
     const hasValidPrice = formData.variants.some((v) => {
       const price = parseFloat(v.price)
       return Number.isFinite(price) && price > 0
@@ -750,6 +761,11 @@ const VendorProductNewPage = () => {
           brand: formData.brand || null,
           mid_code: formData.midCode || null,
           hs_code: formData.hsCode || null,
+          tax_code: formData.taxCode || null,
+          gst_rate:
+            formData.gstRate !== "" && formData.gstRate != null
+              ? Number(formData.gstRate)
+              : null,
           country_of_origin: formData.countryOfOrigin || null,
           ...(migrateSourceMeta?.source_url
             ? {
@@ -1055,6 +1071,21 @@ const VendorProductNewPage = () => {
         />
       </div>
 
+      <div className="mb-6">
+        <GstTaxCodeField
+          value={formData.taxCode}
+          suggestFrom={formData.title}
+          required
+          onChange={(code, rate) =>
+            setFormData({
+              ...formData,
+              taxCode: code,
+              gstRate: rate == null ? "" : String(rate),
+            })
+          }
+        />
+      </div>
+
       {/* Attributes Section */}
       <div className="mt-8">
         <div className="flex items-center justify-between mb-4">
@@ -1187,9 +1218,13 @@ const VendorProductNewPage = () => {
         const filteredParents = rootCats.filter((c) =>
           toTitleCase(c.name).toLowerCase().includes(parentCatInput.toLowerCase())
         )
-        const filteredSubs = subCats.filter((c) =>
-          toTitleCase(c.name).toLowerCase().includes(subCatInput.toLowerCase())
-        )
+        // Prefix match only — typing "s" should not list every name that merely contains "s"
+        const filteredSubs = subCats.filter((c) => {
+          const name = toTitleCase(c.name).toLowerCase()
+          const q = subCatInput.trim().toLowerCase()
+          if (!q) return true
+          return name.startsWith(q)
+        })
         const filteredCollections = collections.filter((c) =>
           (c.title || "").toLowerCase().includes(collectionInput.toLowerCase())
         )
@@ -1320,39 +1355,85 @@ const VendorProductNewPage = () => {
                     value={subCatInput}
                     placeholder={
                       subCats.length > 0
-                        ? `e.g. ${subCats.slice(0, 2).map((s) => toTitleCase(s.name)).join(", ")}…`
-                        : `e.g. Jeans, T-Shirt, Kurta…`
+                        ? `Search subcategory…`
+                        : `Type a subcategory name…`
                     }
                     autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
                     onFocus={() => setShowSubDrop(true)}
                     onBlur={() => setTimeout(() => setShowSubDrop(false), 150)}
                     onChange={(e) => {
                       const val = e.target.value
                       setSubCatInput(val)
                       setShowSubDrop(true)
-                      setFormData((f) => ({ ...f, categories: [], categoryRequest: "" }))
+
+                      const exact = subCats.find(
+                        (c) =>
+                          toTitleCase(c.name).toLowerCase() === val.trim().toLowerCase()
+                      )
+                      if (exact) {
+                        setFormData((f) => ({
+                          ...f,
+                          categories: [exact.id],
+                          categoryRequest: "",
+                        }))
+                        return
+                      }
+
+                      const trimmed = val.trim()
+                      if (!trimmed) {
+                        if (selectedParentCatId) {
+                          setFormData((f) => ({
+                            ...f,
+                            categories: [selectedParentCatId],
+                            categoryRequest: "",
+                          }))
+                        } else {
+                          setFormData((f) => ({
+                            ...f,
+                            categories: [],
+                            categoryRequest: requestedParentName,
+                          }))
+                        }
+                        return
+                      }
+
+                      const parentLabel = selectedParent
+                        ? toTitleCase(selectedParent.name)
+                        : requestedParentName
+                      setFormData((f) => ({
+                        ...f,
+                        categories: [],
+                        categoryRequest: `${parentLabel} > ${trimmed}`,
+                      }))
                     }}
                     className="w-full p-2 bg-ui-bg-base border border-ui-border-base rounded-lg text-ui-fg-base text-sm h-10 focus:outline-none focus:border-ui-fg-interactive"
                   />
                   {showSubDrop && (
                     <div className="absolute z-30 w-full mt-1 bg-ui-bg-base border border-ui-border-base rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                      {/* Skip — use parent directly (only makes sense for existing parents) */}
-                      {selectedParentCatId && (
+                      {/* Skip — use parent directly (only when not typing a new name) */}
+                      {selectedParentCatId && !subCatInput.trim() && (
                         <button
                           type="button"
                           className="w-full text-left px-3 py-2 text-xs text-ui-fg-muted hover:bg-ui-bg-subtle italic transition-colors border-b border-ui-border-base"
                           onMouseDown={() => {
                             setSubCatInput("")
                             setShowSubDrop(false)
-                            setFormData((f) => ({ ...f, categories: [selectedParentCatId], categoryRequest: "" }))
+                            setFormData((f) => ({
+                              ...f,
+                              categories: [selectedParentCatId],
+                              categoryRequest: "",
+                            }))
                           }}
                         >
-                          — No subcategory (use {toTitleCase(selectedParent?.name || "")} directly)
+                          — No subcategory (use {toTitleCase(selectedParent?.name || "")}{" "}
+                          directly)
                         </button>
                       )}
 
-                      {/* Existing subcategories (only available when parent exists in DB) */}
-                      {filteredSubs.length > 0 && filteredSubs.map((sub) => (
+                      {filteredSubs.map((sub) => (
                         <button
                           key={sub.id}
                           type="button"
@@ -1360,44 +1441,31 @@ const VendorProductNewPage = () => {
                           onMouseDown={() => {
                             setSubCatInput(toTitleCase(sub.name))
                             setShowSubDrop(false)
-                            setFormData((f) => ({ ...f, categories: [sub.id], categoryRequest: "" }))
+                            setFormData((f) => ({
+                              ...f,
+                              categories: [sub.id],
+                              categoryRequest: "",
+                            }))
                           }}
                         >
                           {toTitleCase(sub.name)}
                         </button>
                       ))}
 
-                      {/* Hints */}
-                      {subCats.length > 0 && filteredSubs.length === 0 && subCatInput && (
-                        <div className="px-3 py-2 text-xs text-ui-fg-muted">No match — request a new one below</div>
-                      )}
-                      {!subCatInput && subCats.length === 0 && (
+                      {!subCatInput.trim() && subCats.length === 0 && (
                         <div className="px-3 py-2 text-xs text-ui-fg-muted italic">
                           Type a subcategory name to request it
                         </div>
                       )}
 
-                      {/* Request new sub — works for both existing and new parents */}
-                      {subCatInput && !subMatchesExact && (
-                        <button
-                          type="button"
-                          className="w-full text-left px-3 py-2 text-sm text-ui-fg-interactive hover:bg-ui-bg-subtle border-t border-ui-border-base transition-colors"
-                          onMouseDown={() => {
-                            const parentLabel = selectedParent
-                              ? toTitleCase(selectedParent.name)
-                              : requestedParentName
-                            setShowSubDrop(false)
-                            setFormData((f) => ({
-                              ...f,
-                              categories: [],
-                              categoryRequest: `${parentLabel} > ${subCatInput.trim()}`,
-                            }))
-                          }}
-                        >
-                          + Request: &ldquo;{
-                            (selectedParent ? toTitleCase(selectedParent.name) : requestedParentName)
-                          } &rsaquo; {subCatInput.trim()}&rdquo;
-                        </button>
+                      {subCatInput.trim() && !subMatchesExact && (
+                        <div className="px-3 py-2 text-xs text-amber-700 border-t border-ui-border-base">
+                          Will request:{" "}
+                          {(selectedParent
+                            ? toTitleCase(selectedParent.name)
+                            : requestedParentName)}{" "}
+                          › {subCatInput.trim()}
+                        </div>
                       )}
                     </div>
                   )}
@@ -1417,15 +1485,15 @@ const VendorProductNewPage = () => {
               )}
             </div>
 
-            {/* Collection combobox */}
+            {/* Collection combobox — labeled Brand in UI only */}
             <div>
-              <Label>Collection <span className="text-ui-fg-muted">(Optional)</span></Label>
+              <Label>Brand <span className="text-ui-fg-muted">(Optional)</span></Label>
               <Text size="small" className="text-ui-fg-muted mb-1">Select existing or type to request a new one</Text>
               <div className="relative">
                 <input
                   type="text"
                   value={collectionInput}
-                  placeholder="Search or type collection…"
+                  placeholder="Search or type brand…"
                   autoComplete="off"
                   onFocus={() => setShowCollectionDrop(true)}
                   onBlur={() => setTimeout(() => setShowCollectionDrop(false), 150)}
@@ -1439,7 +1507,7 @@ const VendorProductNewPage = () => {
                 {showCollectionDrop && (
                   <div className="absolute z-30 w-full mt-1 bg-ui-bg-base border border-ui-border-base rounded-lg shadow-lg max-h-48 overflow-y-auto">
                     {filteredCollections.length === 0 && !collectionInput && (
-                      <div className="px-3 py-2 text-sm text-ui-fg-muted">No collections yet</div>
+                      <div className="px-3 py-2 text-sm text-ui-fg-muted">No brands yet</div>
                     )}
                     {filteredCollections.map((col) => (
                       <button
@@ -1519,11 +1587,65 @@ const VendorProductNewPage = () => {
           <Label>
             Tags <span className="text-ui-fg-muted">(Optional)</span>
           </Label>
-          <Input
-            value={formData.tags.join(", ")}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, tags: e.target.value.split(",").map((t: string) => t.trim()).filter((t: string) => t) })}
-            placeholder="winter, jacket, outdoor"
-          />
+          <Text size="small" className="text-ui-fg-muted mb-1">
+            Press Enter or comma to add each tag
+          </Text>
+          <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-lg border border-ui-border-base bg-ui-bg-base p-1.5 focus-within:border-ui-fg-interactive">
+            {formData.tags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1 rounded-full border border-ui-border-base bg-ui-bg-subtle px-2.5 py-0.5 text-sm"
+              >
+                {tag}
+                <button
+                  type="button"
+                  className="text-ui-fg-muted hover:text-ui-fg-base"
+                  aria-label={`Remove tag ${tag}`}
+                  onClick={() =>
+                    setFormData((f) => ({
+                      ...f,
+                      tags: f.tags.filter((t) => t !== tag),
+                    }))
+                  }
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <input
+              value={tagDraft}
+              placeholder={formData.tags.length ? "Add another…" : "e.g. winter"}
+              className="min-w-[120px] flex-1 border-0 bg-transparent px-1.5 py-1 text-sm outline-none"
+              onChange={(e) => setTagDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === ",") {
+                  e.preventDefault()
+                  const next = tagDraft.replace(/,/g, "").trim()
+                  if (!next) return
+                  setFormData((f) => {
+                    if (f.tags.some((t) => t.toLowerCase() === next.toLowerCase())) {
+                      return f
+                    }
+                    return { ...f, tags: [...f.tags, next] }
+                  })
+                  setTagDraft("")
+                } else if (e.key === "Backspace" && !tagDraft && formData.tags.length) {
+                  setFormData((f) => ({ ...f, tags: f.tags.slice(0, -1) }))
+                }
+              }}
+              onBlur={() => {
+                const next = tagDraft.trim()
+                if (!next) return
+                setFormData((f) => {
+                  if (f.tags.some((t) => t.toLowerCase() === next.toLowerCase())) {
+                    return f
+                  }
+                  return { ...f, tags: [...f.tags, next] }
+                })
+                setTagDraft("")
+              }}
+            />
+          </div>
         </div>
       </div>
 
@@ -1606,6 +1728,7 @@ const VendorProductNewPage = () => {
   const canPublish =
     Boolean(formData.title?.trim()) &&
     Boolean(formData.brand?.trim()) &&
+    Boolean(formData.taxCode?.trim()) &&
     brandIsAuthorized &&
     !loading
 

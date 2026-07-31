@@ -2,6 +2,14 @@ import React from "react"
 import fs from "fs"
 import path from "path"
 import { getItemUnits, getItemUnitPrice } from "../lib/vendor-order-workflow"
+import {
+  allocateDiscountAcrossLines,
+  breakdownInclusiveGst,
+  parseGstRate,
+  resolveOrderGstDiscountRupees,
+  summarizeOrderGst,
+  type OrderGstLine,
+} from "../lib/gst-inclusive"
 
 /** Helvetica has no ₹ glyph — use ASCII-safe "Rs." for PDF. */
 const formatMoney = (amount: number) => {
@@ -111,17 +119,52 @@ export const generateInvoice = async (order: any) => {
       qty,
       unit,
       lineTotal: unit * qty,
+      metadata: item.metadata || {},
     }
   })
 
   const subtotal =
     order.subtotal != null
       ? Number(order.subtotal)
-      : lineRows.reduce((s: number, r: any) => s + r.lineTotal, 0)
+      : lineRows.reduce((s: any, r: any) => s + r.lineTotal, 0)
   const shipping = Number(order.shipping_total || order.shipping_amount || 0) || 0
-  const tax = Number(order.tax_total || 0) || 0
+  const medusaTax = Number(order.tax_total || 0) || 0
   const total =
-    order.total != null ? Number(order.total) : subtotal + shipping + tax
+    order.total != null ? Number(order.total) : subtotal + shipping + medusaTax
+
+  // GST-inclusive breakdown (vendor tax code) — after coin/promo discount
+  const discountInfo = resolveOrderGstDiscountRupees(
+    (order.metadata || {}) as Record<string, unknown>,
+    order.discount_total ?? order.summary?.discount_total
+  )
+  const discountShares = allocateDiscountAcrossLines(
+    lineRows.map((row: any) => Number(row.lineTotal) || 0),
+    discountInfo.total
+  )
+
+  const gstLines: OrderGstLine[] = lineRows.map((row: any, index: number) => {
+    const meta = row.metadata || {}
+    const rate =
+      parseGstRate(meta.gst_rate) ??
+      parseGstRate(meta.tax_code) ??
+      parseGstRate(meta.gst_breakdown?.rate) ??
+      0
+    const taxCode = meta.tax_code || meta.gst_breakdown?.tax_code || null
+    const grossInclusive = Number(row.lineTotal) || 0
+    const discount = discountShares[index] || 0
+    const netInclusive = Math.max(0, grossInclusive - discount)
+    const breakdown = breakdownInclusiveGst(netInclusive, rate, taxCode)
+
+    return {
+      item_id: row.id,
+      title: row.title,
+      quantity: row.qty,
+      gross_inclusive: grossInclusive,
+      discount,
+      ...breakdown,
+    }
+  })
+  const gstSummary = summarizeOrderGst(gstLines, { discount: discountInfo.total })
 
   const invoiceNo =
     order.invoice_number ||
@@ -423,7 +466,7 @@ export const generateInvoice = async (order: any) => {
         <View style={styles.totalsWrap}>
           <View style={styles.totalsBox}>
             <View style={styles.totalRow}>
-              <Text style={styles.muted}>Sub-Total</Text>
+              <Text style={styles.muted}>Sub-Total (incl. GST)</Text>
               <Text style={styles.line}>{formatMoney(subtotal)}</Text>
             </View>
             {shipping > 0 ? (
@@ -432,10 +475,29 @@ export const generateInvoice = async (order: any) => {
                 <Text style={styles.line}>{formatMoney(shipping)}</Text>
               </View>
             ) : null}
-            {tax > 0 ? (
+            {gstSummary && gstSummary.gst > 0 ? (
+              <>
+                <View style={styles.totalRow}>
+                  <Text style={styles.muted}>Taxable value</Text>
+                  <Text style={styles.line}>{formatMoney(gstSummary.taxable)}</Text>
+                </View>
+                <View style={styles.totalRow}>
+                  <Text style={styles.muted}>CGST (incl.)</Text>
+                  <Text style={styles.line}>{formatMoney(gstSummary.cgst)}</Text>
+                </View>
+                <View style={styles.totalRow}>
+                  <Text style={styles.muted}>SGST (incl.)</Text>
+                  <Text style={styles.line}>{formatMoney(gstSummary.sgst)}</Text>
+                </View>
+                <View style={styles.totalRow}>
+                  <Text style={styles.muted}>Total GST (incl.)</Text>
+                  <Text style={styles.line}>{formatMoney(gstSummary.gst)}</Text>
+                </View>
+              </>
+            ) : medusaTax > 0 ? (
               <View style={styles.totalRow}>
                 <Text style={styles.muted}>Tax</Text>
-                <Text style={styles.line}>{formatMoney(tax)}</Text>
+                <Text style={styles.line}>{formatMoney(medusaTax)}</Text>
               </View>
             ) : null}
             <View style={styles.grandRow}>
@@ -455,6 +517,12 @@ export const generateInvoice = async (order: any) => {
             This is a computer-generated invoice from {seller.brand}. Sold by{" "}
             {seller.brand} ({seller.legal}).
           </Text>
+          {gstSummary && gstSummary.gst > 0 ? (
+            <Text style={styles.muted}>
+              Prices are GST-inclusive. Taxable value / CGST / SGST above are a
+              breakdown of GST already included in the product price.
+            </Text>
+          ) : null}
           <Text style={styles.muted}>
             For support contact {seller.email} / {seller.phone}.
           </Text>

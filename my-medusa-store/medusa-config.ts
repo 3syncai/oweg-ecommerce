@@ -149,6 +149,9 @@ export default defineConfig({
     {
       resolve: "./src/modules/returns",
     },
+    {
+      resolve: "./src/modules/vendor-report",
+    },
     // {
     //   resolve: "@medusajs/medusa/notification",
     //   options: {
