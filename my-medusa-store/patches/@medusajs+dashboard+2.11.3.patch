@@ -68,6 +68,7 @@ index ba656d3..ee8887c 100644
 +  "/vendor-requests",
 +  "/vendor-payouts",
 +  "/vendor-commission",
++  "/vendor-reports",
 +  "/affiliate-admins"
 +];
  var useCoreRoutes = () => {
@@ -178,7 +179,7 @@ index ba656d3..ee8887c 100644
 +    items: item.items
 +  });
 +  const beforePromotions = ["/return-requests", "/flash-sale"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
-+  const afterPriceLists = ["/oweg-homepage", "/vendors", "/vendor-requests", "/vendor-payouts", "/vendor-commission", "/affiliate-admins"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
++  const afterPriceLists = ["/oweg-homepage", "/vendors", "/vendor-requests", "/vendor-payouts", "/vendor-commission", "/vendor-reports", "/affiliate-admins"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
 +  const routes = [];
 +  for (const route of coreRoutes) {
 +    if (route.to === "/promotions") {
@@ -388,6 +389,7 @@ index 5aa04ed..aab466b 100644
 +  "/vendor-requests",
 +  "/vendor-payouts",
 +  "/vendor-commission",
++  "/vendor-reports",
 +  "/affiliate-admins",
 +] as const
 +
@@ -524,6 +526,7 @@ index 5aa04ed..aab466b 100644
 +    "/vendor-requests",
 +    "/vendor-payouts",
 +    "/vendor-commission",
++    "/vendor-reports",
 +    "/affiliate-admins",
 +  ]
 +    .map((path) => extensionByPath.get(path))

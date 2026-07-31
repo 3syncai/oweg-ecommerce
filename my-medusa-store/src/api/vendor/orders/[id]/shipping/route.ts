@@ -28,8 +28,30 @@ type ShippingBody = {
   tracking_source?: "shiprocket" | "carrier_api" | "manual"
   awb?: string
   tracking_id?: string
+  tracking_number?: string
+  tracking_url?: string
+  label_url?: string
   dispatch_rate?: number | string
   packing_info?: string
+}
+
+function cleanOptionalUrl(value: unknown, field: string): string | null {
+  const raw = String(value || "").trim()
+  if (!raw) return null
+  try {
+    const parsed = new URL(raw)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("invalid")
+    }
+    return parsed.toString().slice(0, 500)
+  } catch {
+    throw new Error(`${field} must be a valid http(s) URL`)
+  }
+}
+
+function cleanOptionalText(value: unknown, max = 200): string | null {
+  const raw = String(value || "").trim()
+  return raw ? raw.slice(0, max) : null
 }
 
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
@@ -85,6 +107,16 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           message: "Select a courier partner (courier_id) for Easy Shipping",
         })
       }
+
+      let trackingUrl: string | null = null
+      let labelUrl: string | null = null
+      try {
+        trackingUrl = cleanOptionalUrl(body.tracking_url, "Tracking URL")
+        labelUrl = cleanOptionalUrl(body.label_url, "Label URL")
+      } catch (e: any) {
+        return res.status(400).json({ message: e?.message || "Invalid URL" })
+      }
+      const trackingNumber = cleanOptionalText(body.tracking_number || body.tracking_id, 120)
 
       const vendor = await retrieveVendorOrThrow(req, auth.vendor_id)
       let vendorPickup
@@ -160,6 +192,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         shiprocket_status: awb ? "awb_assigned" : "created",
         easy_courier_id: courierId,
         easy_courier_partner: courierName.slice(0, 120) || null,
+        tracking_number: trackingNumber || (awb ? String(awb) : null),
+        tracking_url: trackingUrl,
+        label_url: labelUrl,
         easy_pickup_location: vendorPickup.pickup_location,
         easy_pickup_pincode: vendorPickup.pin_code,
         easy_package_weight:
@@ -174,13 +209,28 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       }
     } else {
       const courier = String(body.courier_partner_name || "").trim()
-      const awb = String(body.awb || body.tracking_id || "").trim()
+      const awb = String(body.awb || body.tracking_id || body.tracking_number || "").trim()
       const packingInfo = String(body.packing_info || "").trim()
       const dispatchRate = Number(body.dispatch_rate || 0)
 
       if (!courier || !awb || !packingInfo || !Number.isFinite(dispatchRate) || dispatchRate < 0) {
         return res.status(400).json({
           message: "Courier partner, AWB/tracking id, dispatch rate, and packing info are required",
+        })
+      }
+
+      let trackingUrl: string | null = null
+      let labelUrl: string | null = null
+      try {
+        trackingUrl = cleanOptionalUrl(body.tracking_url, "Tracking URL")
+        labelUrl = cleanOptionalUrl(body.label_url, "Label URL")
+      } catch (e: any) {
+        return res.status(400).json({ message: e?.message || "Invalid URL" })
+      }
+
+      if (body.tracking_source === "manual" && !trackingUrl) {
+        return res.status(400).json({
+          message: "Tracking URL is required when booked through Manual tracking link only",
         })
       }
 
@@ -192,6 +242,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
             ? body.tracking_source
             : "manual",
         self_awb: awb.slice(0, 120),
+        tracking_number: awb.slice(0, 120),
+        tracking_url: trackingUrl,
+        label_url: labelUrl,
         self_dispatch_rate: dispatchRate,
         self_packing_info: packingInfo.slice(0, 500),
       }

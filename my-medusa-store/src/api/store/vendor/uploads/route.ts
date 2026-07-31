@@ -55,7 +55,14 @@ function sanitizeForPath(str: string): string {
   )
 }
 
-const ALLOWED_TYPES = new Set(["logo", "banner", "cancelcheque", "doc", "pancard"])
+const ALLOWED_TYPES = new Set([
+  "logo",
+  "banner",
+  "cancelcheque",
+  "doc",
+  "pancard",
+  "report",
+])
 
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res, req)

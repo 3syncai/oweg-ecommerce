@@ -25,7 +25,17 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const vendorProductIds = await getVendorProductIds(req, auth.vendor_id)
     if (vendorProductIds.length === 0) {
       console.log(`[Orders API] No products found for vendor ${auth.vendor_id}`)
-      return res.json({ orders: [] })
+      return res.json({
+        orders: [],
+        counts: {
+          total: 0,
+          to_accept: 0,
+          to_pack: 0,
+          to_dispatch: 0,
+          in_transit: 0,
+          delivered: 0,
+        },
+      })
     }
 
     console.log(`[Orders API] Found ${vendorProductIds.length} vendor products`)

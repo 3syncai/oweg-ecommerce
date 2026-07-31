@@ -298,7 +298,11 @@ export const vendorSignupApi = {
     }
   },
 
-  uploadFile: async (file: File, type: 'logo' | 'banner' | 'cancelcheque' | 'doc' | 'pancard', vendorHint: string) => {
+  uploadFile: async (
+    file: File,
+    type: 'logo' | 'banner' | 'cancelcheque' | 'doc' | 'pancard' | 'report',
+    vendorHint: string
+  ) => {
     const formData = new FormData()
     formData.append('type', type)
     formData.append('vendorHint', vendorHint)
@@ -350,6 +354,47 @@ export const vendorSignupApi = {
       }
       throw new ApiError(0, error?.message || 'Validation failed', error)
     }
+  },
+}
+
+export type GstTaxCode = {
+  code: string
+  label: string
+  rate: number
+  description: string
+}
+
+export const vendorGstApi = {
+  listTaxCodes: async (params?: { q?: string; suggest?: string; category?: string }) => {
+    const query = new URLSearchParams()
+    if (params?.q) query.set("q", params.q)
+    if (params?.suggest) query.set("suggest", params.suggest)
+    if (params?.category) query.set("category", params.category)
+    const qs = query.toString()
+    return apiRequest<{
+      tax_codes: GstTaxCode[]
+      count: number
+      suggested: GstTaxCode | null
+      source: string
+      note?: string
+    }>(`/vendor/gst/tax-codes${qs ? `?${qs}` : ""}`)
+  },
+}
+
+export const vendorBrandsApi = {
+  checkAuthorization: async (brandName: string) => {
+    return apiRequest<{
+      requires_authorization: boolean
+      status: "authorized" | "pending" | "missing" | string
+      authorization?: {
+        brand_name?: string
+        uploaded_at?: string
+        verified?: boolean
+        file_url?: string
+      }
+    }>("/vendor/brands/check-authorization", {
+      params: { brand_name: brandName },
+    })
   },
 }
 
@@ -498,6 +543,9 @@ export const vendorOrdersApi = {
       length?: number
       breadth?: number
       height?: number
+      tracking_number?: string
+      tracking_url?: string
+      label_url?: string
     }
   ) => {
     return apiRequest<{ order: any }>(`/vendor/orders/${id}/shipping`, {
@@ -566,6 +614,8 @@ export const vendorOrdersApi = {
       awb: string
       dispatch_rate: number
       packing_info: string
+      tracking_url?: string
+      label_url?: string
     }
   ) => {
     return apiRequest<{ order: any }>(`/vendor/orders/${id}/shipping`, {
@@ -827,6 +877,88 @@ export type VendorReturnRequest = {
 export const vendorReturnsApi = {
   list: async () => {
     return apiRequest<{ return_requests: VendorReturnRequest[] }>('/vendor/returns')
+  },
+}
+
+export type VendorReportTicket = {
+  id: string
+  vendor_id: string
+  order_id: string
+  order_display_id?: string | null
+  return_request_id?: string | null
+  source: "return" | "order_lookup" | string
+  issue_title: string
+  issue_description: string
+  product_snapshot?: any
+  order_snapshot?: any
+  image_urls?: string[] | null
+  status: "open" | "in_review" | "resolved" | "closed" | string
+  admin_notes?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+// Vendor issue Reports (tickets against return / order)
+export const vendorReportsApi = {
+  list: async () => {
+    return apiRequest<{ reports: VendorReportTicket[] }>("/vendor/reports")
+  },
+
+  create: async (data: {
+    order_id: string
+    return_request_id?: string | null
+    source?: "return" | "order_lookup"
+    issue_title: string
+    issue_description: string
+    image_urls?: string[]
+  }) => {
+    return apiRequest<{ report: VendorReportTicket }>("/vendor/reports", {
+      method: "POST",
+      data,
+    })
+  },
+
+  uploadImage: async (file: File, vendorHint: string) => {
+    const formData = new FormData()
+    formData.append("type", "report")
+    formData.append("vendorHint", vendorHint)
+    formData.append("file", file, file.name)
+
+    const headers: Record<string, string> = {}
+    if (PUBLISHABLE_KEY) {
+      headers["x-publishable-api-key"] = PUBLISHABLE_KEY
+    }
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("vendor_token") : null
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`
+    }
+
+    try {
+      const response = await axios.post(`${API_URL}/store/vendor/uploads`, formData, {
+        headers,
+      })
+      const data = response.data as {
+        files?: Array<{ url: string; key?: string }>
+        url?: string
+      }
+      const url = data?.files?.[0]?.url || data?.url
+      if (!url) {
+        throw new ApiError(500, "Upload succeeded but no file URL was returned", data)
+      }
+      return { url, key: data?.files?.[0]?.key }
+    } catch (error: any) {
+      if (error instanceof ApiError) throw error
+      if (error instanceof AxiosError) {
+        const errorData = error.response?.data || { message: error.message }
+        throw new ApiError(
+          error.response?.status || 0,
+          errorData.message || "Upload failed",
+          errorData
+        )
+      }
+      throw new ApiError(0, error?.message || "Upload failed", error)
+    }
   },
 }
 
