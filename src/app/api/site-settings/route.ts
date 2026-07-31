@@ -4,7 +4,7 @@ import {
   toPublicSiteSettings,
 } from "@/lib/debug-controller/settings";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const settings = await getDebugControllerSettings();

@@ -31,6 +31,14 @@ export async function getDebugControllerSettings(
     return cachedSettings;
   }
 
+  // CI / local builds without DATABASE_URL — use defaults, do not hit Postgres
+  if (!process.env.DATABASE_URL) {
+    const defaults = mergeSettings(null);
+    cachedSettings = defaults;
+    cacheExpiresAt = now + CACHE_TTL_MS;
+    return defaults;
+  }
+
   await ensureDebugControllerTable();
   const db = getDebugControllerPool();
   const result = await db.query<{ value: Partial<DebugControllerSettings> }>(
