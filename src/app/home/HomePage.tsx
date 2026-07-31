@@ -10,6 +10,7 @@ import type { MedusaCategory } from '@/lib/medusa';
 import { useAuth } from '@/contexts/AuthProvider';
 import PreferenceModal from '@/components/modules/PreferenceModal';
 import { usePreferences } from '@/hooks/usePreferences';
+import { useStoreCategories } from '@/hooks/useStoreCategories';
 import { buildPreferenceSlug } from '@/lib/personalization';
 import { normalizeBrandKey, resolveBrandLogo, getCollectionLogoUrl, getCollectionLogoScale } from '@/lib/brand-logos';
 import { BrandLogoImage, brandLogoFallbackHandler } from '@/components/modules/BrandLogoImage';
@@ -278,7 +279,13 @@ function HeroBanner() {
         </button>
       </div>
       <div className="relative w-full h-full min-h-[320px] sm:min-h-[360px]">
-        {HERO_SLIDES.map((slide, idx) => (
+        {HERO_SLIDES.map((slide, idx) => {
+          const dist = Math.min(
+            Math.abs(idx - currentSlide),
+            HERO_SLIDES.length - Math.abs(idx - currentSlide)
+          );
+          if (dist > 1) return null;
+          return (
           <div
             key={slide.src}
             className={`absolute inset-0 transition-opacity duration-700 ${
@@ -299,7 +306,8 @@ function HeroBanner() {
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent md:from-black/30 md:via-black/10 md:to-transparent" />
             </Link>
           </div>
-        ))}
+          );
+        })}
       </div>
       <div className="absolute inset-0 pointer-events-none" />
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 md:hidden">
@@ -377,7 +385,27 @@ type MobileCategory = {
   rank?: number;
 };
 
-export default function HomePage() {
+type FeedSectionPayload = {
+  key: string;
+  title: string;
+  handle?: string;
+  href?: string;
+  products: UIProduct[];
+  sourceTag: string;
+};
+
+type HomeFeedPayload = {
+  sections: FeedSectionPayload[];
+  spotlight: FeedSectionPayload | null;
+  popular: FeedSectionPayload | null;
+  meta?: { categoriesTried: number; categoriesWithProducts: number; totalProducts: number };
+};
+
+export default function HomePage({
+  initialFeed,
+}: {
+  initialFeed?: HomeFeedPayload;
+}) {
   const { customer } = useAuth();
   const { preferences, hasPreferences, loading: prefLoading, saving: prefSaving, savePreferences } = usePreferences();
   const [preferencesOpen, setPreferencesOpen] = useState(false);
@@ -388,6 +416,7 @@ export default function HomePage() {
   const [placeLoading, setPlaceLoading] = useState(false);
   const [pincode, setPincode] = useState('');
   const [pinInput, setPinInput] = useState('');
+  const [personalizedReady, setPersonalizedReady] = useState(false);
 
   useEffect(() => {
     const hydratePlace = async () => {
@@ -404,21 +433,19 @@ export default function HomePage() {
     void hydratePlace();
   }, [pincode, placeName]);
 
-  type FeedSectionPayload = {
-    key: string;
-    title: string;
-    handle?: string;
-    href?: string;
-    products: UIProduct[];
-    sourceTag: string;
-  };
-
-  type HomeFeedPayload = {
-    sections: FeedSectionPayload[];
-    spotlight: FeedSectionPayload | null;
-    popular: FeedSectionPayload | null;
-    meta?: { categoriesTried: number; categoriesWithProducts: number; totalProducts: number };
-  };
+  useEffect(() => {
+    if (!customer || !hasPreferences) {
+      setPersonalizedReady(false);
+      return;
+    }
+    const run = () => setPersonalizedReady(true);
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(run, { timeout: 2500 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const t = globalThis.setTimeout(run, 1200);
+    return () => globalThis.clearTimeout(t);
+  }, [customer, hasPreferences]);
 
   const homeFeedQuery = useQuery({
     queryKey: ['home-feed'],
@@ -427,6 +454,7 @@ export default function HomePage() {
       if (!res.ok) throw new Error('Unable to load home feed');
       return res.json();
     },
+    ...(initialFeed ? { initialData: initialFeed } : {}),
     staleTime: 1000 * 60 * 2,
   });
 
@@ -446,14 +474,19 @@ export default function HomePage() {
     preferences.productTypes.forEach((type) => push(type, { type, limit: 32 }, `type:${type}`));
     preferences.brands.forEach((brand) => push(`${brand} picks`, { tag: brand, limit: 32 }, `brand:${brand}`));
 
-    return items.slice(0, 6);
+    return items.slice(0, 3);
   }, [customer, hasPreferences, preferences]);
 
   const personalizedQueries = useQueries({
     queries: personalizedSections.map((section) => ({
       queryKey: ['personalized-home', section.key, section.query],
       queryFn: () => fetchProducts(section.query, 32),
-      enabled: Boolean(customer) && hasPreferences && personalizedSections.length > 0 && !prefLoading,
+      enabled:
+        personalizedReady &&
+        Boolean(customer) &&
+        hasPreferences &&
+        personalizedSections.length > 0 &&
+        !prefLoading,
       staleTime: 1000 * 60 * 5,
       placeholderData: (prev: UIProduct[] | undefined) => prev,
     })),
@@ -573,23 +606,10 @@ export default function HomePage() {
     ? homeFeedQuery.data.spotlight
     : null;
 
-  const categoriesQuery = useQuery({
-    queryKey: ['home-categories'],
-    queryFn: async () => {
-      const res = await fetch('/api/medusa/categories');
-      if (!res.ok) {
-        throw new Error('Unable to load categories');
-      }
-      return res.json();
-    },
-    staleTime: 1000 * 60 * 10,
-  });
+  const categoriesQuery = useStoreCategories();
   const categoriesData: MedusaCategory[] = useMemo(
-    () =>
-      Array.isArray(categoriesQuery.data?.categories)
-        ? (categoriesQuery.data?.categories as MedusaCategory[])
-        : [],
-    [categoriesQuery.data?.categories]
+    () => (Array.isArray(categoriesQuery.data) ? categoriesQuery.data : []),
+    [categoriesQuery.data]
   );
 
   const brandCollectionsQuery = useQuery({
@@ -717,26 +737,6 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Global CSS injected here to ensure .scrollbar-hidden actually hides scrollbars across browsers.
-          You can move this to src/app/globals.css if you prefer a central stylesheet. */}
-      <style jsx global>{`
-        /* hide scrollbar for elements with .scrollbar-hidden */
-        .scrollbar-hidden {
-          -ms-overflow-style: none; /* IE and Edge */
-          scrollbar-width: none; /* Firefox */
-        }
-        .scrollbar-hidden::-webkit-scrollbar {
-          display: none; /* Chrome, Safari, Opera */
-          width: 0;
-          height: 0;
-        }
-
-        /* optional: ensure horizontal scroll area uses touch scrolling smoothly on iOS */
-        .scrollbar-hidden {
-          -webkit-overflow-scrolling: touch;
-        }
-      `}</style>
-
       <main className="w-full pb-6 md:pt-6 md:pb-6">
         <div className="md:hidden px-4 pt-3 space-y-3">
           <div className="space-y-2">

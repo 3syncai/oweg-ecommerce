@@ -11,16 +11,30 @@ import type { MedusaCategory } from "@/services/medusa";
 type CategoryHeaderProps = {
   categoryHandle: string;
   subcategories: MedusaCategory[];
+  initialPreviews?: Record<string, string | { image: string; productId?: string }>;
 };
 
 export function CategoryHeader({
   categoryHandle,
   subcategories,
+  initialPreviews,
 }: CategoryHeaderProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const attemptedPreviewIdsRef = useRef<Set<string>>(new Set());
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
-  const [previewImages, setPreviewImages] = useState<Record<string, string>>({});
+  const [previewImages, setPreviewImages] = useState<Record<string, string>>(() => {
+    if (!initialPreviews) return {};
+    const normalized: Record<string, string> = {};
+    Object.entries(initialPreviews).forEach(([key, value]) => {
+      if (typeof value === "string") {
+        normalized[key] = value;
+      } else if (value?.image) {
+        normalized[key] = value.image;
+      }
+    });
+    return normalized;
+  });
 
   const updateScrollState = useCallback(() => {
     const node = scrollContainerRef.current;
@@ -53,16 +67,29 @@ export function CategoryHeader({
   }, [updateScrollState]);
 
   useEffect(() => {
+    attemptedPreviewIdsRef.current = new Set();
+    if (initialPreviews) {
+      Object.keys(initialPreviews).forEach((id) =>
+        attemptedPreviewIdsRef.current.add(id)
+      );
+    }
+  }, [categoryHandle, initialPreviews]);
+
+  useEffect(() => {
     const missingIds = subcategories
       .map((sub) => sub.id)
       .filter(
         (id): id is string =>
-          typeof id === "string" && id.length > 0 && !previewImages[id]
+          typeof id === "string" &&
+          id.length > 0 &&
+          !attemptedPreviewIdsRef.current.has(id)
       );
 
     if (missingIds.length === 0) {
       return;
     }
+
+    missingIds.forEach((id) => attemptedPreviewIdsRef.current.add(id));
 
     let cancelled = false;
 
@@ -71,9 +98,7 @@ export function CategoryHeader({
         const params = new URLSearchParams({
           categoryIds: ids.join(","),
         });
-        const res = await fetch(`/api/medusa/category-previews?${params.toString()}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(`/api/medusa/category-previews?${params.toString()}`);
         if (!res.ok) return;
         const data = await res.json();
         if (cancelled) return;
@@ -107,7 +132,7 @@ export function CategoryHeader({
     return () => {
       cancelled = true;
     };
-  }, [subcategories, previewImages]);
+  }, [subcategories, categoryHandle]);
 
   if (subcategories.length === 0) {
     return null;

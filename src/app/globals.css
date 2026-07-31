@@ -1,16 +1,20 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "sonner/dist/styles.css";
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700&display=swap");
 
 /* Custom scrollbar styles */
 @layer utilities {
-  .scrollbar-hide {
+  .scrollbar-hide,
+  .scrollbar-hidden {
     -ms-overflow-style: none;
     scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
   }
-  .scrollbar-hide::-webkit-scrollbar {
+  .scrollbar-hide::-webkit-scrollbar,
+  .scrollbar-hidden::-webkit-scrollbar {
     display: none;
+    width: 0;
+    height: 0;
   }
 }
 
@@ -64,18 +68,25 @@ html.debug-devtools-blocked body > *:not(.debug-devtools-shield) {
   scroll-behavior: smooth;
 }
 
-/* OWEG Brand Colors */
+/* OWEG Brand Colors + header tokens */
 :root {
   --oweg-green: #7ac943;
   --oweg-green-dark: #6bb832;
   --oweg-green-light: #8fd957;
+  --header-accent: #7ac943;
+  --header-top-bg: #000000;
+  --header-top-text: #ffffff;
+  --header-bg: #ffffff;
+  --header-nav-bg: #efefef;
+  --header-text: #111827;
+  --header-muted: #6b7280;
 }
 
 /* Checkout / Cart shared page surface — Manrope / Plus Jakarta Sans */
 .checkout-ui,
 .cart-ui,
 .oweg-page {
-  font-family: Manrope, system-ui, sans-serif;
+  font-family: var(--font-manrope), system-ui, sans-serif;
   color: #2c342f;
   background:
     radial-gradient(ellipse 80% 50% at 10% -10%, rgba(122, 201, 67, 0.14), transparent 55%),
@@ -91,7 +102,7 @@ html.debug-devtools-blocked body > *:not(.debug-devtools-shield) {
 .oweg-page h1,
 .oweg-page h2,
 .oweg-page h3 {
-  font-family: "Plus Jakarta Sans", Manrope, system-ui, sans-serif;
+  font-family: var(--font-plus-jakarta), var(--font-manrope), system-ui, sans-serif;
   letter-spacing: -0.02em;
 }
 
@@ -186,3 +197,148 @@ html.debug-devtools-blocked body > *:not(.debug-devtools-shield) {
 .order-success-ring {
   animation: orderSuccessRing 0.9s ease-out forwards;
 }
+
+/* Header (moved from Header.tsx styled-jsx to avoid hydration jsx-* mismatches) */
+@font-face {
+  font-family: "OPTIHandelGothic-Light";
+  src: url("/fonts/OPTIHandelGothic-Light.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+.header-root {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  font-family: "OPTIHandelGothic-Light", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.header-root button,
+.header-root .cursor-pointer {
+  cursor: pointer !important;
+}
+
+.bg-header-top-bg {
+  background: var(--header-top-bg);
+}
+
+.text-header-top-text {
+  color: var(--header-top-text);
+}
+
+.bg-header-bg {
+  background: var(--header-bg);
+}
+
+.bg-header-nav-bg {
+  background: var(--header-nav-bg);
+}
+
+.text-header-text {
+  color: var(--header-text);
+}
+
+.text-header-muted {
+  color: var(--header-muted);
+}
+
+.text-header-accent {
+  color: var(--header-accent);
+}
+
+.bg-header-accent {
+  background: var(--header-accent);
+}
+
+.logo-link:hover {
+  transform: translateY(-2px);
+  transition: transform 220ms ease;
+}
+
+[data-nav-scroll] {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+[data-nav-scroll]::-webkit-scrollbar {
+  display: none;
+}
+
+[data-cart-preview] {
+  background-color: #ffffff !important;
+  opacity: 1 !important;
+  isolation: isolate;
+}
+
+body > div[style*="z-index: 9999"] {
+  background-color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+.location-block .text-header-text {
+  color: var(--header-text);
+}
+
+.location-block .text-header-text:first-child {
+  color: var(--header-muted);
+}
+
+.nav-link {
+  position: relative;
+  color: var(--header-text);
+}
+
+.nav-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 6px;
+  height: 2px;
+  width: 0%;
+  background: var(--header-accent);
+  transform-origin: left center;
+  transition: width 260ms cubic-bezier(0.2, 0.9, 0.2, 1), opacity 200ms ease;
+  opacity: 0;
+}
+
+.nav-link:hover {
+  color: var(--header-accent);
+}
+
+.nav-link:hover::after {
+  width: 100%;
+  opacity: 1;
+}
+
+.nav-link.nav-link-active::after {
+  width: 100%;
+  opacity: 1;
+}
+
+.bg-header-top-bg a:hover {
+  color: var(--header-accent) !important;
+}
+
+.group-hover\:text-header-accent:hover,
+.group:hover .group-hover\:text-header-accent {
+  color: var(--header-accent);
+}
+
+.header-root input::placeholder {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+@media (max-width: 768px) {
+  .nav-link::after {
+    bottom: 4px;
+  }
+  body.category-overlay-open .mobile-search-bar {
+    display: none;
+  }
+}
+

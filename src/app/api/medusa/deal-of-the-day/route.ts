@@ -1,42 +1,45 @@
 import { NextRequest, NextResponse } from "next/server"
+import { buildCategoryDealPreview } from "@/lib/category-listing"
+import { findCategoryByTitleOrHandle } from "@/lib/medusa"
 
-export const dynamic = "force-dynamic"
+export const revalidate = 60
 
 export async function GET(req: NextRequest) {
   try {
-    const currentUrl = new URL(req.url)
-    const searchParams = currentUrl.searchParams
-    const categoryId = searchParams.get("categoryId")
+    const searchParams = new URL(req.url).searchParams
+    const categoryIdParam = searchParams.get("categoryId")
     const category = searchParams.get("category")
-    const limit = searchParams.get("limit") || "20"
-    const includeSubcategories = searchParams.get("includeSubcategories")
+    const limit = Number(searchParams.get("limit") || "20") || 20
+    const includeSubcategories = searchParams.get("includeSubcategories") === "1"
 
-    if (!categoryId && !category) {
+    if (!categoryIdParam && !category) {
       return NextResponse.json({ products: [], total: 0 })
     }
 
-    const proxyUrl = new URL(req.url)
-    proxyUrl.pathname = "/api/medusa/products"
-    const proxyParams = new URLSearchParams()
-    if (categoryId) proxyParams.set("categoryId", categoryId)
-    if (category) proxyParams.set("category", category)
-    if (includeSubcategories) proxyParams.set("includeSubcategories", includeSubcategories)
-    proxyParams.set("dealsOnly", "1")
-    proxyParams.set("limit", limit)
-    proxyUrl.search = proxyParams.toString()
-
-    const response = await fetch(proxyUrl.toString(), { cache: "no-store" })
-    if (!response.ok) {
-      throw new Error(`Upstream error: ${response.status}`)
+    let categoryId = categoryIdParam || ""
+    if (!categoryId && category) {
+      const cat = await findCategoryByTitleOrHandle(category)
+      categoryId = cat?.id || ""
+    }
+    if (!categoryId) {
+      return NextResponse.json({ products: [], total: 0 })
     }
 
-    const data = await response.json()
-    const products = Array.isArray(data.products) ? data.products : []
+    const result = await buildCategoryDealPreview(
+      categoryId,
+      includeSubcategories,
+      Math.min(limit, 24)
+    )
 
-    return NextResponse.json({
-      products,
-      total: products.length,
+    const response = NextResponse.json({
+      products: result.products,
+      total: result.total,
     })
+    response.headers.set(
+      "Cache-Control",
+      "public, s-maxage=60, stale-while-revalidate=300"
+    )
+    return response
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "failed"
     return NextResponse.json(
@@ -45,4 +48,3 @@ export async function GET(req: NextRequest) {
     )
   }
 }
-

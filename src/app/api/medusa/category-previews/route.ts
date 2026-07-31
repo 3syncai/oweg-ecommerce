@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { fetchProductsByCategoryId } from "@/lib/medusa"
+import { buildCategoryPreviewImages } from "@/lib/category-listing"
 
-export const dynamic = "force-dynamic"
+export const revalidate = 120
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -11,42 +11,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ previews: {} })
   }
 
-  const ids = Array.from(
-    new Set(
-      idParam
-        .split(",")
-        .map((id) => id.trim())
-        .filter(Boolean)
-    )
+  const ids = idParam
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .slice(0, 24)
+
+  const previews = await buildCategoryPreviewImages(ids)
+  const response = NextResponse.json({ previews })
+  response.headers.set(
+    "Cache-Control",
+    "public, s-maxage=120, stale-while-revalidate=600"
   )
-
-  const previews: Record<
-    string,
-    { image: string; productId: string }
-  > = {}
-
-  await Promise.all(
-    ids.map(async (categoryId) => {
-      try {
-        const result = await fetchProductsByCategoryId(categoryId, 1, {
-          includeSubcategories: true,
-        })
-        const product = result.products[0]
-        if (!product) return
-        const image =
-          product.thumbnail ||
-          product.images?.[0]?.url ||
-          "/oweg_logo.png"
-        previews[categoryId] = {
-          image,
-          productId: product.id,
-        }
-      } catch (error) {
-        console.warn("Failed to build preview for category", categoryId, error)
-      }
-    })
-  )
-
-  return NextResponse.json({ previews })
+  return response
 }
-

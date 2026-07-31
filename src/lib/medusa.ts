@@ -447,20 +447,41 @@ export async function findCategoryByTitleOrHandle(
       .replace(/(^-|-$)+/g, "");
 
   const raw = (q || "").trim();
+  if (!raw) return undefined;
   const lowerRaw = raw.toLowerCase();
   const targetSlug = norm(raw);
-  const handleCandidates = Array.from(
-    new Set([raw, lowerRaw, targetSlug].filter(Boolean)),
+  const handleCandidates = new Set(
+    [raw, lowerRaw, targetSlug].filter(Boolean).map((s) => s.toLowerCase()),
   );
 
-  // Try direct handle query first (more reliable)
+  const all = await fetchCategories({ revalidate: 120 });
+
+  // 1) Exact title/name — prevents "Cameras" matching Medusa q → "E-Cameras"
+  let found = all.find(
+    (c) =>
+      c.title?.toLowerCase() === lowerRaw ||
+      c.name?.toLowerCase() === lowerRaw,
+  );
+  if (found) return found;
+
+  // 2) Exact handle match
+  found = all.find((c) => {
+    const handle = c.handle?.toLowerCase();
+    return Boolean(handle && handleCandidates.has(handle));
+  });
+  if (found) return found;
+
+  // 3) Slugified title/name exact
+  found = all.find((c) => norm(c.title || c.name) === targetSlug);
+  if (found) return found;
+
+  // 4) Medusa direct lookup — only accept exact handle equality (no fuzzy q hits)
   try {
     const base = (
       process.env.MEDUSA_BACKEND_URL ||
       process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL ||
       "http://localhost:9000"
     ).replace(/\/$/, "");
-    // Try array-style handle filter for multiple candidate representations
     const urls: string[] = [];
     handleCandidates.forEach((candidate) => {
       urls.push(
@@ -470,7 +491,6 @@ export async function findCategoryByTitleOrHandle(
         `${base}/store/product-categories?handle=${encodeURIComponent(candidate)}`,
       );
     });
-    urls.push(`${base}/store/product-categories?q=${encodeURIComponent(raw)}`);
     for (const url of urls) {
       const pk = getPublishableKey();
       const res = await fetch(url, {
@@ -482,31 +502,17 @@ export async function findCategoryByTitleOrHandle(
       const arr = (data.product_categories ||
         data.categories ||
         []) as MedusaCategory[];
-      if (Array.isArray(arr) && arr.length) return arr[0];
+      const exact = arr.find((c) => {
+        const handle = c.handle?.toLowerCase();
+        return Boolean(handle && handleCandidates.has(handle));
+      });
+      if (exact) return exact;
     }
   } catch (err) {
     console.warn("findCategoryByTitleOrHandle direct lookup failed", err);
   }
 
-  const all = await fetchCategories();
-
-  // Try exact by title or name
-  let found = all.find(
-    (c) =>
-      c.title?.toLowerCase() === q.toLowerCase() ||
-      c.name?.toLowerCase() === q.toLowerCase(),
-  );
-  if (found) return found;
-
-  // Try by handle match
-  found = all.find((c) => {
-    const handle = c.handle?.toLowerCase();
-    return handle === lowerRaw || handle === targetSlug;
-  });
-  if (found) return found;
-
-  // Fuzzy by slugified title/name
-  return all.find((c) => norm(c.title || c.name) === targetSlug);
+  return undefined;
 }
 
 export async function findCollectionByTitleOrHandle(

@@ -130,9 +130,9 @@ const nextConfig: NextConfig = {
     ],
   },
   images: {
-    // Bypass Vercel Image Optimization (402 when quota exceeded).
-    // S3/CDN URLs are already production-ready. Set NEXT_IMAGE_OPTIMIZE=1 to re-enable later.
-    unoptimized: process.env.NEXT_IMAGE_OPTIMIZE !== "1",
+    // Enable Next image optimization by default. Set NEXT_IMAGE_OPTIMIZE=0 to bypass
+    // (e.g. if Vercel Image Optimization quota is exhausted).
+    unoptimized: process.env.NEXT_IMAGE_OPTIMIZE === "0",
     remotePatterns: buildRemotePatterns(),
   },
 };

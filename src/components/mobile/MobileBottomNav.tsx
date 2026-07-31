@@ -11,7 +11,8 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { useStoreCategories } from "@/hooks/useStoreCategories";
 import {
   ChevronRight,
   Heart,
@@ -440,19 +441,9 @@ export default function MobileBottomNav() {
     if (Array.isArray(list)) return list.length;
     return 0;
   }, [customer?.metadata]);
-  const { data: categoryData, isLoading: categoriesLoading } = useQuery({
-    queryKey: ["categories"],
-    queryFn: async () => {
-      const res = await fetch("/api/medusa/categories", { cache: "no-store" });
-      if (!res.ok) {
-        throw new Error("Unable to load categories");
-      }
-      return res.json();
-    },
-    staleTime: 1000 * 60 * 10,
-  });
+  const { data: categoryData, isLoading: categoriesLoading } = useStoreCategories();
   const categories = useMemo(
-    () => buildCategoryList(categoryData),
+    () => buildCategoryList({ categories: categoryData }),
     [categoryData],
   );
   const { preferences, hasPreferences } = usePreferences();

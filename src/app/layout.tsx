@@ -2,6 +2,7 @@
 import type { Metadata, Viewport } from "next";
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
+import { Manrope, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegister from "./sw-register";
 import Footer from "./footer/Footer";
@@ -18,6 +19,20 @@ import { DebugControllerProvider } from "@/components/debug-controller/DebugCont
 import SiteProtections from "@/components/debug-controller/SiteProtections";
 import ConditionalWhatsAppWidget from "@/components/debug-controller/ConditionalWhatsAppWidget";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
+
+const manrope = Manrope({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-manrope",
+  display: "swap",
+});
+
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["600", "700"],
+  variable: "--font-plus-jakarta",
+  display: "swap",
+});
 
 const Header = dynamic(() => import("./header/Header"), {
   loading: () => <HeaderSkeleton />,
@@ -56,9 +71,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="scroll-smooth" suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`scroll-smooth ${manrope.variable} ${plusJakarta.variable}`}
+      suppressHydrationWarning
+    >
       <body
-        className="min-h-full antialiased scroll-smooth"
+        className={`${manrope.className} min-h-full antialiased scroll-smooth`}
         suppressHydrationWarning
       >
         <Providers>

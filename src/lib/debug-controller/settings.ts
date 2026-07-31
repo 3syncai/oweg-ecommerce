@@ -8,7 +8,7 @@ const SETTINGS_KEY = "global";
 
 let cachedSettings: DebugControllerSettings | null = null;
 let cacheExpiresAt = 0;
-const CACHE_TTL_MS = 5_000;
+const CACHE_TTL_MS = 60_000;
 
 function mergeSettings(
   partial: Partial<DebugControllerSettings> | null | undefined
@@ -29,6 +29,14 @@ export async function getDebugControllerSettings(
     now < cacheExpiresAt
   ) {
     return cachedSettings;
+  }
+
+  // CI / local builds without DATABASE_URL — use defaults, do not hit Postgres
+  if (!process.env.DATABASE_URL) {
+    const defaults = mergeSettings(null);
+    cachedSettings = defaults;
+    cacheExpiresAt = now + CACHE_TTL_MS;
+    return defaults;
   }
 
   await ensureDebugControllerTable();

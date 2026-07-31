@@ -60,6 +60,20 @@ function buildCartCreateBody(): RequestInit["body"] {
   return JSON.stringify(payload)
 }
 
+function cartLineCount(cart: { items?: unknown[]; line_items?: unknown[] } | null | undefined): number {
+  if (!cart) return 0
+  const items = cart.items ?? cart.line_items ?? []
+  return Array.isArray(items) ? items.length : 0
+}
+
+const EMPTY_CART = {
+  cart: {
+    id: null,
+    items: [],
+    line_items: [],
+  },
+}
+
 export const dynamic = "force-dynamic"
 
 export async function GET(req: NextRequest) {
@@ -70,29 +84,38 @@ export async function GET(req: NextRequest) {
   if (!cartId) {
     cartId = req.headers.get(GUEST_CART_HEADER) || undefined
   }
+
+  const ensure = req.nextUrl.searchParams.get("ensure") === "1"
   
   if (cartId) {
     const res = await backend(`/store/carts/${cartId}`)
     if (res.ok) {
       const data = await res.json()
       
-      // Map cart prices using flash_sale_item table
-      try {
-        const flashSaleRes = await backend('/store/flash-sale/products')
-        if (flashSaleRes.ok) {
-          const flashSaleData = await flashSaleRes.json()
-          if (data.cart) {
-            data.cart = applyFlashSalePricesToCart(data.cart, flashSaleData)
+      // Skip flash-sale fan-out when cart is empty — shaves ~0.5–1s off shell loads
+      if (cartLineCount(data?.cart) > 0) {
+        try {
+          const flashSaleRes = await backend('/store/flash-sale/products')
+          if (flashSaleRes.ok) {
+            const flashSaleData = await flashSaleRes.json()
+            if (data.cart) {
+              data.cart = applyFlashSalePricesToCart(data.cart, flashSaleData)
+            }
           }
+        } catch (error) {
+          console.error('Failed to map flash sale prices in cart:', error)
         }
-      } catch (error) {
-        // If flash sale mapping fails, return cart as-is
-        console.error('Failed to map flash sale prices in cart:', error)
       }
       
       return NextResponse.json(data)
     }
   }
+
+  // Anonymous shell: do not create a Medusa cart until ensure=1 or add-to-cart
+  if (!ensure) {
+    return NextResponse.json(EMPTY_CART)
+  }
+
   // create
   const body = buildCartCreateBody()
   const created = await backend(`/store/carts`, {
@@ -116,6 +139,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  // alias to create/ensure
-  return GET(req)
+  // Ensure cart exists (create if needed)
+  const url = req.nextUrl.clone()
+  url.searchParams.set("ensure", "1")
+  return GET(new NextRequest(url, { headers: req.headers }))
 }
