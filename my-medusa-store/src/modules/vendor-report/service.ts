@@ -42,7 +42,7 @@ class VendorReportModuleService extends MedusaService({
       issue_description: description.slice(0, 5000),
       product_snapshot: input.product_snapshot || null,
       order_snapshot: input.order_snapshot || null,
-      image_urls: input.image_urls || [],
+      image_urls: (input.image_urls || []) as unknown as Record<string, unknown>,
       status: "open",
       metadata: input.metadata || null,
     })

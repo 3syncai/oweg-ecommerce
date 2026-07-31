@@ -1,62 +1,263 @@
 diff --git a/node_modules/@medusajs/dashboard/dist/app.js b/node_modules/@medusajs/dashboard/dist/app.js
-index 26667a0..206ea76 100644
+index 26667a0..66b320c 100644
 --- a/node_modules/@medusajs/dashboard/dist/app.js
 +++ b/node_modules/@medusajs/dashboard/dist/app.js
-@@ -151338,15 +151338,29 @@ var init_customer_address_section = __esm({
-       const navigate = (0, import_react_router_dom128.useNavigate)();
-       const { mutateAsync: deleteAddress } = useDeleteCustomerAddress(customer.id);
-       const addresses = customer.addresses ?? [];
-+      const addressDisplayTitle = (address) => {
-+        const named = address.address_name?.trim();
-+        if (named) return named;
-+        const company = address.company?.trim();
-+        if (company) return company;
-+        const fullName = [address.first_name, address.last_name].map((p) => p?.trim()).filter(Boolean).join(" ");
-+        if (fullName) return fullName;
-+        const line1 = address.address_1?.trim();
-+        if (line1) return line1;
-+        const city = address.city?.trim();
-+        if (city) return city;
-+        return "Address";
-+      };
-       const handleDelete = async (address) => {
-+        const title = addressDisplayTitle(address);
-         const confirm = await prompt({
-           title: t5("general.areYouSure"),
-           description: t5("general.areYouSureDescription", {
-             entity: t5("fields.address"),
--            title: address.address_name ?? "n/a"
-+            title
+@@ -93570,62 +93570,58 @@ var init_main_layout = __esm({
+         }
+       ) });
+     };
++    var PROMOTED_EXTENSION_PATHS = [
++      "/return-requests",
++      "/flash-sale",
++      "/oweg-homepage",
++      "/vendors",
++      "/vendor-commission",
++      "/vendor-requests",
++      "/vendor-payouts",
++      "/vendor-reports",
++      "/affiliate-admins"
++    ];
+     useCoreRoutes = () => {
+       const { t: t5 } = (0, import_react_i18next10.useTranslation)();
+       return [
+         {
+-          icon: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_icons10.ShoppingCart, {}),
+-          label: t5("orders.domain"),
+-          to: "/orders",
+-          items: [
+-            // TODO: Enable when domin is introduced
+-            // {
+-            //   label: t("draftOrders.domain"),
+-            //   to: "/draft-orders",
+-            // },
+-          ]
++          icon: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_icons10.BuildingStorefront, {}),
++          label: t5("collections.domain"),
++          to: "/collections"
++        },
++        {
++          icon: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_icons10.SquaresPlus, {}),
++          label: t5("categories.domain"),
++          to: "/categories"
+         },
+         {
+           icon: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_icons10.Tag, {}),
+           label: t5("products.domain"),
+           to: "/products",
+-          items: [
+-            {
+-              label: t5("collections.domain"),
+-              to: "/collections"
+-            },
+-            {
+-              label: t5("categories.domain"),
+-              to: "/categories"
+-            }
+-            // TODO: Enable when domin is introduced
+-            // {
+-            //   label: t("giftCards.domain"),
+-            //   to: "/gift-cards",
+-            // },
+-          ]
++          items: []
+         },
+         {
+           icon: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_icons10.Buildings, {}),
+           label: t5("inventory.domain"),
+           to: "/inventory",
+-          items: [
+-            {
+-              label: t5("reservations.domain"),
+-              to: "/reservations"
+-            }
+-          ]
++          items: []
+         },
+         {
+           icon: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_icons10.Users, {}),
+           label: t5("customers.domain"),
+           to: "/customers",
+-          items: [
+-            {
+-              label: t5("customerGroups.domain"),
+-              to: "/customer-groups"
+-            }
+-          ]
++          items: []
++        },
++        {
++          icon: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_icons10.ShoppingCart, {}),
++          label: t5("orders.domain"),
++          to: "/orders",
++          items: []
++        },
++        {
++          icon: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_icons10.OpenRectArrowOut, {}),
++          label: t5("draftOrders.domain"),
++          to: "/draft-orders"
+         },
+         {
+           icon: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_icons10.ReceiptPercent, {}),
+@@ -93671,15 +93667,42 @@ var init_main_layout = __esm({
+       const menuItems = getMenu("coreExtensions");
+       menuItems.forEach((item) => {
+         if (item.nested) {
++          if (item.to === "/draft-orders") {
++            return;
++          }
+           const route = coreRoutes.find((route2) => route2.to === item.nested);
+           if (route) {
+-            route.items?.push(item);
++            if (!route.items) {
++              route.items = [];
++            }
++            route.items.push(item);
+           }
+         }
+       });
++      const extensionByPath = new Map(
++        menuItems.filter((item) => !item.nested).map((item) => [item.to, item])
++      );
++      const toNavItem = (item) => ({
++        to: item.to,
++        label: item.label,
++        icon: item.icon ? item.icon : /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_icons10.SquaresPlus, {}),
++        items: item.items
++      });
++      const beforePromotions = ["/return-requests", "/flash-sale"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
++      const afterPriceLists = ["/oweg-homepage", "/vendors", "/vendor-commission", "/vendor-requests", "/vendor-payouts", "/vendor-reports", "/affiliate-admins"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
++      const routes = [];
++      for (const route of coreRoutes) {
++        if (route.to === "/promotions") {
++          routes.push(...beforePromotions);
++        }
++        routes.push(route);
++        if (route.to === "/price-lists") {
++          routes.push(...afterPriceLists);
++        }
++      }
+       return /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("nav", { className: "flex flex-col gap-y-1 py-3", children: [
+         /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(Searchbar, {}),
+-        coreRoutes.map((route) => {
++        routes.map((route) => {
+           return /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(NavItem, { ...route }, route.to);
+         })
+       ] });
+@@ -93687,7 +93710,7 @@ var init_main_layout = __esm({
+     ExtensionRouteSection = () => {
+       const { t: t5 } = (0, import_react_i18next10.useTranslation)();
+       const { getMenu } = useExtension();
+-      const menuItems = getMenu("coreExtensions").filter((item) => !item.nested);
++      const menuItems = getMenu("coreExtensions").filter((item) => !item.nested && !PROMOTED_EXTENSION_PATHS.includes(item.to));
+       if (!menuItems.length) {
+         return null;
+       }
+@@ -155280,7 +155303,7 @@ var init_inventory_actions2 = __esm({
+ });
+ 
+ // src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
+-var import_ui297, import_react_table44, import_react229, import_react_i18next315, import_jsx_runtime434, columnHelper49, useInventoryTableColumns2;
++var import_ui297, import_react_table44, import_react229, import_react_i18next315, import_jsx_runtime434, columnHelper49, useInventoryTableColumns2, getInventoryDisplayTitle;
+ var init_use_inventory_table_columns2 = __esm({
+   "src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx"() {
+     "use strict";
+@@ -155290,8 +155313,20 @@ var init_use_inventory_table_columns2 = __esm({
+     import_react_i18next315 = require("react-i18next");
+     init_placeholder_cell2();
+     init_inventory_actions2();
++    init_thumbnail2();
+     import_jsx_runtime434 = require("react/jsx-runtime");
+     columnHelper49 = (0, import_react_table44.createColumnHelper)();
++    getInventoryDisplayTitle = (item) => {
++      const productTitle = item.variants?.[0]?.product?.title;
++      if (productTitle) {
++        return productTitle;
++      }
++      const variantTitle = item.variants?.[0]?.title;
++      if (variantTitle && variantTitle !== "Default variant") {
++        return variantTitle;
++      }
++      return item.title ?? null;
++    };
+     useInventoryTableColumns2 = () => {
+       const { t: t5 } = (0, import_react_i18next315.useTranslation)();
+       return (0, import_react229.useMemo)(
+@@ -155322,42 +155357,53 @@ var init_use_inventory_table_columns2 = __esm({
            }),
-           verificationInstruction: t5("general.typeToConfirm"),
--          verificationText: address.address_name ?? "address",
-+          verificationText: title,
-           confirmText: t5("actions.delete"),
-           cancelText: t5("actions.cancel")
-         });
-@@ -151356,7 +151370,7 @@ var init_customer_address_section = __esm({
-         await deleteAddress(address.id, {
-           onSuccess: () => {
-             import_ui274.toast.success(
--              t5("general.success", { name: address.address_name ?? "address" })
-+              t5("general.success", { name: title })
-             );
-             navigate(`/customers/${customer.id}`, { replace: true });
-           },
-@@ -151385,7 +151399,7 @@ var init_customer_address_section = __esm({
-           return /* @__PURE__ */ (0, import_jsx_runtime395.jsx)(
-             Listicle,
-             {
--              labelKey: address.address_name ?? "n/a",
-+              labelKey: addressDisplayTitle(address),
-               descriptionKey: [address.address_1, address.address_2].join(" "),
-               children: /* @__PURE__ */ (0, import_jsx_runtime395.jsx)(
-                 ActionMenu,
+           columnHelper49.accessor("title", {
+             header: t5("fields.title"),
+-            cell: ({ getValue: getValue2 }) => {
+-              const title = getValue2();
+-              if (!title) {
++            size: 300,
++            maxSize: 320,
++            cell: ({ row }) => {
++              const item = row.original;
++              const displayTitle = getInventoryDisplayTitle(item);
++              const thumbnail = item.variants?.[0]?.product?.thumbnail ?? null;
++              if (!displayTitle && !thumbnail) {
+                 return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)(PlaceholderCell, {});
+               }
+-              return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "flex size-full items-center overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "truncate", children: title }) });
++              return /* @__PURE__ */ (0, import_jsx_runtime434.jsxs)("div", { className: "flex w-full min-w-0 max-w-[320px] items-center gap-x-3 overflow-hidden", children: [
++                /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "shrink-0", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)(Thumbnail, { src: thumbnail, alt: displayTitle ?? void 0, size: "small" }) }),
++                /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "min-w-0 flex-1 truncate", title: displayTitle ?? void 0, children: displayTitle || "-" })
++              ] });
+             }
+           }),
+           columnHelper49.accessor("sku", {
+             header: t5("fields.sku"),
++            size: 140,
++            minSize: 120,
+             cell: ({ getValue: getValue2 }) => {
+               const sku = getValue2();
+               if (!sku) {
+                 return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)(PlaceholderCell, {});
+               }
+-              return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "flex size-full items-center overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "truncate", children: sku }) });
++              return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "flex size-full min-w-[7rem] items-center overflow-hidden whitespace-nowrap", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "truncate", title: sku, children: sku }) });
+             }
+           }),
+           columnHelper49.accessor("reserved_quantity", {
+             header: t5("inventory.reserved"),
++            size: 100,
+             cell: ({ getValue: getValue2 }) => {
+               const quantity = getValue2();
+               if (Number.isNaN(quantity)) {
+                 return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)(PlaceholderCell, {});
+               }
+-              return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "flex size-full items-center overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "truncate", children: quantity }) });
++              return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "flex size-full items-center overflow-hidden whitespace-nowrap", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "truncate", children: quantity }) });
+             }
+           }),
+           columnHelper49.accessor("stocked_quantity", {
+             header: t5("fields.inStock"),
++            size: 100,
+             cell: ({ getValue: getValue2 }) => {
+               const quantity = getValue2();
+               if (Number.isNaN(quantity)) {
+                 return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)(PlaceholderCell, {});
+               }
+-              return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "flex size-full items-center overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "truncate", children: quantity }) });
++              return /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("div", { className: "flex size-full items-center overflow-hidden whitespace-nowrap", children: /* @__PURE__ */ (0, import_jsx_runtime434.jsx)("span", { className: "truncate", children: quantity }) });
+             }
+           }),
+           columnHelper49.display({
+@@ -155546,7 +155592,8 @@ var init_inventory_list_table = __esm({
+         isError,
+         error
+       } = useInventoryItems({
+-        ...searchParams
++        ...searchParams,
++        fields: "id,title,sku,stocked_quantity,reserved_quantity,*variants,*variants.product"
+       });
+       const filters = useInventoryTableFilters();
+       const columns = useInventoryTableColumns2();
 diff --git a/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs b/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs
-index ba656d3..ee8887c 100644
+index ba656d3..cef7e43 100644
 --- a/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs
 +++ b/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs
-@@ -88828,62 +88828,57 @@ var Header = () => {
+@@ -88828,62 +88828,58 @@ var Header = () => {
      }
    ) });
  };
@@ -65,9 +266,9 @@ index ba656d3..ee8887c 100644
 +  "/flash-sale",
 +  "/oweg-homepage",
 +  "/vendors",
++  "/vendor-commission",
 +  "/vendor-requests",
 +  "/vendor-payouts",
-+  "/vendor-commission",
 +  "/vendor-reports",
 +  "/affiliate-admins"
 +];
@@ -152,7 +353,7 @@ index ba656d3..ee8887c 100644
      },
      {
        icon: /* @__PURE__ */ jsx13(ReceiptPercent, {}),
-@@ -88929,15 +88924,42 @@ var CoreRouteSection = () => {
+@@ -88929,15 +88925,42 @@ var CoreRouteSection = () => {
    const menuItems = getMenu("coreExtensions");
    menuItems.forEach((item) => {
      if (item.nested) {
@@ -179,7 +380,7 @@ index ba656d3..ee8887c 100644
 +    items: item.items
 +  });
 +  const beforePromotions = ["/return-requests", "/flash-sale"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
-+  const afterPriceLists = ["/oweg-homepage", "/vendors", "/vendor-requests", "/vendor-payouts", "/vendor-commission", "/vendor-reports", "/affiliate-admins"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
++  const afterPriceLists = ["/oweg-homepage", "/vendors", "/vendor-commission", "/vendor-requests", "/vendor-payouts", "/vendor-reports", "/affiliate-admins"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
 +  const routes = [];
 +  for (const route of coreRoutes) {
 +    if (route.to === "/promotions") {
@@ -197,7 +398,7 @@ index ba656d3..ee8887c 100644
        return /* @__PURE__ */ jsx13(NavItem, { ...route }, route.to);
      })
    ] });
-@@ -88945,7 +88967,7 @@ var CoreRouteSection = () => {
+@@ -88945,7 +88968,7 @@ var CoreRouteSection = () => {
  var ExtensionRouteSection = () => {
    const { t: t2 } = useTranslation9();
    const { getMenu } = useExtension();
@@ -206,68 +407,8 @@ index ba656d3..ee8887c 100644
    if (!menuItems.length) {
      return null;
    }
-diff --git a/node_modules/@medusajs/dashboard/dist/customer-detail-ATJGSJTH.mjs b/node_modules/@medusajs/dashboard/dist/customer-detail-ATJGSJTH.mjs
-index 2524375..45eea59 100644
---- a/node_modules/@medusajs/dashboard/dist/customer-detail-ATJGSJTH.mjs
-+++ b/node_modules/@medusajs/dashboard/dist/customer-detail-ATJGSJTH.mjs
-@@ -143,6 +143,19 @@ var Listicle = ({
- 
- // src/routes/customers/customer-detail/components/customer-address-section/customer-address-section.tsx
- import { jsx as jsx3, jsxs as jsxs2 } from "react/jsx-runtime";
-+var addressDisplayTitle = (address) => {
-+  const named = address.address_name?.trim();
-+  if (named) return named;
-+  const company = address.company?.trim();
-+  if (company) return company;
-+  const fullName = [address.first_name, address.last_name].map((p) => p?.trim()).filter(Boolean).join(" ");
-+  if (fullName) return fullName;
-+  const line1 = address.address_1?.trim();
-+  if (line1) return line1;
-+  const city = address.city?.trim();
-+  if (city) return city;
-+  return "Address";
-+};
- var CustomerAddressSection = ({
-   customer
- }) => {
-@@ -152,14 +165,15 @@ var CustomerAddressSection = ({
-   const { mutateAsync: deleteAddress } = useDeleteCustomerAddress(customer.id);
-   const addresses = customer.addresses ?? [];
-   const handleDelete = async (address) => {
-+    const title = addressDisplayTitle(address);
-     const confirm = await prompt({
-       title: t2("general.areYouSure"),
-       description: t2("general.areYouSureDescription", {
-         entity: t2("fields.address"),
--        title: address.address_name ?? "n/a"
-+        title
-       }),
-       verificationInstruction: t2("general.typeToConfirm"),
--      verificationText: address.address_name ?? "address",
-+      verificationText: title,
-       confirmText: t2("actions.delete"),
-       cancelText: t2("actions.cancel")
-     });
-@@ -169,7 +183,7 @@ var CustomerAddressSection = ({
-     await deleteAddress(address.id, {
-       onSuccess: () => {
-         toast.success(
--          t2("general.success", { name: address.address_name ?? "address" })
-+          t2("general.success", { name: title })
-         );
-         navigate(`/customers/${customer.id}`, { replace: true });
-       },
-@@ -198,7 +212,7 @@ var CustomerAddressSection = ({
-       return /* @__PURE__ */ jsx3(
-         Listicle,
-         {
--          labelKey: address.address_name ?? "n/a",
-+          labelKey: addressDisplayTitle(address),
-           descriptionKey: [address.address_1, address.address_2].join(" "),
-           children: /* @__PURE__ */ jsx3(
-             ActionMenu,
 diff --git a/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs b/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs
-index 7661107..0ecc004 100644
+index 7661107..f2978b1 100644
 --- a/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs
 +++ b/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs
 @@ -4,6 +4,9 @@ import {
@@ -318,7 +459,7 @@ index 7661107..0ecc004 100644
              return /* @__PURE__ */ jsx2(PlaceholderCell, {});
            }
 -          return /* @__PURE__ */ jsx2("div", { className: "flex size-full items-center overflow-hidden", children: /* @__PURE__ */ jsx2("span", { className: "truncate", children: title }) });
-+          return /* @__PURE__ */ jsxs2("div", { className: "flex w-full min-w-0 max-w-full items-center gap-x-3 overflow-hidden", children: [
++          return /* @__PURE__ */ jsxs2("div", { className: "flex w-full min-w-0 max-w-[320px] items-center gap-x-3 overflow-hidden", children: [
 +            /* @__PURE__ */ jsx2("div", { className: "shrink-0", children: /* @__PURE__ */ jsx2(Thumbnail, { src: thumbnail, alt: displayTitle ?? void 0, size: "small" }) }),
 +            /* @__PURE__ */ jsx2("span", { className: "min-w-0 flex-1 truncate", title: displayTitle ?? void 0, children: displayTitle || "-" })
 +          ] });
@@ -334,7 +475,7 @@ index 7661107..0ecc004 100644
              return /* @__PURE__ */ jsx2(PlaceholderCell, {});
            }
 -          return /* @__PURE__ */ jsx2("div", { className: "flex size-full items-center overflow-hidden", children: /* @__PURE__ */ jsx2("span", { className: "truncate", children: sku }) });
-+          return /* @__PURE__ */ jsx2("div", { className: "flex size-full min-w-0 items-center overflow-hidden whitespace-nowrap", children: /* @__PURE__ */ jsx2("span", { className: "truncate", title: sku, children: sku }) });
++          return /* @__PURE__ */ jsx2("div", { className: "flex size-full min-w-[7rem] items-center overflow-hidden whitespace-nowrap", children: /* @__PURE__ */ jsx2("span", { className: "truncate", title: sku, children: sku }) });
          }
        }),
        columnHelper.accessor("reserved_quantity", {
@@ -373,10 +514,10 @@ index 7661107..0ecc004 100644
    const filters = useInventoryTableFilters();
    const columns = useInventoryTableColumns();
 diff --git a/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx b/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx
-index 5aa04ed..aab466b 100644
+index 5aa04ed..52a25e7 100644
 --- a/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx
 +++ b/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx
-@@ -177,63 +177,60 @@ const Header = () => {
+@@ -177,63 +177,61 @@ const Header = () => {
    )
  }
  
@@ -386,11 +527,11 @@ index 5aa04ed..aab466b 100644
 +  "/flash-sale",
 +  "/oweg-homepage",
 +  "/vendors",
++  "/vendor-commission",
 +  "/vendor-requests",
 +  "/vendor-payouts",
-+  "/vendor-commission",
-+  "/vendor-reports",
 +  "/affiliate-admins",
++  "/vendor-reports",
 +] as const
 +
  const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
@@ -475,7 +616,7 @@ index 5aa04ed..aab466b 100644
      },
      {
        icon: <ReceiptPercent />,
-@@ -253,7 +250,6 @@ const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
+@@ -253,7 +251,6 @@ const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
      },
    ]
  }
@@ -483,7 +624,7 @@ index 5aa04ed..aab466b 100644
  const Searchbar = () => {
    const { t } = useTranslation()
    const { toggleSearch } = useSearch()
-@@ -291,17 +287,65 @@ const CoreRouteSection = () => {
+@@ -291,17 +288,65 @@ const CoreRouteSection = () => {
  
    menuItems.forEach((item) => {
      if (item.nested) {
@@ -523,10 +664,9 @@ index 5aa04ed..aab466b 100644
 +  const afterPriceLists = [
 +    "/oweg-homepage",
 +    "/vendors",
++    "/vendor-commission",
 +    "/vendor-requests",
 +    "/vendor-payouts",
-+    "/vendor-commission",
-+    "/vendor-reports",
 +    "/affiliate-admins",
 +  ]
 +    .map((path) => extensionByPath.get(path))
@@ -552,7 +692,7 @@ index 5aa04ed..aab466b 100644
          return <NavItem key={route.to} {...route} />
        })}
      </nav>
-@@ -312,7 +356,11 @@ const ExtensionRouteSection = () => {
+@@ -312,7 +357,11 @@ const ExtensionRouteSection = () => {
    const { t } = useTranslation()
    const { getMenu } = useExtension()
  
@@ -565,77 +705,6 @@ index 5aa04ed..aab466b 100644
  
    if (!menuItems.length) {
      return null
-diff --git a/node_modules/@medusajs/dashboard/src/routes/customers/customer-detail/components/customer-address-section/customer-address-section.tsx b/node_modules/@medusajs/dashboard/src/routes/customers/customer-detail/components/customer-address-section/customer-address-section.tsx
-index ebd6f8e..b1d26c1 100644
---- a/node_modules/@medusajs/dashboard/src/routes/customers/customer-detail/components/customer-address-section/customer-address-section.tsx
-+++ b/node_modules/@medusajs/dashboard/src/routes/customers/customer-detail/components/customer-address-section/customer-address-section.tsx
-@@ -13,6 +13,28 @@ type CustomerAddressSectionProps = {
-   customer: HttpTypes.AdminCustomer
- }
- 
-+function addressDisplayTitle(address: HttpTypes.AdminCustomerAddress): string {
-+  const named = address.address_name?.trim()
-+  if (named) return named
-+
-+  const company = address.company?.trim()
-+  if (company) return company
-+
-+  const fullName = [address.first_name, address.last_name]
-+    .map((p) => p?.trim())
-+    .filter(Boolean)
-+    .join(" ")
-+  if (fullName) return fullName
-+
-+  const line1 = address.address_1?.trim()
-+  if (line1) return line1
-+
-+  const city = address.city?.trim()
-+  if (city) return city
-+
-+  return "Address"
-+}
-+
- export const CustomerAddressSection = ({
-   customer,
- }: CustomerAddressSectionProps) => {
-@@ -24,14 +46,15 @@ export const CustomerAddressSection = ({
-   const addresses = customer.addresses ?? []
- 
-   const handleDelete = async (address: HttpTypes.AdminCustomerAddress) => {
-+    const title = addressDisplayTitle(address)
-     const confirm = await prompt({
-       title: t("general.areYouSure"),
-       description: t("general.areYouSureDescription", {
-         entity: t("fields.address"),
--        title: address.address_name ?? "n/a",
-+        title,
-       }),
-       verificationInstruction: t("general.typeToConfirm"),
--      verificationText: address.address_name ?? "address",
-+      verificationText: title,
-       confirmText: t("actions.delete"),
-       cancelText: t("actions.cancel"),
-     })
-@@ -42,9 +65,7 @@ export const CustomerAddressSection = ({
- 
-     await deleteAddress(address.id, {
-       onSuccess: () => {
--        toast.success(
--          t("general.success", { name: address.address_name ?? "address" })
--        )
-+        toast.success(t("general.success", { name: title }))
- 
-         navigate(`/customers/${customer.id}`, { replace: true })
-       },
-@@ -78,7 +99,7 @@ export const CustomerAddressSection = ({
-         return (
-           <Listicle
-             key={address.id}
--            labelKey={address.address_name ?? "n/a"}
-+            labelKey={addressDisplayTitle(address)}
-             descriptionKey={[address.address_1, address.address_2].join(" ")}
-           >
-             <ActionMenu
 diff --git a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx
 index 7ef287c..d2d6988 100644
 --- a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx
@@ -649,7 +718,7 @@ index 7ef287c..d2d6988 100644
  
    const filters = useInventoryTableFilters()
 diff --git a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
-index c726fbf..5173528 100644
+index c726fbf..76aa5fb 100644
 --- a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
 +++ b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
 @@ -4,6 +4,7 @@ import { Checkbox } from "@medusajs/ui"
@@ -716,7 +785,7 @@ index c726fbf..5173528 100644
            return (
 -            <div className="flex size-full items-center overflow-hidden">
 -              <span className="truncate">{title}</span>
-+            <div className="flex w-full min-w-0 max-w-full items-center gap-x-3 overflow-hidden">
++            <div className="flex w-full min-w-0 max-w-[320px] items-center gap-x-3 overflow-hidden">
 +              <div className="shrink-0">
 +                <Thumbnail
 +                  src={thumbnail}
@@ -747,7 +816,7 @@ index c726fbf..5173528 100644
            return (
 -            <div className="flex size-full items-center overflow-hidden">
 -              <span className="truncate">{sku}</span>
-+            <div className="flex size-full min-w-0 items-center overflow-hidden whitespace-nowrap">
++            <div className="flex size-full min-w-[7rem] items-center overflow-hidden whitespace-nowrap">
 +              <span className="truncate" title={sku}>
 +                {sku}
 +              </span>
