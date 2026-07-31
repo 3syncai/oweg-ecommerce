@@ -75,6 +75,10 @@ export type CategoryProductsPage = {
   limit: number;
   offset: number;
   hasMore: boolean;
+  /** Echo of filters used when this page was built (SSR seed identity). */
+  appliedPriceMin?: number;
+  appliedPriceMax?: number;
+  appliedDealsOnly?: boolean;
 };
 
 /**

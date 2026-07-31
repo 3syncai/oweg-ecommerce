@@ -22,6 +22,7 @@ export function useCategoryProducts(
     initialData,
     placeholderData: initialData,
     staleTime: 1000 * 60 * 5, // 5 minutes
-    refetchOnMount: initialData ? false : true,
+    // Allow remount refetch so filter changes that share a key still recover
+    refetchOnMount: true,
   });
 }

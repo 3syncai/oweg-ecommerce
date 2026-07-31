@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
     .split(",")
     .map((id) => id.trim())
     .filter(Boolean)
+    .slice(0, 24)
 
   const previews = await buildCategoryPreviewImages(ids)
   const response = NextResponse.json({ previews })

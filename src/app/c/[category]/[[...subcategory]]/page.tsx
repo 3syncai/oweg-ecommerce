@@ -85,10 +85,20 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
   const includeSubcategories = !selectedSubcategory;
   const pageRaw = Number(firstParam(query.page) || "1");
   const requestedPage = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
-  const priceMinRaw = firstParam(query.price_min);
-  const priceMaxRaw = firstParam(query.price_max);
-  const priceMin = priceMinRaw !== undefined ? Number(priceMinRaw) : undefined;
-  const priceMax = priceMaxRaw !== undefined ? Number(priceMaxRaw) : undefined;
+  const priceMinRaw = firstParam(query.price_min)?.trim();
+  const priceMaxRaw = firstParam(query.price_max)?.trim();
+  const priceMinParsed =
+    priceMinRaw && priceMinRaw.length > 0 ? Number(priceMinRaw) : undefined;
+  const priceMaxParsed =
+    priceMaxRaw && priceMaxRaw.length > 0 ? Number(priceMaxRaw) : undefined;
+  const priceMin =
+    typeof priceMinParsed === "number" && Number.isFinite(priceMinParsed)
+      ? priceMinParsed
+      : undefined;
+  const priceMax =
+    typeof priceMaxParsed === "number" && Number.isFinite(priceMaxParsed)
+      ? priceMaxParsed
+      : undefined;
   const dealsOnly = firstParam(query.deals) === "1";
   const pageOffset = (requestedPage - 1) * PRODUCTS_PER_PAGE;
 

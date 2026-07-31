@@ -20,6 +20,7 @@ export function CategoryHeader({
   initialPreviews,
 }: CategoryHeaderProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const attemptedPreviewIdsRef = useRef<Set<string>>(new Set());
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [previewImages, setPreviewImages] = useState<Record<string, string>>(() => {
@@ -66,16 +67,29 @@ export function CategoryHeader({
   }, [updateScrollState]);
 
   useEffect(() => {
+    attemptedPreviewIdsRef.current = new Set();
+    if (initialPreviews) {
+      Object.keys(initialPreviews).forEach((id) =>
+        attemptedPreviewIdsRef.current.add(id)
+      );
+    }
+  }, [categoryHandle, initialPreviews]);
+
+  useEffect(() => {
     const missingIds = subcategories
       .map((sub) => sub.id)
       .filter(
         (id): id is string =>
-          typeof id === "string" && id.length > 0 && !previewImages[id]
+          typeof id === "string" &&
+          id.length > 0 &&
+          !attemptedPreviewIdsRef.current.has(id)
       );
 
     if (missingIds.length === 0) {
       return;
     }
+
+    missingIds.forEach((id) => attemptedPreviewIdsRef.current.add(id));
 
     let cancelled = false;
 
@@ -118,7 +132,7 @@ export function CategoryHeader({
     return () => {
       cancelled = true;
     };
-  }, [subcategories, previewImages]);
+  }, [subcategories, categoryHandle]);
 
   if (subcategories.length === 0) {
     return null;

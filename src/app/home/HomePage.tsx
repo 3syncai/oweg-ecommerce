@@ -454,7 +454,7 @@ export default function HomePage({
       if (!res.ok) throw new Error('Unable to load home feed');
       return res.json();
     },
-    initialData: initialFeed,
+    ...(initialFeed ? { initialData: initialFeed } : {}),
     staleTime: 1000 * 60 * 2,
   });
 

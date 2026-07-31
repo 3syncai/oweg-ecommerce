@@ -26,12 +26,22 @@ type CartProviderProps = {
   children: React.ReactNode;
 };
 
-let cartRefreshInFlight: Promise<void> | null = null;
+type InFlightRefresh = {
+  identity: string;
+  promise: Promise<void>;
+};
+
+let cartRefreshInFlight: InFlightRefresh | null = null;
+
+function cartIdentity(customerId?: string | null) {
+  return customerId ? `user:${customerId}` : "guest";
+}
 
 const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const { customer } = useAuth();
   const [count, setCount] = useState(0);
   const previousCustomerIdRef = useRef<string | undefined>(customer?.id);
+  const refreshGenerationRef = useRef(0);
 
   const syncFromCartPayload = useCallback((payload?: CartApiPayload) => {
     const next = extractCartCount(payload);
@@ -48,13 +58,18 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (cartRefreshInFlight) {
-      await cartRefreshInFlight;
+    const identity = cartIdentity(customer?.id);
+    if (cartRefreshInFlight && cartRefreshInFlight.identity === identity) {
+      await cartRefreshInFlight.promise;
       return;
     }
-    cartRefreshInFlight = (async () => {
+
+    const generation = ++refreshGenerationRef.current;
+    let promise!: Promise<void>;
+    promise = (async () => {
       try {
-        const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
+        const guestCartId =
+          typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
         const res = await fetch("/api/medusa/cart", {
           cache: "no-store",
           credentials: "include",
@@ -65,6 +80,10 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
         if (!res.ok) return;
         const data = (await res.json()) as CartApiPayload;
 
+        // Discard responses from obsolete identity/generation (e.g. after logout)
+        if (generation !== refreshGenerationRef.current) return;
+        if (cartIdentity(customer?.id) !== identity) return;
+
         if (data.guestCartId && typeof window !== "undefined" && typeof data.guestCartId === "string") {
           localStorage.setItem("guest_cart_id", data.guestCartId);
         }
@@ -73,11 +92,15 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       } catch (err) {
         console.error("Failed to refresh cart", err);
       } finally {
-        cartRefreshInFlight = null;
+        if (cartRefreshInFlight?.promise === promise) {
+          cartRefreshInFlight = null;
+        }
       }
     })();
-    await cartRefreshInFlight;
-  }, [syncFromCartPayload]);
+
+    cartRefreshInFlight = { identity, promise };
+    await promise;
+  }, [customer?.id, syncFromCartPayload]);
 
   useEffect(() => {
     refresh();
@@ -88,6 +111,8 @@ const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     const nextId = customer?.id;
 
     if (previousId && !nextId) {
+      refreshGenerationRef.current += 1;
+      cartRefreshInFlight = null;
       restoreCount(0);
       void refresh();
     }

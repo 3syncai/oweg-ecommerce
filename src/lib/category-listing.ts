@@ -29,30 +29,11 @@ export type CategoryPreviewMap = Record<
   { image: string; productId: string }
 >;
 
-export async function buildCategoryProductsPage(options: {
-  categoryId: string;
-  includeSubcategories: boolean;
-  limit?: number;
-  offset?: number;
-  priceMin?: number;
-  priceMax?: number;
-  dealsOnly?: boolean;
-}): Promise<CategoryProductsPage> {
-  const limit = options.limit ?? PRODUCTS_PER_PAGE;
-  const offset = options.offset ?? 0;
-  const fetchLimit = overfetchLimit(limit, MEDUSA_LIST_MAX_LIMIT);
-
-  const listResult = await fetchProductsByCategoryId(options.categoryId, fetchLimit, {
-    includeSubcategories: options.includeSubcategories,
-    offset,
-  });
-
-  const products = listResult.products;
-  const medusaCount = listResult.count;
-  const priceListPrices = await getPriceListPrices();
-  const inStockProducts = products.filter(isMedusaProductInStock);
-
-  let ui = inStockProducts.map((product: MedusaProduct) => {
+function applyPriceList(
+  products: MedusaProduct[],
+  priceListPrices: Map<string, number>
+) {
+  return products.map((product: MedusaProduct) => {
     const variantId = product.variants?.[0]?.id;
     if (variantId && priceListPrices.has(variantId) && product.variants?.[0]) {
       const discountedPrice = priceListPrices.get(variantId)!;
@@ -70,16 +51,89 @@ export async function buildCategoryProductsPage(options: {
     }
     return toUiProduct(product);
   });
+}
 
+function applyClientFilters(
+  ui: ReturnType<typeof toUiProduct>[],
+  options: {
+    priceMin?: number;
+    priceMax?: number;
+    dealsOnly?: boolean;
+  }
+) {
+  let next = ui;
   if (typeof options.priceMin === "number" && Number.isFinite(options.priceMin)) {
-    ui = ui.filter((product) => product.price >= options.priceMin!);
+    next = next.filter((product) => product.price >= options.priceMin!);
   }
   if (typeof options.priceMax === "number" && Number.isFinite(options.priceMax)) {
-    ui = ui.filter((product) => product.price <= options.priceMax!);
+    next = next.filter((product) => product.price <= options.priceMax!);
   }
   if (options.dealsOnly) {
-    ui = ui.filter((product) => product.limitedDeal);
+    next = next.filter((product) => product.limitedDeal);
   }
+  return next;
+}
+
+export async function buildCategoryProductsPage(options: {
+  categoryId: string;
+  includeSubcategories: boolean;
+  limit?: number;
+  offset?: number;
+  priceMin?: number;
+  priceMax?: number;
+  dealsOnly?: boolean;
+}): Promise<CategoryProductsPage> {
+  const limit = options.limit ?? PRODUCTS_PER_PAGE;
+  const offset = options.offset ?? 0;
+  const hasClientFilters =
+    (typeof options.priceMin === "number" && Number.isFinite(options.priceMin)) ||
+    (typeof options.priceMax === "number" && Number.isFinite(options.priceMax)) ||
+    Boolean(options.dealsOnly);
+
+  const priceListPrices = await getPriceListPrices();
+
+  // When price/deal filters are active, fetch a stable window from offset 0,
+  // filter, then slice — avoids duplicate/skip across pages.
+  if (hasClientFilters) {
+    const listResult = await fetchProductsByCategoryId(
+      options.categoryId,
+      MEDUSA_LIST_MAX_LIMIT,
+      {
+        includeSubcategories: options.includeSubcategories,
+        offset: 0,
+      }
+    );
+    const inStockProducts = (listResult.products || []).filter(isMedusaProductInStock);
+    const filtered = applyClientFilters(
+      applyPriceList(inStockProducts, priceListPrices),
+      options
+    );
+    const pageProducts = filtered.slice(offset, offset + limit);
+    return {
+      products: pageProducts,
+      count: filtered.length,
+      limit,
+      offset,
+      hasMore: offset + limit < filtered.length,
+      appliedPriceMin: options.priceMin,
+      appliedPriceMax: options.priceMax,
+      appliedDealsOnly: Boolean(options.dealsOnly),
+    };
+  }
+
+  const fetchLimit = overfetchLimit(limit, MEDUSA_LIST_MAX_LIMIT);
+  const listResult = await fetchProductsByCategoryId(options.categoryId, fetchLimit, {
+    includeSubcategories: options.includeSubcategories,
+    offset,
+  });
+
+  const products = listResult.products;
+  const medusaCount = listResult.count;
+  const inStockProducts = products.filter(isMedusaProductInStock);
+  const ui = applyClientFilters(
+    applyPriceList(inStockProducts, priceListPrices),
+    options
+  );
 
   const page = sliceFilteredPage({
     filtered: ui,
@@ -96,6 +150,9 @@ export async function buildCategoryProductsPage(options: {
     limit,
     offset,
     hasMore: page.hasMore,
+    appliedPriceMin: options.priceMin,
+    appliedPriceMax: options.priceMax,
+    appliedDealsOnly: Boolean(options.dealsOnly),
   };
 }
 
@@ -103,24 +160,25 @@ export async function buildCategoryDealPreview(
   categoryId: string,
   includeSubcategories: boolean,
   limit = 6
-): Promise<{ products: CategoryDealPreview[]; total: number }> {
+): Promise<{ products: CategoryDealPreview[]; total: number; categoryId: string }> {
   const page = await buildCategoryProductsPage({
     categoryId,
     includeSubcategories,
-    limit,
+    limit: MEDUSA_LIST_MAX_LIMIT,
     offset: 0,
     dealsOnly: true,
   });
   return {
-    products: page.products as CategoryDealPreview[],
-    total: page.products.length,
+    products: page.products.slice(0, limit) as CategoryDealPreview[],
+    total: page.count,
+    categoryId,
   };
 }
 
 export async function buildCategoryPreviewImages(
   categoryIds: string[]
 ): Promise<CategoryPreviewMap> {
-  const unique = Array.from(new Set(categoryIds.filter(Boolean)));
+  const unique = Array.from(new Set(categoryIds.filter(Boolean))).slice(0, 24);
   const previews: CategoryPreviewMap = {};
 
   await Promise.all(

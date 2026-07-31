@@ -65,7 +65,11 @@ type CategoryPageClientProps = {
   categoryHandle: string;
   subcategoryHandle?: string;
   initialProducts?: CategoryProductsPage;
-  initialDeals?: { products: CategoryDealPreview[]; total: number };
+  initialDeals?: {
+    products: CategoryDealPreview[];
+    total: number;
+    categoryId?: string;
+  };
   initialCategoryPreviews?: CategoryPreviewMap;
 };
 
@@ -87,7 +91,9 @@ export function CategoryPageClient({
 
   const parseNumberParam = useCallback((value: string | null) => {
     if (value === null) return undefined;
-    const parsed = Number(value);
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const parsed = Number(trimmed);
     return Number.isFinite(parsed) ? parsed : undefined;
   }, []);
 
@@ -143,9 +149,12 @@ export function CategoryPageClient({
     initialProducts &&
       queryFilters.offset === (initialProducts.offset ?? 0) &&
       queryFilters.limit === (initialProducts.limit ?? PRODUCTS_PER_PAGE) &&
-      Boolean(queryFilters.dealsOnly) === Boolean(filters.dealsOnly) &&
-      queryFilters.priceMin === filters.priceMin &&
-      queryFilters.priceMax === filters.priceMax
+      Boolean(queryFilters.dealsOnly) ===
+        Boolean(initialProducts.appliedDealsOnly) &&
+      (queryFilters.priceMin ?? undefined) ===
+        (initialProducts.appliedPriceMin ?? undefined) &&
+      (queryFilters.priceMax ?? undefined) ===
+        (initialProducts.appliedPriceMax ?? undefined)
       ? initialProducts
       : undefined,
   );
@@ -309,7 +318,14 @@ export function CategoryPageClient({
   ]);
 
   useEffect(() => {
-    if (initialDeals) return;
+    if (
+      initialDeals &&
+      (!initialDeals.categoryId || initialDeals.categoryId === activeCategoryId)
+    ) {
+      setDealPreview((initialDeals.products as DealPreview[]) || []);
+      setDealCount(initialDeals.total ?? 0);
+      return;
+    }
 
     let cancelled = false;
 

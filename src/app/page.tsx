@@ -2,14 +2,12 @@
 import { buildHomeFeedCached } from '@/lib/home-feed';
 
 export default async function Page() {
-  const { feed } = await buildHomeFeedCached().catch(() => ({
-    feed: {
-      sections: [],
-      spotlight: null,
-      popular: null,
-      meta: { categoriesTried: 0, categoriesWithProducts: 0, totalProducts: 0 },
-    },
-  }));
+  let feed;
+  try {
+    ({ feed } = await buildHomeFeedCached());
+  } catch {
+    feed = undefined;
+  }
 
   return <HomePage initialFeed={feed} />;
 }
