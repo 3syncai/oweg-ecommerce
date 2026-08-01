@@ -62,6 +62,32 @@ export type VendorEarningsSummary = {
   reversed_total: number;
 };
 
+export type VendorPaymentSettlement = {
+  id: string;
+  order_id: string;
+  order_display_id: string | null;
+  product_name: string;
+  type: "sales" | "return";
+  order_amount: number;
+  commission: number;
+  logistic_fee: number;
+  taxes: number;
+  settlement_amount: number;
+};
+
+export type VendorPaymentsView = {
+  cards: {
+    total_sale: number;
+    commission: number;
+    logistic_fee: number;
+    pending_payment: number;
+    withdrawn: number;
+  };
+  settlements: VendorPaymentSettlement[];
+  timezone: "Asia/Kolkata";
+  as_of: string;
+};
+
 type VendorOrderEarning = {
   vendor_id: string;
   order_display_id: string | null;
@@ -643,4 +669,127 @@ export async function getVendorEarningsByOrderIds(
     };
   }
   return map;
+}
+
+type TodayEarningRow = {
+  id: string;
+  order_id: string;
+  order_display_id: string | null;
+  status: VendorEarningStatus;
+  gross_amount: string | number;
+  commission_amount: string | number;
+  net_amount: string | number;
+  delivered_at: string | null;
+  product_name: string | null;
+};
+
+function formatOrderFallback(
+  orderDisplayId: string | null,
+  orderId: string
+): string {
+  if (orderDisplayId) {
+    return `Order #${orderDisplayId}`;
+  }
+  return `Order #${orderId.slice(0, 8)}`;
+}
+
+export async function getVendorPaymentsView(
+  vendorId: string,
+  pool: Pool
+): Promise<VendorPaymentsView> {
+  await syncVendorEarningsStatuses(pool);
+
+  const summary = await getVendorEarningsSummary(vendorId, pool);
+
+  const todayResult = await pool.query<TodayEarningRow>(
+    `
+      SELECT
+        vel.id,
+        vel.order_id,
+        vel.order_display_id,
+        vel.status,
+        vel.gross_amount,
+        vel.commission_amount,
+        vel.net_amount,
+        vel.delivered_at,
+        (
+          SELECT COALESCE(oli.title, 'Order #' || COALESCE(vel.order_display_id, LEFT(vel.order_id, 8)))
+          FROM order_item oi
+          JOIN order_line_item oli ON oi.item_id = oli.id
+          LEFT JOIN product_variant pv ON oli.variant_id = pv.id
+          LEFT JOIN product p ON COALESCE(oli.product_id, pv.product_id) = p.id
+          WHERE oi.order_id = vel.order_id
+            AND p.metadata->>'vendor_id' = $1
+          ORDER BY oli.id
+          LIMIT 1
+        ) AS product_name
+      FROM vendor_earnings_log vel
+      WHERE vel.vendor_id = $1
+        AND vel.delivered_at IS NOT NULL
+        AND (vel.delivered_at AT TIME ZONE 'Asia/Kolkata')::date
+            = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+      ORDER BY vel.delivered_at DESC, vel.updated_at DESC
+    `,
+    [vendorId]
+  );
+
+  let totalSale = 0;
+  let commissionTotal = 0;
+
+  const settlements: VendorPaymentSettlement[] = todayResult.rows.map((row) => {
+    const gross = Number(row.gross_amount) || 0;
+    const commissionAmount = Number(row.commission_amount) || 0;
+    const netAmount = Number(row.net_amount) || 0;
+    const productName =
+      row.product_name?.trim() ||
+      formatOrderFallback(row.order_display_id, row.order_id);
+
+    if (row.status === "REVERSED") {
+      const absGross = Math.abs(gross);
+      const absCommission = Math.abs(commissionAmount);
+      totalSale -= absGross;
+
+      return {
+        id: row.id,
+        order_id: row.order_id,
+        order_display_id: row.order_display_id,
+        product_name: productName,
+        type: "return" as const,
+        order_amount: -absGross,
+        commission: -absCommission,
+        logistic_fee: 0,
+        taxes: 0,
+        settlement_amount: 0,
+      };
+    }
+
+    totalSale += gross;
+    commissionTotal += commissionAmount;
+
+    return {
+      id: row.id,
+      order_id: row.order_id,
+      order_display_id: row.order_display_id,
+      product_name: productName,
+      type: "sales" as const,
+      order_amount: gross,
+      commission: commissionAmount,
+      logistic_fee: 0,
+      taxes: 0,
+      settlement_amount: netAmount,
+    };
+  });
+
+  return {
+    cards: {
+      total_sale: totalSale,
+      commission: commissionTotal,
+      logistic_fee: 0,
+      pending_payment: summary.available_balance,
+      withdrawn: summary.total_withdrawn,
+    },
+    settlements,
+    timezone: "Asia/Kolkata",
+    as_of: new Date().toISOString(),
+  };
 }
