@@ -12,7 +12,8 @@ import { ArrowPath } from "@medusajs/icons"
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(amount)
 
-const formatDeduction = (amount: number) => `-${formatCurrency(Math.abs(amount))}`
+const formatDeduction = (amount: number) =>
+  amount === 0 ? formatCurrency(0) : `-${formatCurrency(Math.abs(amount))}`
 
 const MetricCard = ({ label, value, valueClassName = "text-ui-fg-base" }: {
   label: string
@@ -52,7 +53,13 @@ const VendorPayoutPage = () => {
         router.push("/pending")
         return
       }
-      setError(e?.message || "Unable to load payments. Please refresh and try again.")
+      if (e.status === 404 || /cannot get \/vendor\/payouts\/payments/i.test(String(e?.message || ""))) {
+        setError(
+          "Payments API is not available on the production backend yet. Redeploy the Medusa server so GET /vendor/payouts/payments is live."
+        )
+      } else {
+        setError(e?.message || "Unable to load payments. Please refresh and try again.")
+      }
       console.error("Payments error:", e)
     } finally {
       setLoading(false)
