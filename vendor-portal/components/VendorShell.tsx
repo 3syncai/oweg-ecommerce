@@ -100,7 +100,7 @@ const navItems = [
     type: "normal",
   },
   {
-    label: "Payout",
+    label: "Payments",
     description: "",
     path: "/payout",
     icon: CurrencyDollar,
