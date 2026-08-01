@@ -697,8 +697,6 @@ export async function getVendorPaymentsView(
   vendorId: string,
   pool: Pool
 ): Promise<VendorPaymentsView> {
-  await syncVendorEarningsStatuses(pool);
-
   const summary = await getVendorEarningsSummary(vendorId, pool);
 
   const todayResult = await pool.query<TodayEarningRow>(
@@ -746,7 +744,6 @@ export async function getVendorPaymentsView(
 
     if (row.status === "REVERSED") {
       const absGross = Math.abs(gross);
-      const absCommission = Math.abs(commissionAmount);
       totalSale -= absGross;
 
       return {
@@ -756,7 +753,7 @@ export async function getVendorPaymentsView(
         product_name: productName,
         type: "return" as const,
         order_amount: -absGross,
-        commission: -absCommission,
+        commission: 0,
         logistic_fee: 0,
         taxes: 0,
         settlement_amount: 0,

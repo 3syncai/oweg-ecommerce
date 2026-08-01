@@ -140,8 +140,6 @@ const VendorPayoutPage = () => {
                 {payments.settlements.map((row, index) => {
                   const isReturn = row.type === "return"
                   const displayOrderId = row.order_display_id || row.order_id.slice(0, 8)
-                  const orderAmount = isReturn ? -Math.abs(row.order_amount) : row.order_amount
-                  const settlementAmount = isReturn ? 0 : row.settlement_amount
 
                   return (
                     <tr key={row.id} className={index % 2 === 0 ? "bg-ui-bg-base" : "bg-ui-bg-subtle/40"}>
@@ -155,13 +153,15 @@ const VendorPayoutPage = () => {
                         {isReturn ? "Return" : "Sales"}
                       </td>
                       <td className={`whitespace-nowrap px-4 py-3 font-medium ${isReturn ? "text-red-600" : "text-emerald-600"}`}>
-                        {formatCurrency(orderAmount)}
+                        {formatCurrency(row.order_amount)}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 font-medium text-red-600">{formatDeduction(row.commission)}</td>
+                      <td className={`whitespace-nowrap px-4 py-3 font-medium ${row.commission === 0 ? "text-ui-fg-base" : "text-red-600"}`}>
+                        {formatDeduction(row.commission)}
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3">{formatCurrency(row.logistic_fee)}</td>
                       <td className="whitespace-nowrap px-4 py-3">{formatCurrency(row.taxes)}</td>
                       <td className={`whitespace-nowrap px-4 py-3 font-medium ${isReturn ? "text-red-600" : "text-emerald-600"}`}>
-                        {formatCurrency(settlementAmount)}
+                        {formatCurrency(row.settlement_amount)}
                       </td>
                     </tr>
                   )
