@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { MouseEvent, ReactNode } from "react"
 import { Button, Container, Heading, Text, clx } from "@medusajs/ui"
 import {
@@ -20,7 +20,7 @@ import PageSkeleton from "@/components/PageSkeleton"
 import EmptyState from "@/components/EmptyState"
 import StatusDot from "@/components/dashboard/StatusDot"
 import { vendorOrdersApi } from "@/lib/api/client"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 type VendorStage = "to_accept" | "to_pack" | "to_dispatch" | "in_transit" | "delivered"
 type StageFilter = "total" | VendorStage
@@ -136,8 +136,11 @@ const stageVariant = (stage: VendorStage) => {
   return "warning"
 }
 
-const VendorOrdersPage = () => {
+const VendorOrdersContent = () => {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const focusOrderId = searchParams.get("order")
+  const openedFocusOrderId = useRef<string | null>(null)
   const [orders, setOrders] = useState<VendorOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -263,7 +266,7 @@ const VendorOrdersPage = () => {
   const pageCount = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE))
   const visibleOrders = filteredOrders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  const openDetails = async (order: VendorOrder, withTracking = false) => {
+  const openDetails = useCallback(async (order: VendorOrder, withTracking = false) => {
     setDetailOrder(order)
     setTracking(null)
     if (!withTracking) return
@@ -279,7 +282,21 @@ const VendorOrdersPage = () => {
     } finally {
       setProcessing(null)
     }
-  }
+  }, [replaceOrder])
+
+  useEffect(() => {
+    openedFocusOrderId.current = null
+  }, [focusOrderId])
+
+  useEffect(() => {
+    if (!focusOrderId || loading || openedFocusOrderId.current === focusOrderId) return
+
+    const focusedOrder = orders.find((order) => order.id === focusOrderId)
+    if (!focusedOrder) return
+
+    openedFocusOrderId.current = focusOrderId
+    void openDetails(focusedOrder)
+  }, [focusOrderId, loading, openDetails, orders])
 
   const acceptOrder = async (order: VendorOrder) => {
     setProcessing(`accept:${order.id}`)
@@ -1531,5 +1548,11 @@ function Field({
     </label>
   )
 }
+
+const VendorOrdersPage = () => (
+  <Suspense fallback={<VendorShell><PageSkeleton label="Loading orders..." stats={6} rows={8} cols={6} showAction /></VendorShell>}>
+    <VendorOrdersContent />
+  </Suspense>
+)
 
 export default VendorOrdersPage
