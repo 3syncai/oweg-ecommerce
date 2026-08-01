@@ -685,6 +685,30 @@ export type VendorEarningsSummary = {
   reversed_total: number
 }
 
+export type VendorPaymentsView = {
+  cards: {
+    total_sale: number
+    commission: number
+    logistic_fee: number
+    pending_payment: number
+    withdrawn: number
+  }
+  settlements: Array<{
+    id: string
+    order_id: string
+    order_display_id: string | null
+    product_name: string
+    type: "sales" | "return"
+    order_amount: number
+    commission: number
+    logistic_fee: number
+    taxes: number
+    settlement_amount: number
+  }>
+  timezone: string
+  as_of: string
+}
+
 export type VendorOrderEarning = {
   id: string
   order_id: string
@@ -742,6 +766,10 @@ export const vendorPayoutsApi = {
 
   list: async () => {
     return apiRequest<{ summary?: VendorEarningsSummary; payouts: any[]; totals: any; count: number }>('/vendor/payouts')
+  },
+
+  payments: async () => {
+    return apiRequest<VendorPaymentsView>("/vendor/payouts/payments")
   },
 }
 
