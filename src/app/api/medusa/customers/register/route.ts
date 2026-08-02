@@ -24,7 +24,7 @@ type RegisterBody = {
   gst?: string
   company?: string
   userType?: "individual" | "business"
-  newsletter?: boolean
+  newsletter?: boolean | string | number
 }
 
 function sanitize(value?: string | null) {
@@ -108,7 +108,22 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         )
       }
+      // Same rule as Medusa store create — validate before auth identity is created
+      if (!/^[0-9A-Z]{15}$/i.test(gst_number)) {
+        return NextResponse.json(
+          {
+            error:
+              "A valid 15-character GSTIN is required for business accounts.",
+          },
+          { status: 400 }
+        )
+      }
     }
+
+    const newsletterOn =
+      body.newsletter === true ||
+      body.newsletter === "true" ||
+      body.newsletter === 1
 
     // Core Medusa StoreCreateCustomer is .strict() — only these top-level keys
     // are allowed. OWEG fields must travel inside metadata (or company_name).
@@ -116,8 +131,8 @@ export async function POST(req: NextRequest) {
       ...metadata,
       user_type: customer_type,
       customer_type,
-      newsletter_opt_in: Boolean(body.newsletter),
-      newsletter_subscribe: Boolean(body.newsletter),
+      newsletter_opt_in: newsletterOn,
+      newsletter_subscribe: newsletterOn,
       wallet_coins: 0,
     }
     if (referral_code) owegMetadata.referral_code = referral_code

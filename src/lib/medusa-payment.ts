@@ -725,11 +725,17 @@ export async function finalizeRazorpayOrderPayment(input: FinalizeRazorpayPaymen
     try {
         // Recompute from DB rather than overwriting with this capture alone
         const refreshed = await updateOrderSummaryTotals(input.orderId);
-        const paid =
-            refreshed.success && refreshed.data
-                ? Number(refreshed.data.paid_total)
-                : amountRupees;
-        await setOrderPaidTotal(input.orderId, paid);
+        if (refreshed.success && refreshed.data) {
+            await setOrderPaidTotal(
+                input.orderId,
+                Number(refreshed.data.paid_total)
+            );
+        } else {
+            console.warn(
+                "finalizeRazorpayOrderPayment: skipping paid_total overwrite; refresh failed",
+                refreshed
+            );
+        }
         await setOrderPaymentStatus(input.orderId, "captured");
     } catch (statusErr) {
         console.warn("finalizeRazorpayOrderPayment: admin status sync failed", statusErr);

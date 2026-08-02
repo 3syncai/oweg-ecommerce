@@ -115,18 +115,26 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         source: tableGst ? "customer_gst" : "customer_fallback",
       }
 
-      // Heal empty customer_gst row from customer columns
+      // Heal empty/junk customer_gst from customer columns (overwrite non-GSTIN junk)
       if ((!tableGst || !row.business_name) && fallbackGst && fallbackCompany) {
         await client.query(
           `UPDATE customer_gst
-           SET gst_number = COALESCE(NULLIF(TRIM(gst_number), ''), $2),
+           SET gst_number = CASE
+                 WHEN gst_number IS NULL
+                   OR TRIM(gst_number) = ''
+                   OR gst_number !~* '^[0-9A-Z]{15}$'
+                 THEN $2
+                 ELSE gst_number
+               END,
                business_name = COALESCE(NULLIF(TRIM(business_name), ''), $3),
                gst_status = COALESCE(gst_status, 'active')
            WHERE id = $1`,
           [row.id, fallbackGst, fallbackCompany]
         )
         gstDetails.gst_number = fallbackGst
-        gstDetails.business_name = fallbackCompany
+        gstDetails.business_name =
+          (typeof row.business_name === "string" && row.business_name.trim()) ||
+          fallbackCompany
         gstDetails.gst_status = row.gst_status || "active"
         gstDetails.source = "healed"
       }

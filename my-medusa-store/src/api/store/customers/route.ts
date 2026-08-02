@@ -83,9 +83,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     (typeof meta.referral_code === "string" &&
       meta.referral_code.trim().toUpperCase()) ||
     null
-  const newsletter_subscribe = Boolean(
-    meta.newsletter_subscribe ?? meta.newsletter_opt_in ?? false
-  )
+  const newsletterRaw = meta.newsletter_subscribe ?? meta.newsletter_opt_in
+  const newsletter_subscribe =
+    newsletterRaw === true ||
+    newsletterRaw === "true" ||
+    newsletterRaw === 1
 
   if (customer_type === "business") {
     if (!company_name) {

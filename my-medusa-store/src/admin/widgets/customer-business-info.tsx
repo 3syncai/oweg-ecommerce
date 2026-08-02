@@ -147,9 +147,24 @@ const CustomerBusinessInfo = ({ data }: CustomerWidgetProps) => {
     displayGstin(customer.gst_number) ||
     displayGstin(typeof meta.gst_number === "string" ? meta.gst_number : null)
 
-  const groupFromData = (customer.groups || []).find((g) =>
-    Boolean(g?.name)
-  )?.name
+  const OWEG_GROUP_NAMES = new Set([
+    "Partner - Individual",
+    "Partner - Business",
+    "Direct - Individual",
+    "Direct - Business",
+  ])
+  const OWEG_GROUP_KEYS = new Set([
+    "partner_individual",
+    "partner_business",
+    "direct_individual",
+    "direct_business",
+  ])
+  const groupFromData = (customer.groups || []).find((g) => {
+    const name = typeof g?.name === "string" ? g.name : ""
+    const key =
+      g?.metadata && typeof g.metadata.key === "string" ? g.metadata.key : ""
+    return OWEG_GROUP_NAMES.has(name) || OWEG_GROUP_KEYS.has(key)
+  })?.name
   const customerGroup =
     displayValue(grouping?.customer_group) || displayValue(groupFromData)
 
@@ -159,15 +174,16 @@ const CustomerBusinessInfo = ({ data }: CustomerWidgetProps) => {
       ? "Partner"
       : customerGroup?.startsWith("Direct")
         ? "Direct"
-        : referralCode
-          ? "Partner"
-          : "Direct")
+        : "Direct")
 
-  const newsletterSubscribed = Boolean(
+  const newsletterRaw =
     customer.newsletter_subscribe ??
-      meta.newsletter_subscribe ??
-      meta.newsletter_opt_in
-  )
+    meta.newsletter_subscribe ??
+    meta.newsletter_opt_in
+  const newsletterSubscribed =
+    newsletterRaw === true ||
+    newsletterRaw === "true" ||
+    newsletterRaw === 1
 
   const fullName =
     [customer.first_name, customer.last_name].filter(Boolean).join(" ") ||

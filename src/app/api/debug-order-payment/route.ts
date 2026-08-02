@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Pool } from "pg";
+import { guardDebugRoute } from "@/lib/debug-route-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,9 @@ export const dynamic = "force-dynamic";
  * GET /api/debug-order-payment?orderId=order_01...
  */
 export async function GET(req: NextRequest) {
+  const blocked = guardDebugRoute(req);
+  if (blocked) return blocked;
+
   if (!process.env.DATABASE_URL) {
     return NextResponse.json({ error: "DATABASE_URL not set" }, { status: 500 });
   }
@@ -142,6 +146,7 @@ export async function GET(req: NextRequest) {
     } catch {
       /* ignore */
     }
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    console.error("[debug-order-payment]", err);
+    return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }
