@@ -48,7 +48,7 @@ function findLabelElement(): HTMLElement | null {
 function findSummaryRow(labelEl: HTMLElement): HTMLElement | null {
   let current: HTMLElement | null = labelEl
   for (let depth = 0; depth < 6 && current; depth++) {
-    const parent = current.parentElement
+    const parent: HTMLElement | null = current.parentElement
     if (!parent) break
     const kids = Array.from(parent.children).filter(
       (child) => (child as HTMLElement).getAttribute?.(ROW_ATTR) !== "true"
