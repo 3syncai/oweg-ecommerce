@@ -52,18 +52,37 @@ function isAlreadyPatched() {
   }
 }
 
+function gitApplyArgs() {
+  // Repo root may be the parent monorepo; patch paths are relative to my-medusa-store.
+  let directoryFlag = ""
+  try {
+    const top = execSync("git rev-parse --show-toplevel", {
+      cwd: ROOT,
+      encoding: "utf8",
+    }).trim()
+    const rel = path.relative(top, ROOT).replace(/\\/g, "/")
+    if (rel && rel !== ".") {
+      directoryFlag = ` --directory="${rel}"`
+    }
+  } catch {
+    // not a git checkout; plain apply from ROOT is fine
+  }
+  return `--ignore-whitespace${directoryFlag}`
+}
+
 function tryGitApply() {
   if (!fs.existsSync(PATCH)) {
     log("No dashboard patch file found; skipping")
     return true
   }
+  const args = gitApplyArgs()
   // --check first
-  const check = run(`git apply --check --ignore-whitespace "${PATCH}"`)
+  const check = run(`git apply --check ${args} "${PATCH}"`)
   if (check.status !== 0) {
     log(`git apply --check failed: ${(check.stderr || check.stdout || "").slice(0, 400)}`)
     return false
   }
-  const apply = run(`git apply --ignore-whitespace "${PATCH}"`)
+  const apply = run(`git apply ${args} "${PATCH}"`)
   if (apply.status !== 0) {
     log(`git apply failed: ${(apply.stderr || apply.stdout || "").slice(0, 400)}`)
     return false

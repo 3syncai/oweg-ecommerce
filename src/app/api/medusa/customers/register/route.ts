@@ -90,14 +90,51 @@ export async function POST(req: NextRequest) {
     }
 
     const metadata = buildMetadata(body)
+    const customer_type = body.userType === "business" ? "business" : "individual"
+    const company_name = sanitize(body.company)
+    const gst_number = sanitize(body.gst)
+    const referral_code = sanitize(body.referral)?.toUpperCase()
+
+    if (customer_type === "business") {
+      if (!company_name) {
+        return NextResponse.json(
+          { error: "Company name is required for business accounts." },
+          { status: 400 }
+        )
+      }
+      if (!gst_number) {
+        return NextResponse.json(
+          { error: "GST number is required for business accounts." },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Core Medusa StoreCreateCustomer is .strict() — only these top-level keys
+    // are allowed. OWEG fields must travel inside metadata (or company_name).
+    const owegMetadata: Record<string, unknown> = {
+      ...metadata,
+      user_type: customer_type,
+      customer_type,
+      newsletter_opt_in: Boolean(body.newsletter),
+      newsletter_subscribe: Boolean(body.newsletter),
+      wallet_coins: 0,
+    }
+    if (referral_code) owegMetadata.referral_code = referral_code
+    if (company_name) owegMetadata.company_name = company_name
+    if (gst_number) {
+      owegMetadata.gst_number = String(gst_number).trim().toUpperCase()
+    }
+
     const payload: Record<string, unknown> = {
       first_name,
       last_name,
       email,
       phone,
+      metadata: owegMetadata,
     }
-    if (Object.keys(metadata).length > 0) {
-      payload.metadata = metadata
+    if (customer_type === "business" && company_name) {
+      payload.company_name = company_name
     }
 
     const registerAuthRes = await medusaStoreFetch(`${AUTH_PROVIDER_PATH}/register`, {
@@ -203,18 +240,24 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Ensure referral code (if provided) is persisted on customer metadata
-    const referralCode = metadata.referral_code as string | undefined
-    if (referralCode) {
+    // Merge metadata — NEVER replace with only referral_code (wipes company/GST/user_type).
+    // Only stock StoreUpdateCustomer keys: company_name + metadata.
+    const mePatch: Record<string, unknown> = {
+      metadata: { ...owegMetadata },
+    }
+    if (customer_type === "business" && company_name) {
+      mePatch.company_name = company_name
+    }
+    if (Object.keys(mePatch.metadata as object).length > 0) {
       try {
         await medusaStoreFetch("/store/customers/me", {
           method: "POST",
           headers: forwardedCookie ? { Cookie: forwardedCookie } : undefined,
           forwardedHeaders,
-          body: JSON.stringify({ metadata: { referral_code: referralCode } }),
+          body: JSON.stringify(mePatch),
         })
       } catch (err) {
-        console.warn("Failed to persist referral_code on customer", err)
+        console.warn("Failed to merge customer metadata after register", err)
       }
     }
 
@@ -266,13 +309,13 @@ export async function POST(req: NextRequest) {
           if (existingRef.rows.length === 0 || shouldSync) {
             // ✅ VALIDATE: make sure the referral code exists before saving
             const codeCheck = await pool.query(
-              `SELECT id FROM affiliate_user WHERE UPPER(refer_code) = $1 AND is_approved = TRUE
+              `SELECT id::text AS id FROM affiliate_user WHERE UPPER(refer_code) = $1 AND is_approved = TRUE
                UNION
-               SELECT id FROM branch_admin WHERE UPPER(refer_code) = $1
+               SELECT id::text AS id FROM branch_admin WHERE UPPER(refer_code) = $1
                UNION
-               SELECT id FROM area_sales_manager WHERE UPPER(refer_code) = $1
+               SELECT id::text AS id FROM area_sales_manager WHERE UPPER(refer_code) = $1
                UNION
-               SELECT id FROM state_admin WHERE UPPER(refer_code) = $1
+               SELECT id::text AS id FROM state_admin WHERE UPPER(refer_code) = $1
                LIMIT 1`,
               [normalizedCode]
             )

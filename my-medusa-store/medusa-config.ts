@@ -111,6 +111,11 @@ export default defineConfig({
     //   },
     // },
     {
+      // Extends Medusa customer with customer_type / GST / referral_code columns
+      // and OWEG customer-group assignment support.
+      resolve: "./src/modules/customer",
+    },
+    {
       resolve: "@medusajs/file",
       options: {
         default: "s3",

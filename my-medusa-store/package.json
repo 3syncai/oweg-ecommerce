@@ -15,6 +15,10 @@
   "scripts": {
     "build": "medusa build",
     "seed": "medusa exec ./src/scripts/seed.ts",
+    "seed:customer-groups": "medusa exec ./src/scripts/seed-customer-groups.ts",
+    "backfill:customer-groups": "medusa exec ./src/scripts/backfill-customer-groups.ts",
+    "heal:customer-consistency": "medusa exec ./src/scripts/heal-customer-consistency.ts",
+    "verify:oweg-groups": "medusa exec ./src/scripts/verify-oweg-four-groups.ts",
     "start": "medusa start",
     "migrate": "TS_NODE_TRANSPILE_ONLY=true npx medusa db:migrate",
     "dev": "medusa develop",

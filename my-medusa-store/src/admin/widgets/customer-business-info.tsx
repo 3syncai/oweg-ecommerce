@@ -1,5 +1,8 @@
+"use client"
+
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import { Badge, Heading, Text } from "@medusajs/ui"
+import { useEffect, useState } from "react"
 
 type CustomerWidgetData = {
   id: string
@@ -13,10 +16,24 @@ type CustomerWidgetData = {
   referral_code?: string | null
   newsletter_subscribe?: boolean | null
   metadata?: Record<string, unknown> | null
+  groups?: Array<{
+    id?: string
+    name?: string
+    metadata?: Record<string, unknown> | null
+  }>
 }
 
 type CustomerWidgetProps = {
   data?: CustomerWidgetData
+}
+
+type GroupingPayload = {
+  source?: string | null
+  account_type?: string | null
+  customer_group?: string | null
+  referral_code?: string | null
+  company_name?: string | null
+  gst_number?: string | null
 }
 
 const InfoRow = ({
@@ -38,15 +55,123 @@ const InfoRow = ({
   )
 }
 
+function displayValue(value?: string | null) {
+  const trimmed = typeof value === "string" ? value.trim() : ""
+  return trimmed || null
+}
+
+/** Align with signup: only show real 15-char GSTINs (never bank/cheque junk). */
+function displayGstin(value?: string | null) {
+  const trimmed = typeof value === "string" ? value.trim().toUpperCase() : ""
+  return /^[0-9A-Z]{15}$/.test(trimmed) ? trimmed : null
+}
+
 const CustomerBusinessInfo = ({ data }: CustomerWidgetProps) => {
-  if (!data) {
+  const [grouping, setGrouping] = useState<GroupingPayload | null>(null)
+  // Medusa admin widgets may pass customer as data or data.customer
+  const maybeWrapped = data as unknown as
+    | { customer?: CustomerWidgetData }
+    | CustomerWidgetData
+    | undefined
+  const customer =
+    maybeWrapped &&
+    typeof maybeWrapped === "object" &&
+    "customer" in maybeWrapped &&
+    maybeWrapped.customer
+      ? maybeWrapped.customer
+      : (maybeWrapped as CustomerWidgetData | undefined)
+
+  useEffect(() => {
+    const customerId = customer?.id
+    if (!customerId) return
+
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch(`/admin/customers/${customerId}/grouping`, {
+          credentials: "include",
+        })
+        if (!res.ok) return
+        const payload = (await res.json()) as GroupingPayload
+        if (!cancelled) setGrouping(payload)
+      } catch (err) {
+        console.warn("CustomerBusinessInfo: grouping fetch failed", err)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [customer?.id])
+
+  if (!customer) {
     return null
   }
 
-  const isBusiness = data.customer_type === "business"
+  const meta = customer.metadata || {}
+  const metaType =
+    typeof meta.user_type === "string"
+      ? meta.user_type
+      : typeof meta.customer_type === "string"
+        ? meta.customer_type
+        : null
+
+  const accountTypeRaw = (
+    grouping?.account_type ||
+    customer.customer_type ||
+    metaType ||
+    "individual"
+  )
+    .toString()
+    .toLowerCase()
+  const isBusiness = accountTypeRaw === "business"
+  const accountTypeLabel =
+    grouping?.account_type || (isBusiness ? "Business" : "Individual")
+
+  const referralCode =
+    displayValue(grouping?.referral_code) ||
+    displayValue(customer.referral_code) ||
+    displayValue(
+      typeof meta.referral_code === "string" ? meta.referral_code : null
+    )
+
+  const companyName =
+    displayValue(grouping?.company_name) ||
+    displayValue(customer.company_name) ||
+    displayValue(
+      typeof meta.company_name === "string" ? meta.company_name : null
+    )
+
+  const gstNumber =
+    displayGstin(grouping?.gst_number) ||
+    displayGstin(customer.gst_number) ||
+    displayGstin(typeof meta.gst_number === "string" ? meta.gst_number : null)
+
+  const groupFromData = (customer.groups || []).find((g) =>
+    Boolean(g?.name)
+  )?.name
+  const customerGroup =
+    displayValue(grouping?.customer_group) || displayValue(groupFromData)
+
+  const source =
+    displayValue(grouping?.source) ||
+    (customerGroup?.startsWith("Partner")
+      ? "Partner"
+      : customerGroup?.startsWith("Direct")
+        ? "Direct"
+        : referralCode
+          ? "Partner"
+          : "Direct")
+
+  const newsletterSubscribed = Boolean(
+    customer.newsletter_subscribe ??
+      meta.newsletter_subscribe ??
+      meta.newsletter_opt_in
+  )
+
   const fullName =
-    [data.first_name, data.last_name].filter(Boolean).join(" ") ||
-    data.email ||
+    [customer.first_name, customer.last_name].filter(Boolean).join(" ") ||
+    customer.email ||
     "Customer"
 
   return (
@@ -55,45 +180,40 @@ const CustomerBusinessInfo = ({ data }: CustomerWidgetProps) => {
         <Heading level="h3" className="text-base">
           Customer Profile
         </Heading>
-        <Badge
-          size="small"
-          className="uppercase"
-        >
-          {isBusiness ? "Business" : "Individual"}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge size="small" className="uppercase">
+            {source}
+          </Badge>
+          <Badge size="small" className="uppercase">
+            {accountTypeLabel}
+          </Badge>
+        </div>
       </div>
 
       <div className="grid gap-4">
         <div className="rounded-lg bg-ui-bg-subtle px-4 py-3">
           <Text weight="plus">{fullName}</Text>
           <Text size="small" className="text-ui-fg-subtle">
-            {data.email || "No email provided"}
+            {customer.email || "No email provided"}
           </Text>
         </div>
 
         <div className="grid gap-y-2">
-          <InfoRow label="Customer ID" value={<code>{data.id}</code>} />
-          <InfoRow label="Phone" value={data.phone || "No phone on record"} />
+          <InfoRow label="Customer ID" value={<code>{customer.id}</code>} />
+          <InfoRow label="Source" value={source} />
+          <InfoRow label="Account type" value={accountTypeLabel} />
+          <InfoRow label="Customer group" value={customerGroup || "—"} />
           <InfoRow
-            label="Referral Code"
-            value={data.referral_code || "Not provided"}
+            label="Phone"
+            value={customer.phone || "No phone on record"}
           />
+          <InfoRow label="Referral code" value={referralCode || "—"} />
+          <InfoRow label="Company name" value={companyName || "—"} />
+          <InfoRow label="GST number" value={gstNumber || "—"} />
           <InfoRow
             label="Newsletter"
-            value={data.newsletter_subscribe ? "Subscribed" : "Not subscribed"}
+            value={newsletterSubscribed ? "Subscribed" : "Not subscribed"}
           />
-          {isBusiness && (
-            <>
-              <InfoRow
-                label="Company Name"
-                value={data.company_name || "Not provided"}
-              />
-              <InfoRow
-                label="GST Number"
-                value={data.gst_number || "Not provided"}
-              />
-            </>
-          )}
         </div>
       </div>
     </div>
@@ -105,9 +225,3 @@ export const config = defineWidgetConfig({
 })
 
 export default CustomerBusinessInfo
-
-
-
-
-
-
