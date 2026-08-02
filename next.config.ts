@@ -130,9 +130,9 @@ const nextConfig: NextConfig = {
     ],
   },
   images: {
-    // Enable Next image optimization by default. Set NEXT_IMAGE_OPTIMIZE=0 to bypass
-    // (e.g. if Vercel Image Optimization quota is exhausted).
-    unoptimized: process.env.NEXT_IMAGE_OPTIMIZE === "0",
+    // Bypass Vercel Image Optimization by default (quota / 402).
+    // Set NEXT_IMAGE_OPTIMIZE=1 to re-enable after upgrading.
+    unoptimized: process.env.NEXT_IMAGE_OPTIMIZE !== "1",
     remotePatterns: buildRemotePatterns(),
   },
 };

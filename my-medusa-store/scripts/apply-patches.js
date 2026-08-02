@@ -52,18 +52,45 @@ function isAlreadyPatched() {
   }
 }
 
+function gitApplyArgv(extraArgs = []) {
+  // Repo root may be the parent monorepo; patch paths are relative to my-medusa-store.
+  const args = ["apply", "--ignore-whitespace", ...extraArgs]
+  try {
+    const top = execSync("git rev-parse --show-toplevel", {
+      cwd: ROOT,
+      encoding: "utf8",
+    }).trim()
+    const rel = path.relative(top, ROOT).replace(/\\/g, "/")
+    if (rel && rel !== ".") {
+      args.push(`--directory=${rel}`)
+    }
+  } catch {
+    // not a git checkout; plain apply from ROOT is fine
+  }
+  args.push(PATCH)
+  return args
+}
+
+function runGitApply(extraArgs = []) {
+  return spawnSync("git", gitApplyArgv(extraArgs), {
+    cwd: ROOT,
+    shell: false,
+    encoding: "utf8",
+  })
+}
+
 function tryGitApply() {
   if (!fs.existsSync(PATCH)) {
     log("No dashboard patch file found; skipping")
     return true
   }
   // --check first
-  const check = run(`git apply --check --ignore-whitespace "${PATCH}"`)
+  const check = runGitApply(["--check"])
   if (check.status !== 0) {
     log(`git apply --check failed: ${(check.stderr || check.stdout || "").slice(0, 400)}`)
     return false
   }
-  const apply = run(`git apply --ignore-whitespace "${PATCH}"`)
+  const apply = runGitApply()
   if (apply.status !== 0) {
     log(`git apply failed: ${(apply.stderr || apply.stdout || "").slice(0, 400)}`)
     return false

@@ -12,6 +12,9 @@ const MAINTENANCE_BYPASS = new Set([
 
 const GUARDED_DEBUG_ROUTE_PREFIXES = [
   "/api/debug/",
+  "/api/debug-order-payment",
+  "/api/debug-status",
+  "/api/debug-schema",
   "/api/cleanup-payments",
   "/api/affiliate/debug-wallet",
 ]

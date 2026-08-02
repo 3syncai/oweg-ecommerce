@@ -2,7 +2,7 @@ diff --git a/node_modules/@medusajs/dashboard/dist/app.js b/node_modules/@medusa
 index 26667a0..66b320c 100644
 --- a/node_modules/@medusajs/dashboard/dist/app.js
 +++ b/node_modules/@medusajs/dashboard/dist/app.js
-@@ -93570,62 +93570,58 @@ var init_main_layout = __esm({
+@@ -93570,62 +93570,59 @@ var init_main_layout = __esm({
          }
        ) });
      };
@@ -15,7 +15,8 @@ index 26667a0..66b320c 100644
 +      "/vendor-requests",
 +      "/vendor-payouts",
 +      "/vendor-reports",
-+      "/affiliate-admins"
++      "/affiliate-admins",
++      "/oweg-customer-groups"
 +    ];
      useCoreRoutes = () => {
        const { t: t5 } = (0, import_react_i18next10.useTranslation)();
@@ -98,7 +99,7 @@ index 26667a0..66b320c 100644
          },
          {
            icon: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_icons10.ReceiptPercent, {}),
-@@ -93671,15 +93667,42 @@ var init_main_layout = __esm({
+@@ -93671,15 +93668,46 @@ var init_main_layout = __esm({
        const menuItems = getMenu("coreExtensions");
        menuItems.forEach((item) => {
          if (item.nested) {
@@ -125,6 +126,7 @@ index 26667a0..66b320c 100644
 +        items: item.items
 +      });
 +      const beforePromotions = ["/return-requests", "/flash-sale"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
++      const afterCustomers = ["/oweg-customer-groups"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
 +      const afterPriceLists = ["/oweg-homepage", "/vendors", "/vendor-commission", "/vendor-requests", "/vendor-payouts", "/vendor-reports", "/affiliate-admins"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
 +      const routes = [];
 +      for (const route of coreRoutes) {
@@ -132,6 +134,9 @@ index 26667a0..66b320c 100644
 +          routes.push(...beforePromotions);
 +        }
 +        routes.push(route);
++        if (route.to === "/customers") {
++          routes.push(...afterCustomers);
++        }
 +        if (route.to === "/price-lists") {
 +          routes.push(...afterPriceLists);
 +        }
@@ -143,7 +148,7 @@ index 26667a0..66b320c 100644
            return /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(NavItem, { ...route }, route.to);
          })
        ] });
-@@ -93687,7 +93710,7 @@ var init_main_layout = __esm({
+@@ -93687,7 +93715,7 @@ var init_main_layout = __esm({
      ExtensionRouteSection = () => {
        const { t: t5 } = (0, import_react_i18next10.useTranslation)();
        const { getMenu } = useExtension();
@@ -152,7 +157,7 @@ index 26667a0..66b320c 100644
        if (!menuItems.length) {
          return null;
        }
-@@ -155280,7 +155303,7 @@ var init_inventory_actions2 = __esm({
+@@ -155280,7 +155308,7 @@ var init_inventory_actions2 = __esm({
  });
  
  // src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
@@ -161,7 +166,7 @@ index 26667a0..66b320c 100644
  var init_use_inventory_table_columns2 = __esm({
    "src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx"() {
      "use strict";
-@@ -155290,8 +155313,20 @@ var init_use_inventory_table_columns2 = __esm({
+@@ -155290,8 +155318,20 @@ var init_use_inventory_table_columns2 = __esm({
      import_react_i18next315 = require("react-i18next");
      init_placeholder_cell2();
      init_inventory_actions2();
@@ -182,7 +187,7 @@ index 26667a0..66b320c 100644
      useInventoryTableColumns2 = () => {
        const { t: t5 } = (0, import_react_i18next315.useTranslation)();
        return (0, import_react229.useMemo)(
-@@ -155322,42 +155357,53 @@ var init_use_inventory_table_columns2 = __esm({
+@@ -155322,42 +155362,53 @@ var init_use_inventory_table_columns2 = __esm({
            }),
            columnHelper49.accessor("title", {
              header: t5("fields.title"),
@@ -243,7 +248,7 @@ index 26667a0..66b320c 100644
              }
            }),
            columnHelper49.display({
-@@ -155546,7 +155592,8 @@ var init_inventory_list_table = __esm({
+@@ -155546,7 +155597,8 @@ var init_inventory_list_table = __esm({
          isError,
          error
        } = useInventoryItems({
@@ -257,7 +262,7 @@ diff --git a/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs b/node_mod
 index ba656d3..cef7e43 100644
 --- a/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs
 +++ b/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs
-@@ -88828,62 +88828,58 @@ var Header = () => {
+@@ -88828,62 +88828,59 @@ var Header = () => {
      }
    ) });
  };
@@ -270,7 +275,8 @@ index ba656d3..cef7e43 100644
 +  "/vendor-requests",
 +  "/vendor-payouts",
 +  "/vendor-reports",
-+  "/affiliate-admins"
++  "/affiliate-admins",
++  "/oweg-customer-groups"
 +];
  var useCoreRoutes = () => {
    const { t: t2 } = useTranslation9();
@@ -353,7 +359,7 @@ index ba656d3..cef7e43 100644
      },
      {
        icon: /* @__PURE__ */ jsx13(ReceiptPercent, {}),
-@@ -88929,15 +88925,42 @@ var CoreRouteSection = () => {
+@@ -88929,15 +88926,46 @@ var CoreRouteSection = () => {
    const menuItems = getMenu("coreExtensions");
    menuItems.forEach((item) => {
      if (item.nested) {
@@ -380,6 +386,7 @@ index ba656d3..cef7e43 100644
 +    items: item.items
 +  });
 +  const beforePromotions = ["/return-requests", "/flash-sale"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
++  const afterCustomers = ["/oweg-customer-groups"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
 +  const afterPriceLists = ["/oweg-homepage", "/vendors", "/vendor-commission", "/vendor-requests", "/vendor-payouts", "/vendor-reports", "/affiliate-admins"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
 +  const routes = [];
 +  for (const route of coreRoutes) {
@@ -387,6 +394,9 @@ index ba656d3..cef7e43 100644
 +      routes.push(...beforePromotions);
 +    }
 +    routes.push(route);
++    if (route.to === "/customers") {
++      routes.push(...afterCustomers);
++    }
 +    if (route.to === "/price-lists") {
 +      routes.push(...afterPriceLists);
 +    }
@@ -398,7 +408,7 @@ index ba656d3..cef7e43 100644
        return /* @__PURE__ */ jsx13(NavItem, { ...route }, route.to);
      })
    ] });
-@@ -88945,7 +88968,7 @@ var CoreRouteSection = () => {
+@@ -88945,7 +88973,7 @@ var CoreRouteSection = () => {
  var ExtensionRouteSection = () => {
    const { t: t2 } = useTranslation9();
    const { getMenu } = useExtension();
@@ -517,7 +527,7 @@ diff --git a/node_modules/@medusajs/dashboard/src/components/layout/main-layout/
 index 5aa04ed..52a25e7 100644
 --- a/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx
 +++ b/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx
-@@ -177,63 +177,61 @@ const Header = () => {
+@@ -177,63 +177,62 @@ const Header = () => {
    )
  }
  
@@ -532,6 +542,7 @@ index 5aa04ed..52a25e7 100644
 +  "/vendor-payouts",
 +  "/affiliate-admins",
 +  "/vendor-reports",
++  "/oweg-customer-groups",
 +] as const
 +
  const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
@@ -616,7 +627,7 @@ index 5aa04ed..52a25e7 100644
      },
      {
        icon: <ReceiptPercent />,
-@@ -253,7 +251,6 @@ const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
+@@ -253,7 +252,6 @@ const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
      },
    ]
  }
@@ -624,7 +635,7 @@ index 5aa04ed..52a25e7 100644
  const Searchbar = () => {
    const { t } = useTranslation()
    const { toggleSearch } = useSearch()
-@@ -291,17 +288,65 @@ const CoreRouteSection = () => {
+@@ -291,17 +289,73 @@ const CoreRouteSection = () => {
  
    menuItems.forEach((item) => {
      if (item.nested) {
@@ -661,6 +672,11 @@ index 5aa04ed..52a25e7 100644
 +    .filter((item): item is NonNullable<typeof item> => Boolean(item))
 +    .map(toNavItem)
 +
++  const afterCustomers = ["/oweg-customer-groups"]
++    .map((path) => extensionByPath.get(path))
++    .filter((item): item is NonNullable<typeof item> => Boolean(item))
++    .map(toNavItem)
++
 +  const afterPriceLists = [
 +    "/oweg-homepage",
 +    "/vendors",
@@ -679,6 +695,9 @@ index 5aa04ed..52a25e7 100644
 +      routes.push(...beforePromotions)
 +    }
 +    routes.push(route)
++    if (route.to === "/customers") {
++      routes.push(...afterCustomers)
++    }
 +    if (route.to === "/price-lists") {
 +      routes.push(...afterPriceLists)
 +    }
@@ -692,7 +711,7 @@ index 5aa04ed..52a25e7 100644
          return <NavItem key={route.to} {...route} />
        })}
      </nav>
-@@ -312,7 +357,11 @@ const ExtensionRouteSection = () => {
+@@ -312,7 +366,11 @@ const ExtensionRouteSection = () => {
    const { t } = useTranslation()
    const { getMenu } = useExtension()
  

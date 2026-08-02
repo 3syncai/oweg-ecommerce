@@ -80,6 +80,14 @@ Railway is the easiest way to deploy Medusa with automatic PostgreSQL setup.
    railway run npm run seed
    ```
 
+9. **Seed OWEG Customer Groups (required for Admin Customer Groups UI)**
+   ```bash
+   railway run npm run migrate
+   railway run npm run seed:customer-groups
+   railway run npm run backfill:customer-groups
+   ```
+   See [OWEG Customer Groups](#oweg-customer-groups-required-for-admin-groups) below.
+
 ---
 
 ## Alternative: Render
@@ -182,6 +190,40 @@ Or using the platform's CLI/shell:
 - [ ] Admin panel accessible (if configured)
 - [ ] Frontend can connect to backend
 - [ ] File uploads work (if using S3)
+- [ ] OWEG customer groups seeded (see below)
+
+---
+
+## OWEG Customer Groups (required for Admin groups)
+
+Customer Groups (Partner/Direct × Individual/Business) live in **this Medusa service**, not the Vercel storefront. Deploy the Medusa host from a branch that includes the grouping feature (`customer-groups` helpers, `seed:customer-groups`, custom customer module in `medusa-config.ts`).
+
+After deploy, on the Medusa host with production `DATABASE_URL`:
+
+```bash
+# 1) Schema / custom customer columns
+npm run migrate
+
+# 2) Create the four OWEG groups (idempotent)
+npm run seed:customer-groups
+
+# 3) Assign existing customers into the correct groups
+npm run backfill:customer-groups
+
+# 4) Repair mismatches (optional if backfill already clean)
+npm run heal:customer-consistency
+
+# 5) Smoke fixtures (optional)
+npm run verify:oweg-groups
+```
+
+Verify in Admin:
+
+1. Open `https://<medusa-host>/app/customer-groups` (direct URL).
+2. Confirm sidebar **Customers → Customer Groups** is visible after a fresh `npm install` (dashboard patch).
+3. Open a customer → Network: `GET /admin/customers/<id>/grouping` returns `200` with `customer_group`.
+
+**Note:** Redeploying only the Vercel storefront will not create or show Admin Customer Groups.
 
 ---
 
