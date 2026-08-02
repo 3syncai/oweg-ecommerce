@@ -52,6 +52,37 @@ export async function createMedusaPayment(payment: {
         const orderRes = await pool.query(orderQuery, [payment.order_id]);
         const cartId = orderRes.rows[0]?.cart_id;
 
+        const razorpayPaymentId =
+            typeof payment.data?.razorpay_payment_id === "string"
+                ? payment.data.razorpay_payment_id
+                : null;
+
+        // Idempotent: skip if this Razorpay payment was already recorded on the order
+        if (razorpayPaymentId) {
+            const existingPay = await pool.query(
+                `SELECT p.id, p.payment_collection_id
+                 FROM payment p
+                 INNER JOIN order_payment_collection opc
+                   ON opc.payment_collection_id = p.payment_collection_id
+                 WHERE opc.order_id = $1
+                   AND (
+                     p.data->>'razorpay_payment_id' = $2
+                     OR p.data #>> '{data,razorpay_payment_id}' = $2
+                   )
+                 LIMIT 1`,
+                [payment.order_id, razorpayPaymentId]
+            );
+            if (existingPay.rows[0]) {
+                await pool.end();
+                return {
+                    success: true,
+                    skipped: true,
+                    reason: "duplicate_razorpay_payment",
+                    data: existingPay.rows[0],
+                };
+            }
+        }
+
         let paymentCollectionId: string | null = null;
         let paymentSessionId: string | null = null;
 
@@ -202,6 +233,31 @@ export async function createOrderTransaction(transaction: {
     try {
         console.log('💳 Creating OrderTransaction for order:', transaction.order_id);
         console.log('   Amount:', transaction.amount, transaction.currency_code.toUpperCase());
+
+        const existingTx = await pool.query(
+            `SELECT id, amount, reference, reference_id, created_at
+             FROM order_transaction WHERE order_id = $1 ORDER BY created_at ASC`,
+            [transaction.order_id]
+        );
+        const dupByRef =
+            transaction.reference_id
+                ? existingTx.rows.find(
+                      (r: { reference_id?: string | null }) =>
+                          r.reference_id &&
+                          String(r.reference_id) === String(transaction.reference_id)
+                  )
+                : undefined;
+
+        // Idempotent: same Razorpay payment must not create a second capture transaction
+        if (dupByRef) {
+            await pool.end();
+            return {
+                success: true,
+                skipped: true,
+                reason: "duplicate_reference_id",
+                data: dupByRef,
+            };
+        }
 
         // Build raw_amount JSON for Medusa v2
         const rawAmount = JSON.stringify({
@@ -667,7 +723,19 @@ export async function finalizeRazorpayOrderPayment(input: FinalizeRazorpayPaymen
     }
 
     try {
-        await setOrderPaidTotal(input.orderId, amountRupees);
+        // Recompute from DB rather than overwriting with this capture alone
+        const refreshed = await updateOrderSummaryTotals(input.orderId);
+        if (refreshed.success && refreshed.data) {
+            await setOrderPaidTotal(
+                input.orderId,
+                Number(refreshed.data.paid_total)
+            );
+        } else {
+            console.warn(
+                "finalizeRazorpayOrderPayment: skipping paid_total overwrite; refresh failed",
+                refreshed
+            );
+        }
         await setOrderPaymentStatus(input.orderId, "captured");
     } catch (statusErr) {
         console.warn("finalizeRazorpayOrderPayment: admin status sync failed", statusErr);
