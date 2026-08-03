@@ -21,6 +21,9 @@ type ShippingBody = {
   method?: VendorShippingMethod
   courier_id?: number | string
   courier_partner_name?: string
+  /** Shiprocket serviceability rate → vendor logistic fee */
+  rate?: number | string
+  freight_charge?: number | string
   weight?: number | string
   length?: number | string
   breadth?: number | string
@@ -101,6 +104,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           ? Number(courierIdRaw)
           : NaN
       const courierName = String(body.courier_partner_name || "").trim()
+      const rateRaw = body.rate != null ? Number(body.rate) : Number(body.freight_charge)
+      const courierRate =
+        Number.isFinite(rateRaw) && rateRaw >= 0 ? Math.round(rateRaw * 100) / 100 : 0
 
       if (!Number.isFinite(courierId) || courierId <= 0) {
         return res.status(400).json({
@@ -192,6 +198,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         shiprocket_status: awb ? "awb_assigned" : "created",
         easy_courier_id: courierId,
         easy_courier_partner: courierName.slice(0, 120) || null,
+        easy_courier_rate: courierRate,
         tracking_number: trackingNumber || (awb ? String(awb) : null),
         tracking_url: trackingUrl,
         label_url: labelUrl,

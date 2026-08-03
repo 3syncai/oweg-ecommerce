@@ -16,7 +16,9 @@ export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
 
 /**
  * POST /vendor/orders/:id/rtd
- * Ready to Dispatch → create Medusa fulfillment, then mark shipped with tracking labels.
+ * Ready to Dispatch:
+ * - Self ship → fulfill only, park in To Dispatch (ready_to_ship)
+ * - Easy ship → fulfill + ship, move to In Transit (existing behaviour)
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   setVendorOrderCorsHeaders(res)
@@ -52,21 +54,31 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       })
     }
 
-    const { fulfillment_id } = await fulfillAndShipVendorItems(
+    const isSelfShip = workflow.shipping_method === "self"
+    const { fulfillment_id, shipped } = await fulfillAndShipVendorItems(
       req,
       result.order,
       auth.vendor_id,
       result.vendorProductIds,
-      workflow
+      workflow,
+      // Self: stay in To Dispatch until vendor clicks Dispatch / tracking moves
+      { createShipment: !isSelfShip }
     )
 
-    const shippedAt = new Date().toISOString()
+    const now = new Date().toISOString()
+
     const metadata = await updateVendorOrderWorkflow(req, result.order, auth.vendor_id, {
-      stage: "in_transit",
-      rtd_at: workflow.rtd_at || shippedAt,
+      stage: isSelfShip ? "to_dispatch" : "in_transit",
+      rtd_at: workflow.rtd_at || now,
       medusa_fulfillment_id: fulfillment_id,
-      medusa_shipped_at: shippedAt,
-      shiprocket_status: workflow.shiprocket_status || "shipped",
+      ...(shipped
+        ? {
+            medusa_shipped_at: workflow.medusa_shipped_at || now,
+            shiprocket_status: workflow.shiprocket_status || "shipped",
+          }
+        : {
+            shiprocket_status: workflow.shiprocket_status || "ready_to_ship",
+          }),
     })
 
     return res.json({
@@ -78,13 +90,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       fulfillment_id,
       automated: {
         fulfilled: true,
-        shipped: true,
+        shipped,
+        stage: isSelfShip ? "to_dispatch" : "in_transit",
       },
     })
   } catch (error: any) {
     console.error("Vendor order RTD error:", error)
     return res.status(500).json({
-      message: error?.message || "Failed to mark ready to dispatch / ship",
+      message: error?.message || "Failed to mark ready to dispatch",
     })
   }
 }

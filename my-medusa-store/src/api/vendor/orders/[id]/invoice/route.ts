@@ -5,6 +5,7 @@ import { generateInvoice } from "../../../../../services/invoice-generator"
 import {
   getItemUnitPrice,
   getItemUnits,
+  getPaymentType,
   getVendorOrderOrRespond,
   getVendorWorkflow,
   pickVendorItems,
@@ -94,11 +95,68 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     const workflow = getVendorWorkflow(result.order.metadata, auth.vendor_id)
     if (!workflow.shipping_method) {
-      return res.status(409).json({ message: "Choose shipping method before generating invoice" })
+      return res.status(409).json({
+        message: "Choose shipping method before generating invoice",
+      })
     }
 
     const vendorItems = pickVendorItems(result.order, result.vendorProductIds)
-    const vendorTotal = vendorItems.reduce(
+
+    // Attach vendor-set product GST (metadata.gst_rate / tax_code) onto line items
+    const productIds = Array.from(
+      new Set(
+        vendorItems
+          .map((item: any) => item.product_id || item.variant?.product_id)
+          .filter(Boolean)
+      )
+    ) as string[]
+    const productGstById = new Map<string, { gst_rate: unknown; tax_code: unknown }>()
+    if (productIds.length) {
+      const query = req.scope.resolve("query")
+      const { data: products } = await query.graph({
+        entity: "product",
+        fields: ["id", "metadata"],
+        filters: { id: productIds },
+      })
+      for (const product of products || []) {
+        if (!product?.id) continue
+        const pmeta = ((product as any).metadata || {}) as Record<string, unknown>
+        productGstById.set(String(product.id), {
+          gst_rate: pmeta.gst_rate,
+          tax_code: pmeta.tax_code,
+        })
+      }
+    }
+
+    const enrichedItems = vendorItems.map((item: any) => {
+      const productId = String(item.product_id || item.variant?.product_id || "")
+      const productGst = productId ? productGstById.get(productId) : null
+      const itemMeta = { ...(item.metadata || {}) }
+      // Prefer line metadata; fall back to vendor product GST settings
+      if (itemMeta.gst_rate == null || itemMeta.gst_rate === "") {
+        if (productGst?.gst_rate != null && productGst.gst_rate !== "") {
+          itemMeta.gst_rate = productGst.gst_rate
+        }
+      }
+      if (itemMeta.tax_code == null || itemMeta.tax_code === "") {
+        if (productGst?.tax_code != null && productGst.tax_code !== "") {
+          itemMeta.tax_code = productGst.tax_code
+        }
+      }
+      return {
+        ...item,
+        metadata: itemMeta,
+        product: {
+          ...(item.product || {}),
+          metadata: {
+            ...(item.product?.metadata || {}),
+            ...(productGst || {}),
+          },
+        },
+      }
+    })
+
+    const vendorTotal = enrichedItems.reduce(
       (sum, item) => sum + getItemUnitPrice(item) * getItemUnits(item),
       0
     )
@@ -109,15 +167,38 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       result.order.email
     )
 
+    const summary = ((result.order as any).summary || {}) as Record<string, any>
+    const meta = ((result.order as any).metadata || {}) as Record<string, any>
+    // Customer-facing shipping; free shipping → 0 on invoice (PPT requirement)
+    const shippingRaw = [
+      (result.order as any).shipping_total,
+      (result.order as any).shipping_amount,
+      summary.shipping_total,
+      summary.original_shipping_total,
+      summary.current_shipping_total,
+      meta.shipping_total,
+      meta.shipping_amount,
+    ]
+    let shippingTotal = 0
+    for (const raw of shippingRaw) {
+      const n = Number(raw)
+      if (Number.isFinite(n) && n >= 0) {
+        shippingTotal = Math.round(n * 100) / 100
+        break
+      }
+    }
+
     const invoiceOrder = {
       ...result.order,
-      items: vendorItems,
+      items: enrichedItems,
       subtotal: vendorTotal,
-      total: vendorTotal,
+      shipping_total: shippingTotal,
+      shipping_amount: shippingTotal,
+      total: Math.round((vendorTotal + shippingTotal) * 100) / 100,
       invoice_number: `INV-${result.order.display_id || result.order.id}-${auth.vendor_id.slice(-4)}`,
       customer_gstin: customerGst.gstin,
       customer_business_name: customerGst.business_name,
-      payment_type: (result.order as any).payment_type,
+      payment_type: getPaymentType(result.order as any),
     }
 
     const pdf = await generateInvoice(invoiceOrder)

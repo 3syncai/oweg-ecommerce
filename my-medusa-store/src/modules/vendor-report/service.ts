@@ -55,6 +55,7 @@ class VendorReportModuleService extends MedusaService({
     input: {
       status: "open" | "in_review" | "resolved" | "closed"
       admin_notes?: string | null
+      approved_amount?: number | null
       resolved_by?: string | null
     }
   ) {
@@ -69,6 +70,16 @@ class VendorReportModuleService extends MedusaService({
     }
     if (input.admin_notes !== undefined) {
       patch.admin_notes = input.admin_notes
+    }
+    if (input.approved_amount !== undefined) {
+      const amount = Number(input.approved_amount)
+      if (!Number.isFinite(amount) || amount < 0) {
+        throw new MedusaError(
+          MedusaError.Types.INVALID_DATA,
+          "approved_amount must be a non-negative number"
+        )
+      }
+      patch.approved_amount = Math.round(amount * 100) / 100
     }
     if (input.status === "resolved" || input.status === "closed") {
       patch.resolved_at = new Date()

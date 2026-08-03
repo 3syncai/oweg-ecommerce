@@ -80,6 +80,11 @@ export default defineConfig({
     // Vercel rewrites /api/* to https://api.oweg.itshover.com/*
     backendUrl: process.env.MEDUSA_ADMIN_BACKEND_URL || (process.env.NODE_ENV === "production" ? "/api" : "http://localhost:9000"),
     vite: () => ({
+      // After patch-package touches @medusajs/dashboard, stale Vite dep chunks
+      // (chunk-XXXX.js 404) blank the whole admin. Force re-optimize on boot.
+      optimizeDeps: {
+        force: true,
+      },
       server: {
         allowedHosts: [
           "localhost",

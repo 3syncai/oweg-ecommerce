@@ -1,9 +1,11 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError, MedusaErrorTypes, Modules } from "@medusajs/framework/utils"
+import { Pool } from "pg"
 import ReturnModuleService from "../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../modules/returns"
 import { StoreCreateReturnRequest } from "./validators"
 import { syncOrderReturnMetadata } from "../../../services/sync-order-return-metadata"
+import { holdVendorEarningsForReturn } from "../../../lib/vendor-earnings"
 
 function resolveDeliveryDate(order: any) {
   const metaDate = order?.metadata?.shiprocket_delivered_at
@@ -131,6 +133,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     reason: request.reason,
     created_at: request.created_at,
   })
+
+  // Pause 5-min unlock / Pending Payment until admin approves or rejects
+  if (process.env.DATABASE_URL) {
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+    try {
+      await holdVendorEarningsForReturn(body.order_id, pool)
+    } catch (err) {
+      console.error("[Return] Failed to hold vendor earnings:", err)
+    } finally {
+      await pool.end().catch(() => undefined)
+    }
+  }
 
   return res.status(200).json({ return_request: request })
 }

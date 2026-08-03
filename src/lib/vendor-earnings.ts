@@ -1,4 +1,9 @@
 import type { Pool } from "pg";
+import {
+  calculateMarketplaceSettlementFromLines,
+  getMarketplaceTaxRates,
+  parseLineGstRate,
+} from "./vendor-marketplace-tax";
 
 export const VENDOR_EARNINGS_UNLOCK_MINUTES = 5;
 
@@ -53,48 +58,110 @@ export type VendorEarningsSummary = {
   reversed_total: number;
 };
 
+type VendorOrderLine = {
+  inclusive_amount: number;
+  gst_rate: number;
+};
+
 type VendorOrderEarning = {
   vendor_id: string;
   order_display_id: string | null;
   gross_amount: number;
+  lines: VendorOrderLine[];
 };
+
+type LineQueryRow = {
+  vendor_id: string;
+  order_display_id: string | null;
+  line_total: string | number;
+  product_gst_rate: string | null;
+  product_tax_code: string | null;
+  item_gst_rate: string | null;
+  item_tax_code: string | null;
+};
+
+let earningsTaxColumnsReady: Promise<void> | null = null;
+
+async function ensureVendorEarningsTaxColumns(pool: Pool): Promise<void> {
+  if (!earningsTaxColumnsReady) {
+    earningsTaxColumnsReady = pool
+      .query(
+        `
+          ALTER TABLE vendor_earnings_log
+            ADD COLUMN IF NOT EXISTS taxable_amount numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS gst_amount numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS gst_rate numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS tcs_rate numeric NOT NULL DEFAULT 0.5,
+            ADD COLUMN IF NOT EXISTS tcs_amount numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS tds_rate numeric NOT NULL DEFAULT 0.1,
+            ADD COLUMN IF NOT EXISTS tds_amount numeric NOT NULL DEFAULT 0
+        `
+      )
+      .then(() => undefined)
+      .catch((error) => {
+        earningsTaxColumnsReady = null;
+        throw error;
+      });
+  }
+  await earningsTaxColumnsReady;
+}
 
 async function fetchVendorOrderEarnings(
   orderId: string,
   pool: Pool
 ): Promise<VendorOrderEarning[]> {
-  const result = await pool.query<VendorOrderEarning>(
+  const result = await pool.query<LineQueryRow>(
     `
-      SELECT
-        sub.vendor_id,
-        sub.order_display_id,
-        COALESCE(SUM(sub.line_total), 0) AS gross_amount
-      FROM (
-        SELECT DISTINCT ON (oli.id)
-          p.metadata->>'vendor_id' AS vendor_id,
-          o.display_id::text AS order_display_id,
-          (oli.unit_price::numeric) * GREATEST(COALESCE(oi.quantity, 1), 1) AS line_total
-        FROM order_item oi
-        JOIN order_line_item oli ON oi.item_id = oli.id
-        JOIN "order" o ON oi.order_id = o.id
-        LEFT JOIN product_variant pv ON oli.variant_id = pv.id
-        LEFT JOIN product p ON COALESCE(oli.product_id, pv.product_id) = p.id
-        WHERE oi.order_id = $1
-          AND p.metadata->>'vendor_id' IS NOT NULL
-          AND TRIM(p.metadata->>'vendor_id') <> ''
-      ) sub
-      GROUP BY sub.vendor_id, sub.order_display_id
+      SELECT DISTINCT ON (oli.id)
+        p.metadata->>'vendor_id' AS vendor_id,
+        o.display_id::text AS order_display_id,
+        (oli.unit_price::numeric) * GREATEST(COALESCE(oi.quantity, 1), 1) AS line_total,
+        p.metadata->>'gst_rate' AS product_gst_rate,
+        p.metadata->>'tax_code' AS product_tax_code,
+        oli.metadata->>'gst_rate' AS item_gst_rate,
+        oli.metadata->>'tax_code' AS item_tax_code
+      FROM order_item oi
+      JOIN order_line_item oli ON oi.item_id = oli.id
+      JOIN "order" o ON oi.order_id = o.id
+      LEFT JOIN product_variant pv ON oli.variant_id = pv.id
+      LEFT JOIN product p ON COALESCE(oli.product_id, pv.product_id) = p.id
+      WHERE oi.order_id = $1
+        AND p.metadata->>'vendor_id' IS NOT NULL
+        AND TRIM(p.metadata->>'vendor_id') <> ''
+      ORDER BY oli.id
     `,
     [orderId]
   );
 
-  return result.rows
-    .map((row) => ({
-      vendor_id: row.vendor_id,
-      order_display_id: row.order_display_id,
-      gross_amount: Number(row.gross_amount) || 0,
-    }))
-    .filter((row) => row.vendor_id && row.gross_amount > 0);
+  const byVendor = new Map<string, VendorOrderEarning>();
+  for (const row of result.rows) {
+    const vendorId = String(row.vendor_id || "").trim();
+    const lineTotal = Number(row.line_total) || 0;
+    if (!vendorId || lineTotal <= 0) continue;
+    const gstRate = parseLineGstRate(
+      row.item_gst_rate ||
+        row.item_tax_code ||
+        row.product_gst_rate ||
+        row.product_tax_code
+    );
+    const existing = byVendor.get(vendorId);
+    if (existing) {
+      existing.gross_amount += lineTotal;
+      existing.lines.push({ inclusive_amount: lineTotal, gst_rate: gstRate });
+    } else {
+      byVendor.set(vendorId, {
+        vendor_id: vendorId,
+        order_display_id: row.order_display_id,
+        gross_amount: lineTotal,
+        lines: [{ inclusive_amount: lineTotal, gst_rate: gstRate }],
+      });
+    }
+  }
+
+  return Array.from(byVendor.values()).map((entry) => ({
+    ...entry,
+    gross_amount: Math.round(entry.gross_amount * 100) / 100,
+  }));
 }
 
 async function fetchVendorCommissionRate(
@@ -115,10 +182,18 @@ async function upsertVendorEarningRow(
   pool: Pool,
   deliveredAt: Date
 ): Promise<void> {
-  const commissionRate = await fetchVendorCommissionRate(row.vendor_id, pool);
-  const grossAmount = row.gross_amount;
-  const commissionAmount = (grossAmount * commissionRate) / 100;
-  const netAmount = grossAmount - commissionAmount;
+  await ensureVendorEarningsTaxColumns(pool);
+
+  const [commissionRate, taxRates] = await Promise.all([
+    fetchVendorCommissionRate(row.vendor_id, pool),
+    getMarketplaceTaxRates(pool),
+  ]);
+  const settlement = calculateMarketplaceSettlementFromLines(row.lines, {
+    commission_rate: commissionRate,
+    tcs_rate: taxRates.tcs_rate,
+    tds_rate: taxRates.tds_rate,
+  });
+
   const unlockAt = new Date(
     deliveredAt.getTime() + VENDOR_EARNINGS_UNLOCK_MINUTES * 60 * 1000
   );
@@ -131,8 +206,15 @@ async function upsertVendorEarningRow(
         order_id,
         order_display_id,
         gross_amount,
+        taxable_amount,
+        gst_amount,
+        gst_rate,
         commission_rate,
         commission_amount,
+        tcs_rate,
+        tcs_amount,
+        tds_rate,
+        tds_amount,
         net_amount,
         currency_code,
         status,
@@ -149,17 +231,31 @@ async function upsertVendorEarningRow(
         $5,
         $6,
         $7,
-        'inr',
-        'UNLOCKING',
         $8,
         $9,
+        $10,
+        $11,
+        $12,
+        $13,
+        $14,
+        'inr',
+        'UNLOCKING',
+        $15,
+        $16,
         NOW(),
         NOW()
       )
       ON CONFLICT (vendor_id, order_id) DO UPDATE SET
         gross_amount = EXCLUDED.gross_amount,
+        taxable_amount = EXCLUDED.taxable_amount,
+        gst_amount = EXCLUDED.gst_amount,
+        gst_rate = EXCLUDED.gst_rate,
         commission_rate = EXCLUDED.commission_rate,
         commission_amount = EXCLUDED.commission_amount,
+        tcs_rate = EXCLUDED.tcs_rate,
+        tcs_amount = EXCLUDED.tcs_amount,
+        tds_rate = EXCLUDED.tds_rate,
+        tds_amount = EXCLUDED.tds_amount,
         net_amount = EXCLUDED.net_amount,
         delivered_at = COALESCE(vendor_earnings_log.delivered_at, EXCLUDED.delivered_at),
         unlock_at = COALESCE(vendor_earnings_log.unlock_at, EXCLUDED.unlock_at),
@@ -174,10 +270,17 @@ async function upsertVendorEarningRow(
       orderId,
       row.vendor_id,
       row.order_display_id,
-      grossAmount,
-      commissionRate,
-      commissionAmount,
-      netAmount,
+      settlement.inclusive_amount,
+      settlement.taxable_amount,
+      settlement.gst_amount,
+      settlement.gst_rate,
+      settlement.commission_rate,
+      settlement.commission_amount,
+      settlement.tcs_rate,
+      settlement.tcs_amount,
+      settlement.tds_rate,
+      settlement.tds_amount,
+      settlement.net_amount,
       deliveredAt.toISOString(),
       unlockAt.toISOString(),
     ]

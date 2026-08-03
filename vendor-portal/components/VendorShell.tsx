@@ -107,9 +107,9 @@ const navItems = [
     type: "normal",
   },
   {
-    label: "Reports",
+    label: "Claims",
     description: "",
-    path: "/reports",
+    path: "/claims",
     icon: ChartBar,
     type: "normal",
   },

@@ -539,6 +539,8 @@ export const vendorOrdersApi = {
     data: {
       courier_id: number
       courier_partner_name?: string
+      rate?: number
+      freight_charge?: number
       weight?: number
       length?: number
       breadth?: number
@@ -643,6 +645,11 @@ export const vendorOrdersApi = {
       method: 'POST',
     })
   },
+  markDispatched: async (id: string) => {
+    return apiRequest<{ order: any }>(`/vendor/orders/${id}/dispatch`, {
+      method: 'POST',
+    })
+  },
 
   track: async (id: string) => {
     return apiRequest<{ order: any; tracking: any }>(`/vendor/orders/${id}/track`)
@@ -689,8 +696,12 @@ export type VendorPaymentsView = {
   cards: {
     total_sale: number
     commission: number
+    tcs: number
+    tds: number
     logistic_fee: number
+    return_fee?: number
     pending_payment: number
+    unlocking_payment?: number
     withdrawn: number
   }
   settlements: Array<{
@@ -698,14 +709,23 @@ export type VendorPaymentsView = {
     order_id: string
     order_display_id: string | null
     product_name: string
-    type: "sales" | "return"
+    type: "sales" | "return" | "claim"
     order_amount: number
+    taxable_amount: number
+    gst_amount: number
     commission: number
+    tcs: number
+    tds: number
     logistic_fee: number
+    return_fee?: number
     taxes: number
     settlement_amount: number
+    status?: 'UNLOCKING' | 'CREDITED' | 'PAID' | 'REVERSED' | 'ON_HOLD'
+    delivered_at?: string | null
+    unlock_at?: string | null
   }>
   timezone: string
+  unlock_minutes?: number
   as_of: string
 }
 
@@ -715,7 +735,7 @@ export type VendorOrderEarning = {
   order_display_id: string | null
   net_amount: number
   gross_amount: number
-  status: 'UNLOCKING' | 'CREDITED' | 'PAID' | 'REVERSED'
+  status: 'UNLOCKING' | 'CREDITED' | 'PAID' | 'REVERSED' | 'ON_HOLD'
   unlock_at: string | null
   credited_at: string | null
 }
@@ -863,6 +883,15 @@ export const vendorCustomersApi = {
   },
 }
 
+export type VendorReturnCourier = {
+  courier_id: number
+  courier_name: string
+  rate: number | null
+  etd: string | number | null
+  freight_charge?: number | null
+  rating?: number | null
+}
+
 export type VendorReturnRequest = {
   id: string
   order_id: string
@@ -890,6 +919,7 @@ export type VendorReturnRequest = {
     id: string
     order_item_id: string
     quantity: number
+    title?: string
     condition?: string | null
     reason?: string | null
   }>
@@ -899,12 +929,90 @@ export type VendorReturnRequest = {
     quantity: number
   }>
   order_total: number | null
+  shipping_method?: 'easy' | 'self' | string | null
+  reverse_courier_id?: number | null
+  reverse_courier_name?: string | null
+  reverse_courier_rate?: number | null
+  reverse_courier_selected_at?: string | null
+  reverse_tracking_number?: string | null
+  reverse_tracking_url?: string | null
+  reverse_label_url?: string | null
+  reverse_courier_partner?: string | null
+  reverse_tracking_saved_at?: string | null
+  can_select_reverse_courier?: boolean
+  can_add_self_tracking?: boolean
+  needs_return_logistics?: boolean
+  can_mark_pickup_initiated?: boolean
+  can_mark_picked_up?: boolean
+  can_mark_received?: boolean
+  returned_to_vendor?: boolean
+  returned_to_vendor_at?: string | null
 }
 
 // Vendor Returns API
 export const vendorReturnsApi = {
   list: async () => {
     return apiRequest<{ return_requests: VendorReturnRequest[] }>('/vendor/returns')
+  },
+  listCouriers: async (returnId: string) => {
+    return apiRequest<{
+      couriers: VendorReturnCourier[]
+      pickup_postcode: string
+      delivery_postcode: string
+      delivery_city?: string
+      count: number
+    }>(`/vendor/returns/${returnId}/couriers`)
+  },
+  selectCourier: async (
+    returnId: string,
+    body: {
+      courier_id: number
+      courier_name: string
+      rate?: number
+      freight_charge?: number
+    }
+  ) => {
+    return apiRequest<{
+      return_request: any
+      selected: { courier_id: number; courier_name: string }
+    }>(`/vendor/returns/${returnId}/select-courier`, {
+      method: 'POST',
+      data: body,
+    })
+  },
+  saveSelfTracking: async (
+    returnId: string,
+    body: {
+      tracking_number?: string
+      tracking_url?: string
+      label_url?: string
+      courier_partner?: string
+    }
+  ) => {
+    return apiRequest<{
+      return_request: any
+      self_tracking: {
+        tracking_number: string | null
+        tracking_url: string | null
+        label_url: string | null
+        courier_partner: string | null
+      }
+    }>(`/vendor/returns/${returnId}/self-tracking`, {
+      method: 'POST',
+      data: body,
+    })
+  },
+  updateStatus: async (
+    returnId: string,
+    action: 'pickup_initiated' | 'picked_up' | 'received'
+  ) => {
+    return apiRequest<{ return_request: any; action: string; message: string }>(
+      `/vendor/returns/${returnId}/status`,
+      {
+        method: 'POST',
+        data: { action },
+      }
+    )
   },
 }
 
@@ -922,11 +1030,15 @@ export type VendorReportTicket = {
   image_urls?: string[] | null
   status: "open" | "in_review" | "resolved" | "closed" | string
   admin_notes?: string | null
+  approved_amount?: number | null
+  product_name?: string | null
+  order_total?: number | null
+  currency_code?: string | null
   created_at?: string
   updated_at?: string
 }
 
-// Vendor issue Reports (tickets against return / order)
+// Vendor Claims (lost / wrong return, order issues — Flipkart-style claims)
 export const vendorReportsApi = {
   list: async () => {
     return apiRequest<{ reports: VendorReportTicket[] }>("/vendor/reports")

@@ -1,6 +1,6 @@
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
-import { Badge, Container, Heading, Text } from "@medusajs/ui"
-import { useEffect, useMemo, useState } from "react"
+import { Badge, Button, Container, Heading, Text, toast } from "@medusajs/ui"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 type VendorAcceptanceItem = {
   id: string
@@ -20,6 +20,7 @@ type VendorAcceptance = {
   acceptance_label: string
   stage: string
   stage_label: string
+  can_mark_delivered?: boolean
   accepted_at?: string | null
   shipping_method?: string | null
   easy_courier_partner?: string | null
@@ -83,45 +84,74 @@ const OrderVendorAcceptanceWidget = () => {
   const [data, setData] = useState<VendorAcceptanceResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [markingVendorId, setMarkingVendorId] = useState<string | null>(null)
+  const [markingAll, setMarkingAll] = useState(false)
 
   const orderId = useMemo(() => {
     if (typeof window === "undefined") return null
     return getOrderIdFromPath(window.location.pathname)
   }, [])
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!orderId) return
-    let cancelled = false
-
-    const load = async () => {
-      setLoading(true)
-      setError("")
-      try {
-        const res = await fetch(`/admin/orders/${orderId}/vendor-acceptance`, {
-          credentials: "include",
-        })
-        if (!res.ok) throw new Error(`Failed (${res.status})`)
-        const json = (await res.json()) as VendorAcceptanceResponse
-        if (!cancelled) setData(json)
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Failed to load vendor status")
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    void load()
-    const intervalId = window.setInterval(load, 20000)
-    return () => {
-      cancelled = true
-      window.clearInterval(intervalId)
+    setLoading(true)
+    setError("")
+    try {
+      const res = await fetch(`/admin/orders/${orderId}/vendor-acceptance`, {
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error(`Failed (${res.status})`)
+      const json = (await res.json()) as VendorAcceptanceResponse
+      setData(json)
+    } catch (e: any) {
+      setError(e?.message || "Failed to load vendor status")
+    } finally {
+      setLoading(false)
     }
   }, [orderId])
+
+  useEffect(() => {
+    if (!orderId) return
+    void load()
+    const intervalId = window.setInterval(() => void load(), 20000)
+    return () => window.clearInterval(intervalId)
+  }, [orderId, load])
+
+  const markDelivered = async (vendorId?: string) => {
+    if (!orderId) return
+    if (vendorId) setMarkingVendorId(vendorId)
+    else setMarkingAll(true)
+
+    try {
+      const res = await fetch(`/admin/orders/${orderId}/mark-delivered`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(vendorId ? { vendor_id: vendorId } : {}),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json?.message || `Failed (${res.status})`)
+      }
+      toast.success(
+        vendorId
+          ? "Vendor marked as delivered"
+          : "Order marked as delivered for all vendors"
+      )
+      await load()
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to mark as delivered")
+    } finally {
+      setMarkingVendorId(null)
+      setMarkingAll(false)
+    }
+  }
 
   if (!orderId) return null
 
   const summary = data?.summary
   const vendors = data?.vendors || []
+  const anyCanMark = vendors.some((v) => v.can_mark_delivered)
 
   return (
     <Container className="p-0 overflow-hidden divide-y">
@@ -156,6 +186,18 @@ const OrderVendorAcceptanceWidget = () => {
           </Text>
         )}
 
+        {anyCanMark && (
+          <Button
+            size="small"
+            variant="secondary"
+            isLoading={markingAll}
+            disabled={markingAll || Boolean(markingVendorId)}
+            onClick={() => void markDelivered()}
+          >
+            Mark all as delivered
+          </Button>
+        )}
+
         {vendors.map((vendor) => (
           <div
             key={vendor.vendor_id}
@@ -172,8 +214,20 @@ const OrderVendorAcceptanceWidget = () => {
                   </Text>
                 )}
               </div>
-              <Badge color={vendor.accepted ? "green" : "orange"}>
-                {vendor.accepted ? "Accepted by vendor" : "Awaiting acceptance"}
+              <Badge
+                color={
+                  vendor.stage === "delivered"
+                    ? "green"
+                    : vendor.accepted
+                      ? "green"
+                      : "orange"
+                }
+              >
+                {vendor.stage === "delivered"
+                  ? "Delivered"
+                  : vendor.accepted
+                    ? "Accepted by vendor"
+                    : "Awaiting acceptance"}
               </Badge>
             </div>
 
@@ -238,6 +292,19 @@ const OrderVendorAcceptanceWidget = () => {
             {vendor.rtd_at && (
               <Detail label="Ready to dispatch" value={formatDate(vendor.rtd_at)} />
             )}
+
+            {vendor.can_mark_delivered ? (
+              <div className="pt-2">
+                <Button
+                  size="small"
+                  isLoading={markingVendorId === vendor.vendor_id}
+                  disabled={markingAll || Boolean(markingVendorId)}
+                  onClick={() => void markDelivered(vendor.vendor_id)}
+                >
+                  Mark as delivered
+                </Button>
+              </div>
+            ) : null}
 
             {vendor.items?.length > 0 && (
               <div className="pt-2 border-t border-ui-border-base space-y-1">

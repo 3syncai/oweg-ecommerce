@@ -51,15 +51,31 @@ export async function POST(
         effectiveRate: resolved.rate,
       })
 
-      // Keep unpaid CREDITED rows in sync with the rate we will actually deduct on pay.
+      // Keep unpaid CREDITED rows in sync with the commission rate we will deduct on pay.
+      // Commission / TCS / TDS are all on taxable (ex-GST) value — Amazon/Flipkart style.
       if (snapshot.order_ids.length > 0) {
         await pool.query(
           `
             UPDATE vendor_earnings_log
             SET
               commission_rate = $2,
-              commission_amount = ROUND((gross_amount::numeric * $2::numeric) / 100, 2),
-              net_amount = ROUND(gross_amount::numeric - (gross_amount::numeric * $2::numeric) / 100, 2),
+              commission_amount = ROUND(
+                (COALESCE(NULLIF(taxable_amount, 0), gross_amount)::numeric * $2::numeric) / 100,
+                2
+              ),
+              net_amount = ROUND(
+                GREATEST(
+                  0,
+                  COALESCE(NULLIF(taxable_amount, 0), gross_amount)::numeric
+                    - ROUND(
+                      (COALESCE(NULLIF(taxable_amount, 0), gross_amount)::numeric * $2::numeric) / 100,
+                      2
+                    )
+                    - COALESCE(tcs_amount, 0)
+                    - COALESCE(tds_amount, 0)
+                ),
+                2
+              ),
               updated_at = NOW()
             WHERE vendor_id = $1
               AND status = 'CREDITED'
@@ -76,9 +92,12 @@ export async function POST(
         commission_source: resolved.source,
         total_revenue: snapshot.total_revenue,
         commission: snapshot.commission,
+        tcs: snapshot.tcs,
+        tds: snapshot.tds,
         net_amount: snapshot.net_amount,
         order_count: snapshot.order_count,
         order_ids: snapshot.order_ids,
+        line_items: snapshot.line_items,
         available_balance: snapshot.available_balance,
         unlocking_balance: snapshot.unlocking_balance,
         unlocking_count: snapshot.unlocking_count,

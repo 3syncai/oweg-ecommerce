@@ -38,7 +38,38 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       { vendor_id: auth.vendor_id },
       { order: { created_at: "DESC" }, take: 200 }
     )
-    return res.json({ reports })
+
+    const enriched = (reports || []).map((report: any) => {
+      const products = Array.isArray(report.product_snapshot)
+        ? report.product_snapshot
+        : []
+      const productName =
+        products
+          .map((p: any) => String(p?.title || "").trim())
+          .filter(Boolean)
+          .join(", ") || null
+
+      const productTotal = products.reduce(
+        (sum: number, p: any) =>
+          sum + Number(p?.unit_price || 0) * Number(p?.quantity || 1),
+        0
+      )
+      const snap = report.order_snapshot || {}
+      const orderTotal =
+        Number(snap.vendor_total) ||
+        Number(snap.total) ||
+        productTotal ||
+        null
+
+      return {
+        ...report,
+        product_name: productName,
+        order_total: orderTotal,
+        currency_code: snap.currency_code || "inr",
+      }
+    })
+
+    return res.json({ reports: enriched })
   } catch (error: any) {
     console.error("Vendor reports list error:", error)
     return res.status(500).json({ message: error?.message || "Failed to load reports" })
@@ -88,6 +119,16 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     const address =
       orderResult.order.shipping_address || orderResult.order.billing_address || {}
+    const vendorLineTotal = productSnapshot.reduce(
+      (sum: number, item: { unit_price?: number; quantity?: number }) =>
+        sum + Number(item.unit_price || 0) * Number(item.quantity || 1),
+      0
+    )
+    const orderTotal =
+      Number((orderResult.order.summary as any)?.current_order_total) ||
+      Number((orderResult.order as any).total) ||
+      vendorLineTotal ||
+      0
     const orderSnapshot = {
       id: orderResult.order.id,
       display_id: orderResult.order.display_id,
@@ -95,6 +136,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       created_at: orderResult.order.created_at,
       currency_code: orderResult.order.currency_code,
       status: orderResult.order.status,
+      total: orderTotal,
+      vendor_total: vendorLineTotal,
       shipping_address: address,
       customer_id: (orderResult.order as any).customer_id || null,
     }

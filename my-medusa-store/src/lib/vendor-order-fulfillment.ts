@@ -54,21 +54,33 @@ function buildLabels(workflow: VendorOrderWorkflow) {
 }
 
 /**
- * When vendor marks Ready to Dispatch:
- * 1) Create Medusa fulfillment for that vendor's items (Fulfilled)
- * 2) Create shipment with tracking labels (Shipped)
+ * Create Medusa fulfillment for vendor items.
+ * Optionally create shipment (mark shipped) — skip for self-ship RTD so the
+ * order stays in To Dispatch until the vendor confirms Dispatch / tracking moves.
  */
 export async function fulfillAndShipVendorItems(
   req: MedusaRequest,
   order: OrderLike,
   vendorId: string,
   vendorProductIds: string[],
-  workflow: VendorOrderWorkflow
-): Promise<{ fulfillment_id: string; already_done: boolean }> {
+  workflow: VendorOrderWorkflow,
+  options?: { createShipment?: boolean }
+): Promise<{ fulfillment_id: string; already_done: boolean; shipped: boolean }> {
+  const createShipment = options?.createShipment !== false
+
   if (workflow.medusa_fulfillment_id && workflow.medusa_shipped_at) {
     return {
       fulfillment_id: String(workflow.medusa_fulfillment_id),
       already_done: true,
+      shipped: true,
+    }
+  }
+
+  if (workflow.medusa_fulfillment_id && !createShipment) {
+    return {
+      fulfillment_id: String(workflow.medusa_fulfillment_id),
+      already_done: true,
+      shipped: Boolean(workflow.medusa_shipped_at),
     }
   }
 
@@ -127,7 +139,9 @@ export async function fulfillAndShipVendorItems(
     (f: any) => f?.id === fulfillmentId && f?.shipped_at && !f?.canceled_at
   )
 
-  if (!alreadyShipped && !workflow.medusa_shipped_at) {
+  let shipped = alreadyShipped || Boolean(workflow.medusa_shipped_at)
+
+  if (createShipment && !shipped) {
     await createOrderShipmentWorkflow(req.scope).run({
       input: {
         order_id: order.id,
@@ -141,7 +155,32 @@ export async function fulfillAndShipVendorItems(
         },
       },
     })
+    shipped = true
   }
 
-  return { fulfillment_id: fulfillmentId, already_done: false }
+  return { fulfillment_id: fulfillmentId, already_done: false, shipped }
+}
+
+/**
+ * Mark an existing vendor fulfillment as shipped (To Dispatch → In Transit).
+ */
+export async function shipVendorFulfillment(
+  req: MedusaRequest,
+  order: OrderLike,
+  vendorId: string,
+  vendorProductIds: string[],
+  workflow: VendorOrderWorkflow
+): Promise<{ fulfillment_id: string; already_shipped: boolean }> {
+  const result = await fulfillAndShipVendorItems(
+    req,
+    order,
+    vendorId,
+    vendorProductIds,
+    workflow,
+    { createShipment: true }
+  )
+  return {
+    fulfillment_id: result.fulfillment_id,
+    already_shipped: result.already_done && result.shipped,
+  }
 }

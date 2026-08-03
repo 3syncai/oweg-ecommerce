@@ -1,4 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { Pool } from "pg"
 import { requireApprovedVendor } from "../_lib/guards"
 import { filterVendorVisibleOrders } from "../../../lib/vendor-order-visibility"
 import {
@@ -7,6 +8,8 @@ import {
   setVendorOrderCorsHeaders,
   type VendorOrderStage,
 } from "../../../lib/vendor-order-workflow"
+import { fetchVendorCommissionRate } from "../../../lib/vendor-earnings"
+import { getMarketplaceTaxRates } from "../../../lib/vendor-marketplace-tax"
 
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
   setVendorOrderCorsHeaders(res)
@@ -64,7 +67,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         "items.detail.quantity",
         "items.unit_price",
         "items.product_id",
+        "items.metadata",
         "items.variant.product_id",
+        "items.variant.product.metadata",
         "items.variant_sku",
         "fulfillments.id",
         "fulfillments.shipped_at",
@@ -92,8 +97,30 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       console.log(`[Orders API] Sample order structure:`, JSON.stringify(vendorOrders[0], null, 2))
     }
 
+    let settlementRates: {
+      commission_rate: number
+      tcs_rate: number
+      tds_rate: number
+    } | null = null
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+    try {
+      const [commission_rate, taxRates] = await Promise.all([
+        fetchVendorCommissionRate(auth.vendor_id, pool),
+        getMarketplaceTaxRates(pool),
+      ])
+      settlementRates = {
+        commission_rate,
+        tcs_rate: taxRates.tcs_rate,
+        tds_rate: taxRates.tds_rate,
+      }
+    } catch (rateErr) {
+      console.warn("[Orders API] settlement rates unavailable:", rateErr)
+    } finally {
+      await pool.end().catch(() => {})
+    }
+
     const formattedOrders = vendorOrders.map((order: any) =>
-      formatVendorOrder(order, auth.vendor_id, vendorProductIds)
+      formatVendorOrder(order, auth.vendor_id, vendorProductIds, settlementRates)
     )
 
     const counts = formattedOrders.reduce(

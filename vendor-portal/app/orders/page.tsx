@@ -64,6 +64,22 @@ type VendorOrder = {
   shipping_address?: Record<string, any> | null
   billing_address?: Record<string, any> | null
   vendor_workflow?: VendorWorkflow
+  taxable_amount?: number | null
+  gst_amount?: number | null
+  tcs_amount?: number | null
+  tds_amount?: number | null
+  commission_amount?: number | null
+  settlement?: {
+    taxable_amount: number
+    gst_amount: number
+    tcs_amount: number
+    tds_amount: number
+    commission_amount: number
+    net_amount: number
+    gst_rate?: number
+    tcs_rate?: number
+    tds_rate?: number
+  } | null
 }
 
 const PAGE_SIZE = 10
@@ -158,6 +174,7 @@ const VendorOrdersContent = () => {
       courier_id: number
       courier_name: string
       rate: number | null
+      freight_charge?: number | null
       etd: string | null
       rto_charges?: number | null
       cod_charges?: number | null
@@ -419,6 +436,9 @@ const VendorOrdersContent = () => {
       const data = await vendorOrdersApi.chooseEasyShipping(easyShipOrder.id, {
         courier_id: selectedCourierId,
         courier_partner_name: courierName,
+        rate: courier?.rate != null ? Number(courier.rate) : undefined,
+        freight_charge:
+          courier?.freight_charge != null ? Number(courier.freight_charge) : undefined,
         weight,
         length,
         breadth,
@@ -490,12 +510,30 @@ const VendorOrdersContent = () => {
     try {
       const data = await vendorOrdersApi.markReadyToDispatch(order.id)
       replaceOrder(data.order)
+      const nextStage =
+        data.order?.vendor_stage === "to_dispatch" ? "to_dispatch" : "in_transit"
+      setSelectedStage(nextStage)
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("oweg:vendor-orders-changed"))
+      }
+    } catch (e: any) {
+      setError(e?.message || "Failed to mark RTD")
+    } finally {
+      setProcessing(null)
+    }
+  }
+
+  const markDispatched = async (order: VendorOrder) => {
+    setProcessing(`dispatch:${order.id}`)
+    try {
+      const data = await vendorOrdersApi.markDispatched(order.id)
+      replaceOrder(data.order)
       setSelectedStage("in_transit")
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("oweg:vendor-orders-changed"))
       }
     } catch (e: any) {
-      setError(e?.message || "Failed to mark RTD / ship order")
+      setError(e?.message || "Failed to dispatch order")
     } finally {
       setProcessing(null)
     }
@@ -595,6 +633,25 @@ const VendorOrdersContent = () => {
             label="Invoice"
             disabled
             onClick={() => undefined}
+          />
+        </div>
+      )
+    }
+
+    if (selectedStage === "to_dispatch") {
+      return (
+        <div className="grid min-w-[220px] grid-cols-2 gap-1.5">
+          <ActionButton
+            icon={<Truck size={14} />}
+            label={busy ? "…" : "Dispatch"}
+            disabled={busy}
+            onClick={() => void markDispatched(order)}
+          />
+          <ActionButton
+            icon={<Eye size={14} />}
+            label="View"
+            disabled={busy}
+            onClick={() => void openDetails(order)}
           />
         </div>
       )
@@ -988,6 +1045,34 @@ function DetailsModal({
               ["Payment", order.payment_type || "Prepaid"],
               ["Status", order.vendor_status_label],
               ["Amount", formatCurrency(order.total, order.currency_code || "INR")],
+              [
+                "Taxable",
+                formatCurrency(
+                  Number(order.settlement?.taxable_amount ?? order.taxable_amount ?? 0),
+                  order.currency_code || "INR"
+                ),
+              ],
+              [
+                "GST",
+                formatCurrency(
+                  Number(order.settlement?.gst_amount ?? order.gst_amount ?? 0),
+                  order.currency_code || "INR"
+                ),
+              ],
+              [
+                "TCS",
+                formatCurrency(
+                  Number(order.settlement?.tcs_amount ?? order.tcs_amount ?? 0),
+                  order.currency_code || "INR"
+                ),
+              ],
+              [
+                "TDS",
+                formatCurrency(
+                  Number(order.settlement?.tds_amount ?? order.tds_amount ?? 0),
+                  order.currency_code || "INR"
+                ),
+              ],
             ]}
           />
           <InfoBlock
