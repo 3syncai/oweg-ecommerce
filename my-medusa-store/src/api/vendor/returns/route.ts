@@ -2,6 +2,13 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
 import ReturnModuleService from "../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../modules/returns"
+import { getItemUnits, getVendorWorkflow } from "../../../lib/vendor-order-workflow"
+import {
+  getReverseCourierSelection,
+  getReturnMetadata,
+  getSelfReverseTracking,
+  resolveVendorForwardShippingMethod,
+} from "../../../lib/vendor-return-shiprocket"
 
 function setCorsHeaders(res: MedusaResponse) {
   res.setHeader(
@@ -23,16 +30,17 @@ export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
 
 /**
  * GET /vendor/returns
- * Lists return/replacement requests for this vendor's products,
- * only after admin has approved (pending requests stay hidden from vendors).
+ * Lists return/replacement requests for this vendor's products.
+ * Includes pending_approval so Easy Ship vendors can select a reverse courier
+ * before admin approval (pickup then runs automatically).
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res)
   const auth = await requireApprovedVendor(req, res)
   if (!auth) return
 
-  /** Shown to vendors once admin approves the return request. */
   const VENDOR_VISIBLE_STATUSES = new Set([
+    "pending_approval",
     "approved",
     "pickup_initiated",
     "picked_up",
@@ -67,18 +75,17 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       return res.json({ return_requests: [] })
     }
 
-    // Vendor only sees returns after admin approval (and later workflow statuses).
-    const approvedRequests = requests.filter(
+    const visibleRequests = requests.filter(
       (request: any) =>
         request?.status && VENDOR_VISIBLE_STATUSES.has(String(request.status))
     )
 
-    if (!approvedRequests.length) {
+    if (!visibleRequests.length) {
       return res.json({ return_requests: [] })
     }
 
     const orderIds = Array.from(
-      new Set(approvedRequests.map((r: any) => r.order_id).filter(Boolean))
+      new Set(visibleRequests.map((r: any) => r.order_id).filter(Boolean))
     ) as string[]
 
     const ordersById = new Map<string, any>()
@@ -92,9 +99,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           "customer_id",
           "created_at",
           "summary",
+          "metadata",
           "items.id",
           "items.title",
           "items.quantity",
+          "items.detail.quantity",
           "items.product_id",
           "items.variant.product_id",
           "customer.first_name",
@@ -121,7 +130,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       if (belongsToVendor) vendorOrderIds.add(orderId)
     }
 
-    const vendorRequests = approvedRequests.filter(
+    const vendorRequests = visibleRequests.filter(
       (request: any) => request.order_id && vendorOrderIds.has(request.order_id)
     )
 
@@ -155,6 +164,38 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         return productId && vendorProductIds.has(productId)
       })
 
+      const returnItems = itemsByRequest.get(request.id) || []
+      const orderItemById = new Map<string, any>(
+        orderItems.map((item: any) => [String(item.id), item])
+      )
+
+      const enrichedItems = returnItems.map((ri: any) => {
+        const original = orderItemById.get(String(ri.order_item_id))
+        const qty = Number(ri.quantity)
+        return {
+          id: ri.id,
+          order_item_id: ri.order_item_id,
+          quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
+          condition: ri.condition ?? null,
+          reason: ri.reason ?? null,
+          title: (original as any)?.title || "Item",
+        }
+      })
+
+      const workflow = getVendorWorkflow(order?.metadata || null, auth.vendor_id)
+      const shippingMethod =
+        resolveVendorForwardShippingMethod(order, auth.vendor_id) ||
+        (workflow.shipping_method === "easy" ? "easy" : workflow.shipping_method === "self" ? "self" : null)
+      const selection = getReverseCourierSelection(request)
+      const meta = getReturnMetadata(request)
+      const selfTracking = getSelfReverseTracking(request)
+      const hasSelfTracking = Boolean(
+        selfTracking.reverse_tracking_number || selfTracking.reverse_tracking_url
+      )
+      const activeForLogistics = ["pending_approval", "approved", "pickup_initiated"].includes(
+        String(request.status)
+      )
+
       return {
         id: request.id,
         order_id: request.order_id,
@@ -178,13 +219,49 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         updated_at: request.updated_at,
         customer_email: order?.email || customer?.email || null,
         customer_name: customerName || null,
-        items: itemsByRequest.get(request.id) || [],
+        items: enrichedItems,
         vendor_items: vendorLineItems.map((item: any) => ({
           id: item.id,
           title: item.title,
-          quantity: item.quantity,
+          quantity: getItemUnits(item),
         })),
         order_total: order?.summary?.current_order_total ?? null,
+        shipping_method: shippingMethod,
+        reverse_courier_id: selection?.reverse_courier_id ?? meta.reverse_courier_id ?? null,
+        reverse_courier_name:
+          selection?.reverse_courier_name ?? meta.reverse_courier_name ?? null,
+        reverse_courier_rate:
+          meta.reverse_courier_rate != null ? Number(meta.reverse_courier_rate) : null,
+        reverse_courier_selected_at:
+          selection?.reverse_courier_selected_at ??
+          meta.reverse_courier_selected_at ??
+          null,
+        ...selfTracking,
+        can_select_reverse_courier:
+          shippingMethod === "easy" &&
+          ["pending_approval", "approved"].includes(String(request.status)) &&
+          !request.pickup_initiated_at &&
+          !request.shiprocket_order_id,
+        can_add_self_tracking: shippingMethod === "self" && activeForLogistics,
+        needs_return_logistics:
+          activeForLogistics &&
+          ((shippingMethod === "easy" &&
+            !selection &&
+            !meta.reverse_courier_id &&
+            !request.shiprocket_order_id) ||
+            (shippingMethod === "self" && !hasSelfTracking)),
+        can_mark_pickup_initiated: ["approved", "pending_approval"].includes(
+          String(request.status)
+        ),
+        can_mark_picked_up: ["approved", "pickup_initiated"].includes(String(request.status)),
+        can_mark_received: ["approved", "pickup_initiated", "picked_up"].includes(
+          String(request.status)
+        ),
+        returned_to_vendor:
+          String(request.status) === "received" || Boolean(meta.returned_to_vendor),
+        returned_to_vendor_at: meta.returned_to_vendor_at
+          ? String(meta.returned_to_vendor_at)
+          : request.received_at || null,
       }
     })
 

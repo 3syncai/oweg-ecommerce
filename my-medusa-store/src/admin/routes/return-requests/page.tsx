@@ -24,8 +24,24 @@ type ReturnRequest = {
   bank_account_last4?: string | null
   shiprocket_awb?: string | null
   shiprocket_status?: string | null
+  shipping_method?: "easy" | "self" | string | null
+  reverse_courier_id?: number | null
+  reverse_courier_name?: string | null
+  reverse_courier_rate?: number | null
+  reverse_tracking_number?: string | null
+  reverse_tracking_url?: string | null
+  reverse_label_url?: string | null
+  reverse_courier_partner?: string | null
+  reverse_tracking_saved_at?: string | null
+  returned_to_vendor?: boolean
+  returned_to_vendor_at?: string | null
+  picked_up_at?: string | null
+  received_at?: string | null
   items?: ReturnItem[]
 }
+
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(amount)
 
 const ReturnRequestsPage = () => {
   const [loading, setLoading] = useState(true)
@@ -141,7 +157,10 @@ const ReturnRequestsPage = () => {
                   const canApprove = request.status === "pending_approval"
                   const canReject = request.status === "pending_approval"
                   const canInitiatePickup = request.status === "approved"
-                  const canRefund = request.status === "picked_up"
+                  const canRefund =
+                    request.status === "picked_up" || request.status === "received"
+                  const returnedToVendor =
+                    Boolean(request.returned_to_vendor) || request.status === "received"
 
                   return (
                 <div className="flex items-start justify-between gap-4">
@@ -156,7 +175,36 @@ const ReturnRequestsPage = () => {
                       <Badge size="small" color="green">
                         {request.status.replace(/_/g, " ")}
                       </Badge>
+                      {request.shipping_method === "easy" ? (
+                        <Badge size="small" color="purple">
+                          Easy Ship return
+                        </Badge>
+                      ) : request.shipping_method === "self" ? (
+                        <Badge size="small" color="grey">
+                          Self Ship return
+                        </Badge>
+                      ) : null}
+                      {returnedToVendor ? (
+                        <Badge size="small" color="green">
+                          Returned to vendor
+                        </Badge>
+                      ) : null}
                     </div>
+                    {returnedToVendor ? (
+                      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
+                        <Text className="text-sm font-medium text-emerald-800">
+                          Order returned to the vendor
+                        </Text>
+                        <Text className="text-sm text-ui-fg-subtle">
+                          Parcel is back with the seller
+                          {request.returned_to_vendor_at || request.received_at
+                            ? ` · ${new Date(
+                                String(request.returned_to_vendor_at || request.received_at)
+                              ).toLocaleString("en-IN")}`
+                            : ""}
+                        </Text>
+                      </div>
+                    ) : null}
                     {request.reason && (
                       <Text className="text-sm text-ui-fg-subtle">Reason: {request.reason}</Text>
                     )}
@@ -170,11 +218,78 @@ const ReturnRequestsPage = () => {
                     <Text className="text-sm text-ui-fg-subtle">
                       Payment: {request.payment_type} {request.bank_account_last4 ? `(xxxx${request.bank_account_last4})` : ""}
                     </Text>
-                    {request.shiprocket_awb && (
+                    {request.shipping_method === "easy" ? (
+                      <div className="rounded-lg border border-ui-border-base bg-ui-bg-subtle/50 px-3 py-2 space-y-1">
+                        <Text className="text-sm font-medium">Shiprocket reverse logistics</Text>
+                        {request.reverse_courier_name ? (
+                          <Text className="text-sm text-ui-fg-subtle">
+                            Service: {request.reverse_courier_name}
+                            {request.reverse_courier_rate != null
+                              ? ` · ${formatCurrency(Number(request.reverse_courier_rate))}`
+                              : ""}
+                          </Text>
+                        ) : (
+                          <Text className="text-sm text-amber-700">
+                            Vendor has not selected a Shiprocket reverse service yet
+                          </Text>
+                        )}
+                        {request.shiprocket_awb && (
+                          <Text className="text-sm text-ui-fg-subtle">
+                            AWB: {request.shiprocket_awb} ({request.shiprocket_status || "pending"})
+                          </Text>
+                        )}
+                      </div>
+                    ) : null}
+                    {request.shipping_method === "self" ? (
+                      <div className="rounded-lg border border-ui-border-base bg-ui-bg-subtle/50 px-3 py-2 space-y-1">
+                        <Text className="text-sm font-medium">Self ship reverse tracking</Text>
+                        {request.reverse_courier_partner ? (
+                          <Text className="text-sm text-ui-fg-subtle">
+                            Courier: {request.reverse_courier_partner}
+                          </Text>
+                        ) : null}
+                        {request.reverse_tracking_number || request.shiprocket_awb ? (
+                          <Text className="text-sm text-ui-fg-subtle">
+                            Tracking ID: {request.reverse_tracking_number || request.shiprocket_awb}
+                          </Text>
+                        ) : (
+                          <Text className="text-sm text-amber-700">
+                            Vendor has not added return tracking yet
+                          </Text>
+                        )}
+                        {request.reverse_tracking_url ? (
+                          <Text className="text-sm text-ui-fg-subtle">
+                            Tracking URL:{" "}
+                            <a
+                              href={request.reverse_tracking_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="underline"
+                            >
+                              Open link
+                            </a>
+                          </Text>
+                        ) : null}
+                        {request.reverse_label_url ? (
+                          <Text className="text-sm text-ui-fg-subtle">
+                            Label:{" "}
+                            <a
+                              href={request.reverse_label_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="underline"
+                            >
+                              Open label
+                            </a>
+                          </Text>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {!request.shipping_method && request.shiprocket_awb ? (
                       <Text className="text-sm text-ui-fg-subtle">
                         AWB: {request.shiprocket_awb} ({request.shiprocket_status || "pending"})
                       </Text>
-                    )}
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button

@@ -31,12 +31,7 @@ const formatDate = (value?: string | Date | null) => {
   })
 }
 
-function loadOwegLogoDataUri(): string | null {
-  const candidates = [
-    path.join(process.cwd(), "assets", "oweg_logo.png"),
-    path.join(process.cwd(), "my-medusa-store", "assets", "oweg_logo.png"),
-    path.join(__dirname, "../../assets/oweg_logo.png"),
-  ]
+function loadPngDataUri(candidates: string[]): string | null {
   for (const file of candidates) {
     try {
       if (fs.existsSync(file)) {
@@ -50,16 +45,29 @@ function loadOwegLogoDataUri(): string | null {
   return null
 }
 
+/** Wordmark only: vendor-portal/public/Oweg.png */
+function loadOwegWordmarkDataUri(): string | null {
+  return loadPngDataUri([
+    path.join(process.cwd(), "assets", "Oweg.png"),
+    path.join(process.cwd(), "my-medusa-store", "assets", "Oweg.png"),
+    path.join(process.cwd(), "..", "vendor-portal", "public", "Oweg.png"),
+    path.join(process.cwd(), "vendor-portal", "public", "Oweg.png"),
+    path.join(__dirname, "../../assets/Oweg.png"),
+    path.join(__dirname, "../../../vendor-portal/public/Oweg.png"),
+  ])
+}
+
 function sellerProfile() {
   return {
     brand: process.env.INVOICE_SELLER_BRAND || "OWEG",
-    legal: process.env.INVOICE_SELLER_LEGAL || "Ascent Retechno India Pvt Ltd",
+    legal:
+      process.env.INVOICE_SELLER_LEGAL || "Ascent Retechno India Private Limited",
     address:
       process.env.INVOICE_SELLER_ADDRESS ||
       "AV SIGNATURE RESIDENCY, NH-57 SHOP NO 001, A BLOCK, BASUDEVPUR DARBHANGA, BIHAR - 846005",
     gst: process.env.INVOICE_SELLER_GST || "10AAWCA5289L1Z3",
-    phone: process.env.INVOICE_SELLER_PHONE || "8956085313",
-    email: process.env.INVOICE_SELLER_EMAIL || "support@oweg.in",
+    phone: process.env.INVOICE_SELLER_PHONE || "+91 8956085313",
+    email: process.env.INVOICE_SELLER_EMAIL || "darbhanga@oweg.in",
   }
 }
 
@@ -74,20 +82,32 @@ function resolvePaymentMethod(order: any): string {
   return raw ? raw : "Prepaid"
 }
 
-function addressLines(address: any): string[] {
+function personName(address: any, fallback?: string | null): string {
+  const fromAddr = `${address?.first_name || ""} ${address?.last_name || ""}`.trim()
+  return fromAddr || String(fallback || "").trim() || "Customer"
+}
+
+function addressBodyLines(address: any): string[] {
   if (!address) return []
   return [
-    `${address.first_name || ""} ${address.last_name || ""}`.trim(),
     address.company,
     address.address_1,
     address.address_2,
-    [address.city, address.postal_code].filter(Boolean).join(" "),
+    [address.city, address.postal_code].filter(Boolean).join(", "),
     address.province,
     String(address.country_code || "IN").toUpperCase() === "IN"
       ? "India"
       : address.country_code,
-    address.phone ? `Phone: ${address.phone}` : null,
   ].filter(Boolean) as string[]
+}
+
+function normalizePhone(raw?: string | null): string {
+  if (!raw) return "Not Provided"
+  const digits = String(raw).replace(/\D/g, "")
+  if (!digits) return "Not Provided"
+  if (digits.length === 10) return `+91 ${digits}`
+  if (digits.length > 10 && digits.startsWith("91")) return `+${digits}`
+  return String(raw).trim()
 }
 
 function shortSku(raw: string): string {
@@ -97,12 +117,31 @@ function shortSku(raw: string): string {
   return `…${s.slice(-14)}`
 }
 
+function resolveShippingInclusive(order: any): number {
+  const candidates = [
+    order?.shipping_total,
+    order?.shipping_amount,
+    order?.shipping_fee,
+    order?.summary?.shipping_total,
+    order?.summary?.original_shipping_total,
+    order?.metadata?.shipping_total,
+    order?.metadata?.shipping_amount,
+  ]
+  for (const raw of candidates) {
+    const n = Number(raw)
+    if (Number.isFinite(n) && n >= 0) return Math.round(n * 100) / 100
+  }
+  return 0
+}
+
+const DEFAULT_SHIPPING_GST_RATE = 18
+
 export const generateInvoice = async (order: any) => {
   const { renderToBuffer, Document, Page, Text, View, StyleSheet, Image } =
     await import("@react-pdf/renderer")
 
   const seller = sellerProfile()
-  const logo = loadOwegLogoDataUri()
+  const logoWordmark = loadOwegWordmarkDataUri()
   const billTo = order.billing_address || order.shipping_address || {}
   const shipTo = order.shipping_address || order.billing_address || {}
   const items = Array.isArray(order.items) ? order.items : []
@@ -112,6 +151,16 @@ export const generateInvoice = async (order: any) => {
     const unit = getItemUnitPrice(item)
     const skuRaw =
       item.variant_sku || item.variant?.sku || item.sku || item.product_id || "—"
+    const itemMeta = item.metadata || {}
+    const productMeta =
+      item.product?.metadata || item.variant?.product?.metadata || {}
+    // Merge so vendor product GST settings are available for rate resolution
+    const metadata = {
+      ...productMeta,
+      ...itemMeta,
+      gst_rate: itemMeta.gst_rate ?? productMeta.gst_rate,
+      tax_code: itemMeta.tax_code ?? productMeta.tax_code,
+    }
     return {
       id: item.id,
       title: String(item.title || "Item"),
@@ -119,20 +168,18 @@ export const generateInvoice = async (order: any) => {
       qty,
       unit,
       lineTotal: unit * qty,
-      metadata: item.metadata || {},
+      metadata,
     }
   })
 
   const subtotal =
     order.subtotal != null
       ? Number(order.subtotal)
-      : lineRows.reduce((s: any, r: any) => s + r.lineTotal, 0)
-  const shipping = Number(order.shipping_total || order.shipping_amount || 0) || 0
-  const medusaTax = Number(order.tax_total || 0) || 0
-  const total =
-    order.total != null ? Number(order.total) : subtotal + shipping + medusaTax
+      : lineRows.reduce((s: number, r: any) => s + r.lineTotal, 0)
 
-  // GST-inclusive breakdown (vendor tax code) — after coin/promo discount
+  // Free shipping → show 0 (always include Shipping Charges row)
+  const shippingInclusive = resolveShippingInclusive(order)
+
   const discountInfo = resolveOrderGstDiscountRupees(
     (order.metadata || {}) as Record<string, unknown>,
     order.discount_total ?? order.summary?.discount_total
@@ -142,8 +189,9 @@ export const generateInvoice = async (order: any) => {
     discountInfo.total
   )
 
-  const gstLines: OrderGstLine[] = lineRows.map((row: any, index: number) => {
+  const productGstLines: OrderGstLine[] = lineRows.map((row: any, index: number) => {
     const meta = row.metadata || {}
+    // Use vendor-set product GST only — never invent a default 18%
     const rate =
       parseGstRate(meta.gst_rate) ??
       parseGstRate(meta.tax_code) ??
@@ -159,12 +207,40 @@ export const generateInvoice = async (order: any) => {
       item_id: row.id,
       title: row.title,
       quantity: row.qty,
+      sku: row.sku,
       gross_inclusive: grossInclusive,
       discount,
       ...breakdown,
     }
   })
-  const gstSummary = summarizeOrderGst(gstLines, { discount: discountInfo.total })
+
+  const shippingBreakdown =
+    shippingInclusive > 0
+      ? breakdownInclusiveGst(shippingInclusive, DEFAULT_SHIPPING_GST_RATE, null)
+      : {
+          inclusive: 0,
+          taxable: 0,
+          gst: 0,
+          cgst: 0,
+          sgst: 0,
+          igst: 0,
+          rate: DEFAULT_SHIPPING_GST_RATE,
+          tax_code: null as string | null,
+        }
+
+  const productSummary = summarizeOrderGst(productGstLines, {
+    discount: discountInfo.total,
+  })
+
+  const grandTaxable =
+    Math.round(((productSummary?.taxable || 0) + shippingBreakdown.taxable) * 100) / 100
+  const grandGst =
+    Math.round(((productSummary?.gst || 0) + shippingBreakdown.gst) * 100) / 100
+  const productInclusiveNet = Math.round(
+    (subtotal - (discountInfo.total || 0)) * 100
+  ) / 100
+  const grandTotal =
+    Math.round((productInclusiveNet + shippingInclusive) * 100) / 100
 
   const invoiceNo =
     order.invoice_number ||
@@ -175,26 +251,30 @@ export const generateInvoice = async (order: any) => {
     order.customer?.gst_number ||
     order.metadata?.customer_gstin ||
     null
-  const customerBusiness =
-    order.customer_business_name || order.customer?.company_name || null
+  const customerEmail = order.email || billTo.email || shipTo.email || null
+  const billPhone = normalizePhone(billTo.phone || shipTo.phone || order.phone)
+  const shipPhone = normalizePhone(shipTo.phone || billTo.phone || order.phone)
   const paymentMethod = resolvePaymentMethod(order)
+  const placeOfSupply = shipTo.province || billTo.province || "India"
 
-  // Fixed column widths (points) — more reliable than % on Text nodes
+  // Columns aligned to PPT: Product | Sku | Qty | Taxable | Gst Rate | Gst Amt | Total
   const COL = {
-    desc: 200,
-    sku: 95,
-    qty: 40,
-    price: 90,
-    total: 90,
+    desc: 130,
+    sku: 70,
+    qty: 36,
+    taxable: 72,
+    rate: 52,
+    gst: 68,
+    total: 72,
   }
 
   const styles = StyleSheet.create({
     page: {
       flexDirection: "column",
       backgroundColor: "#FFFFFF",
-      paddingTop: 28,
+      paddingTop: 24,
       paddingBottom: 40,
-      paddingHorizontal: 28,
+      paddingHorizontal: 24,
       fontFamily: "Helvetica",
       fontSize: 9,
       color: "#111111",
@@ -203,13 +283,13 @@ export const generateInvoice = async (order: any) => {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "flex-start",
-      marginBottom: 14,
+      marginBottom: 12,
       borderBottomWidth: 1.5,
       borderBottomColor: "#1B7A4E",
-      paddingBottom: 12,
+      paddingBottom: 10,
     },
     brandLeft: { flexDirection: "row", alignItems: "center", maxWidth: 320 },
-    logo: { width: 40, height: 40, marginRight: 10 },
+    logoWordmark: { width: 96, height: 28, marginRight: 10 },
     brandName: {
       fontSize: 18,
       fontFamily: "Helvetica-Bold",
@@ -217,21 +297,22 @@ export const generateInvoice = async (order: any) => {
     },
     brandSub: { fontSize: 8, color: "#666666", marginTop: 2 },
     docTitle: {
-      fontSize: 16,
+      fontSize: 14,
       fontFamily: "Helvetica-Bold",
       textAlign: "right",
     },
     docMeta: { fontSize: 8, color: "#555555", textAlign: "right", marginTop: 2 },
-    twoCol: {
+    threeCol: {
       flexDirection: "row",
       justifyContent: "space-between",
-      marginBottom: 12,
+      marginBottom: 10,
+      gap: 8,
     },
-    col: { width: "48%" },
+    col: { width: "32%" },
     sectionTitle: {
       fontSize: 9,
       fontFamily: "Helvetica-Bold",
-      marginBottom: 5,
+      marginBottom: 4,
       color: "#1B7A4E",
     },
     line: { fontSize: 8, marginBottom: 2, color: "#222222" },
@@ -241,10 +322,14 @@ export const generateInvoice = async (order: any) => {
       borderWidth: 1,
       borderColor: "#D7E5DC",
       padding: 8,
+      marginBottom: 10,
     },
-    metaRow: {
+    metaGrid: {
       flexDirection: "row",
-      justifyContent: "space-between",
+      flexWrap: "wrap",
+    },
+    metaItem: {
+      width: "50%",
       marginBottom: 3,
     },
     table: {
@@ -266,22 +351,22 @@ export const generateInvoice = async (order: any) => {
       minHeight: 26,
     },
     cell: {
-      paddingVertical: 6,
-      paddingHorizontal: 5,
+      paddingVertical: 5,
+      paddingHorizontal: 3,
       justifyContent: "center",
     },
     thText: {
       color: "#FFFFFF",
-      fontSize: 8,
+      fontSize: 7,
       fontFamily: "Helvetica-Bold",
     },
-    tdText: { fontSize: 8, color: "#222222" },
+    tdText: { fontSize: 7.5, color: "#222222" },
     left: { textAlign: "left" },
     right: { textAlign: "right" },
     center: { textAlign: "center" },
-    totalsWrap: { marginTop: 12, alignItems: "flex-end" },
+    totalsWrap: { marginTop: 10, alignItems: "flex-end" },
     totalsBox: {
-      width: 220,
+      width: 230,
       borderWidth: 1,
       borderColor: "#D7E5DC",
       backgroundColor: "#F5F8F6",
@@ -303,8 +388,8 @@ export const generateInvoice = async (order: any) => {
     footer: {
       position: "absolute",
       bottom: 16,
-      left: 28,
-      right: 28,
+      left: 24,
+      right: 24,
       borderTopWidth: 1,
       borderTopColor: "#EEEEEE",
       paddingTop: 6,
@@ -348,183 +433,212 @@ export const generateInvoice = async (order: any) => {
     </View>
   )
 
+  const PartyBlock = ({
+    title,
+    name,
+    address,
+    gst,
+    phone,
+    email,
+  }: {
+    title: string
+    name: string
+    address: any
+    gst: string
+    phone: string
+    email: string
+  }) => (
+    <View style={styles.col}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={{ ...styles.line, fontFamily: "Helvetica-Bold" }}>{name}</Text>
+      {addressBodyLines(address).map((line, idx) => (
+        <Text key={`${title}-${idx}`} style={styles.line}>
+          {line}
+        </Text>
+      ))}
+      <Text style={styles.line}>GST No: {gst}</Text>
+      <Text style={styles.muted}>Mobile No.: {phone}</Text>
+      <Text style={styles.muted}>Email Id.: {email}</Text>
+    </View>
+  )
+
   const InvoiceDocument = () => (
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.brandRow}>
           <View style={styles.brandLeft}>
-            {logo ? <Image src={logo} style={styles.logo} /> : null}
-            <View>
+            {logoWordmark ? (
+              <Image src={logoWordmark} style={styles.logoWordmark} />
+            ) : (
               <Text style={styles.brandName}>{seller.brand}</Text>
+            )}
+            <View>
               <Text style={styles.brandSub}>{seller.legal}</Text>
               <Text style={styles.brandSub}>Tax Invoice / Bill of Supply</Text>
             </View>
           </View>
           <View>
-            <Text style={styles.docTitle}>INVOICE</Text>
-            <Text style={styles.docMeta}>Invoice No. {invoiceNo}</Text>
-            <Text style={styles.docMeta}>Order ID: {String(orderId)}</Text>
-            <Text style={styles.docMeta}>Date: {formatDate(order.created_at)}</Text>
+            <Text style={styles.docTitle}>Tax Invoice/Bill of Supply</Text>
+            <Text style={styles.docMeta}>Invoice No.: {invoiceNo}</Text>
+            <Text style={styles.docMeta}>Order Id.: {String(orderId)}</Text>
+            <Text style={styles.docMeta}>
+              Order Date – {formatDate(order.created_at)}
+            </Text>
           </View>
         </View>
 
-        <View style={styles.twoCol}>
+        <View style={styles.threeCol}>
           <View style={styles.col}>
             <Text style={styles.sectionTitle}>Sold By</Text>
             <Text style={{ ...styles.line, fontFamily: "Helvetica-Bold" }}>
-              {seller.brand}
+              {seller.legal}
             </Text>
-            <Text style={styles.line}>{seller.legal}</Text>
             <Text style={styles.line}>{seller.address}</Text>
-            <Text style={styles.line}>GSTIN: {seller.gst}</Text>
-            <Text style={styles.muted}>Telephone: {seller.phone}</Text>
-            <Text style={styles.muted}>E-Mail: {seller.email}</Text>
+            <Text style={styles.line}>GST No: {seller.gst}</Text>
+            <Text style={styles.muted}>Mobile No.: {seller.phone}</Text>
+            <Text style={styles.muted}>Email Id.: {seller.email}</Text>
           </View>
-          <View style={styles.col}>
-            <Text style={styles.sectionTitle}>Bill To</Text>
-            {addressLines(billTo).map((line, idx) => (
-              <Text key={`b-${idx}`} style={styles.line}>
-                {line}
-              </Text>
-            ))}
-            {order.email ? (
-              <Text style={styles.muted}>Email: {order.email}</Text>
-            ) : null}
-            {customerBusiness ? (
-              <Text style={styles.line}>Business: {customerBusiness}</Text>
-            ) : null}
-            {customerGst ? (
-              <Text style={{ ...styles.line, fontFamily: "Helvetica-Bold" }}>
-                Customer GSTIN: {customerGst}
-              </Text>
-            ) : (
-              <Text style={styles.muted}>Customer GSTIN: Not provided</Text>
-            )}
-          </View>
+          <PartyBlock
+            title="Bill to"
+            name={personName(billTo, customerEmail)}
+            address={billTo}
+            gst={customerGst || "Not Provided"}
+            phone={billPhone}
+            email={customerEmail || "Not Provided"}
+          />
+          <PartyBlock
+            title="Ship to"
+            name={personName(shipTo, customerEmail)}
+            address={shipTo}
+            gst={customerGst || "Not Provided"}
+            phone={shipPhone}
+            email={customerEmail || "Not Provided"}
+          />
         </View>
 
-        <View style={styles.twoCol}>
-          <View style={styles.col}>
-            <Text style={styles.sectionTitle}>Ship To</Text>
-            {addressLines(shipTo).map((line, idx) => (
-              <Text key={`s-${idx}`} style={styles.line}>
-                {line}
+        <View style={styles.metaBox}>
+          <View style={styles.metaGrid}>
+            <View style={styles.metaItem}>
+              <Text style={styles.muted}>Payment Method – {paymentMethod}</Text>
+            </View>
+            <View style={styles.metaItem}>
+              <Text style={styles.muted}>Place of Supply - {placeOfSupply}</Text>
+            </View>
+            <View style={styles.metaItem}>
+              <Text style={styles.muted}>Order Id.: {String(orderId)}</Text>
+            </View>
+            <View style={styles.metaItem}>
+              <Text style={styles.muted}>Invoice No.: {invoiceNo}</Text>
+            </View>
+            <View style={styles.metaItem}>
+              <Text style={styles.muted}>
+                Order Date – {formatDate(order.created_at)}
               </Text>
-            ))}
-          </View>
-          <View style={styles.col}>
-            <View style={styles.metaBox}>
-              <View style={styles.metaRow}>
-                <Text style={styles.muted}>Payment Method</Text>
-                <Text style={styles.line}>{paymentMethod}</Text>
-              </View>
-              <View style={styles.metaRow}>
-                <Text style={styles.muted}>Order Date</Text>
-                <Text style={styles.line}>{formatDate(order.created_at)}</Text>
-              </View>
-              <View style={styles.metaRow}>
-                <Text style={styles.muted}>Place of supply</Text>
-                <Text style={styles.line}>
-                  {shipTo.province || billTo.province || "India"}
-                </Text>
-              </View>
             </View>
           </View>
         </View>
 
         <View style={styles.table}>
           <View style={styles.tableHeader}>
-            <HeaderCell width={COL.desc}>Product</HeaderCell>
-            <HeaderCell width={COL.sku}>SKU</HeaderCell>
+            <HeaderCell width={COL.desc}>Product Name</HeaderCell>
+            <HeaderCell width={COL.sku}>Sku.ID/Model</HeaderCell>
             <HeaderCell width={COL.qty} align="center">
-              Qty
+              Quantity
             </HeaderCell>
-            <HeaderCell width={COL.price} align="right">
-              Unit Price
+            <HeaderCell width={COL.taxable} align="right">
+              Taxable Value
+            </HeaderCell>
+            <HeaderCell width={COL.rate} align="center">
+              Gst. Rate
+            </HeaderCell>
+            <HeaderCell width={COL.gst} align="right">
+              Gst. Amount
             </HeaderCell>
             <HeaderCell width={COL.total} align="right">
               Total
             </HeaderCell>
           </View>
-          {lineRows.map((row: any) => (
-            <View key={row.id} style={styles.tableRow} wrap={false}>
+
+          {productGstLines.map((row) => (
+            <View key={row.item_id} style={styles.tableRow} wrap={false}>
               <DataCell width={COL.desc}>{row.title}</DataCell>
-              <DataCell width={COL.sku}>{row.sku}</DataCell>
+              <DataCell width={COL.sku}>{(row as any).sku || "—"}</DataCell>
               <DataCell width={COL.qty} align="center">
-                {row.qty}
+                {row.quantity}
               </DataCell>
-              <DataCell width={COL.price} align="right">
-                {formatMoney(row.unit)}
+              <DataCell width={COL.taxable} align="right">
+                {formatMoney(row.taxable)}
+              </DataCell>
+              <DataCell width={COL.rate} align="center">
+                {`${row.rate || 0}%`}
+              </DataCell>
+              <DataCell width={COL.gst} align="right">
+                {formatMoney(row.gst)}
               </DataCell>
               <DataCell width={COL.total} align="right">
-                {formatMoney(row.lineTotal)}
+                {formatMoney(row.inclusive)}
               </DataCell>
             </View>
           ))}
+
+          {/* Shipping Charges — always shown; 0 when free */}
+          <View style={styles.tableRow} wrap={false}>
+            <DataCell width={COL.desc}>Shipping Charges</DataCell>
+            <DataCell width={COL.sku}>Shipping</DataCell>
+            <DataCell width={COL.qty} align="center">
+              {shippingInclusive > 0 ? 1 : 0}
+            </DataCell>
+            <DataCell width={COL.taxable} align="right">
+              {formatMoney(shippingBreakdown.taxable)}
+            </DataCell>
+            <DataCell width={COL.rate} align="center">
+              {shippingInclusive > 0 ? `${DEFAULT_SHIPPING_GST_RATE}%` : "0%"}
+            </DataCell>
+            <DataCell width={COL.gst} align="right">
+              {formatMoney(shippingBreakdown.gst)}
+            </DataCell>
+            <DataCell width={COL.total} align="right">
+              {formatMoney(shippingInclusive)}
+            </DataCell>
+          </View>
         </View>
 
         <View style={styles.totalsWrap}>
           <View style={styles.totalsBox}>
             <View style={styles.totalRow}>
-              <Text style={styles.muted}>Sub-Total (incl. GST)</Text>
-              <Text style={styles.line}>{formatMoney(subtotal)}</Text>
+              <Text style={styles.muted}>Taxable value</Text>
+              <Text style={styles.line}>{formatMoney(grandTaxable)}</Text>
             </View>
-            {shipping > 0 ? (
-              <View style={styles.totalRow}>
-                <Text style={styles.muted}>Shipping Charges</Text>
-                <Text style={styles.line}>{formatMoney(shipping)}</Text>
-              </View>
-            ) : null}
-            {gstSummary && gstSummary.gst > 0 ? (
-              <>
-                <View style={styles.totalRow}>
-                  <Text style={styles.muted}>Taxable value</Text>
-                  <Text style={styles.line}>{formatMoney(gstSummary.taxable)}</Text>
-                </View>
-                <View style={styles.totalRow}>
-                  <Text style={styles.muted}>CGST (incl.)</Text>
-                  <Text style={styles.line}>{formatMoney(gstSummary.cgst)}</Text>
-                </View>
-                <View style={styles.totalRow}>
-                  <Text style={styles.muted}>SGST (incl.)</Text>
-                  <Text style={styles.line}>{formatMoney(gstSummary.sgst)}</Text>
-                </View>
-                <View style={styles.totalRow}>
-                  <Text style={styles.muted}>Total GST (incl.)</Text>
-                  <Text style={styles.line}>{formatMoney(gstSummary.gst)}</Text>
-                </View>
-              </>
-            ) : medusaTax > 0 ? (
-              <View style={styles.totalRow}>
-                <Text style={styles.muted}>Tax</Text>
-                <Text style={styles.line}>{formatMoney(medusaTax)}</Text>
-              </View>
-            ) : null}
+            <View style={styles.totalRow}>
+              <Text style={styles.muted}>GST Amount</Text>
+              <Text style={styles.line}>{formatMoney(grandGst)}</Text>
+            </View>
+            <View style={styles.totalRow}>
+              <Text style={styles.muted}>Shipping Charges</Text>
+              <Text style={styles.line}>{formatMoney(shippingInclusive)}</Text>
+            </View>
             <View style={styles.grandRow}>
               <Text style={{ fontSize: 10, fontFamily: "Helvetica-Bold" }}>
                 Total
               </Text>
               <Text style={{ fontSize: 10, fontFamily: "Helvetica-Bold" }}>
-                {formatMoney(total)}
+                {formatMoney(grandTotal)} Rs
               </Text>
             </View>
           </View>
         </View>
 
-        <View style={{ marginTop: 16 }}>
+        <View style={{ marginTop: 14 }}>
           <Text style={styles.sectionTitle}>Notes</Text>
           <Text style={styles.muted}>
             This is a computer-generated invoice from {seller.brand}. Sold by{" "}
-            {seller.brand} ({seller.legal}).
+            {seller.brand} ({seller.legal}). For support contact {seller.email}/{" "}
+            {seller.phone}.
           </Text>
-          {gstSummary && gstSummary.gst > 0 ? (
-            <Text style={styles.muted}>
-              Prices are GST-inclusive. Taxable value / CGST / SGST above are a
-              breakdown of GST already included in the product price.
-            </Text>
-          ) : null}
           <Text style={styles.muted}>
-            For support contact {seller.email} / {seller.phone}.
+            Prices are GST-inclusive. Taxable value / GST amount above are a
+            breakdown of GST already included in the product price. Free shipping
+            is shown as Rs. 0.00.
           </Text>
         </View>
 

@@ -3,16 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Text, clx } from "@medusajs/ui"
 import { useRouter } from "next/navigation"
-import { vendorPayoutsApi } from "@/lib/api/client"
+import { vendorPayoutsApi, vendorReturnsApi } from "@/lib/api/client"
 
 type VendorNotification = {
   id: string
   title: string
   body: string
-  amount: number
+  amount?: number
   createdAt: string
   href: string
-  kind: "credited" | "payout"
+  kind: "credited" | "payout" | "return"
 }
 
 const SEEN_KEY = "oweg_vendor_notif_seen_v2"
@@ -118,9 +118,10 @@ export default function VendorNotifications() {
     if (!localStorage.getItem("vendor_token")) return
 
     try {
-      const [summaryRes, listRes] = await Promise.all([
+      const [summaryRes, listRes, returnsRes] = await Promise.all([
         vendorPayoutsApi.summary().catch(() => null),
         vendorPayoutsApi.list().catch(() => null),
+        vendorReturnsApi.list().catch(() => null),
       ])
 
       const next: VendorNotification[] = []
@@ -161,6 +162,25 @@ export default function VendorNotifications() {
         })
       }
 
+      for (const request of returnsRes?.return_requests || []) {
+        if (String(request.status || "").toLowerCase() !== "pending_approval") continue
+        const orderLabel = request.order_display_id || String(request.order_id || "").slice(0, 8)
+        const customer =
+          request.customer_name || request.customer_email || "Customer"
+        const kindLabel =
+          String(request.type || "").toLowerCase() === "replacement"
+            ? "replacement"
+            : "return"
+        next.push({
+          id: `return:${request.id}`,
+          title: "Return requested",
+          body: `${customer} has opted for ${kindLabel} on order #${orderLabel} — waiting to confirm by admin`,
+          createdAt: request.created_at || request.updated_at || new Date().toISOString(),
+          href: "/returns",
+          kind: "return",
+        })
+      }
+
       next.sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       )
@@ -193,9 +213,12 @@ export default function VendorNotifications() {
       knownUnseenRef.current = new Set(unseen.map((item) => item.id))
 
       if (brandNew.length > 0) {
-        // Prefer payout notifications when admin just paid
-        const payoutToast = brandNew.find((item) => item.kind === "payout")
-        setToast(payoutToast || brandNew[0])
+        // Prefer payout / return alerts over older credit noise
+        const preferred =
+          brandNew.find((item) => item.kind === "payout") ||
+          brandNew.find((item) => item.kind === "return") ||
+          brandNew[0]
+        setToast(preferred)
       }
     } catch (error) {
       console.warn("Failed to load vendor notifications", error)
@@ -311,9 +334,15 @@ export default function VendorNotifications() {
                     <Text size="small" weight="plus">
                       {item.title}
                     </Text>
-                    <Text size="small" className="shrink-0 text-emerald-600 font-medium">
-                      +{formatCurrency(item.amount)}
-                    </Text>
+                    {typeof item.amount === "number" && item.amount > 0 ? (
+                      <Text size="small" className="shrink-0 text-emerald-600 font-medium">
+                        +{formatCurrency(item.amount)}
+                      </Text>
+                    ) : item.kind === "return" ? (
+                      <Text size="small" className="shrink-0 text-amber-600 font-medium">
+                        Pending
+                      </Text>
+                    ) : null}
                   </div>
                   <Text size="small" className="text-ui-fg-subtle">
                     {item.body}
@@ -326,7 +355,14 @@ export default function VendorNotifications() {
       ) : null}
 
       {toast ? (
-        <div className="fixed bottom-4 right-4 z-[60] w-[min(100vw-2rem,22rem)] rounded-xl border border-emerald-500/30 bg-ui-bg-component p-3 shadow-xl md:bottom-6 md:right-6">
+        <div
+          className={clx(
+            "fixed bottom-4 right-4 z-[60] w-[min(100vw-2rem,22rem)] rounded-xl border bg-ui-bg-component p-3 shadow-xl md:bottom-6 md:right-6",
+            toast.kind === "return"
+              ? "border-amber-500/30"
+              : "border-emerald-500/30"
+          )}
+        >
           <div className="flex items-start justify-between gap-3">
             <div>
               <Text size="small" weight="plus">
@@ -335,9 +371,15 @@ export default function VendorNotifications() {
               <Text size="small" className="mt-0.5 text-ui-fg-subtle">
                 {toast.body}
               </Text>
-              <Text size="small" className="mt-1 font-medium text-emerald-600">
-                +{formatCurrency(toast.amount)}
-              </Text>
+              {typeof toast.amount === "number" && toast.amount > 0 ? (
+                <Text size="small" className="mt-1 font-medium text-emerald-600">
+                  +{formatCurrency(toast.amount)}
+                </Text>
+              ) : toast.kind === "return" ? (
+                <Text size="small" className="mt-1 font-medium text-amber-600">
+                  Waiting for admin confirmation
+                </Text>
+              ) : null}
             </div>
             <button
               type="button"

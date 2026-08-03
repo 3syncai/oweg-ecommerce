@@ -1,5 +1,5 @@
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { CurrencyDollar } from "@medusajs/icons"
+import { CurrencyDollar, ChevronDownMini } from "@medusajs/icons"
 import {
   Container,
   Heading,
@@ -25,6 +25,19 @@ type Vendor = {
   is_approved: boolean
 }
 
+type PayableLineItem = {
+  id: string
+  order_id: string
+  order_display_id: string | null
+  product_name: string
+  type: "sales" | "claim"
+  order_amount: number
+  commission: number
+  tcs: number
+  tds: number
+  pay_amount: number
+}
+
 type PendingPayout = {
   vendor_id: string
   vendor_name: string
@@ -35,8 +48,115 @@ type PendingPayout = {
   commission_source?: "global" | "custom"
   order_count: number
   order_ids: string[]
+  line_items: PayableLineItem[]
   unlocking_balance?: number
   unlocking_count?: number
+}
+
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(amount)
+
+const PayableLinesDropdown = ({
+  payout,
+  open,
+  onToggle,
+}: {
+  payout: PendingPayout
+  open: boolean
+  onToggle: () => void
+}) => {
+  const lines = payout.line_items || []
+  const count = payout.order_count || lines.length
+
+  if (count <= 0) {
+    return <span className="text-ui-fg-muted">0</span>
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="inline-flex items-center gap-1.5 rounded-md border border-ui-border-base bg-ui-bg-base px-2 py-1 text-left transition-colors hover:bg-ui-bg-subtle"
+        aria-expanded={open}
+      >
+        <Badge color="blue">{count}</Badge>
+        <span className="text-xs text-ui-fg-subtle">View items</span>
+        <ChevronDownMini
+          className={`text-ui-fg-muted transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {open ? (
+        <div className="absolute left-0 z-30 mt-2 w-[min(28rem,calc(100vw-3rem))] overflow-hidden rounded-lg border border-ui-border-base bg-ui-bg-base shadow-elevation-flyout">
+          <div className="border-b border-ui-border-base bg-ui-bg-subtle px-3 py-2">
+            <Text size="small" weight="plus">
+              Paying for {count} item{count === 1 ? "" : "s"}
+            </Text>
+            <Text size="xsmall" className="text-ui-fg-muted">
+              Amount shown is what admin pays after deductions
+            </Text>
+          </div>
+          <div className="max-h-72 overflow-y-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="sticky top-0 bg-ui-bg-base">
+                <tr className="border-b border-ui-border-base text-xs text-ui-fg-muted">
+                  <th className="px-3 py-2 font-medium">Product</th>
+                  <th className="px-3 py-2 font-medium">Order</th>
+                  <th className="px-3 py-2 font-medium text-right">Pay</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((line) => {
+                  const orderLabel =
+                    line.type === "claim"
+                      ? line.order_display_id || "Claim"
+                      : `#${line.order_display_id || line.order_id.slice(0, 8)}`
+                  return (
+                    <tr
+                      key={line.id}
+                      className="border-b border-ui-border-base/60 last:border-0"
+                    >
+                      <td className="max-w-[12rem] px-3 py-2.5">
+                        <p className="truncate font-medium" title={line.product_name}>
+                          {line.product_name}
+                        </p>
+                        <p className="text-xs text-ui-fg-muted">
+                          {line.type === "claim" ? "Claim credit" : "Sale"}
+                          {line.commission > 0
+                            ? ` · −${formatCurrency(line.commission)} commission`
+                            : ""}
+                        </p>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-ui-fg-subtle">
+                        {orderLabel}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold text-green-600">
+                        {formatCurrency(line.pay_amount)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center justify-between border-t border-ui-border-base bg-ui-bg-subtle px-3 py-2">
+            <Text size="small" className="text-ui-fg-subtle">
+              Total to pay
+            </Text>
+            <Text size="small" weight="plus" className="text-green-600">
+              {formatCurrency(payout.net_amount)}
+            </Text>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 const VendorPayoutsPage = () => {
@@ -44,6 +164,7 @@ const VendorPayoutsPage = () => {
   const [pendingPayouts, setPendingPayouts] = useState<Record<string, PendingPayout>>({})
   const [loading, setLoading] = useState(true)
   const [processingVendor, setProcessingVendor] = useState<string | null>(null)
+  const [expandedVendorId, setExpandedVendorId] = useState<string | null>(null)
 
   const [payModalOpen, setPayModalOpen] = useState(false)
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null)
@@ -54,9 +175,21 @@ const VendorPayoutsPage = () => {
     loadData()
   }, [])
 
+  useEffect(() => {
+    if (!expandedVendorId) return
+    const onDocClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest?.("[data-payable-dropdown]")) return
+      setExpandedVendorId(null)
+    }
+    document.addEventListener("mousedown", onDocClick)
+    return () => document.removeEventListener("mousedown", onDocClick)
+  }, [expandedVendorId])
+
   const loadData = async () => {
     try {
       setLoading(true)
+      setExpandedVendorId(null)
 
       const vendorsRes = await fetch("/admin/vendors/all", {
         credentials: "include",
@@ -108,6 +241,9 @@ const VendorPayoutsPage = () => {
             commission_source: result.data.commission_source,
             order_count: result.data.order_count || 0,
             order_ids: result.data.order_ids || [],
+            line_items: Array.isArray(result.data.line_items)
+              ? result.data.line_items
+              : [],
             unlocking_balance: result.data.unlocking_balance || 0,
             unlocking_count: result.data.unlocking_count || 0,
           }
@@ -135,6 +271,7 @@ const VendorPayoutsPage = () => {
       )
       return
     }
+    setExpandedVendorId(null)
     setSelectedVendor(vendor)
     setTransactionId("")
     setRemark("")
@@ -203,14 +340,6 @@ const VendorPayoutsPage = () => {
     }
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      minimumFractionDigits: 0,
-    }).format(amount)
-  }
-
   const selectedPayout = selectedVendor
     ? pendingPayouts[selectedVendor.id]
     : null
@@ -227,19 +356,20 @@ const VendorPayoutsPage = () => {
 
   return (
     <Container>
-      <div className="flex items-center justify-between mb-2">
+      <div className="mb-2 flex items-center justify-between">
         <Heading level="h1">Vendor Payouts</Heading>
         <Button variant="secondary" size="small" onClick={loadData}>
           Refresh
         </Button>
       </div>
-      <p className="text-sm text-ui-fg-subtle mb-6">
+      <p className="mb-6 text-sm text-ui-fg-subtle">
         Pay only <strong>Available</strong> balance (after the 5-minute post-delivery
-        unlock). Unlocking amounts stay pending until the timer ends.
+        unlock). Unlocking amounts stay pending until the timer ends. Open{" "}
+        <strong>Payable orders</strong> to see each product and pay amount.
       </p>
 
       {vendors.length === 0 ? (
-        <div className="text-center py-12">
+        <div className="py-12 text-center">
           <p className="text-gray-500">No approved vendors found</p>
         </div>
       ) : (
@@ -286,7 +416,17 @@ const VendorPayoutsPage = () => {
                   </Table.Cell>
                   <Table.Cell>
                     {payout ? (
-                      <Badge color="blue">{payout.order_count}</Badge>
+                      <div data-payable-dropdown>
+                        <PayableLinesDropdown
+                          payout={payout}
+                          open={expandedVendorId === vendor.id}
+                          onToggle={() =>
+                            setExpandedVendorId((current) =>
+                              current === vendor.id ? null : vendor.id
+                            )
+                          }
+                        />
+                      </div>
                     ) : (
                       <span className="text-gray-400">0</span>
                     )}
@@ -294,7 +434,7 @@ const VendorPayoutsPage = () => {
                   <Table.Cell>
                     {unlockingBal > 0 ? (
                       <div className="text-sm">
-                        <span className="text-amber-600 font-medium">
+                        <span className="font-medium text-amber-600">
                           {formatCurrency(unlockingBal)}
                         </span>
                         <p className="text-xs text-gray-500">
@@ -309,7 +449,7 @@ const VendorPayoutsPage = () => {
                     {payout ? (
                       <span className="text-sm">
                         {formatCurrency(payout.commission)}
-                        <span className="text-xs text-gray-500 ml-1">
+                        <span className="ml-1 text-xs text-gray-500">
                           ({payout.commission_rate}%{" "}
                           {payout.commission_source === "custom"
                             ? "custom"
@@ -358,24 +498,24 @@ const VendorPayoutsPage = () => {
           onClick={closePayModal}
         >
           <div
-            className="w-full max-w-lg rounded-lg border border-ui-border-base bg-ui-bg-base shadow-elevation-modal"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg border border-ui-border-base bg-ui-bg-base shadow-elevation-modal"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="border-b border-ui-border-base px-5 py-4">
               <Heading level="h2">Confirm payout</Heading>
-              <Text size="small" className="text-ui-fg-subtle mt-1">
-                Review details, then add transaction ID and remark.
+              <Text size="small" className="mt-1 text-ui-fg-subtle">
+                Review products and amounts, then add transaction ID and remark.
               </Text>
             </div>
 
             <div className="flex flex-col gap-4 px-5 py-4">
-              <div className="rounded-md border border-ui-border-base bg-ui-bg-subtle p-3 text-sm space-y-2">
+              <div className="space-y-2 rounded-md border border-ui-border-base bg-ui-bg-subtle p-3 text-sm">
                 <div className="flex justify-between gap-3">
                   <span className="text-ui-fg-subtle">Vendor</span>
-                  <span className="font-medium text-right">
+                  <span className="text-right font-medium">
                     {selectedPayout.vendor_name || selectedVendor.name}
                     <br />
-                    <span className="text-xs text-ui-fg-muted font-normal">
+                    <span className="text-xs font-normal text-ui-fg-muted">
                       {selectedVendor.email}
                     </span>
                   </span>
@@ -415,6 +555,47 @@ const VendorPayoutsPage = () => {
                   </span>
                 </div>
               </div>
+
+              {(selectedPayout.line_items?.length || 0) > 0 ? (
+                <div className="overflow-hidden rounded-md border border-ui-border-base">
+                  <div className="border-b border-ui-border-base bg-ui-bg-subtle px-3 py-2">
+                    <Text size="small" weight="plus">
+                      Products in this payout
+                    </Text>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-ui-border-base text-xs text-ui-fg-muted">
+                          <th className="px-3 py-2 font-medium">Product</th>
+                          <th className="px-3 py-2 font-medium">Order</th>
+                          <th className="px-3 py-2 text-right font-medium">Pay</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedPayout.line_items.map((line) => (
+                          <tr
+                            key={line.id}
+                            className="border-b border-ui-border-base/60 last:border-0"
+                          >
+                            <td className="max-w-[11rem] truncate px-3 py-2 font-medium">
+                              {line.product_name}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2 text-ui-fg-subtle">
+                              {line.type === "claim"
+                                ? "Claim"
+                                : `#${line.order_display_id || line.order_id.slice(0, 8)}`}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-green-600">
+                              {formatCurrency(line.pay_amount)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="flex flex-col gap-2">
                 <Label htmlFor="payout-txn-id">Transaction ID</Label>

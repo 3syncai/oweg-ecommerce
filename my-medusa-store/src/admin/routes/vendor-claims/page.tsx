@@ -34,6 +34,7 @@ type VendorReport = {
   image_urls?: string[] | null
   status: string
   admin_notes?: string | null
+  approved_amount?: number | null
   created_at?: string
   updated_at?: string
 }
@@ -44,6 +45,9 @@ const STATUS_OPTIONS = [
   { value: "resolved", label: "Resolved" },
   { value: "closed", label: "Closed" },
 ]
+
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(amount)
 
 const statusColor = (status: string) => {
   switch (status) {
@@ -81,6 +85,7 @@ const VendorReportsAdminPage = () => {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [draftStatus, setDraftStatus] = useState("open")
   const [draftNotes, setDraftNotes] = useState("")
+  const [draftAmount, setDraftAmount] = useState("")
   const [saving, setSaving] = useState(false)
 
   const loadReports = async () => {
@@ -98,7 +103,7 @@ const VendorReportsAdminPage = () => {
         setSelectedId(null)
       }
     } catch (e: any) {
-      const msg = e?.message || "Failed to load reports"
+      const msg = e?.message || "Failed to load vendor claims"
       setError(msg)
       toast.error("Error", { description: msg })
     } finally {
@@ -125,12 +130,31 @@ const VendorReportsAdminPage = () => {
     if (!selected) return
     setDraftStatus(selected.status || "open")
     setDraftNotes(selected.admin_notes || "")
+    setDraftAmount(
+      selected.approved_amount != null && Number(selected.approved_amount) > 0
+        ? String(selected.approved_amount)
+        : ""
+    )
   }, [selected])
 
   const saveStatus = async () => {
     if (!selected) return
     setSaving(true)
     try {
+      const amountTrim = draftAmount.trim()
+      const approvedAmount =
+        amountTrim === "" ? null : Number(amountTrim)
+      if (amountTrim !== "" && (!Number.isFinite(approvedAmount) || (approvedAmount as number) < 0)) {
+        throw new Error("Enter a valid claim amount (₹)")
+      }
+      if (
+        (draftStatus === "resolved" || draftStatus === "closed") &&
+        approvedAmount != null &&
+        approvedAmount > 0
+      ) {
+        // approved with payout
+      }
+
       const res = await fetch(`/admin/vendor-reports/${selected.id}`, {
         method: "POST",
         credentials: "include",
@@ -138,13 +162,20 @@ const VendorReportsAdminPage = () => {
         body: JSON.stringify({
           status: draftStatus,
           admin_notes: draftNotes || null,
+          approved_amount: approvedAmount,
         }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         throw new Error(body?.message || `Update failed: ${res.status}`)
       }
-      toast.success("Updated", { description: "Report status saved" })
+      const data = await res.json().catch(() => ({}))
+      const credited = data?.claim_credit?.credited
+      toast.success("Updated", {
+        description: credited
+          ? `Claim saved · ₹${Number(data.claim_credit.net_amount).toFixed(2)} added to vendor pending payment`
+          : "Claim status saved",
+      })
       await loadReports()
     } catch (e: any) {
       toast.error("Error", { description: e?.message || "Failed to update" })
@@ -158,10 +189,10 @@ const VendorReportsAdminPage = () => {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <Heading level="h1" className="mb-1 text-2xl font-semibold">
-            Vendor Reports
+            Vendor Claims
           </Heading>
           <Text className="text-ui-fg-subtle">
-            Issue tickets raised by vendors on return / order problems
+            Claims raised by vendors for lost / wrong return items and order problems
           </Text>
         </div>
         <Button variant="secondary" onClick={() => void loadReports()} disabled={loading}>
@@ -190,16 +221,16 @@ const VendorReportsAdminPage = () => {
             ))}
           </Select.Content>
         </Select>
-        <Text className="text-sm text-ui-fg-subtle">{filtered.length} reports</Text>
+        <Text className="text-sm text-ui-fg-subtle">{filtered.length} claims</Text>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
         <div className="space-y-3">
           {loading ? (
-            <Text className="text-ui-fg-subtle">Loading reports…</Text>
+            <Text className="text-ui-fg-subtle">Loading claims…</Text>
           ) : filtered.length === 0 ? (
             <div className="rounded-lg border border-ui-border-base p-6">
-              <Text className="text-ui-fg-subtle">No vendor reports yet.</Text>
+              <Text className="text-ui-fg-subtle">No vendor claims yet.</Text>
             </div>
           ) : (
             filtered.map((report) => (
@@ -220,6 +251,11 @@ const VendorReportsAdminPage = () => {
                       {report.vendor_name || report.vendor_id} · Order #
                       {report.order_display_id || report.order_id.slice(-6)}
                     </Text>
+                    {report.approved_amount != null && Number(report.approved_amount) > 0 ? (
+                      <Text className="text-sm font-medium text-emerald-600">
+                        Claim {formatCurrency(Number(report.approved_amount))}
+                      </Text>
+                    ) : null}
                   </div>
                   <Badge color={statusColor(report.status) as any}>
                     {(report.status || "open").replace(/_/g, " ")}
@@ -236,7 +272,7 @@ const VendorReportsAdminPage = () => {
 
         <div className="rounded-lg border border-ui-border-base p-5">
           {!selected ? (
-            <Text className="text-ui-fg-subtle">Select a report to view details</Text>
+            <Text className="text-ui-fg-subtle">Select a claim to view details</Text>
           ) : (
             <div className="space-y-4">
               <div>
@@ -321,6 +357,22 @@ const VendorReportsAdminPage = () => {
                     ))}
                   </Select.Content>
                 </Select>
+
+                <Label>Approved claim amount (₹)</Label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={draftAmount}
+                  onChange={(e) => setDraftAmount(e.target.value)}
+                  placeholder="e.g. half product value"
+                  className="h-10 w-full rounded-md border border-ui-border-base bg-ui-bg-field px-3 text-sm outline-none focus:border-ui-border-interactive"
+                />
+                <Text className="text-xs text-ui-fg-muted">
+                  On Resolved / Closed with amount &gt; 0, this is added to the vendor’s Pending
+                  Payment (Vendor Payouts) and shown on their Claims &amp; Payments ledger.
+                </Text>
+
                 <Label>Admin notes</Label>
                 <Textarea
                   rows={4}
@@ -341,7 +393,7 @@ const VendorReportsAdminPage = () => {
 }
 
 export const config = defineRouteConfig({
-  label: "Reports",
+  label: "Vendor Claims",
   icon: DocumentText,
 })
 

@@ -1,4 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { Pool } from "pg"
 import {
   allocateDiscountAcrossLines,
   breakdownInclusiveGst,
@@ -8,6 +9,14 @@ import {
   type OrderGstLine,
 } from "../../../../../lib/gst-inclusive"
 import { getItemUnits, getItemUnitPrice } from "../../../../../lib/vendor-order-workflow"
+import {
+  getVendorCommissionDefaultRate,
+  resolveVendorCommissionRate,
+} from "../../../../../lib/vendor-commission"
+import {
+  calculateMarketplaceSettlementFromLines,
+  getMarketplaceTaxRates,
+} from "../../../../../lib/vendor-marketplace-tax"
 
 /**
  * GET /admin/orders/:id/gst-breakdown
@@ -92,6 +101,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       const qty = getItemUnits(item)
       const unit = getItemUnitPrice(item)
       const grossInclusive = unit * qty
+      const vendorId = String(productMeta.vendor_id || "").trim() || null
 
       return {
         item,
@@ -99,6 +109,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         rate,
         qty,
         grossInclusive,
+        vendorId,
       }
     })
 
@@ -129,6 +140,83 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const summary = summarizeOrderGst(lines, { discount: discountInfo.total })
     const cached = (order.metadata as any)?.gst_inclusive_summary || null
 
+    // Marketplace vendor settlement preview (TCS/TDS) — not charged to the customer.
+    let vendor_settlement: Record<string, unknown> | null = null
+    const pool = process.env.DATABASE_URL
+      ? new Pool({ connectionString: process.env.DATABASE_URL })
+      : null
+
+    try {
+      if (pool) {
+        const vendorIds = Array.from(
+          new Set(prepared.map((row) => row.vendorId).filter(Boolean) as string[])
+        )
+        const primaryVendorId = vendorIds[0] || null
+        const taxRates = await getMarketplaceTaxRates(pool)
+        const globalCommission = await getVendorCommissionDefaultRate(pool)
+
+        let commissionRate = globalCommission
+        let vendorLabel: string | null = null
+
+        if (primaryVendorId) {
+          const vendorResult = await pool.query<{
+            name: string | null
+            store_name: string | null
+            commission_rate: string | number | null
+            commission_override: boolean | null
+          }>(
+            `SELECT name, store_name, commission_rate, commission_override
+             FROM vendor WHERE id = $1 LIMIT 1`,
+            [primaryVendorId]
+          )
+          const vendor = vendorResult.rows[0]
+          if (vendor) {
+            vendorLabel = vendor.store_name || vendor.name || primaryVendorId
+            commissionRate = resolveVendorCommissionRate(
+              {
+                commission_rate:
+                  vendor.commission_rate == null
+                    ? null
+                    : Number(vendor.commission_rate),
+                commission_override: vendor.commission_override === true,
+              },
+              globalCommission
+            ).rate
+          }
+        }
+
+        const settlementLines = prepared.map((row, index) => {
+          const discount = discountShares[index] || 0
+          return {
+            inclusive_amount: Math.max(0, row.grossInclusive - discount),
+            gst_rate: row.rate,
+          }
+        })
+
+        const settlement = calculateMarketplaceSettlementFromLines(
+          settlementLines,
+          {
+            commission_rate: commissionRate,
+            tcs_rate: taxRates.tcs_rate,
+            tds_rate: taxRates.tds_rate,
+          }
+        )
+
+        vendor_settlement = {
+          ...settlement,
+          vendor_id: primaryVendorId,
+          vendor_name: vendorLabel,
+          vendor_count: vendorIds.length,
+          note:
+            "Vendor payout deductions on taxable value (Amazon/Flipkart style). Not added to the customer total.",
+        }
+      }
+    } catch (settlementError) {
+      console.warn("[admin gst-breakdown] vendor settlement skipped:", settlementError)
+    } finally {
+      await pool?.end().catch(() => {})
+    }
+
     return res.json({
       order_id: order.id,
       display_id: order.display_id,
@@ -136,6 +224,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       medusa_tax_total: 0,
       discount: discountInfo,
       summary,
+      vendor_settlement,
       cached_summary: cached,
     })
   } catch (error: any) {

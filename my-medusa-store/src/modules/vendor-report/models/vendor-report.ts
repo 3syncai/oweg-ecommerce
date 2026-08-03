@@ -14,6 +14,8 @@ const VendorReport = model.define("vendor_report", {
   image_urls: model.json().nullable(),
   status: model.text().default("open"), // open | in_review | resolved | closed
   admin_notes: model.text().nullable(),
+  /** Partial settlement approved by admin (₹) — credited to vendor pending payment */
+  approved_amount: model.number().nullable(),
   resolved_at: model.dateTime().nullable(),
   resolved_by: model.text().nullable(),
   metadata: model.json().nullable(),

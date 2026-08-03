@@ -365,9 +365,9 @@ function buildDashboardData(input: {
     activity.push({
       id: `ticket-${ticket.id}`,
       kind: "tickets",
-      title: ticket.issue_title || "Report ticket",
+      title: ticket.issue_title || "Claim",
       description: `Order #${ticket.order_display_id || String(ticket.order_id).slice(-6)} · ${(ticket.status || "open").replace(/_/g, " ")}`,
-      href: "/reports",
+      href: "/claims",
       at: ticket.updated_at || ticket.created_at || new Date().toISOString(),
       variant: activityVariant(String(ticket.status || "open").toLowerCase()),
     })
@@ -410,8 +410,8 @@ function buildDashboardData(input: {
   }
   if (openTickets.length || inReviewTickets.length) {
     attention.push({
-      href: "/reports",
-      title: "Open report tickets",
+      href: "/claims",
+      title: "Open claims",
       detail: "Issues awaiting admin / your follow-up",
       value: openTickets.length + inReviewTickets.length,
       variant: "warning",
@@ -801,7 +801,7 @@ const VendorDashboardPage = () => {
                 {getTimeGreeting()}, {displayName}
               </Heading>
               <Text className="mt-2 text-sm text-white/75">
-                Today’s pulse across sales, orders, returns, and report tickets.
+                Today’s pulse across sales, orders, returns, and claims.
               </Text>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -835,7 +835,7 @@ const VendorDashboardPage = () => {
               hot={data.snapshot.toAccept > 0}
             />
             <SnapshotChip
-              href="/reports"
+              href="/claims"
               label="Open tickets"
               value={data.snapshot.openTickets}
               hot={data.snapshot.openTickets > 0}
@@ -961,9 +961,9 @@ const VendorDashboardPage = () => {
             ]}
           />
           <KpiCard
-            href="/reports"
+            href="/claims"
             icon={<DocumentText />}
-            label="Reports"
+            label="Claims"
             value={data.reports.total}
             helper={`${data.reports.open} open · ${data.reports.inReview} in review`}
             metrics={[
@@ -1145,8 +1145,8 @@ const VendorDashboardPage = () => {
                   variant={data.returns.inProgress > 0 ? "warning" : "success"}
                 />
                 <FocusRow
-                  href="/reports"
-                  label="Open report tickets"
+                  href="/claims"
+                  label="Open claims"
                   value={data.reports.open + data.reports.inReview}
                   variant={
                     data.reports.open + data.reports.inReview > 0 ? "warning" : "success"
@@ -1167,7 +1167,7 @@ const VendorDashboardPage = () => {
                   { href: "/products/new", label: "Add product", icon: Plus },
                   { href: "/orders", label: "Process orders", icon: ShoppingCart },
                   { href: "/returns", label: "Review returns", icon: ArrowPath },
-                  { href: "/reports", label: "Raise / view reports", icon: DocumentText },
+                  { href: "/claims", label: "Raise / view claims", icon: DocumentText },
                   { href: "/payout", label: "Check payout", icon: CurrencyDollar },
                   { href: "/products", label: "Manage catalog", icon: Tag },
                 ].map((action) => (

@@ -1,5 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
+import { calculateMarketplaceSettlementFromLines } from "./vendor-marketplace-tax"
 
 export type VendorOrderStage =
   | "to_accept"
@@ -23,6 +24,8 @@ export type VendorOrderWorkflow = {
   shiprocket_status?: string | null
   easy_courier_id?: number | null
   easy_courier_partner?: string | null
+  /** Shiprocket serviceability rate charged as forward logistic fee */
+  easy_courier_rate?: number | null
   /** Optional vendor-entered tracking / label links (Easy or Self) */
   tracking_number?: string | null
   tracking_url?: string | null
@@ -35,8 +38,14 @@ export type VendorOrderWorkflow = {
   self_awb?: string | null
   self_dispatch_rate?: number | null
   self_packing_info?: string | null
+  /** Reverse/return Shiprocket courier rate (Easy Ship returns) */
+  return_courier_id?: number | null
+  return_courier_name?: string | null
+  return_courier_rate?: number | null
   invoice_generated_at?: string
   rtd_at?: string
+  /** Self-ship: courier handover after To Dispatch */
+  dispatched_at?: string
   updated_at?: string
 }
 
@@ -147,11 +156,27 @@ export function deriveFulfillmentStatus(order: OrderLike) {
 
 export function deriveVendorStage(order: OrderLike, workflow: VendorOrderWorkflow): VendorOrderStage {
   const metadata = order.metadata || {}
+  // Medusa fulfillment "Mark as delivered" must win over stale Shiprocket "shipped"
+  if (deriveFulfillmentStatus(order) === "delivered") return "delivered"
+  if (workflow.stage === "delivered") return "delivered"
+
   const status = normalizeTrackingStatus(
-    workflow.shiprocket_status || metadata.shiprocket_status || workflow.stage || deriveFulfillmentStatus(order)
+    workflow.shiprocket_status ||
+      metadata.shiprocket_status ||
+      workflow.stage ||
+      deriveFulfillmentStatus(order)
   )
 
   if (status === "delivered") return "delivered"
+  // Prefer explicit RTD hold over Medusa fulfillment "shipped" when tracking is still pre-dispatch
+  if (
+    workflow.rtd_at &&
+    workflow.stage === "to_dispatch" &&
+    !isMovementTrackingStatus(status) &&
+    status !== "shipped"
+  ) {
+    return "to_dispatch"
+  }
   if (isMovementTrackingStatus(status)) return "in_transit"
   if (isPreDispatchTrackingStatus(status) && workflow.rtd_at) return "to_dispatch"
   if (workflow.stage) return workflow.stage
@@ -167,12 +192,16 @@ export function getVendorOrderStatusLabel(stage: VendorOrderStage) {
 }
 
 /** Admin-facing acceptance / fulfillment label for a vendor on an order. */
-export function getAdminVendorAcceptanceLabel(workflow: VendorOrderWorkflow) {
-  if (workflow.accepted_at || (workflow.stage && workflow.stage !== "to_accept")) {
-    if (workflow.stage === "delivered") return "Delivered by vendor"
-    if (workflow.stage === "in_transit") return "Accepted — in transit"
-    if (workflow.stage === "to_dispatch") return "Accepted — ready to dispatch"
-    if (workflow.stage === "to_pack") return "Accepted by vendor"
+export function getAdminVendorAcceptanceLabel(
+  workflow: VendorOrderWorkflow,
+  stage?: VendorOrderStage
+) {
+  const effective = stage || workflow.stage
+  if (workflow.accepted_at || (effective && effective !== "to_accept")) {
+    if (effective === "delivered") return "Delivered"
+    if (effective === "in_transit") return "Accepted — in transit"
+    if (effective === "to_dispatch") return "Accepted — ready to dispatch"
+    if (effective === "to_pack") return "Accepted by vendor"
     return "Accepted by vendor"
   }
   return "Awaiting vendor acceptance"
@@ -258,11 +287,96 @@ export function pickVendorItems(order: OrderLike, vendorProductIds: string[]) {
   })
 }
 
-export function formatVendorOrder(order: OrderLike, vendorId: string, vendorProductIds: string[]) {
+export type VendorOrderSettlementRates = {
+  commission_rate: number
+  tcs_rate: number
+  tds_rate: number
+}
+
+export type VendorOrderSettlement = {
+  taxable_amount: number
+  gst_amount: number
+  gst_rate: number
+  commission_amount: number
+  tcs_amount: number
+  tds_amount: number
+  net_amount: number
+  tcs_rate: number
+  tds_rate: number
+  commission_rate: number
+}
+
+function resolveItemGstRate(item: any): number {
+  const candidates = [
+    item?.metadata?.gst_rate,
+    item?.metadata?.tax_code,
+    item?.variant?.product?.metadata?.gst_rate,
+    item?.variant?.product?.metadata?.tax_code,
+    item?.product?.metadata?.gst_rate,
+    item?.product?.metadata?.tax_code,
+  ]
+  for (const raw of candidates) {
+    const fromCode = String(raw ?? "")
+      .trim()
+      .toUpperCase()
+      .match(/^GST_([\d.]+)$/)
+    if (fromCode) {
+      const n = Number(fromCode[1])
+      if (Number.isFinite(n) && n >= 0) return n
+    }
+    const n = Number(String(raw ?? "").replace(/[^\d.]/g, ""))
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  // No vendor GST set — do not invent 18%
+  return 0
+}
+
+/** Marketplace tax preview for a vendor's lines on an order (GST / TCS / TDS). */
+export function buildVendorOrderSettlement(
+  vendorItems: any[],
+  rates: VendorOrderSettlementRates
+): VendorOrderSettlement {
+  const lines = vendorItems.map((item) => {
+    const qty = getItemUnits(item)
+    const unit = Number(item?.unit_price || 0)
+    return {
+      inclusive_amount: Math.round(unit * qty * 100) / 100,
+      gst_rate: resolveItemGstRate(item),
+    }
+  })
+
+  const settlement = calculateMarketplaceSettlementFromLines(lines, rates)
+  return {
+    taxable_amount: settlement.taxable_amount,
+    gst_amount: settlement.gst_amount,
+    gst_rate: settlement.gst_rate,
+    commission_amount: settlement.commission_amount,
+    tcs_amount: settlement.tcs_amount,
+    tds_amount: settlement.tds_amount,
+    net_amount: settlement.net_amount,
+    tcs_rate: settlement.tcs_rate,
+    tds_rate: settlement.tds_rate,
+    commission_rate: settlement.commission_rate,
+  }
+}
+
+export function formatVendorOrder(
+  order: OrderLike,
+  vendorId: string,
+  vendorProductIds: string[],
+  rates?: VendorOrderSettlementRates | null
+) {
   const vendorItems = pickVendorItems(order, vendorProductIds)
   const workflow = getVendorWorkflow(order.metadata, vendorId)
   const stage = deriveVendorStage(order, workflow)
-  const total = vendorItems.reduce((sum, item) => sum + Number(item.unit_price || 0) * Number(item.quantity || 0), 0)
+  const total = vendorItems.reduce(
+    (sum, item) => sum + Number(item.unit_price || 0) * getItemUnits(item),
+    0
+  )
+
+  const settlement = rates
+    ? buildVendorOrderSettlement(vendorItems, rates)
+    : null
 
   return {
     ...order,
@@ -274,6 +388,12 @@ export function formatVendorOrder(order: OrderLike, vendorId: string, vendorProd
     vendor_status_label: getVendorOrderStatusLabel(stage),
     payment_type: getPaymentType(order),
     vendor_workflow: workflow,
+    settlement,
+    taxable_amount: settlement?.taxable_amount ?? null,
+    gst_amount: settlement?.gst_amount ?? null,
+    tcs_amount: settlement?.tcs_amount ?? null,
+    tds_amount: settlement?.tds_amount ?? null,
+    commission_amount: settlement?.commission_amount ?? null,
   }
 }
 
@@ -331,7 +451,9 @@ export async function getVendorOrderOrRespond(
       "items.unit_price",
       "items.raw_unit_price",
       "items.product_id",
+      "items.metadata",
       "items.variant.product_id",
+      "items.variant.product.metadata",
       "items.variant_sku",
       "items.variant.sku",
       "fulfillments.id",

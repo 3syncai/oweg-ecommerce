@@ -1,3 +1,15 @@
+export type OrderVendorSettlementPatch = {
+  taxable_amount: number
+  commission_rate: number
+  commission_amount: number
+  tcs_rate: number
+  tcs_amount: number
+  tds_rate: number
+  tds_amount: number
+  net_amount: number
+  vendor_name?: string | null
+}
+
 export type OrderGstPatchSummary = {
   taxable: number
   gst: number
@@ -7,6 +19,7 @@ export type OrderGstPatchSummary = {
   discount?: number
   gross_inclusive?: number
   lines?: Array<{ rate: number; tax_code?: string | null }>
+  vendor_settlement?: OrderVendorSettlementPatch | null
 }
 
 const ROW_ATTR = "data-oweg-gst-row"
@@ -133,11 +146,20 @@ export function patchOrderTaxTotal(summary: OrderGstPatchSummary): boolean {
   const label = `GST (incl.)${rateHint(summary)}`
   const value = formatMoney(summary.gst)
 
+  const wantsSettlement = Boolean(summary.vendor_settlement)
+  const hasSettlementRow = Boolean(
+    document.querySelector(`[${ROW_ATTR}="true"][${LABEL_ATTR}="true"]`) ||
+      Array.from(document.querySelectorAll(`[${ROW_ATTR}="true"]`)).some((el) =>
+        normalizeText(el.textContent).includes("vendor settlement")
+      )
+  )
+
   if (
     labelEl.getAttribute(PATCHED_ATTR) === "true" &&
     labelEl.textContent === label &&
     valueEl.textContent === value &&
-    row.nextElementSibling?.getAttribute(ROW_ATTR) === "true"
+    row.nextElementSibling?.getAttribute(ROW_ATTR) === "true" &&
+    (!wantsSettlement || hasSettlementRow)
   ) {
     return true
   }
@@ -166,6 +188,25 @@ export function patchOrderTaxTotal(summary: OrderGstPatchSummary): boolean {
     ["CGST", formatMoney(summary.cgst)],
     ["SGST", formatMoney(summary.sgst)]
   )
+
+  const settlement = summary.vendor_settlement
+  if (settlement) {
+    extras.push(
+      [
+        `Commission @ ${Number(settlement.commission_rate) || 0}%`,
+        `-${formatMoney(settlement.commission_amount)}`,
+      ],
+      [
+        `TCS (s.52) @ ${Number(settlement.tcs_rate) || 0}%`,
+        `-${formatMoney(settlement.tcs_amount)}`,
+      ],
+      [
+        `TDS (s.194-O) @ ${Number(settlement.tds_rate) || 0}%`,
+        `-${formatMoney(settlement.tds_amount)}`,
+      ],
+      ["Vendor settlement", formatMoney(settlement.net_amount)]
+    )
+  }
 
   let insertAfter: HTMLElement = row
   for (const [extraLabel, extraValue] of extras) {

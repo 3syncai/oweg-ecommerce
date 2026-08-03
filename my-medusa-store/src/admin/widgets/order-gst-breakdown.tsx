@@ -3,6 +3,7 @@ import { useEffect, useMemo } from "react"
 import {
   mountOrderGstTaxTotalPatch,
   type OrderGstPatchSummary,
+  type OrderVendorSettlementPatch,
 } from "../lib/order-gst-tax-total-patch"
 
 type GstSummary = OrderGstPatchSummary & {
@@ -30,8 +31,8 @@ function getOrderIdFromPath(pathname: string) {
 
 /**
  * Invisible widget: patches Medusa's Summary "Tax Total" row with
- * inclusive GST (and injects Taxable / CGST / SGST under it).
- * Does not change order.tax_total in the database.
+ * inclusive GST + Taxable/CGST/SGST, then vendor settlement lines
+ * (commission, TCS, TDS, net). Does not change order.tax_total in the DB.
  */
 const OrderGstBreakdownWidget = () => {
   const orderId = useMemo(() => {
@@ -54,7 +55,14 @@ const OrderGstBreakdownWidget = () => {
         const data = await res.json()
         const summary = data?.summary as GstSummary | null
         if (cancelled || !summary) return
-        unmountPatch = mountOrderGstTaxTotalPatch(summary)
+        const vendorSettlement = data?.vendor_settlement as
+          | OrderVendorSettlementPatch
+          | null
+          | undefined
+        unmountPatch = mountOrderGstTaxTotalPatch({
+          ...summary,
+          vendor_settlement: vendorSettlement || null,
+        })
       } catch {
         // Keep Medusa Tax Total as-is if breakdown fails
       }

@@ -72,6 +72,8 @@ class ShiprocketService {
     breadth?: number
     height?: number
     cod?: boolean
+    /** Reverse/return serviceability (customer → vendor/warehouse) */
+    is_return?: boolean
   }) {
     const token = await this.getToken()
     const weight = params.weight ?? Number(process.env.SHIPROCKET_DEFAULT_WEIGHT || 0.5)
@@ -89,6 +91,9 @@ class ShiprocketService {
     }
     if (params.height != null && Number.isFinite(params.height) && params.height > 0) {
       query.set("height", String(params.height))
+    }
+    if (params.is_return) {
+      query.set("is_return", "1")
     }
     return await this.request<Record<string, unknown>>(
       `/courier/serviceability/?${query.toString()}`,

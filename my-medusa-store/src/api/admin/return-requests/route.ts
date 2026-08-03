@@ -1,7 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { Modules } from "@medusajs/framework/utils"
 import ReturnModuleService from "../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../modules/returns"
+import { resolveOrderReturnShippingContext } from "../../../lib/vendor-return-shiprocket"
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const returnService: ReturnModuleService = req.scope.resolve(RETURN_MODULE)
@@ -78,12 +78,26 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     const customer = order?.customer || null
     const customerName =
-      customer?.first_name || customer?.last_name || order?.shipping_address?.first_name || order?.shipping_address?.last_name
+      customer?.first_name ||
+      customer?.last_name ||
+      order?.shipping_address?.first_name ||
+      order?.shipping_address?.last_name
         ? [
-          customer?.first_name || order?.shipping_address?.first_name || "",
-          customer?.last_name || order?.shipping_address?.last_name || "",
-        ].filter(Boolean).join(" ").trim()
+            customer?.first_name || order?.shipping_address?.first_name || "",
+            customer?.last_name || order?.shipping_address?.last_name || "",
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .trim()
         : null
+
+    const shippingContext = resolveOrderReturnShippingContext(order, request)
+    const returnMeta =
+      request?.metadata && typeof request.metadata === "object" && !Array.isArray(request.metadata)
+        ? (request.metadata as Record<string, any>)
+        : {}
+    const returnedToVendor =
+      String(request.status) === "received" || Boolean(returnMeta.returned_to_vendor)
 
     return {
       ...request,
@@ -93,6 +107,21 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       customer_email: order?.email || customer?.email || null,
       customer_name: customerName || null,
       coins_used: Number.isFinite(coinsUsed) ? coinsUsed : 0,
+      shipping_method: shippingContext.shipping_method,
+      reverse_courier_id: shippingContext.reverse_courier_id,
+      reverse_courier_name: shippingContext.reverse_courier_name,
+      reverse_courier_rate: shippingContext.reverse_courier_rate,
+      reverse_tracking_number: shippingContext.reverse_tracking_number,
+      reverse_tracking_url: shippingContext.reverse_tracking_url,
+      reverse_label_url: shippingContext.reverse_label_url,
+      reverse_courier_partner: shippingContext.reverse_courier_partner,
+      reverse_tracking_saved_at: shippingContext.reverse_tracking_saved_at,
+      returned_to_vendor: returnedToVendor,
+      returned_to_vendor_at:
+        returnMeta.returned_to_vendor_at ||
+        request.received_at ||
+        (order?.metadata as any)?.returned_to_vendor_at ||
+        null,
     }
   })
 
