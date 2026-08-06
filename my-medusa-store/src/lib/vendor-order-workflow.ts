@@ -53,6 +53,7 @@ type OrderLike = {
   id: string
   display_id?: string | number | null
   email?: string | null
+  customer_id?: string | null
   status?: string | null
   metadata?: Record<string, unknown> | null
   summary?: Record<string, any> | null
