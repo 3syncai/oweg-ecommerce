@@ -35,6 +35,7 @@ type PayableLineItem = {
   commission: number
   tcs: number
   tds: number
+  logistic_fee: number
   pay_amount: number
 }
 
@@ -43,6 +44,7 @@ type PendingPayout = {
   vendor_name: string
   total_revenue: number
   commission: number
+  logistic_fee: number
   net_amount: number
   commission_rate: number
   commission_source?: "global" | "custom"
@@ -93,13 +95,13 @@ const PayableLinesDropdown = ({
       </button>
 
       {open ? (
-        <div className="absolute left-0 z-30 mt-2 w-[min(28rem,calc(100vw-3rem))] overflow-hidden rounded-lg border border-ui-border-base bg-ui-bg-base shadow-elevation-flyout">
+        <div className="absolute left-0 z-30 mt-2 w-[min(34rem,calc(100vw-3rem))] overflow-hidden rounded-lg border border-ui-border-base bg-ui-bg-base shadow-elevation-flyout">
           <div className="border-b border-ui-border-base bg-ui-bg-subtle px-3 py-2">
             <Text size="small" weight="plus">
               Paying for {count} item{count === 1 ? "" : "s"}
             </Text>
             <Text size="xsmall" className="text-ui-fg-muted">
-              Amount shown is what admin pays after deductions
+              Pay = after commission + Easy Ship logistic (Self Ship = ₹0)
             </Text>
           </div>
           <div className="max-h-72 overflow-y-auto">
@@ -108,6 +110,7 @@ const PayableLinesDropdown = ({
                 <tr className="border-b border-ui-border-base text-xs text-ui-fg-muted">
                   <th className="px-3 py-2 font-medium">Product</th>
                   <th className="px-3 py-2 font-medium">Order</th>
+                  <th className="px-3 py-2 font-medium text-right">Logistic</th>
                   <th className="px-3 py-2 font-medium text-right">Pay</th>
                 </tr>
               </thead>
@@ -117,12 +120,13 @@ const PayableLinesDropdown = ({
                     line.type === "claim"
                       ? line.order_display_id || "Claim"
                       : `#${line.order_display_id || line.order_id.slice(0, 8)}`
+                  const logistic = Number(line.logistic_fee) || 0
                   return (
                     <tr
                       key={line.id}
                       className="border-b border-ui-border-base/60 last:border-0"
                     >
-                      <td className="max-w-[12rem] px-3 py-2.5">
+                      <td className="max-w-[11rem] px-3 py-2.5">
                         <p className="truncate font-medium" title={line.product_name}>
                           {line.product_name}
                         </p>
@@ -136,6 +140,13 @@ const PayableLinesDropdown = ({
                       <td className="whitespace-nowrap px-3 py-2.5 text-ui-fg-subtle">
                         {orderLabel}
                       </td>
+                      <td
+                        className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${
+                          logistic > 0 ? "font-medium text-red-600" : "text-ui-fg-muted"
+                        }`}
+                      >
+                        {logistic > 0 ? `−${formatCurrency(logistic)}` : "₹0"}
+                      </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold text-green-600">
                         {formatCurrency(line.pay_amount)}
                       </td>
@@ -145,13 +156,30 @@ const PayableLinesDropdown = ({
               </tbody>
             </table>
           </div>
-          <div className="flex items-center justify-between border-t border-ui-border-base bg-ui-bg-subtle px-3 py-2">
-            <Text size="small" className="text-ui-fg-subtle">
-              Total to pay
-            </Text>
-            <Text size="small" weight="plus" className="text-green-600">
-              {formatCurrency(payout.net_amount)}
-            </Text>
+          <div className="space-y-1 border-t border-ui-border-base bg-ui-bg-subtle px-3 py-2">
+            <div className="flex items-center justify-between">
+              <Text size="small" className="text-ui-fg-subtle">
+                Logistic total (Easy Ship)
+              </Text>
+              <Text
+                size="small"
+                className={
+                  (payout.logistic_fee || 0) > 0 ? "text-red-600" : "text-ui-fg-muted"
+                }
+              >
+                {(payout.logistic_fee || 0) > 0
+                  ? `−${formatCurrency(payout.logistic_fee)}`
+                  : "₹0"}
+              </Text>
+            </div>
+            <div className="flex items-center justify-between">
+              <Text size="small" className="text-ui-fg-subtle">
+                Total to pay
+              </Text>
+              <Text size="small" weight="plus" className="text-green-600">
+                {formatCurrency(payout.net_amount)}
+              </Text>
+            </div>
           </div>
         </div>
       ) : null}
@@ -236,13 +264,17 @@ const VendorPayoutsPage = () => {
             vendor_name: result.data.vendor_name,
             total_revenue: result.data.total_revenue || 0,
             commission: result.data.commission || 0,
+            logistic_fee: Number(result.data.logistic_fee) || 0,
             net_amount: result.data.net_amount || 0,
             commission_rate: result.data.commission_rate || 0,
             commission_source: result.data.commission_source,
             order_count: result.data.order_count || 0,
             order_ids: result.data.order_ids || [],
             line_items: Array.isArray(result.data.line_items)
-              ? result.data.line_items
+              ? result.data.line_items.map((line: PayableLineItem) => ({
+                  ...line,
+                  logistic_fee: Number(line.logistic_fee) || 0,
+                }))
               : [],
             unlocking_balance: result.data.unlocking_balance || 0,
             unlocking_count: result.data.unlocking_count || 0,
@@ -364,8 +396,9 @@ const VendorPayoutsPage = () => {
       </div>
       <p className="mb-6 text-sm text-ui-fg-subtle">
         Pay only <strong>Available</strong> balance (after the 5-minute post-delivery
-        unlock). Unlocking amounts stay pending until the timer ends. Open{" "}
-        <strong>Payable orders</strong> to see each product and pay amount.
+        unlock). Unlocking amounts stay pending until the timer ends.{" "}
+        <strong>Logistic fee</strong> applies for Easy Ship only (Self Ship = ₹0).
+        Open <strong>Payable orders</strong> to see each product and pay amount.
       </p>
 
       {vendors.length === 0 ? (
@@ -381,6 +414,7 @@ const VendorPayoutsPage = () => {
               <Table.HeaderCell>Payable orders</Table.HeaderCell>
               <Table.HeaderCell>Unlocking (5 min)</Table.HeaderCell>
               <Table.HeaderCell>Commission</Table.HeaderCell>
+              <Table.HeaderCell>Logistic fee</Table.HeaderCell>
               <Table.HeaderCell>Available to pay</Table.HeaderCell>
               <Table.HeaderCell>Action</Table.HeaderCell>
             </Table.Row>
@@ -459,6 +493,26 @@ const VendorPayoutsPage = () => {
                       </span>
                     ) : (
                       "-"
+                    )}
+                  </Table.Cell>
+                  <Table.Cell>
+                    {payout ? (
+                      <div className="text-sm">
+                        <span
+                          className={
+                            (payout.logistic_fee || 0) > 0
+                              ? "font-medium text-red-600"
+                              : "text-gray-400"
+                          }
+                        >
+                          {(payout.logistic_fee || 0) > 0
+                            ? `−${formatCurrency(payout.logistic_fee)}`
+                            : "₹0"}
+                        </span>
+                        <p className="text-xs text-gray-500">Easy Ship only</p>
+                      </div>
+                    ) : (
+                      <span className="text-gray-400">₹0</span>
                     )}
                   </Table.Cell>
                   <Table.Cell>
@@ -547,6 +601,14 @@ const VendorPayoutsPage = () => {
                     )
                   </span>
                   <span>-{formatCurrency(selectedPayout.commission)}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-ui-fg-subtle">Logistic fee (Easy Ship)</span>
+                  <span>
+                    {(selectedPayout.logistic_fee || 0) > 0
+                      ? `-${formatCurrency(selectedPayout.logistic_fee)}`
+                      : "₹0"}
+                  </span>
                 </div>
                 <div className="flex justify-between gap-3 border-t border-ui-border-base pt-2">
                   <span className="font-medium">Amount to pay</span>

@@ -50,7 +50,6 @@ const VendorReturnsPage = () => {
     courier_partner: "",
     tracking_number: "",
     tracking_url: "",
-    label_url: "",
   })
   const [savingSelfTracking, setSavingSelfTracking] = useState(false)
   const [selfTrackingError, setSelfTrackingError] = useState<string | null>(null)
@@ -139,7 +138,6 @@ const VendorReturnsPage = () => {
       courier_partner: item.reverse_courier_partner || "",
       tracking_number: item.reverse_tracking_number || item.shiprocket_awb || "",
       tracking_url: item.reverse_tracking_url || "",
-      label_url: item.reverse_label_url || "",
     })
   }
 
@@ -156,7 +154,6 @@ const VendorReturnsPage = () => {
         courier_partner: selfTrackingForm.courier_partner.trim() || undefined,
         tracking_number: selfTrackingForm.tracking_number.trim() || undefined,
         tracking_url: selfTrackingForm.tracking_url.trim() || undefined,
-        label_url: selfTrackingForm.label_url.trim() || undefined,
       })
       setSelfTrackingReturn(null)
       await loadReturns()
@@ -741,23 +738,6 @@ const VendorReturnsPage = () => {
                       setSelfTrackingForm((prev) => ({
                         ...prev,
                         tracking_url: e.target.value,
-                      }))
-                    }
-                    placeholder="https://…"
-                    className="h-10 w-full rounded-lg border border-ui-border-base/70 bg-ui-bg-base px-3 text-sm outline-none focus:border-ui-border-strong"
-                  />
-                </label>
-                <label className="block space-y-1">
-                  <Text size="small" weight="plus">
-                    Label URL (optional)
-                  </Text>
-                  <input
-                    type="url"
-                    value={selfTrackingForm.label_url}
-                    onChange={(e) =>
-                      setSelfTrackingForm((prev) => ({
-                        ...prev,
-                        label_url: e.target.value,
                       }))
                     }
                     placeholder="https://…"

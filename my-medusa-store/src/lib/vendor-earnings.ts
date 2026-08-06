@@ -189,15 +189,11 @@ export function resolveVendorLogisticFee(
   const workflows = orderMetadata?.vendor_order_workflows;
   if (!workflows || typeof workflows !== "object" || Array.isArray(workflows)) return 0;
   const wf = (workflows as Record<string, any>)[vendorId] || {};
+  // Easy Ship only — self ship has no platform logistic deduction
   if (wf.shipping_method === "easy") {
     return roundMoney(Math.max(0, Number(wf.easy_courier_rate) || 0));
   }
-  if (wf.shipping_method === "self") {
-    return roundMoney(Math.max(0, Number(wf.self_dispatch_rate) || 0));
-  }
-  return roundMoney(
-    Math.max(0, Number(wf.easy_courier_rate) || Number(wf.self_dispatch_rate) || 0)
-  );
+  return 0;
 }
 
 /** Return reverse courier rate from order vendor workflow. */
@@ -796,6 +792,10 @@ export async function upsertVendorClaimCredit(
       ON CONFLICT (vendor_id, order_id) DO UPDATE SET
         gross_amount = EXCLUDED.gross_amount,
         taxable_amount = EXCLUDED.taxable_amount,
+        commission_rate = 0,
+        commission_amount = 0,
+        tcs_amount = 0,
+        tds_amount = 0,
         net_amount = EXCLUDED.net_amount,
         order_display_id = COALESCE(EXCLUDED.order_display_id, vendor_earnings_log.order_display_id),
         status = CASE
@@ -863,6 +863,37 @@ export async function markVendorEarningsAsPaid(
  * Pass `effectiveRate` to re-apply commission on stored taxable amounts
  * (earnings rows may still hold an older commission rate).
  */
+/**
+ * Claim credits are admin-approved payouts — never apply commission / TCS / TDS.
+ * Restores any rows that were wrongly reduced (e.g. 680 → 659.6 at 3%).
+ */
+export async function repairClaimCreditsWithoutCommission(
+  vendorId: string,
+  pool: Pool
+): Promise<void> {
+  await pool.query(
+    `
+      UPDATE vendor_earnings_log
+      SET
+        commission_rate = 0,
+        commission_amount = 0,
+        tcs_amount = 0,
+        tds_amount = 0,
+        net_amount = GREATEST(COALESCE(gross_amount, 0), COALESCE(taxable_amount, 0), COALESCE(net_amount, 0)),
+        taxable_amount = GREATEST(COALESCE(gross_amount, 0), COALESCE(taxable_amount, 0), COALESCE(net_amount, 0)),
+        updated_at = NOW()
+      WHERE vendor_id = $1
+        AND order_id LIKE 'claim:%'
+        AND status IN ('CREDITED', 'UNLOCKING', 'ON_HOLD')
+        AND (
+          COALESCE(commission_amount, 0) > 0
+          OR COALESCE(net_amount, 0) + 0.001 < COALESCE(gross_amount, 0)
+        )
+    `,
+    [vendorId]
+  );
+}
+
 export type VendorPayableLineItem = {
   id: string;
   order_id: string;
@@ -873,6 +904,8 @@ export type VendorPayableLineItem = {
   commission: number;
   tcs: number;
   tds: number;
+  /** Easy Ship courier fee deducted from settlement; 0 for self / claims */
+  logistic_fee: number;
   /** Amount admin pays for this line (settlement / net) */
   pay_amount: number;
 };
@@ -887,6 +920,7 @@ export async function getVendorPayableSnapshot(
   commission: number;
   tcs: number;
   tds: number;
+  logistic_fee: number;
   net_amount: number;
   commission_rate: number;
   order_count: number;
@@ -898,6 +932,7 @@ export async function getVendorPayableSnapshot(
 }> {
   await ensureVendorEarningsTaxColumns(pool);
   await syncVendorEarningsStatuses(pool);
+  await repairClaimCreditsWithoutCommission(vendorId, pool);
 
   const credited = await pool.query<{
     id: string;
@@ -910,6 +945,8 @@ export async function getVendorPayableSnapshot(
     tds_amount: string | number;
     tcs_rate: string | number;
     tds_rate: string | number;
+    logistic_fee: string | number;
+    return_fee: string | number;
     net_amount: string | number;
     commission_rate: string | number;
     product_name: string | null;
@@ -927,6 +964,8 @@ export async function getVendorPayableSnapshot(
         vel.tds_amount,
         vel.tcs_rate,
         vel.tds_rate,
+        COALESCE(vel.logistic_fee, 0) AS logistic_fee,
+        COALESCE(vel.return_fee, 0) AS return_fee,
         vel.net_amount,
         vel.commission_rate,
         CASE
@@ -985,6 +1024,7 @@ export async function getVendorPayableSnapshot(
   let commission = 0;
   let tcs = 0;
   let tds = 0;
+  let logisticFeeTotal = 0;
   let netAmount = 0;
   let commissionRate =
     options?.effectiveRate != null && Number.isFinite(options.effectiveRate)
@@ -1003,10 +1043,15 @@ export async function getVendorPayableSnapshot(
     if (!isClaim && gross <= 0) continue;
 
     const taxable = Number(row.taxable_amount) || 0;
-    const rowTcs = Number(row.tcs_amount) || 0;
-    const rowTds = Number(row.tds_amount) || 0;
-    let rowCommission = Number(row.commission_amount) || 0;
-    let rowNet = Number(row.net_amount) || 0;
+    const rowTcs = isClaim ? 0 : Number(row.tcs_amount) || 0;
+    const rowTds = isClaim ? 0 : Number(row.tds_amount) || 0;
+    const rowLogistic = isClaim ? 0 : Number(row.logistic_fee) || 0;
+    const rowReturnFee = isClaim ? 0 : Number(row.return_fee) || 0;
+    let rowCommission = isClaim ? 0 : Number(row.commission_amount) || 0;
+    // Claim credits are always the full approved amount — never commission
+    let rowNet = isClaim
+      ? Math.max(gross, Number(row.net_amount) || 0, taxable)
+      : Number(row.net_amount) || 0;
 
     if (useLiveRate && !isClaim) {
       const liveCommission =
@@ -1014,8 +1059,11 @@ export async function getVendorPayableSnapshot(
         100;
       const base = taxable > 0 ? taxable : gross;
       rowCommission = liveCommission;
-      rowNet = Math.max(0, base - liveCommission - rowTcs - rowTds);
-    } else if (!useLiveRate) {
+      rowNet = Math.max(
+        0,
+        base - liveCommission - rowTcs - rowTds - rowLogistic - rowReturnFee
+      );
+    } else if (!useLiveRate && !isClaim) {
       commissionRate = Number(row.commission_rate) || commissionRate;
     }
 
@@ -1024,6 +1072,7 @@ export async function getVendorPayableSnapshot(
       commission += rowCommission;
       tcs += rowTcs;
       tds += rowTds;
+      logisticFeeTotal += rowLogistic;
     }
     netAmount += rowNet;
     if (row.order_id) orderIds.push(row.order_id);
@@ -1045,6 +1094,7 @@ export async function getVendorPayableSnapshot(
       commission: isClaim ? 0 : rowCommission,
       tcs: isClaim ? 0 : rowTcs,
       tds: isClaim ? 0 : rowTds,
+      logistic_fee: rowLogistic,
       pay_amount: rowNet,
     });
   }
@@ -1055,6 +1105,7 @@ export async function getVendorPayableSnapshot(
     commission,
     tcs,
     tds,
+    logistic_fee: logisticFeeTotal,
     net_amount: netAmount,
     commission_rate: commissionRate,
     order_count: orderIds.length,
@@ -1267,6 +1318,7 @@ export async function getVendorPaymentsView(
   await ensureVendorEarningsTaxColumns(pool);
   // Promote UNLOCKING → CREDITED once delivery + 5 minutes have passed
   await syncVendorEarningsStatuses(pool);
+  await repairClaimCreditsWithoutCommission(vendorId, pool);
   const summary = await getVendorEarningsSummary(vendorId, pool);
 
   // Full settlement history (not reset daily)
@@ -1388,13 +1440,15 @@ export async function getVendorPaymentsView(
       returnFeeTotal += returnFee;
     }
 
+    const claimSettlement = Math.max(gross, netAmount, taxable);
+
     return {
       id: row.id,
       order_id: row.order_id,
       order_display_id: row.order_display_id,
       product_name: isClaim ? "Claim settlement" : productName,
       type: isClaim ? ("claim" as const) : ("sales" as const),
-      order_amount: gross,
+      order_amount: isClaim ? claimSettlement : gross,
       taxable_amount: isClaim ? 0 : taxable,
       gst_amount: isClaim ? 0 : gstAmount,
       commission: isClaim ? 0 : commissionAmount,
@@ -1403,7 +1457,7 @@ export async function getVendorPaymentsView(
       logistic_fee: isClaim ? 0 : logisticFee,
       return_fee: isClaim ? 0 : returnFee,
       taxes: isClaim ? 0 : gstAmount,
-      settlement_amount: netAmount,
+      settlement_amount: isClaim ? claimSettlement : netAmount,
       status: row.status,
       delivered_at: row.delivered_at,
       unlock_at: row.unlock_at,

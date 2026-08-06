@@ -2,6 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { requireApprovedVendor } from "../../../_lib/guards"
 import { generateInvoice } from "../../../../../services/invoice-generator"
+import { retrieveVendorOrThrow } from "../../../../../lib/vendor-shiprocket-pickup"
 import {
   getItemUnitPrice,
   getItemUnits,
@@ -188,6 +189,16 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       }
     }
 
+    const vendor = await retrieveVendorOrThrow(req, auth.vendor_id)
+    const vendorAddressParts = [
+      vendor.store_address,
+      [vendor.store_city, vendor.store_pincode].filter(Boolean).join(" - "),
+      vendor.store_region,
+      vendor.store_country,
+    ]
+      .map((part) => String(part || "").trim())
+      .filter(Boolean)
+
     const invoiceOrder = {
       ...result.order,
       items: enrichedItems,
@@ -199,6 +210,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       customer_gstin: customerGst.gstin,
       customer_business_name: customerGst.business_name,
       payment_type: getPaymentType(result.order as any),
+      invoice_seller: {
+        brand: "OWEG",
+        name: vendor.store_name || vendor.name || "Vendor",
+        address: vendorAddressParts.join(", ") || "Address not provided",
+        gst: vendor.gst_no || vendor.pan_gst || "Not Provided",
+        pan: vendor.pan_no || null,
+        show_contact: false,
+      },
     }
 
     const pdf = await generateInvoice(invoiceOrder)

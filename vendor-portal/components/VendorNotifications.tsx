@@ -17,7 +17,7 @@ type VendorNotification = {
 
 const SEEN_KEY = "oweg_vendor_notif_seen_v2"
 const PRIMED_KEY = "oweg_vendor_notif_primed_v2"
-const POLL_MS = 10000
+const POLL_MS = 30000
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("en-IN", {

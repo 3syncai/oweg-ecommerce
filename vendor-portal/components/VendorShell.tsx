@@ -4,11 +4,9 @@ import { PropsWithChildren, Suspense, useEffect, useMemo, useRef, useState } fro
 import { Text, clx, Prompt } from "@medusajs/ui"
 import Image from "next/image"
 import {
-  MagnifyingGlass,
   ShoppingCart,
   Tag,
   Buildings,
-  Users,
   ChevronDown,
   ChevronRight,
   EllipsisHorizontal,
@@ -48,13 +46,6 @@ const navItems = [
     type: "normal",
   },
   {
-    label: "Search",
-    description: "⌘K",
-    path: "/search",
-    icon: MagnifyingGlass,
-    type: "normal",
-  },
-  {
     label: "Orders",
     description: "",
     path: "/orders",
@@ -90,13 +81,6 @@ const navItems = [
     description: "",
     path: "/inventory",
     icon: Buildings,
-    type: "normal",
-  },
-  {
-    label: "Customers",
-    description: "",
-    path: "/customers",
-    icon: Users,
     type: "normal",
   },
   {
@@ -204,27 +188,18 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
 
     const loadToAcceptCount = async () => {
       try {
-        const data = await vendorOrdersApi.list()
+        // Light counts endpoint — do not pull the full orders list for the badge
+        const data = await vendorOrdersApi.counts()
         if (cancelled) return
         const fromCounts = data?.counts?.to_accept
-        if (typeof fromCounts === "number") {
-          setToAcceptCount(fromCounts)
-          return
-        }
-        const orders = Array.isArray(data?.orders) ? data.orders : []
-        setToAcceptCount(
-          orders.filter(
-            (order: { vendor_stage?: string }) =>
-              String(order?.vendor_stage || "").toLowerCase() === "to_accept"
-          ).length
-        )
+        setToAcceptCount(typeof fromCounts === "number" ? fromCounts : 0)
       } catch {
         // Keep last known count if the request fails
       }
     }
 
     void loadToAcceptCount()
-    const intervalId = window.setInterval(loadToAcceptCount, 15000)
+    const intervalId = window.setInterval(loadToAcceptCount, 30000)
     const onOrdersChanged = () => {
       void loadToAcceptCount()
     }
@@ -237,7 +212,7 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
       window.removeEventListener("oweg:vendor-orders-changed", onOrdersChanged)
       window.removeEventListener("focus", onOrdersChanged)
     }
-  }, [pathname])
+  }, [])
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {

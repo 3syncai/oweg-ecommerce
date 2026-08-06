@@ -199,6 +199,23 @@ const isActiveProduct = (product: any) => {
 const orderStage = (order: any) =>
   String(order?.vendor_stage || order?.fulfillment_status || order?.status || "to_accept").toLowerCase()
 
+/** Latest delivery timestamp from fulfillments (falls back for delivered orders missing delivered_at). */
+const orderDeliveredAt = (order: any): string | null => {
+  const fulfillments = Array.isArray(order?.fulfillments) ? order.fulfillments : []
+  let latest = 0
+  for (const fulfillment of fulfillments) {
+    const raw = fulfillment?.delivered_at
+    if (!raw) continue
+    const t = new Date(raw).getTime()
+    if (!Number.isNaN(t) && t > latest) latest = t
+  }
+  if (latest > 0) return new Date(latest).toISOString()
+  if (orderStage(order) === "delivered") {
+    return order.updated_at || order.created_at || null
+  }
+  return null
+}
+
 const activityVariant = (kind: string): StatusVariant => {
   if (["delivered", "credited", "active", "resolved"].includes(kind)) return "success"
   if (["return", "pending", "to_accept", "open"].includes(kind)) return "warning"
@@ -282,11 +299,12 @@ function buildDashboardData(input: {
   const toAcceptOrders = orders.filter((order) => orderStage(order) === "to_accept")
   const todayOrders = orders.filter((order) => isToday(order.created_at))
   const todayDeliveredOrders = deliveredOrders.filter((order) =>
-    isToday(order.updated_at || order.created_at)
+    isToday(orderDeliveredAt(order))
   )
 
   const totalSale = orders.reduce((sum, order) => sum + orderAmount(order), 0)
-  const todaysSale = todayOrders.reduce((sum, order) => sum + orderAmount(order), 0)
+  // Today's sale = GMV of orders delivered today (not placed today)
+  const todaysSale = todayDeliveredOrders.reduce((sum, order) => sum + orderAmount(order), 0)
 
   const last7Start = daysAgoStart(6)
   const prev7Start = daysAgoStart(13)
@@ -607,23 +625,18 @@ const SnapshotChip = ({
     className={clx(
       "group inline-flex min-w-[140px] flex-1 flex-col rounded-2xl border px-4 py-3 transition",
       hot
-        ? "border-amber-500/30 bg-amber-500/[0.08] hover:bg-amber-500/[0.12]"
+        ? "border-white/25 bg-white/10 hover:bg-white/15"
         : "border-white/10 bg-white/5 hover:bg-white/10"
     )}
   >
-    <Text size="xsmall" className={clx(hot ? "text-amber-900/80" : "text-white/70")}>
+    <Text size="xsmall" className="text-white/70">
       {label}
     </Text>
     <span className="mt-1 flex items-center justify-between gap-2">
-      <Text weight="plus" className={clx("text-lg", hot ? "text-amber-950" : "text-white")}>
+      <Text weight="plus" className="text-lg text-white">
         {value}
       </Text>
-      <ArrowUpRightMini
-        className={clx(
-          "opacity-60 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5",
-          hot ? "text-amber-900" : "text-white"
-        )}
-      />
+      <ArrowUpRightMini className="text-white opacity-60 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
     </span>
   </Link>
 )
@@ -804,28 +817,12 @@ const VendorDashboardPage = () => {
                 Today’s pulse across sales, orders, returns, and claims.
               </Text>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="secondary"
-                className="border-white/20 bg-white/10 text-white hover:bg-white/20"
-                onClick={() => router.push("/products/bulk-upload")}
-              >
-                Bulk Upload
-              </Button>
-              <Button
-                className="oweg-btn-primary"
-                onClick={() => router.push("/products/new")}
-              >
-                <Plus />
-                Create Product
-              </Button>
-            </div>
           </div>
 
           <div className="relative mt-5 flex flex-wrap gap-2.5">
             <SnapshotChip
               href="/orders"
-              label="Sales today"
+              label="Today's sale"
               value={formatCurrency(data.snapshot.salesToday)}
             />
             <SnapshotChip

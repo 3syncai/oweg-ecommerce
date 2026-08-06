@@ -378,7 +378,7 @@ export function formatVendorOrder(
     ? buildVendorOrderSettlement(vendorItems, rates)
     : null
 
-  return {
+  const formatted: Record<string, any> = {
     ...order,
     items: vendorItems,
     product_names: vendorItems.map((item) => item.title).filter(Boolean),
@@ -394,6 +394,36 @@ export function formatVendorOrder(
     tcs_amount: settlement?.tcs_amount ?? null,
     tds_amount: settlement?.tds_amount ?? null,
     commission_amount: settlement?.commission_amount ?? null,
+    customer_details_hidden: stage === "delivered",
+  }
+
+  // Privacy: hide PII after delivery (Flipkart-style seller portal)
+  if (stage === "delivered") {
+    formatted.email = null
+    formatted.customer_id = order.customer_id || null
+    formatted.shipping_address = redactAddress(order.shipping_address)
+    formatted.billing_address = redactAddress(order.billing_address)
+    formatted.customer = null
+  }
+
+  return formatted
+}
+
+function redactAddress(address: any) {
+  if (!address || typeof address !== "object") return null
+  return {
+    ...address,
+    first_name: null,
+    last_name: null,
+    phone: null,
+    company: null,
+    address_1: null,
+    address_2: null,
+    city: null,
+    province: null,
+    postal_code: null,
+    country_code: address.country_code || null,
+    metadata: { redacted: true, reason: "delivered" },
   }
 }
 

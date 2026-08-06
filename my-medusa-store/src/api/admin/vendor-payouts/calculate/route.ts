@@ -2,7 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Pool } from "pg"
 import { VENDOR_MODULE } from "../../../../modules/vendor"
 import VendorModuleService from "../../../../modules/vendor/service"
-import { getVendorPayableSnapshot } from "../../../../lib/vendor-earnings"
+import { getVendorPayableSnapshot, repairClaimCreditsWithoutCommission } from "../../../../lib/vendor-earnings"
 import {
   getVendorCommissionDefaultRate,
   resolveVendorCommissionRate,
@@ -51,9 +51,12 @@ export async function POST(
         effectiveRate: resolved.rate,
       })
 
-      // Keep unpaid CREDITED rows in sync with the commission rate we will deduct on pay.
-      // Commission / TCS / TDS are all on taxable (ex-GST) value — Amazon/Flipkart style.
-      if (snapshot.order_ids.length > 0) {
+      // Keep unpaid CREDITED *order* rows in sync with the commission rate we will deduct on pay.
+      // Claim credits (order_id claim:*) are full admin-approved amounts — never take commission.
+      const payableOrderIds = snapshot.order_ids.filter(
+        (id) => !String(id).startsWith("claim:")
+      )
+      if (payableOrderIds.length > 0) {
         await pool.query(
           `
             UPDATE vendor_earnings_log
@@ -73,6 +76,8 @@ export async function POST(
                     )
                     - COALESCE(tcs_amount, 0)
                     - COALESCE(tds_amount, 0)
+                    - COALESCE(logistic_fee, 0)
+                    - COALESCE(return_fee, 0)
                 ),
                 2
               ),
@@ -80,31 +85,40 @@ export async function POST(
             WHERE vendor_id = $1
               AND status = 'CREDITED'
               AND order_id = ANY($3::text[])
+              AND order_id NOT LIKE 'claim:%'
           `,
-          [vendor_id, resolved.rate, snapshot.order_ids]
+          [vendor_id, resolved.rate, payableOrderIds]
         )
       }
+
+      // Repair any claim rows that previously had commission wrongly applied
+      await repairClaimCreditsWithoutCommission(vendor_id, pool)
+
+      const refreshed = await getVendorPayableSnapshot(vendor_id, pool, {
+        effectiveRate: resolved.rate,
+      })
 
       res.json({
         vendor_id,
         vendor_name: vendor.store_name || vendor.name,
         commission_rate: resolved.rate,
         commission_source: resolved.source,
-        total_revenue: snapshot.total_revenue,
-        commission: snapshot.commission,
-        tcs: snapshot.tcs,
-        tds: snapshot.tds,
-        net_amount: snapshot.net_amount,
-        order_count: snapshot.order_count,
-        order_ids: snapshot.order_ids,
-        line_items: snapshot.line_items,
-        available_balance: snapshot.available_balance,
-        unlocking_balance: snapshot.unlocking_balance,
-        unlocking_count: snapshot.unlocking_count,
+        total_revenue: refreshed.total_revenue,
+        commission: refreshed.commission,
+        tcs: refreshed.tcs,
+        tds: refreshed.tds,
+        logistic_fee: refreshed.logistic_fee,
+        net_amount: refreshed.net_amount,
+        order_count: refreshed.order_count,
+        order_ids: refreshed.order_ids,
+        line_items: refreshed.line_items,
+        available_balance: refreshed.available_balance,
+        unlocking_balance: refreshed.unlocking_balance,
+        unlocking_count: refreshed.unlocking_count,
         unlock_minutes: 5,
         note:
-          snapshot.unlocking_count > 0
-            ? `${snapshot.unlocking_count} order(s) still in 5-min unlock — not payable yet`
+          refreshed.unlocking_count > 0
+            ? `${refreshed.unlocking_count} order(s) still in 5-min unlock — not payable yet`
             : undefined,
       })
     } finally {

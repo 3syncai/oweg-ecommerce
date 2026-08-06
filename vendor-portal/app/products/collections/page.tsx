@@ -1,12 +1,13 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Container, Heading, Text, Badge, Button } from "@medusajs/ui"
+import { Container, Heading, Text, Button } from "@medusajs/ui"
 import { MagnifyingGlass, Plus, SquaresPlus } from "@medusajs/icons"
 import VendorShell from "@/components/VendorShell"
 import PageSkeleton from "@/components/PageSkeleton"
 import EmptyState from "@/components/EmptyState"
 import StatCard from "@/components/dashboard/StatCard"
+import StatusDot from "@/components/dashboard/StatusDot"
 import { vendorCollectionsApi } from "@/lib/api/client"
 import { useRouter } from "next/navigation"
 
@@ -85,7 +86,7 @@ const VendorCollectionsPage = () => {
 
   if (loading) {
     content = (
-      <PageSkeleton label="Loading collections…" stats={3} rows={6} cols={4} showAction />
+      <PageSkeleton label="Loading brands…" stats={3} rows={6} cols={4} showAction />
     )
   } else {
     content = (
@@ -96,12 +97,12 @@ const VendorCollectionsPage = () => {
         >
           <div>
             <Heading level="h1" className="text-2xl md:text-3xl">
-              Collections
+              Brands
             </Heading>
             <Text className="mt-1 text-ui-fg-subtle">
               {stats.total > 0
-                ? `${stats.total} collection${stats.total > 1 ? "s" : ""} · ${stats.productCount} products grouped`
-                : "Group products to make them easier to manage and discover"}
+                ? `${stats.total} brand${stats.total > 1 ? "s" : ""} · ${stats.productCount} products grouped`
+                : "Group products by brand to make them easier to manage and discover"}
             </Text>
           </div>
           <Button variant="secondary" size="small">
@@ -117,19 +118,19 @@ const VendorCollectionsPage = () => {
           >
             <StatCard
               icon={<SquaresPlus />}
-              label="Collections"
+              label="Brands"
               value={stats.total}
-              subtext={<Text className="text-ui-fg-subtle">Total groups</Text>}
+              subtext={<Text className="text-ui-fg-subtle">Total brands</Text>}
             />
             <StatCard
               icon={<SquaresPlus />}
               label="Products grouped"
               value={stats.productCount}
-              subtext={<Text className="text-ui-fg-subtle">Across all collections</Text>}
+              subtext={<Text className="text-ui-fg-subtle">Across all brands</Text>}
             />
             <StatCard
               icon={<SquaresPlus />}
-              label="Empty collections"
+              label="Empty brands"
               value={stats.emptyCount}
               subtext={<Text className="text-ui-fg-subtle">No products assigned</Text>}
             />
@@ -141,10 +142,10 @@ const VendorCollectionsPage = () => {
             <EmptyState
               accent="purple"
               icon={<SquaresPlus />}
-              title="No collections yet"
-              description="Create your first collection to organize your products and help customers discover them."
+              title="No brands yet"
+              description="Create your first brand to organize your products and help customers discover them."
               primaryAction={{
-                label: "Create collection",
+                label: "Create brand",
                 onClick: () => {},
               }}
             />
@@ -160,7 +161,7 @@ const VendorCollectionsPage = () => {
                 type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search collections…"
+                placeholder="Search brands…"
                 className="h-10 w-full rounded-lg border border-ui-border-base/70 bg-ui-bg-base pl-9 pr-3 text-sm text-ui-fg-base outline-none transition-colors placeholder:text-ui-fg-muted focus:border-ui-border-strong"
               />
             </div>
@@ -171,7 +172,7 @@ const VendorCollectionsPage = () => {
             >
               {filteredCollections.length === 0 ? (
                 <div className="p-10 text-center">
-                  <Text className="text-ui-fg-subtle">No collections match your search.</Text>
+                  <Text className="text-ui-fg-subtle">No brands match your search.</Text>
                   <Button
                     variant="transparent"
                     className="mt-3"
@@ -215,9 +216,12 @@ const VendorCollectionsPage = () => {
                             </Text>
                           </div>
                           <div>
-                            <Badge color={productCount > 0 ? "green" : "grey"}>
-                              {productCount} product{productCount === 1 ? "" : "s"}
-                            </Badge>
+                            <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
+                              <StatusDot variant={productCount > 0 ? "success" : "neutral"} />
+                              <Text size="small">
+                                {productCount} product{productCount === 1 ? "" : "s"}
+                              </Text>
+                            </span>
                           </div>
                           <div>
                             <Text size="small" className="text-ui-fg-subtle">
@@ -233,7 +237,7 @@ const VendorCollectionsPage = () => {
             </div>
 
             <Text size="small" className="text-ui-fg-muted">
-              Showing {filteredCollections.length} of {collections.length} collections
+              Showing {filteredCollections.length} of {collections.length} brands
             </Text>
           </>
         )}
