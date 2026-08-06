@@ -42,6 +42,8 @@ export type OrderDetail = {
     shipping: number;
     coinDiscount: number;
     oweg10Discount: number;
+    promoDiscount: number;
+    promoCode: string | null;
     grandTotal: number;
   };
 };
@@ -51,6 +53,14 @@ export type ReturnRequest = {
   order_id: string;
   status: string;
   type: string;
+  refund_method?: string | null;
+  bank_account_last4?: string | null;
+  payment_type?: string | null;
+  metadata?: {
+    payout_method?: string;
+    upi_masked?: string;
+    bank_account_last4?: string;
+  } | null;
 };
 
 export type TrackerStepKey =

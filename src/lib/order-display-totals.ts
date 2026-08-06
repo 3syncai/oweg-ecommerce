@@ -6,6 +6,8 @@ export type OrderDisplayTotals = {
   shipping: number;
   coinDiscount: number;
   oweg10Discount: number;
+  promoDiscount: number;
+  promoCode: string | null;
   grandTotal: number;
 };
 
@@ -239,33 +241,73 @@ export function resolveOrderDisplayTotals(order: Record<string, unknown>): Order
   const coinDiscount =
     toNumber(metadata.coin_discount_rupees) || toNumber(metadata.coins_discounted);
   const oweg10Discount = toNumber(metadata.oweg10_discount_rupees);
+  const promoDiscount =
+    toNumber(metadata.promo_discount_rupees) ||
+    (toNumber(metadata.promo_discount_minor) > 0
+      ? toNumber(metadata.promo_discount_minor) / 100
+      : 0);
+  const promoCode =
+    typeof metadata.promo_code === "string" && metadata.promo_code.trim()
+      ? metadata.promo_code.trim().toUpperCase()
+      : null;
 
   const summaryTotal =
     readSummaryAmount(order, "current_order_total") ||
     readSummaryAmount(order, "original_order_total") ||
     readSummaryAmount(order, "accounting_total");
 
+  const hasExplicitShipping = Object.prototype.hasOwnProperty.call(
+    metadata,
+    "expected_shipping_price"
+  );
   const shippingFromMetadata = toNumber(metadata.expected_shipping_price);
+  const paidFromMeta =
+    toNumber(metadata.razorpay_amount_minor) > 0
+      ? toNumber(metadata.razorpay_amount_minor) / 100
+      : toNumber(metadata.medusa_total_minor) > 0
+        ? toNumber(metadata.medusa_total_minor) / 100
+        : 0;
+
+  const metadataPayable = Math.max(
+    0,
+    itemsSubtotal + (hasExplicitShipping ? shippingFromMetadata : 0) - coinDiscount - oweg10Discount - promoDiscount
+  );
+
+  const discountsTotal = coinDiscount + oweg10Discount + promoDiscount;
   const rawTotal = toNumber(order.total);
 
-  let grandTotal = summaryTotal;
-  if (!grandTotal && itemsSubtotal > 0) {
-    grandTotal = Math.max(0, itemsSubtotal + shippingFromMetadata - coinDiscount - oweg10Discount);
-  }
-  if (!grandTotal && rawTotal > 0 && (summaryTotal > 0 || rawTotal >= itemsSubtotal * 0.5)) {
+  let grandTotal = 0;
+  // Prefer authoritative checkout charge when discounts exist — summary often lags.
+  if (paidFromMeta > 0 && discountsTotal > 0) {
+    grandTotal = paidFromMeta;
+  } else if (discountsTotal > 0 && metadataPayable > 0) {
+    grandTotal = metadataPayable;
+  } else if (summaryTotal > 0) {
+    grandTotal = summaryTotal;
+  } else if (metadataPayable > 0) {
+    grandTotal = metadataPayable;
+  } else if (rawTotal > 0) {
     grandTotal = rawTotal;
   }
-  if (summaryTotal > 0) {
-    grandTotal = summaryTotal;
-  } else if (grandTotal > 0 && rawTotal > 0 && rawTotal < grandTotal * 0.5) {
-    // Ignore store pending_difference masquerading as order.total.
+
+  // If summary still shows pre-discount total while metadata proves discount, trust metadata.
+  if (
+    discountsTotal > 0 &&
+    summaryTotal > 0 &&
+    paidFromMeta > 0 &&
+    Math.abs(summaryTotal - paidFromMeta - discountsTotal) < 0.05
+  ) {
+    grandTotal = paidFromMeta;
   }
 
-  let shipping = shippingFromMetadata;
-  if (shipping <= 0 && grandTotal > 0 && itemsSubtotal > 0) {
-    shipping = Math.max(0, grandTotal - itemsSubtotal + coinDiscount + oweg10Discount);
+  let shipping = hasExplicitShipping ? shippingFromMetadata : 0;
+  if (!hasExplicitShipping && grandTotal > 0 && itemsSubtotal > 0) {
+    shipping = Math.max(
+      0,
+      grandTotal - itemsSubtotal + coinDiscount + oweg10Discount + promoDiscount
+    );
   }
-  if (shipping <= 0) {
+  if (!hasExplicitShipping && shipping <= 0) {
     shipping = toNumber(order.shipping_total);
   }
 
@@ -274,6 +316,8 @@ export function resolveOrderDisplayTotals(order: Record<string, unknown>): Order
     shipping,
     coinDiscount,
     oweg10Discount,
+    promoDiscount,
+    promoCode,
     grandTotal,
   };
 }

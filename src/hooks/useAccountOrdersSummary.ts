@@ -28,6 +28,7 @@ export type AccountOrderCounts = {
   processing: number;
   shipped: number;
   delivered: number;
+  returns: number;
   canceled: number;
 };
 
@@ -38,6 +39,41 @@ type OrdersResponse = {
 
 export type AccountOrderBucket = keyof Omit<AccountOrderCounts, "all">;
 
+const ACTIVE_RETURN_STATUSES = new Set([
+  "pending_approval",
+  "approved",
+  "pickup_initiated",
+  "picked_up",
+  "received",
+]);
+
+const RETURN_STATUS_LABELS: Record<string, string> = {
+  pending_approval: "Return requested",
+  approved: "Return approved",
+  pickup_initiated: "Pickup scheduled",
+  picked_up: "Return picked up",
+  received: "Return received",
+  refunded: "Refund completed",
+  replaced: "Replacement shipped",
+  rejected: "Return rejected",
+  closed: "Return closed",
+};
+
+export function getOrderReturnRequestStatus(
+  order: AccountOrder | { metadata?: Record<string, unknown> | null }
+): string {
+  const metadata = order.metadata || {};
+  return typeof metadata.return_request_status === "string"
+    ? metadata.return_request_status.toLowerCase()
+    : "";
+}
+
+export function hasActiveOrderReturn(
+  order: AccountOrder | { metadata?: Record<string, unknown> | null }
+): boolean {
+  return ACTIVE_RETURN_STATUSES.has(getOrderReturnRequestStatus(order));
+}
+
 export function resolveOrderBucket(order: AccountOrder): AccountOrderBucket {
   const status = (order.status || "").toLowerCase();
   const fulfillment = (order.fulfillment_status || "").toLowerCase();
@@ -46,9 +82,13 @@ export function resolveOrderBucket(order: AccountOrder): AccountOrderBucket {
     typeof metadata.shiprocket_status === "string"
       ? metadata.shiprocket_status.toLowerCase()
       : "";
+  const returnStatus = getOrderReturnRequestStatus(order);
 
   if (status === "canceled" || status === "cancelled") {
     return "canceled";
+  }
+  if (ACTIVE_RETURN_STATUSES.has(returnStatus)) {
+    return "returns";
   }
   if (fulfillment === "delivered" || shiprocketStatus === "delivered") {
     return "delivered";
@@ -64,12 +104,36 @@ export function resolveOrderBucket(order: AccountOrder): AccountOrderBucket {
   return "processing";
 }
 
+/** Human-readable list/detail-aligned status for an order card. */
+export function resolveOrderStatusLabel(order: AccountOrder): string {
+  const status = (order.status || "").toLowerCase();
+  if (status === "canceled" || status === "cancelled") {
+    return "Canceled";
+  }
+
+  const returnStatus = getOrderReturnRequestStatus(order);
+  if (returnStatus && RETURN_STATUS_LABELS[returnStatus]) {
+    return RETURN_STATUS_LABELS[returnStatus];
+  }
+
+  const bucket = resolveOrderBucket(order);
+  const bucketLabels: Record<AccountOrderBucket, string> = {
+    processing: "Processing",
+    shipped: "Shipped",
+    delivered: "Delivered",
+    returns: "Return in progress",
+    canceled: "Canceled",
+  };
+  return bucketLabels[bucket];
+}
+
 function buildOrderCounts(orders: AccountOrder[], totalCount: number): AccountOrderCounts {
   const counts: AccountOrderCounts = {
     all: totalCount,
     processing: 0,
     shipped: 0,
     delivered: 0,
+    returns: 0,
     canceled: 0,
   };
 

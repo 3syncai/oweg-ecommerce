@@ -8,6 +8,22 @@ type OrderRecord = {
   metadata?: Record<string, unknown> | null
 }
 
+type CancelPayoutDetails = {
+  method?: string | null
+  upi_id?: string
+  account_name?: string
+  account_number?: string
+  ifsc_code?: string
+  bank_name?: string
+}
+
+type CancelPayoutResponse = {
+  method: string | null
+  upi_masked: string | null
+  bank_last4: string | null
+  details: CancelPayoutDetails | null
+}
+
 function extractOrder(data: unknown): OrderRecord | null {
   if (!data || typeof data !== "object") return null
   const root = data as Record<string, unknown>
@@ -55,6 +71,7 @@ const InfoRow = ({
 
 const OrderCancellationSummaryWidget = () => {
   const [order, setOrder] = useState<OrderRecord | null>(null)
+  const [cancelPayout, setCancelPayout] = useState<CancelPayoutResponse | null>(null)
   const [loading, setLoading] = useState(false)
 
   const orderId = useMemo(() => {
@@ -72,7 +89,24 @@ const OrderCancellationSummaryWidget = () => {
         })
         if (!response.ok) return
         const data = await response.json()
-        setOrder(extractOrder(data))
+        const nextOrder = extractOrder(data)
+        setOrder(nextOrder)
+
+        const meta = (nextOrder?.metadata || {}) as Record<string, unknown>
+        const hasPayout =
+          typeof meta.cancel_refund_payout_encrypted === "string" ||
+          typeof meta.cancel_refund_method === "string"
+        if (!hasPayout) {
+          setCancelPayout(null)
+          return
+        }
+
+        const payoutRes = await fetch(`/admin/orders/${orderId}/cancel-payout`, {
+          credentials: "include",
+        })
+        if (!payoutRes.ok) return
+        const payoutData = await payoutRes.json()
+        setCancelPayout(payoutData?.cancel_payout || null)
       } catch {
         // Keep order page stable if widget fetch fails.
       } finally {
@@ -98,7 +132,14 @@ const OrderCancellationSummaryWidget = () => {
   const shiprocketStatus =
     typeof metadata.shiprocket_status === "string" ? metadata.shiprocket_status : null
 
-  if (!loading && !isCanceled && !reason) {
+  const payoutMethod =
+    cancelPayout?.method ||
+    (typeof metadata.cancel_refund_method === "string"
+      ? metadata.cancel_refund_method
+      : null)
+  const hasCancelContext = isCanceled || Boolean(reason) || Boolean(payoutMethod)
+
+  if (!loading && !hasCancelContext) {
     return null
   }
 
@@ -129,6 +170,58 @@ const OrderCancellationSummaryWidget = () => {
           <InfoRow label="Customer ID" value={requestedBy || "Not recorded"} />
           {shiprocketStatus ? (
             <InfoRow label="Shiprocket status" value={shiprocketStatus} />
+          ) : null}
+          {payoutMethod ? (
+            <>
+              <InfoRow
+                label="Refund payout method"
+                value={
+                  payoutMethod === "upi"
+                    ? "UPI"
+                    : payoutMethod === "bank"
+                      ? "Bank transfer"
+                      : payoutMethod
+                }
+              />
+              {payoutMethod === "upi" ? (
+                <InfoRow
+                  label="UPI ID"
+                  value={
+                    cancelPayout?.details?.upi_id ||
+                    cancelPayout?.upi_masked ||
+                    (typeof metadata.cancel_upi_masked === "string"
+                      ? metadata.cancel_upi_masked
+                      : "Unavailable")
+                  }
+                />
+              ) : null}
+              {payoutMethod === "bank" ? (
+                <>
+                  <InfoRow
+                    label="Account name"
+                    value={cancelPayout?.details?.account_name || "Unavailable"}
+                  />
+                  <InfoRow
+                    label="Account number"
+                    value={
+                      cancelPayout?.details?.account_number ||
+                      (cancelPayout?.bank_last4
+                        ? `****${cancelPayout.bank_last4}`
+                        : typeof metadata.cancel_bank_last4 === "string"
+                          ? `****${metadata.cancel_bank_last4}`
+                          : "Unavailable")
+                    }
+                  />
+                  <InfoRow
+                    label="IFSC"
+                    value={cancelPayout?.details?.ifsc_code || "Unavailable"}
+                  />
+                  {cancelPayout?.details?.bank_name ? (
+                    <InfoRow label="Bank name" value={cancelPayout.details.bank_name} />
+                  ) : null}
+                </>
+              ) : null}
+            </>
           ) : null}
         </div>
       )}

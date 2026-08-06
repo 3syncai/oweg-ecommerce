@@ -47,6 +47,9 @@ export async function createMedusaPayment(payment: {
     const amountRupees = payment.amount / 100;
 
     try {
+        // Serialize confirm+webhook races for the same order
+        await pool.query(`SELECT pg_advisory_lock(hashtext($1))`, [payment.order_id]);
+
         // 1. Get cart_id from order
         const orderQuery = 'SELECT metadata->>\'cart_id\' as cart_id FROM "order" WHERE id = $1';
         const orderRes = await pool.query(orderQuery, [payment.order_id]);
@@ -65,6 +68,8 @@ export async function createMedusaPayment(payment: {
                  INNER JOIN order_payment_collection opc
                    ON opc.payment_collection_id = p.payment_collection_id
                  WHERE opc.order_id = $1
+                   AND opc.deleted_at IS NULL
+                   AND p.deleted_at IS NULL
                    AND (
                      p.data->>'razorpay_payment_id' = $2
                      OR p.data #>> '{data,razorpay_payment_id}' = $2
@@ -73,6 +78,7 @@ export async function createMedusaPayment(payment: {
                 [payment.order_id, razorpayPaymentId]
             );
             if (existingPay.rows[0]) {
+                await pool.query(`SELECT pg_advisory_unlock(hashtext($1))`, [payment.order_id]);
                 await pool.end();
                 return {
                     success: true,
@@ -83,12 +89,43 @@ export async function createMedusaPayment(payment: {
             }
         }
 
+        // Also skip if order already has enough active captured payment rows
+        const existingSum = await pool.query(
+            `SELECT COALESCE(SUM(p.amount), 0) AS paid
+             FROM payment p
+             INNER JOIN order_payment_collection opc
+               ON opc.payment_collection_id = p.payment_collection_id
+             WHERE opc.order_id = $1
+               AND opc.deleted_at IS NULL
+               AND p.deleted_at IS NULL
+               AND p.captured_at IS NOT NULL`,
+            [payment.order_id]
+        );
+        const alreadyPaid = Number(existingSum.rows[0]?.paid || 0);
+        if (alreadyPaid + 0.01 >= amountRupees) {
+            await pool.query(`SELECT pg_advisory_unlock(hashtext($1))`, [payment.order_id]);
+            await pool.end();
+            return {
+                success: true,
+                skipped: true,
+                reason: "already_sufficient_payment_rows",
+                data: { alreadyPaid, requested: amountRupees },
+            };
+        }
+
         let paymentCollectionId: string | null = null;
         let paymentSessionId: string | null = null;
 
-        // 2. NOTE: We always create a NEW payment_collection for each payment
-        // to avoid linking old payments to new orders
-        // (Previously we were reusing by cart_id which caused cross-order payment issues)
+        // Prefer a single payment_collection per order (avoid admin double "Refund" rows)
+        const existingPc = await pool.query(
+            `SELECT opc.payment_collection_id
+             FROM order_payment_collection opc
+             WHERE opc.order_id = $1 AND opc.deleted_at IS NULL
+             ORDER BY opc.created_at ASC
+             LIMIT 1`,
+            [payment.order_id]
+        );
+        paymentCollectionId = existingPc.rows[0]?.payment_collection_id || null;
 
         const rawAmount = JSON.stringify({ amount: amountRupees });
 
@@ -190,12 +227,18 @@ export async function createMedusaPayment(payment: {
         ];
 
         const result = await pool.query(query, values);
+        await pool.query(`SELECT pg_advisory_unlock(hashtext($1))`, [payment.order_id]);
         await pool.end();
 
         console.log('✅ Payment created in Medusa payment table:', result.rows[0].id);
         console.log('🎉 Payment integration complete!');
         return { success: true, data: result.rows[0] };
     } catch (err) {
+        try {
+            await pool.query(`SELECT pg_advisory_unlock(hashtext($1))`, [payment.order_id]);
+        } catch {
+            // ignore unlock errors
+        }
         await pool.end();
         console.error('❌ Failed to create payment:', err);
         return { success: false, error: String(err) };
@@ -236,7 +279,7 @@ export async function createOrderTransaction(transaction: {
 
         const existingTx = await pool.query(
             `SELECT id, amount, reference, reference_id, created_at
-             FROM order_transaction WHERE order_id = $1 ORDER BY created_at ASC`,
+             FROM order_transaction WHERE order_id = $1 AND deleted_at IS NULL ORDER BY created_at ASC`,
             [transaction.order_id]
         );
         const dupByRef =
@@ -256,6 +299,21 @@ export async function createOrderTransaction(transaction: {
                 skipped: true,
                 reason: "duplicate_reference_id",
                 data: dupByRef,
+            };
+        }
+
+        const existingPaid = existingTx.rows.reduce(
+            (sum: number, r: { amount?: unknown }) => sum + Number(r.amount || 0),
+            0
+        );
+        // Confirm + webhook can race; if one capture already covers this amount, skip.
+        if (existingPaid + 0.01 >= Number(transaction.amount)) {
+            await pool.end();
+            return {
+                success: true,
+                skipped: true,
+                reason: "already_sufficient_paid",
+                data: { existingPaid, requested: transaction.amount },
             };
         }
 

@@ -37,6 +37,11 @@ type ReturnRequest = {
   returned_to_vendor_at?: string | null
   picked_up_at?: string | null
   received_at?: string | null
+  metadata?: {
+    payout_method?: string
+    upi_masked?: string
+    bank_account_last4?: string
+  } | null
   items?: ReturnItem[]
 }
 
@@ -216,7 +221,10 @@ const ReturnRequestsPage = () => {
                       Coins used: {Math.round(typeof request.coins_used === "number" ? request.coins_used : 0)}
                     </Text>
                     <Text className="text-sm text-ui-fg-subtle">
-                      Payment: {request.payment_type} {request.bank_account_last4 ? `(xxxx${request.bank_account_last4})` : ""}
+                      Payment: {request.payment_type}
+                      {request.refund_method ? ` • Refund via ${request.refund_method}` : ""}
+                      {request.bank_account_last4 ? ` (xxxx${request.bank_account_last4})` : ""}
+                      {request.metadata?.upi_masked ? ` • ${request.metadata.upi_masked}` : ""}
                     </Text>
                     {request.shipping_method === "easy" ? (
                       <div className="rounded-lg border border-ui-border-base bg-ui-bg-subtle/50 px-3 py-2 space-y-1">
@@ -348,13 +356,17 @@ const ReturnRequestsPage = () => {
                     >
                       Mark Refunded
                     </Button>
-                    {request.payment_type === "cod" && (
+                    {(request.refund_method === "bank" ||
+                      request.refund_method === "upi" ||
+                      request.payment_type === "cod" ||
+                      request.bank_account_last4 ||
+                      request.metadata?.upi_masked) && (
                       <Button
                         variant="secondary"
                         size="base"
                         onClick={() => loadBankDetails(request.id)}
                       >
-                        View Bank Details
+                        View Refund Details
                       </Button>
                     )}
                   </div>
@@ -364,12 +376,20 @@ const ReturnRequestsPage = () => {
 
                 {bankDetailsFor === request.id && bankDetails && (
                   <div className="mt-4 border-t border-ui-border-base pt-4">
-                    <Text className="text-sm text-ui-fg-subtle">Bank Details</Text>
+                    <Text className="text-sm text-ui-fg-subtle">
+                      {bankDetails.method === "upi" ? "UPI Details" : "Bank Details"}
+                    </Text>
                     <div className="text-sm mt-2">
-                      <div>Account Name: {bankDetails.account_name}</div>
-                      <div>Account Number: {bankDetails.account_number}</div>
-                      <div>IFSC: {bankDetails.ifsc_code}</div>
-                      {bankDetails.bank_name && <div>Bank: {bankDetails.bank_name}</div>}
+                      {bankDetails.method === "upi" || bankDetails.upi_id ? (
+                        <div>UPI ID: {bankDetails.upi_id}</div>
+                      ) : (
+                        <>
+                          <div>Account Name: {bankDetails.account_name}</div>
+                          <div>Account Number: {bankDetails.account_number}</div>
+                          <div>IFSC: {bankDetails.ifsc_code}</div>
+                          {bankDetails.bank_name && <div>Bank: {bankDetails.bank_name}</div>}
+                        </>
+                      )}
                     </div>
                   </div>
                 )}

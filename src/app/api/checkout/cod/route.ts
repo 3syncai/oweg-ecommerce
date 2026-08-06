@@ -1,7 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
 import { loadCheckoutOrder } from "@/lib/checkout-order";
-import { applyCoinDiscountToOrder, syncOrderShippingAmount, syncOrderTaxInclusivePricing } from "@/lib/order-discount";
+import { applyCoinDiscountToOrder, applyMetadataDiscountsToOrderSummary, syncOrderShippingAmount, syncOrderTaxInclusivePricing } from "@/lib/order-discount";
 import { finalizeCoinSpendForOrder } from "@/lib/wallet-coin-order";
 import { OWEG10_CODE } from "@/lib/oweg10-shared";
 import { consumeOweg10Reservation, syncOweg10ConsumedCustomerMetadata } from "@/lib/oweg10";
@@ -104,6 +104,12 @@ async function runCodSideEffects(finalOrderId: string, metadata: Record<string, 
           : 0;
     const oweg10DiscountRupees =
       typeof metadata.oweg10_discount_rupees === "number" ? metadata.oweg10_discount_rupees : 0;
+    const promoDiscountRupees =
+      typeof metadata.promo_discount_rupees === "number"
+        ? metadata.promo_discount_rupees
+        : typeof metadata.promo_discount_minor === "number"
+          ? metadata.promo_discount_minor / 100
+          : 0;
     const expectedShipping =
       typeof metadata.expected_shipping_price === "number" ? metadata.expected_shipping_price : undefined;
 
@@ -111,7 +117,10 @@ async function runCodSideEffects(finalOrderId: string, metadata: Record<string, 
       shippingRupees: expectedShipping,
       coinDiscountRupees,
       oweg10DiscountRupees,
+      promoDiscountRupees,
     });
+
+    await applyMetadataDiscountsToOrderSummary(finalOrderId);
   } catch (taxErr) {
     console.error("cod post-process: tax-inclusive sync failed", taxErr);
   }

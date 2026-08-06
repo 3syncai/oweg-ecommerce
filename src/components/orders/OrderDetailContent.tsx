@@ -44,23 +44,32 @@ function SummaryCard({
   value,
   badge,
   action,
+  tone = "green",
 }: {
   icon: React.ReactNode;
   title: string;
   value: string;
   badge?: React.ReactNode;
   action?: React.ReactNode;
+  tone?: "green" | "amber";
 }) {
+  const iconWell =
+    tone === "amber" ? "bg-[#FFF4E5]" : "bg-[#EAF8E7]";
+  const valueClass =
+    tone === "amber" ? "text-[#B54708]" : "text-[#1F2A33]";
+
   return (
     <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
       <div className="flex items-start gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EAF8E7]">
+        <div
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${iconWell}`}
+        >
           {icon}
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{title}</p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-[#1F2A33]">{value}</p>
+            <p className={`text-sm font-semibold ${valueClass}`}>{value}</p>
             {badge}
           </div>
           {action ? <div className="mt-2">{action}</div> : null}
@@ -69,6 +78,14 @@ function SummaryCard({
     </div>
   );
 }
+
+const ACTIVE_RETURN_STATUSES = new Set([
+  "pending_approval",
+  "approved",
+  "pickup_initiated",
+  "picked_up",
+  "received",
+]);
 
 function ActionTile({
   icon,
@@ -127,6 +144,7 @@ export default function OrderDetailContent({
     existingReturn,
     withinReturnWindow,
     isCod,
+    requireCancelRefundPayout,
     canCancel,
     displayTotals,
     steps,
@@ -141,6 +159,12 @@ export default function OrderDetailContent({
     cancelError,
     resetCancelForm,
     cancelOrder,
+    cancelPayoutMethod,
+    setCancelPayoutMethod,
+    cancelUpiId,
+    setCancelUpiId,
+    cancelBankDetails,
+    setCancelBankDetails,
     returnFormOpen,
     setReturnFormOpen,
     returnType,
@@ -156,6 +180,10 @@ export default function OrderDetailContent({
     returnSubmitting,
     bankDetails,
     setBankDetails,
+    payoutMethod,
+    setPayoutMethod,
+    upiId,
+    setUpiId,
     resetReturnForm,
     submitReturnRequest,
   } = detail;
@@ -192,6 +220,15 @@ export default function OrderDetailContent({
   const currentStatusLabel = getCurrentTrackerStepLabel(steps);
   const itemCount = order?.items?.length || 0;
   const showPaymentPending = isPaymentPending(order);
+  const isActiveReturn = Boolean(
+    existingReturn && ACTIVE_RETURN_STATUSES.has(String(existingReturn.status || "").toLowerCase())
+  );
+  const statusCardTone = isActiveReturn ? "amber" : "green";
+  const statusCardIcon = isActiveReturn ? (
+    <OrderDetailsIcon name="return-replace" size={24} className="h-6 w-6" />
+  ) : (
+    <OrderDetailsIcon name="order-status" size={24} className="h-6 w-6" />
+  );
 
   const handleInvoiceClick = () => {
     toast.info("Your invoice was emailed when the order was placed.");
@@ -322,13 +359,16 @@ export default function OrderDetailContent({
           }
         />
         <SummaryCard
-          icon={<OrderDetailsIcon name="order-status" size={24} className="h-6 w-6" />}
+          icon={statusCardIcon}
           title="Order Status"
           value={currentStatusLabel}
+          tone={statusCardTone}
           action={
             <a
               href="#order-status-timeline"
-              className="text-xs font-semibold text-[#66C940] hover:underline"
+              className={`text-xs font-semibold hover:underline ${
+                isActiveReturn ? "text-[#B54708]" : "text-[#66C940]"
+              }`}
             >
               View Timeline
             </a>
@@ -336,7 +376,12 @@ export default function OrderDetailContent({
         />
       </div>
 
-      <OrderDetailStatusSection id="order-status-timeline" order={order} steps={steps} />
+      <OrderDetailStatusSection
+        id="order-status-timeline"
+        order={order}
+        steps={steps}
+        existingReturn={existingReturn}
+      />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
@@ -367,6 +412,25 @@ export default function OrderDetailContent({
             <OrderDetailsIcon name="open-in-maps" size={14} className="h-3.5 w-3.5" />
             Open in Maps
           </a>
+          {existingReturn && existingReturn.type === "return" ? (
+            <div className="mt-4 rounded-xl border border-amber-100 bg-[#FFF4E5] px-3 py-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#B54708]">
+                Refund payout on file
+              </p>
+              <p className="mt-1 text-sm text-[#1F2A33]">
+                {existingReturn.refund_method === "upi" ||
+                existingReturn.metadata?.payout_method === "upi"
+                  ? `UPI: ${existingReturn.metadata?.upi_masked || "Submitted"}`
+                  : existingReturn.bank_account_last4 ||
+                      existingReturn.metadata?.bank_account_last4
+                    ? `Bank account ending ${
+                        existingReturn.bank_account_last4 ||
+                        existingReturn.metadata?.bank_account_last4
+                      }`
+                    : "Submitted for admin refund processing"}
+              </p>
+            </div>
+          ) : null}
         </div>
 
         <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
@@ -478,6 +542,16 @@ export default function OrderDetailContent({
                 <span>-{formatOrderCurrency(displayTotals.oweg10Discount, order?.currency_code)}</span>
               </div>
             ) : null}
+            {displayTotals.promoDiscount > 0 ? (
+              <div className="flex justify-between gap-3 text-[#66C940]">
+                <span>
+                  {displayTotals.promoCode
+                    ? `${displayTotals.promoCode} Discount`
+                    : "Promo Discount"}
+                </span>
+                <span>-{formatOrderCurrency(displayTotals.promoDiscount, order?.currency_code)}</span>
+              </div>
+            ) : null}
             {displayTotals.coinDiscount > 0 ? (
               <div className="flex justify-between gap-3 text-[#66C940]">
                 <span>Discount</span>
@@ -574,6 +648,13 @@ export default function OrderDetailContent({
         currencyCode={order?.currency_code}
         selectedReason={cancelReason}
         customReason={customCancelReason}
+        requireRefundPayout={requireCancelRefundPayout}
+        payoutMethod={cancelPayoutMethod}
+        onPayoutMethodChange={setCancelPayoutMethod}
+        upiId={cancelUpiId}
+        onUpiIdChange={setCancelUpiId}
+        bankDetails={cancelBankDetails}
+        onBankDetailsChange={setCancelBankDetails}
         submitting={cancelSubmitting}
         error={cancelError}
         onReasonChange={setCancelReason}
@@ -596,7 +677,10 @@ export default function OrderDetailContent({
           onReasonChange={setReturnReason}
           notes={returnNotes}
           onNotesChange={(value) => setReturnNotes(sanitizeTextInput(value, 1000))}
-          isCod={isCod}
+          payoutMethod={payoutMethod}
+          onPayoutMethodChange={setPayoutMethod}
+          upiId={upiId}
+          onUpiIdChange={setUpiId}
           bankDetails={bankDetails}
           onBankDetailsChange={setBankDetails}
           submitting={returnSubmitting}

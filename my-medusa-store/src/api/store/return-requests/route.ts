@@ -37,13 +37,10 @@ function resolveDeliveryDate(order: any) {
   return null
 }
 
-function getPaymentType(order: any, hasBankDetails: boolean) {
+function getPaymentType(order: any) {
   const metadata = order?.metadata || {}
   const method = String(metadata.payment_method || metadata.payment_type || "").toLowerCase()
   if (method.includes("cod") || method.includes("cash")) {
-    return "cod"
-  }
-  if (hasBankDetails) {
     return "cod"
   }
   return "online"
@@ -111,8 +108,25 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
   }
 
-  const paymentType = getPaymentType(order, Boolean(body.bank_details)) as "online" | "cod"
-  const refundMethod = paymentType === "cod" ? "bank" : "original"
+  const paymentType = getPaymentType(order) as "online" | "cod"
+  const refundPayout =
+    body.refund_payout ||
+    (body.bank_details
+      ? {
+          method: "bank" as const,
+          account_name: body.bank_details.account_name,
+          account_number: body.bank_details.account_number,
+          ifsc_code: body.bank_details.ifsc_code,
+          bank_name: body.bank_details.bank_name,
+        }
+      : null)
+
+  const refundMethod =
+    body.type === "return"
+      ? refundPayout?.method === "upi"
+        ? "upi"
+        : "bank"
+      : null
 
   const request = await returnService.createReturnRequest({
     order_id: body.order_id,
@@ -123,6 +137,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     payment_type: paymentType,
     refund_method: refundMethod,
     bank_details: body.bank_details ?? null,
+    refund_payout: refundPayout,
     items: body.items,
   })
 

@@ -6,11 +6,13 @@ import { verifyRazorpaySignature } from "@/lib/razorpay";
 import { finalizeCoinSpendForOrder, refundCoinSpendForOrder } from "@/lib/wallet-coin-order";
 import {
   registerOrderTransaction,
-  setOrderPaidTotal,
   setOrderPaymentStatus,
   updateOrderMetadata,
-  registerOrderPaymentV2,
 } from "@/lib/medusa-admin";
+import {
+  createOrderTransaction,
+  updateOrderSummaryTotals,
+} from "@/lib/medusa-payment";
 import {
   ensurePlacedCheckoutOrder,
   loadCheckoutOrder,
@@ -371,8 +373,11 @@ export async function POST(req: Request) {
       ? metadata.razorpay_capture_status
       : undefined;
 
-  // idempotency
-  if (metadataStatus === "captured" && metadataPaymentId === paymentId) {
+  // idempotency — confirm path may have already recorded capture
+  if (
+    (metadataStatus === "captured" || prevCaptureStatus === "captured") &&
+    metadataPaymentId === paymentId
+  ) {
     console.info("razorpay webhook idempotent captured", medusaOrderId);
     return NextResponse.json({ ok: true, idempotent: true });
   }
@@ -413,43 +418,67 @@ export async function POST(req: Request) {
         const placed = await ensurePlacedCheckoutOrder(medusaOrderId);
         if (placed?.orderId) {
           placedOrderId = placed.orderId;
-          if (placed.converted) {
-            await runPostConvertCheckoutSideEffects(placedOrderId, metadata);
-          }
         }
       }
 
-      const transactionPayload = {
-        amount: canonicalMinor,
-        currency_code: currency.toLowerCase?.() || currency,
-        reference: coerceId(paymentId) || coerceId(razorpayOrderId) || `razorpay-${placedOrderId}`,
-        provider: "razorpay",
-        metadata: {
-          razorpay_payment_id: paymentId,
-          razorpay_order_id: razorpayOrderId,
-          razorpay_signature: signature || metadata.razorpay_signature,
-          razorpay_event: event,
-          razorpay_amount_minor: razorpayAmountPaise || undefined,
-          medusa_total_minor: canonicalMinor || undefined,
-          medusa_amount_scale: reconcile.detectedScale || undefined,
-          amount_reconcile_matched: reconcile.matched,
-        },
-      };
+      // Always sync checkout discounts into admin order_summary (idempotent).
+      try {
+        await runPostConvertCheckoutSideEffects(placedOrderId, metadata);
+      } catch (sideErr) {
+        console.error("razorpay webhook: discount/summary sync failed", sideErr);
+      }
 
-      const txRes = await registerOrderTransaction(placedOrderId, transactionPayload);
-      const transaction = extractTransaction(txRes.data);
-      const transactionId = (transaction?.id as string | undefined) || undefined;
+      // Record capture via DB helper (same path as /api/checkout/razorpay/confirm)
+      // so reference_id dedupe prevents double paid_total when confirm+webhook race.
+      const amountRupees = canonicalMinor / 100;
+      const txResult = await createOrderTransaction({
+        order_id: placedOrderId,
+        amount: amountRupees,
+        currency_code: currency.toLowerCase?.() || currency,
+        reference: "capture",
+        reference_id: coerceId(paymentId) || undefined,
+      });
+
+      const transactionId =
+        txResult && typeof txResult === "object" && "data" in txResult
+          ? (txResult as { data?: { id?: string } }).data?.id
+          : undefined;
+      const txOk = Boolean(txResult?.success);
+      const txSkipped = Boolean(
+        txResult && typeof txResult === "object" && "skipped" in txResult && txResult.skipped
+      );
+
+      if (txOk) {
+        await updateOrderSummaryTotals(placedOrderId);
+      } else {
+        // Fallback to admin API only if DB helper failed hard
+        const transactionPayload = {
+          amount: amountRupees,
+          currency_code: currency.toLowerCase?.() || currency,
+          reference: coerceId(paymentId) || coerceId(razorpayOrderId) || `razorpay-${placedOrderId}`,
+          provider: "razorpay",
+          metadata: {
+            razorpay_payment_id: paymentId,
+            razorpay_order_id: razorpayOrderId,
+            razorpay_signature: signature || metadata.razorpay_signature,
+            razorpay_event: event,
+            razorpay_amount_minor: razorpayAmountPaise || undefined,
+            medusa_total_minor: canonicalMinor || undefined,
+            medusa_amount_scale: reconcile.detectedScale || undefined,
+            amount_reconcile_matched: reconcile.matched,
+          },
+        };
+        const txRes = await registerOrderTransaction(placedOrderId, transactionPayload);
+        if (txRes?.ok) {
+          await updateOrderSummaryTotals(placedOrderId);
+        }
+      }
+
       const metaWithCapture = {
         ...nextMetadata,
         transaction_id: transactionId,
-        razorpay_capture_status: txRes?.ok ? "captured" : "failed",
-        razorpay_capture_status_code: txRes?.status,
-        ...(txRes?.ok
-          ? {}
-          : {
-            razorpay_capture_error:
-              extractMessage(txRes?.data) || (txRes?.data ? JSON.stringify(txRes.data) : undefined),
-          }),
+        razorpay_capture_status: txOk || txSkipped ? "captured" : "failed",
+        razorpay_capture_status_code: txOk ? 200 : 500,
       };
 
       // Persist metadata
@@ -484,71 +513,30 @@ export async function POST(req: Request) {
       }
 
       // Keep Medusa paid totals in sync with Razorpay's captured amount
-      if (txRes?.ok) {
+      if (txOk || txSkipped) {
         try {
-          await setOrderPaidTotal(placedOrderId, canonicalMinor);
+          // Prefer DB summary (rupees) over raw paise overwrite
+          await updateOrderSummaryTotals(placedOrderId);
           await setOrderPaymentStatus(placedOrderId, "captured");
         } catch (err) {
           console.error("failed to update order payment status after capture", {
             medusaOrderId,
             transactionId,
-            canonicalMinor,
+            amountRupees,
             err,
           });
           return NextResponse.json({ error: "payment_state_sync_failed" }, { status: 502 });
         }
-      }
-
-      if (txRes?.ok) {
-        return NextResponse.json({ ok: true, transaction_id: transactionId });
-      }
-
-      // If the transaction endpoint is unavailable (404) or the backend rejects, try alternative payment registration paths then persist metadata.
-      if (txRes?.status === 404) {
-        try {
-          // Attempt Medusa v2 register-payment endpoint
-          const regV2 = await registerOrderPaymentV2(placedOrderId, {
-            amount: canonicalMinor,
-            currency_code: currency.toLowerCase?.() || currency,
-            payment_id: paymentId,
-            metadata: {
-              razorpay_payment_id: paymentId,
-              razorpay_order_id: razorpayOrderId,
-              razorpay_signature: signature || metadata.razorpay_signature,
-              razorpay_event: event,
-            },
-          });
-          if (!regV2?.ok) {
-            console.error("razorpay webhook: register-payment v2 failed", { status: regV2?.status, data: regV2?.data });
-          } else {
-            try {
-              const paidRes = await setOrderPaidTotal(placedOrderId, canonicalMinor);
-              if (!paidRes.ok) {
-                console.error("razorpay webhook: set paid total failed", { status: paidRes.status, data: paidRes.data });
-              }
-              const statusRes = await setOrderPaymentStatus(placedOrderId, "captured");
-              if (!statusRes.ok) {
-                console.error("razorpay webhook: set payment status failed", { status: statusRes.status, data: statusRes.data });
-              }
-            } catch (err) {
-              console.error("razorpay webhook: failed syncing paid totals after v2 register", err);
-            }
-          }
-        } catch (err) {
-          console.error("razorpay webhook: register-payment v2 threw", err);
-        }
-
-        await updateOrderMetadata(placedOrderId, {
-          ...metaWithCapture,
-          razorpay_capture_status: "not_supported",
+        return NextResponse.json({
+          ok: true,
+          transaction_id: transactionId,
+          skipped: txSkipped || undefined,
         });
-        return NextResponse.json({ ok: false, reason: "transactions_not_supported" });
       }
 
       console.warn("razorpay webhook transaction failed", {
         medusaOrderId,
-        status: txRes?.status,
-        data: txRes?.data,
+        txResult,
       });
 
       return NextResponse.json({ error: "transaction_failed" }, { status: 502 });

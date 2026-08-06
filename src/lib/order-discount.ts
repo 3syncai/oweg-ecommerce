@@ -8,13 +8,20 @@ type ApplyDiscountResult = {
 };
 
 const COIN_ADJUSTMENT_CODE = "OWEG_COINS";
+const PROMO_ADJUSTMENT_CODE = "OWEG_PROMO";
+const OWEG10_ADJUSTMENT_CODE = "OWEG10";
 
 /** Medusa admin subtracts positive adjustment amounts from the item subtotal. */
-async function insertCoinAdjustmentLine(
+async function insertNamedAdjustmentLine(
   client: import("pg").PoolClient,
   orderId: string,
-  discountMajor: number
+  discountMajor: number,
+  code: string,
+  description: string,
+  providerId: string
 ) {
+  if (discountMajor <= 0) return;
+
   const lineRes = await client.query(
     `SELECT oli.id AS line_item_id
      FROM order_item oi
@@ -37,7 +44,7 @@ async function insertCoinAdjustmentLine(
        AND a.code = $2
        AND a.deleted_at IS NULL
        AND (a.amount::numeric <= 0 OR a.amount::numeric != $3::numeric)`,
-    [orderId, COIN_ADJUSTMENT_CODE, discountMajor]
+    [orderId, code, discountMajor]
   );
 
   const existing = await client.query(
@@ -45,7 +52,7 @@ async function insertCoinAdjustmentLine(
      WHERE a.item_id = $1 AND a.code = $2 AND a.deleted_at IS NULL
        AND a.amount::numeric = $3::numeric
      LIMIT 1`,
-    [lineItemId, COIN_ADJUSTMENT_CODE, discountMajor]
+    [lineItemId, code, discountMajor]
   );
   if (existing.rows[0]) return;
 
@@ -59,13 +66,28 @@ async function insertCoinAdjustmentLine(
      )`,
     [
       crypto.randomUUID(),
-      `OWEG Coins (−₹${discountMajor})`,
-      COIN_ADJUSTMENT_CODE,
+      description,
+      code,
       discountMajor,
       rawAmount,
-      "oweg-wallet",
+      providerId,
       lineItemId,
     ]
+  );
+}
+
+async function insertCoinAdjustmentLine(
+  client: import("pg").PoolClient,
+  orderId: string,
+  discountMajor: number
+) {
+  await insertNamedAdjustmentLine(
+    client,
+    orderId,
+    discountMajor,
+    COIN_ADJUSTMENT_CODE,
+    `OWEG Coins (−Rs.${discountMajor})`,
+    "oweg-wallet"
   );
 }
 
@@ -91,6 +113,7 @@ type TaxInclusiveSyncOptions = {
   shippingRupees?: number;
   coinDiscountRupees?: number;
   oweg10DiscountRupees?: number;
+  promoDiscountRupees?: number;
 };
 
 /** OWEG prices are tax-inclusive. Remove Medusa's extra GST lines so admin totals match checkout. */
@@ -188,8 +211,12 @@ export async function syncOrderTaxInclusivePricing(
 
         const coinDiscount = Math.max(0, Number(options.coinDiscountRupees || 0));
         const oweg10Discount = Math.max(0, Number(options.oweg10DiscountRupees || 0));
+        const promoDiscount = Math.max(0, Number(options.promoDiscountRupees || 0));
         const itemsTotal = Number(itemsRes.rows[0]?.items_total || 0);
-        grandTotal = Math.max(0, itemsTotal + (shippingTotal || 0) - coinDiscount - oweg10Discount);
+        grandTotal = Math.max(
+          0,
+          itemsTotal + (shippingTotal || 0) - coinDiscount - oweg10Discount - promoDiscount
+        );
       }
 
       const paidTotal = Number(totals.paid_total || 0);
@@ -349,6 +376,170 @@ export async function applyCoinDiscountToOrder(options: {
     await insertCoinAdjustmentLine(client, orderId, discountMajor);
 
     await client.query("COMMIT");
+    return {
+      applied: true,
+      totalMinor: Math.round(nextCurrentTotal * 100),
+      discountTotalMinor: Math.round(nextDiscountTotal * 100),
+    };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+function metaMoney(meta: Record<string, unknown>, majorKey: string, minorKey?: string): number {
+  const major = Number(meta[majorKey]);
+  if (Number.isFinite(major) && major > 0) return major;
+  if (minorKey) {
+    const minor = Number(meta[minorKey]);
+    if (Number.isFinite(minor) && minor > 0) return minor / 100;
+  }
+  return 0;
+}
+
+/**
+ * Absolute sync of coin + OWEG10 + Medusa promo discounts into order_summary.
+ * Fixes admin Discount Total / Order Total / Outstanding for vendor-critical views.
+ */
+export async function applyMetadataDiscountsToOrderSummary(
+  orderId: string
+): Promise<ApplyDiscountResult> {
+  const id = orderId?.trim();
+  if (!id) return { applied: false };
+
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const orderRes = await client.query(
+      `SELECT metadata FROM "order" WHERE id = $1 FOR UPDATE`,
+      [id]
+    );
+    if (!orderRes.rows[0]) {
+      await client.query("ROLLBACK");
+      return { applied: false };
+    }
+
+    const metadata = (orderRes.rows[0].metadata || {}) as Record<string, unknown>;
+    const coin = Math.max(
+      0,
+      metaMoney(metadata, "coin_discount_rupees", "coin_discount_minor") ||
+        metaMoney(metadata, "coins_discounted")
+    );
+    const oweg10 = Math.max(0, metaMoney(metadata, "oweg10_discount_rupees", "oweg10_discount_minor"));
+    const promo = Math.max(0, metaMoney(metadata, "promo_discount_rupees", "promo_discount_minor"));
+    const totalDiscount = Math.round((coin + oweg10 + promo) * 100) / 100;
+
+    if (totalDiscount <= 0) {
+      await client.query("COMMIT");
+      return { applied: false };
+    }
+
+    const summaryRes = await client.query(
+      `SELECT totals FROM order_summary WHERE order_id = $1 FOR UPDATE`,
+      [id]
+    );
+    const totals = (summaryRes.rows[0]?.totals || {}) as Record<string, unknown>;
+    const paidTotal = Number(totals.paid_total || 0);
+    const originalOrderTotal = Number(totals.original_order_total || 0);
+    const currentOrderTotal = Number(totals.current_order_total || originalOrderTotal || 0);
+
+    const expectedFromMeta =
+      typeof metadata.medusa_total_minor === "number"
+        ? metadata.medusa_total_minor / 100
+        : typeof metadata.razorpay_amount_minor === "number"
+          ? metadata.razorpay_amount_minor / 100
+          : null;
+
+    // Prefer paid total when payment already captured (authoritative customer charge).
+    const baseBeforeDiscount =
+      originalOrderTotal > 0
+        ? originalOrderTotal
+        : currentOrderTotal + Math.abs(Number(totals.discount_total || 0));
+
+    let nextCurrentTotal =
+      expectedFromMeta != null && Number.isFinite(expectedFromMeta)
+        ? Math.max(0, expectedFromMeta)
+        : Math.max(0, baseBeforeDiscount - totalDiscount);
+
+    if (paidTotal > 0) {
+      // Keep order total aligned with what customer actually paid when discounts explain the gap.
+      const gap = Math.round((baseBeforeDiscount - paidTotal) * 100) / 100;
+      if (Math.abs(gap - totalDiscount) < 0.02) {
+        nextCurrentTotal = paidTotal;
+      }
+    }
+
+    const nextDiscountTotal = -totalDiscount;
+    const nextPendingDifference = Math.max(0, Math.round((nextCurrentTotal - paidTotal) * 100) / 100);
+
+    const updatedTotals = {
+      ...totals,
+      discount_total: nextDiscountTotal,
+      raw_discount_total: { value: String(nextDiscountTotal), precision: 20 },
+      current_order_total: nextCurrentTotal,
+      raw_current_order_total: { value: String(nextCurrentTotal), precision: 20 },
+      accounting_total: nextCurrentTotal,
+      raw_accounting_total: { value: String(nextCurrentTotal), precision: 20 },
+      pending_difference: nextPendingDifference,
+      raw_pending_difference: { value: String(nextPendingDifference), precision: 20 },
+    };
+
+    const promoCode =
+      typeof metadata.promo_code === "string" ? metadata.promo_code.toUpperCase() : "PROMO";
+
+    const nextMetadata = {
+      ...metadata,
+      checkout_discounts_totals_applied: true,
+      checkout_discounts_totals_applied_at: new Date().toISOString(),
+      ...(coin > 0
+        ? {
+            coin_discount_totals_applied: true,
+            coins_discounted: coin,
+            coin_discount_rupees: coin,
+            coin_discount_minor: Math.round(coin * 100),
+          }
+        : {}),
+    };
+
+    await client.query(
+      `UPDATE "order" SET metadata = $2::jsonb, updated_at = now() WHERE id = $1`,
+      [id, JSON.stringify(nextMetadata)]
+    );
+    await client.query(
+      `UPDATE order_summary SET totals = $2, updated_at = now() WHERE order_id = $1`,
+      [id, JSON.stringify(updatedTotals)]
+    );
+
+    if (coin > 0) {
+      await insertCoinAdjustmentLine(client, id, coin);
+    }
+    if (oweg10 > 0) {
+      await insertNamedAdjustmentLine(
+        client,
+        id,
+        oweg10,
+        OWEG10_ADJUSTMENT_CODE,
+        `OWEG10 (−Rs.${oweg10})`,
+        "oweg-oweg10"
+      );
+    }
+    if (promo > 0) {
+      await insertNamedAdjustmentLine(
+        client,
+        id,
+        promo,
+        PROMO_ADJUSTMENT_CODE,
+        `${promoCode} (−Rs.${promo})`,
+        "oweg-promo"
+      );
+    }
+
+    await client.query("COMMIT");
+
     return {
       applied: true,
       totalMinor: Math.round(nextCurrentTotal * 100),

@@ -9,6 +9,7 @@ import {
   getDeliveryDate,
   getReturnDeadline,
   isCodOrder,
+  isPaymentConfirmed,
   isWithinReturnWindow,
   trackerSteps,
 } from "@/lib/order-tracker";
@@ -37,12 +38,22 @@ export function useOrderDetail(orderId?: string) {
     ifsc_code: "",
     bank_name: "",
   });
+  const [payoutMethod, setPayoutMethod] = useState<"upi" | "bank">("upi");
+  const [upiId, setUpiId] = useState("");
   const [cancelFormOpen, setCancelFormOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [customCancelReason, setCustomCancelReason] = useState("");
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [cancelMessage, setCancelMessage] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelPayoutMethod, setCancelPayoutMethod] = useState<"upi" | "bank">("upi");
+  const [cancelUpiId, setCancelUpiId] = useState("");
+  const [cancelBankDetails, setCancelBankDetails] = useState({
+    account_name: "",
+    account_number: "",
+    ifsc_code: "",
+    bank_name: "",
+  });
   const returnItemsInitializedForRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -149,6 +160,10 @@ export function useOrderDetail(orderId?: string) {
   const returnDeadline = useMemo(() => getReturnDeadline(order), [order]);
   const withinReturnWindow = useMemo(() => isWithinReturnWindow(order), [order]);
   const isCod = useMemo(() => isCodOrder(order), [order]);
+  const requireCancelRefundPayout = useMemo(
+    () => Boolean(order && isPaymentConfirmed(order) && !isCodOrder(order)),
+    [order]
+  );
 
   const shiprocketStatus = useMemo(() => {
     const meta = (order?.metadata || {}) as Record<string, unknown>;
@@ -167,6 +182,8 @@ export function useOrderDetail(orderId?: string) {
       shipping: order?.shipping_total || 0,
       coinDiscount: 0,
       oweg10Discount: 0,
+      promoDiscount: 0,
+      promoCode: null as string | null,
       grandTotal: order?.total || 0,
     };
   }, [order?.display_totals, order?.subtotal, order?.shipping_total, order?.total]);
@@ -181,6 +198,14 @@ export function useOrderDetail(orderId?: string) {
     setCancelReason("");
     setCustomCancelReason("");
     setCancelError(null);
+    setCancelPayoutMethod("upi");
+    setCancelUpiId("");
+    setCancelBankDetails({
+      account_name: "",
+      account_number: "",
+      ifsc_code: "",
+      bank_name: "",
+    });
   }, []);
 
   const cancelOrder = useCallback(async () => {
@@ -196,6 +221,44 @@ export function useOrderDetail(orderId?: string) {
       return;
     }
 
+    let refund_payout:
+      | { method: "upi"; upi_id: string }
+      | {
+          method: "bank";
+          account_name: string;
+          account_number: string;
+          ifsc_code: string;
+          bank_name?: string;
+        }
+      | undefined;
+
+    if (requireCancelRefundPayout) {
+      if (cancelPayoutMethod === "upi") {
+        const safeUpi = cancelUpiId.trim();
+        if (!/^[\w.\-]{2,256}@[a-zA-Z]{2,64}$/.test(safeUpi)) {
+          setCancelError("Please enter a valid UPI ID (example: name@upi).");
+          return;
+        }
+        refund_payout = { method: "upi", upi_id: safeUpi };
+      } else {
+        if (
+          !cancelBankDetails.account_name ||
+          !cancelBankDetails.account_number ||
+          !cancelBankDetails.ifsc_code
+        ) {
+          setCancelError("Bank details are required for the refund.");
+          return;
+        }
+        refund_payout = {
+          method: "bank",
+          account_name: cancelBankDetails.account_name,
+          account_number: cancelBankDetails.account_number,
+          ifsc_code: cancelBankDetails.ifsc_code,
+          bank_name: cancelBankDetails.bank_name || undefined,
+        };
+      }
+    }
+
     setCancelSubmitting(true);
     setCancelMessage(null);
     setCancelError(null);
@@ -204,7 +267,7 @@ export function useOrderDetail(orderId?: string) {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({ reason, refund_payout }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -219,7 +282,17 @@ export function useOrderDetail(orderId?: string) {
     } finally {
       setCancelSubmitting(false);
     }
-  }, [order?.id, cancelReason, customCancelReason, loadOrder, resetCancelForm]);
+  }, [
+    order?.id,
+    cancelReason,
+    customCancelReason,
+    requireCancelRefundPayout,
+    cancelPayoutMethod,
+    cancelUpiId,
+    cancelBankDetails,
+    loadOrder,
+    resetCancelForm,
+  ]);
 
   const resetReturnForm = useCallback(() => {
     setReturnFormOpen(false);
@@ -233,6 +306,8 @@ export function useOrderDetail(orderId?: string) {
       ifsc_code: "",
       bank_name: "",
     });
+    setPayoutMethod("upi");
+    setUpiId("");
     if (order?.items?.length) {
       setReturnItems(
         order.items.map((item) => ({
@@ -264,15 +339,38 @@ export function useOrderDetail(orderId?: string) {
       return;
     }
 
-    if (isCod) {
-      if (!bankDetails.account_name || !bankDetails.account_number || !bankDetails.ifsc_code) {
-        setReturnError("Bank details are required for COD refunds.");
+    if (returnType === "return") {
+      if (payoutMethod === "upi") {
+        const safeUpi = upiId.trim();
+        if (!/^[\w.\-]{2,256}@[a-zA-Z]{2,64}$/.test(safeUpi)) {
+          setReturnError("Please enter a valid UPI ID (example: name@upi).");
+          return;
+        }
+      } else if (
+        !bankDetails.account_name ||
+        !bankDetails.account_number ||
+        !bankDetails.ifsc_code
+      ) {
+        setReturnError("Bank details are required for the refund.");
         return;
       }
     }
 
     setReturnSubmitting(true);
     try {
+      const refund_payout =
+        returnType === "return"
+          ? payoutMethod === "upi"
+            ? { method: "upi" as const, upi_id: upiId.trim() }
+            : {
+                method: "bank" as const,
+                account_name: bankDetails.account_name,
+                account_number: bankDetails.account_number,
+                ifsc_code: bankDetails.ifsc_code,
+                bank_name: bankDetails.bank_name || undefined,
+              }
+          : undefined;
+
       const res = await fetch("/api/medusa/return-requests", {
         method: "POST",
         credentials: "include",
@@ -286,14 +384,7 @@ export function useOrderDetail(orderId?: string) {
             order_item_id: item.order_item_id,
             quantity: item.quantity,
           })),
-          bank_details: isCod
-            ? {
-                account_name: bankDetails.account_name,
-                account_number: bankDetails.account_number,
-                ifsc_code: bankDetails.ifsc_code,
-                bank_name: bankDetails.bank_name || undefined,
-              }
-            : undefined,
+          refund_payout,
         }),
       });
       if (!res.ok) {
@@ -314,8 +405,9 @@ export function useOrderDetail(orderId?: string) {
     returnItems,
     returnReason,
     returnNotes,
-    isCod,
     bankDetails,
+    payoutMethod,
+    upiId,
     returnType,
     resetReturnForm,
     loadReturnRequests,
@@ -331,6 +423,7 @@ export function useOrderDetail(orderId?: string) {
     returnDeadline,
     withinReturnWindow,
     isCod,
+    requireCancelRefundPayout,
     canCancel,
     displayTotals,
     steps,
@@ -345,6 +438,12 @@ export function useOrderDetail(orderId?: string) {
     cancelError,
     resetCancelForm,
     cancelOrder,
+    cancelPayoutMethod,
+    setCancelPayoutMethod,
+    cancelUpiId,
+    setCancelUpiId,
+    cancelBankDetails,
+    setCancelBankDetails,
     returnFormOpen,
     setReturnFormOpen,
     returnType,
@@ -360,6 +459,10 @@ export function useOrderDetail(orderId?: string) {
     returnSubmitting,
     bankDetails,
     setBankDetails,
+    payoutMethod,
+    setPayoutMethod,
+    upiId,
+    setUpiId,
     resetReturnForm,
     submitReturnRequest,
     refreshOrder: () => loadOrder(false, true),

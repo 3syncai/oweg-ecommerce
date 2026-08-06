@@ -1,6 +1,29 @@
 {
     "collections": {
-        "domain": "Brand"
+        "domain": "Brand",
+        "subtitle": "Organize products into brands.",
+        "createCollection": "Create Brand",
+        "createCollectionHint": "Create a new brand to organize your products.",
+        "createSuccess": "Brand created successfully.",
+        "editCollection": "Edit Brand",
+        "handleTooltip": "The handle is used to reference the brand in your storefront. If not specified, the handle will be generated from the brand title.",
+        "deleteWarning": "You are about to delete the brand {{title}}. This action cannot be undone.",
+        "removeSingleProductWarning": "You are about to remove the product {{title}} from the brand. This action cannot be undone.",
+        "removeProductsWarning_one": "You are about to remove {{count}} product from the brand. This action cannot be undone.",
+        "removeProductsWarning_other": "You are about to remove {{count}} products from the brand. This action cannot be undone.",
+        "products": {
+            "list": {
+                "noRecordsMessage": "There are no products in the brand."
+            },
+            "add": {
+                "successToast_one": "Product was successfully added to the brand.",
+                "successToast_other": "Products were successfully added to the brand."
+            },
+            "remove": {
+                "successToast_one": "Product was successfully removed from the brand.",
+                "successToast_other": "Products were successfully removed from the brand."
+            }
+        }
     },
     "fields": {
         "collection": "Brand"

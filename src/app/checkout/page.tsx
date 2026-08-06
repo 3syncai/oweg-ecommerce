@@ -84,6 +84,8 @@ function buildCheckoutWarmupFingerprint(input: {
   coinDiscount: number;
   oweg10Applied: boolean;
   oweg10CanApply: boolean;
+  promoCode: string | null;
+  promoDiscount: number;
   payableTotal: number;
   cartId?: string;
   isBuyNow: boolean;
@@ -105,6 +107,8 @@ function buildCheckoutWarmupFingerprint(input: {
     ref: input.referralCode.trim(),
     coin: input.coinDiscount,
     o10: input.oweg10Applied && input.oweg10CanApply,
+    promo: input.promoCode,
+    promoAmt: Math.round(input.promoDiscount * 100) / 100,
     pay: Math.round(input.payableTotal * 100) / 100,
     cart: input.cartId,
     bn: input.isBuyNow,
@@ -246,6 +250,14 @@ function CheckoutPageInner() {
     pending: false,
   });
   const [oweg10StatusCustomerId, setOweg10StatusCustomerId] = useState<string | null>(null);
+  const [promoCodeInput, setPromoCodeInput] = useState("");
+  const [promoApplied, setPromoApplied] = useState<{
+    code: string;
+    discountRupees: number;
+    label: string;
+  } | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoValidating, setPromoValidating] = useState(false);
   const [pendingLoginCheckout, setPendingLoginCheckout] = useState(false);
   const [checkoutAfterLoginIntent, setCheckoutAfterLoginIntent] = useState(false);
   const autoCheckoutNoticeShownRef = useRef(false);
@@ -253,6 +265,7 @@ function CheckoutPageInner() {
   const draftWarmupRef = useRef<DraftWarmupEntry | null>(null);
   const draftWarmupInFlightRef = useRef<Promise<DraftOrderResponse | null> | null>(null);
   const createDraftOrderRef = useRef<(() => Promise<DraftOrderResponse>) | null>(null);
+  const pendingPromoHydratedRef = useRef(false);
 
   const [referralCode, setReferralCode] = useState("");
   const [referralCodeApplied, setReferralCodeApplied] = useState(false); // Track if auto-applied
@@ -1004,7 +1017,99 @@ function CheckoutPageInner() {
   const maxUsableCoins = Math.max(0, Math.floor(Math.min(walletBalance, orderTotal, maxRedeemable)));
   // Trust coinsToUse when useCoins is checked (coins are only deducted after payment succeeds).
   const coinDiscount = useCoins ? coinsToUse : 0;
-  const payableTotal = Math.max(0, activeTotals.total - coinDiscount - oweg10Discount);
+  const promoDiscount = promoApplied?.discountRupees || 0;
+  const payableTotal = Math.max(
+    0,
+    activeTotals.total - coinDiscount - oweg10Discount - promoDiscount
+  );
+
+  const applyCheckoutPromo = async () => {
+    const code = promoCodeInput.trim();
+    if (!code) {
+      setPromoError("Enter a promo code.");
+      return;
+    }
+    setPromoValidating(true);
+    setPromoError(null);
+    try {
+      const res = await fetch("/api/store/promo/validate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          code,
+          itemsSubtotal: activeTotals.subtotal,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        setPromoApplied(null);
+        setPromoError(
+          typeof data?.error === "string" ? data.error : "Invalid promo code."
+        );
+        return;
+      }
+      setPromoApplied({
+        code: String(data.code),
+        discountRupees: Number(data.discountRupees) || 0,
+        label: String(data.label || data.code),
+      });
+      setPromoError(null);
+    } catch {
+      setPromoApplied(null);
+      setPromoError("Could not validate promo code.");
+    } finally {
+      setPromoValidating(false);
+    }
+  };
+
+  useEffect(() => {
+    if (pendingPromoHydratedRef.current) return;
+    if (activeTotals.subtotal <= 0) return;
+    let pending = "";
+    try {
+      pending = sessionStorage.getItem("oweg_pending_promo") || "";
+      if (pending) sessionStorage.removeItem("oweg_pending_promo");
+    } catch {
+      pending = "";
+    }
+    if (!pending) {
+      pendingPromoHydratedRef.current = true;
+      return;
+    }
+    pendingPromoHydratedRef.current = true;
+    setPromoCodeInput(pending);
+    void (async () => {
+      setPromoValidating(true);
+      setPromoError(null);
+      try {
+        const res = await fetch("/api/store/promo/validate", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            code: pending,
+            itemsSubtotal: activeTotals.subtotal,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.ok) {
+          setPromoApplied(null);
+          setPromoError(
+            typeof data?.error === "string" ? data.error : "Invalid promo code."
+          );
+          return;
+        }
+        setPromoApplied({
+          code: String(data.code),
+          discountRupees: Number(data.discountRupees) || 0,
+          label: String(data.label || data.code),
+        });
+      } catch {
+        setPromoError("Could not validate promo code.");
+      } finally {
+        setPromoValidating(false);
+      }
+    })();
+  }, [activeTotals.subtotal]);
 
   useEffect(() => {
     const hasCartItems = (cart?.items?.length || 0) > 0;
@@ -1138,6 +1243,7 @@ function CheckoutPageInner() {
       mode: isBuyNow ? "buy_now" : "cart",
       coinDiscount: useCoins ? coinsToUse : 0,
       oweg10Applied: customer?.id ? oweg10Applied && oweg10Status.canApply : false,
+      promoCode: promoApplied?.code || undefined,
       itemsOverride: isBuyNow && fallbackBuyNow
         ? [
           {
@@ -1189,6 +1295,8 @@ function CheckoutPageInner() {
       coinDiscount,
       oweg10Applied,
       oweg10CanApply: oweg10Status.canApply,
+      promoCode: promoApplied?.code || null,
+      promoDiscount,
       payableTotal,
       cartId: cart?.id,
       isBuyNow,
@@ -1314,6 +1422,8 @@ function CheckoutPageInner() {
     coinDiscount,
     oweg10Applied,
     oweg10Status.canApply,
+    promoApplied?.code,
+    promoDiscount,
     payableTotal,
     cart?.id,
     isBuyNow,
@@ -2195,6 +2305,46 @@ function CheckoutPageInner() {
                   Sign in to unlock the one-time {OWEG10_CODE} 10% offer.
                 </div>
               )}
+              <div className="rounded-xl border border-slate-200/70 bg-white p-4 space-y-3">
+                <p className="text-sm font-semibold text-[#2c342f]">Promo code</p>
+                <div className="flex gap-2">
+                  <input
+                    value={promoCodeInput}
+                    onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
+                    placeholder="e.g. OWEG50"
+                    className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    disabled={promoValidating}
+                  />
+                  {promoApplied ? (
+                    <button
+                      type="button"
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium"
+                      onClick={() => {
+                        setPromoApplied(null);
+                        setPromoCodeInput("");
+                        setPromoError(null);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="rounded-lg bg-[#2c342f] text-white px-3 py-2 text-sm font-medium disabled:opacity-60"
+                      onClick={() => void applyCheckoutPromo()}
+                      disabled={promoValidating}
+                    >
+                      {promoValidating ? "…" : "Apply"}
+                    </button>
+                  )}
+                </div>
+                {promoApplied ? (
+                  <p className="text-xs text-[var(--oweg-green-dark)]">{promoApplied.label}</p>
+                ) : null}
+                {promoError ? (
+                  <p className="text-xs text-red-600">{promoError}</p>
+                ) : null}
+              </div>
               <div className="space-y-2.5 text-sm text-slate-600">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
@@ -2210,6 +2360,12 @@ function CheckoutPageInner() {
                   <div className="flex justify-between text-[var(--oweg-green-dark)]">
                     <span>{OWEG10_CODE} discount</span>
                     <span className="font-semibold">-{formatInr(oweg10Discount)}</span>
+                  </div>
+                )}
+                {promoDiscount > 0 && (
+                  <div className="flex justify-between text-[var(--oweg-green-dark)]">
+                    <span>{promoApplied?.code || "Promo"} discount</span>
+                    <span className="font-semibold">-{formatInr(promoDiscount)}</span>
                   </div>
                 )}
                 {/* Coin Discount Line */}

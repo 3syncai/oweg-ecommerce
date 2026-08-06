@@ -30,7 +30,7 @@ export default function TrackOrderContent({ orderId, orderNumber }: TrackOrderCo
   const hero = getTrackHeroContent(order, existingReturn);
   const statusImageSrc = resolveOrderStatusImage(order, existingReturn);
   const isCancelledHero = isCancelledStatusImage(statusImageSrc);
-  const steps = getVerticalTrackingSteps(order);
+  const steps = getVerticalTrackingSteps(order, existingReturn);
   const address = order?.shipping_address;
   const detailHref = buildOrderHref(orderId, order?.display_id ?? orderNumber);
   const mapsUrl = getGoogleMapsUrl(address);
