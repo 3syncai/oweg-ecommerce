@@ -519,9 +519,30 @@ export const vendorProductsApi = {
 }
 
 // Vendor Orders API
+let listOrdersInFlight: Promise<{ orders: any[]; counts?: Record<string, number> }> | null = null
+let countsInFlight: Promise<{ orders: any[]; counts?: Record<string, number> }> | null = null
+
 export const vendorOrdersApi = {
+  /** Full order list — concurrent callers share one in-flight request. */
   list: async () => {
-    return apiRequest<{ orders: any[]; counts?: Record<string, number> }>('/vendor/orders')
+    if (listOrdersInFlight) return listOrdersInFlight
+    listOrdersInFlight = apiRequest<{ orders: any[]; counts?: Record<string, number> }>(
+      '/vendor/orders'
+    ).finally(() => {
+      listOrdersInFlight = null
+    })
+    return listOrdersInFlight
+  },
+
+  /** Stage counts only (badge polling) — avoids shipping full order payloads. */
+  counts: async () => {
+    if (countsInFlight) return countsInFlight
+    countsInFlight = apiRequest<{ orders: any[]; counts?: Record<string, number> }>(
+      '/vendor/orders?counts_only=1'
+    ).finally(() => {
+      countsInFlight = null
+    })
+    return countsInFlight
   },
 
   get: async (id: string) => {
@@ -614,9 +635,9 @@ export const vendorOrdersApi = {
       courier_partner_name: string
       tracking_source?: 'shiprocket' | 'carrier_api' | 'manual'
       awb: string
-      dispatch_rate: number
       packing_info: string
       tracking_url?: string
+      dispatch_rate?: number
       label_url?: string
     }
   ) => {

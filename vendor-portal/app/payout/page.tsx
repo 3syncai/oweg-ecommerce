@@ -126,11 +126,11 @@ const downloadLedgerExcel = (rows: SettlementRow[], rangeLabel: string) => {
           : row.status === "ON_HOLD"
             ? "Return hold"
             : row.status === "UNLOCKING"
-              ? "Unlocking"
+              ? "Pending"
               : row.status === "PAID"
                 ? "Paid"
                 : row.status === "CREDITED"
-                  ? "Pending payment"
+                  ? "Settlement amount"
                   : row.status || "",
   }))
 
@@ -357,7 +357,7 @@ const VendorPayoutPage = () => {
             <StatCard
               variant="hero"
               icon={<CurrencyDollar />}
-              label="Pending payment"
+              label="Settlement amount"
               value={formatCurrency(payments.cards.pending_payment)}
               subtext={
                 <Text size="small" className="text-ui-fg-subtle">
@@ -367,7 +367,7 @@ const VendorPayoutPage = () => {
             />
             <StatCard
               icon={<Clock />}
-              label="Unlocking"
+              label="Pending"
               value={formatCurrency(payments.cards.unlocking_payment ?? 0)}
               subtext={
                 <Text size="small" className="text-ui-fg-subtle">
@@ -554,7 +554,7 @@ const VendorPayoutPage = () => {
                       } else {
                         statusNode = (
                           <StatusPill tone="bg-emerald-500/10 text-emerald-800 dark:text-emerald-300">
-                            Pending payment
+                            Settlement amount
                           </StatusPill>
                         )
                       }

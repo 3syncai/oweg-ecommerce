@@ -57,17 +57,67 @@ function loadOwegWordmarkDataUri(): string | null {
   ])
 }
 
-function sellerProfile() {
-  return {
+type InvoiceSeller = {
+  brand: string
+  /** Sold By display name (vendor store / seller name) — not shown next to logo */
+  name: string
+  address: string
+  gst: string
+  pan: string | null
+  phone: string | null
+  email: string | null
+  /** When false, Sold By omits phone/email (vendor invoices). */
+  showContact: boolean
+}
+
+function formatVendorAddress(vendorLike: Record<string, any> | null | undefined): string {
+  if (!vendorLike) return ""
+  const parts = [
+    vendorLike.store_address,
+    [vendorLike.store_city, vendorLike.store_pincode].filter(Boolean).join(" - "),
+    vendorLike.store_region,
+    vendorLike.store_country,
+  ]
+    .map((p) => String(p || "").trim())
+    .filter(Boolean)
+  return parts.join(", ")
+}
+
+function sellerProfile(order?: any): InvoiceSeller {
+  const platform = {
     brand: process.env.INVOICE_SELLER_BRAND || "OWEG",
-    legal:
+    name:
       process.env.INVOICE_SELLER_LEGAL || "Ascent Retechno India Private Limited",
     address:
       process.env.INVOICE_SELLER_ADDRESS ||
       "AV SIGNATURE RESIDENCY, NH-57 SHOP NO 001, A BLOCK, BASUDEVPUR DARBHANGA, BIHAR - 846005",
     gst: process.env.INVOICE_SELLER_GST || "10AAWCA5289L1Z3",
+    pan: process.env.INVOICE_SELLER_PAN || null,
     phone: process.env.INVOICE_SELLER_PHONE || "+91 8956085313",
     email: process.env.INVOICE_SELLER_EMAIL || "darbhanga@oweg.in",
+  }
+
+  const override = (order?.invoice_seller || order?.seller || {}) as Record<string, any>
+  const hasVendorOverride = Boolean(
+    override.name || override.address || override.store_address || override.pan
+  )
+
+  const address =
+    String(override.address || "").trim() ||
+    formatVendorAddress(override) ||
+    platform.address
+
+  return {
+    brand: String(override.brand || platform.brand),
+    name: String(override.name || override.store_name || platform.name),
+    address,
+    gst: String(override.gst || override.gst_no || platform.gst),
+    pan: override.pan || override.pan_no || platform.pan || null,
+    phone: hasVendorOverride ? null : platform.phone,
+    email: hasVendorOverride ? null : platform.email,
+    showContact: hasVendorOverride
+      ? false
+      : override.show_contact !== false,
   }
 }
 
@@ -140,7 +190,7 @@ export const generateInvoice = async (order: any) => {
   const { renderToBuffer, Document, Page, Text, View, StyleSheet, Image } =
     await import("@react-pdf/renderer")
 
-  const seller = sellerProfile()
+  const seller = sellerProfile(order)
   const logoWordmark = loadOwegWordmarkDataUri()
   const billTo = order.billing_address || order.shipping_address || {}
   const shipTo = order.shipping_address || order.billing_address || {}
@@ -473,7 +523,6 @@ export const generateInvoice = async (order: any) => {
               <Text style={styles.brandName}>{seller.brand}</Text>
             )}
             <View>
-              <Text style={styles.brandSub}>{seller.legal}</Text>
               <Text style={styles.brandSub}>Tax Invoice / Bill of Supply</Text>
             </View>
           </View>
@@ -491,12 +540,19 @@ export const generateInvoice = async (order: any) => {
           <View style={styles.col}>
             <Text style={styles.sectionTitle}>Sold By</Text>
             <Text style={{ ...styles.line, fontFamily: "Helvetica-Bold" }}>
-              {seller.legal}
+              {seller.name}
             </Text>
             <Text style={styles.line}>{seller.address}</Text>
             <Text style={styles.line}>GST No: {seller.gst}</Text>
-            <Text style={styles.muted}>Mobile No.: {seller.phone}</Text>
-            <Text style={styles.muted}>Email Id.: {seller.email}</Text>
+            <Text style={styles.line}>
+              PAN No.: {seller.pan || "Not Provided"}
+            </Text>
+            {seller.showContact && seller.phone ? (
+              <Text style={styles.muted}>Mobile No.: {seller.phone}</Text>
+            ) : null}
+            {seller.showContact && seller.email ? (
+              <Text style={styles.muted}>Email Id.: {seller.email}</Text>
+            ) : null}
           </View>
           <PartyBlock
             title="Bill to"
@@ -632,8 +688,10 @@ export const generateInvoice = async (order: any) => {
           <Text style={styles.sectionTitle}>Notes</Text>
           <Text style={styles.muted}>
             This is a computer-generated invoice from {seller.brand}. Sold by{" "}
-            {seller.brand} ({seller.legal}). For support contact {seller.email}/{" "}
-            {seller.phone}.
+            {seller.name}.
+            {seller.showContact && seller.email
+              ? ` For support contact ${seller.email}${seller.phone ? ` / ${seller.phone}` : ""}.`
+              : ""}
           </Text>
           <Text style={styles.muted}>
             Prices are GST-inclusive. Taxable value / GST amount above are a
@@ -644,7 +702,8 @@ export const generateInvoice = async (order: any) => {
 
         <View style={styles.footer} fixed>
           <Text style={styles.footerText}>
-            {seller.brand} · {seller.legal}
+            {seller.brand}
+            {seller.name && seller.name !== seller.brand ? ` · ${seller.name}` : ""}
           </Text>
           <Text
             style={styles.footerText}

@@ -74,7 +74,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
                 "customer.phone",
                 "shipping_address.first_name",
                 "shipping_address.last_name",
-                "shipping_address.phone"
+                "shipping_address.phone",
+                "fulfillments.id",
+                "fulfillments.delivered_at",
             ],
             filters: {}
         })
@@ -106,20 +108,32 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         // Aggregate customer data from vendor orders (payout amounts, not raw order totals)
         const customerMap = new Map<string, {
             id: string
-            email: string
-            first_name?: string
-            last_name?: string
-            phone?: string
+            email: string | null
+            first_name?: string | null
+            last_name?: string | null
+            phone?: string | null
             orders_count: number
+            open_orders_count: number
             total_spent: number
             order_value: number
             first_order_date: string
             last_order_date: string
+            details_hidden: boolean
         }>()
 
         for (const order of vendorOrders) {
             const customerId = order.customer_id || order.email || 'guest'
             const customerEmail = order.email || 'N/A'
+            const meta = order.metadata || {}
+            const vendorWf =
+              meta.vendor_order_workflows?.[auth.vendor_id] ||
+              meta.vendor_order_workflows?.[String(auth.vendor_id)] ||
+              {}
+            const isDelivered =
+              (order.fulfillments || []).some((f: any) => f?.delivered_at) ||
+              String(meta.shiprocket_status || "").toLowerCase().includes("deliver") ||
+              String(vendorWf.stage || "").toLowerCase() === "delivered" ||
+              String(vendorWf.shiprocket_status || "").toLowerCase().includes("deliver")
 
             const orderTotal = Number(order.summary?.current_order_total) || 0
             const payoutAmount = Number(earningsByOrder[order.id]?.net_amount) || 0
@@ -127,6 +141,22 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
             if (customerMap.has(customerId)) {
                 const existing = customerMap.get(customerId)!
                 existing.orders_count++
+                if (!isDelivered) {
+                  existing.open_orders_count++
+                  existing.first_name =
+                    order.customer?.first_name ||
+                    order.shipping_address?.first_name ||
+                    existing.first_name
+                  existing.last_name =
+                    order.customer?.last_name ||
+                    order.shipping_address?.last_name ||
+                    existing.last_name
+                  existing.phone =
+                    order.customer?.phone ||
+                    order.shipping_address?.phone ||
+                    existing.phone
+                  existing.email = customerEmail
+                }
                 existing.total_spent += payoutAmount
                 existing.order_value += orderTotal
 
@@ -147,15 +177,31 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
                     last_name: order.customer?.last_name || order.shipping_address?.last_name,
                     phone: order.customer?.phone || order.shipping_address?.phone,
                     orders_count: 1,
+                    open_orders_count: isDelivered ? 0 : 1,
                     total_spent: payoutAmount,
                     order_value: orderTotal,
                     first_order_date: orderDate,
                     last_order_date: orderDate,
+                    details_hidden: false,
                 })
             }
         }
 
         const customers = Array.from(customerMap.values())
+            .map((customer) => {
+              const detailsHidden = customer.open_orders_count === 0
+              if (!detailsHidden) {
+                return { ...customer, details_hidden: false }
+              }
+              return {
+                ...customer,
+                details_hidden: true,
+                email: null,
+                first_name: null,
+                last_name: null,
+                phone: null,
+              }
+            })
             .sort((a, b) => b.total_spent - a.total_spent) // Sort by total spent descending
 
         console.log(`[Customers API] Returning ${customers.length} unique customers`)

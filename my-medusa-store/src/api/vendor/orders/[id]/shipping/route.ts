@@ -218,11 +218,21 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       const courier = String(body.courier_partner_name || "").trim()
       const awb = String(body.awb || body.tracking_id || body.tracking_number || "").trim()
       const packingInfo = String(body.packing_info || "").trim()
-      const dispatchRate = Number(body.dispatch_rate || 0)
+      const dispatchRateRaw = body.dispatch_rate
+      const dispatchRate =
+        dispatchRateRaw === undefined || dispatchRateRaw === null || dispatchRateRaw === ""
+          ? 0
+          : Number(dispatchRateRaw)
 
-      if (!courier || !awb || !packingInfo || !Number.isFinite(dispatchRate) || dispatchRate < 0) {
+      if (!courier || !awb || !packingInfo) {
         return res.status(400).json({
-          message: "Courier partner, AWB/tracking id, dispatch rate, and packing info are required",
+          message: "Courier partner, AWB/tracking id, and packing info are required",
+        })
+      }
+
+      if (!Number.isFinite(dispatchRate) || dispatchRate < 0) {
+        return res.status(400).json({
+          message: "Dispatch rate must be a valid non-negative number when provided",
         })
       }
 

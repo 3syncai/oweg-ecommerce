@@ -80,6 +80,7 @@ type VendorOrder = {
     tcs_rate?: number
     tds_rate?: number
   } | null
+  customer_details_hidden?: boolean
 }
 
 const PAGE_SIZE = 10
@@ -137,12 +138,32 @@ const addressLine = (address?: Record<string, any> | null) => {
 }
 
 const customerName = (order: VendorOrder) => {
+  if (order.vendor_stage === "delivered" || order.customer_details_hidden) {
+    return "Hidden after delivery"
+  }
   const address = order.shipping_address || order.billing_address
   return `${address?.first_name || ""} ${address?.last_name || ""}`.trim() || "N/A"
 }
 
 const customerPhone = (order: VendorOrder) => {
+  if (order.vendor_stage === "delivered" || order.customer_details_hidden) {
+    return "—"
+  }
   return String(order.shipping_address?.phone || order.billing_address?.phone || "N/A")
+}
+
+const customerEmailDisplay = (order: VendorOrder) => {
+  if (order.vendor_stage === "delivered" || order.customer_details_hidden) {
+    return "Hidden after delivery"
+  }
+  return order.email || "N/A"
+}
+
+const addressLineSafe = (order: VendorOrder, address?: Record<string, any> | null) => {
+  if (order.vendor_stage === "delivered" || order.customer_details_hidden) {
+    return "Hidden after delivery"
+  }
+  return addressLine(address)
 }
 
 const stageVariant = (stage: VendorStage) => {
@@ -186,7 +207,6 @@ const VendorOrdersContent = () => {
     courier_partner_name: "",
     tracking_number: "",
     tracking_url: "",
-    label_url: "",
   })
   const [easyPackage, setEasyPackage] = useState({
     weight: "0.5",
@@ -206,10 +226,8 @@ const VendorOrdersContent = () => {
     courier_partner_name: "",
     tracking_source: "shiprocket" as "shiprocket" | "carrier_api" | "manual",
     awb: "",
-    dispatch_rate: "",
     packing_info: "",
     tracking_url: "",
-    label_url: "",
   })
 
   const replaceOrder = useCallback((next: VendorOrder) => {
@@ -393,7 +411,6 @@ const VendorOrdersContent = () => {
       courier_partner_name: "",
       tracking_number: "",
       tracking_url: "",
-      label_url: "",
     })
     setEasyPickupInfo({})
     setError(null)
@@ -445,7 +462,6 @@ const VendorOrdersContent = () => {
         height,
         tracking_number: easyTracking.tracking_number.trim() || undefined,
         tracking_url: easyTracking.tracking_url.trim() || undefined,
-        label_url: easyTracking.label_url.trim() || undefined,
       })
       replaceOrder(data.order)
       setEasyShipOrder(null)
@@ -464,10 +480,8 @@ const VendorOrdersContent = () => {
         courier_partner_name: selfShipping.courier_partner_name.trim(),
         tracking_source: selfShipping.tracking_source,
         awb: selfShipping.awb.trim(),
-        dispatch_rate: Number(selfShipping.dispatch_rate),
         packing_info: selfShipping.packing_info.trim(),
         tracking_url: selfShipping.tracking_url.trim() || undefined,
-        label_url: selfShipping.label_url.trim() || undefined,
       })
       replaceOrder(data.order)
       setSelfShipOrder(null)
@@ -621,10 +635,8 @@ const VendorOrdersContent = () => {
                 courier_partner_name: workflow.self_courier_partner || "",
                 tracking_source: workflow.self_tracking_source || "shiprocket",
                 awb: workflow.self_awb || "",
-                dispatch_rate: workflow.self_dispatch_rate ? String(workflow.self_dispatch_rate) : "",
                 packing_info: workflow.self_packing_info || "",
                 tracking_url: workflow.tracking_url || "",
-                label_url: workflow.label_url || "",
               })
             }}
           />
@@ -1031,7 +1043,9 @@ function DetailsModal({
         <div className="flex items-start justify-between gap-4 border-b border-ui-border-base px-5 py-4">
           <div>
             <Heading level="h2" className="text-xl">Order {compactOrderId(order)}</Heading>
-            <Text size="small" className="text-ui-fg-subtle">{order.email || "No customer email"}</Text>
+            <Text size="small" className="text-ui-fg-subtle">
+              {customerEmailDisplay(order)}
+            </Text>
           </div>
           <Button variant="secondary" size="small" onClick={onClose}>Close</Button>
         </div>
@@ -1080,9 +1094,9 @@ function DetailsModal({
             rows={[
               ["Full name", customerName(order)],
               ["Contact number", customerPhone(order)],
-              ["Email ID", order.email || "N/A"],
-              ["Billing address", addressLine(order.billing_address)],
-              ["Shipping address", addressLine(order.shipping_address)],
+              ["Email ID", customerEmailDisplay(order)],
+              ["Billing address", addressLineSafe(order, order.billing_address)],
+              ["Shipping address", addressLineSafe(order, order.shipping_address)],
             ]}
           />
           <div className="md:col-span-2">
@@ -1125,7 +1139,6 @@ function DetailsModal({
                 (workflow.shipping_method === "easy" ? "Pending from Shiprocket" : "N/A"),
             ],
             ["Tracking URL", workflow.tracking_url || "N/A"],
-            ["Label URL", workflow.label_url || "N/A"],
             ...(workflow.shipping_method === "easy"
               ? [
                   ["Shiprocket order", workflow.shiprocket_order_id ? String(workflow.shiprocket_order_id) : "N/A"] as [string, string],
@@ -1290,14 +1303,12 @@ function EasyShippingModal({
     courier_partner_name: string
     tracking_number: string
     tracking_url: string
-    label_url: string
   }
   onPackageChange: (next: { weight: string; length: string; breadth: string; height: string }) => void
   onTrackingChange: (next: {
     courier_partner_name: string
     tracking_number: string
     tracking_url: string
-    label_url: string
   }) => void
   onRefreshRates: () => void
   onSelect: (id: number) => void
@@ -1450,7 +1461,7 @@ function EasyShippingModal({
             <div>
               <Text size="small" weight="plus">Courier & tracking links</Text>
               <Text size="xsmall" className="text-ui-fg-subtle">
-                Add courier name, tracking number, and optional tracking / label URLs
+                Add courier name, tracking number, and optional tracking URL
               </Text>
             </div>
             <Field
@@ -1470,12 +1481,6 @@ function EasyShippingModal({
               value={tracking.tracking_url}
               placeholder="https://example.com/tracking/123"
               onChange={(value) => setTrackingField("tracking_url", value)}
-            />
-            <Field
-              label="Label URL"
-              value={tracking.label_url}
-              placeholder="https://example.com/label/123"
-              onChange={(value) => setTrackingField("label_url", value)}
             />
           </div>
         </div>
@@ -1512,20 +1517,16 @@ function SelfShippingModal({
     courier_partner_name: string
     tracking_source: "shiprocket" | "carrier_api" | "manual"
     awb: string
-    dispatch_rate: string
     packing_info: string
     tracking_url: string
-    label_url: string
   }
   busy: boolean
   onChange: (next: {
     courier_partner_name: string
     tracking_source: "shiprocket" | "carrier_api" | "manual"
     awb: string
-    dispatch_rate: string
     packing_info: string
     tracking_url: string
-    label_url: string
   }) => void
   onClose: () => void
   onSubmit: () => void
@@ -1534,7 +1535,6 @@ function SelfShippingModal({
   const complete =
     form.courier_partner_name.trim() &&
     form.awb.trim() &&
-    form.dispatch_rate.trim() &&
     form.packing_info.trim() &&
     (form.tracking_source !== "manual" || form.tracking_url.trim())
 
@@ -1575,18 +1575,6 @@ function SelfShippingModal({
             value={form.tracking_url}
             placeholder="https://example.com/tracking/123"
             onChange={(value) => setField("tracking_url", value)}
-          />
-          <Field
-            label="Label URL"
-            value={form.label_url}
-            placeholder="https://example.com/label/123"
-            onChange={(value) => setField("label_url", value)}
-          />
-          <Field
-            label="Dispatch rate"
-            type="number"
-            value={form.dispatch_rate}
-            onChange={(value) => setField("dispatch_rate", value)}
           />
           <label className="block">
             <Text size="small" weight="plus" className="mb-1.5">Packing info</Text>
