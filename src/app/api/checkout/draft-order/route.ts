@@ -11,6 +11,7 @@ import {
 } from "@/lib/checkout-order";
 import { medusaStoreFetch } from "@/lib/medusa-auth";
 import { calculateOweg10Discount, OWEG10_CODE } from "@/lib/oweg10-shared";
+import { validateMedusaPromoCode } from "@/lib/medusa-promo";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 import { cartLineAmountRupees } from "@/lib/cart-helpers";
 import { applyFlashSalePricesToCart } from "@/lib/flash-sale-cart-mapper";
@@ -56,6 +57,8 @@ type DraftRequestBody = {
   coinDiscount?: number; // Coin discount in rupees
   coinDiscountCode?: string;
   oweg10Applied?: boolean;
+  /** Medusa admin promo code (not OWEG10 / coins) */
+  promoCode?: string;
 };
 
 function mapAddress(input?: AddressInput) {
@@ -420,6 +423,21 @@ export async function POST(req: Request) {
       coinDiscountRupees = body.coinDiscount;
     }
 
+    let promoCodeApplied: string | null = null;
+    let promoDiscountRupees = 0;
+    let promoLabel: string | null = null;
+    let promoPromotionId: string | null = null;
+    if (typeof body.promoCode === "string" && body.promoCode.trim()) {
+      const promoResult = await validateMedusaPromoCode(body.promoCode, itemsTotal);
+      if (!promoResult.ok) {
+        return badRequest(promoResult.error);
+      }
+      promoCodeApplied = promoResult.code;
+      promoDiscountRupees = promoResult.discountRupees;
+      promoLabel = promoResult.label;
+      promoPromotionId = promoResult.promotionId;
+    }
+
     const cartShippingMethods = Array.isArray((cart as Record<string, unknown>).shipping_methods)
       ? ((cart as Record<string, unknown>).shipping_methods as Array<Record<string, unknown>>)
       : [];
@@ -501,6 +519,12 @@ export async function POST(req: Request) {
         oweg10_customer_id: oweg10CustomerId || undefined,
         oweg10_reservation_token: oweg10ReservationToken || undefined,
         oweg10_pending: body.oweg10Applied ? true : undefined,
+        promo_code: promoCodeApplied || null,
+        promo_discount_rupees: promoDiscountRupees > 0 ? promoDiscountRupees : undefined,
+        promo_discount_minor:
+          promoDiscountRupees > 0 ? Math.round(promoDiscountRupees * 100) : undefined,
+        promo_applied: promoLabel || undefined,
+        promo_promotion_id: promoPromotionId || undefined,
       },
       shipping_methods: shippingMethodsPayload
     };
@@ -541,7 +565,10 @@ export async function POST(req: Request) {
       medusaTotal = expectedTotal;
     }
 
-    const finalTotal = Math.max(0, itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees);
+    const finalTotal = Math.max(
+      0,
+      itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees - promoDiscountRupees
+    );
 
     // COD fast path: return after draft creation.
     // Tax sync is owned solely by /api/checkout/cod (runCodSideEffects) to avoid races.
@@ -555,6 +582,8 @@ export async function POST(req: Request) {
         codFast: true,
         coinDiscountApplied: coinDiscountRupees,
         oweg10DiscountApplied: oweg10DiscountRupees,
+        promoDiscountApplied: promoDiscountRupees,
+        promoCodeApplied: promoCodeApplied,
       });
     }
 
@@ -564,6 +593,7 @@ export async function POST(req: Request) {
         shippingRupees: shippingCharge,
         coinDiscountRupees,
         oweg10DiscountRupees,
+        promoDiscountRupees,
       });
     } catch (taxErr) {
       console.warn("Failed to sync tax-inclusive pricing on draft order:", taxErr);
@@ -594,16 +624,19 @@ export async function POST(req: Request) {
 
     const payableRupees = Math.max(
       0,
-      itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees
+      itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees - promoDiscountRupees
     );
     const finalTotalAfterLookup =
-      itemsTotal > 0 ? payableRupees : Math.max(0, medusaTotal - coinDiscountRupees - oweg10DiscountRupees);
+      itemsTotal > 0
+        ? payableRupees
+        : Math.max(0, medusaTotal - coinDiscountRupees - oweg10DiscountRupees - promoDiscountRupees);
 
     console.log("💰 Order payable:", {
       itemsTotal,
       shippingCharge,
       coinDiscountRupees,
       oweg10DiscountRupees,
+      promoDiscountRupees,
       medusaTotal,
       payableRupees: finalTotalAfterLookup,
     });
@@ -721,6 +754,8 @@ export async function POST(req: Request) {
       conversionWarning: conversionError || undefined,
       coinDiscountApplied: coinDiscountRupees,
       oweg10DiscountApplied: oweg10DiscountRupees,
+      promoDiscountApplied: promoDiscountRupees,
+      promoCodeApplied: promoCodeApplied,
       razorpay,
     });
   } catch (err) {

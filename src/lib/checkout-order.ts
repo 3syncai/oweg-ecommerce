@@ -6,7 +6,7 @@ import {
   updateDraftOrderMetadata,
   updateOrderMetadata,
 } from "@/lib/medusa-admin";
-import { applyCoinDiscountToOrder, syncOrderShippingAmount, syncOrderTaxInclusivePricing } from "@/lib/order-discount";
+import { applyCoinDiscountToOrder, applyMetadataDiscountsToOrderSummary, syncOrderShippingAmount, syncOrderTaxInclusivePricing } from "@/lib/order-discount";
 import { releaseOrderInventoryReservations } from "@/lib/medusa-payment";
 import { releaseOweg10Reservation } from "@/lib/oweg10";
 
@@ -134,6 +134,13 @@ export async function runPostConvertCheckoutSideEffects(
   const oweg10DiscountRupees =
     typeof metadata.oweg10_discount_rupees === "number" ? metadata.oweg10_discount_rupees : 0;
 
+  const promoDiscountRupees =
+    typeof metadata.promo_discount_rupees === "number"
+      ? metadata.promo_discount_rupees
+      : typeof metadata.promo_discount_minor === "number"
+        ? metadata.promo_discount_minor / 100
+        : 0;
+
   const expectedGrandTotal =
     typeof metadata.medusa_total_minor === "number"
       ? metadata.medusa_total_minor / 100
@@ -146,9 +153,14 @@ export async function runPostConvertCheckoutSideEffects(
     shippingRupees: expectedShipping,
     coinDiscountRupees,
     oweg10DiscountRupees,
+    promoDiscountRupees,
   });
 
+  // Absolute sync of coin + OWEG10 + promo into order_summary (admin/vendor totals).
+  await applyMetadataDiscountsToOrderSummary(orderId);
+
   if (coinDiscountRupees > 0) {
+    // Keep legacy coin adjustment path for older admin widgets that key off the flag.
     await applyCoinDiscountToOrder({
       orderId,
       discountMinor: Math.round(coinDiscountRupees * 100),

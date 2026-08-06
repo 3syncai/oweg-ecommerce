@@ -83,6 +83,18 @@ export function canCancelOrder(
   if (fulfillment === "shipped" || fulfillment === "delivered") return false;
   const orderStatus = (order.status || "").toLowerCase();
   if (orderStatus === "canceled" || orderStatus === "cancelled") return false;
+  const meta = (order.metadata || {}) as Record<string, unknown>;
+  const returnStatus =
+    typeof meta.return_request_status === "string"
+      ? meta.return_request_status.toLowerCase()
+      : "";
+  if (
+    ["pending_approval", "approved", "pickup_initiated", "picked_up", "received"].includes(
+      returnStatus
+    )
+  ) {
+    return false;
+  }
   return !existingReturn;
 }
 
@@ -255,10 +267,41 @@ export function getTrackHeroContent(
     };
   }
 
-  if (existingReturn) {
+  if (existingReturn?.status === "replaced") {
     return {
-      title: "Return Requested",
-      subtitle: "We are processing your return request",
+      title: "Replacement Shipped",
+      subtitle: "Your replacement is on the way",
+      description: "Track updates as your replacement progresses.",
+    };
+  }
+
+  if (existingReturn?.status === "rejected" || existingReturn?.status === "closed") {
+    return {
+      title: existingReturn.status === "rejected" ? "Return Rejected" : "Return Closed",
+      subtitle: "This return request is no longer active",
+      description: "Contact support if you need help with this order.",
+    };
+  }
+
+  if (existingReturn) {
+    const status = String(existingReturn.status || "").toLowerCase();
+    const titleMap: Record<string, string> = {
+      pending_approval: "Return Requested",
+      approved: "Return Approved",
+      pickup_initiated: "Pickup Scheduled",
+      picked_up: "Return Picked Up",
+      received: "Return Received",
+    };
+    const subtitleMap: Record<string, string> = {
+      pending_approval: "We are reviewing your return request",
+      approved: "Your return has been approved",
+      pickup_initiated: "Pickup has been scheduled for your return",
+      picked_up: "Your return package has been picked up",
+      received: "We have received your returned items",
+    };
+    return {
+      title: titleMap[status] || "Return In Progress",
+      subtitle: subtitleMap[status] || "We are processing your return request",
       description: "You will receive updates as your return progresses.",
     };
   }
@@ -343,9 +386,16 @@ export function getTrackHeroContent(
   };
 }
 
-export function getVerticalTrackingSteps(order?: OrderDetail | null): TrackerStep[] {
-  let steps = trackerSteps(order);
+export function getVerticalTrackingSteps(
+  order?: OrderDetail | null,
+  existingReturn?: ReturnRequest | null
+): TrackerStep[] {
+  let steps = trackerSteps(order, existingReturn);
   const shiprocketStatus = getShiprocketStatusFromOrder(order);
+
+  if (existingReturn) {
+    return steps;
+  }
 
   if (shiprocketStatus === "out_for_delivery") {
     const shippedIndex = steps.findIndex((step) => step.key === "shipped");
@@ -375,11 +425,24 @@ export function getVerticalTrackingSteps(order?: OrderDetail | null): TrackerSte
 
 export function getTrackerStepDetailIcon(
   key: TrackerStepKey
-): "status-order-placed" | "payment-methods" | "status-processing" | "status-shipped" | "status-delivered" | "cancel-order" {
+):
+  | "status-order-placed"
+  | "payment-methods"
+  | "status-processing"
+  | "status-shipped"
+  | "status-delivered"
+  | "cancel-order"
+  | "return-replace" {
   const iconMap: Partial<
     Record<
       TrackerStepKey,
-      "status-order-placed" | "payment-methods" | "status-processing" | "status-shipped" | "status-delivered" | "cancel-order"
+      | "status-order-placed"
+      | "payment-methods"
+      | "status-processing"
+      | "status-shipped"
+      | "status-delivered"
+      | "cancel-order"
+      | "return-replace"
     >
   > = {
     placed: "status-order-placed",
@@ -388,6 +451,7 @@ export function getTrackerStepDetailIcon(
     shipped: "status-shipped",
     delivered: "status-delivered",
     cancelled: "cancel-order",
+    return: "return-replace",
   };
   return iconMap[key] || "status-processing";
 }
@@ -403,9 +467,10 @@ export function getCurrentTrackerStepLabel(steps: TrackerStep[]): string {
 
 export function getOrderDetailStatusMessage(
   order?: OrderDetail | null,
-  steps?: TrackerStep[] | null
+  steps?: TrackerStep[] | null,
+  existingReturn?: ReturnRequest | null
 ): string {
-  const hero = getTrackHeroContent(order);
+  const hero = getTrackHeroContent(order, existingReturn);
   if (hero.subtitle && hero.description) {
     return `${hero.subtitle}. ${hero.description}`;
   }

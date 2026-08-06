@@ -10,6 +10,23 @@ type BankDetailsInput = {
   bank_name?: string | null
 }
 
+type RefundPayoutInput =
+  | { method: "upi"; upi_id: string }
+  | {
+      method: "bank"
+      account_name: string
+      account_number: string
+      ifsc_code: string
+      bank_name?: string | null
+    }
+
+function maskUpi(upiId: string) {
+  const [local, domain] = upiId.split("@")
+  if (!domain) return "***"
+  const visible = local.slice(0, 2)
+  return `${visible}***@${domain}`
+}
+
 class ReturnModuleService extends MedusaService({
   ReturnRequest,
   ReturnRequestItem,
@@ -21,8 +38,9 @@ class ReturnModuleService extends MedusaService({
     reason?: string | null
     notes?: string | null
     payment_type: "online" | "cod"
-    refund_method?: "original" | "bank" | null
+    refund_method?: "original" | "bank" | "upi" | null
     bank_details?: BankDetailsInput | null
+    refund_payout?: RefundPayoutInput | null
     items: Array<{
       order_item_id: string
       quantity: number
@@ -32,22 +50,56 @@ class ReturnModuleService extends MedusaService({
   }) {
     let bank_details_encrypted: string | null = null
     let bank_account_last4: string | null = null
+    let refund_method = input.refund_method ?? null
+    let metadata: Record<string, unknown> | null = null
 
-    if (input.payment_type === "cod") {
-      if (!input.bank_details) {
+    const payout: RefundPayoutInput | null =
+      input.refund_payout ||
+      (input.bank_details
+        ? {
+            method: "bank" as const,
+            account_name: input.bank_details.account_name,
+            account_number: input.bank_details.account_number,
+            ifsc_code: input.bank_details.ifsc_code,
+            bank_name: input.bank_details.bank_name ?? "",
+          }
+        : null)
+
+    if (input.type === "return") {
+      if (!payout) {
         throw new MedusaError(
           MedusaError.Types.INVALID_DATA,
-          "Bank details are required for COD refunds."
+          "UPI ID or bank details are required for refunds."
         )
       }
-      const bankDetails = {
-        account_name: input.bank_details.account_name,
-        account_number: input.bank_details.account_number,
-        ifsc_code: input.bank_details.ifsc_code,
-        bank_name: input.bank_details.bank_name ?? "",
+
+      if (payout.method === "upi") {
+        const upiId = payout.upi_id.trim()
+        bank_details_encrypted = encryptBankDetails({
+          method: "upi",
+          upi_id: upiId,
+        })
+        refund_method = "upi"
+        metadata = {
+          payout_method: "upi",
+          upi_masked: maskUpi(upiId),
+        }
+      } else {
+        const bankDetails = {
+          method: "bank",
+          account_name: payout.account_name,
+          account_number: payout.account_number,
+          ifsc_code: payout.ifsc_code.toUpperCase(),
+          bank_name: payout.bank_name ?? "",
+        }
+        bank_details_encrypted = encryptBankDetails(bankDetails)
+        bank_account_last4 = payout.account_number.slice(-4)
+        refund_method = "bank"
+        metadata = {
+          payout_method: "bank",
+          bank_account_last4,
+        }
       }
-      bank_details_encrypted = encryptBankDetails(bankDetails)
-      bank_account_last4 = input.bank_details.account_number.slice(-4)
     }
 
     const request = await this.createReturnRequests({
@@ -58,9 +110,10 @@ class ReturnModuleService extends MedusaService({
       reason: input.reason ?? null,
       notes: input.notes ?? null,
       payment_type: input.payment_type,
-      refund_method: input.refund_method ?? null,
+      refund_method,
       bank_details_encrypted,
       bank_account_last4,
+      metadata,
     })
 
     if (input.items?.length) {

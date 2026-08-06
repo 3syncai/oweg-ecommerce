@@ -80,6 +80,8 @@ type BankDetails = {
   bank_name: string;
 };
 
+export type RefundPayoutMethod = "upi" | "bank";
+
 type ReturnOrderPanelProps = {
   open: boolean;
   orderNumber?: number | null;
@@ -93,7 +95,10 @@ type ReturnOrderPanelProps = {
   onReasonChange: (reason: string) => void;
   notes: string;
   onNotesChange: (value: string) => void;
-  isCod: boolean;
+  payoutMethod: RefundPayoutMethod;
+  onPayoutMethodChange: (method: RefundPayoutMethod) => void;
+  upiId: string;
+  onUpiIdChange: (value: string) => void;
   bankDetails: BankDetails;
   onBankDetailsChange: (details: BankDetails) => void;
   submitting: boolean;
@@ -168,7 +173,10 @@ export function ReturnOrderPanel({
   onReasonChange,
   notes,
   onNotesChange,
-  isCod,
+  payoutMethod,
+  onPayoutMethodChange,
+  upiId,
+  onUpiIdChange,
   bankDetails,
   onBankDetailsChange,
   submitting,
@@ -198,12 +206,14 @@ export function ReturnOrderPanel({
   if (!open || !mounted) return null;
 
   const selectedCount = returnItems.filter((item) => item.selected && item.quantity > 0).length;
+  const upiReady = /^[\w.-]{2,256}@[a-zA-Z]{2,64}$/.test(upiId.trim());
   const bankReady =
-    !isCod ||
-    (bankDetails.account_name.trim() &&
-      bankDetails.account_number.trim() &&
-      bankDetails.ifsc_code.trim());
-  const canSubmit = Boolean(selectedReason) && selectedCount > 0 && bankReady && !submitting;
+    Boolean(bankDetails.account_name.trim()) &&
+    Boolean(bankDetails.account_number.trim()) &&
+    Boolean(bankDetails.ifsc_code.trim());
+  const payoutReady =
+    returnType !== "return" || (payoutMethod === "upi" ? upiReady : bankReady);
+  const canSubmit = Boolean(selectedReason) && selectedCount > 0 && payoutReady && !submitting;
 
   const panelTitle =
     returnType === "replacement"
@@ -365,39 +375,79 @@ export function ReturnOrderPanel({
               </div>
             </div>
 
-            {isCod && (
-              <div className="mt-5 space-y-2">
-                <Label className="text-xs font-semibold text-gray-700">Bank details for refund</Label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input
-                    value={bankDetails.account_name}
-                    onChange={(event) =>
-                      onBankDetailsChange({ ...bankDetails, account_name: event.target.value })
-                    }
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                    placeholder="Account holder name"
-                  />
-                  <input
-                    value={bankDetails.account_number}
-                    onChange={(event) =>
-                      onBankDetailsChange({ ...bankDetails, account_number: event.target.value })
-                    }
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                    placeholder="Account number"
-                  />
-                  <input
-                    value={bankDetails.ifsc_code}
-                    onChange={(event) => onBankDetailsChange({ ...bankDetails, ifsc_code: event.target.value })}
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                    placeholder="IFSC code"
-                  />
-                  <input
-                    value={bankDetails.bank_name}
-                    onChange={(event) => onBankDetailsChange({ ...bankDetails, bank_name: event.target.value })}
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                    placeholder="Bank name (optional)"
-                  />
+            {returnType === "return" && (
+              <div className="mt-5 space-y-3">
+                <Label className="text-xs font-semibold text-gray-700">
+                  Where should we send your refund?
+                </Label>
+                <div className="grid grid-cols-2 gap-2 rounded-2xl bg-gray-100 p-1">
+                  {(["upi", "bank"] as const).map((method) => (
+                    <button
+                      key={method}
+                      type="button"
+                      onClick={() => onPayoutMethodChange(method)}
+                      className={cn(
+                        "cursor-pointer rounded-xl px-3 py-2 text-sm font-semibold uppercase transition",
+                        payoutMethod === method
+                          ? "bg-white text-emerald-700 shadow-sm"
+                          : "text-gray-600 hover:text-gray-900"
+                      )}
+                    >
+                      {method === "upi" ? "UPI ID" : "Bank"}
+                    </button>
+                  ))}
                 </div>
+
+                {payoutMethod === "upi" ? (
+                  <input
+                    value={upiId}
+                    onChange={(event) => onUpiIdChange(event.target.value)}
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                    placeholder="yourname@upi"
+                    autoComplete="off"
+                  />
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input
+                      value={bankDetails.account_name}
+                      onChange={(event) =>
+                        onBankDetailsChange({ ...bankDetails, account_name: event.target.value })
+                      }
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                      placeholder="Account holder name"
+                    />
+                    <input
+                      value={bankDetails.account_number}
+                      onChange={(event) =>
+                        onBankDetailsChange({ ...bankDetails, account_number: event.target.value })
+                      }
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                      placeholder="Account number"
+                    />
+                    <input
+                      value={bankDetails.ifsc_code}
+                      onChange={(event) =>
+                        onBankDetailsChange({
+                          ...bankDetails,
+                          ifsc_code: event.target.value.toUpperCase(),
+                        })
+                      }
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                      placeholder="IFSC code"
+                    />
+                    <input
+                      value={bankDetails.bank_name}
+                      onChange={(event) =>
+                        onBankDetailsChange({ ...bankDetails, bank_name: event.target.value })
+                      }
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                      placeholder="Bank name (optional)"
+                    />
+                  </div>
+                )}
+                <p className="text-[11px] text-gray-500">
+                  Admin will use these details to process your refund after the return is received.
+                </p>
               </div>
             )}
 

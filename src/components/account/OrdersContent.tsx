@@ -19,6 +19,7 @@ import {
   type AccountOrder,
   type AccountOrderBucket,
   resolveOrderBucket,
+  resolveOrderStatusLabel,
   useAccountOrdersSummary,
 } from "@/hooks/useAccountOrdersSummary";
 import { useAddToCart } from "@/hooks/useCartMutations";
@@ -38,26 +39,21 @@ type DropdownStatusFilter = "all" | AccountOrderBucket;
 const STAT_CARDS: Array<{
   key: StatusFilter;
   label: string;
-  icon: "processing" | "shipped" | "delivered" | "cancelled";
+  icon: "processing" | "shipped" | "delivered" | "cancelled" | "return-refund" | "package";
 }> = [
-  { key: "all", label: "All", icon: "processing" },
+  { key: "all", label: "All", icon: "package" },
   { key: "processing", label: "Processing", icon: "processing" },
   { key: "shipped", label: "Shipped", icon: "shipped" },
   { key: "delivered", label: "Delivered", icon: "delivered" },
+  { key: "returns", label: "Returns", icon: "return-refund" },
   { key: "canceled", label: "Canceled", icon: "cancelled" },
 ];
-
-const STATUS_LABELS: Record<AccountOrderBucket, string> = {
-  processing: "Processing",
-  shipped: "Shipped",
-  delivered: "Delivered",
-  canceled: "Canceled",
-};
 
 const STATUS_TEXT_CLASS: Record<AccountOrderBucket, string> = {
   processing: "text-amber-600",
   shipped: "text-sky-600",
   delivered: "text-[#66C940]",
+  returns: "text-[#B54708]",
   canceled: "text-rose-500",
 };
 
@@ -117,7 +113,7 @@ function OrderCard({
 }) {
   const addToCart = useAddToCart();
   const bucket = resolveOrderBucket(order);
-  const statusLabel = STATUS_LABELS[bucket];
+  const statusLabel = resolveOrderStatusLabel(order);
   const firstItem = order.items?.[0];
   const imageSrc = firstItem?.thumbnail || "/oweg_logo.png";
   const variantId = resolveVariantId(order);
@@ -298,7 +294,7 @@ export default function OrdersContent({ embedded = false }: OrdersContentProps) 
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         {STAT_CARDS.map((card) => {
           const count =
             card.key === "all" ? counts.all : counts[card.key as AccountOrderBucket];
@@ -323,11 +319,7 @@ export default function OrdersContent({ embedded = false }: OrdersContentProps) 
               )}
             >
               <div className="mb-1 flex items-center gap-2">
-                {card.key !== "all" ? (
-                  <AccountHubIcon name={card.icon} size={18} className="h-[18px] w-[18px]" />
-                ) : (
-                  <AccountHubIcon name="package" size={18} className="h-[18px] w-[18px]" />
-                )}
+                <AccountHubIcon name={card.icon} size={18} className="h-[18px] w-[18px]" />
                 <span
                   className={cn(
                     "text-xs font-medium",
@@ -376,6 +368,7 @@ export default function OrdersContent({ embedded = false }: OrdersContentProps) 
             <SelectItem value="processing">Processing</SelectItem>
             <SelectItem value="shipped">Shipped</SelectItem>
             <SelectItem value="delivered">Delivered</SelectItem>
+            <SelectItem value="returns">Returns</SelectItem>
             <SelectItem value="canceled">Canceled</SelectItem>
           </SelectContent>
         </Select>

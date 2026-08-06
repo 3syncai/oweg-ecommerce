@@ -10,12 +10,20 @@ type ReturnRequest = {
   reason?: string | null
   notes?: string | null
   payment_type?: string | null
+  refund_method?: string | null
   bank_account_last4?: string | null
   shiprocket_awb?: string | null
   shiprocket_status?: string | null
   created_at?: string | null
+  metadata?: {
+    payout_method?: string
+    upi_masked?: string
+    bank_account_last4?: string
+  } | null
   items?: Array<{ order_item_id: string; quantity: number }>
 }
+
+type DecryptedPayout = Record<string, string> | null
 
 function getOrderIdFromPath(pathname: string) {
   const parts = pathname.split("/").filter(Boolean)
@@ -34,7 +42,10 @@ function formatDate(value?: string | null) {
 function statusColor(status: string): "orange" | "green" | "red" | "blue" | "grey" {
   const value = status.toLowerCase()
   if (value === "pending_approval") return "orange"
-  if (["approved", "pickup_initiated", "picked_up", "received", "refunded", "replaced"].includes(value)) {
+  if (["approved", "pickup_initiated", "picked_up", "received"].includes(value)) {
+    return "orange"
+  }
+  if (["refunded", "replaced"].includes(value)) {
     return "green"
   }
   if (value === "rejected") return "red"
@@ -58,6 +69,7 @@ const InfoRow = ({ label, value }: { label: string; value: React.ReactNode }) =>
 
 const OrderReturnSummaryWidget = () => {
   const [request, setRequest] = useState<ReturnRequest | null>(null)
+  const [payout, setPayout] = useState<DecryptedPayout>(null)
   const [loading, setLoading] = useState(false)
 
   const orderId = useMemo(() => {
@@ -75,7 +87,18 @@ const OrderReturnSummaryWidget = () => {
         })
         if (!response.ok) return
         const data = await response.json()
-        setRequest(data?.return_request || null)
+        const found = (data?.return_request || null) as ReturnRequest | null
+        setRequest(found)
+
+        if (found?.id) {
+          const detailRes = await fetch(`/admin/return-requests/${found.id}`, {
+            credentials: "include",
+          })
+          if (detailRes.ok) {
+            const detail = await detailRes.json()
+            setPayout(detail?.return_request?.bank_details || null)
+          }
+        }
       } catch {
         // Keep order page stable if widget fetch fails.
       } finally {
@@ -90,6 +113,11 @@ const OrderReturnSummaryWidget = () => {
   }
 
   const typeLabel = request?.type === "replacement" ? "Replacement" : "Return"
+  const payoutMethod =
+    payout?.method ||
+    request?.refund_method ||
+    request?.metadata?.payout_method ||
+    null
 
   return (
     <div className="rounded-xl border border-ui-border-base bg-ui-bg-base px-6 py-5">
@@ -120,8 +148,40 @@ const OrderReturnSummaryWidget = () => {
             <InfoRow label="Reason" value={request.reason || "Not recorded"} />
             <InfoRow label="Requested at" value={formatDate(request.created_at)} />
             <InfoRow label="Payment type" value={request.payment_type || "online"} />
-            {request.bank_account_last4 ? (
-              <InfoRow label="Refund account" value={`xxxx${request.bank_account_last4}`} />
+            {request.type === "return" ? (
+              <>
+                <InfoRow
+                  label="Refund payout method"
+                  value={payoutMethod === "upi" ? "UPI" : payoutMethod === "bank" ? "Bank transfer" : "Not provided"}
+                />
+                {payoutMethod === "upi" ? (
+                  <InfoRow
+                    label="Customer UPI ID"
+                    value={payout?.upi_id || request.metadata?.upi_masked || "Unavailable"}
+                  />
+                ) : null}
+                {payoutMethod === "bank" ? (
+                  <>
+                    <InfoRow
+                      label="Account name"
+                      value={payout?.account_name || "Unavailable"}
+                    />
+                    <InfoRow
+                      label="Account number"
+                      value={
+                        payout?.account_number ||
+                        (request.bank_account_last4
+                          ? `xxxx${request.bank_account_last4}`
+                          : "Unavailable")
+                      }
+                    />
+                    <InfoRow label="IFSC" value={payout?.ifsc_code || "Unavailable"} />
+                    {payout?.bank_name ? (
+                      <InfoRow label="Bank name" value={payout.bank_name} />
+                    ) : null}
+                  </>
+                ) : null}
+              </>
             ) : null}
             {request.shiprocket_awb ? (
               <InfoRow

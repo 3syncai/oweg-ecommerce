@@ -41,7 +41,7 @@ export function parseGstRate(value: unknown): number | null {
 
 /**
  * Resolve order-level discount that should reduce the GST-inclusive base.
- * Prefer metadata (coin + OWEG10); fall back to Medusa discount_total.
+ * Prefer metadata (coin + OWEG10 + Medusa promo); fall back to Medusa discount_total.
  * Uses max() so coin already reflected in discount_total is not double-counted.
  */
 export function resolveOrderGstDiscountRupees(
@@ -50,6 +50,7 @@ export function resolveOrderGstDiscountRupees(
 ): {
   coin: number
   oweg10: number
+  promo: number
   medusa: number
   total: number
 } {
@@ -66,11 +67,17 @@ export function resolveOrderGstDiscountRupees(
     (toMoney(meta.oweg10_discount_minor) > 0
       ? toMoney(meta.oweg10_discount_minor) / 100
       : 0)
-  const fromMeta = round2(coin + oweg10)
+  const promo =
+    toMoney(meta.promo_discount_rupees) ||
+    (toMoney(meta.promo_discount_minor) > 0
+      ? toMoney(meta.promo_discount_minor) / 100
+      : 0)
+  const fromMeta = round2(coin + oweg10 + promo)
   const medusa = round2(Math.abs(toMoney(discountTotal)))
   return {
     coin: round2(coin),
     oweg10: round2(oweg10),
+    promo: round2(promo),
     medusa,
     total: Math.max(fromMeta, medusa),
   }

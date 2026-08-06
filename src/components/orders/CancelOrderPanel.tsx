@@ -27,12 +27,28 @@ type OrderItem = {
   unit_price?: number;
 };
 
+type CancelBankDetails = {
+  account_name: string;
+  account_number: string;
+  ifsc_code: string;
+  bank_name: string;
+};
+
+export type CancelRefundPayoutMethod = "upi" | "bank";
+
 type CancelOrderPanelProps = {
   open: boolean;
   items: OrderItem[];
   currencyCode?: string;
   selectedReason: string;
   customReason: string;
+  requireRefundPayout?: boolean;
+  payoutMethod: CancelRefundPayoutMethod;
+  onPayoutMethodChange: (method: CancelRefundPayoutMethod) => void;
+  upiId: string;
+  onUpiIdChange: (value: string) => void;
+  bankDetails: CancelBankDetails;
+  onBankDetailsChange: (details: CancelBankDetails) => void;
   submitting: boolean;
   error: string | null;
   onReasonChange: (reason: string) => void;
@@ -56,6 +72,13 @@ export function CancelOrderPanel({
   currencyCode,
   selectedReason,
   customReason,
+  requireRefundPayout = false,
+  payoutMethod,
+  onPayoutMethodChange,
+  upiId,
+  onUpiIdChange,
+  bankDetails,
+  onBankDetailsChange,
   submitting,
   error,
   onReasonChange,
@@ -85,9 +108,17 @@ export function CancelOrderPanel({
   if (!open || !mounted) return null;
 
   const needsCustomReason = selectedReason === CANCELLATION_REASONS[0];
+  const upiReady = /^[\w.-]{2,256}@[a-zA-Z]{2,64}$/.test(upiId.trim());
+  const bankReady =
+    Boolean(bankDetails.account_name.trim()) &&
+    Boolean(bankDetails.account_number.trim()) &&
+    Boolean(bankDetails.ifsc_code.trim());
+  const payoutReady =
+    !requireRefundPayout || (payoutMethod === "upi" ? upiReady : bankReady);
   const canSubmit =
     Boolean(selectedReason) &&
     (!needsCustomReason || customReason.trim().length >= 3) &&
+    payoutReady &&
     !submitting;
 
   return createPortal(
@@ -226,6 +257,81 @@ export function CancelOrderPanel({
                 />
               </div>
             )}
+
+            {requireRefundPayout ? (
+              <div className="mt-5 space-y-3">
+                <Label className="text-xs font-semibold text-gray-700">
+                  Where should we send your refund?
+                </Label>
+                <div className="grid grid-cols-2 gap-2 rounded-2xl bg-gray-100 p-1">
+                  {(["upi", "bank"] as const).map((method) => (
+                    <button
+                      key={method}
+                      type="button"
+                      onClick={() => onPayoutMethodChange(method)}
+                      className={cn(
+                        "cursor-pointer rounded-xl px-3 py-2 text-sm font-semibold uppercase transition",
+                        payoutMethod === method
+                          ? "bg-white text-emerald-700 shadow-sm"
+                          : "text-gray-600 hover:text-gray-900"
+                      )}
+                    >
+                      {method === "upi" ? "UPI ID" : "Bank"}
+                    </button>
+                  ))}
+                </div>
+                {payoutMethod === "upi" ? (
+                  <input
+                    value={upiId}
+                    onChange={(event) => onUpiIdChange(event.target.value)}
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                    placeholder="yourname@upi"
+                    autoComplete="off"
+                  />
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input
+                      value={bankDetails.account_name}
+                      onChange={(event) =>
+                        onBankDetailsChange({ ...bankDetails, account_name: event.target.value })
+                      }
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                      placeholder="Account holder name"
+                    />
+                    <input
+                      value={bankDetails.account_number}
+                      onChange={(event) =>
+                        onBankDetailsChange({ ...bankDetails, account_number: event.target.value })
+                      }
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                      placeholder="Account number"
+                    />
+                    <input
+                      value={bankDetails.ifsc_code}
+                      onChange={(event) =>
+                        onBankDetailsChange({
+                          ...bankDetails,
+                          ifsc_code: event.target.value.toUpperCase(),
+                        })
+                      }
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                      placeholder="IFSC code"
+                    />
+                    <input
+                      value={bankDetails.bank_name}
+                      onChange={(event) =>
+                        onBankDetailsChange({ ...bankDetails, bank_name: event.target.value })
+                      }
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                      placeholder="Bank name (optional)"
+                    />
+                  </div>
+                )}
+                <p className="text-[11px] text-gray-500">
+                  Required for online paid orders so admin can process your refund.
+                </p>
+              </div>
+            ) : null}
           </div>
         </div>
 

@@ -649,14 +649,24 @@ const Cart: React.FC = () => {
       notifyCouponInvalid();
       return;
     }
-    const isDemoValid = trimmed.toUpperCase() === "OWEG10";
-    if (isDemoValid) {
+    const upper = trimmed.toUpperCase();
+    const isOweg10 = upper === "OWEG10";
+    if (isOweg10) {
       notifyCouponCheckoutOnly(trimmed);
       if (typeof window !== "undefined") {
         window.location.href = "/checkout";
       }
-    } else {
-      notifyCouponInvalid();
+      return;
+    }
+    // Other Medusa promo codes (e.g. OWEG50) are applied on checkout.
+    notifyCouponCheckoutOnly(trimmed);
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.setItem("oweg_pending_promo", upper);
+      } catch {
+        // ignore
+      }
+      window.location.href = "/checkout";
     }
   };
 

@@ -46,7 +46,8 @@ import { useAuth } from "@/contexts/AuthProvider";
 import { getOriginalImageUrl } from "@/lib/image-utils";
 import { usePreferences } from "@/hooks/usePreferences";
 import { buildPreferenceSlug } from "@/lib/personalization";
-import { getSubcategoryIcon } from "@/components/mobile/categoryIcons";
+import CategoryIcon from "@/components/ui/icons/CategoryIcon";
+import SubcategoryIcon from "@/components/ui/icons/SubcategoryIcon";
 import { buildLoginUrl, buildSignupUrl } from "@/lib/auth-redirect";
 
 type MobileCategory = {
@@ -82,83 +83,6 @@ const normalizeCategoryKey = (title?: string) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .replace(/\s+/g, "-");
-
-const categoryImageMap: Record<string, string> = {
-  "home-appliances": "/Home Appliances.png",
-  "kitchen-appliances": "/Kitchen Appliances.png",
-  "beauty-personal-care": "/beauty-personal-care.png",
-  "computer-mobile": "/Computer & Mobile v1.png",
-  "computer-mobile-accessories": "/Computer & Mobile v1.png",
-  "mobile-accessories": "/Computer & Mobile v1.png",
-  hardware: "/Hardwear-01.png",
-  "hard-wear": "/Hardwear-01.png",
-  bags: "/Bags-01.png",
-  clothing: "/Clothing-01.png",
-  "security-surveillance": "/security & surveillance.png",
-  "surveillance-security": "/security & surveillance.png",
-  "toys-and-games": "/Toysandgames.png",
-  jewellery: "/Jewellery.png",
-  umbrella: "/Umbrella.png",
-  "health-care": "/Sassiest-Health-Care.png",
-  health: "/Sassiest-Health-Care.png",
-  stationery: "/Stationery.png",
-  stationary: "/Stationery.png",
-};
-
-const customSubcategoryImages: Record<string, string> = {
-  "home-decor": "/Home_Decor.jpg",
-  mop: "/Mop.jpg",
-  "lunch-box": "/Lunch_Box.jpg",
-  "led-bulbs": "/Led_Bulbs.jpg",
-  "led-lamps-torches": "/Led_Lamps_&_Torches.jpg",
-  "led-lamps-and-torches": "/Led_Lamps_&_Torches.jpg",
-  "bottles-flasks": "/Bottles_&_Flasks.jpg",
-  "bottles-and-flasks": "/Bottles_&_Flasks.jpg",
-  "water-pumps": "/Water_Pumps.png",
-  "air-coolers": "/Air_Coolers.jpg",
-  "ceiling-fans": "/Ceiling_Fans.jpg",
-  choppers: "/Choppers.png",
-  "cutlery-sets": "/Cutlery_Sets.jpg",
-  "electric-plug": "/Electric_Plug.jpg",
-  "hose-pipes": "/Hose_Pipes.jpg",
-  "immersion-rods": "/Immersion_Rods.jpg",
-  "inverter-and-battery": "/Inverter_&_Battery.jpg",
-  iron: "/Iron.jpg",
-  "room-heater": "/Room_Heater.jpg",
-  "table-fans": "/Table_Fans.jpg",
-  tape: "/Tape.jpg",
-  tubelights: "/Tubelights.jpg",
-  "water-heaters-and-geysers": "/Water_Heaters_&_Geysers.jpg",
-  kettles: "/Kettles.jpg",
-};
-
-const categoryImageKeywords: Array<{ image: string; includes: string[] }> = [
-  { image: "/Home Appliances.png", includes: ["home", "appliance"] },
-  { image: "/Kitchen Appliances.png", includes: ["kitchen", "appliance"] },
-  { image: "/beauty-personal-care.png", includes: ["beauty"] },
-  { image: "/beauty-personal-care.png", includes: ["personal", "care"] },
-  { image: "/Computer & Mobile v1.png", includes: ["computer"] },
-  { image: "/Computer & Mobile v1.png", includes: ["mobile"] },
-  { image: "/Hardwear-01.png", includes: ["hardware"] },
-  { image: "/Hardwear-01.png", includes: ["hard", "wear"] },
-  { image: "/Bags-01.png", includes: ["bag"] },
-  { image: "/Clothing-01.png", includes: ["cloth"] },
-  { image: "/security & surveillance.png", includes: ["security"] },
-  { image: "/security & surveillance.png", includes: ["surveillance"] },
-  {
-    image: "/security & surveillance.png",
-    includes: ["surveillance", "security"],
-  },
-  { image: "/Toysandgames.png", includes: ["toy"] },
-  { image: "/Toysandgames.png", includes: ["game"] },
-  { image: "/Jewellery.png", includes: ["jewel"] },
-  { image: "/Umbrella.png", includes: ["umbrella"] },
-  { image: "/Sassiest-Health-Care.png", includes: ["health"] },
-  { image: "/Stationery.png", includes: ["stationery"] },
-  { image: "/Stationery.png", includes: ["stationary"] },
-  { image: "/Computer & Mobile v1.png", includes: ["mobile", "accessor"] },
-  { image: "/Computer & Mobile v1.png", includes: ["computer", "accessor"] },
-];
 
 const accountLinks = [
   { label: "Brands", href: "/brands" },
@@ -314,48 +238,6 @@ const resolveProductImage = (p: ProductLike): string => {
     }
   }
   return normalized || "/oweg_logo.png";
-};
-
-const resolveCategoryImage = (src?: string): string => {
-  if (!src) return "/oweg_logo.png";
-  const normalized = getOriginalImageUrl(src);
-  if (normalized.startsWith("http://") || normalized.startsWith("https://"))
-    return normalized;
-  if (normalized.startsWith("/")) {
-    if (typeof window !== "undefined") {
-      return new URL(normalized, window.location.origin).href;
-    }
-  }
-  return normalized || "/oweg_logo.png";
-};
-
-const getCategoryDisplayImage = (cat: MobileCategory): string => {
-  const key = normalizeCategoryKey(cat.title);
-  const handleKey = normalizeCategoryKey(cat.handle);
-
-  const custom =
-    customSubcategoryImages[handleKey] || customSubcategoryImages[key];
-  if (custom) return resolveCategoryImage(custom);
-
-  const mapped =
-    categoryImageMap[handleKey] ||
-    categoryImageMap[key] ||
-    categoryImageMap[cat.handle || ""];
-  if (mapped) return resolveCategoryImage(mapped);
-
-  const normalizedTitle = key;
-  const normalizedHandle = normalizeCategoryKey(cat.handle);
-  const tokens = `${normalizedTitle} ${normalizedHandle}`
-    .split("-")
-    .filter(Boolean);
-
-  const keywordHit = categoryImageKeywords.find(({ includes }) =>
-    includes.every((kw) => tokens.some((t) => t.includes(kw))),
-  );
-  if (keywordHit) return resolveCategoryImage(keywordHit.image);
-
-  if (cat.image) return resolveCategoryImage(cat.image);
-  return "/oweg_logo.png";
 };
 
 const getProductBrand = (p: ProductLike): string => {
@@ -1200,14 +1082,12 @@ export default function MobileBottomNav() {
                           title={cat.title}
                         >
                           <div className="flex items-center gap-3">
-                            <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-white border border-gray-100 flex items-center justify-center">
-                              <Image
-                                src={getCategoryDisplayImage(cat)}
-                                alt={cat.title}
-                                fill
-                                className="object-contain"
-                                sizes="48px"
-                                unoptimized
+                            <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50 ring-1 ring-emerald-100">
+                              <CategoryIcon
+                                handle={cat.handle}
+                                title={cat.title}
+                                active={active}
+                                className="h-7 w-7"
                               />
                             </div>
                             <span className="text-sm font-semibold text-gray-800 line-clamp-2">
@@ -1328,16 +1208,14 @@ export default function MobileBottomNav() {
                       >
                         <div className="flex flex-col items-center">
                           <div
-                            className="relative w-full rounded-xl overflow-hidden bg-white flex items-center justify-center"
-                            style={{ height: isOpen ? 96 : 80 }}
+                            className="relative w-full rounded-xl bg-emerald-50/80 ring-1 ring-emerald-100 flex items-center justify-center"
+                            style={{ height: isOpen ? 72 : 56 }}
                           >
-                            <Image
-                              src={getCategoryDisplayImage(cat)}
-                              alt={cat.title}
-                              fill
-                              className="object-contain"
-                              sizes={isOpen ? "140px" : "120px"}
-                              unoptimized
+                            <CategoryIcon
+                              handle={cat.handle}
+                              title={cat.title}
+                              active={active}
+                              className={isOpen ? "h-9 w-9" : "h-8 w-8"}
                             />
                           </div>
                           {isOpen ? (
@@ -1541,34 +1419,29 @@ export default function MobileBottomNav() {
                       (activeCategory.children || []).length > 0 &&
                       !selectedSubcategory && (
                         <div className="flex flex-col gap-2 pb-2 animate-in fade-in duration-200">
-                          <div className="px-0.5 mb-1">
+                          <div className="px-0.5 mb-2">
                             <h3 className="text-base font-semibold tracking-tight text-gray-900">
                               {activeCategory.title}
                             </h3>
-                            <p className="text-xs text-gray-500 mt-0.5">
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-700/80 mt-0.5">
                               Browse
                             </p>
                           </div>
                           <ul className="flex flex-col gap-2" role="list">
-                            {activeCategory.children!.map((child) => {
-                              const Icon = getSubcategoryIcon(
-                                child.title,
-                                child.handle,
-                              );
-                              return (
+                            {activeCategory.children!.map((child) => (
                                 <li key={child.id}>
                                   <button
                                     type="button"
                                     onClick={() =>
                                       setSelectedSubcategory(child)
                                     }
-                                    className="group flex w-full items-center gap-3 rounded-xl bg-[#F4F7F2] px-3 py-3 text-left transition-all duration-200 hover:bg-[#EAF3E0] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7AC943]/40"
+                                    className="group flex w-full items-center gap-3 rounded-2xl border border-emerald-100/80 bg-white px-3.5 py-3.5 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:border-emerald-300 hover:bg-emerald-50/70 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7AC943]/40"
                                   >
-                                    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#7AC943]/18 text-[#5ea82e] ring-1 ring-[#7AC943]/25">
-                                      <Icon
+                                    <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#7AC943]/12 ring-1 ring-[#7AC943]/20">
+                                      <SubcategoryIcon
+                                        handle={child.handle}
+                                        title={child.title}
                                         className="h-5 w-5"
-                                        strokeWidth={2}
-                                        aria-hidden
                                       />
                                     </span>
                                     <span className="min-w-0 flex-1 text-[14px] font-medium text-gray-900 line-clamp-2">
@@ -1577,8 +1450,7 @@ export default function MobileBottomNav() {
                                     <ChevronRight className="h-4 w-4 shrink-0 text-[#7AC943] transition-transform group-hover:translate-x-0.5" />
                                   </button>
                                 </li>
-                              );
-                            })}
+                            ))}
                           </ul>
                         </div>
                       )}

@@ -18,7 +18,10 @@ function getOrderIdFromPath(pathname: string) {
 function statusColor(status: string): "orange" | "green" | "red" | "blue" | "grey" {
   const value = status.toLowerCase()
   if (value === "pending_approval") return "orange"
-  if (["approved", "pickup_initiated", "picked_up", "received", "refunded", "replaced"].includes(value)) {
+  if (["approved", "pickup_initiated", "picked_up", "received"].includes(value)) {
+    return "orange"
+  }
+  if (["refunded", "replaced"].includes(value)) {
     return "green"
   }
   if (value === "rejected") return "red"

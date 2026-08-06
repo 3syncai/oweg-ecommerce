@@ -208,8 +208,12 @@ export async function POST(req: Request) {
     const finalOrderId = placed.orderId;
     const orderMetadata = (placed.order.metadata || {}) as Record<string, unknown>;
 
-    if (placed.converted) {
+    // Always sync discounts into order_summary (idempotent). Previously this only ran
+    // when converted===true, so webhook-first / already-placed orders kept Outstanding.
+    try {
       await runPostConvertCheckoutSideEffects(finalOrderId, orderMetadata);
+    } catch (sideErr) {
+      console.error("razorpay confirm: discount/summary sync failed", sideErr);
     }
 
     // Store all payment data in metadata
