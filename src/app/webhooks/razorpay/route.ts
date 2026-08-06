@@ -63,34 +63,6 @@ function asRecordArray(value: unknown): UnknownRecord[] {
     .filter((v): v is UnknownRecord => Boolean(v));
 }
 
-function extractMessage(data: unknown): string | null {
-  const record = asRecord(data);
-  if (record) {
-    const msg = record.message || record.error || record.error_message;
-    if (typeof msg === "string") return msg;
-  }
-  return null;
-}
-
-function extractTransaction(data: unknown): UnknownRecord | null {
-  const record = asRecord(data);
-  if (!record) return null;
-  if (record.transaction && typeof record.transaction === "object") {
-    return record.transaction as UnknownRecord;
-  }
-  const orderTx = asRecord(record.order)?.transaction;
-  if (orderTx && typeof orderTx === "object") return orderTx as UnknownRecord;
-  const nested = record.data;
-  if (Array.isArray(nested) && nested.length && typeof nested[0] === "object") {
-    return nested[0] as UnknownRecord;
-  }
-  const nestedRecord = asRecord(nested);
-  if (nestedRecord?.transaction && typeof nestedRecord.transaction === "object") {
-    return nestedRecord.transaction as UnknownRecord;
-  }
-  return record;
-}
-
 function safeNumber(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;

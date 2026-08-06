@@ -206,7 +206,7 @@ export function ReturnOrderPanel({
   if (!open || !mounted) return null;
 
   const selectedCount = returnItems.filter((item) => item.selected && item.quantity > 0).length;
-  const upiReady = /^[\w.\-]{2,256}@[a-zA-Z]{2,64}$/.test(upiId.trim());
+  const upiReady = /^[\w.-]{2,256}@[a-zA-Z]{2,64}$/.test(upiId.trim());
   const bankReady =
     Boolean(bankDetails.account_name.trim()) &&
     Boolean(bankDetails.account_number.trim()) &&

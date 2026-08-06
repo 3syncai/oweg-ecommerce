@@ -143,7 +143,6 @@ export default function OrderDetailContent({
     error,
     existingReturn,
     withinReturnWindow,
-    isCod,
     requireCancelRefundPayout,
     canCancel,
     displayTotals,

@@ -235,7 +235,7 @@ export function useOrderDetail(orderId?: string) {
     if (requireCancelRefundPayout) {
       if (cancelPayoutMethod === "upi") {
         const safeUpi = cancelUpiId.trim();
-        if (!/^[\w.\-]{2,256}@[a-zA-Z]{2,64}$/.test(safeUpi)) {
+        if (!/^[\w.-]{2,256}@[a-zA-Z]{2,64}$/.test(safeUpi)) {
           setCancelError("Please enter a valid UPI ID (example: name@upi).");
           return;
         }
@@ -342,7 +342,7 @@ export function useOrderDetail(orderId?: string) {
     if (returnType === "return") {
       if (payoutMethod === "upi") {
         const safeUpi = upiId.trim();
-        if (!/^[\w.\-]{2,256}@[a-zA-Z]{2,64}$/.test(safeUpi)) {
+        if (!/^[\w.-]{2,256}@[a-zA-Z]{2,64}$/.test(safeUpi)) {
           setReturnError("Please enter a valid UPI ID (example: name@upi).");
           return;
         }
