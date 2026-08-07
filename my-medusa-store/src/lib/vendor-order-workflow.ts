@@ -22,6 +22,7 @@ export type VendorOrderWorkflow = {
   shiprocket_shipment_id?: string | number | null
   shiprocket_awb?: string | null
   shiprocket_status?: string | null
+  shiprocket_delivered_at?: string | null
   easy_courier_id?: number | null
   easy_courier_partner?: string | null
   /** Shiprocket serviceability rate charged as forward logistic fee */
@@ -38,6 +39,9 @@ export type VendorOrderWorkflow = {
   self_awb?: string | null
   self_dispatch_rate?: number | null
   self_packing_info?: string | null
+  /** Vendor-entered POD / courier delivery confirmation for self-ship */
+  self_delivery_confirmation?: string | null
+  self_delivered_at?: string | null
   /** Reverse/return Shiprocket courier rate (Easy Ship returns) */
   return_courier_id?: number | null
   return_courier_name?: string | null

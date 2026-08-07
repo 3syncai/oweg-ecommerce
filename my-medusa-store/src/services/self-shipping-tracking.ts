@@ -102,7 +102,7 @@ function buildBody(body: unknown, awb: string) {
   return JSON.stringify(body).replace(/\{awb\}/gi, awb)
 }
 
-function getKnownTrackingUrl(partner: string, awb: string) {
+export function getKnownTrackingUrl(partner: string, awb: string) {
   const key = normalizePartner(partner)
   const template = Object.entries(TRACKING_URL_TEMPLATES).find(([carrier]) =>
     key.includes(normalizePartner(carrier))
@@ -166,21 +166,29 @@ export async function trackSelfShipment({ courierPartnerName, awb, trackingSourc
     })
   }
 
+  const tryShiprocket = async () => {
+    const shiprocket = new ShiprocketService()
+    const payload = await shiprocket.trackByAwb(trackingId)
+    return {
+      ...summarizeTrackingPayload({
+        provider: "shiprocket",
+        courierPartnerName: partner || "Shiprocket",
+        awb: trackingId,
+        payload,
+        status: extractTrackingStatus(payload),
+      }),
+      tracking_url:
+        fallbackTrackingUrl ||
+        TRACKING_URL_TEMPLATES.shiprocket.replace("{awb}", encodeURIComponent(trackingId)),
+      source: "shiprocket" as const,
+    }
+  }
+
+  // Amazon-style: prefer explicit Shiprocket source, else try configured carrier APIs,
+  // then fall back to Shiprocket aggregator for any AWB (common for Indian sellers).
   if (trackingSource === "shiprocket") {
     try {
-      const shiprocket = new ShiprocketService()
-      const payload = await shiprocket.trackByAwb(trackingId)
-      return {
-        ...summarizeTrackingPayload({
-          provider: "shiprocket",
-          courierPartnerName: partner || "Shiprocket",
-          awb: trackingId,
-          payload,
-          status: extractTrackingStatus(payload),
-        }),
-        tracking_url: TRACKING_URL_TEMPLATES.shiprocket.replace("{awb}", encodeURIComponent(trackingId)),
-        source: "shiprocket",
-      }
+      return await tryShiprocket()
     } catch (error: any) {
       return {
         ...summarizeTrackingPayload({
@@ -192,7 +200,9 @@ export async function trackSelfShipment({ courierPartnerName, awb, trackingSourc
             error?.message ||
             "Shiprocket could not track this AWB. Confirm the AWB is available under the configured Shiprocket account.",
         }),
-        tracking_url: TRACKING_URL_TEMPLATES.shiprocket.replace("{awb}", encodeURIComponent(trackingId)),
+        tracking_url:
+          fallbackTrackingUrl ||
+          TRACKING_URL_TEMPLATES.shiprocket.replace("{awb}", encodeURIComponent(trackingId)),
         source: "provider_error",
       }
     }
@@ -200,17 +210,21 @@ export async function trackSelfShipment({ courierPartnerName, awb, trackingSourc
 
   const provider = findProviderConfig(partner)
   if (!provider) {
-    return {
-      ...summarizeTrackingPayload({
-        provider: "self",
-        courierPartnerName: partner,
-        awb: trackingId,
-        status: "not_shipped",
-        error:
-          "Live tracking is not configured for this courier. Add a carrier API adapter or aggregator credentials to fetch checkpoints automatically.",
-      }),
-      tracking_url: fallbackTrackingUrl,
-      source: "not_configured",
+    try {
+      return await tryShiprocket()
+    } catch {
+      return {
+        ...summarizeTrackingPayload({
+          provider: "self",
+          courierPartnerName: partner,
+          awb: trackingId,
+          status: "not_shipped",
+          error:
+            "Live carrier API not configured for this courier yet. After RTD the order is marked Shipped; delivery updates need Shiprocket/carrier credentials or admin mark-delivered.",
+        }),
+        tracking_url: fallbackTrackingUrl,
+        source: "not_configured",
+      }
     }
   }
 

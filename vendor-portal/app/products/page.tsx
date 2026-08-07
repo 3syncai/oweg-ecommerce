@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Container, Heading, Text, Button } from "@medusajs/ui"
-import { ArchiveBox, MagnifyingGlass, Plus, ArrowUpRightMini, Tag } from "@medusajs/icons"
+import { ArchiveBox, MagnifyingGlass, Plus, ArrowUpRightMini, Tag, ChevronLeft, ChevronRight } from "@medusajs/icons"
 import VendorShell from "@/components/VendorShell"
 import PageSkeleton from "@/components/PageSkeleton"
 import EmptyState from "@/components/EmptyState"
@@ -11,6 +11,7 @@ import InsightPill from "@/components/dashboard/InsightPill"
 import ProductStatus, { resolveProductStatus } from "@/components/dashboard/ProductStatus"
 import StatusDot from "@/components/dashboard/StatusDot"
 import { vendorProductsApi } from "@/lib/api/client"
+import { useVendorLive } from "@/lib/useVendorLive"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 
@@ -28,6 +29,8 @@ type Product = {
     gst_rate?: number | string | null
   }
 }
+
+const PAGE_SIZE = 20
 
 const formatDate = (dateString: string) =>
   new Date(dateString).toLocaleDateString("en-IN", {
@@ -64,64 +67,69 @@ const VendorProductsPage = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
+  const [searchDebounced, setSearchDebounced] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "published" | "draft" | "pending">("all")
+  const [page, setPage] = useState(1)
+  const [totalFiltered, setTotalFiltered] = useState(0)
+  const [counts, setCounts] = useState({ total: 0, published: 0, draft: 0, pending: 0 })
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setSearchDebounced(search.trim()), 300)
+    return () => window.clearTimeout(id)
+  }, [search])
+
+  const loadProducts = useCallback(async () => {
+    try {
+      const data = await vendorProductsApi.list({
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+        q: searchDebounced || undefined,
+        status: statusFilter === "all" ? undefined : statusFilter,
+      })
+      setProducts(data?.products || [])
+      setTotalFiltered(typeof data?.count === "number" ? data.count : (data?.products || []).length)
+      if (data?.counts) {
+        setCounts({
+          total: Number(data.counts.total) || 0,
+          published: Number(data.counts.published) || 0,
+          draft: Number(data.counts.draft) || 0,
+          pending: Number(data.counts.pending) || 0,
+        })
+      }
+      setError(null)
+    } catch (e: any) {
+      if (e.status === 403) {
+        router.push("/pending")
+        return
+      }
+      setError(e?.message || "Failed to load products")
+      console.error("Products error:", e)
+    } finally {
+      setLoading(false)
+    }
+  }, [router, page, searchDebounced, statusFilter])
 
   useEffect(() => {
     const vendorToken = localStorage.getItem("vendor_token")
-
     if (!vendorToken) {
       router.push("/login")
       return
     }
+    void loadProducts()
+  }, [router, loadProducts])
 
-    const loadProducts = async () => {
-      try {
-        const data = await vendorProductsApi.list()
-        setProducts(data?.products || [])
-      } catch (e: any) {
-        if (e.status === 403) {
-          router.push("/pending")
-          return
-        }
-        setError(e?.message || "Failed to load products")
-        console.error("Products error:", e)
-      } finally {
-        setLoading(false)
-      }
-    }
+  useVendorLive({
+    onInvalidate: () => {
+      void loadProducts()
+    },
+  })
 
-    loadProducts()
-  }, [router])
+  useEffect(() => {
+    setPage(1)
+  }, [statusFilter, searchDebounced])
 
-  const stats = useMemo(() => {
-    let published = 0
-    let draft = 0
-    let pending = 0
-
-    products.forEach((product) => {
-      const status = resolveProductStatus(product)
-      if (status === "published") published += 1
-      else if (status === "pending") pending += 1
-      else if (status === "draft") draft += 1
-    })
-
-    return { total: products.length, published, draft, pending }
-  }, [products])
-
-  const filteredProducts = useMemo(() => {
-    const query = search.trim().toLowerCase()
-
-    return products.filter((product) => {
-      const status = resolveProductStatus(product)
-      if (statusFilter !== "all" && status !== statusFilter) return false
-      if (!query) return true
-
-      return (
-        product.title.toLowerCase().includes(query) ||
-        product.handle?.toLowerCase().includes(query)
-      )
-    })
-  }, [products, search, statusFilter])
+  const stats = counts
+  const pageCount = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE))
 
   const insightItems = useMemo(() => {
     const items: { message: string; href: string; variant: "success" | "warning" | "info" }[] = []
@@ -175,7 +183,6 @@ const VendorProductsPage = () => {
   } else {
     content = (
       <Container className="mx-auto max-w-7xl p-4 md:p-6 space-y-5 md:space-y-6">
-        {/* Header */}
         <div
           className="animate-fade-in-up flex flex-wrap items-start justify-between gap-4"
           style={{ animationDelay: "0ms" }}
@@ -204,7 +211,6 @@ const VendorProductsPage = () => {
           </div>
         </div>
 
-        {/* Insight pills */}
         {insightItems.length > 0 && (
           <div
             className="animate-fade-in-up flex flex-wrap gap-2"
@@ -222,8 +228,7 @@ const VendorProductsPage = () => {
           </div>
         )}
 
-        {/* Stats */}
-        {products.length > 0 && (
+        {stats.total > 0 && (
           <div
             className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4 animate-fade-in-up-slow"
             style={{ animationDelay: "80ms" }}
@@ -270,7 +275,7 @@ const VendorProductsPage = () => {
           </div>
         )}
 
-        {products.length === 0 ? (
+        {stats.total === 0 ? (
           <div className="animate-fade-in-up" style={{ animationDelay: "120ms" }}>
             <EmptyState
               accent="purple"
@@ -289,7 +294,6 @@ const VendorProductsPage = () => {
           </div>
         ) : (
           <>
-            {/* Search + filters */}
             <div
               className="animate-fade-in-up flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
               style={{ animationDelay: "120ms" }}
@@ -324,12 +328,11 @@ const VendorProductsPage = () => {
               </div>
             </div>
 
-            {/* Table */}
             <div
               className="animate-fade-in-up overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base"
               style={{ animationDelay: "160ms" }}
             >
-              {filteredProducts.length === 0 ? (
+              {products.length === 0 ? (
                 <div className="p-10 text-center">
                   <Text className="text-ui-fg-subtle">
                     No products match your search or filter.
@@ -366,7 +369,7 @@ const VendorProductsPage = () => {
                   </div>
 
                   <div className="divide-y divide-ui-border-base/70">
-                    {filteredProducts.map((product) => {
+                    {products.map((product) => {
                       const status = resolveProductStatus(product)
                       const taxCode =
                         product.metadata?.tax_code ||
@@ -451,13 +454,33 @@ const VendorProductsPage = () => {
               )}
             </div>
 
-            <Text
-              size="small"
-              className="animate-fade-in-up text-ui-fg-muted"
-              style={{ animationDelay: "200ms" }}
-            >
-              Showing {filteredProducts.length} of {products.length} products
-            </Text>
+            <div className="flex flex-col gap-2 text-ui-fg-muted sm:flex-row sm:items-center sm:justify-between">
+              <Text size="small">
+                Showing {products.length ? (page - 1) * PAGE_SIZE + 1 : 0}-
+                {Math.min(page * PAGE_SIZE, totalFiltered)} of {totalFiltered}
+              </Text>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={page <= 1}
+                  onClick={() => setPage((value) => Math.max(1, value - 1))}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ui-border-base/70 disabled:opacity-40"
+                >
+                  <ChevronLeft />
+                </button>
+                <Text size="small">
+                  Page {page} of {pageCount}
+                </Text>
+                <button
+                  type="button"
+                  disabled={page >= pageCount}
+                  onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ui-border-base/70 disabled:opacity-40"
+                >
+                  <ChevronRight />
+                </button>
+              </div>
+            </div>
           </>
         )}
       </Container>

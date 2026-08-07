@@ -1,8 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Button, Container, Heading, Text } from "@medusajs/ui"
-import { ArrowPath, MagnifyingGlass } from "@medusajs/icons"
+import { ArrowPath, MagnifyingGlass, ChevronLeft, ChevronRight } from "@medusajs/icons"
 import VendorShell from "@/components/VendorShell"
 import PageSkeleton from "@/components/PageSkeleton"
 import EmptyState from "@/components/EmptyState"
@@ -13,7 +13,10 @@ import {
   type VendorReturnCourier,
   type VendorReturnRequest,
 } from "@/lib/api/client"
+import { notifyVendorDataChanged, useVendorLive } from "@/lib/useVendorLive"
 import { useRouter } from "next/navigation"
+
+const PAGE_SIZE = 10
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(amount)
@@ -30,13 +33,35 @@ const formatStatus = (status?: string) =>
 
 type StatusFilter = "all" | "pending" | "approved" | "in_transit" | "refunded"
 
+type ReturnCounts = {
+  total: number
+  pending_approval: number
+  in_progress: number
+  pickup: number
+  refunded: number
+  needs_logistics: number
+}
+
+const EMPTY_COUNTS: ReturnCounts = {
+  total: 0,
+  pending_approval: 0,
+  in_progress: 0,
+  pickup: 0,
+  refunded: 0,
+  needs_logistics: 0,
+}
+
 const VendorReturnsPage = () => {
   const router = useRouter()
   const [returns, setReturns] = useState<VendorReturnRequest[]>([])
+  const [counts, setCounts] = useState<ReturnCounts>(EMPTY_COUNTS)
+  const [totalFiltered, setTotalFiltered] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
+  const [searchDebounced, setSearchDebounced] = useState("")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
+  const [page, setPage] = useState(1)
   const [activeReturnId, setActiveReturnId] = useState<string | null>(null)
   const [couriers, setCouriers] = useState<VendorReturnCourier[]>([])
   const [couriersLoading, setCouriersLoading] = useState(false)
@@ -55,10 +80,33 @@ const VendorReturnsPage = () => {
   const [selfTrackingError, setSelfTrackingError] = useState<string | null>(null)
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null)
 
+  useEffect(() => {
+    const id = window.setTimeout(() => setSearchDebounced(search.trim()), 300)
+    return () => window.clearTimeout(id)
+  }, [search])
+
   const loadReturns = useCallback(async () => {
     try {
-      const data = await vendorReturnsApi.list()
+      const data = await vendorReturnsApi.list({
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+        status: statusFilter === "all" ? undefined : statusFilter,
+        q: searchDebounced || undefined,
+      })
       setReturns(data?.return_requests || [])
+      if (data?.counts) {
+        setCounts({
+          total: Number(data.counts.total) || 0,
+          pending_approval: Number(data.counts.pending_approval) || 0,
+          in_progress: Number(data.counts.in_progress) || 0,
+          pickup: Number((data.counts as any).pickup) || 0,
+          refunded: Number((data.counts as any).refunded) || 0,
+          needs_logistics: Number((data.counts as any).needs_logistics) || 0,
+        })
+      }
+      setTotalFiltered(
+        typeof data?.count === "number" ? data.count : (data?.return_requests || []).length
+      )
       setError(null)
     } catch (e: any) {
       if (e.status === 403) {
@@ -76,7 +124,7 @@ const VendorReturnsPage = () => {
     } finally {
       setLoading(false)
     }
-  }, [router])
+  }, [router, page, statusFilter, searchDebounced])
 
   useEffect(() => {
     const vendorToken = localStorage.getItem("vendor_token")
@@ -87,6 +135,16 @@ const VendorReturnsPage = () => {
 
     void loadReturns()
   }, [router, loadReturns])
+
+  useVendorLive({
+    onInvalidate: () => {
+      void loadReturns()
+    },
+  })
+
+  useEffect(() => {
+    setPage(1)
+  }, [statusFilter, searchDebounced])
 
   const openCourierPicker = async (returnId: string) => {
     setActiveReturnId(returnId)
@@ -124,6 +182,7 @@ const VendorReturnsPage = () => {
       })
       setActiveReturnId(null)
       await loadReturns()
+      notifyVendorDataChanged()
     } catch (e: any) {
       setCourierError(e?.message || "Failed to save courier")
     } finally {
@@ -157,6 +216,7 @@ const VendorReturnsPage = () => {
       })
       setSelfTrackingReturn(null)
       await loadReturns()
+      notifyVendorDataChanged()
     } catch (e: any) {
       setSelfTrackingError(e?.message || "Failed to save tracking")
     } finally {
@@ -173,6 +233,7 @@ const VendorReturnsPage = () => {
     try {
       await vendorReturnsApi.updateStatus(item.id, action)
       await loadReturns()
+      notifyVendorDataChanged()
     } catch (e: any) {
       setError(e?.message || "Failed to update return status")
     } finally {
@@ -180,69 +241,17 @@ const VendorReturnsPage = () => {
     }
   }
 
-  const stats = useMemo(() => {
-    let pending = 0
-    let needsLogistics = 0
-    let inProgress = 0
-    let refunded = 0
-    let pickup = 0
+  const stats = {
+    total: counts.total,
+    pending: counts.pending_approval,
+    needsLogistics: counts.needs_logistics,
+    inProgress: counts.in_progress,
+    refunded: counts.refunded,
+    pickup: counts.pickup,
+  }
 
-    returns.forEach((item) => {
-      const status = item.status || ""
-      if (status === "pending_approval") pending += 1
-      if (item.needs_return_logistics) needsLogistics += 1
-      if (["approved", "pickup_initiated", "picked_up", "received"].includes(status)) {
-        inProgress += 1
-      }
-      if (["pickup_initiated", "picked_up"].includes(status)) {
-        pickup += 1
-      }
-      if (["refunded", "replaced", "closed"].includes(status)) {
-        refunded += 1
-      }
-    })
-
-    return { total: returns.length, pending, needsLogistics, inProgress, refunded, pickup }
-  }, [returns])
-
-  const filteredReturns = useMemo(() => {
-    const query = search.trim().toLowerCase()
-
-    return returns.filter((item) => {
-      const status = item.status || ""
-
-      if (statusFilter === "pending") {
-        if (!item.needs_return_logistics) return false
-      }
-      if (statusFilter === "approved") {
-        if (!["approved", "pickup_initiated", "picked_up", "received"].includes(status)) {
-          return false
-        }
-      }
-      if (statusFilter === "in_transit") {
-        if (!["pickup_initiated", "picked_up"].includes(status)) return false
-      }
-      if (statusFilter === "refunded") {
-        if (!["refunded", "replaced", "closed"].includes(status)) return false
-      }
-
-      if (!query) return true
-
-      const orderId = String(item.order_display_id || item.order_id)
-      const itemTitles = [
-        ...(item.items || []).map((line) => line.title || ""),
-        ...(item.vendor_items || []).map((line) => line.title),
-      ].join(" ")
-
-      return (
-        orderId.toLowerCase().includes(query) ||
-        item.customer_email?.toLowerCase().includes(query) ||
-        item.customer_name?.toLowerCase().includes(query) ||
-        item.reason?.toLowerCase().includes(query) ||
-        itemTitles.toLowerCase().includes(query)
-      )
-    })
-  }, [returns, search, statusFilter])
+  const pageCount = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE))
+  const visibleReturns = returns
 
   const filterOptions = [
     { value: "all" as const, label: "All", count: stats.total },
@@ -280,7 +289,7 @@ const VendorReturnsPage = () => {
           </div>
         </div>
 
-        {returns.length === 0 ? (
+        {stats.total === 0 ? (
           <EmptyState
             accent="oweg"
             icon={<ArrowPath />}
@@ -363,14 +372,14 @@ const VendorReturnsPage = () => {
               </div>
             </div>
 
-            {filteredReturns.length === 0 ? (
+            {visibleReturns.length === 0 ? (
               <EmptyState
                 accent="gray"
                 icon={<MagnifyingGlass />}
                 title="No matching returns"
                 description={
-                  search
-                    ? `No returns match "${search}".`
+                  searchDebounced
+                    ? `No returns match "${searchDebounced}".`
                     : "No returns in this status filter."
                 }
                 primaryAction={{
@@ -394,7 +403,7 @@ const VendorReturnsPage = () => {
                     )}
                   </div>
                   <div className="divide-y divide-ui-border-base/70">
-                    {filteredReturns.map((item) => {
+                    {visibleReturns.map((item) => {
                       const productLabels =
                         item.items?.length > 0
                           ? item.items
@@ -585,9 +594,33 @@ const VendorReturnsPage = () => {
                     })}
                   </div>
                 </div>
-                <Text size="small" className="text-ui-fg-muted">
-                  Showing {filteredReturns.length} of {returns.length} returns
-                </Text>
+                <div className="flex flex-col gap-2 text-ui-fg-muted sm:flex-row sm:items-center sm:justify-between">
+                  <Text size="small">
+                    Showing {visibleReturns.length ? (page - 1) * PAGE_SIZE + 1 : 0}-
+                    {Math.min(page * PAGE_SIZE, totalFiltered)} of {totalFiltered}
+                  </Text>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={page <= 1}
+                      onClick={() => setPage((value) => Math.max(1, value - 1))}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ui-border-base/70 disabled:opacity-40"
+                    >
+                      <ChevronLeft />
+                    </button>
+                    <Text size="small">
+                      Page {page} of {pageCount}
+                    </Text>
+                    <button
+                      type="button"
+                      disabled={page >= pageCount}
+                      onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ui-border-base/70 disabled:opacity-40"
+                    >
+                      <ChevronRight />
+                    </button>
+                  </div>
+                </div>
               </>
             )}
           </>

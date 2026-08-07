@@ -2,13 +2,20 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
 import ReturnModuleService from "../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../modules/returns"
-import { getItemUnits, getVendorWorkflow } from "../../../lib/vendor-order-workflow"
+import { getItemUnits, getVendorProductIds, getVendorWorkflow } from "../../../lib/vendor-order-workflow"
 import {
   getReverseCourierSelection,
   getReturnMetadata,
   getSelfReverseTracking,
   resolveVendorForwardShippingMethod,
 } from "../../../lib/vendor-return-shiprocket"
+import { findVendorOrderIds } from "../../../lib/vendor-order-ids"
+import { getSharedDbPool } from "../../../lib/db-pool"
+import {
+  parseVendorPagination,
+  slicePage,
+  paginationMeta,
+} from "../../../lib/vendor-pagination"
 
 function setCorsHeaders(res: MedusaResponse) {
   res.setHeader(
@@ -23,6 +30,17 @@ function setCorsHeaders(res: MedusaResponse) {
   res.setHeader("Access-Control-Allow-Credentials", "true")
 }
 
+const VENDOR_VISIBLE_STATUSES = new Set([
+  "pending_approval",
+  "approved",
+  "pickup_initiated",
+  "picked_up",
+  "received",
+  "refunded",
+  "replaced",
+  "closed",
+])
+
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res)
   return res.status(200).end()
@@ -30,66 +48,148 @@ export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
 
 /**
  * GET /vendor/returns
- * Lists return/replacement requests for this vendor's products.
- * Includes pending_approval so Easy Ship vendors can select a reverse courier
- * before admin approval (pickup then runs automatically).
+ * Optional: ?limit=&offset=&status=&q=&counts_only=1
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res)
   const auth = await requireApprovedVendor(req, res)
   if (!auth) return
 
-  const VENDOR_VISIBLE_STATUSES = new Set([
-    "pending_approval",
-    "approved",
-    "pickup_initiated",
-    "picked_up",
-    "received",
-    "refunded",
-    "replaced",
-    "closed",
-  ])
+  const pagination = parseVendorPagination(req, 20)
+  const countsOnly =
+    String(req.query?.counts_only || "").toLowerCase() === "1" ||
+    String(req.query?.counts_only || "").toLowerCase() === "true"
+  const statusFilter = String(req.query?.status || "").trim().toLowerCase()
+  const q = String(req.query?.q || "").trim().toLowerCase()
+  const started = Date.now()
 
   try {
     const query = req.scope.resolve("query")
     const returnService: ReturnModuleService = req.scope.resolve(RETURN_MODULE)
+    const pool = getSharedDbPool()
 
-    const { data: vendorProducts } = await query.graph({
-      entity: "product",
-      fields: ["id"],
-      filters: {
-        metadata: {
-          vendor_id: auth.vendor_id,
-        },
-      },
-    })
-
-    if (!vendorProducts?.length) {
-      return res.json({ return_requests: [] })
+    const vendorProductIds = await getVendorProductIds(req, auth.vendor_id)
+    if (!vendorProductIds.length) {
+      return res.json({
+        return_requests: [],
+        ...paginationMeta(0, pagination),
+        counts: { total: 0, pending_approval: 0, in_progress: 0 },
+      })
     }
 
-    const vendorProductIds = new Set(vendorProducts.map((p: any) => p.id))
-    const requests = await returnService.listReturnRequests({})
-
-    if (!requests?.length) {
-      return res.json({ return_requests: [] })
+    const vendorProductIdSet = new Set(vendorProductIds)
+    const vendorOrderIds = await findVendorOrderIds(pool, auth.vendor_id, vendorProductIds)
+    if (!vendorOrderIds.length) {
+      return res.json({
+        return_requests: [],
+        ...paginationMeta(0, pagination),
+        counts: { total: 0, pending_approval: 0, in_progress: 0 },
+      })
     }
 
-    const visibleRequests = requests.filter(
+    // Scope returns to this vendor's orders only (avoid marketplace-wide list)
+    let requests: any[] = []
+    try {
+      requests = await returnService.listReturnRequests({
+        order_id: vendorOrderIds,
+      } as any)
+    } catch {
+      // Fallback if $in-style filter unsupported
+      const all = await returnService.listReturnRequests({})
+      const idSet = new Set(vendorOrderIds)
+      requests = (all || []).filter((r: any) => r?.order_id && idSet.has(r.order_id))
+    }
+
+    const visibleRequests = (requests || []).filter(
       (request: any) =>
         request?.status && VENDOR_VISIBLE_STATUSES.has(String(request.status))
     )
 
-    if (!visibleRequests.length) {
-      return res.json({ return_requests: [] })
+    const counts = {
+      total: visibleRequests.length,
+      pending_approval: visibleRequests.filter(
+        (r: any) => String(r.status) === "pending_approval"
+      ).length,
+      in_progress: visibleRequests.filter((r: any) =>
+        ["approved", "pickup_initiated", "picked_up", "received"].includes(String(r.status))
+      ).length,
+      pickup: visibleRequests.filter((r: any) =>
+        ["pickup_initiated", "picked_up"].includes(String(r.status))
+      ).length,
+      refunded: visibleRequests.filter((r: any) =>
+        ["refunded", "replaced", "closed"].includes(String(r.status))
+      ).length,
+      // Approx "needs logistics" without full shipping enrichment
+      needs_logistics: visibleRequests.filter((r: any) => {
+        const status = String(r.status || "")
+        if (!["pending_approval", "approved"].includes(status)) return false
+        if (r.pickup_initiated_at || r.shiprocket_order_id) return false
+        return true
+      }).length,
     }
 
-    const orderIds = Array.from(
-      new Set(visibleRequests.map((r: any) => r.order_id).filter(Boolean))
+    if (countsOnly) {
+      console.log(
+        `[Vendor returns] vendor=${auth.vendor_id} counts_only total=${counts.total} ${Date.now() - started}ms`
+      )
+      return res.json({
+        return_requests: [],
+        ...paginationMeta(0, pagination),
+        counts,
+      })
+    }
+
+    let filtered = visibleRequests
+    if (statusFilter && statusFilter !== "all") {
+      if (statusFilter === "pending" || statusFilter === "needs_logistics") {
+        filtered = filtered.filter((r: any) => {
+          const status = String(r.status || "")
+          if (!["pending_approval", "approved"].includes(status)) return false
+          if (r.pickup_initiated_at || r.shiprocket_order_id) return false
+          return true
+        })
+      } else if (
+        statusFilter === "approved" ||
+        statusFilter === "in_progress"
+      ) {
+        filtered = filtered.filter((r: any) =>
+          ["approved", "pickup_initiated", "picked_up", "received"].includes(String(r.status))
+        )
+      } else if (statusFilter === "in_transit") {
+        filtered = filtered.filter((r: any) =>
+          ["pickup_initiated", "picked_up"].includes(String(r.status))
+        )
+      } else if (statusFilter === "refunded") {
+        filtered = filtered.filter((r: any) =>
+          ["refunded", "replaced", "closed"].includes(String(r.status))
+        )
+      } else {
+        filtered = filtered.filter(
+          (r: any) => String(r.status).toLowerCase() === statusFilter
+        )
+      }
+    }
+
+    filtered.sort((a: any, b: any) => {
+      const aTime = new Date(a.created_at || 0).getTime()
+      const bTime = new Date(b.created_at || 0).getTime()
+      return bTime - aTime
+    })
+
+    // Load only orders needed for the page (or all filtered when no pagination)
+    const pageRequests = slicePage(filtered, pagination)
+    const orderIdsNeeded = Array.from(
+      new Set(pageRequests.map((r: any) => r.order_id).filter(Boolean))
     ) as string[]
 
+    // For search we may need display_id — if q set, enrich all filtered then re-slice
+    const orderIdsForQuery =
+      q && !pagination.all
+        ? (Array.from(new Set(filtered.map((r: any) => r.order_id).filter(Boolean))) as string[])
+        : orderIdsNeeded
+
     const ordersById = new Map<string, any>()
-    if (orderIds.length) {
+    if (orderIdsForQuery.length) {
       const { data: ordersData } = await query.graph({
         entity: "order",
         fields: [
@@ -112,42 +212,55 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           "shipping_address.first_name",
           "shipping_address.last_name",
         ],
-        filters: { id: orderIds },
+        filters: { id: orderIdsForQuery },
       })
-
       for (const order of ordersData || []) {
         if (order?.id) ordersById.set(order.id, order)
       }
     }
 
-    const vendorOrderIds = new Set<string>()
-    for (const [orderId, order] of ordersById) {
-      const items = order.items || []
-      const belongsToVendor = items.some((item: any) => {
-        const productId = item.product_id || item.variant?.product_id
-        return productId && vendorProductIds.has(productId)
+    let working = filtered
+    if (q) {
+      working = filtered.filter((request: any) => {
+        const order = ordersById.get(request.order_id)
+        const hay = [
+          request.id,
+          request.order_id,
+          order?.display_id,
+          order?.email,
+          request.reason,
+          request.status,
+        ]
+          .map((v) => String(v || "").toLowerCase())
+          .join(" ")
+        return hay.includes(q)
       })
-      if (belongsToVendor) vendorOrderIds.add(orderId)
     }
 
-    const vendorRequests = visibleRequests.filter(
-      (request: any) => request.order_id && vendorOrderIds.has(request.order_id)
-    )
+    const total = working.length
+    const pageSlice = slicePage(working, pagination)
+    const pageIds = new Set(pageSlice.map((r: any) => r.id))
 
-    const requestIds = new Set(vendorRequests.map((r: any) => r.id))
-    const allItems = requestIds.size
-      ? await returnService.listReturnRequestItems({})
-      : []
+    let allItems: any[] = []
+    if (pageIds.size) {
+      try {
+        allItems = await returnService.listReturnRequestItems({
+          return_request_id: Array.from(pageIds),
+        } as any)
+      } catch {
+        const every = await returnService.listReturnRequestItems({})
+        allItems = (every || []).filter((item: any) => pageIds.has(item.return_request_id))
+      }
+    }
 
     const itemsByRequest = new Map<string, any[]>()
     for (const item of allItems) {
-      if (!requestIds.has(item.return_request_id)) continue
       const list = itemsByRequest.get(item.return_request_id) || []
       list.push(item)
       itemsByRequest.set(item.return_request_id, list)
     }
 
-    const enriched = vendorRequests.map((request: any) => {
+    const enriched = pageSlice.map((request: any) => {
       const order = request.order_id ? ordersById.get(request.order_id) : null
       const customer = order?.customer || null
       const customerName = [
@@ -161,7 +274,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       const orderItems = order?.items || []
       const vendorLineItems = orderItems.filter((item: any) => {
         const productId = item.product_id || item.variant?.product_id
-        return productId && vendorProductIds.has(productId)
+        return productId && vendorProductIdSet.has(productId)
       })
 
       const returnItems = itemsByRequest.get(request.id) || []
@@ -185,7 +298,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       const workflow = getVendorWorkflow(order?.metadata || null, auth.vendor_id)
       const shippingMethod =
         resolveVendorForwardShippingMethod(order, auth.vendor_id) ||
-        (workflow.shipping_method === "easy" ? "easy" : workflow.shipping_method === "self" ? "self" : null)
+        (workflow.shipping_method === "easy"
+          ? "easy"
+          : workflow.shipping_method === "self"
+            ? "self"
+            : null)
       const selection = getReverseCourierSelection(request)
       const meta = getReturnMetadata(request)
       const selfTracking = getSelfReverseTracking(request)
@@ -265,13 +382,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       }
     })
 
-    enriched.sort((a, b) => {
-      const aTime = new Date(a.created_at || 0).getTime()
-      const bTime = new Date(b.created_at || 0).getTime()
-      return bTime - aTime
-    })
+    console.log(
+      `[Vendor returns] vendor=${auth.vendor_id} total=${total} page=${enriched.length} ${Date.now() - started}ms`
+    )
 
-    return res.json({ return_requests: enriched })
+    return res.json({
+      return_requests: enriched,
+      ...paginationMeta(total, pagination),
+      counts,
+    })
   } catch (error: any) {
     console.error("[Vendor returns] error:", error)
     return res.status(500).json({

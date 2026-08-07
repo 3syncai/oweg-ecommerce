@@ -17,12 +17,13 @@ import {
   ChartBar,
 } from "@medusajs/icons"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { vendorProfileApi, vendorPayoutsApi, vendorOrdersApi } from "@/lib/api/client"
+import { vendorProfileApi, vendorPayoutsApi } from "@/lib/api/client"
 import { performVendorLogout } from "@/lib/vendor-session"
 import { OWEG_BRAND } from "@/lib/brand"
 import { useTheme } from "@/lib/theme"
 import VendorSettingsModal from "@/components/VendorSettingsModal"
 import VendorNotifications from "@/components/VendorNotifications"
+import { useVendorLive } from "@/lib/useVendorLive"
 
 type VendorInfo = {
   name?: string
@@ -183,36 +184,15 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
     loadPayoutData()
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-
-    const loadToAcceptCount = async () => {
-      try {
-        // Light counts endpoint — do not pull the full orders list for the badge
-        const data = await vendorOrdersApi.counts()
-        if (cancelled) return
-        const fromCounts = data?.counts?.to_accept
-        setToAcceptCount(typeof fromCounts === "number" ? fromCounts : 0)
-      } catch {
-        // Keep last known count if the request fails
-      }
-    }
-
-    void loadToAcceptCount()
-    const intervalId = window.setInterval(loadToAcceptCount, 30000)
-    const onOrdersChanged = () => {
-      void loadToAcceptCount()
-    }
-    window.addEventListener("oweg:vendor-orders-changed", onOrdersChanged)
-    window.addEventListener("focus", onOrdersChanged)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(intervalId)
-      window.removeEventListener("oweg:vendor-orders-changed", onOrdersChanged)
-      window.removeEventListener("focus", onOrdersChanged)
-    }
-  }, [])
+  useVendorLive({
+    onPulse: (pulse) => {
+      setToAcceptCount(typeof pulse?.to_accept === "number" ? pulse.to_accept : 0)
+      const available = Number(pulse?.payout?.available_balance) || 0
+      const unlocking = Number(pulse?.payout?.unlocking_balance) || 0
+      const balance = available + unlocking
+      setPayoutData({ totalRevenue: balance, totalBalance: balance, loading: false })
+    },
+  })
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
