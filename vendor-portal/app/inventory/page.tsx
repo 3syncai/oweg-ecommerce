@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Container, Heading, Text, Button, Input, clx } from "@medusajs/ui"
@@ -9,6 +9,7 @@ import EmptyState from "@/components/EmptyState"
 import StatCard from "@/components/dashboard/StatCard"
 import StatusDot from "@/components/dashboard/StatusDot"
 import { vendorInventoryApi } from "@/lib/api/client"
+import { useVendorLive } from "@/lib/useVendorLive"
 import {
   MagnifyingGlass,
   PencilSquare,
@@ -16,6 +17,8 @@ import {
   XMark,
   ArchiveBox,
   TriangleRightMini,
+  ChevronLeft,
+  ChevronRight,
 } from "@medusajs/icons"
 
 type InventoryItem = {
@@ -40,6 +43,8 @@ type ProductGroup = {
   outOfStock: number
   lowStock: number
 }
+
+const PAGE_SIZE = 50
 
 const StockStatus = ({ quantity }: { quantity: number }) => {
   if (quantity === 0) {
@@ -98,19 +103,34 @@ export default function InventoryPage() {
   const [editValue, setEditValue] = useState<number>(0)
   const [saving, setSaving] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [searchDebounced, setSearchDebounced] = useState("")
+  const [page, setPage] = useState(1)
+  const [totalFiltered, setTotalFiltered] = useState(0)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    fetchInventory()
-  }, [])
+    const id = window.setTimeout(() => setSearchDebounced(searchQuery.trim()), 300)
+    return () => window.clearTimeout(id)
+  }, [searchQuery])
 
-  const fetchInventory = async () => {
+  const fetchInventory = useCallback(async (opts?: { silent?: boolean }) => {
     try {
-      setLoading(true)
-      const data = await vendorInventoryApi.list()
+      if (!opts?.silent) setLoading(true)
+      const data = await vendorInventoryApi.list({
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+        q: searchDebounced || undefined,
+      })
 
       if (data.success) {
         setInventory(data.inventory || [])
+        setTotalFiltered(
+          typeof data.count === "number"
+            ? data.count
+            : typeof data.total === "number"
+              ? data.total
+              : (data.inventory || []).length
+        )
       } else {
         console.error("Failed to fetch inventory")
       }
@@ -122,7 +142,21 @@ export default function InventoryPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [router, page, searchDebounced])
+
+  useEffect(() => {
+    void fetchInventory()
+  }, [fetchInventory])
+
+  useVendorLive({
+    onInvalidate: () => {
+      void fetchInventory({ silent: true })
+    },
+  })
+
+  useEffect(() => {
+    setPage(1)
+  }, [searchDebounced])
 
   const handleEdit = (item: InventoryItem) => {
     setEditingId(item.variant_id)
@@ -174,25 +208,13 @@ export default function InventoryPage() {
     const inStock = inventory.filter((item) => item.stock_quantity >= 10).length
     const productCount = new Set(inventory.map((i) => i.product_id)).size
 
-    return { total: inventory.length, productCount, outOfStock, lowStock, inStock }
-  }, [inventory])
-
-  const filteredInventory = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase()
-    if (!query) return inventory
-
-    return inventory.filter(
-      (item) =>
-        item.product_title.toLowerCase().includes(query) ||
-        item.variant_title?.toLowerCase().includes(query) ||
-        item.variant_sku?.toLowerCase().includes(query)
-    )
-  }, [inventory, searchQuery])
+    return { total: totalFiltered, pageTotal: inventory.length, productCount, outOfStock, lowStock, inStock }
+  }, [inventory, totalFiltered])
 
   const productGroups = useMemo(() => {
     const map = new Map<string, ProductGroup>()
 
-    for (const item of filteredInventory) {
+    for (const item of inventory) {
       const existing = map.get(item.product_id)
       if (existing) {
         existing.variants.push(item)
@@ -216,13 +238,15 @@ export default function InventoryPage() {
     return Array.from(map.values()).sort((a, b) =>
       a.product_title.localeCompare(b.product_title)
     )
-  }, [filteredInventory])
+  }, [inventory])
+
+  const pageCount = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE))
 
   // Auto-expand products that match search when searching variants
   useEffect(() => {
-    if (!searchQuery.trim()) return
+    if (!searchDebounced) return
     setExpandedIds(new Set(productGroups.map((g) => g.product_id)))
-  }, [searchQuery, productGroups])
+  }, [searchDebounced, productGroups])
 
   const content = (
     <Container className="mx-auto max-w-7xl p-4 md:p-6 space-y-5 md:space-y-6">
@@ -236,22 +260,22 @@ export default function InventoryPage() {
           </Heading>
           <Text className="mt-1 text-ui-fg-subtle">
             {stats.total > 0
-              ? `${stats.productCount} product${stats.productCount > 1 ? "s" : ""} · ${stats.total} variant${stats.total > 1 ? "s" : ""} · ${stats.lowStock} low stock`
+              ? `${stats.productCount} product${stats.productCount > 1 ? "s" : ""} on this page · ${stats.total} variant${stats.total > 1 ? "s" : ""} · ${stats.lowStock} low stock`
               : "Manage stock levels for your products"}
           </Text>
         </div>
       </div>
 
-      {!loading && inventory.length > 0 && (
+      {!loading && totalFiltered > 0 && (
         <div
           className="grid grid-cols-2 gap-3 md:grid-cols-4 animate-fade-in-up-slow"
           style={{ animationDelay: "40ms" }}
         >
           <StatCard
             icon={<ArchiveBox />}
-            label="Products"
-            value={stats.productCount}
-            subtext={<Text className="text-ui-fg-subtle">{stats.total} variants</Text>}
+            label="Variants"
+            value={stats.total}
+            subtext={<Text className="text-ui-fg-subtle">{stats.productCount} products on page</Text>}
           />
           <StatCard
             icon={<ArchiveBox />}
@@ -260,7 +284,7 @@ export default function InventoryPage() {
             subtext={
               <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
                 <StatusDot variant="success" />
-                <Text size="small">10+ units</Text>
+                <Text size="small">10+ units (page)</Text>
               </span>
             }
           />
@@ -271,7 +295,7 @@ export default function InventoryPage() {
             subtext={
               <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
                 <StatusDot variant="warning" />
-                <Text size="small">Under 10 units</Text>
+                <Text size="small">Under 10 units (page)</Text>
               </span>
             }
           />
@@ -282,14 +306,14 @@ export default function InventoryPage() {
             subtext={
               <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
                 <StatusDot variant="error" />
-                <Text size="small">Needs restock</Text>
+                <Text size="small">Needs restock (page)</Text>
               </span>
             }
           />
         </div>
       )}
 
-      {!loading && inventory.length > 0 && (
+      {!loading && (
         <div
           className="animate-fade-in-up relative w-full sm:max-w-sm"
           style={{ animationDelay: "80ms" }}
@@ -330,12 +354,12 @@ export default function InventoryPage() {
           </div>
         </div>
       ) : productGroups.length === 0 ? (
-        searchQuery ? (
+        searchDebounced ? (
           <EmptyState
             accent="gray"
             icon={<MagnifyingGlass />}
             title="No matching inventory"
-            description={`No products or variants match "${searchQuery}". Try a different name or SKU.`}
+            description={`No products or variants match "${searchDebounced}". Try a different name or SKU.`}
             primaryAction={{
               label: "Clear search",
               onClick: () => setSearchQuery(""),
@@ -528,11 +552,33 @@ export default function InventoryPage() {
             </div>
           </div>
 
-          <Text size="small" className="text-ui-fg-muted">
-            Showing {productGroups.length} product
-            {productGroups.length > 1 ? "s" : ""} · {filteredInventory.length} variant
-            {filteredInventory.length > 1 ? "s" : ""}
-          </Text>
+          <div className="flex flex-col gap-2 text-ui-fg-muted sm:flex-row sm:items-center sm:justify-between">
+            <Text size="small">
+              Showing {inventory.length ? (page - 1) * PAGE_SIZE + 1 : 0}-
+              {Math.min(page * PAGE_SIZE, totalFiltered)} of {totalFiltered} variants
+            </Text>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ui-border-base/70 disabled:opacity-40"
+              >
+                <ChevronLeft />
+              </button>
+              <Text size="small">
+                Page {page} of {pageCount}
+              </Text>
+              <button
+                type="button"
+                disabled={page >= pageCount}
+                onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ui-border-base/70 disabled:opacity-40"
+              >
+                <ChevronRight />
+              </button>
+            </div>
+          </div>
         </>
       )}
     </Container>

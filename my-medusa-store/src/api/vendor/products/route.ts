@@ -11,6 +11,10 @@ import {
 } from "../../../lib/variant-matrix"
 import { syncVariantThumbnailsFromColorImages } from "../../../lib/vendor-product-variants"
 import { releaseOrphanInventorySkus } from "../../../lib/release-sku"
+import {
+  parseVendorPagination,
+  paginationMeta,
+} from "../../../lib/vendor-pagination"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
@@ -31,19 +35,90 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   if (!auth) return
 
   try {
-    const productModuleService = req.scope.resolve(Modules.PRODUCT)
+    const pagination = parseVendorPagination(req, 20)
+    const q = String(req.query?.q || "").trim().toLowerCase()
+    const statusFilter = String(req.query?.status || "").trim().toLowerCase()
 
-    // List all products - we'll filter by metadata client-side since Medusa v2
-    // doesn't support metadata filtering directly in listProducts
-    const products = await productModuleService.listProducts({})
-
-    // Filter products by vendor_id in metadata
-    const vendorProducts = products.filter((p: any) => {
-      const metadata = p.metadata || {}
-      return metadata.vendor_id === auth.vendor_id
+    const query = req.scope.resolve("query")
+    const { data: products } = await query.graph({
+      entity: "product",
+      fields: [
+        "id",
+        "title",
+        "subtitle",
+        "description",
+        "handle",
+        "status",
+        "thumbnail",
+        "images.*",
+        "metadata",
+        "created_at",
+        "updated_at",
+        "collection_id",
+        "type_id",
+        "variants.id",
+        "variants.title",
+        "variants.sku",
+        "variants.manage_inventory",
+        "options.*",
+        "tags.*",
+        "categories.id",
+      ],
+      filters: {
+        metadata: {
+          vendor_id: auth.vendor_id,
+        },
+      },
     })
 
-    return res.json({ products: vendorProducts })
+    let vendorProducts = products || []
+
+    const resolveListStatus = (p: any): "published" | "pending" | "draft" => {
+      const approval = String(p?.metadata?.approval_status || "").toLowerCase()
+      if (approval === "pending") return "pending"
+      const status = String(p?.status || "").toLowerCase()
+      if (status === "published") return "published"
+      return "draft"
+    }
+
+    const counts = { total: 0, published: 0, draft: 0, pending: 0 }
+    for (const p of vendorProducts) {
+      counts.total += 1
+      const s = resolveListStatus(p)
+      counts[s] += 1
+    }
+
+    if (statusFilter && statusFilter !== "all") {
+      vendorProducts = vendorProducts.filter(
+        (p: any) => resolveListStatus(p) === statusFilter
+      )
+    }
+
+    if (q) {
+      vendorProducts = vendorProducts.filter((p: any) => {
+        const hay = [p.title, p.handle, p.subtitle, p.id]
+          .map((v) => String(v || "").toLowerCase())
+          .join(" ")
+        return hay.includes(q)
+      })
+    }
+
+    vendorProducts.sort((a: any, b: any) => {
+      const at = new Date(a.updated_at || a.created_at || 0).getTime()
+      const bt = new Date(b.updated_at || b.created_at || 0).getTime()
+      return bt - at
+    })
+
+    const total = vendorProducts.length
+    const page = pagination.all
+      ? vendorProducts
+      : vendorProducts.slice(pagination.offset, pagination.offset + pagination.limit)
+
+    return res.json({
+      products: page,
+      counts,
+      ...paginationMeta(total, pagination),
+    })
   } catch (error: any) {
     console.error("Vendor products list error:", error)
     return res.status(500).json({ message: error?.message || "Failed to list products" })

@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Text, clx } from "@medusajs/ui"
 import { useRouter } from "next/navigation"
-import { vendorPayoutsApi, vendorReturnsApi } from "@/lib/api/client"
+import { vendorPayoutsApi, vendorPulseApi } from "@/lib/api/client"
+import { useVendorLive, type VendorPulseSnapshot } from "@/lib/useVendorLive"
 
 type VendorNotification = {
   id: string
@@ -17,7 +18,6 @@ type VendorNotification = {
 
 const SEEN_KEY = "oweg_vendor_notif_seen_v2"
 const PRIMED_KEY = "oweg_vendor_notif_primed_v2"
-const POLL_MS = 30000
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("en-IN", {
@@ -90,6 +90,8 @@ export default function VendorNotifications() {
   const bootstrappedRef = useRef(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const openRef = useRef(false)
+  const lastPayoutRevisionRef = useRef<string | null>(null)
+  const payoutCacheRef = useRef<any[] | null>(null)
 
   const dismissIds = useCallback((ids: string[]) => {
     if (ids.length === 0) return
@@ -113,20 +115,30 @@ export default function VendorNotifications() {
     })
   }, [])
 
-  const loadNotifications = useCallback(async () => {
+  const loadNotifications = useCallback(async (pulseOverride?: VendorPulseSnapshot | null) => {
     if (typeof window === "undefined") return
     if (!localStorage.getItem("vendor_token")) return
 
     try {
-      const [summaryRes, listRes, returnsRes] = await Promise.all([
-        vendorPayoutsApi.summary().catch(() => null),
-        vendorPayoutsApi.list().catch(() => null),
-        vendorReturnsApi.list().catch(() => null),
-      ])
+      const pulseRes =
+        pulseOverride !== undefined
+          ? pulseOverride
+          : await vendorPulseApi.get().catch(() => null)
+
+      const revision = String(pulseRes?.revision || "")
+      const revisionChanged =
+        lastPayoutRevisionRef.current === null ||
+        lastPayoutRevisionRef.current !== revision
+
+      if (revisionChanged || !payoutCacheRef.current) {
+        const listRes = await vendorPayoutsApi.list().catch(() => null)
+        payoutCacheRef.current = listRes?.payouts || []
+        lastPayoutRevisionRef.current = revision || lastPayoutRevisionRef.current
+      }
 
       const next: VendorNotification[] = []
 
-      for (const row of summaryRes?.summary?.credited_recent || []) {
+      for (const row of pulseRes?.credited_recent || []) {
         const amount = Number(row.net_amount) || 0
         if (amount <= 0) continue
         next.push({
@@ -140,10 +152,7 @@ export default function VendorNotifications() {
         })
       }
 
-      const payoutRows =
-        listRes?.payouts ||
-        (summaryRes as { payouts?: any[] } | null)?.payouts ||
-        []
+      const payoutRows = payoutCacheRef.current || []
 
       for (const payout of payoutRows) {
         if (String(payout.status || "").toLowerCase() !== "processed") continue
@@ -162,20 +171,13 @@ export default function VendorNotifications() {
         })
       }
 
-      for (const request of returnsRes?.return_requests || []) {
-        if (String(request.status || "").toLowerCase() !== "pending_approval") continue
-        const orderLabel = request.order_display_id || String(request.order_id || "").slice(0, 8)
-        const customer =
-          request.customer_name || request.customer_email || "Customer"
-        const kindLabel =
-          String(request.type || "").toLowerCase() === "replacement"
-            ? "replacement"
-            : "return"
+      const pendingReturns = Number(pulseRes?.returns_pending_approval) || 0
+      if (pendingReturns > 0) {
         next.push({
-          id: `return:${request.id}`,
+          id: `returns-pending:${pendingReturns}`,
           title: "Return requested",
-          body: `${customer} has opted for ${kindLabel} on order #${orderLabel} — waiting to confirm by admin`,
-          createdAt: request.created_at || request.updated_at || new Date().toISOString(),
+          body: `${pendingReturns} return${pendingReturns === 1 ? "" : "s"} waiting for admin confirmation`,
+          createdAt: new Date().toISOString(),
           href: "/returns",
           kind: "return",
         })
@@ -227,11 +229,13 @@ export default function VendorNotifications() {
 
   useEffect(() => {
     void loadNotifications()
-    const id = window.setInterval(() => {
-      void loadNotifications()
-    }, POLL_MS)
-    return () => window.clearInterval(id)
   }, [loadNotifications])
+
+  useVendorLive({
+    onInvalidate: (pulse) => {
+      void loadNotifications(pulse)
+    },
+  })
 
   useEffect(() => {
     if (!toast) return

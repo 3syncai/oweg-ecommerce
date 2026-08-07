@@ -16,6 +16,7 @@ import {
   ensureVendorShiprocketPickup,
   retrieveVendorOrThrow,
 } from "../../../../../lib/vendor-shiprocket-pickup"
+import { getKnownTrackingUrl } from "../../../../../services/self-shipping-tracking"
 
 type ShippingBody = {
   method?: VendorShippingMethod
@@ -243,6 +244,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         labelUrl = cleanOptionalUrl(body.label_url, "Label URL")
       } catch (e: any) {
         return res.status(400).json({ message: e?.message || "Invalid URL" })
+      }
+
+      // Amazon-style: auto-build a public tracking URL from courier + AWB when omitted
+      if (!trackingUrl) {
+        trackingUrl = getKnownTrackingUrl(courier, awb)
       }
 
       if (body.tracking_source === "manual" && !trackingUrl) {

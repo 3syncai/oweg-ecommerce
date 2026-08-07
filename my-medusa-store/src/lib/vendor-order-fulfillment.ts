@@ -55,8 +55,8 @@ function buildLabels(workflow: VendorOrderWorkflow) {
 
 /**
  * Create Medusa fulfillment for vendor items.
- * Optionally create shipment (mark shipped) — skip for self-ship RTD so the
- * order stays in To Dispatch until the vendor confirms Dispatch / tracking moves.
+ * Optionally create shipment (mark shipped). Amazon-style RTD always ships when
+ * tracking is present so the order moves to In Transit immediately.
  */
 export async function fulfillAndShipVendorItems(
   req: MedusaRequest,

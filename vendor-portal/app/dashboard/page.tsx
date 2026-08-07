@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button, Container, Heading, Text, clx } from "@medusajs/ui"
 import {
   ArrowPath,
@@ -25,6 +25,7 @@ import {
   vendorReturnsApi,
   type VendorReportTicket,
 } from "@/lib/api/client"
+import { useVendorLive } from "@/lib/useVendorLive"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 
@@ -680,6 +681,65 @@ const VendorDashboardPage = () => {
   const [error, setError] = useState<string | null>(null)
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all")
 
+  const loadDashboardData = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = Boolean(opts?.silent)
+    try {
+      if (!silent) setLoading(true)
+      const [productsData, ordersData, returnsData, reportsData, payoutData, profileData] =
+        await Promise.all([
+          vendorProductsApi.list().catch(() => ({ products: [] })),
+          vendorOrdersApi.list().catch(() => ({ orders: [] })),
+          vendorReturnsApi.list().catch(() => ({ return_requests: [] })),
+          vendorReportsApi.list().catch(() => ({ reports: [] as VendorReportTicket[] })),
+          vendorPayoutsApi
+            .list()
+            .catch(() =>
+              vendorPayoutsApi.summary().then((summary) => ({
+                ...summary,
+                payouts: [],
+                totals: { total_credited: 0 },
+              }))
+            )
+            .catch(() => ({
+              summary: {
+                available_balance: 0,
+                unlocking_balance: 0,
+                total_credited: 0,
+                total_withdrawn: 0,
+                unlocking: [],
+                credited_recent: [],
+                reversed_recent: [],
+                reversed_total: 0,
+              },
+              payouts: [],
+              totals: { total_credited: 0 },
+            })),
+          vendorProfileApi.getMe().catch(() => ({ vendor: null })),
+        ])
+
+      setVendorInfo(profileData?.vendor || null)
+      setData(
+        buildDashboardData({
+          products: productsData?.products || [],
+          orders: ordersData?.orders || [],
+          returns: returnsData?.return_requests || [],
+          reports: reportsData?.reports || [],
+          payoutSummary: payoutData?.summary || {},
+          payoutTotals: payoutData?.totals || {},
+        })
+      )
+      setError(null)
+    } catch (e: any) {
+      if (e.status === 403) {
+        router.push("/pending")
+        return
+      }
+      setError(e?.message || "Failed to load dashboard")
+    } finally {
+      setLoading(false)
+    }
+  }, [router])
+
   useEffect(() => {
     const vendorToken = localStorage.getItem("vendor_token")
     if (!vendorToken) {
@@ -687,66 +747,14 @@ const VendorDashboardPage = () => {
       return
     }
 
-    const loadDashboardData = async () => {
-      try {
-        setLoading(true)
-        const [productsData, ordersData, returnsData, reportsData, payoutData, profileData] =
-          await Promise.all([
-            vendorProductsApi.list().catch(() => ({ products: [] })),
-            vendorOrdersApi.list().catch(() => ({ orders: [] })),
-            vendorReturnsApi.list().catch(() => ({ return_requests: [] })),
-            vendorReportsApi.list().catch(() => ({ reports: [] as VendorReportTicket[] })),
-            vendorPayoutsApi
-              .list()
-              .catch(() =>
-                vendorPayoutsApi.summary().then((summary) => ({
-                  ...summary,
-                  payouts: [],
-                  totals: { total_credited: 0 },
-                }))
-              )
-              .catch(() => ({
-                summary: {
-                  available_balance: 0,
-                  unlocking_balance: 0,
-                  total_credited: 0,
-                  total_withdrawn: 0,
-                  unlocking: [],
-                  credited_recent: [],
-                  reversed_recent: [],
-                  reversed_total: 0,
-                },
-                payouts: [],
-                totals: { total_credited: 0 },
-              })),
-            vendorProfileApi.getMe().catch(() => ({ vendor: null })),
-          ])
-
-        setVendorInfo(profileData?.vendor || null)
-        setData(
-          buildDashboardData({
-            products: productsData?.products || [],
-            orders: ordersData?.orders || [],
-            returns: returnsData?.return_requests || [],
-            reports: reportsData?.reports || [],
-            payoutSummary: payoutData?.summary || {},
-            payoutTotals: payoutData?.totals || {},
-          })
-        )
-        setError(null)
-      } catch (e: any) {
-        if (e.status === 403) {
-          router.push("/pending")
-          return
-        }
-        setError(e?.message || "Failed to load dashboard")
-      } finally {
-        setLoading(false)
-      }
-    }
-
     void loadDashboardData()
-  }, [router])
+  }, [router, loadDashboardData])
+
+  useVendorLive({
+    onInvalidate: () => {
+      void loadDashboardData({ silent: true })
+    },
+  })
 
   const displayName = useMemo(
     () => vendorInfo?.name?.split(" ")[0] || vendorInfo?.email?.split("@")[0] || "there",

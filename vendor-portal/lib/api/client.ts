@@ -400,8 +400,21 @@ export const vendorBrandsApi = {
 
 // Vendor Products API
 export const vendorProductsApi = {
-  list: async () => {
-    return apiRequest<{ products: any[] }>('/vendor/products')
+  list: async (params?: { limit?: number; offset?: number; q?: string; status?: string; all?: boolean }) => {
+    const qs = new URLSearchParams()
+    if (params?.all) qs.set('all', '1')
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    if (params?.q) qs.set('q', params.q)
+    if (params?.status) qs.set('status', params.status)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return apiRequest<{
+      products: any[]
+      count?: number
+      limit?: number
+      offset?: number
+      counts?: { total: number; published: number; draft: number; pending: number }
+    }>(`/vendor/products${suffix}`)
   },
 
   get: async (id: string) => {
@@ -519,27 +532,70 @@ export const vendorProductsApi = {
 }
 
 // Vendor Orders API
-let listOrdersInFlight: Promise<{ orders: any[]; counts?: Record<string, number> }> | null = null
-let countsInFlight: Promise<{ orders: any[]; counts?: Record<string, number> }> | null = null
+let listOrdersInFlight: Promise<{
+  orders: any[]
+  counts?: Record<string, number>
+  count?: number
+  limit?: number
+  offset?: number
+}> | null = null
+let countsInFlight: Promise<{
+  orders: any[]
+  counts?: Record<string, number>
+  count?: number
+}> | null = null
+
+export type VendorOrdersListParams = {
+  limit?: number
+  offset?: number
+  stage?: string
+  q?: string
+  all?: boolean
+  counts_only?: boolean
+}
+
+function ordersQuery(params?: VendorOrdersListParams) {
+  const qs = new URLSearchParams()
+  if (params?.all) qs.set('all', '1')
+  if (params?.counts_only) qs.set('counts_only', '1')
+  if (params?.limit != null) qs.set('limit', String(params.limit))
+  if (params?.offset != null) qs.set('offset', String(params.offset))
+  if (params?.stage) qs.set('stage', params.stage)
+  if (params?.q) qs.set('q', params.q)
+  const s = qs.toString()
+  return s ? `?${s}` : ''
+}
 
 export const vendorOrdersApi = {
-  /** Full order list — concurrent callers share one in-flight request. */
-  list: async () => {
-    if (listOrdersInFlight) return listOrdersInFlight
-    listOrdersInFlight = apiRequest<{ orders: any[]; counts?: Record<string, number> }>(
-      '/vendor/orders'
-    ).finally(() => {
-      listOrdersInFlight = null
-    })
-    return listOrdersInFlight
+  /** Order list — pass limit/offset for server pagination; omit for full list (dashboard). */
+  list: async (params?: VendorOrdersListParams) => {
+    const key = ordersQuery(params)
+    // Only dedupe identical in-flight unscoped full lists
+    if (!params && listOrdersInFlight) return listOrdersInFlight
+    const req = apiRequest<{
+      orders: any[]
+      counts?: Record<string, number>
+      count?: number
+      limit?: number
+      offset?: number
+    }>(`/vendor/orders${key}`)
+    if (!params) {
+      listOrdersInFlight = req.finally(() => {
+        listOrdersInFlight = null
+      })
+      return listOrdersInFlight
+    }
+    return req
   },
 
   /** Stage counts only (badge polling) — avoids shipping full order payloads. */
   counts: async () => {
     if (countsInFlight) return countsInFlight
-    countsInFlight = apiRequest<{ orders: any[]; counts?: Record<string, number> }>(
-      '/vendor/orders?counts_only=1'
-    ).finally(() => {
+    countsInFlight = apiRequest<{
+      orders: any[]
+      counts?: Record<string, number>
+      count?: number
+    }>('/vendor/orders?counts_only=1').finally(() => {
       countsInFlight = null
     })
     return countsInFlight
@@ -669,6 +725,14 @@ export const vendorOrdersApi = {
   markDispatched: async (id: string) => {
     return apiRequest<{ order: any }>(`/vendor/orders/${id}/dispatch`, {
       method: 'POST',
+    })
+  },
+
+  /** Self-ship only: vendor confirms delivery while In Transit */
+  markDelivered: async (id: string, data?: { delivery_confirmation?: string }) => {
+    return apiRequest<{ order: any }>(`/vendor/orders/${id}/delivered`, {
+      method: 'POST',
+      data: data || {},
     })
   },
 
@@ -882,8 +946,21 @@ export const vendorStatsApi = {
 
 // Vendor Inventory API
 export const vendorInventoryApi = {
-  list: async () => {
-    return apiRequest<{ success: boolean; inventory: any[]; total: number }>('/vendor/inventory')
+  list: async (params?: { limit?: number; offset?: number; q?: string; all?: boolean }) => {
+    const qs = new URLSearchParams()
+    if (params?.all) qs.set('all', '1')
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    if (params?.q) qs.set('q', params.q)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return apiRequest<{
+      success: boolean
+      inventory: any[]
+      total: number
+      count?: number
+      limit?: number
+      offset?: number
+    }>(`/vendor/inventory${suffix}`)
   },
 
   update: async (variantId: string, quantity: number) => {
@@ -972,8 +1049,36 @@ export type VendorReturnRequest = {
 
 // Vendor Returns API
 export const vendorReturnsApi = {
-  list: async () => {
-    return apiRequest<{ return_requests: VendorReturnRequest[] }>('/vendor/returns')
+  list: async (params?: {
+    limit?: number
+    offset?: number
+    status?: string
+    q?: string
+    all?: boolean
+    counts_only?: boolean
+  }) => {
+    const qs = new URLSearchParams()
+    if (params?.all) qs.set('all', '1')
+    if (params?.counts_only) qs.set('counts_only', '1')
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    if (params?.status) qs.set('status', params.status)
+    if (params?.q) qs.set('q', params.q)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return apiRequest<{
+      return_requests: VendorReturnRequest[]
+      count?: number
+      limit?: number
+      offset?: number
+      counts?: {
+        total: number
+        pending_approval: number
+        in_progress: number
+        pickup?: number
+        refunded?: number
+        needs_logistics?: number
+      }
+    }>(`/vendor/returns${suffix}`)
   },
   listCouriers: async (returnId: string) => {
     return apiRequest<{
@@ -1034,6 +1139,32 @@ export const vendorReturnsApi = {
         data: { action },
       }
     )
+  },
+}
+
+/** Lightweight badge / notification snapshot */
+export const vendorPulseApi = {
+  get: async () => {
+    return apiRequest<{
+      to_accept: number
+      returns_pending_approval: number
+      returns_in_progress: number
+      open_tickets: number
+      payout: {
+        available_balance: number
+        unlocking_balance: number
+        total_withdrawn: number
+      }
+      credited_recent: Array<{
+        id: string
+        order_id: string
+        order_display_id?: string | null
+        net_amount: number
+        credited_at?: string | null
+      }>
+      revision?: string
+      ms?: number
+    }>('/vendor/pulse')
   },
 }
 

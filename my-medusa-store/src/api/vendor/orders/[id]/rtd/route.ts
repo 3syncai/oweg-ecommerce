@@ -8,6 +8,7 @@ import {
   setVendorOrderCorsHeaders,
   updateVendorOrderWorkflow,
 } from "../../../../../lib/vendor-order-workflow"
+import { syncVendorShipmentTracking } from "../../../../../lib/vendor-shipment-tracking-sync"
 
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
   setVendorOrderCorsHeaders(res)
@@ -16,9 +17,9 @@ export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
 
 /**
  * POST /vendor/orders/:id/rtd
- * Ready to Dispatch:
- * - Self ship → fulfill only, park in To Dispatch (ready_to_ship)
- * - Easy ship → fulfill + ship, move to In Transit (existing behaviour)
+ * Ready to Dispatch / Confirm shipment (Amazon-style):
+ * - Self + Easy with tracking → fulfill + ship → In Transit immediately
+ * - Carrier polling (job + Track) then advances to Delivered automatically
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   setVendorOrderCorsHeaders(res)
@@ -54,44 +55,51 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       })
     }
 
-    const isSelfShip = workflow.shipping_method === "self"
-    const { fulfillment_id, shipped } = await fulfillAndShipVendorItems(
+    // Amazon "Confirm shipment": tracking ID present → mark Shipped / In Transit now
+    const { fulfillment_id } = await fulfillAndShipVendorItems(
       req,
       result.order,
       auth.vendor_id,
       result.vendorProductIds,
       workflow,
-      // Self: stay in To Dispatch until vendor clicks Dispatch / tracking moves
-      { createShipment: !isSelfShip }
+      { createShipment: true }
     )
 
     const now = new Date().toISOString()
 
     const metadata = await updateVendorOrderWorkflow(req, result.order, auth.vendor_id, {
-      stage: isSelfShip ? "to_dispatch" : "in_transit",
+      stage: "in_transit",
       rtd_at: workflow.rtd_at || now,
       medusa_fulfillment_id: fulfillment_id,
-      ...(shipped
-        ? {
-            medusa_shipped_at: workflow.medusa_shipped_at || now,
-            shiprocket_status: workflow.shiprocket_status || "shipped",
-          }
-        : {
-            shiprocket_status: workflow.shiprocket_status || "ready_to_ship",
-          }),
+      medusa_shipped_at: workflow.medusa_shipped_at || now,
+      shiprocket_status: workflow.shiprocket_status || "shipped",
+      dispatched_at: workflow.dispatched_at || now,
     })
 
+    // Best-effort: pull first carrier scan right after confirm
+    try {
+      await syncVendorShipmentTracking({
+        container: req.scope,
+        order: { ...result.order, metadata },
+        vendorId: auth.vendor_id,
+        vendorProductIds: result.vendorProductIds,
+        ensureShippedOnMovement: true,
+      })
+    } catch (syncErr: any) {
+      console.warn("[Vendor RTD] post-confirm tracking sync skipped:", syncErr?.message)
+    }
+
+    const latest = await getVendorOrderOrRespond(req, res, auth.vendor_id, orderId)
+    const order = latest?.order || { ...result.order, metadata }
+
     return res.json({
-      order: formatVendorOrder(
-        { ...result.order, metadata },
-        auth.vendor_id,
-        result.vendorProductIds
-      ),
+      order: formatVendorOrder(order, auth.vendor_id, result.vendorProductIds),
       fulfillment_id,
       automated: {
         fulfilled: true,
-        shipped,
-        stage: isSelfShip ? "to_dispatch" : "in_transit",
+        shipped: true,
+        stage: "in_transit",
+        amazon_style: true,
       },
     })
   } catch (error: any) {

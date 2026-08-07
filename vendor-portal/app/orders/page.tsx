@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Suspense, useCallback, useEffect, useRef, useState } from "react"
 import type { MouseEvent, ReactNode } from "react"
 import { Button, Container, Heading, Text, clx } from "@medusajs/ui"
 import {
@@ -20,6 +20,7 @@ import PageSkeleton from "@/components/PageSkeleton"
 import EmptyState from "@/components/EmptyState"
 import StatusDot from "@/components/dashboard/StatusDot"
 import { vendorOrdersApi } from "@/lib/api/client"
+import { notifyVendorDataChanged, useVendorLive } from "@/lib/useVendorLive"
 import { useRouter, useSearchParams } from "next/navigation"
 
 type VendorStage = "to_accept" | "to_pack" | "to_dispatch" | "in_transit" | "delivered"
@@ -43,6 +44,8 @@ type VendorWorkflow = {
   self_awb?: string | null
   self_dispatch_rate?: number | null
   self_packing_info?: string | null
+  self_delivery_confirmation?: string | null
+  self_delivered_at?: string | null
   invoice_generated_at?: string
   rtd_at?: string
 }
@@ -179,10 +182,20 @@ const VendorOrdersContent = () => {
   const focusOrderId = searchParams.get("order")
   const openedFocusOrderId = useRef<string | null>(null)
   const [orders, setOrders] = useState<VendorOrder[]>([])
+  const [stageCounts, setStageCounts] = useState<Record<StageFilter, number>>({
+    total: 0,
+    to_accept: 0,
+    to_pack: 0,
+    to_dispatch: 0,
+    in_transit: 0,
+    delivered: 0,
+  })
+  const [totalFiltered, setTotalFiltered] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedStage, setSelectedStage] = useState<StageFilter>("total")
   const [search, setSearch] = useState("")
+  const [searchDebounced, setSearchDebounced] = useState("")
   const [page, setPage] = useState(1)
   const [processing, setProcessing] = useState<string | null>(null)
   const [detailOrder, setDetailOrder] = useState<VendorOrder | null>(null)
@@ -234,10 +247,35 @@ const VendorOrdersContent = () => {
     setOrders((current) => current.map((order) => (order.id === next.id ? next : order)))
   }, [])
 
+  useEffect(() => {
+    const id = window.setTimeout(() => setSearchDebounced(search.trim()), 300)
+    return () => window.clearTimeout(id)
+  }, [search])
+
   const loadOrders = useCallback(async () => {
     try {
-      const data = await vendorOrdersApi.list()
+      const data = await vendorOrdersApi.list({
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+        stage: selectedStage === "total" ? undefined : selectedStage,
+        q: searchDebounced || undefined,
+      })
       setOrders(data?.orders || [])
+      if (data?.counts) {
+        setStageCounts({
+          total: Number(data.counts.total) || 0,
+          to_accept: Number(data.counts.to_accept) || 0,
+          to_pack: Number(data.counts.to_pack) || 0,
+          to_dispatch: Number(data.counts.to_dispatch) || 0,
+          in_transit: Number(data.counts.in_transit) || 0,
+          delivered: Number(data.counts.delivered) || 0,
+        })
+      }
+      setTotalFiltered(
+        typeof data?.count === "number"
+          ? data.count
+          : (data?.orders || []).length
+      )
       setError(null)
     } catch (e: any) {
       if (e.status === 403) {
@@ -248,7 +286,7 @@ const VendorOrdersContent = () => {
     } finally {
       setLoading(false)
     }
-  }, [router])
+  }, [router, page, selectedStage, searchDebounced])
 
   useEffect(() => {
     const vendorToken = localStorage.getItem("vendor_token")
@@ -259,47 +297,19 @@ const VendorOrdersContent = () => {
     void loadOrders()
   }, [router, loadOrders])
 
+  useVendorLive({
+    onInvalidate: () => {
+      void loadOrders()
+    },
+  })
+
   useEffect(() => {
     setPage(1)
-  }, [selectedStage, search])
+  }, [selectedStage, searchDebounced])
 
-  const counts = useMemo(() => {
-    const base: Record<StageFilter, number> = {
-      total: orders.length,
-      to_accept: 0,
-      to_pack: 0,
-      to_dispatch: 0,
-      in_transit: 0,
-      delivered: 0,
-    }
-    orders.forEach((order) => {
-      base[order.vendor_stage] += 1
-    })
-    return base
-  }, [orders])
-
-  const filteredOrders = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    return orders
-      .filter((order) => {
-        if (selectedStage !== "total" && order.vendor_stage !== selectedStage) return false
-        if (!query) return true
-        return (
-          String(order.id).toLowerCase().includes(query) ||
-          String(order.display_id || "").toLowerCase().includes(query) ||
-          String(order.email || "").toLowerCase().includes(query) ||
-          (order.product_names || []).join(" ").toLowerCase().includes(query)
-        )
-      })
-      .sort(
-        (a, b) =>
-          new Date(b.created_at || 0).getTime() -
-          new Date(a.created_at || 0).getTime()
-      )
-  }, [orders, search, selectedStage])
-
-  const pageCount = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE))
-  const visibleOrders = filteredOrders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const counts = stageCounts
+  const pageCount = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE))
+  const visibleOrders = orders
 
   const openDetails = useCallback(async (order: VendorOrder, withTracking = false) => {
     setDetailOrder(order)
@@ -340,9 +350,7 @@ const VendorOrdersContent = () => {
       replaceOrder(data.order)
       setSelectedStage("to_pack")
       setAcceptCandidate(null)
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("oweg:vendor-orders-changed"))
-      }
+      notifyVendorDataChanged()
     } catch (e: any) {
       setError(e?.message || "Failed to accept order")
     } finally {
@@ -465,6 +473,7 @@ const VendorOrdersContent = () => {
       })
       replaceOrder(data.order)
       setEasyShipOrder(null)
+      notifyVendorDataChanged()
     } catch (e: any) {
       setError(e?.message || "Failed to create Easy Shipping order")
     } finally {
@@ -485,6 +494,7 @@ const VendorOrdersContent = () => {
       })
       replaceOrder(data.order)
       setSelfShipOrder(null)
+      notifyVendorDataChanged()
     } catch (e: any) {
       setError(e?.message || "Failed to save self shipping")
     } finally {
@@ -524,12 +534,9 @@ const VendorOrdersContent = () => {
     try {
       const data = await vendorOrdersApi.markReadyToDispatch(order.id)
       replaceOrder(data.order)
-      const nextStage =
-        data.order?.vendor_stage === "to_dispatch" ? "to_dispatch" : "in_transit"
-      setSelectedStage(nextStage)
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("oweg:vendor-orders-changed"))
-      }
+      // Amazon-style confirm shipment → In Transit immediately (self + easy)
+      setSelectedStage(data.order?.vendor_stage === "delivered" ? "delivered" : "in_transit")
+      notifyVendorDataChanged()
     } catch (e: any) {
       setError(e?.message || "Failed to mark RTD")
     } finally {
@@ -543,11 +550,31 @@ const VendorOrdersContent = () => {
       const data = await vendorOrdersApi.markDispatched(order.id)
       replaceOrder(data.order)
       setSelectedStage("in_transit")
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("oweg:vendor-orders-changed"))
-      }
+      notifyVendorDataChanged()
     } catch (e: any) {
       setError(e?.message || "Failed to dispatch order")
+    } finally {
+      setProcessing(null)
+    }
+  }
+
+  const markDelivered = async (order: VendorOrder) => {
+    const confirmation = window.prompt(
+      "Optional: enter courier POD / delivery reference / OTP note (or leave blank)",
+      ""
+    )
+    if (confirmation === null) return
+
+    setProcessing(`delivered:${order.id}`)
+    try {
+      const data = await vendorOrdersApi.markDelivered(order.id, {
+        delivery_confirmation: confirmation.trim() || undefined,
+      })
+      replaceOrder(data.order)
+      setSelectedStage("delivered")
+      notifyVendorDataChanged()
+    } catch (e: any) {
+      setError(e?.message || "Failed to mark order delivered")
     } finally {
       setProcessing(null)
     }
@@ -651,19 +678,45 @@ const VendorOrdersContent = () => {
     }
 
     if (selectedStage === "to_dispatch") {
+      // Legacy self-ship parked here before Amazon-style RTD; Dispatch still advances them.
       return (
         <div className="grid min-w-[220px] grid-cols-2 gap-1.5">
           <ActionButton
             icon={<Truck size={14} />}
-            label={busy ? "…" : "Dispatch"}
+            label={busy ? "…" : "Confirm ship"}
             disabled={busy}
             onClick={() => void markDispatched(order)}
           />
           <ActionButton
             icon={<Eye size={14} />}
-            label="View"
+            label="Track"
             disabled={busy}
-            onClick={() => void openDetails(order)}
+            onClick={() => void openDetails(order, true)}
+          />
+        </div>
+      )
+    }
+
+    const isSelfShip = workflow.shipping_method === "self"
+    const showDelivered =
+      isSelfShip &&
+      (selectedStage === "in_transit" || order.vendor_stage === "in_transit") &&
+      order.vendor_stage !== "delivered"
+
+    if (showDelivered) {
+      return (
+        <div className="grid min-w-[220px] grid-cols-2 gap-1.5">
+          <ActionButton
+            icon={<CheckCircle2 size={14} />}
+            label={busy ? "…" : "Delivered"}
+            disabled={busy}
+            onClick={() => void markDelivered(order)}
+          />
+          <ActionButton
+            icon={<Truck size={14} />}
+            label="Track"
+            disabled={busy}
+            onClick={() => void openDetails(order, true)}
           />
         </div>
       )
@@ -751,7 +804,7 @@ const VendorOrdersContent = () => {
               <div>
                 <Heading level="h2" className="text-lg">Order Summary</Heading>
                 <Text size="small" className="text-ui-fg-subtle">
-                  {filteredOrders.length} order{filteredOrders.length === 1 ? "" : "s"} in this view
+                  {totalFiltered} order{totalFiltered === 1 ? "" : "s"} in this view
                 </Text>
               </div>
               <div className="relative w-full sm:max-w-sm">
@@ -813,7 +866,7 @@ const VendorOrdersContent = () => {
             <div className="flex flex-col gap-2 text-ui-fg-muted sm:flex-row sm:items-center sm:justify-between">
               <Text size="small">
                 Showing {visibleOrders.length ? (page - 1) * PAGE_SIZE + 1 : 0}-
-                {Math.min(page * PAGE_SIZE, filteredOrders.length)} of {filteredOrders.length}
+                {Math.min(page * PAGE_SIZE, totalFiltered)} of {totalFiltered}
               </Text>
               <div className="flex items-center gap-2">
                 <button
@@ -1544,12 +1597,16 @@ function SelfShippingModal({
         <div className="border-b border-ui-border-base px-5 py-4">
           <Heading level="h2" className="text-xl">Self Shipping</Heading>
           <Text size="small" className="text-ui-fg-subtle">{compactOrderId(order)}</Text>
+          <Text size="small" className="mt-2 text-ui-fg-subtle">
+            Like Amazon: enter courier + tracking ID, then RTD to confirm shipment. Status moves to
+            In Transit immediately and updates automatically as the carrier scans the package.
+          </Text>
         </div>
         <div className="max-h-[70vh] space-y-4 overflow-y-auto p-5">
           <Field
             label="Courier partner name"
             value={form.courier_partner_name}
-            placeholder="e.g. India Post"
+            placeholder="e.g. Delhivery, BlueDart, Shiprocket"
             onChange={(value) => setField("courier_partner_name", value)}
           />
           <label className="block">
@@ -1559,9 +1616,9 @@ function SelfShippingModal({
               onChange={(event) => setField("tracking_source", event.target.value as "shiprocket" | "carrier_api" | "manual")}
               className="h-10 w-full rounded-lg border border-ui-border-base/70 bg-ui-bg-base px-3 text-sm outline-none focus:border-ui-border-strong"
             >
-              <option value="shiprocket">Shiprocket aggregator</option>
-              <option value="carrier_api">Direct carrier API</option>
-              <option value="manual">Manual tracking link only</option>
+              <option value="shiprocket">Shiprocket aggregator (auto status)</option>
+              <option value="carrier_api">Direct carrier API (auto status)</option>
+              <option value="manual">Tracking link (Shipped on RTD; delivery needs feed/admin)</option>
             </select>
           </label>
           <Field
@@ -1571,9 +1628,9 @@ function SelfShippingModal({
             onChange={(value) => setField("awb", value)}
           />
           <Field
-            label="Tracking URL"
+            label="Tracking URL (optional — auto-filled for known couriers)"
             value={form.tracking_url}
-            placeholder="https://example.com/tracking/123"
+            placeholder="https://www.delhivery.com/track/package/…"
             onChange={(value) => setField("tracking_url", value)}
           />
           <label className="block">
@@ -1588,7 +1645,7 @@ function SelfShippingModal({
         </div>
         <div className="flex justify-end gap-2 border-t border-ui-border-base px-5 py-4">
           <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button onClick={onSubmit} disabled={busy || !complete}>{busy ? "Saving..." : "Save shipping"}</Button>
+          <Button onClick={onSubmit} disabled={busy || !complete}>{busy ? "Saving..." : "Save tracking"}</Button>
         </div>
       </div>
     </div>
