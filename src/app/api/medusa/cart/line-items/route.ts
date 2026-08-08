@@ -149,16 +149,14 @@ export async function POST(req: NextRequest) {
     const variant_id: string = body.variant_id
     const quantity: number = Number(body.quantity || 1)
     if (!variant_id) return NextResponse.json({ error: "variant_id required" }, { status: 400 })
-    let { cartId, shouldSetCookie } = await ensureCartId(req)
+    let { cartId } = await ensureCartId(req)
     let res = await addLineItemRequest(cartId, { variant_id, quantity })
     let attempts = 0
 
     // If cart was stale (deleted upstream), create a fresh one and retry once.
     while (!res.ok && res.status === 404 && attempts < 1) {
       try {
-        const freshId = await createFreshCart()
-        cartId = freshId
-        shouldSetCookie = true
+        cartId = await createFreshCart()
         res = await addLineItemRequest(cartId, { variant_id, quantity })
         attempts += 1
       } catch (err) {
@@ -195,18 +193,14 @@ export async function POST(req: NextRequest) {
       console.error("Failed to map flash sale prices in cart:", error)
     }
     
-    const response = NextResponse.json(data)
-    const c = await cookies()
-    const hasCookie = c.get(CART_COOKIE)?.value
-    
-    if (shouldSetCookie && hasCookie) {
-      // Only set cookie if user is authenticated (has existing cookie)
-      response.cookies.set(CART_COOKIE, cartId, { httpOnly: false, sameSite: "lax", path: "/" })
-    } else if (shouldSetCookie && !hasCookie) {
-      // Guest cart - return cart ID for localStorage
-      return NextResponse.json({ ...data, guestCartId: cartId })
-    }
-    return response
+    // Always persist cart identity after a successful add. Previously we only set
+    // the cookie when one already existed, so logged-in users (and cleared-cookie
+    // sessions) got guestCartId in JSON but never a cookie — preview stayed empty
+    // and quantity PATCH failed with "cart_id not found".
+    const payloadWithId = { ...data, guestCartId: cartId }
+    const next = NextResponse.json(payloadWithId)
+    next.cookies.set(CART_COOKIE, cartId, { httpOnly: false, sameSite: "lax", path: "/" })
+    return next
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "failed"
     return NextResponse.json({ error: msg }, { status: 500 })
