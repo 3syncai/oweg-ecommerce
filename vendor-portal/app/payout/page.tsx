@@ -309,6 +309,30 @@ const VendorPayoutPage = () => {
     const shippingFees =
       (payments.cards.logistic_fee || 0) + (payments.cards.return_fee || 0)
 
+    const withdrawn = Number(payments.cards.withdrawn) || 0
+    const pendingPayment = Number(payments.cards.pending_payment) || 0
+    const unlockingPayment = Number(payments.cards.unlocking_payment) || 0
+
+    // Derive lifetime cards from ledger when API fields are missing / stale
+    const fullSaleFromLedger = payments.settlements
+      .filter((row) => row.type === "sales")
+      .reduce((sum, row) => sum + (Number(row.order_amount) || 0), 0)
+    const fullSale =
+      Number(payments.cards.full_sale) > 0
+        ? Number(payments.cards.full_sale)
+        : fullSaleFromLedger
+
+    const settlementBalance =
+      Number(payments.cards.settlement_balance) > 0
+        ? Number(payments.cards.settlement_balance)
+        : pendingPayment + withdrawn
+
+    const balance =
+      typeof payments.cards.balance === "number" &&
+      (payments.cards.balance > 0 || pendingPayment === 0)
+        ? Number(payments.cards.balance)
+        : Math.max(0, settlementBalance - withdrawn)
+
     const moneyTone = (n: number, prefer: "positive" | "negative" | "neutral" = "neutral") => {
       if (n === 0) return "neutral" as const
       return prefer
@@ -353,47 +377,64 @@ const VendorPayoutPage = () => {
               Lifetime · not reset daily
             </Text>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <StatCard
-              variant="hero"
-              icon={<CurrencyDollar />}
-              label="Settlement amount"
-              value={formatCurrency(payments.cards.pending_payment)}
+              icon={<ArchiveBox />}
+              label="Full sale"
+              value={formatCurrency(fullSale)}
               subtext={
                 <Text size="small" className="text-ui-fg-subtle">
-                  Available to pay out
+                  All delivered sales
                 </Text>
               }
             />
             <StatCard
               icon={<Clock />}
               label="Pending"
-              value={formatCurrency(payments.cards.unlocking_payment ?? 0)}
+              value={formatCurrency(unlockingPayment)}
               subtext={
                 <Text size="small" className="text-ui-fg-subtle">
-                  {unlockMinutes} min after delivery
+                  Moves to settlement after {unlockMinutes} min
+                </Text>
+              }
+            />
+            <StatCard
+              icon={<CurrencyDollar />}
+              label="Settlement balance"
+              value={formatCurrency(settlementBalance)}
+              subtext={
+                <Text size="small" className="text-ui-fg-subtle">
+                  Unlocked from pending
                 </Text>
               }
             />
             <StatCard
               icon={<ArchiveBox />}
               label="Withdrawn"
-              value={formatCurrency(payments.cards.withdrawn)}
+              value={formatCurrency(withdrawn)}
               subtext={
                 <Text size="small" className="text-ui-fg-subtle">
                   Paid out to date
                 </Text>
               }
             />
-            <div className="flex flex-col justify-center rounded-xl border border-ui-border-base/70 bg-ui-bg-subtle/30 p-5 oweg-card">
-              <Text size="small" className="text-ui-fg-subtle">
-                How settlement works
-              </Text>
-              <Text size="small" className="mt-2 leading-relaxed text-ui-fg-muted">
-                Taxable − commission − TCS − TDS − logistic − return fee. Pending after unlock.
-              </Text>
-            </div>
+            <StatCard
+              variant="hero"
+              icon={<CurrencyDollar />}
+              label="Balance"
+              value={formatCurrency(balance)}
+              subtext={
+                <Text size="small" className="text-ui-fg-subtle">
+                  Settlement − Withdrawn
+                </Text>
+              }
+            />
           </div>
+          <Text size="xsmall" className="text-ui-fg-muted">
+            Pending unlocks into Settlement after {unlockMinutes} min. Balance = Settlement −
+            Withdrawn (available to pay out). Net = Taxable − commission − TCS − TDS − logistic −
+            return fee.
+          </Text>
         </section>
 
         <section className="animate-fade-in-up-slow space-y-3">
@@ -405,11 +446,16 @@ const VendorPayoutPage = () => {
               Resets each day (IST)
             </Text>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             <MetricChip
               label="Total sale"
               value={formatCurrency(payments.cards.total_sale)}
               tone={moneyTone(payments.cards.total_sale, "positive")}
+            />
+            <MetricChip
+              label="GST"
+              value={formatCurrency(payments.cards.gst ?? 0)}
+              tone={moneyTone(payments.cards.gst ?? 0, "neutral")}
             />
             <MetricChip
               label="Commission"

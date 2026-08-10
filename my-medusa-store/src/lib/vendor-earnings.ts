@@ -106,6 +106,10 @@ export type VendorPaymentSettlement = {
 
 export type VendorPaymentsView = {
   cards: {
+    /** Lifetime delivered sales GMV (not daily) */
+    full_sale: number;
+    /** GST on today's delivered sales (daily reset) */
+    gst: number;
     total_sale: number;
     commission: number;
     tcs: number;
@@ -114,9 +118,16 @@ export type VendorPaymentsView = {
     logistic_fee: number;
     /** Return reverse courier fees */
     return_fee: number;
-    /** Available after delivery + 5 min unlock (CREDITED) */
+    /**
+     * Cumulative unlocked settlement (CREDITED + already withdrawn).
+     * Pending unlocks into this after the delivery timer.
+     */
+    settlement_balance: number;
+    /** Available to pay out = settlement_balance − withdrawn */
+    balance: number;
+    /** Available after delivery + unlock timer (CREDITED) */
     pending_payment: number;
-    /** Still in the post-delivery 5-minute unlock window */
+    /** Still in the post-delivery unlock window */
     unlocking_payment: number;
     withdrawn: number;
   };
@@ -1360,6 +1371,8 @@ export async function getVendorPaymentsView(
   );
 
   let totalSale = 0;
+  let fullSale = 0;
+  let gstTotal = 0;
   let commissionTotal = 0;
   let tcsTotal = 0;
   let tdsTotal = 0;
@@ -1431,8 +1444,13 @@ export async function getVendorPaymentsView(
 
     const isClaim = String(row.order_id || "").startsWith("claim:");
 
+    if (!isClaim) {
+      fullSale += gross;
+    }
+
     if (countInTodayCards && !isClaim) {
       totalSale += gross;
+      gstTotal += gstAmount;
       commissionTotal += commissionAmount;
       tcsTotal += tcsAmount;
       tdsTotal += tdsAmount;
@@ -1464,14 +1482,27 @@ export async function getVendorPaymentsView(
     };
   });
 
+  // Prefer ledger sales total so Full sale never drifts from visible settlement rows
+  const fullSaleFromLedger = settlements
+    .filter((row) => row.type === "sales")
+    .reduce((sum, row) => sum + (Number(row.order_amount) || 0), 0);
+
+  const settlementBalance =
+    (Number(summary.available_balance) || 0) + (Number(summary.total_withdrawn) || 0);
+  const balance = Number(summary.available_balance) || 0;
+
   return {
     cards: {
+      full_sale: fullSaleFromLedger > 0 ? fullSaleFromLedger : fullSale,
       total_sale: totalSale,
+      gst: gstTotal,
       commission: commissionTotal,
       tcs: tcsTotal,
       tds: tdsTotal,
       logistic_fee: logisticTotal,
       return_fee: returnFeeTotal,
+      settlement_balance: settlementBalance,
+      balance,
       pending_payment: summary.available_balance,
       unlocking_payment: summary.unlocking_balance,
       withdrawn: summary.total_withdrawn,

@@ -1,13 +1,12 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Container, Heading, Text, Button } from "@medusajs/ui"
 import { ArchiveBox, MagnifyingGlass, Plus, ArrowUpRightMini, Tag, ChevronLeft, ChevronRight } from "@medusajs/icons"
 import VendorShell from "@/components/VendorShell"
 import PageSkeleton from "@/components/PageSkeleton"
 import EmptyState from "@/components/EmptyState"
 import StatCard from "@/components/dashboard/StatCard"
-import InsightPill from "@/components/dashboard/InsightPill"
 import ProductStatus, { resolveProductStatus } from "@/components/dashboard/ProductStatus"
 import StatusDot from "@/components/dashboard/StatusDot"
 import { vendorProductsApi } from "@/lib/api/client"
@@ -131,34 +130,6 @@ const VendorProductsPage = () => {
   const stats = counts
   const pageCount = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE))
 
-  const insightItems = useMemo(() => {
-    const items: { message: string; href: string; variant: "success" | "warning" | "info" }[] = []
-
-    if (stats.pending > 0) {
-      items.push({
-        message: `${stats.pending} product${stats.pending > 1 ? "s" : ""} awaiting approval`,
-        href: "/products",
-        variant: "warning",
-      })
-    }
-    if (stats.draft > 0) {
-      items.push({
-        message: `${stats.draft} draft${stats.draft > 1 ? "s" : ""} not published yet`,
-        href: "/products",
-        variant: "info",
-      })
-    }
-    if (stats.published > 0) {
-      items.push({
-        message: `${stats.published} live product${stats.published > 1 ? "s" : ""} visible to customers`,
-        href: "/products",
-        variant: "success",
-      })
-    }
-
-    return items
-  }, [stats])
-
   const filterOptions = [
     { value: "all" as const, label: "All", count: stats.total },
     { value: "published" as const, label: "Published", count: stats.published },
@@ -210,23 +181,6 @@ const VendorProductsPage = () => {
             </Button>
           </div>
         </div>
-
-        {insightItems.length > 0 && (
-          <div
-            className="animate-fade-in-up flex flex-wrap gap-2"
-            style={{ animationDelay: "40ms" }}
-          >
-            {insightItems.map((item, idx) => (
-              <InsightPill
-                key={item.message}
-                href={item.href}
-                message={item.message}
-                variant={item.variant}
-                style={{ animationDelay: `${60 + idx * 30}ms` }}
-              />
-            ))}
-          </div>
-        )}
 
         {stats.total > 0 && (
           <div

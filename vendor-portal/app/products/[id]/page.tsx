@@ -105,6 +105,7 @@ const VendorProductEditPage = () => {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [statusUpdating, setStatusUpdating] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [approvalSentOpen, setApprovalSentOpen] = useState(false)
   const [product, setProduct] = useState<Product | null>(null)
@@ -579,6 +580,64 @@ const VendorProductEditPage = () => {
     }
   }
 
+  const handleListingStatus = async (action: "draft" | "publish") => {
+    if (!product) return
+
+    const confirmMessage =
+      action === "draft"
+        ? "Draft this product? It will be hidden from the OWEG storefront until you publish it again."
+        : "Publish this product? It will become visible on the OWEG storefront immediately (already admin-approved)."
+
+    if (!confirm(confirmMessage)) return
+
+    setStatusUpdating(true)
+    try {
+      const data = await vendorProductsApi.setStatus(productId, action)
+      const next = data?.product
+      if (next) {
+        setProduct((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: next.status || prev.status,
+                metadata: {
+                  ...(prev.metadata || {}),
+                  ...(next.metadata || {}),
+                },
+              }
+            : prev
+        )
+      } else {
+        setProduct((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: action === "publish" ? "published" : "draft",
+                metadata: {
+                  ...(prev.metadata || {}),
+                  approval_status: prev.metadata?.approval_status || "approved",
+                },
+              }
+            : prev
+        )
+      }
+
+      toast.success(action === "draft" ? "Moved to draft" : "Published", {
+        description:
+          data?.message ||
+          (action === "draft"
+            ? "Product is now hidden from the storefront."
+            : "Product is now visible on the storefront."),
+      })
+    } catch (e: any) {
+      toast.error("Error", {
+        description: e?.message || `Failed to ${action} product`,
+      })
+    } finally {
+      setStatusUpdating(false)
+    }
+  }
+
   let content
 
   if (loading) {
@@ -615,17 +674,64 @@ const VendorProductEditPage = () => {
                 Edit Product
               </Heading>
               <Text className="text-ui-fg-subtle">
-                Save changes with a remark and this product automatically moves to pending admin approval.
+                Save field changes with a remark to send for admin approval. Use Draft / Publish to hide or show an already-approved product without re-approval.
               </Text>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Badge color={product.metadata?.approval_status === "pending" ? "orange" : product.status === "published" ? "green" : "grey"}>
-                {product.metadata?.approval_status || product.status}
-              </Badge>
-              <Button variant="danger" onClick={handleDelete} disabled={deleting}>
-                {deleting ? "Deleting..." : "Delete"}
-              </Button>
+            <div className="flex flex-col items-stretch gap-3 sm:items-end">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Badge color={product.metadata?.approval_status === "pending" ? "orange" : product.status === "published" ? "green" : "grey"}>
+                  {product.metadata?.approval_status === "approved" && product.status === "draft"
+                    ? "draft (approved)"
+                    : product.metadata?.approval_status || product.status}
+                </Badge>
+                <Button variant="danger" onClick={handleDelete} disabled={deleting || statusUpdating}>
+                  {deleting ? "Deleting..." : "Delete"}
+                </Button>
+              </div>
+
+              <div className="w-full max-w-md rounded-xl border border-ui-border-base bg-ui-bg-base/70 p-3">
+                <Text size="small" weight="plus" className="text-ui-fg-base">
+                  Storefront listing
+                </Text>
+                <Text size="small" className="mt-1 text-ui-fg-subtle">
+                  {String(product.metadata?.approval_status || "").toLowerCase() === "pending"
+                    ? "This product is pending admin approval, so it is not live yet. Draft / Publish unlock after approval."
+                    : String(product.metadata?.approval_status || "").toLowerCase() !== "approved"
+                      ? "Admin must approve this product once before you can publish it to the storefront."
+                      : product.status === "published"
+                        ? "Live on OWEG. Use Draft to hide it without losing approval."
+                        : "Hidden from OWEG. Publish to make it visible again (no re-approval needed)."}
+                </Text>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={() => handleListingStatus("draft")}
+                    disabled={
+                      statusUpdating ||
+                      saving ||
+                      deleting ||
+                      product.status !== "published"
+                    }
+                  >
+                    {statusUpdating ? "Updating..." : "Move to Draft"}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="oweg-btn-primary"
+                    onClick={() => handleListingStatus("publish")}
+                    disabled={
+                      statusUpdating ||
+                      saving ||
+                      deleting ||
+                      product.status === "published" ||
+                      String(product.metadata?.approval_status || "").toLowerCase() !== "approved"
+                    }
+                  >
+                    {statusUpdating ? "Updating..." : "Publish"}
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -829,12 +935,13 @@ const VendorProductEditPage = () => {
 
             <div className="rounded-2xl border border-ui-border-base bg-ui-bg-component p-5">
               <Heading level="h2" className="mb-3 text-base font-['Space_Grotesk',var(--font-geist-sans)]">
-                Approval Steps
+                Listing & Approval
               </Heading>
               <div className="space-y-2 text-sm text-ui-fg-subtle">
-                <Text>1. Vendor edits fields and adds remark.</Text>
-                <Text>2. Product status switches to pending.</Text>
-                <Text>3. Admin reviews remark + changes, then approves or rejects.</Text>
+                <Text>1. Edit fields + remark → pending admin approval.</Text>
+                <Text>2. Admin approves → product goes live on OWEG.</Text>
+                <Text>3. Move to Draft anytime to hide it (low stock, pause listing).</Text>
+                <Text>4. Publish again later — no re-approval if it was already approved.</Text>
               </div>
             </div>
           </aside>
