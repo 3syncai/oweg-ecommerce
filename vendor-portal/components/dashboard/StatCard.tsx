@@ -1,6 +1,6 @@
 "use client"
 
-import { ReactNode } from "react"
+import { KeyboardEvent, ReactNode } from "react"
 import { Heading, Text, clx } from "@medusajs/ui"
 
 type StatCardProps = {
@@ -11,6 +11,8 @@ type StatCardProps = {
   variant?: "default" | "hero"
   className?: string
   style?: React.CSSProperties
+  onClick?: () => void
+  active?: boolean
 }
 
 const StatCard = ({
@@ -21,18 +23,36 @@ const StatCard = ({
   variant = "default",
   className,
   style,
+  onClick,
+  active = false,
 }: StatCardProps) => {
   const isHero = variant === "hero"
+  const interactive = typeof onClick === "function"
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!interactive) return
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      onClick?.()
+    }
+  }
 
   return (
     <div
       style={style}
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      aria-pressed={interactive ? active : undefined}
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
       className={clx(
         "group rounded-xl border bg-ui-bg-base p-5 transition-all duration-200",
         "hover:border-ui-border-strong hover:shadow-sm",
         isHero
           ? "border-oweg-500/25 bg-gradient-to-br from-oweg-500/[0.08] via-ui-bg-base to-oweg-50/30 lg:col-span-2 dark:from-oweg-500/[0.12] dark:to-ui-bg-base"
           : "border-ui-border-base/70 oweg-card",
+        interactive && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oweg-500/40",
+        active && "border-oweg-500 ring-2 ring-oweg-500/25 shadow-sm",
         className
       )}
     >
