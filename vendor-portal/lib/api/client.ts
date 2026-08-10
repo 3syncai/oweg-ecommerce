@@ -486,6 +486,13 @@ export const vendorProductsApi = {
     })
   },
 
+  setStatus: async (id: string, action: 'draft' | 'publish') => {
+    return apiRequest<{ product: any; message?: string }>(`/vendor/products/${id}/status`, {
+      method: 'POST',
+      data: { action },
+    })
+  },
+
   updateVariants: async (id: string, data: any) => {
     return apiRequest<{ product_id: string; variant_matrix: any; metadata: any }>(
       `/vendor/products/${id}/variants`,
@@ -779,12 +786,16 @@ export type VendorEarningsSummary = {
 
 export type VendorPaymentsView = {
   cards: {
+    full_sale: number
     total_sale: number
+    gst: number
     commission: number
     tcs: number
     tds: number
     logistic_fee: number
     return_fee?: number
+    settlement_balance: number
+    balance: number
     pending_payment: number
     unlocking_payment?: number
     withdrawn: number

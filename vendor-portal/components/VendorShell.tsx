@@ -47,20 +47,6 @@ const navItems = [
     type: "normal",
   },
   {
-    label: "Orders",
-    description: "",
-    path: "/orders",
-    icon: ShoppingCart,
-    type: "normal",
-  },
-  {
-    label: "Returns",
-    description: "",
-    path: "/returns",
-    icon: ArrowPath,
-    type: "normal",
-  },
-  {
     label: "Products",
     description: "",
     path: "/products",
@@ -82,6 +68,20 @@ const navItems = [
     description: "",
     path: "/inventory",
     icon: Buildings,
+    type: "normal",
+  },
+  {
+    label: "Orders",
+    description: "",
+    path: "/orders",
+    icon: ShoppingCart,
+    type: "normal",
+  },
+  {
+    label: "Returns",
+    description: "",
+    path: "/returns",
+    icon: ArrowPath,
     type: "normal",
   },
   {
@@ -450,11 +450,6 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
                 {vendorInfo?.store_name || "Your Store"}
               </div>
               <div className="truncate text-xs text-ui-fg-muted">Vendor Portal</div>
-            </div>
-            <div className="hidden min-w-0 md:block">
-              <Text size="small" className="text-ui-fg-subtle">
-                Live payout updates appear here when payment is received
-              </Text>
             </div>
           </div>
           <VendorNotifications />

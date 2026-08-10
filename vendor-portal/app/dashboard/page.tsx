@@ -116,8 +116,7 @@ type DashboardData = {
   snapshot: {
     salesToday: number
     toAccept: number
-    openTickets: number
-    returnsInProgress: number
+    returnsToday: number
   }
 }
 
@@ -417,36 +416,6 @@ function buildDashboardData(input: {
   }
 
   const attention: AttentionItem[] = []
-  if (toAcceptOrders.length) {
-    attention.push({
-      href: "/orders",
-      title: "Accept new orders",
-      detail: "Orders waiting for your confirmation",
-      value: toAcceptOrders.length,
-      variant: "warning",
-      priority: 1,
-    })
-  }
-  if (openTickets.length || inReviewTickets.length) {
-    attention.push({
-      href: "/claims",
-      title: "Open claims",
-      detail: "Issues awaiting admin / your follow-up",
-      value: openTickets.length + inReviewTickets.length,
-      variant: "warning",
-      priority: 2,
-    })
-  }
-  if (inProgressReturns.length) {
-    attention.push({
-      href: "/returns",
-      title: "Returns in progress",
-      detail: "Track pickup and refund status",
-      value: inProgressReturns.length,
-      variant: "warning",
-      priority: 3,
-    })
-  }
   if (pendingApproval) {
     attention.push({
       href: "/products",
@@ -454,17 +423,7 @@ function buildDashboardData(input: {
       detail: "Admin review before catalog publish",
       value: pendingApproval,
       variant: "info",
-      priority: 4,
-    })
-  }
-  if (pending > 0) {
-    attention.push({
-      href: "/payout",
-      title: "Payout pending",
-      detail: "Available + unlocking balance",
-      value: formatCurrency(pending),
-      variant: "info",
-      priority: 5,
+      priority: 1,
     })
   }
   if (inactive > 0) {
@@ -474,7 +433,17 @@ function buildDashboardData(input: {
       detail: "Fix listing status or approval",
       value: inactive,
       variant: "neutral",
-      priority: 6,
+      priority: 2,
+    })
+  }
+  if (pending > 0) {
+    attention.push({
+      href: "/payout",
+      title: "Payout pending",
+      detail: "Available + unlocking balance",
+      value: formatCurrency(pending),
+      variant: "info",
+      priority: 3,
     })
   }
 
@@ -527,13 +496,12 @@ function buildDashboardData(input: {
     recentActivity: activity
       .filter((item) => item.at)
       .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-      .slice(0, 16),
+      .slice(0, 10),
     attention,
     snapshot: {
       salesToday: todaysSale,
       toAccept: toAcceptOrders.length,
-      openTickets: openTickets.length + inReviewTickets.length,
-      returnsInProgress: inProgressReturns.length,
+      returnsToday: returns.filter((request) => isToday(request.created_at)).length,
     },
   }
 }
@@ -834,22 +802,16 @@ const VendorDashboardPage = () => {
               value={formatCurrency(data.snapshot.salesToday)}
             />
             <SnapshotChip
-              href="/orders"
+              href="/returns"
+              label="Today's return"
+              value={data.snapshot.returnsToday}
+              hot={data.snapshot.returnsToday > 0}
+            />
+            <SnapshotChip
+              href="/orders?stage=to_accept"
               label="To accept"
               value={data.snapshot.toAccept}
               hot={data.snapshot.toAccept > 0}
-            />
-            <SnapshotChip
-              href="/claims"
-              label="Open tickets"
-              value={data.snapshot.openTickets}
-              hot={data.snapshot.openTickets > 0}
-            />
-            <SnapshotChip
-              href="/returns"
-              label="Returns in progress"
-              value={data.snapshot.returnsInProgress}
-              hot={data.snapshot.returnsInProgress > 0}
             />
           </div>
         </section>
@@ -1132,7 +1094,7 @@ const VendorDashboardPage = () => {
             <DashboardSection title="Operational focus">
               <div className="space-y-2.5">
                 <FocusRow
-                  href="/orders"
+                  href="/orders?stage=to_accept"
                   label="Orders waiting to accept"
                   value={data.orders.toAccept}
                   variant={data.orders.toAccept > 0 ? "warning" : "success"}

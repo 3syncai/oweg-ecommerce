@@ -180,6 +180,7 @@ const VendorOrdersContent = () => {
   const router = useRouter()
   const searchParams = useSearchParams()
   const focusOrderId = searchParams.get("order")
+  const stageFromUrl = searchParams.get("stage")
   const openedFocusOrderId = useRef<string | null>(null)
   const [orders, setOrders] = useState<VendorOrder[]>([])
   const [stageCounts, setStageCounts] = useState<Record<StageFilter, number>>({
@@ -193,7 +194,10 @@ const VendorOrdersContent = () => {
   const [totalFiltered, setTotalFiltered] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedStage, setSelectedStage] = useState<StageFilter>("total")
+  const [selectedStage, setSelectedStage] = useState<StageFilter>(() => {
+    const valid = stageConfig.some((item) => item.key === stageFromUrl)
+    return valid ? (stageFromUrl as StageFilter) : "total"
+  })
   const [search, setSearch] = useState("")
   const [searchDebounced, setSearchDebounced] = useState("")
   const [page, setPage] = useState(1)
@@ -306,6 +310,13 @@ const VendorOrdersContent = () => {
   useEffect(() => {
     setPage(1)
   }, [selectedStage, searchDebounced])
+
+  useEffect(() => {
+    const stageParam = searchParams.get("stage")
+    if (!stageParam) return
+    if (!stageConfig.some((item) => item.key === stageParam)) return
+    setSelectedStage(stageParam as StageFilter)
+  }, [searchParams])
 
   const counts = stageCounts
   const pageCount = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE))
@@ -780,7 +791,17 @@ const VendorOrdersContent = () => {
                 <button
                   key={item.key}
                   type="button"
-                  onClick={() => setSelectedStage(item.key)}
+                  onClick={() => {
+                    setSelectedStage(item.key)
+                    const params = new URLSearchParams(searchParams.toString())
+                    if (item.key === "total") {
+                      params.delete("stage")
+                    } else {
+                      params.set("stage", item.key)
+                    }
+                    const qs = params.toString()
+                    router.replace(qs ? `/orders?${qs}` : "/orders")
+                  }}
                   className={clx(
                     "rounded-xl border bg-ui-bg-base p-4 text-left transition-all hover:border-ui-border-strong hover:shadow-sm",
                     selectedStage === item.key
@@ -831,7 +852,14 @@ const VendorOrdersContent = () => {
               {visibleOrders.length === 0 ? (
                 <div className="p-10 text-center">
                   <Text className="text-ui-fg-subtle">No orders match this KPI or search.</Text>
-                  <Button variant="transparent" className="mt-3" onClick={() => { setSearch(""); setSelectedStage("total") }}>
+                  <Button variant="transparent" className="mt-3" onClick={() => {
+                    setSearch("")
+                    setSelectedStage("total")
+                    const params = new URLSearchParams(searchParams.toString())
+                    params.delete("stage")
+                    const qs = params.toString()
+                    router.replace(qs ? `/orders?${qs}` : "/orders")
+                  }}>
                     Clear filters
                   </Button>
                 </div>
