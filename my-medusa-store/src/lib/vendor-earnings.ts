@@ -1444,7 +1444,7 @@ export async function getVendorPaymentsView(
 
     const isClaim = String(row.order_id || "").startsWith("claim:");
 
-    if (!isClaim && row.status !== "REVERSED") {
+    if (!isClaim) {
       fullSale += gross;
     }
 
