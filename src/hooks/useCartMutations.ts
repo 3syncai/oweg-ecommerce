@@ -49,9 +49,11 @@ type RemoveLineItemParams = {
   label?: string;
 };
 
-function buildCartHeaders(customer: unknown): Record<string, string> {
+function buildCartHeaders(_customer: unknown): Record<string, string> {
+  // Always forward guest cart id when present. Logged-in users may lack a
+  // cart_id cookie (e.g. after login without merge); the header is the fallback.
   const guestCartId = getGuestCartId();
-  if (guestCartId && !customer) {
+  if (guestCartId) {
     return { "x-guest-cart-id": guestCartId };
   }
   return {};
@@ -88,7 +90,8 @@ export function useAddToCart() {
 
       const payload = (await response.json()) as AddToCartResponse;
 
-      if (payload.guestCartId && !customer && typeof payload.guestCartId === "string") {
+      // Persist for guests and logged-in users (cookie may be missing on prod/login).
+      if (payload.guestCartId && typeof payload.guestCartId === "string") {
         setGuestCartId(payload.guestCartId);
       }
 

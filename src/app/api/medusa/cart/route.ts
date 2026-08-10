@@ -78,11 +78,13 @@ export const dynamic = "force-dynamic"
 
 export async function GET(req: NextRequest) {
   const c = await cookies()
-  let cartId = c.get(CART_COOKIE)?.value
+  const cookieCartId = c.get(CART_COOKIE)?.value
+  let cartId = cookieCartId
+  const guestHeader = req.headers.get(GUEST_CART_HEADER) || undefined
   
   // Check for guest cart in request header (from localStorage)
   if (!cartId) {
-    cartId = req.headers.get(GUEST_CART_HEADER) || undefined
+    cartId = guestHeader
   }
 
   const ensure = req.nextUrl.searchParams.get("ensure") === "1"
@@ -127,13 +129,10 @@ export async function GET(req: NextRequest) {
   const resp = NextResponse.json(json)
   const newId = json.cart?.id || json.id
   if (newId) {
-    // If no cookie exists, this is a guest cart - don't set cookie, client will store in localStorage
-    const hasCookie = c.get(CART_COOKIE)?.value
-    if (!hasCookie) {
-      // Return cart ID in response for client to store in localStorage
-      return NextResponse.json({ ...json, guestCartId: newId })
-    }
-    resp.cookies.set(CART_COOKIE, newId, { httpOnly: false, sameSite: "lax", path: "/" })
+    // Persist both cookie and guestCartId so logged-in and guest clients share one cart.
+    const withGuest = NextResponse.json({ ...json, guestCartId: newId })
+    withGuest.cookies.set(CART_COOKIE, newId, { httpOnly: false, sameSite: "lax", path: "/" })
+    return withGuest
   }
   return resp
 }
