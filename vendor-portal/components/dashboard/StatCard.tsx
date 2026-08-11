@@ -46,10 +46,10 @@ const StatCard = ({
       onClick={onClick}
       onKeyDown={handleKeyDown}
       className={clx(
-        "group rounded-xl border bg-ui-bg-base p-5 transition-all duration-200",
-        "hover:border-ui-border-strong hover:shadow-sm",
+        "group rounded-xl border bg-ui-bg-base p-5 transition-all duration-300 ease-out",
+        "hover:-translate-y-0.5 hover:border-ui-border-strong hover:shadow-md",
         isHero
-          ? "border-oweg-500/25 bg-gradient-to-br from-oweg-500/[0.08] via-ui-bg-base to-oweg-50/30 lg:col-span-2 dark:from-oweg-500/[0.12] dark:to-ui-bg-base"
+          ? "border-oweg-500/25 bg-gradient-to-br from-oweg-500/[0.08] via-ui-bg-base to-oweg-50/30 shadow-sm shadow-oweg-500/[0.06] lg:col-span-2 dark:from-oweg-500/[0.12] dark:to-ui-bg-base"
           : "border-ui-border-base/70 oweg-card",
         interactive && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oweg-500/40",
         active && "border-oweg-500 ring-2 ring-oweg-500/25 shadow-sm",

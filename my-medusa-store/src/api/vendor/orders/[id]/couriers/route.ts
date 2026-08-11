@@ -25,20 +25,40 @@ function parsePositiveNumber(raw: unknown, fallback: number): number {
 }
 
 function normalizeCouriers(raw: Record<string, unknown>) {
-  const data = (raw?.data || raw) as Record<string, any>
-  const list =
-    data?.available_courier_companies ||
-    data?.couriers ||
-    data?.recommended_courier_company ||
-    []
+  const root = (raw?.data || raw) as Record<string, any>
+  // Some Shiprocket payloads nest again under data.data
+  const data =
+    root?.available_courier_companies || root?.couriers
+      ? root
+      : ((root?.data || root) as Record<string, any>)
 
-  const companies = Array.isArray(list) ? list : list ? [list] : []
+  const buckets: any[] = []
+  const pushList = (value: unknown) => {
+    if (!value) return
+    if (Array.isArray(value)) {
+      buckets.push(...value)
+      return
+    }
+    if (typeof value === "object") {
+      buckets.push(value)
+    }
+  }
 
-  return companies
+  // Prefer full availability list; never stop at recommended-only when the array exists
+  pushList(data?.available_courier_companies)
+  pushList(data?.couriers)
+  if (buckets.length === 0) {
+    pushList(data?.recommended_courier_company)
+  }
+
+  const seen = new Set<number>()
+  return buckets
     .map((c: any) => {
       const id = Number(c?.courier_company_id ?? c?.id ?? c?.courier_id)
       const name = String(c?.courier_name || c?.name || "").trim()
       if (!Number.isFinite(id) || id <= 0 || !name) return null
+      if (seen.has(id)) return null
+      seen.add(id)
       return {
         courier_id: id,
         courier_name: name,
@@ -109,6 +129,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     const shiprocket = new ShiprocketService()
     const isCod = getPaymentType(result.order) === "PostPaid"
+    const declaredValue = vendorItems.reduce((sum, item: any) => {
+      const qty = Number(item?.quantity ?? item?.detail?.quantity ?? 1) || 1
+      return sum + Number(item?.unit_price || 0) * qty
+    }, 0)
 
     const response = await shiprocket.getServiceability({
       pickup_postcode: pickupPostcode,
@@ -118,10 +142,19 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       breadth,
       height,
       cod: isCod,
+      declared_value: declaredValue > 0 ? declaredValue : undefined,
     })
 
     const couriers = normalizeCouriers(response)
     const volumetric = Number(((length * breadth * height) / 5000).toFixed(3))
+    const rawData = ((response as any)?.data || response || {}) as Record<string, any>
+    const rawAvailable = rawData?.available_courier_companies
+    const rawAvailableCount = Array.isArray(rawAvailable) ? rawAvailable.length : null
+
+    console.log(
+      `[Vendor order couriers] order=${orderId} pickup=${pickupPostcode} delivery=${deliveryPostcode} ` +
+        `weight=${weight} declared=${declaredValue} raw_available=${rawAvailableCount ?? "n/a"} normalized=${couriers.length}`
+    )
 
     return res.json({
       pickup_postcode: pickupPostcode,
@@ -136,9 +169,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       applied_weight: Math.max(weight, volumetric),
       package_source: packageSource,
       suggested_package: suggested,
+      declared_value: declaredValue,
       cod: isCod,
       couriers,
       count: couriers.length,
+      shiprocket_available_count: rawAvailableCount,
     })
   } catch (error: any) {
     console.error("Vendor order couriers error:", error)

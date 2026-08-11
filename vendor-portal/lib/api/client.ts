@@ -787,6 +787,10 @@ export type VendorEarningsSummary = {
 export type VendorPaymentsView = {
   cards: {
     full_sale: number
+    taxes?: number
+    lifetime_commission?: number
+    lifetime_tcs?: number
+    lifetime_tds?: number
     total_sale: number
     gst: number
     commission: number

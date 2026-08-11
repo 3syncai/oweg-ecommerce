@@ -11,6 +11,7 @@ import ProductStatus, { resolveProductStatus } from "@/components/dashboard/Prod
 import StatusDot from "@/components/dashboard/StatusDot"
 import { vendorProductsApi } from "@/lib/api/client"
 import { useVendorLive } from "@/lib/useVendorLive"
+import { hasPageCache, pageCacheKey, peekPageCache, writePageCache } from "@/lib/page-cache"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 
@@ -62,15 +63,31 @@ const ProductThumbnail = ({ product }: { product: Product }) => {
 
 const VendorProductsPage = () => {
   const router = useRouter()
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [searchDebounced, setSearchDebounced] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "published" | "draft" | "pending">("all")
   const [page, setPage] = useState(1)
-  const [totalFiltered, setTotalFiltered] = useState(0)
-  const [counts, setCounts] = useState({ total: 0, published: 0, draft: 0, pending: 0 })
+
+  type ProductsCachePayload = {
+    products: Product[]
+    totalFiltered: number
+    counts: { total: number; published: number; draft: number; pending: number }
+  }
+
+  const productsCacheKey = pageCacheKey("products", {
+    status: statusFilter,
+    page,
+    q: searchDebounced || undefined,
+  })
+  const cachedProducts = peekPageCache<ProductsCachePayload>(productsCacheKey)
+
+  const [products, setProducts] = useState<Product[]>(() => cachedProducts?.products ?? [])
+  const [loading, setLoading] = useState(() => !hasPageCache(productsCacheKey))
+  const [error, setError] = useState<string | null>(null)
+  const [totalFiltered, setTotalFiltered] = useState(() => cachedProducts?.totalFiltered ?? 0)
+  const [counts, setCounts] = useState(
+    () => cachedProducts?.counts ?? { total: 0, published: 0, draft: 0, pending: 0 }
+  )
 
   useEffect(() => {
     const id = window.setTimeout(() => setSearchDebounced(search.trim()), 300)
@@ -78,6 +95,21 @@ const VendorProductsPage = () => {
   }, [search])
 
   const loadProducts = useCallback(async () => {
+    const cacheKey = pageCacheKey("products", {
+      status: statusFilter,
+      page,
+      q: searchDebounced || undefined,
+    })
+    const cached = peekPageCache<ProductsCachePayload>(cacheKey)
+    if (cached) {
+      setProducts(cached.products)
+      setTotalFiltered(cached.totalFiltered)
+      setCounts(cached.counts)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+
     try {
       const data = await vendorProductsApi.list({
         limit: PAGE_SIZE,
@@ -85,16 +117,26 @@ const VendorProductsPage = () => {
         q: searchDebounced || undefined,
         status: statusFilter === "all" ? undefined : statusFilter,
       })
-      setProducts(data?.products || [])
-      setTotalFiltered(typeof data?.count === "number" ? data.count : (data?.products || []).length)
-      if (data?.counts) {
-        setCounts({
-          total: Number(data.counts.total) || 0,
-          published: Number(data.counts.published) || 0,
-          draft: Number(data.counts.draft) || 0,
-          pending: Number(data.counts.pending) || 0,
-        })
-      }
+      const nextProducts = data?.products || []
+      const nextTotal =
+        typeof data?.count === "number" ? data.count : nextProducts.length
+      const nextCounts = data?.counts
+        ? {
+            total: Number(data.counts.total) || 0,
+            published: Number(data.counts.published) || 0,
+            draft: Number(data.counts.draft) || 0,
+            pending: Number(data.counts.pending) || 0,
+          }
+        : { total: 0, published: 0, draft: 0, pending: 0 }
+
+      setProducts(nextProducts)
+      setTotalFiltered(nextTotal)
+      setCounts(nextCounts)
+      writePageCache(cacheKey, {
+        products: nextProducts,
+        totalFiltered: nextTotal,
+        counts: nextCounts,
+      } satisfies ProductsCachePayload)
       setError(null)
     } catch (e: any) {
       if (e.status === 403) {
@@ -139,11 +181,11 @@ const VendorProductsPage = () => {
 
   let content
 
-  if (loading) {
+  if (loading && products.length === 0) {
     content = (
       <PageSkeleton label="Loading products…" stats={4} rows={6} cols={4} showAction />
     )
-  } else if (error) {
+  } else if (error && products.length === 0) {
     content = (
       <Container className="mx-auto max-w-7xl p-4 md:p-6">
         <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-6">

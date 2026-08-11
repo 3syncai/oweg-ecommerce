@@ -8,7 +8,6 @@ import {
   ArrowUpRightMini,
   CurrencyDollar,
   DocumentText,
-  Plus,
   ShoppingCart,
   Tag,
 } from "@medusajs/icons"
@@ -26,14 +25,23 @@ import {
   type VendorReportTicket,
 } from "@/lib/api/client"
 import { useVendorLive } from "@/lib/useVendorLive"
+import { hasPageCache, peekPageCache, writePageCache } from "@/lib/page-cache"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import PageSkeleton from "@/components/PageSkeleton"
 
 type VendorInfo = {
   name?: string
   email?: string
   store_name?: string
 }
+
+type DashboardCachePayload = {
+  data: DashboardData
+  vendorInfo: VendorInfo | null
+}
+
+const DASHBOARD_CACHE_KEY = "dashboard"
 
 type ActivityFilter = "all" | "orders" | "returns" | "tickets"
 
@@ -643,14 +651,16 @@ const WeekBars = ({ series }: { series: DayPoint[] }) => {
 
 const VendorDashboardPage = () => {
   const router = useRouter()
-  const [data, setData] = useState<DashboardData | null>(null)
-  const [vendorInfo, setVendorInfo] = useState<VendorInfo | null>(null)
-  const [loading, setLoading] = useState(true)
+  const cached = peekPageCache<DashboardCachePayload>(DASHBOARD_CACHE_KEY)
+  const [data, setData] = useState<DashboardData | null>(cached?.data ?? null)
+  const [vendorInfo, setVendorInfo] = useState<VendorInfo | null>(cached?.vendorInfo ?? null)
+  const [loading, setLoading] = useState(() => !hasPageCache(DASHBOARD_CACHE_KEY))
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all")
 
   const loadDashboardData = useCallback(async (opts?: { silent?: boolean }) => {
-    const silent = Boolean(opts?.silent)
+    const silent = Boolean(opts?.silent) || hasPageCache(DASHBOARD_CACHE_KEY)
     try {
       if (!silent) setLoading(true)
       const [productsData, ordersData, returnsData, reportsData, payoutData, profileData] =
@@ -685,17 +695,21 @@ const VendorDashboardPage = () => {
           vendorProfileApi.getMe().catch(() => ({ vendor: null })),
         ])
 
-      setVendorInfo(profileData?.vendor || null)
-      setData(
-        buildDashboardData({
-          products: productsData?.products || [],
-          orders: ordersData?.orders || [],
-          returns: returnsData?.return_requests || [],
-          reports: reportsData?.reports || [],
-          payoutSummary: payoutData?.summary || {},
-          payoutTotals: payoutData?.totals || {},
-        })
-      )
+      const nextVendor = profileData?.vendor || null
+      const nextData = buildDashboardData({
+        products: productsData?.products || [],
+        orders: ordersData?.orders || [],
+        returns: returnsData?.return_requests || [],
+        reports: reportsData?.reports || [],
+        payoutSummary: payoutData?.summary || {},
+        payoutTotals: payoutData?.totals || {},
+      })
+      setVendorInfo(nextVendor)
+      setData(nextData)
+      writePageCache(DASHBOARD_CACHE_KEY, {
+        data: nextData,
+        vendorInfo: nextVendor,
+      } satisfies DashboardCachePayload)
       setError(null)
     } catch (e: any) {
       if (e.status === 403) {
@@ -707,6 +721,15 @@ const VendorDashboardPage = () => {
       setLoading(false)
     }
   }, [router])
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await loadDashboardData({ silent: true })
+    } finally {
+      setRefreshing(false)
+    }
+  }, [loadDashboardData])
 
   useEffect(() => {
     const vendorToken = localStorage.getItem("vendor_token")
@@ -739,22 +762,9 @@ const VendorDashboardPage = () => {
 
   let content
 
-  if (loading) {
-    content = (
-      <Container className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
-        <div className="h-44 animate-pulse rounded-3xl bg-ui-bg-base-hover" />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="h-52 animate-pulse rounded-2xl bg-ui-bg-base-hover" />
-          ))}
-        </div>
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.85fr)]">
-          <div className="h-96 animate-pulse rounded-2xl bg-ui-bg-base-hover" />
-          <div className="h-96 animate-pulse rounded-2xl bg-ui-bg-base-hover" />
-        </div>
-      </Container>
-    )
-  } else if (error) {
+  if (loading && !data) {
+    content = <PageSkeleton label="Loading dashboard…" />
+  } else if (error && !data) {
     content = (
       <Container className="mx-auto max-w-7xl p-4 md:p-6">
         <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-6">
@@ -793,6 +803,15 @@ const VendorDashboardPage = () => {
                 Today’s pulse across sales, orders, returns, and claims.
               </Text>
             </div>
+            <Button
+              variant="secondary"
+              disabled={refreshing}
+              className="!border-white/20 !bg-white/10 !text-white hover:!bg-white/15"
+              onClick={() => void handleRefresh()}
+            >
+              <ArrowPath className={refreshing ? "animate-spin" : ""} />
+              Refresh
+            </Button>
           </div>
 
           <div className="relative mt-5 flex flex-wrap gap-2.5">
@@ -1125,33 +1144,6 @@ const VendorDashboardPage = () => {
                   value={data.products.inactive}
                   variant={data.products.inactive > 0 ? "warning" : "success"}
                 />
-              </div>
-            </DashboardSection>
-
-            <DashboardSection title="Quick actions">
-              <div className="grid gap-2.5">
-                {[
-                  { href: "/products/new", label: "Add product", icon: Plus },
-                  { href: "/orders", label: "Process orders", icon: ShoppingCart },
-                  { href: "/returns", label: "Review returns", icon: ArrowPath },
-                  { href: "/claims", label: "Raise / view claims", icon: DocumentText },
-                  { href: "/payout", label: "Check payout", icon: CurrencyDollar },
-                  { href: "/products", label: "Manage catalog", icon: Tag },
-                ].map((action) => (
-                  <Link
-                    key={action.href + action.label}
-                    href={action.href}
-                    className="group flex items-center gap-3 rounded-2xl border border-ui-border-base/70 bg-ui-bg-base p-3 transition hover:border-ui-border-strong hover:bg-ui-bg-subtle/60"
-                  >
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ui-bg-base-hover text-ui-fg-muted">
-                      <action.icon />
-                    </span>
-                    <Text weight="plus" className="min-w-0 flex-1">
-                      {action.label}
-                    </Text>
-                    <ArrowUpRightMini className="text-ui-fg-muted transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                  </Link>
-                ))}
               </div>
             </DashboardSection>
           </div>

@@ -1,6 +1,9 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
-import { calculateMarketplaceSettlementFromLines } from "./vendor-marketplace-tax"
+import {
+  calculateMarketplaceSettlementFromLines,
+  parseLineGstRate,
+} from "./vendor-marketplace-tax"
 
 export type VendorOrderStage =
   | "to_accept"
@@ -321,19 +324,33 @@ function resolveItemGstRate(item: any): number {
     item?.product?.metadata?.tax_code,
   ]
   for (const raw of candidates) {
-    const fromCode = String(raw ?? "")
-      .trim()
-      .toUpperCase()
-      .match(/^GST_([\d.]+)$/)
-    if (fromCode) {
-      const n = Number(fromCode[1])
-      if (Number.isFinite(n) && n >= 0) return n
-    }
-    const n = Number(String(raw ?? "").replace(/[^\d.]/g, ""))
-    if (Number.isFinite(n) && n > 0) return n
+    const parsed = parseLineGstRate(raw)
+    if (parsed > 0) return parsed
   }
   // No vendor GST set — do not invent 18%
   return 0
+}
+
+/** Prefer a real GST rate from DB when graph metadata is missing or zero. */
+function pickPreferredGstMeta(
+  existing: Record<string, any>,
+  fromDb: { gst_rate?: string | null; tax_code?: string | null }
+) {
+  const existingRate = parseLineGstRate(existing.gst_rate ?? existing.tax_code)
+  if (existingRate > 0) {
+    return {
+      ...existing,
+      gst_rate: existing.gst_rate ?? existingRate,
+      tax_code: existing.tax_code ?? `GST_${existingRate}`,
+    }
+  }
+
+  const dbRate = parseLineGstRate(fromDb.gst_rate ?? fromDb.tax_code)
+  return {
+    ...existing,
+    gst_rate: fromDb.gst_rate ?? (dbRate > 0 ? dbRate : existing.gst_rate ?? null),
+    tax_code: fromDb.tax_code ?? (dbRate > 0 ? `GST_${dbRate}` : existing.tax_code ?? null),
+  }
 }
 
 /** Marketplace tax preview for a vendor's lines on an order (GST / TCS / TDS). */
@@ -362,6 +379,85 @@ export function buildVendorOrderSettlement(
     tcs_rate: settlement.tcs_rate,
     tds_rate: settlement.tds_rate,
     commission_rate: settlement.commission_rate,
+  }
+}
+
+/**
+ * Attach product gst_rate / tax_code onto order items when graph relations omit them.
+ * Fixes GST=0 on vendor order views for GST-inclusive catalog products.
+ */
+export async function enrichOrdersWithProductGstMetadata(
+  pool: { query: (sql: string, params?: any[]) => Promise<{ rows: any[] }> },
+  orders: any[]
+) {
+  const productIds = new Set<string>()
+  for (const order of orders || []) {
+    for (const item of order?.items || []) {
+      const productId = item?.product_id || item?.variant?.product_id
+      if (productId) productIds.add(String(productId))
+    }
+  }
+  if (!productIds.size) return
+
+  const { rows } = await pool.query(
+    `
+      SELECT
+        id,
+        metadata->>'gst_rate' AS gst_rate,
+        metadata->>'tax_code' AS tax_code
+      FROM product
+      WHERE id = ANY($1::text[])
+    `,
+    [Array.from(productIds)]
+  )
+
+  const byId = new Map(
+    (rows || []).map((row: any) => [
+      String(row.id),
+      {
+        gst_rate: row.gst_rate,
+        tax_code: row.tax_code,
+      },
+    ])
+  )
+
+  for (const order of orders || []) {
+    for (const item of order?.items || []) {
+      const productId = String(item?.product_id || item?.variant?.product_id || "")
+      const productMeta = byId.get(productId)
+      if (!productMeta) continue
+
+      const existingVariantProduct = item.variant?.product || {}
+      const existingMetadata = {
+        ...(existingVariantProduct.metadata || {}),
+        ...(item.product?.metadata || {}),
+        ...(item.metadata || {}),
+      }
+
+      const nextMetadata = pickPreferredGstMeta(existingMetadata, productMeta)
+
+      item.metadata = {
+        ...(item.metadata || {}),
+        gst_rate: nextMetadata.gst_rate,
+        tax_code: nextMetadata.tax_code,
+      }
+      item.product = {
+        ...(item.product || {}),
+        metadata: {
+          ...(item.product?.metadata || {}),
+          ...nextMetadata,
+        },
+      }
+      if (item.variant) {
+        item.variant.product = {
+          ...(item.variant.product || {}),
+          metadata: {
+            ...(item.variant.product?.metadata || {}),
+            ...nextMetadata,
+          },
+        }
+      }
+    }
   }
 }
 

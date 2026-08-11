@@ -11,16 +11,20 @@ import {
   Copy,
   Eye,
   FileText,
+  Package,
   PackageCheck,
+  RefreshCw,
   Search,
   Truck,
 } from "lucide-react"
 import VendorShell from "@/components/VendorShell"
 import PageSkeleton from "@/components/PageSkeleton"
+import PageHeader from "@/components/PageHeader"
 import EmptyState from "@/components/EmptyState"
 import StatusDot from "@/components/dashboard/StatusDot"
 import { vendorOrdersApi } from "@/lib/api/client"
 import { notifyVendorDataChanged, useVendorLive } from "@/lib/useVendorLive"
+import { hasPageCache, pageCacheKey, peekPageCache, writePageCache } from "@/lib/page-cache"
 import { useRouter, useSearchParams } from "next/navigation"
 
 type VendorStage = "to_accept" | "to_pack" | "to_dispatch" | "in_transit" | "delivered"
@@ -93,13 +97,57 @@ const stageConfig: Array<{
   label: string
   subtext: string
   icon: ReactNode
+  tone: string
+  iconTone: string
 }> = [
-  { key: "total", label: "Total orders", subtext: "All received", icon: <Clipboard size={18} /> },
-  { key: "to_accept", label: "To Accept", subtext: "Confirm first", icon: <CheckCircle2 size={18} /> },
-  { key: "to_pack", label: "To Pack", subtext: "Ship + invoice", icon: <PackageCheck size={18} /> },
-  { key: "to_dispatch", label: "To Dispatch", subtext: "Ready to move", icon: <Truck size={18} /> },
-  { key: "in_transit", label: "In Transit", subtext: "On the way", icon: <Truck size={18} /> },
-  { key: "delivered", label: "Delivered", subtext: "Completed", icon: <CheckCircle2 size={18} /> },
+  {
+    key: "total",
+    label: "Total orders",
+    subtext: "All received",
+    icon: <Clipboard size={18} />,
+    tone: "border-ui-border-base/70",
+    iconTone: "bg-ui-bg-subtle text-ui-fg-subtle",
+  },
+  {
+    key: "to_accept",
+    label: "To Accept",
+    subtext: "Confirm first",
+    icon: <CheckCircle2 size={18} />,
+    tone: "border-amber-500/30",
+    iconTone: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  },
+  {
+    key: "to_pack",
+    label: "To Pack",
+    subtext: "Ship + invoice",
+    icon: <Package size={18} />,
+    tone: "border-sky-500/30",
+    iconTone: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
+  },
+  {
+    key: "to_dispatch",
+    label: "To Dispatch",
+    subtext: "Ready to move",
+    icon: <PackageCheck size={18} />,
+    tone: "border-violet-500/30",
+    iconTone: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+  },
+  {
+    key: "in_transit",
+    label: "In Transit",
+    subtext: "On the way",
+    icon: <Truck size={18} />,
+    tone: "border-blue-500/30",
+    iconTone: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  },
+  {
+    key: "delivered",
+    label: "Delivered",
+    subtext: "Completed",
+    icon: <CheckCircle2 size={18} />,
+    tone: "border-oweg-500/30",
+    iconTone: "bg-oweg-500/10 text-oweg-700 dark:text-oweg-300",
+  },
 ]
 
 const formatDate = (dateString: string) =>
@@ -169,11 +217,20 @@ const addressLineSafe = (order: VendorOrder, address?: Record<string, any> | nul
   return addressLine(address)
 }
 
-const stageVariant = (stage: VendorStage) => {
-  if (stage === "delivered") return "success"
-  if (stage === "in_transit") return "info"
-  if (stage === "to_dispatch") return "info"
-  return "warning"
+const stagePillClass = (stage: VendorStage) => {
+  switch (stage) {
+    case "delivered":
+      return "bg-oweg-500/10 text-oweg-800 ring-oweg-500/20 dark:text-oweg-300"
+    case "in_transit":
+      return "bg-blue-500/10 text-blue-800 ring-blue-500/20 dark:text-blue-300"
+    case "to_dispatch":
+      return "bg-violet-500/10 text-violet-800 ring-violet-500/20 dark:text-violet-300"
+    case "to_pack":
+      return "bg-sky-500/10 text-sky-800 ring-sky-500/20 dark:text-sky-300"
+    case "to_accept":
+    default:
+      return "bg-amber-500/10 text-amber-900 ring-amber-500/25 dark:text-amber-300"
+  }
 }
 
 const VendorOrdersContent = () => {
@@ -182,18 +239,6 @@ const VendorOrdersContent = () => {
   const focusOrderId = searchParams.get("order")
   const stageFromUrl = searchParams.get("stage")
   const openedFocusOrderId = useRef<string | null>(null)
-  const [orders, setOrders] = useState<VendorOrder[]>([])
-  const [stageCounts, setStageCounts] = useState<Record<StageFilter, number>>({
-    total: 0,
-    to_accept: 0,
-    to_pack: 0,
-    to_dispatch: 0,
-    in_transit: 0,
-    delivered: 0,
-  })
-  const [totalFiltered, setTotalFiltered] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [selectedStage, setSelectedStage] = useState<StageFilter>(() => {
     const valid = stageConfig.some((item) => item.key === stageFromUrl)
     return valid ? (stageFromUrl as StageFilter) : "total"
@@ -201,6 +246,36 @@ const VendorOrdersContent = () => {
   const [search, setSearch] = useState("")
   const [searchDebounced, setSearchDebounced] = useState("")
   const [page, setPage] = useState(1)
+
+  type OrdersCachePayload = {
+    orders: VendorOrder[]
+    stageCounts: Record<StageFilter, number>
+    totalFiltered: number
+  }
+
+  const ordersCacheKey = pageCacheKey("orders", {
+    stage: selectedStage,
+    page,
+    q: searchDebounced || undefined,
+  })
+  const cachedOrders = peekPageCache<OrdersCachePayload>(ordersCacheKey)
+
+  const [orders, setOrders] = useState<VendorOrder[]>(() => cachedOrders?.orders ?? [])
+  const [stageCounts, setStageCounts] = useState<Record<StageFilter, number>>(
+    () =>
+      cachedOrders?.stageCounts ?? {
+        total: 0,
+        to_accept: 0,
+        to_pack: 0,
+        to_dispatch: 0,
+        in_transit: 0,
+        delivered: 0,
+      }
+  )
+  const [totalFiltered, setTotalFiltered] = useState(() => cachedOrders?.totalFiltered ?? 0)
+  const [loading, setLoading] = useState(() => !hasPageCache(ordersCacheKey))
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [processing, setProcessing] = useState<string | null>(null)
   const [detailOrder, setDetailOrder] = useState<VendorOrder | null>(null)
   const [tracking, setTracking] = useState<any>(null)
@@ -220,11 +295,6 @@ const VendorOrdersContent = () => {
   >([])
   const [easyCourierLoading, setEasyCourierLoading] = useState(false)
   const [selectedCourierId, setSelectedCourierId] = useState<number | null>(null)
-  const [easyTracking, setEasyTracking] = useState({
-    courier_partner_name: "",
-    tracking_number: "",
-    tracking_url: "",
-  })
   const [easyPackage, setEasyPackage] = useState({
     weight: "0.5",
     length: "10",
@@ -257,6 +327,21 @@ const VendorOrdersContent = () => {
   }, [search])
 
   const loadOrders = useCallback(async () => {
+    const cacheKey = pageCacheKey("orders", {
+      stage: selectedStage,
+      page,
+      q: searchDebounced || undefined,
+    })
+    const cached = peekPageCache<OrdersCachePayload>(cacheKey)
+    if (cached) {
+      setOrders(cached.orders)
+      setStageCounts(cached.stageCounts)
+      setTotalFiltered(cached.totalFiltered)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+
     try {
       const data = await vendorOrdersApi.list({
         limit: PAGE_SIZE,
@@ -264,22 +349,35 @@ const VendorOrdersContent = () => {
         stage: selectedStage === "total" ? undefined : selectedStage,
         q: searchDebounced || undefined,
       })
-      setOrders(data?.orders || [])
-      if (data?.counts) {
-        setStageCounts({
-          total: Number(data.counts.total) || 0,
-          to_accept: Number(data.counts.to_accept) || 0,
-          to_pack: Number(data.counts.to_pack) || 0,
-          to_dispatch: Number(data.counts.to_dispatch) || 0,
-          in_transit: Number(data.counts.in_transit) || 0,
-          delivered: Number(data.counts.delivered) || 0,
-        })
-      }
-      setTotalFiltered(
-        typeof data?.count === "number"
-          ? data.count
-          : (data?.orders || []).length
-      )
+      const nextOrders = data?.orders || []
+      const nextCounts = data?.counts
+        ? {
+            total: Number(data.counts.total) || 0,
+            to_accept: Number(data.counts.to_accept) || 0,
+            to_pack: Number(data.counts.to_pack) || 0,
+            to_dispatch: Number(data.counts.to_dispatch) || 0,
+            in_transit: Number(data.counts.in_transit) || 0,
+            delivered: Number(data.counts.delivered) || 0,
+          }
+        : {
+            total: 0,
+            to_accept: 0,
+            to_pack: 0,
+            to_dispatch: 0,
+            in_transit: 0,
+            delivered: 0,
+          }
+      const nextTotal =
+        typeof data?.count === "number" ? data.count : nextOrders.length
+
+      setOrders(nextOrders)
+      setStageCounts(nextCounts)
+      setTotalFiltered(nextTotal)
+      writePageCache(cacheKey, {
+        orders: nextOrders,
+        stageCounts: nextCounts,
+        totalFiltered: nextTotal,
+      } satisfies OrdersCachePayload)
       setError(null)
     } catch (e: any) {
       if (e.status === 403) {
@@ -291,6 +389,15 @@ const VendorOrdersContent = () => {
       setLoading(false)
     }
   }, [router, page, selectedStage, searchDebounced])
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await loadOrders()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [loadOrders])
 
   useEffect(() => {
     const vendorToken = localStorage.getItem("vendor_token")
@@ -325,16 +432,50 @@ const VendorOrdersContent = () => {
   const openDetails = useCallback(async (order: VendorOrder, withTracking = false) => {
     setDetailOrder(order)
     setTracking(null)
-    if (!withTracking) return
+    setProcessing(`detail:${order.id}`)
 
-    setProcessing(`track:${order.id}`)
+    const mergeSettlement = (prev: VendorOrder, next: VendorOrder): VendorOrder => {
+      const prevTaxable = Number(prev.settlement?.taxable_amount ?? prev.taxable_amount ?? 0)
+      const nextTaxable = Number(next.settlement?.taxable_amount ?? next.taxable_amount ?? 0)
+      const prevGst = Number(prev.settlement?.gst_amount ?? prev.gst_amount ?? 0)
+      const nextGst = Number(next.settlement?.gst_amount ?? next.gst_amount ?? 0)
+      // Don't let a weak detail/track payload wipe a good settlement already on screen
+      if ((prevTaxable > 0 || prevGst > 0) && nextTaxable <= 0 && nextGst <= 0) {
+        return {
+          ...next,
+          settlement: prev.settlement ?? next.settlement,
+          taxable_amount: prev.taxable_amount ?? next.taxable_amount,
+          gst_amount: prev.gst_amount ?? next.gst_amount,
+          tcs_amount: prev.tcs_amount ?? next.tcs_amount,
+          tds_amount: prev.tds_amount ?? next.tds_amount,
+          commission_amount: prev.commission_amount ?? next.commission_amount,
+        }
+      }
+      return next
+    }
+
     try {
-      const data = await vendorOrdersApi.track(order.id)
-      replaceOrder(data.order)
-      setDetailOrder(data.order)
-      setTracking(data.tracking)
+      // Always refetch detail so GST / settlement use product tax metadata
+      const data = await vendorOrdersApi.get(order.id)
+      const nextOrder = mergeSettlement(order, (data?.order || order) as VendorOrder)
+      replaceOrder(nextOrder)
+      setDetailOrder(nextOrder)
+
+      if (withTracking) {
+        setProcessing(`track:${order.id}`)
+        try {
+          const trackData = await vendorOrdersApi.track(order.id)
+          const tracked = mergeSettlement(nextOrder, trackData.order as VendorOrder)
+          replaceOrder(tracked)
+          setDetailOrder(tracked)
+          setTracking(trackData.tracking)
+        } catch (e: any) {
+          setTracking({ error: e?.message || "Tracking is unavailable" })
+        }
+      }
     } catch (e: any) {
-      setTracking({ error: e?.message || "Tracking is unavailable" })
+      // Keep list payload if detail fetch fails
+      console.warn("Failed to refresh order detail:", e?.message || e)
     } finally {
       setProcessing(null)
     }
@@ -426,11 +567,6 @@ const VendorOrdersContent = () => {
     setEasyShipOrder(order)
     setEasyCouriers([])
     setSelectedCourierId(null)
-    setEasyTracking({
-      courier_partner_name: "",
-      tracking_number: "",
-      tracking_url: "",
-    })
     setEasyPickupInfo({})
     setError(null)
     try {
@@ -461,10 +597,9 @@ const VendorOrdersContent = () => {
       setError("Enter valid weight (kg) and dimensions (cm) before booking")
       return
     }
-    const courierName =
-      easyTracking.courier_partner_name.trim() || courier?.courier_name || ""
+    const courierName = courier?.courier_name?.trim() || ""
     if (!courierName) {
-      setError("Enter or select a courier partner name")
+      setError("Select a Shiprocket courier to continue")
       return
     }
     setProcessing(`easy:${easyShipOrder.id}`)
@@ -479,8 +614,6 @@ const VendorOrdersContent = () => {
         length,
         breadth,
         height,
-        tracking_number: easyTracking.tracking_number.trim() || undefined,
-        tracking_url: easyTracking.tracking_url.trim() || undefined,
       })
       replaceOrder(data.order)
       setEasyShipOrder(null)
@@ -745,7 +878,7 @@ const VendorOrdersContent = () => {
 
   let content
 
-  if (loading) {
+  if (loading && orders.length === 0) {
     content = <PageSkeleton label="Loading orders..." stats={6} rows={8} cols={6} showAction />
   } else if (error && orders.length === 0) {
     content = (
@@ -756,26 +889,34 @@ const VendorOrdersContent = () => {
       </Container>
     )
   } else {
+    const attentionCount = counts.to_accept
     content = (
-      <Container className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <Heading level="h1" className="text-2xl md:text-3xl">
-              Orders
-            </Heading>
-            <Text className="mt-1 text-ui-fg-subtle">
-              Accept, pack, dispatch, and track customer orders for your catalog.
-            </Text>
-          </div>
-        </div>
+      <Container className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
+        <PageHeader
+          title="Orders"
+          description="Accept, pack, dispatch, and track customer orders for your catalog."
+          actions={
+            <Button
+              variant="secondary"
+              disabled={refreshing || loading}
+              className="transition-transform active:scale-[0.98]"
+              onClick={() => void handleRefresh()}
+            >
+              <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} />
+              Refresh
+            </Button>
+          }
+        />
 
         {error && (
-          <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
-            <Text size="small" className="text-ui-fg-error">{error}</Text>
+          <div className="animate-fade-in-up rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3">
+            <Text size="small" className="text-ui-fg-error">
+              {error}
+            </Text>
           </div>
         )}
 
-        {orders.length === 0 ? (
+        {counts.total === 0 && orders.length === 0 ? (
           <EmptyState
             accent="oweg"
             icon={<Truck />}
@@ -786,136 +927,291 @@ const VendorOrdersContent = () => {
           />
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-              {stageConfig.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => {
-                    setSelectedStage(item.key)
-                    const params = new URLSearchParams(searchParams.toString())
-                    if (item.key === "total") {
-                      params.delete("stage")
-                    } else {
-                      params.set("stage", item.key)
-                    }
-                    const qs = params.toString()
-                    router.replace(qs ? `/orders?${qs}` : "/orders")
-                  }}
-                  className={clx(
-                    "rounded-xl border bg-ui-bg-base p-4 text-left transition-all hover:border-ui-border-strong hover:shadow-sm",
-                    selectedStage === item.key
-                      ? "border-oweg-500/50 ring-2 ring-oweg-500/15"
-                      : "border-ui-border-base/70"
-                  )}
-                >
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-oweg-500/10 text-oweg-700">
-                      {item.icon}
-                    </span>
-                    <Text className="text-2xl font-semibold">{counts[item.key]}</Text>
-                  </div>
-                  <Text weight="plus" className="text-sm">{item.label}</Text>
-                  <Text size="small" className="mt-0.5 text-ui-fg-subtle">{item.subtext}</Text>
-                </button>
-              ))}
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <Heading level="h2" className="text-lg">Order Summary</Heading>
-                <Text size="small" className="text-ui-fg-subtle">
-                  {totalFiltered} order{totalFiltered === 1 ? "" : "s"} in this view
-                </Text>
-              </div>
-              <div className="relative w-full sm:max-w-sm">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ui-fg-muted" />
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search order, customer, product..."
-                  className="h-10 w-full rounded-lg border border-ui-border-base/70 bg-ui-bg-base pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-ui-fg-muted focus:border-ui-border-strong"
-                />
-              </div>
-            </div>
-
-            <div className="overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base">
-              <div className="hidden border-b border-ui-border-base/70 bg-ui-bg-subtle/30 px-4 py-3 md:grid md:grid-cols-[110px_140px_minmax(0,1.4fr)_110px_130px_240px] md:gap-4">
-                {["Date", "Order ID", "Product", "Payment", "Status", "Action"].map((heading) => (
-                  <Text key={heading} size="small" weight="plus" className="text-ui-fg-subtle">
-                    {heading}
+            {attentionCount > 0 && selectedStage !== "to_accept" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedStage("to_accept")
+                  setPage(1)
+                  const params = new URLSearchParams(searchParams.toString())
+                  params.set("stage", "to_accept")
+                  router.replace(`/orders?${params.toString()}`)
+                }}
+                className="animate-fade-in-up group flex w-full items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-gradient-to-r from-amber-500/[0.08] to-transparent px-4 py-3 text-left transition-all duration-300 hover:border-amber-500/40 hover:shadow-sm"
+              >
+                <div className="min-w-0">
+                  <Text weight="plus" size="small" className="text-amber-900 dark:text-amber-200">
+                    {attentionCount} order{attentionCount === 1 ? "" : "s"} waiting to accept
                   </Text>
-                ))}
-              </div>
-
-              {visibleOrders.length === 0 ? (
-                <div className="p-10 text-center">
-                  <Text className="text-ui-fg-subtle">No orders match this KPI or search.</Text>
-                  <Button variant="transparent" className="mt-3" onClick={() => {
-                    setSearch("")
-                    setSelectedStage("total")
-                    const params = new URLSearchParams(searchParams.toString())
-                    params.delete("stage")
-                    const qs = params.toString()
-                    router.replace(qs ? `/orders?${qs}` : "/orders")
-                  }}>
-                    Clear filters
-                  </Button>
+                  <Text size="xsmall" className="text-ui-fg-subtle">
+                    Confirm soon so packing can start
+                  </Text>
                 </div>
-              ) : (
-                <div className="divide-y divide-ui-border-base/70">
-                  {visibleOrders.map((order) => (
-                    <div
-                      key={order.id}
-                      className="grid grid-cols-1 gap-3 px-4 py-4 transition-colors hover:bg-ui-bg-subtle/60 md:grid-cols-[110px_140px_minmax(0,1.4fr)_110px_130px_240px] md:items-center md:gap-4"
-                    >
-                      <Text size="small">{formatDate(order.created_at)}</Text>
-                      <OrderIdCell
-                        order={order}
-                        clickable={selectedStage !== "total"}
-                        onOpen={() => void openDetails(order)}
-                      />
-                      <Text size="small" className="truncate" title={(order.product_names || []).join(", ")}>
-                        {(order.product_names || order.items?.map((item) => item.title) || []).join(", ") || "N/A"}
-                      </Text>
-                      <Text size="small">{order.payment_type || "Prepaid"}</Text>
-                      <span className="inline-flex items-center gap-1.5">
-                        <StatusDot variant={stageVariant(order.vendor_stage) as any} />
-                        <Text size="small">{order.vendor_status_label}</Text>
+                <span className="shrink-0 rounded-lg border border-amber-500/30 bg-ui-bg-base px-3 py-1.5 text-xs font-medium text-amber-800 transition group-hover:bg-amber-500/10 dark:text-amber-200">
+                  Review
+                </span>
+              </button>
+            ) : null}
+
+            <div
+              className="oweg-stagger grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6"
+              style={{ animationDelay: "40ms" }}
+            >
+              {stageConfig.map((item) => {
+                const active = selectedStage === item.key
+                const count = counts[item.key]
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedStage(item.key)
+                      setPage(1)
+                      const params = new URLSearchParams(searchParams.toString())
+                      if (item.key === "total") {
+                        params.delete("stage")
+                      } else {
+                        params.set("stage", item.key)
+                      }
+                      const qs = params.toString()
+                      router.replace(qs ? `/orders?${qs}` : "/orders")
+                    }}
+                    className={clx(
+                      "rounded-xl border bg-ui-bg-base p-4 text-left transition-all duration-300 ease-out",
+                      "hover:-translate-y-0.5 hover:shadow-md active:scale-[0.99]",
+                      active
+                        ? "border-oweg-500/50 shadow-sm ring-2 ring-oweg-500/15"
+                        : item.tone
+                    )}
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <span
+                        className={clx(
+                          "flex h-9 w-9 items-center justify-center rounded-lg transition-colors",
+                          item.iconTone
+                        )}
+                      >
+                        {item.icon}
                       </span>
-                      <div>{renderAction(order)}</div>
+                      <Text className="text-2xl font-semibold tabular-nums tracking-tight">
+                        {count}
+                      </Text>
                     </div>
-                  ))}
-                </div>
-              )}
+                    <Text weight="plus" className="text-sm">
+                      {item.label}
+                    </Text>
+                    <Text size="small" className="mt-0.5 text-ui-fg-subtle">
+                      {item.subtext}
+                    </Text>
+                  </button>
+                )
+              })}
             </div>
 
-            <div className="flex flex-col gap-2 text-ui-fg-muted sm:flex-row sm:items-center sm:justify-between">
-              <Text size="small">
-                Showing {visibleOrders.length ? (page - 1) * PAGE_SIZE + 1 : 0}-
-                {Math.min(page * PAGE_SIZE, totalFiltered)} of {totalFiltered}
-              </Text>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={page <= 1}
-                  onClick={() => setPage((value) => Math.max(1, value - 1))}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ui-border-base/70 disabled:opacity-40"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <Text size="small">Page {page} of {pageCount}</Text>
-                <button
-                  type="button"
-                  disabled={page >= pageCount}
-                  onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ui-border-base/70 disabled:opacity-40"
-                >
-                  <ChevronRight size={16} />
-                </button>
+            <section
+              className="animate-fade-in-up-slow space-y-3"
+              style={{ animationDelay: "120ms" }}
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <Heading level="h2" className="text-lg tracking-tight">
+                      Order summary
+                    </Heading>
+                    {selectedStage !== "total" ? (
+                      <span className="rounded-full bg-ui-bg-subtle px-2 py-0.5 text-xs text-ui-fg-subtle ring-1 ring-ui-border-base/70">
+                        {stageConfig.find((s) => s.key === selectedStage)?.label}
+                      </span>
+                    ) : null}
+                  </div>
+                  <Text size="small" className="mt-0.5 text-ui-fg-subtle">
+                    {totalFiltered} order{totalFiltered === 1 ? "" : "s"} in this view
+                  </Text>
+                </div>
+                <div className="relative w-full sm:max-w-sm">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ui-fg-muted" />
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value)
+                      setPage(1)
+                    }}
+                    placeholder="Search order, customer, product..."
+                    className="h-10 w-full rounded-lg border border-ui-border-base/70 bg-ui-bg-base pl-9 pr-3 text-sm outline-none transition-all duration-200 placeholder:text-ui-fg-muted focus:border-oweg-500/40 focus:ring-2 focus:ring-oweg-500/10"
+                  />
+                </div>
               </div>
-            </div>
+
+              <div className="overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base shadow-sm shadow-oweg-500/[0.03]">
+                <div className="sticky top-0 z-10 hidden border-b border-ui-border-base/70 bg-ui-bg-subtle/80 px-4 py-3 backdrop-blur-sm md:grid md:grid-cols-[100px_120px_minmax(0,1.3fr)_110px_100px_130px_150px] md:gap-3">
+                  {["Date", "Order", "Product", "Amount", "Payment", "Status", "Action"].map(
+                    (heading) => (
+                      <Text
+                        key={heading}
+                        size="small"
+                        weight="plus"
+                        className="text-[11px] uppercase tracking-wide text-ui-fg-muted"
+                      >
+                        {heading}
+                      </Text>
+                    )
+                  )}
+                </div>
+
+                {visibleOrders.length === 0 ? (
+                  <div className="flex flex-col items-center px-6 py-14 text-center">
+                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-ui-bg-subtle text-ui-fg-muted ring-1 ring-ui-border-base">
+                      <Search size={20} />
+                    </div>
+                    <Text weight="plus" className="text-ui-fg-base">
+                      No orders match
+                    </Text>
+                    <Text size="small" className="mt-1 max-w-sm text-ui-fg-subtle">
+                      Try another stage filter or clear the search to see all orders again.
+                    </Text>
+                    <Button
+                      variant="secondary"
+                      className="mt-4"
+                      onClick={() => {
+                        setSearch("")
+                        setSelectedStage("total")
+                        setPage(1)
+                        const params = new URLSearchParams(searchParams.toString())
+                        params.delete("stage")
+                        const qs = params.toString()
+                        router.replace(qs ? `/orders?${qs}` : "/orders")
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-ui-border-base/60">
+                    {visibleOrders.map((order) => {
+                      const products =
+                        order.product_names ||
+                        order.items?.map((item) => item.title) ||
+                        []
+                      const productLabel = products.join(", ") || "N/A"
+                      const itemCount =
+                        order.items?.reduce((sum, item) => sum + (item.quantity || 0), 0) ||
+                        products.length ||
+                        0
+
+                      return (
+                        <div
+                          key={order.id}
+                          className="group grid grid-cols-1 gap-3 px-4 py-3.5 transition-all duration-200 hover:bg-ui-bg-subtle/70 md:grid-cols-[100px_120px_minmax(0,1.3fr)_110px_100px_130px_150px] md:items-center md:gap-3"
+                        >
+                          <div>
+                            <Text size="xsmall" className="mb-0.5 text-ui-fg-muted md:hidden">
+                              Date
+                            </Text>
+                            <Text size="small" className="tabular-nums text-ui-fg-subtle">
+                              {formatDate(order.created_at)}
+                            </Text>
+                          </div>
+
+                          <div>
+                            <Text size="xsmall" className="mb-0.5 text-ui-fg-muted md:hidden">
+                              Order
+                            </Text>
+                            <OrderIdCell
+                              order={order}
+                              clickable
+                              onOpen={() => void openDetails(order)}
+                            />
+                          </div>
+
+                          <div className="min-w-0">
+                            <Text size="xsmall" className="mb-0.5 text-ui-fg-muted md:hidden">
+                              Product
+                            </Text>
+                            <Text
+                              size="small"
+                              weight="plus"
+                              className="truncate"
+                              title={productLabel}
+                            >
+                              {productLabel}
+                            </Text>
+                            <Text size="xsmall" className="mt-0.5 text-ui-fg-muted">
+                              {itemCount} item{itemCount === 1 ? "" : "s"}
+                              {customerName(order) !== "N/A" &&
+                              customerName(order) !== "Hidden after delivery"
+                                ? ` · ${customerName(order)}`
+                                : ""}
+                            </Text>
+                          </div>
+
+                          <div>
+                            <Text size="xsmall" className="mb-0.5 text-ui-fg-muted md:hidden">
+                              Amount
+                            </Text>
+                            <Text size="small" weight="plus" className="tabular-nums">
+                              {formatCurrency(order.total, order.currency_code || "INR")}
+                            </Text>
+                          </div>
+
+                          <div>
+                            <Text size="xsmall" className="mb-0.5 text-ui-fg-muted md:hidden">
+                              Payment
+                            </Text>
+                            <PaymentBadge type={order.payment_type || "Prepaid"} />
+                          </div>
+
+                          <div>
+                            <Text size="xsmall" className="mb-0.5 text-ui-fg-muted md:hidden">
+                              Status
+                            </Text>
+                            <span
+                              className={clx(
+                                "inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset",
+                                stagePillClass(order.vendor_stage)
+                              )}
+                              title={order.vendor_status_label}
+                            >
+                              {order.vendor_status_label}
+                            </span>
+                          </div>
+
+                          <div>{renderAction(order)}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2 text-ui-fg-muted sm:flex-row sm:items-center sm:justify-between">
+                <Text size="small" className="tabular-nums">
+                  Showing {visibleOrders.length ? (page - 1) * PAGE_SIZE + 1 : 0}–
+                  {Math.min(page * PAGE_SIZE, totalFiltered)} of {totalFiltered}
+                </Text>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={page <= 1}
+                    onClick={() => setPage((value) => Math.max(1, value - 1))}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ui-border-base/70 bg-ui-bg-base transition hover:border-ui-border-strong hover:bg-ui-bg-subtle disabled:opacity-40"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <Text size="small" className="min-w-[5.5rem] text-center tabular-nums">
+                    Page {page} of {pageCount}
+                  </Text>
+                  <button
+                    type="button"
+                    disabled={page >= pageCount}
+                    onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ui-border-base/70 bg-ui-bg-base transition hover:border-ui-border-strong hover:bg-ui-bg-subtle disabled:opacity-40"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            </section>
           </>
         )}
 
@@ -959,20 +1255,9 @@ const VendorOrdersContent = () => {
             busy={processing === `easy:${easyShipOrder.id}`}
             pkg={easyPackage}
             pickupInfo={easyPickupInfo}
-            tracking={easyTracking}
             onPackageChange={setEasyPackage}
-            onTrackingChange={setEasyTracking}
             onRefreshRates={() => void refreshEasyCouriers()}
-            onSelect={(id) => {
-              setSelectedCourierId(id)
-              const courier = easyCouriers.find((c) => c.courier_id === id)
-              if (courier?.courier_name) {
-                setEasyTracking((prev) => ({
-                  ...prev,
-                  courier_partner_name: courier.courier_name,
-                }))
-              }
-            }}
+            onSelect={setSelectedCourierId}
             onClose={() => setEasyShipOrder(null)}
             onSubmit={() => void chooseEasyShipping()}
           />
@@ -1007,8 +1292,9 @@ function OrderIdCell({
         onClick={onOpen}
         title={clickable ? "Open order details" : `#${order.display_id || order.id}`}
         className={clx(
-          "min-w-0 truncate rounded-md px-0.5 py-1 text-left text-sm font-semibold text-ui-fg-base",
-          clickable && "hover:text-oweg-700 focus:outline-none focus:ring-2 focus:ring-oweg-500/20"
+          "min-w-0 truncate rounded-md px-0.5 py-1 text-left text-sm font-semibold tabular-nums text-ui-fg-base transition-colors",
+          clickable &&
+            "hover:text-oweg-700 focus:outline-none focus:ring-2 focus:ring-oweg-500/20 dark:hover:text-oweg-300"
         )}
       >
         {idText}
@@ -1022,6 +1308,22 @@ function OrderIdCell({
         <Copy size={13} />
       </button>
     </div>
+  )
+}
+
+function PaymentBadge({ type }: { type: string }) {
+  const prepaid = type.toLowerCase().includes("pre")
+  return (
+    <span
+      className={clx(
+        "inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset",
+        prepaid
+          ? "bg-oweg-500/10 text-oweg-800 ring-oweg-500/20 dark:text-oweg-300"
+          : "bg-ui-bg-subtle text-ui-fg-subtle ring-ui-border-base"
+      )}
+    >
+      {type}
+    </span>
   )
 }
 
@@ -1044,9 +1346,9 @@ function ActionButton({
       disabled={disabled}
       onClick={onClick}
       className={clx(
-        "inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border px-2 text-xs font-medium transition",
+        "inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border px-2 text-xs font-medium transition-all duration-200 active:scale-[0.98]",
         active
-          ? "border-oweg-500/40 bg-oweg-500/10 text-oweg-800"
+          ? "border-oweg-500/40 bg-oweg-500/10 text-oweg-800 shadow-sm dark:text-oweg-300"
           : "border-ui-border-base/70 bg-ui-bg-base text-ui-fg-base hover:border-ui-border-strong hover:bg-ui-bg-subtle",
         disabled && "cursor-not-allowed opacity-50"
       )}
@@ -1098,6 +1400,30 @@ function AcceptConfirmModal({
   )
 }
 
+function orderProgressSteps(stage: VendorStage) {
+  const steps: Array<{ key: VendorStage | "placed"; label: string }> = [
+    { key: "placed", label: "Placed" },
+    { key: "to_accept", label: "Accept" },
+    { key: "to_pack", label: "Pack / ship" },
+    { key: "to_dispatch", label: "Dispatch" },
+    { key: "in_transit", label: "In transit" },
+    { key: "delivered", label: "Delivered" },
+  ]
+  const orderIndex: Record<string, number> = {
+    placed: 0,
+    to_accept: 1,
+    to_pack: 2,
+    to_dispatch: 3,
+    in_transit: 4,
+    delivered: 5,
+  }
+  const current = orderIndex[stage] ?? 1
+  return steps.map((step, index) => ({
+    ...step,
+    state: index < current ? "done" : index === current ? "current" : "todo",
+  }))
+}
+
 function DetailsModal({
   order,
   tracking,
@@ -1108,6 +1434,20 @@ function DetailsModal({
   onClose: () => void
 }) {
   const workflow = order.vendor_workflow || {}
+  const currency = order.currency_code || "INR"
+  const settlement = order.settlement
+  const itemTotal = Number(order.total) || 0
+  const taxable = Number(settlement?.taxable_amount ?? order.taxable_amount ?? 0)
+  const gst = Number(settlement?.gst_amount ?? order.gst_amount ?? 0)
+  const gstRate = Number(settlement?.gst_rate ?? 0)
+  const commission = Number(settlement?.commission_amount ?? order.commission_amount ?? 0)
+  const tcs = Number(settlement?.tcs_amount ?? order.tcs_amount ?? 0)
+  const tds = Number(settlement?.tds_amount ?? order.tds_amount ?? 0)
+  const payout = Number(
+    settlement?.net_amount ??
+      Math.max(0, taxable - commission - tcs - tds)
+  )
+  const progress = orderProgressSteps(order.vendor_stage)
   const timelineSource: Array<[string, string]> = [
     ["Order placed", order.created_at],
     ["Accepted", workflow.accepted_at || ""],
@@ -1117,120 +1457,286 @@ function DetailsModal({
     ["Current status", order.vendor_status_label],
   ]
   const timeline = timelineSource.filter(([, value]) => Boolean(value))
+  const stageBadge =
+    order.vendor_stage === "to_accept"
+      ? { label: "Need vendor acceptance", className: "bg-amber-100 text-amber-900 border-amber-200" }
+      : order.vendor_stage === "delivered"
+        ? { label: "Delivered", className: "bg-emerald-100 text-emerald-900 border-emerald-200" }
+        : { label: order.vendor_status_label || order.vendor_stage, className: "bg-ui-bg-subtle text-ui-fg-base border-ui-border-base" }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-ui-border-base bg-ui-bg-base shadow-xl">
-        <div className="flex items-start justify-between gap-4 border-b border-ui-border-base px-5 py-4">
-          <div>
-            <Heading level="h2" className="text-xl">Order {compactOrderId(order)}</Heading>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4">
+      <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-ui-border-base bg-ui-bg-base shadow-xl">
+        <div className="sticky top-0 z-10 flex flex-wrap items-start justify-between gap-3 border-b border-ui-border-base bg-ui-bg-base/95 px-5 py-4 backdrop-blur">
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Heading level="h2" className="text-xl md:text-2xl">
+                Order {compactOrderId(order)}
+              </Heading>
+              <span className={clx("rounded-full border px-2.5 py-0.5 text-xs font-medium", stageBadge.className)}>
+                {stageBadge.label}
+              </span>
+            </div>
             <Text size="small" className="text-ui-fg-subtle">
-              {customerEmailDisplay(order)}
+              {formatDate(order.created_at)} · {order.payment_type || "Prepaid"} · {customerEmailDisplay(order)}
             </Text>
           </div>
-          <Button variant="secondary" size="small" onClick={onClose}>Close</Button>
+          <Button variant="secondary" size="small" onClick={onClose}>
+            Close
+          </Button>
         </div>
 
-        <div className="grid gap-5 p-5 md:grid-cols-2">
-          <InfoBlock
-            title="Order Details"
-            rows={[
-              ["Order ID", order.id],
-              ["Date", formatDate(order.created_at)],
-              ["Payment", order.payment_type || "Prepaid"],
-              ["Status", order.vendor_status_label],
-              ["Amount", formatCurrency(order.total, order.currency_code || "INR")],
-              [
-                "Taxable",
-                formatCurrency(
-                  Number(order.settlement?.taxable_amount ?? order.taxable_amount ?? 0),
-                  order.currency_code || "INR"
-                ),
-              ],
-              [
-                "GST",
-                formatCurrency(
-                  Number(order.settlement?.gst_amount ?? order.gst_amount ?? 0),
-                  order.currency_code || "INR"
-                ),
-              ],
-              [
-                "TCS",
-                formatCurrency(
-                  Number(order.settlement?.tcs_amount ?? order.tcs_amount ?? 0),
-                  order.currency_code || "INR"
-                ),
-              ],
-              [
-                "TDS",
-                formatCurrency(
-                  Number(order.settlement?.tds_amount ?? order.tds_amount ?? 0),
-                  order.currency_code || "INR"
-                ),
-              ],
-            ]}
-          />
-          <InfoBlock
-            title="Customer Details"
-            rows={[
-              ["Full name", customerName(order)],
-              ["Contact number", customerPhone(order)],
-              ["Email ID", customerEmailDisplay(order)],
-              ["Billing address", addressLineSafe(order, order.billing_address)],
-              ["Shipping address", addressLineSafe(order, order.shipping_address)],
-            ]}
-          />
-          <div className="md:col-span-2">
-            <Text weight="plus" className="mb-2">Products</Text>
-            <div className="overflow-hidden rounded-lg border border-ui-border-base/70">
-              {(order.items || []).map((item) => (
-                <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_70px_100px] gap-3 border-b border-ui-border-base/70 px-3 py-2 last:border-b-0">
-                  <Text size="small" className="truncate">{item.title}</Text>
-                  <Text size="small">Qty {item.quantity}</Text>
-                  <Text size="small" className="text-right">{formatCurrency(Number(item.unit_price || 0), order.currency_code || "INR")}</Text>
+        <div className="space-y-5 p-5">
+          <div className="rounded-xl border border-ui-border-base/70 bg-ui-bg-subtle/20 p-4">
+            <Text weight="plus" className="mb-3 text-sm">
+              Order progress
+            </Text>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              {progress.map((step) => (
+                <div
+                  key={step.key}
+                  className={clx(
+                    "rounded-lg border px-2.5 py-2",
+                    step.state === "done" && "border-emerald-500/30 bg-emerald-500/10",
+                    step.state === "current" && "border-amber-500/40 bg-amber-500/10",
+                    step.state === "todo" && "border-ui-border-base/60 bg-ui-bg-base"
+                  )}
+                >
+                  <div className="mb-1 flex items-center gap-1.5">
+                    <span
+                      className={clx(
+                        "h-2 w-2 rounded-full",
+                        step.state === "done" && "bg-emerald-500",
+                        step.state === "current" && "bg-amber-500",
+                        step.state === "todo" && "bg-ui-fg-muted/40"
+                      )}
+                    />
+                    <Text size="xsmall" className="text-ui-fg-muted uppercase tracking-wide">
+                      {step.state === "done" ? "Done" : step.state === "current" ? "Now" : "Next"}
+                    </Text>
+                  </div>
+                  <Text size="small" weight="plus">
+                    {step.label}
+                  </Text>
                 </div>
               ))}
             </div>
           </div>
-          <InfoBlock title="Shipping" rows={[
-            ["Method", workflow.shipping_method === "easy" ? "Easy Shipping" : workflow.shipping_method === "self" ? "Self Shipping" : "Not selected"],
-            [
-              "Booked through",
-              workflow.shipping_method === "easy"
-                ? "Shiprocket"
-                : workflow.self_tracking_source === "shiprocket"
-                  ? "Shiprocket"
-                  : workflow.self_tracking_source === "carrier_api"
-                    ? "Carrier API"
-                    : workflow.shipping_method === "self"
-                      ? "Manual"
-                      : "N/A",
-            ],
-            [
-              "Courier",
-              workflow.easy_courier_partner ||
-                workflow.self_courier_partner ||
-                (workflow.shipping_method === "easy" ? "Shiprocket" : "N/A"),
-            ],
-            [
-              "AWB / Tracking",
-              workflow.tracking_number ||
-                workflow.shiprocket_awb ||
-                workflow.self_awb ||
-                (workflow.shipping_method === "easy" ? "Pending from Shiprocket" : "N/A"),
-            ],
-            ["Tracking URL", workflow.tracking_url || "N/A"],
-            ...(workflow.shipping_method === "easy"
-              ? [
-                  ["Shiprocket order", workflow.shiprocket_order_id ? String(workflow.shiprocket_order_id) : "N/A"] as [string, string],
-                  ["Shiprocket shipment", workflow.shiprocket_shipment_id ? String(workflow.shiprocket_shipment_id) : "N/A"] as [string, string],
-                ]
-              : [["Packing", workflow.self_packing_info || "N/A"] as [string, string]]),
-          ]} />
-          <InfoBlock title="Timeline" rows={timeline.map(([label, value]) => [label, String(value)])} />
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+            <div className="space-y-5">
+              <div className="rounded-xl border border-ui-border-base/70 bg-ui-bg-base p-4">
+                <Text weight="plus" className="mb-3">
+                  Order items
+                </Text>
+                <div className="overflow-hidden rounded-lg border border-ui-border-base/70">
+                  {(order.items || []).map((item) => (
+                    <div
+                      key={item.id}
+                      className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-ui-border-base/70 px-3 py-3 last:border-b-0"
+                    >
+                      <div className="min-w-0">
+                        <Text size="small" weight="plus" className="truncate">
+                          {item.title}
+                        </Text>
+                        <Text size="xsmall" className="mt-0.5 text-ui-fg-subtle">
+                          {[item.variant_title, `Qty ${item.quantity}`].filter(Boolean).join(" · ")}
+                        </Text>
+                      </div>
+                      <Text size="small" weight="plus" className="whitespace-nowrap">
+                        {formatCurrency(Number(item.unit_price || 0) * Number(item.quantity || 1), currency)}
+                      </Text>
+                    </div>
+                  ))}
+                  {!(order.items || []).length && (
+                    <div className="px-3 py-4">
+                      <Text size="small" className="text-ui-fg-subtle">
+                        No line items
+                      </Text>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-ui-border-base/70 bg-ui-bg-base p-4">
+                <Text weight="plus" className="mb-3">
+                  Customer & delivery
+                </Text>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <InfoMini label="Customer" value={customerName(order)} />
+                  <InfoMini label="Contact" value={customerPhone(order)} />
+                  <InfoMini label="Email" value={customerEmailDisplay(order)} />
+                  <InfoMini
+                    label="Payment"
+                    value={`${order.payment_type || "Prepaid"}${order.payment_type === "PostPaid" ? "" : " · Paid online"}`}
+                  />
+                </div>
+                <div className="mt-3 space-y-2">
+                  <div>
+                    <Text size="xsmall" className="text-ui-fg-muted">
+                      Shipping address
+                    </Text>
+                    <Text size="small" className="mt-0.5 break-words">
+                      {addressLineSafe(order, order.shipping_address)}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xsmall" className="text-ui-fg-muted">
+                      Billing address
+                    </Text>
+                    <Text size="small" className="mt-0.5 break-words">
+                      {addressLineSafe(order, order.billing_address)}
+                    </Text>
+                  </div>
+                </div>
+              </div>
+
+              <InfoBlock
+                title="Shipping"
+                rows={[
+                  [
+                    "Method",
+                    workflow.shipping_method === "easy"
+                      ? "Easy Shipping"
+                      : workflow.shipping_method === "self"
+                        ? "Self Shipping"
+                        : "Not selected",
+                  ],
+                  [
+                    "Booked through",
+                    workflow.shipping_method === "easy"
+                      ? "Shiprocket"
+                      : workflow.self_tracking_source === "shiprocket"
+                        ? "Shiprocket"
+                        : workflow.self_tracking_source === "carrier_api"
+                          ? "Carrier API"
+                          : workflow.shipping_method === "self"
+                            ? "Manual"
+                            : "N/A",
+                  ],
+                  [
+                    "Courier",
+                    workflow.easy_courier_partner ||
+                      workflow.self_courier_partner ||
+                      (workflow.shipping_method === "easy" ? "Shiprocket" : "N/A"),
+                  ],
+                  [
+                    "AWB / Tracking",
+                    workflow.tracking_number ||
+                      workflow.shiprocket_awb ||
+                      workflow.self_awb ||
+                      (workflow.shipping_method === "easy" ? "Pending from Shiprocket" : "N/A"),
+                  ],
+                  ["Tracking URL", workflow.tracking_url || "N/A"],
+                  ...(workflow.shipping_method === "easy"
+                    ? [
+                        [
+                          "Shiprocket order",
+                          workflow.shiprocket_order_id ? String(workflow.shiprocket_order_id) : "N/A",
+                        ] as [string, string],
+                        [
+                          "Shiprocket shipment",
+                          workflow.shiprocket_shipment_id
+                            ? String(workflow.shiprocket_shipment_id)
+                            : "N/A",
+                        ] as [string, string],
+                      ]
+                    : [["Packing", workflow.self_packing_info || "N/A"] as [string, string]]),
+                ]}
+              />
+            </div>
+
+            <div className="space-y-5">
+              <div className="rounded-xl border border-ui-border-base/70 bg-gradient-to-b from-ui-bg-subtle/40 to-ui-bg-base p-4">
+                <Text weight="plus" className="mb-1">
+                  Payment summary
+                </Text>
+                <Text size="xsmall" className="mb-3 text-ui-fg-muted">
+                  GST-inclusive catalog price split for settlement
+                </Text>
+                <div className="space-y-2 text-sm">
+                  <SummaryRow label="Item total" value={formatCurrency(itemTotal, currency)} />
+                  <SummaryRow label="Taxable value" value={formatCurrency(taxable, currency)} />
+                  <SummaryRow
+                    label={gstRate > 0 ? `GST (${gstRate}%)` : "GST"}
+                    value={formatCurrency(gst, currency)}
+                    hint={
+                      gst <= 0
+                        ? "Set Tax Code / GST on the product to split GST from the inclusive price"
+                        : undefined
+                    }
+                  />
+                  <SummaryRow
+                    label="Marketplace fee"
+                    value={`−${formatCurrency(commission, currency)}`}
+                    muted
+                  />
+                  <SummaryRow label="TCS" value={`−${formatCurrency(tcs, currency)}`} muted />
+                  <SummaryRow label="TDS" value={`−${formatCurrency(tds, currency)}`} muted />
+                  <div className="my-2 border-t border-ui-border-base/70" />
+                  <div className="flex items-center justify-between gap-3">
+                    <Text weight="plus">Estimated payout</Text>
+                    <Text weight="plus" className="text-base text-emerald-700">
+                      {formatCurrency(payout, currency)}
+                    </Text>
+                  </div>
+                </div>
+                <Text size="xsmall" className="mt-3 leading-relaxed text-ui-fg-muted">
+                  Payout = Taxable − commission − TCS − TDS. Courier fees are deducted later at
+                  dispatch / return.
+                </Text>
+              </div>
+
+              <InfoBlock
+                title="Order meta"
+                rows={[
+                  ["Order ID", order.id],
+                  ["Display ID", compactOrderId(order)],
+                  ["Status", order.vendor_status_label],
+                  ["Created", formatDate(order.created_at)],
+                ]}
+              />
+
+              <InfoBlock
+                title="Timeline"
+                rows={timeline.map(([label, value]) => [label, String(value)])}
+              />
+            </div>
+          </div>
+
           {tracking && <TrackingPanel tracking={tracking} />}
         </div>
       </div>
+    </div>
+  )
+}
+
+function SummaryRow({
+  label,
+  value,
+  muted,
+  hint,
+}: {
+  label: string
+  value: string
+  muted?: boolean
+  hint?: string
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <Text size="small" className={muted ? "text-ui-fg-subtle" : "text-ui-fg-base"}>
+          {label}
+        </Text>
+        <Text size="small" className={muted ? "text-ui-fg-subtle" : "text-ui-fg-base"}>
+          {value}
+        </Text>
+      </div>
+      {hint ? (
+        <Text size="xsmall" className="mt-0.5 text-amber-700">
+          {hint}
+        </Text>
+      ) : null}
     </div>
   )
 }
@@ -1351,9 +1857,7 @@ function EasyShippingModal({
   busy,
   pkg,
   pickupInfo,
-  tracking,
   onPackageChange,
-  onTrackingChange,
   onRefreshRates,
   onSelect,
   onClose,
@@ -1380,17 +1884,7 @@ function EasyShippingModal({
     applied_weight?: number
     package_source?: "product" | "default" | "manual"
   }
-  tracking: {
-    courier_partner_name: string
-    tracking_number: string
-    tracking_url: string
-  }
   onPackageChange: (next: { weight: string; length: string; breadth: string; height: string }) => void
-  onTrackingChange: (next: {
-    courier_partner_name: string
-    tracking_number: string
-    tracking_url: string
-  }) => void
   onRefreshRates: () => void
   onSelect: (id: number) => void
   onClose: () => void
@@ -1398,8 +1892,6 @@ function EasyShippingModal({
 }) {
   const setField = (key: keyof typeof pkg, value: string) =>
     onPackageChange({ ...pkg, [key]: value })
-  const setTrackingField = (key: keyof typeof tracking, value: string) =>
-    onTrackingChange({ ...tracking, [key]: value })
 
   const pickupLabel = [
     pickupInfo.pickup_address,
@@ -1415,7 +1907,7 @@ function EasyShippingModal({
         <div className="border-b border-ui-border-base px-5 py-4">
           <Heading level="h2" className="text-xl">Book Easy Shipping</Heading>
           <Text size="small" className="text-ui-fg-subtle">
-            {compactOrderId(order)} · courier, tracking number, and links
+            {compactOrderId(order)} · Shiprocket rates & courier partners
           </Text>
         </div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
@@ -1480,7 +1972,14 @@ function EasyShippingModal({
           </div>
 
           <div className="space-y-2">
-            <Text size="small" weight="plus">Available courier services</Text>
+            <div className="flex items-center justify-between gap-2">
+              <Text size="small" weight="plus">Available courier services</Text>
+              {!loading && couriers.length > 0 ? (
+                <Text size="xsmall" className="text-ui-fg-subtle">
+                  {couriers.length} from Shiprocket
+                </Text>
+              ) : null}
+            </div>
             {loading ? (
               <Text size="small" className="text-ui-fg-subtle">Loading couriers…</Text>
             ) : couriers.length === 0 ? (
@@ -1488,81 +1987,63 @@ function EasyShippingModal({
                 No courier partners for this package / pincode. Adjust weight or size and refresh.
               </Text>
             ) : (
-              <ul className="space-y-2">
-                {couriers.map((courier) => {
-                  const selected = selectedCourierId === courier.courier_id
-                  return (
-                    <li key={courier.courier_id}>
-                      <button
-                        type="button"
-                        onClick={() => onSelect(courier.courier_id)}
-                        className={clx(
-                          "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-3 text-left transition",
-                          selected
-                            ? "border-ui-fg-interactive bg-ui-bg-interactive/10"
-                            : "border-ui-border-base/70 hover:border-ui-border-strong"
-                        )}
-                      >
-                        <div>
-                          <Text weight="plus" size="small">{courier.courier_name}</Text>
-                          <Text size="xsmall" className="text-ui-fg-subtle">
-                            {courier.etd ? `ETA ${courier.etd}` : "ETA n/a"}
-                            {courier.cod_charges != null && Number(courier.cod_charges) > 0
-                              ? ` · COD fee ${formatCurrency(
-                                  Number(courier.cod_charges),
-                                  order.currency_code || "INR"
-                                )}`
-                              : ""}
-                          </Text>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <Text weight="plus" size="small">
-                            {courier.rate != null
-                              ? formatCurrency(Number(courier.rate), order.currency_code || "INR")
-                              : "—"}
-                          </Text>
-                          <Text size="xsmall" className="block text-ui-fg-subtle">
-                            {courier.rto_charges != null
-                              ? `RTO ${formatCurrency(
-                                  Number(courier.rto_charges),
-                                  order.currency_code || "INR"
-                                )}`
-                              : "RTO n/a"}
-                          </Text>
-                        </div>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
+              <>
+                {couriers.length === 1 ? (
+                  <Text size="xsmall" className="text-ui-fg-muted">
+                    Shiprocket only returned 1 serviceable courier for this pickup → delivery
+                    pincode and package. That is usually lane coverage on your Shiprocket
+                    account, not a UI filter.
+                  </Text>
+                ) : null}
+                <ul className="space-y-2">
+                  {couriers.map((courier) => {
+                    const selected = selectedCourierId === courier.courier_id
+                    return (
+                      <li key={courier.courier_id}>
+                        <button
+                          type="button"
+                          onClick={() => onSelect(courier.courier_id)}
+                          className={clx(
+                            "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-3 text-left transition",
+                            selected
+                              ? "border-ui-fg-interactive bg-ui-bg-interactive/10"
+                              : "border-ui-border-base/70 hover:border-ui-border-strong"
+                          )}
+                        >
+                          <div>
+                            <Text weight="plus" size="small">{courier.courier_name}</Text>
+                            <Text size="xsmall" className="text-ui-fg-subtle">
+                              {courier.etd ? `ETA ${courier.etd}` : "ETA n/a"}
+                              {courier.cod_charges != null && Number(courier.cod_charges) > 0
+                                ? ` · COD fee ${formatCurrency(
+                                    Number(courier.cod_charges),
+                                    order.currency_code || "INR"
+                                  )}`
+                                : ""}
+                            </Text>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <Text weight="plus" size="small">
+                              {courier.rate != null
+                                ? formatCurrency(Number(courier.rate), order.currency_code || "INR")
+                                : "—"}
+                            </Text>
+                            <Text size="xsmall" className="block text-ui-fg-subtle">
+                              {courier.rto_charges != null
+                                ? `RTO ${formatCurrency(
+                                    Number(courier.rto_charges),
+                                    order.currency_code || "INR"
+                                  )}`
+                                : "RTO n/a"}
+                            </Text>
+                          </div>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </>
             )}
-          </div>
-
-          <div className="space-y-3 rounded-lg border border-ui-border-base/70 p-3">
-            <div>
-              <Text size="small" weight="plus">Courier & tracking links</Text>
-              <Text size="xsmall" className="text-ui-fg-subtle">
-                Add courier name, tracking number, and optional tracking URL
-              </Text>
-            </div>
-            <Field
-              label="Courier name"
-              value={tracking.courier_partner_name}
-              placeholder="e.g. Delhivery, BlueDart"
-              onChange={(value) => setTrackingField("courier_partner_name", value)}
-            />
-            <Field
-              label="Tracking number"
-              value={tracking.tracking_number}
-              placeholder="123-456-789 (optional — AWB filled after booking)"
-              onChange={(value) => setTrackingField("tracking_number", value)}
-            />
-            <Field
-              label="Tracking URL"
-              value={tracking.tracking_url}
-              placeholder="https://example.com/tracking/123"
-              onChange={(value) => setTrackingField("tracking_url", value)}
-            />
           </div>
         </div>
         <div className="flex justify-end gap-2 border-t border-ui-border-base px-5 py-4">
@@ -1573,8 +2054,7 @@ function EasyShippingModal({
               busy ||
               loading ||
               !selectedCourierId ||
-              couriers.length === 0 ||
-              !tracking.courier_partner_name.trim()
+              couriers.length === 0
             }
           >
             {busy ? "Booking…" : "Create shipment & AWB"}
@@ -1626,8 +2106,9 @@ function SelfShippingModal({
           <Heading level="h2" className="text-xl">Self Shipping</Heading>
           <Text size="small" className="text-ui-fg-subtle">{compactOrderId(order)}</Text>
           <Text size="small" className="mt-2 text-ui-fg-subtle">
-            Like Amazon: enter courier + tracking ID, then RTD to confirm shipment. Status moves to
-            In Transit immediately and updates automatically as the carrier scans the package.
+            Like Amazon: enter courier + tracking ID, then RTD. Order moves to{" "}
+            <strong>To Dispatch</strong>. Click Confirm ship when the courier picks it up to move
+            to In Transit.
           </Text>
         </div>
         <div className="max-h-[70vh] space-y-4 overflow-y-auto p-5">
@@ -1646,7 +2127,7 @@ function SelfShippingModal({
             >
               <option value="shiprocket">Shiprocket aggregator (auto status)</option>
               <option value="carrier_api">Direct carrier API (auto status)</option>
-              <option value="manual">Tracking link (Shipped on RTD; delivery needs feed/admin)</option>
+              <option value="manual">Tracking link (Confirm ship moves to In Transit; delivery may need admin/feed)</option>
             </select>
           </label>
           <Field

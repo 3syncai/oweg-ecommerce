@@ -12,6 +12,7 @@ import {
   formatVendorOrder,
   getVendorProductIds,
   setVendorOrderCorsHeaders,
+  enrichOrdersWithProductGstMetadata,
   type VendorOrderStage,
 } from "../../../lib/vendor-order-workflow"
 import { fetchVendorCommissionRate } from "../../../lib/vendor-earnings"
@@ -49,6 +50,7 @@ const LIST_FIELDS = [
   "items.product_id",
   "items.metadata",
   "items.variant.product_id",
+  "items.variant.product.metadata",
   "items.variant_sku",
   "fulfillments.id",
   "fulfillments.shipped_at",
@@ -223,6 +225,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       }
     } catch (rateErr) {
       console.warn("[Orders API] settlement rates unavailable:", rateErr)
+    }
+
+    try {
+      await enrichOrdersWithProductGstMetadata(pool, pageOrdersData || [])
+    } catch (gstErr) {
+      console.warn("[Orders API] product GST enrich failed:", gstErr)
     }
 
     const byId = new Map(

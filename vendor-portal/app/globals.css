@@ -50,10 +50,74 @@
   --bg-component: rgba(16, 22, 19, 1);
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
 @layer components {
   .oweg-card {
     @apply rounded-xl border border-oweg-200/60 bg-ui-bg-base shadow-sm shadow-oweg-500/[0.04]
-      transition-all duration-200 hover:border-oweg-300/70 hover:shadow-md hover:shadow-oweg-500/[0.06];
+      transition-all duration-300 ease-out
+      hover:-translate-y-0.5 hover:border-oweg-300/70 hover:shadow-md hover:shadow-oweg-500/[0.08];
+  }
+
+  .oweg-scroll {
+    @apply scroll-smooth;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 210, 106, 0.35) transparent;
+  }
+
+  .oweg-scroll::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .oweg-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .oweg-scroll::-webkit-scrollbar-thumb {
+    background: rgba(0, 210, 106, 0.28);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .oweg-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 210, 106, 0.45);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .oweg-stagger > * {
+    animation: fade-in-up 0.4s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+
+  .oweg-stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .oweg-stagger > *:nth-child(2) { animation-delay: 45ms; }
+  .oweg-stagger > *:nth-child(3) { animation-delay: 90ms; }
+  .oweg-stagger > *:nth-child(4) { animation-delay: 135ms; }
+  .oweg-stagger > *:nth-child(5) { animation-delay: 180ms; }
+  .oweg-stagger > *:nth-child(6) { animation-delay: 225ms; }
+  .oweg-stagger > *:nth-child(7) { animation-delay: 270ms; }
+  .oweg-stagger > *:nth-child(8) { animation-delay: 315ms; }
+
+  .oweg-popover {
+    @apply origin-top-right transition-all duration-200 ease-out;
+  }
+
+  .oweg-popover-open {
+    @apply pointer-events-auto translate-y-0 opacity-100 scale-100;
+  }
+
+  .oweg-popover-closed {
+    @apply pointer-events-none -translate-y-1 opacity-0 scale-[0.97];
   }
 
   .dark .oweg-card {
@@ -140,22 +204,34 @@
 }
 
 .animate-fade-in-up {
-  animation: fade-in-up 0.24s ease-out both;
+  animation: fade-in-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) backwards;
   will-change: transform, opacity;
 }
 
 .animate-fade-in-up-slow {
-  animation: fade-in-up 0.36s ease-out both;
+  animation: fade-in-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
   will-change: transform, opacity;
 }
+
+.animate-delay-1 { animation-delay: 60ms; }
+.animate-delay-2 { animation-delay: 120ms; }
+.animate-delay-3 { animation-delay: 180ms; }
+.animate-delay-4 { animation-delay: 240ms; }
 
 @media (prefers-reduced-motion: reduce) {
   .animate-float,
   .animate-float-slow,
   .animate-shake,
   .animate-fade-in-up,
-  .animate-fade-in-up-slow {
+  .animate-fade-in-up-slow,
+  .oweg-stagger > * {
     animation: none !important;
+  }
+
+  .oweg-card,
+  .oweg-popover {
+    transition: none !important;
+    transform: none !important;
   }
 }
 
