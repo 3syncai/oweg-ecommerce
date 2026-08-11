@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react"
 import { vendorPulseApi } from "@/lib/api/client"
+import { clearPageCache } from "@/lib/page-cache"
 
 export const VENDOR_DATA_CHANGED = "oweg:vendor-data-changed"
 export const VENDOR_ORDERS_CHANGED = "oweg:vendor-orders-changed"
@@ -11,6 +12,7 @@ export type VendorPulseSnapshot = Awaited<ReturnType<typeof vendorPulseApi.get>>
 /** Notify shell + live pages that vendor data changed (after mutations). */
 export function notifyVendorDataChanged() {
   if (typeof window === "undefined") return
+  clearPageCache()
   window.dispatchEvent(new Event(VENDOR_DATA_CHANGED))
   window.dispatchEvent(new Event(VENDOR_ORDERS_CHANGED))
 }

@@ -14,6 +14,7 @@ import {
   toast,
 } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
+import PageSkeleton from "@/components/PageSkeleton"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
 import GstTaxCodeField from "@/components/GstTaxCodeField"
 import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorInventoryApi } from "@/lib/api/client"
@@ -641,11 +642,7 @@ const VendorProductEditPage = () => {
   let content
 
   if (loading) {
-    content = (
-      <Container className="p-6">
-        <Text>Loading product editor...</Text>
-      </Container>
-    )
+    content = <PageSkeleton label="Loading product editor…" />
   } else if (loadError) {
     content = (
       <Container className="p-6">

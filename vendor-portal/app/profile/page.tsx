@@ -13,6 +13,7 @@ import {
   toast,
 } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
+import PageSkeleton from "@/components/PageSkeleton"
 import { vendorAuthApi, vendorProfileApi } from "@/lib/api/client"
 import { useRouter } from "next/navigation"
 import {
@@ -380,13 +381,7 @@ const VendorProfilePage = () => {
   if (loading) {
     return (
       <VendorShell>
-        <div className="p-6 max-w-6xl mx-auto space-y-6">
-          <div className="h-40 rounded-2xl bg-ui-bg-subtle animate-pulse" />
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 h-96 rounded-xl bg-ui-bg-subtle animate-pulse" />
-            <div className="h-96 rounded-xl bg-ui-bg-subtle animate-pulse" />
-          </div>
-        </div>
+        <PageSkeleton label="Loading profile…" />
       </VendorShell>
     )
   }

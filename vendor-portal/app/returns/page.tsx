@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react"
 import { Button, Container, Heading, Text } from "@medusajs/ui"
 import { ArrowPath, MagnifyingGlass, ChevronLeft, ChevronRight } from "@medusajs/icons"
 import VendorShell from "@/components/VendorShell"
-import PageSkeleton from "@/components/PageSkeleton"
 import EmptyState from "@/components/EmptyState"
 import StatCard from "@/components/dashboard/StatCard"
 import StatusDot, { returnStatusVariant } from "@/components/dashboard/StatusDot"
@@ -14,9 +13,12 @@ import {
   type VendorReturnRequest,
 } from "@/lib/api/client"
 import { notifyVendorDataChanged, useVendorLive } from "@/lib/useVendorLive"
+import { hasPageCache, pageCacheKey, peekPageCache, writePageCache } from "@/lib/page-cache"
+import PageLoader from "@/components/PageLoader"
 import { useRouter } from "next/navigation"
 
 const PAGE_SIZE = 10
+const RETURNS_ROUTE = "returns"
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(amount)
@@ -51,17 +53,50 @@ const EMPTY_COUNTS: ReturnCounts = {
   needs_logistics: 0,
 }
 
+type ReturnsCachePayload = {
+  returns: VendorReturnRequest[]
+  counts: ReturnCounts
+  totalFiltered: number
+}
+
+const parseReturnsPayload = (data: Awaited<ReturnType<typeof vendorReturnsApi.list>>): ReturnsCachePayload => {
+  const nextReturns = data?.return_requests || []
+  const nextCounts: ReturnCounts = data?.counts
+    ? {
+        total: Number(data.counts.total) || 0,
+        pending_approval: Number(data.counts.pending_approval) || 0,
+        in_progress: Number(data.counts.in_progress) || 0,
+        pickup: Number((data.counts as any).pickup) || 0,
+        refunded: Number((data.counts as any).refunded) || 0,
+        needs_logistics: Number((data.counts as any).needs_logistics) || 0,
+      }
+    : { ...EMPTY_COUNTS }
+  return {
+    returns: nextReturns,
+    counts: nextCounts,
+    totalFiltered: typeof data?.count === "number" ? data.count : nextReturns.length,
+  }
+}
+
 const VendorReturnsPage = () => {
   const router = useRouter()
-  const [returns, setReturns] = useState<VendorReturnRequest[]>([])
-  const [counts, setCounts] = useState<ReturnCounts>(EMPTY_COUNTS)
-  const [totalFiltered, setTotalFiltered] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [searchDebounced, setSearchDebounced] = useState("")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [page, setPage] = useState(1)
+
+  const returnsCacheKey = pageCacheKey(RETURNS_ROUTE, {
+    status: statusFilter,
+    page,
+    q: searchDebounced || undefined,
+  })
+  const cached = peekPageCache<ReturnsCachePayload>(returnsCacheKey)
+
+  const [returns, setReturns] = useState<VendorReturnRequest[]>(() => cached?.returns ?? [])
+  const [counts, setCounts] = useState<ReturnCounts>(() => cached?.counts ?? EMPTY_COUNTS)
+  const [totalFiltered, setTotalFiltered] = useState(() => cached?.totalFiltered ?? 0)
+  const [loading, setLoading] = useState(() => !hasPageCache(returnsCacheKey))
+  const [error, setError] = useState<string | null>(null)
   const [activeReturnId, setActiveReturnId] = useState<string | null>(null)
   const [couriers, setCouriers] = useState<VendorReturnCourier[]>([])
   const [couriersLoading, setCouriersLoading] = useState(false)
@@ -86,6 +121,21 @@ const VendorReturnsPage = () => {
   }, [search])
 
   const loadReturns = useCallback(async () => {
+    const cacheKey = pageCacheKey(RETURNS_ROUTE, {
+      status: statusFilter,
+      page,
+      q: searchDebounced || undefined,
+    })
+    const hit = peekPageCache<ReturnsCachePayload>(cacheKey)
+    if (hit) {
+      setReturns(hit.returns)
+      setCounts(hit.counts)
+      setTotalFiltered(hit.totalFiltered)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+
     try {
       const data = await vendorReturnsApi.list({
         limit: PAGE_SIZE,
@@ -93,20 +143,11 @@ const VendorReturnsPage = () => {
         status: statusFilter === "all" ? undefined : statusFilter,
         q: searchDebounced || undefined,
       })
-      setReturns(data?.return_requests || [])
-      if (data?.counts) {
-        setCounts({
-          total: Number(data.counts.total) || 0,
-          pending_approval: Number(data.counts.pending_approval) || 0,
-          in_progress: Number(data.counts.in_progress) || 0,
-          pickup: Number((data.counts as any).pickup) || 0,
-          refunded: Number((data.counts as any).refunded) || 0,
-          needs_logistics: Number((data.counts as any).needs_logistics) || 0,
-        })
-      }
-      setTotalFiltered(
-        typeof data?.count === "number" ? data.count : (data?.return_requests || []).length
-      )
+      const payload = parseReturnsPayload(data)
+      setReturns(payload.returns)
+      setCounts(payload.counts)
+      setTotalFiltered(payload.totalFiltered)
+      writePageCache(cacheKey, payload)
       setError(null)
     } catch (e: any) {
       if (e.status === 403) {
@@ -263,9 +304,21 @@ const VendorReturnsPage = () => {
 
   let content
 
-  if (loading) {
-    content = <PageSkeleton label="Loading returns…" stats={4} rows={6} cols={6} showAction={false} />
-  } else if (error) {
+  if (loading && returns.length === 0 && counts.total === 0) {
+    content = (
+      <Container className="mx-auto max-w-7xl space-y-5 p-4 md:p-6 md:space-y-6">
+        <div className="animate-fade-in-up">
+          <Heading level="h1" className="text-2xl tracking-tight md:text-3xl">
+            Returns
+          </Heading>
+          <Text className="mt-1 text-ui-fg-subtle">
+            Return and replacement requests for your products
+          </Text>
+        </div>
+        <PageLoader label="Loading returns…" className="min-h-[40vh]" />
+      </Container>
+    )
+  } else if (error && returns.length === 0 && counts.total === 0) {
     content = (
       <Container className="mx-auto max-w-7xl p-4 md:p-6">
         <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-6">

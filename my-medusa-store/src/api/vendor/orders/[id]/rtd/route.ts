@@ -8,7 +8,6 @@ import {
   setVendorOrderCorsHeaders,
   updateVendorOrderWorkflow,
 } from "../../../../../lib/vendor-order-workflow"
-import { syncVendorShipmentTracking } from "../../../../../lib/vendor-shipment-tracking-sync"
 
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
   setVendorOrderCorsHeaders(res)
@@ -17,9 +16,10 @@ export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
 
 /**
  * POST /vendor/orders/:id/rtd
- * Ready to Dispatch / Confirm shipment (Amazon-style):
- * - Self + Easy with tracking → fulfill + ship → In Transit immediately
- * - Carrier polling (job + Track) then advances to Delivered automatically
+ * Ready to Dispatch:
+ * - Requires invoice + shipping method + AWB/tracking
+ * - Creates fulfillment (packed) but does NOT mark shipped yet
+ * - Parks order in **To Dispatch** until vendor clicks Confirm ship / Dispatch
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   setVendorOrderCorsHeaders(res)
@@ -55,39 +55,25 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       })
     }
 
-    // Amazon "Confirm shipment": tracking ID present → mark Shipped / In Transit now
+    // Pack / fulfill only — shipping (In Transit) happens on Confirm ship
     const { fulfillment_id } = await fulfillAndShipVendorItems(
       req,
       result.order,
       auth.vendor_id,
       result.vendorProductIds,
       workflow,
-      { createShipment: true }
+      { createShipment: false }
     )
 
     const now = new Date().toISOString()
 
     const metadata = await updateVendorOrderWorkflow(req, result.order, auth.vendor_id, {
-      stage: "in_transit",
+      stage: "to_dispatch",
       rtd_at: workflow.rtd_at || now,
       medusa_fulfillment_id: fulfillment_id,
-      medusa_shipped_at: workflow.medusa_shipped_at || now,
-      shiprocket_status: workflow.shiprocket_status || "shipped",
-      dispatched_at: workflow.dispatched_at || now,
+      // Keep pre-dispatch until Confirm ship
+      shiprocket_status: workflow.shiprocket_status || "ready_to_ship",
     })
-
-    // Best-effort: pull first carrier scan right after confirm
-    try {
-      await syncVendorShipmentTracking({
-        container: req.scope,
-        order: { ...result.order, metadata },
-        vendorId: auth.vendor_id,
-        vendorProductIds: result.vendorProductIds,
-        ensureShippedOnMovement: true,
-      })
-    } catch (syncErr: any) {
-      console.warn("[Vendor RTD] post-confirm tracking sync skipped:", syncErr?.message)
-    }
 
     const latest = await getVendorOrderOrRespond(req, res, auth.vendor_id, orderId)
     const order = latest?.order || { ...result.order, metadata }
@@ -97,9 +83,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       fulfillment_id,
       automated: {
         fulfilled: true,
-        shipped: true,
-        stage: "in_transit",
-        amazon_style: true,
+        shipped: false,
+        stage: "to_dispatch",
       },
     })
   } catch (error: any) {

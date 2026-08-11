@@ -1,4 +1,5 @@
 import { vendorAuthApi } from "@/lib/api/client";
+import { clearPageCache } from "@/lib/page-cache";
 
 /** localStorage keys written by the vendor portal client. */
 const VENDOR_LOCAL_STORAGE_KEYS = [
@@ -15,6 +16,8 @@ const VENDOR_AUTH_COOKIE = "vendor_token=; path=/; max-age=0; SameSite=Lax";
  */
 export async function clearVendorClientCache(): Promise<void> {
   if (typeof window === "undefined") return;
+
+  clearPageCache();
 
   for (const key of VENDOR_LOCAL_STORAGE_KEYS) {
     try {

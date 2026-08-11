@@ -27,9 +27,16 @@ const DashboardSection = ({
     className={clx("animate-fade-in-up flex flex-col", className)}
   >
     <div className="mb-3 flex items-center justify-between gap-3">
-      <Heading level="h3">{title}</Heading>
+      <Heading level="h3" className="tracking-tight">
+        {title}
+      </Heading>
       {action && (
-        <Button variant="transparent" size="small" onClick={action.onClick}>
+        <Button
+          variant="transparent"
+          size="small"
+          className="transition-transform active:scale-[0.98]"
+          onClick={action.onClick}
+        >
           {action.label}
           <ArrowUpRightMini />
         </Button>

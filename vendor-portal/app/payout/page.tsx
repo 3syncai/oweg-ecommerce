@@ -11,7 +11,9 @@ import EmptyState from "@/components/EmptyState"
 import PayoutUnlockTimer from "@/components/PayoutUnlockTimer"
 import StatCard from "@/components/dashboard/StatCard"
 import { vendorPayoutsApi, type VendorPaymentsView } from "@/lib/api/client"
-import { ArrowPath, CurrencyDollar, Clock, ArchiveBox } from "@medusajs/icons"
+import { useVendorLive } from "@/lib/useVendorLive"
+import { hasPageCache, peekPageCache, writePageCache } from "@/lib/page-cache"
+import { ArrowPath, CurrencyDollar, Clock, ArchiveBox, ShoppingCart, Tag } from "@medusajs/icons"
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(amount)
@@ -154,7 +156,7 @@ const MetricChip = ({
   value: string
   tone?: "neutral" | "positive" | "negative"
 }) => (
-  <div className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-ui-border-base/60 bg-ui-bg-subtle/40 px-3 py-2.5">
+  <div className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-ui-border-base/60 bg-ui-bg-subtle/40 px-3 py-2.5 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-ui-border-strong hover:bg-ui-bg-base hover:shadow-sm">
     <Text size="xsmall" className="uppercase tracking-wide text-ui-fg-muted">
       {label}
     </Text>
@@ -200,10 +202,13 @@ const StatusPill = ({ children, tone }: { children: ReactNode; tone: string }) =
   </span>
 )
 
+const PAYMENTS_CACHE_KEY = "payments"
+
 const VendorPayoutPage = () => {
   const router = useRouter()
-  const [payments, setPayments] = useState<VendorPaymentsView | null>(null)
-  const [loading, setLoading] = useState(true)
+  const cachedPayments = peekPageCache<VendorPaymentsView>(PAYMENTS_CACHE_KEY)
+  const [payments, setPayments] = useState<VendorPaymentsView | null>(cachedPayments ?? null)
+  const [loading, setLoading] = useState(() => !hasPageCache(PAYMENTS_CACHE_KEY))
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
@@ -212,6 +217,7 @@ const VendorPayoutPage = () => {
   const [customTo, setCustomTo] = useState("")
   const [reportError, setReportError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [feesInfoOpen, setFeesInfoOpen] = useState(false)
 
   const loadPayments = useCallback(async () => {
     const vendorToken = localStorage.getItem("vendor_token")
@@ -220,9 +226,13 @@ const VendorPayoutPage = () => {
       return
     }
 
+    const hasCache = hasPageCache(PAYMENTS_CACHE_KEY)
+    if (!hasCache) setLoading(true)
+
     try {
       const data = await vendorPayoutsApi.payments()
       setPayments(data)
+      writePageCache(PAYMENTS_CACHE_KEY, data)
       setError(null)
     } catch (e: any) {
       if (e.status === 403) {
@@ -249,6 +259,12 @@ const VendorPayoutPage = () => {
   useEffect(() => {
     void loadPayments()
   }, [loadPayments])
+
+  useVendorLive({
+    onInvalidate: () => {
+      void loadPayments()
+    },
+  })
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -286,9 +302,9 @@ const VendorPayoutPage = () => {
 
   let content
 
-  if (loading) {
+  if (loading && !payments) {
     content = <PageSkeleton label="Loading payments…" stats={9} rows={5} cols={12} showAction />
-  } else if (error) {
+  } else if (error && !payments) {
     content = (
       <Container className="mx-auto max-w-7xl p-4 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -314,13 +330,41 @@ const VendorPayoutPage = () => {
     const unlockingPayment = Number(payments.cards.unlocking_payment) || 0
 
     // Derive lifetime cards from ledger when API fields are missing / stale
-    const fullSaleFromLedger = payments.settlements
-      .filter((row) => row.type === "sales")
-      .reduce((sum, row) => sum + (Number(row.order_amount) || 0), 0)
+    const salesRows = payments.settlements.filter((row) => row.type === "sales")
+    const fullSaleFromLedger = salesRows.reduce(
+      (sum, row) => sum + (Number(row.order_amount) || 0),
+      0
+    )
+    const taxesFromLedger = salesRows.reduce(
+      (sum, row) => sum + (Number(row.gst_amount) || 0),
+      0
+    )
+    const commissionFromLedger = salesRows.reduce(
+      (sum, row) => sum + (Number(row.commission) || 0),
+      0
+    )
+    const tcsFromLedger = salesRows.reduce((sum, row) => sum + (Number(row.tcs) || 0), 0)
+    const tdsFromLedger = salesRows.reduce((sum, row) => sum + (Number(row.tds) || 0), 0)
+
     const fullSale =
       Number(payments.cards.full_sale) > 0
         ? Number(payments.cards.full_sale)
         : fullSaleFromLedger
+    const taxes =
+      Number(payments.cards.taxes) > 0 ? Number(payments.cards.taxes) : taxesFromLedger
+    const lifetimeCommission =
+      Number(payments.cards.lifetime_commission) > 0
+        ? Number(payments.cards.lifetime_commission)
+        : commissionFromLedger
+    const lifetimeTcs =
+      Number(payments.cards.lifetime_tcs) > 0
+        ? Number(payments.cards.lifetime_tcs)
+        : tcsFromLedger
+    const lifetimeTds =
+      Number(payments.cards.lifetime_tds) > 0
+        ? Number(payments.cards.lifetime_tds)
+        : tdsFromLedger
+    const taxesAndCommission = taxes + lifetimeCommission + lifetimeTcs + lifetimeTds
 
     const settlementBalance =
       Number(payments.cards.settlement_balance) > 0
@@ -354,6 +398,7 @@ const VendorPayoutPage = () => {
             <Button
               variant="secondary"
               disabled={!payments.settlements.length}
+              className="transition-transform active:scale-[0.98]"
               onClick={() => {
                 setReportError(null)
                 setReportOpen(true)
@@ -361,14 +406,22 @@ const VendorPayoutPage = () => {
             >
               Download report
             </Button>
-            <Button variant="secondary" disabled={refreshing} onClick={handleRefresh}>
+            <Button
+              variant="secondary"
+              disabled={refreshing}
+              className="transition-transform active:scale-[0.98]"
+              onClick={handleRefresh}
+            >
               <ArrowPath className={refreshing ? "animate-spin" : ""} />
               Refresh
             </Button>
           </div>
         </div>
 
-        <section className="animate-fade-in-up-slow space-y-3">
+        <section
+          className="animate-fade-in-up-slow space-y-3"
+          style={{ animationDelay: "60ms" }}
+        >
           <div className="flex items-baseline justify-between gap-3">
             <Text weight="plus" size="small" className="text-ui-fg-base">
               Balance
@@ -377,10 +430,10 @@ const VendorPayoutPage = () => {
               Lifetime · not reset daily
             </Text>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="oweg-stagger grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <StatCard
-              icon={<ArchiveBox />}
-              label="Full sale"
+              icon={<ShoppingCart />}
+              label="Total sale"
               value={formatCurrency(fullSale)}
               subtext={
                 <Text size="small" className="text-ui-fg-subtle">
@@ -388,6 +441,88 @@ const VendorPayoutPage = () => {
                 </Text>
               }
             />
+            <div className="relative">
+              <StatCard
+                icon={<Tag />}
+                label="Taxes & commission"
+                value={formatCurrency(taxesAndCommission)}
+                className="pr-10"
+                subtext={
+                  <Text size="small" className="text-ui-fg-subtle">
+                    GST + commission + TCS + TDS
+                  </Text>
+                }
+              />
+              <div
+                className="absolute right-3 top-3 z-20"
+                onMouseEnter={() => setFeesInfoOpen(true)}
+                onMouseLeave={() => setFeesInfoOpen(false)}
+              >
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setFeesInfoOpen((open) => !open)
+                  }}
+                  className={clx(
+                    "inline-flex h-6 w-6 items-center justify-center rounded-full border bg-ui-bg-base text-[11px] font-semibold transition-all duration-200",
+                    feesInfoOpen
+                      ? "border-oweg-500/50 text-oweg-700 shadow-sm dark:text-oweg-300"
+                      : "border-ui-border-base text-ui-fg-subtle hover:border-ui-border-strong hover:text-ui-fg-base"
+                  )}
+                  aria-expanded={feesInfoOpen}
+                  aria-label="Tax and commission breakdown"
+                  title="Tax, commission, TCS & TDS"
+                >
+                  i
+                </button>
+                <div
+                  className={clx(
+                    "oweg-popover absolute right-0 top-full z-30 mt-1.5 w-56 rounded-xl border border-ui-border-base bg-ui-bg-base p-3 shadow-lg shadow-black/5",
+                    feesInfoOpen ? "oweg-popover-open" : "oweg-popover-closed"
+                  )}
+                  role="tooltip"
+                >
+                  <Text size="small" weight="plus" className="mb-2 text-ui-fg-base">
+                    Charged separately
+                  </Text>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-3 rounded-lg bg-ui-bg-subtle/60 px-3 py-2">
+                      <Text size="small" className="text-ui-fg-subtle">
+                        Tax (GST)
+                      </Text>
+                      <Text size="small" weight="plus" className="tabular-nums">
+                        {formatCurrency(taxes)}
+                      </Text>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded-lg bg-ui-bg-subtle/60 px-3 py-2">
+                      <Text size="small" className="text-ui-fg-subtle">
+                        Commission
+                      </Text>
+                      <Text size="small" weight="plus" className="tabular-nums">
+                        {formatCurrency(lifetimeCommission)}
+                      </Text>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded-lg bg-ui-bg-subtle/60 px-3 py-2">
+                      <Text size="small" className="text-ui-fg-subtle">
+                        TCS
+                      </Text>
+                      <Text size="small" weight="plus" className="tabular-nums">
+                        {formatCurrency(lifetimeTcs)}
+                      </Text>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded-lg bg-ui-bg-subtle/60 px-3 py-2">
+                      <Text size="small" className="text-ui-fg-subtle">
+                        TDS
+                      </Text>
+                      <Text size="small" weight="plus" className="tabular-nums">
+                        {formatCurrency(lifetimeTds)}
+                      </Text>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
             <StatCard
               icon={<Clock />}
               label="Pending"
@@ -430,6 +565,7 @@ const VendorPayoutPage = () => {
               }
             />
           </div>
+
           <Text size="xsmall" className="text-ui-fg-muted">
             Pending unlocks into Settlement after {unlockMinutes} min. Balance = Settlement −
             Withdrawn (available to pay out). Net = Taxable − commission − TCS − TDS − logistic −
@@ -437,7 +573,10 @@ const VendorPayoutPage = () => {
           </Text>
         </section>
 
-        <section className="animate-fade-in-up-slow space-y-3">
+        <section
+          className="animate-fade-in-up-slow space-y-3"
+          style={{ animationDelay: "140ms" }}
+        >
           <div className="flex items-baseline justify-between gap-3">
             <Text weight="plus" size="small" className="text-ui-fg-base">
               Today&apos;s activity
@@ -446,7 +585,7 @@ const VendorPayoutPage = () => {
               Resets each day (IST)
             </Text>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="oweg-stagger grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             <MetricChip
               label="Total sale"
               value={formatCurrency(payments.cards.total_sale)}
@@ -486,7 +625,10 @@ const VendorPayoutPage = () => {
           ) : null}
         </section>
 
-        <section className="animate-fade-in-up space-y-3">
+        <section
+          className="animate-fade-in-up space-y-3"
+          style={{ animationDelay: "220ms" }}
+        >
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div>
               <Text weight="plus" size="small" className="text-ui-fg-base">

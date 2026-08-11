@@ -72,6 +72,8 @@ class ShiprocketService {
     breadth?: number
     height?: number
     cod?: boolean
+    /** Order value in INR — improves serviceability / insurance eligibility */
+    declared_value?: number
     /** Reverse/return serviceability (customer → vendor/warehouse) */
     is_return?: boolean
   }) {
@@ -91,6 +93,13 @@ class ShiprocketService {
     }
     if (params.height != null && Number.isFinite(params.height) && params.height > 0) {
       query.set("height", String(params.height))
+    }
+    if (
+      params.declared_value != null &&
+      Number.isFinite(params.declared_value) &&
+      params.declared_value > 0
+    ) {
+      query.set("declared_value", String(Math.round(params.declared_value)))
     }
     if (params.is_return) {
       query.set("is_return", "1")

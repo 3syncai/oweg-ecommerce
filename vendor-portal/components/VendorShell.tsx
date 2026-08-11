@@ -24,6 +24,7 @@ import { useTheme } from "@/lib/theme"
 import VendorSettingsModal from "@/components/VendorSettingsModal"
 import VendorNotifications from "@/components/VendorNotifications"
 import { useVendorLive } from "@/lib/useVendorLive"
+import { warmReturnsCache } from "@/lib/warm-returns-cache"
 
 type VendorInfo = {
   name?: string
@@ -167,6 +168,34 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
     loadVendorInfo()
   }, [])
 
+  // Prefetch Returns route + data so navbar clicks don't feel stuck
+  useEffect(() => {
+    router.prefetch("/returns")
+    let cancelled = false
+    const run = () => {
+      if (!cancelled) warmReturnsCache()
+    }
+    let idleId: number | undefined
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = window.requestIdleCallback(run, { timeout: 2500 })
+    } else {
+      timeoutId = setTimeout(run, 800)
+    }
+    return () => {
+      cancelled = true
+      if (idleId != null && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId)
+      }
+      if (timeoutId != null) clearTimeout(timeoutId)
+    }
+  }, [router])
+
+  useEffect(() => {
+    const paths = ["/dashboard", "/orders", "/products", "/payout", "/claims", "/inventory", "/messages"]
+    for (const path of paths) router.prefetch(path)
+  }, [router])
+
   useEffect(() => {
     const loadPayoutData = async () => {
       try {
@@ -282,7 +311,7 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
         </div>
 
         {/* Navigation */}
-        <div className="flex-1 overflow-y-auto px-2 py-4">
+        <div className="oweg-scroll flex-1 overflow-y-auto px-2 py-4">
           <nav className="flex flex-col gap-1">
             {navItems.map((item) => {
               const active = activePath === item.path
@@ -297,11 +326,16 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
                         toggleExpanded(item.label)
                         navigate(item.path)
                       } else {
+                        if (item.path === "/returns") warmReturnsCache()
                         navigate(item.path)
                       }
                     }}
+                    onMouseEnter={() => {
+                      router.prefetch(item.path)
+                      if (item.path === "/returns") warmReturnsCache()
+                    }}
                     className={clx(
-                      "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-all duration-200",
+                      "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-all duration-200 active:scale-[0.98]",
                       active
                         ? "oweg-nav-active"
                         : "text-ui-fg-subtle hover:bg-oweg-500/[0.06] hover:text-ui-fg-base"
@@ -455,7 +489,7 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
           <VendorNotifications />
         </div>
 
-        <main className="flex-1 overflow-y-auto bg-ui-bg-base bg-oweg-page">
+        <main className="oweg-scroll flex-1 overflow-y-auto scroll-smooth bg-ui-bg-base bg-oweg-page">
           {children}
         </main>
       </div>

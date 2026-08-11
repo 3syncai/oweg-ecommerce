@@ -108,6 +108,12 @@ export type VendorPaymentsView = {
   cards: {
     /** Lifetime delivered sales GMV (not daily) */
     full_sale: number;
+    /** Lifetime GST on sales */
+    taxes: number;
+    /** Lifetime marketplace commission on sales */
+    lifetime_commission: number;
+    lifetime_tcs: number;
+    lifetime_tds: number;
     /** GST on today's delivered sales (daily reset) */
     gst: number;
     total_sale: number;
@@ -1372,6 +1378,10 @@ export async function getVendorPaymentsView(
 
   let totalSale = 0;
   let fullSale = 0;
+  let lifetimeTaxes = 0;
+  let lifetimeCommission = 0;
+  let lifetimeTcs = 0;
+  let lifetimeTds = 0;
   let gstTotal = 0;
   let commissionTotal = 0;
   let tcsTotal = 0;
@@ -1446,6 +1456,10 @@ export async function getVendorPaymentsView(
 
     if (!isClaim) {
       fullSale += gross;
+      lifetimeTaxes += gstAmount;
+      lifetimeCommission += commissionAmount;
+      lifetimeTcs += tcsAmount;
+      lifetimeTds += tdsAmount;
     }
 
     if (countInTodayCards && !isClaim) {
@@ -1482,10 +1496,22 @@ export async function getVendorPaymentsView(
     };
   });
 
-  // Prefer ledger sales total so Full sale never drifts from visible settlement rows
+  // Prefer ledger sales total so Total sale never drifts from visible settlement rows
   const fullSaleFromLedger = settlements
     .filter((row) => row.type === "sales")
     .reduce((sum, row) => sum + (Number(row.order_amount) || 0), 0);
+  const taxesFromLedger = settlements
+    .filter((row) => row.type === "sales")
+    .reduce((sum, row) => sum + (Number(row.gst_amount) || 0), 0);
+  const commissionFromLedger = settlements
+    .filter((row) => row.type === "sales")
+    .reduce((sum, row) => sum + (Number(row.commission) || 0), 0);
+  const tcsFromLedger = settlements
+    .filter((row) => row.type === "sales")
+    .reduce((sum, row) => sum + (Number(row.tcs) || 0), 0);
+  const tdsFromLedger = settlements
+    .filter((row) => row.type === "sales")
+    .reduce((sum, row) => sum + (Number(row.tds) || 0), 0);
 
   const settlementBalance =
     (Number(summary.available_balance) || 0) + (Number(summary.total_withdrawn) || 0);
@@ -1494,6 +1520,11 @@ export async function getVendorPaymentsView(
   return {
     cards: {
       full_sale: fullSaleFromLedger > 0 ? fullSaleFromLedger : fullSale,
+      taxes: taxesFromLedger > 0 ? taxesFromLedger : lifetimeTaxes,
+      lifetime_commission:
+        commissionFromLedger > 0 ? commissionFromLedger : lifetimeCommission,
+      lifetime_tcs: tcsFromLedger > 0 ? tcsFromLedger : lifetimeTcs,
+      lifetime_tds: tdsFromLedger > 0 ? tdsFromLedger : lifetimeTds,
       total_sale: totalSale,
       gst: gstTotal,
       commission: commissionTotal,

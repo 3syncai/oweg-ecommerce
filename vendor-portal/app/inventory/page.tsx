@@ -6,6 +6,7 @@ import Image from "next/image"
 import { Container, Heading, Text, Button, Input, clx } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
 import EmptyState from "@/components/EmptyState"
+import PageLoader from "@/components/PageLoader"
 import StatCard from "@/components/dashboard/StatCard"
 import StatusDot from "@/components/dashboard/StatusDot"
 import { vendorInventoryApi } from "@/lib/api/client"
@@ -405,24 +406,7 @@ export default function InventoryPage() {
           className="animate-fade-in-up overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base"
           style={{ animationDelay: "120ms" }}
         >
-          <div>
-            {Array.from({ length: 5 }).map((_, r) => (
-              <div
-                key={r}
-                className="flex items-center gap-3 border-b border-ui-border-base/70 px-4 py-4 last:border-b-0"
-              >
-                <div className="h-10 w-10 rounded-lg bg-ui-bg-base-hover animate-pulse" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3 w-1/3 rounded-md bg-ui-bg-base-hover animate-pulse" />
-                  <div className="h-3 w-1/5 rounded-md bg-ui-bg-base-hover/70 animate-pulse" />
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-center gap-2 border-t border-ui-border-base/70 py-3 text-ui-fg-subtle">
-            <span className="h-2 w-2 rounded-full bg-ui-fg-muted animate-pulse" />
-            <Text size="small">Loading inventory…</Text>
-          </div>
+          <PageLoader label="Loading inventory…" className="min-h-[280px] py-12" />
         </div>
       ) : productGroups.length === 0 ? (
         searchDebounced ? (
