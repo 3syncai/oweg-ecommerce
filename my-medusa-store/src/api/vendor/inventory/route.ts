@@ -35,6 +35,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         "title",
         "thumbnail",
         "status",
+        "metadata",
         "variants.id",
         "variants.title",
         "variants.sku",
@@ -48,7 +49,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       },
     })
 
-    if (!products || products.length === 0) {
+    // Hide products still awaiting admin approval (or rejected).
+    // Legacy products without approval_status remain visible.
+    const eligible = (products || []).filter((p: any) => {
+      const approval = String(p?.metadata?.approval_status || "").toLowerCase()
+      if (approval === "pending" || approval === "rejected") return false
+      return true
+    })
+
+    if (!eligible.length) {
       return res.json({
         success: true,
         inventory: [],
@@ -65,7 +74,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     })
     const defaultLocation = locations?.[0]
 
-    const variantIds = products.flatMap((p: any) =>
+    const variantIds = eligible.flatMap((p: any) =>
       (p.variants || []).map((v: any) => v.id).filter(Boolean)
     )
 
@@ -118,7 +127,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       manage_inventory: boolean
     }> = []
 
-    for (const product of products) {
+    for (const product of eligible) {
       for (const variant of product.variants || []) {
         const inventoryItemId = inventoryItemByVariant.get(variant.id) || null
         const level = inventoryItemId ? levelByItemId.get(inventoryItemId) : null

@@ -44,7 +44,21 @@ type ProductGroup = {
   lowStock: number
 }
 
+type StockFilter = "in_stock" | "low_stock" | "out_of_stock"
+
 const PAGE_SIZE = 50
+
+const matchesStockFilter = (quantity: number, filter: StockFilter) => {
+  if (filter === "in_stock") return quantity >= 10
+  if (filter === "low_stock") return quantity > 0 && quantity < 10
+  return quantity === 0
+}
+
+const stockFilterLabel = (filter: StockFilter) => {
+  if (filter === "in_stock") return "in-stock"
+  if (filter === "low_stock") return "low-stock"
+  return "out-of-stock"
+}
 
 const StockStatus = ({ quantity }: { quantity: number }) => {
   if (quantity === 0) {
@@ -107,6 +121,7 @@ export default function InventoryPage() {
   const [page, setPage] = useState(1)
   const [totalFiltered, setTotalFiltered] = useState(0)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [stockFilter, setStockFilter] = useState<StockFilter | null>(null)
 
   useEffect(() => {
     const id = window.setTimeout(() => setSearchDebounced(searchQuery.trim()), 300)
@@ -240,13 +255,55 @@ export default function InventoryPage() {
     )
   }, [inventory])
 
+  const visibleGroups = useMemo(() => {
+    if (!stockFilter) return productGroups
+
+    return productGroups
+      .map((group) => {
+        const variants = group.variants.filter((item) =>
+          matchesStockFilter(item.stock_quantity, stockFilter)
+        )
+        if (!variants.length) return null
+
+        const totalStock = variants.reduce((sum, item) => sum + item.stock_quantity, 0)
+        const outOfStock = variants.filter((item) => item.stock_quantity === 0).length
+        const lowStock = variants.filter(
+          (item) => item.stock_quantity > 0 && item.stock_quantity < 10
+        ).length
+
+        return {
+          ...group,
+          variants,
+          totalStock,
+          outOfStock,
+          lowStock,
+        }
+      })
+      .filter((group): group is ProductGroup => Boolean(group))
+  }, [productGroups, stockFilter])
+
+  const filteredVariantCount = useMemo(
+    () => visibleGroups.reduce((sum, group) => sum + group.variants.length, 0),
+    [visibleGroups]
+  )
+
   const pageCount = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE))
+
+  const toggleStockFilter = (filter: StockFilter) => {
+    setStockFilter((prev) => (prev === filter ? null : filter))
+  }
 
   // Auto-expand products that match search when searching variants
   useEffect(() => {
     if (!searchDebounced) return
     setExpandedIds(new Set(productGroups.map((g) => g.product_id)))
   }, [searchDebounced, productGroups])
+
+  // Auto-expand products when a stock filter is active
+  useEffect(() => {
+    if (!stockFilter) return
+    setExpandedIds(new Set(visibleGroups.map((g) => g.product_id)))
+  }, [stockFilter, visibleGroups])
 
   const content = (
     <Container className="mx-auto max-w-7xl p-4 md:p-6 space-y-5 md:space-y-6">
@@ -259,9 +316,11 @@ export default function InventoryPage() {
             Inventory
           </Heading>
           <Text className="mt-1 text-ui-fg-subtle">
-            {stats.total > 0
-              ? `${stats.productCount} product${stats.productCount > 1 ? "s" : ""} on this page · ${stats.total} variant${stats.total > 1 ? "s" : ""} · ${stats.lowStock} low stock`
-              : "Manage stock levels for your products"}
+            {stockFilter
+              ? `Filtered: ${filteredVariantCount} ${stockFilterLabel(stockFilter)} variant${filteredVariantCount === 1 ? "" : "s"}`
+              : stats.total > 0
+                ? `${stats.productCount} product${stats.productCount > 1 ? "s" : ""} on this page · ${stats.total} variant${stats.total > 1 ? "s" : ""} · ${stats.lowStock} low stock`
+                : "Manage stock levels for your products"}
           </Text>
         </div>
       </div>
@@ -273,14 +332,22 @@ export default function InventoryPage() {
         >
           <StatCard
             icon={<ArchiveBox />}
-            label="Variants"
-            value={stats.total}
-            subtext={<Text className="text-ui-fg-subtle">{stats.productCount} products on page</Text>}
+            label="All products"
+            value={stats.productCount}
+            active={stockFilter === null}
+            onClick={() => setStockFilter(null)}
+            subtext={
+              <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
+                <Text size="small">This page</Text>
+              </span>
+            }
           />
           <StatCard
             icon={<ArchiveBox />}
             label="In stock"
             value={stats.inStock}
+            active={stockFilter === "in_stock"}
+            onClick={() => toggleStockFilter("in_stock")}
             subtext={
               <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
                 <StatusDot variant="success" />
@@ -292,6 +359,8 @@ export default function InventoryPage() {
             icon={<ArchiveBox />}
             label="Low stock"
             value={stats.lowStock}
+            active={stockFilter === "low_stock"}
+            onClick={() => toggleStockFilter("low_stock")}
             subtext={
               <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
                 <StatusDot variant="warning" />
@@ -303,6 +372,8 @@ export default function InventoryPage() {
             icon={<ArchiveBox />}
             label="Out of stock"
             value={stats.outOfStock}
+            active={stockFilter === "out_of_stock"}
+            onClick={() => toggleStockFilter("out_of_stock")}
             subtext={
               <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
                 <StatusDot variant="error" />
@@ -381,6 +452,17 @@ export default function InventoryPage() {
             }}
           />
         )
+      ) : stockFilter && visibleGroups.length === 0 ? (
+        <EmptyState
+          accent="gray"
+          icon={<ArchiveBox />}
+          title={`No ${stockFilterLabel(stockFilter)} variants`}
+          description="Nothing on this page matches that stock bucket. Clear the filter to see all products again."
+          primaryAction={{
+            label: "Clear filter",
+            onClick: () => setStockFilter(null),
+          }}
+        />
       ) : (
         <>
           <div
@@ -388,7 +470,7 @@ export default function InventoryPage() {
             style={{ animationDelay: "120ms" }}
           >
             <div className="divide-y divide-ui-border-base/70">
-              {productGroups.map((group) => {
+              {visibleGroups.map((group) => {
                 const expanded = expandedIds.has(group.product_id)
                 const summaryStatus =
                   group.outOfStock === group.variants.length
