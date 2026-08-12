@@ -11,8 +11,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     return res.status(404).json({ message: "Return request not found." })
   }
   const request = requests[0]
-  if (request.status !== "picked_up") {
-    return res.status(400).json({ message: "Refund can be marked only after pickup." })
+  if (request.status !== "picked_up" && request.status !== "received") {
+    return res.status(400).json({
+      message: "Refund can be marked only after pickup or when returned to vendor.",
+    })
   }
   const updated = await returnService.markRefunded(id)
 

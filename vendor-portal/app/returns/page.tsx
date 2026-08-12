@@ -243,17 +243,21 @@ const VendorReturnsPage = () => {
 
   const saveSelfTracking = async () => {
     if (!selfTrackingReturn) return
-    if (!selfTrackingForm.tracking_number.trim() && !selfTrackingForm.tracking_url.trim()) {
-      setSelfTrackingError("Enter a tracking ID or tracking URL")
+    if (
+      !selfTrackingForm.courier_partner.trim() ||
+      !selfTrackingForm.tracking_number.trim() ||
+      !selfTrackingForm.tracking_url.trim()
+    ) {
+      setSelfTrackingError("Courier partner, tracking ID, and tracking URL are all required")
       return
     }
     setSavingSelfTracking(true)
     setSelfTrackingError(null)
     try {
       await vendorReturnsApi.saveSelfTracking(selfTrackingReturn.id, {
-        courier_partner: selfTrackingForm.courier_partner.trim() || undefined,
-        tracking_number: selfTrackingForm.tracking_number.trim() || undefined,
-        tracking_url: selfTrackingForm.tracking_url.trim() || undefined,
+        courier_partner: selfTrackingForm.courier_partner.trim(),
+        tracking_number: selfTrackingForm.tracking_number.trim(),
+        tracking_url: selfTrackingForm.tracking_url.trim(),
       })
       setSelfTrackingReturn(null)
       await loadReturns()
@@ -539,7 +543,9 @@ const VendorReturnsPage = () => {
                                 {item.shiprocket_awb ? ` · AWB ${item.shiprocket_awb}` : ""}
                               </Text>
                             ) : null}
-                            {item.reverse_tracking_number || item.reverse_tracking_url ? (
+                            {item.reverse_tracking_number &&
+                            item.reverse_tracking_url &&
+                            item.reverse_courier_partner ? (
                               <Text size="xsmall" className="text-ui-fg-subtle">
                                 Self return
                                 {item.reverse_courier_partner
@@ -568,7 +574,9 @@ const VendorReturnsPage = () => {
                                 variant="secondary"
                                 onClick={() => openSelfTracking(item)}
                               >
-                                {item.reverse_tracking_number || item.reverse_tracking_url
+                                {item.reverse_tracking_number &&
+                                item.reverse_tracking_url &&
+                                item.reverse_courier_partner
                                   ? "Update return tracking"
                                   : "Add return tracking"}
                               </Button>
@@ -635,7 +643,8 @@ const VendorReturnsPage = () => {
                             ) : null}
                             {item.shipping_method === "self" && item.needs_return_logistics ? (
                               <Text size="xsmall" className="text-amber-700 dark:text-amber-300">
-                                Add reverse tracking ID / URL so admin can see it on the return.
+                                Add courier partner, tracking ID, and tracking URL before marking
+                                pickup.
                               </Text>
                             ) : null}
                           </div>
@@ -850,7 +859,12 @@ const VendorReturnsPage = () => {
                 <Button
                   size="small"
                   onClick={() => void saveSelfTracking()}
-                  disabled={savingSelfTracking}
+                  disabled={
+                    savingSelfTracking ||
+                    !selfTrackingForm.courier_partner.trim() ||
+                    !selfTrackingForm.tracking_number.trim() ||
+                    !selfTrackingForm.tracking_url.trim()
+                  }
                   isLoading={savingSelfTracking}
                 >
                   Save tracking

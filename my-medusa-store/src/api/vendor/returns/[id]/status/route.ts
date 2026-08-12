@@ -1,6 +1,11 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../../../_lib/guards"
-import { getReturnMetadata, resolveVendorOwnedReturn } from "../../../../../lib/vendor-return-shiprocket"
+import {
+  getReturnMetadata,
+  getSelfReverseTracking,
+  isVendorSelfShipOrder,
+  resolveVendorOwnedReturn,
+} from "../../../../../lib/vendor-return-shiprocket"
 import { syncOrderReturnMetadata } from "../../../../../services/sync-order-return-metadata"
 
 function setCorsHeaders(res: MedusaResponse) {
@@ -49,10 +54,25 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       return res.status(resolved.error.status).json({ message: resolved.error.message })
     }
 
-    const { request, returnService } = resolved
+    const { request, order, returnService } = resolved
     const status = String(request.status || "")
     const meta = getReturnMetadata(request)
     const nowIso = new Date().toISOString()
+
+    if (isVendorSelfShipOrder(order, auth.vendor_id)) {
+      const selfTracking = getSelfReverseTracking(request)
+      const hasCompleteSelfTracking = Boolean(
+        selfTracking.reverse_courier_partner &&
+          selfTracking.reverse_tracking_number &&
+          selfTracking.reverse_tracking_url
+      )
+      if (!hasCompleteSelfTracking) {
+        return res.status(400).json({
+          message:
+            "Add courier partner, tracking ID, and tracking URL before updating return pickup status",
+        })
+      }
+    }
 
     let updated: any
 
