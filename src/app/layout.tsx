@@ -2,7 +2,7 @@
 import type { Metadata, Viewport } from "next";
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
-import { Manrope, Plus_Jakarta_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import ServiceWorkerRegister from "./sw-register";
 import Footer from "./footer/Footer";
@@ -20,16 +20,31 @@ import SiteProtections from "@/components/debug-controller/SiteProtections";
 import ConditionalWhatsAppWidget from "@/components/debug-controller/ConditionalWhatsAppWidget";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
 
-const manrope = Manrope({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+/** Self-hosted so CI/build does not depend on fonts.gstatic.com */
+const manrope = localFont({
+  src: [
+    { path: "../fonts/manrope-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "../fonts/manrope-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "../fonts/manrope-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "../fonts/manrope-latin-700-normal.woff2", weight: "700", style: "normal" },
+  ],
   variable: "--font-manrope",
   display: "swap",
 });
 
-const plusJakarta = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["600", "700"],
+const plusJakarta = localFont({
+  src: [
+    {
+      path: "../fonts/plus-jakarta-sans-latin-600-normal.woff2",
+      weight: "600",
+      style: "normal",
+    },
+    {
+      path: "../fonts/plus-jakarta-sans-latin-700-normal.woff2",
+      weight: "700",
+      style: "normal",
+    },
+  ],
   variable: "--font-plus-jakarta",
   display: "swap",
 });
