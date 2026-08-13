@@ -1,0 +1,667 @@
+diff --git a/vendor-portal/app/claims/page.tsx b/vendor-portal/app/(vendor)/claims/page.tsx
+similarity index 97%
+rename from vendor-portal/app/claims/page.tsx
+rename to vendor-portal/app/(vendor)/claims/page.tsx
+index d4321a6..ab1c2e1 100644
+--- a/vendor-portal/app/claims/page.tsx
++++ b/vendor-portal/app/(vendor)/claims/page.tsx
+@@ -12,7 +12,6 @@ import {
+   clx,
+ } from "@medusajs/ui"
+ import { ArrowPath, MagnifyingGlass, PlusMini, XMark } from "@medusajs/icons"
+-import VendorShell from "@/components/VendorShell"
+ import PageSkeleton from "@/components/PageSkeleton"
+ import EmptyState from "@/components/EmptyState"
+ import StatusDot, { returnStatusVariant } from "@/components/dashboard/StatusDot"
+@@ -979,7 +978,7 @@ const VendorReportsPage = () => {
+     )
+   }
+ 
+-  return <VendorShell>{content}</VendorShell>
++  return content
+ }
+ 
+ export default VendorReportsPage
+diff --git a/vendor-portal/app/customers/page.tsx b/vendor-portal/app/(vendor)/customers/page.tsx
+similarity index 98%
+rename from vendor-portal/app/customers/page.tsx
+rename to vendor-portal/app/(vendor)/customers/page.tsx
+index 83c39db..1a3d990 100644
+--- a/vendor-portal/app/customers/page.tsx
++++ b/vendor-portal/app/(vendor)/customers/page.tsx
+@@ -3,7 +3,6 @@
+ import { useEffect, useMemo, useState } from "react"
+ import { useRouter } from "next/navigation"
+ import { Container, Heading, Text, Button } from "@medusajs/ui"
+-import VendorShell from "@/components/VendorShell"
+ import PageSkeleton from "@/components/PageSkeleton"
+ import EmptyState from "@/components/EmptyState"
+ import StatCard from "@/components/dashboard/StatCard"
+@@ -195,7 +194,7 @@ const VendorCustomersPage = () => {
+     )
+   }
+ 
+-  return <VendorShell>{content}</VendorShell>
++  return content
+ }
+ 
+ export default VendorCustomersPage
+diff --git a/vendor-portal/app/dashboard/page.tsx b/vendor-portal/app/(vendor)/dashboard/page.tsx
+similarity index 99%
+rename from vendor-portal/app/dashboard/page.tsx
+rename to vendor-portal/app/(vendor)/dashboard/page.tsx
+index 06ea95f..65e31f0 100644
+--- a/vendor-portal/app/dashboard/page.tsx
++++ b/vendor-portal/app/(vendor)/dashboard/page.tsx
+@@ -12,7 +12,6 @@ import {
+   ShoppingCart,
+   Tag,
+ } from "@medusajs/icons"
+-import VendorShell from "@/components/VendorShell"
+ import EmptyState from "@/components/EmptyState"
+ import DashboardSection from "@/components/dashboard/DashboardSection"
+ import StatusDot, { type StatusVariant } from "@/components/dashboard/StatusDot"
+@@ -1193,7 +1192,7 @@ const VendorDashboardPage = () => {
+     )
+   }
+ 
+-  return <VendorShell>{content}</VendorShell>
++  return content
+ }
+ 
+ const FocusRow = ({
+diff --git a/vendor-portal/app/inventory/page.tsx b/vendor-portal/app/(vendor)/inventory/page.tsx
+similarity index 99%
+rename from vendor-portal/app/inventory/page.tsx
+rename to vendor-portal/app/(vendor)/inventory/page.tsx
+index 558a18c..1eca7fd 100644
+--- a/vendor-portal/app/inventory/page.tsx
++++ b/vendor-portal/app/(vendor)/inventory/page.tsx
+@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo } from "react"
+ import { useRouter } from "next/navigation"
+ import Image from "next/image"
+ import { Container, Heading, Text, Button, Input, clx } from "@medusajs/ui"
+-import VendorShell from "@/components/VendorShell"
+ import EmptyState from "@/components/EmptyState"
+ import StatCard from "@/components/dashboard/StatCard"
+ import StatusDot from "@/components/dashboard/StatusDot"
+@@ -538,5 +537,5 @@ export default function InventoryPage() {
+     </Container>
+   )
+ 
+-  return <VendorShell>{content}</VendorShell>
++  return content
+ }
+diff --git a/vendor-portal/app/(vendor)/layout.tsx b/vendor-portal/app/(vendor)/layout.tsx
+new file mode 100644
+index 0000000..17f7dfe
+--- /dev/null
++++ b/vendor-portal/app/(vendor)/layout.tsx
+@@ -0,0 +1,23 @@
++"use client"
++
++import { SWRConfig } from "swr"
++import VendorShell from "@/components/VendorShell"
++
++// Shared cache config for every vendor page: serve cached data instantly
++// (no blank skeleton on tab switch) while revalidating in the background
++// so data stays live.
++const swrConfig = {
++  revalidateOnFocus: true,
++  revalidateOnReconnect: true,
++  refreshInterval: 30_000, // background poll every 30s for live updates
++  dedupingInterval: 5_000,
++  keepPreviousData: true,
++}
++
++export default function VendorLayout({ children }: { children: React.ReactNode }) {
++  return (
++    <SWRConfig value={swrConfig}>
++      <VendorShell>{children}</VendorShell>
++    </SWRConfig>
++  )
++}
+diff --git a/vendor-portal/app/messages/page.tsx b/vendor-portal/app/(vendor)/messages/page.tsx
+similarity index 95%
+rename from vendor-portal/app/messages/page.tsx
+rename to vendor-portal/app/(vendor)/messages/page.tsx
+index a68228d..b02b2d0 100644
+--- a/vendor-portal/app/messages/page.tsx
++++ b/vendor-portal/app/(vendor)/messages/page.tsx
+@@ -3,7 +3,6 @@
+ import { useCallback, useEffect, useState } from "react"
+ import { Container, Heading, Text, Button } from "@medusajs/ui"
+ import { ArrowPath, ChatBubble } from "@medusajs/icons"
+-import VendorShell from "@/components/VendorShell"
+ import PageSkeleton from "@/components/PageSkeleton"
+ import { vendorPayoutsApi } from "@/lib/api/client"
+ import { useRouter } from "next/navigation"
+@@ -198,7 +197,7 @@ const VendorMessagesPage = () => {
+     )
+   }
+ 
+-  return <VendorShell>{content}</VendorShell>
++  return content
+ }
+ 
+ export default VendorMessagesPage
+diff --git a/vendor-portal/app/orders/page.tsx b/vendor-portal/app/(vendor)/orders/page.tsx
+similarity index 97%
+rename from vendor-portal/app/orders/page.tsx
+rename to vendor-portal/app/(vendor)/orders/page.tsx
+index 9c4d470..3069d04 100644
+--- a/vendor-portal/app/orders/page.tsx
++++ b/vendor-portal/app/(vendor)/orders/page.tsx
+@@ -1,6 +1,7 @@
+ "use client"
+ 
+ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
++import useSWR from "swr"
+ import type { MouseEvent, ReactNode } from "react"
+ import { Button, Container, Heading, Text, clx } from "@medusajs/ui"
+ import {
+@@ -15,7 +16,6 @@ import {
+   Search,
+   Truck,
+ } from "lucide-react"
+-import VendorShell from "@/components/VendorShell"
+ import PageSkeleton from "@/components/PageSkeleton"
+ import EmptyState from "@/components/EmptyState"
+ import StatusDot from "@/components/dashboard/StatusDot"
+@@ -158,7 +158,6 @@ const VendorOrdersContent = () => {
+   const focusOrderId = searchParams.get("order")
+   const openedFocusOrderId = useRef<string | null>(null)
+   const [orders, setOrders] = useState<VendorOrder[]>([])
+-  const [loading, setLoading] = useState(true)
+   const [error, setError] = useState<string | null>(null)
+   const [selectedStage, setSelectedStage] = useState<StageFilter>("total")
+   const [search, setSearch] = useState("")
+@@ -212,34 +211,55 @@ const VendorOrdersContent = () => {
+     label_url: "",
+   })
+ 
+-  const replaceOrder = useCallback((next: VendorOrder) => {
+-    setOrders((current) => current.map((order) => (order.id === next.id ? next : order)))
+-  }, [])
++  const vendorToken = typeof window !== "undefined" ? localStorage.getItem("vendor_token") : null
++
++  // SWR keeps the last-fetched orders cached across tab navigations (instant
++  // display, no blank skeleton) and silently revalidates in the background
++  // (on an interval + on window focus) so the list stays live.
++  const {
++    data: ordersData,
++    error: ordersSwrError,
++    isLoading: ordersLoading,
++    mutate: mutateOrders,
++  } = useSWR(vendorToken ? "vendor-orders" : null, () => vendorOrdersApi.list())
++
++  const loading = ordersLoading && orders.length === 0
++
++  const replaceOrder = useCallback(
++    (next: VendorOrder) => {
++      setOrders((current) => current.map((order) => (order.id === next.id ? next : order)))
++      // Patch the SWR cache too (no revalidate) so a background refresh
++      // doesn't momentarily flash back to the pre-mutation state.
++      void mutateOrders(
++        (prev) =>
++          prev ? { ...prev, orders: (prev.orders || []).map((o: VendorOrder) => (o.id === next.id ? next : o)) } : prev,
++        { revalidate: false }
++      )
++    },
++    [mutateOrders]
++  )
+ 
+-  const loadOrders = useCallback(async () => {
+-    try {
+-      const data = await vendorOrdersApi.list()
+-      setOrders(data?.orders || [])
++  useEffect(() => {
++    if (!vendorToken) {
++      router.push("/login")
++    }
++  }, [router, vendorToken])
++
++  useEffect(() => {
++    if (ordersData) {
++      setOrders(ordersData.orders || [])
+       setError(null)
+-    } catch (e: any) {
+-      if (e.status === 403) {
+-        router.push("/pending")
+-        return
+-      }
+-      setError(e?.message || "Failed to load orders")
+-    } finally {
+-      setLoading(false)
+     }
+-  }, [router])
++  }, [ordersData])
+ 
+   useEffect(() => {
+-    const vendorToken = localStorage.getItem("vendor_token")
+-    if (!vendorToken) {
+-      router.push("/login")
++    if (!ordersSwrError) return
++    if ((ordersSwrError as any).status === 403) {
++      router.push("/pending")
+       return
+     }
+-    void loadOrders()
+-  }, [router, loadOrders])
++    setError((ordersSwrError as any)?.message || "Failed to load orders")
++  }, [ordersSwrError, router])
+ 
+   useEffect(() => {
+     setPage(1)
+@@ -888,7 +908,7 @@ const VendorOrdersContent = () => {
+     )
+   }
+ 
+-  return <VendorShell>{content}</VendorShell>
++  return content
+ }
+ 
+ function OrderIdCell({
+@@ -1635,7 +1655,7 @@ function Field({
+ }
+ 
+ const VendorOrdersPage = () => (
+-  <Suspense fallback={<VendorShell><PageSkeleton label="Loading orders..." stats={6} rows={8} cols={6} showAction /></VendorShell>}>
++  <Suspense fallback={<><PageSkeleton label="Loading orders..." stats={6} rows={8} cols={6} showAction /></>}>
+     <VendorOrdersContent />
+   </Suspense>
+ )
+diff --git a/vendor-portal/app/payout/page.tsx b/vendor-portal/app/(vendor)/payout/page.tsx
+similarity index 99%
+rename from vendor-portal/app/payout/page.tsx
+rename to vendor-portal/app/(vendor)/payout/page.tsx
+index f259809..1eb9b8f 100644
+--- a/vendor-portal/app/payout/page.tsx
++++ b/vendor-portal/app/(vendor)/payout/page.tsx
+@@ -5,7 +5,6 @@ import { Container, Heading, Text, Button, clx } from "@medusajs/ui"
+ import Link from "next/link"
+ import { useRouter } from "next/navigation"
+ import * as XLSX from "xlsx"
+-import VendorShell from "@/components/VendorShell"
+ import PageSkeleton from "@/components/PageSkeleton"
+ import EmptyState from "@/components/EmptyState"
+ import PayoutUnlockTimer from "@/components/PayoutUnlockTimer"
+@@ -735,7 +734,7 @@ const VendorPayoutPage = () => {
+     content = null
+   }
+ 
+-  return <VendorShell>{content}</VendorShell>
++  return content
+ }
+ 
+ export default VendorPayoutPage
+diff --git a/vendor-portal/app/products/[id]/page.tsx b/vendor-portal/app/(vendor)/products/[id]/page.tsx
+similarity index 99%
+rename from vendor-portal/app/products/[id]/page.tsx
+rename to vendor-portal/app/(vendor)/products/[id]/page.tsx
+index 91bf85d..062789d 100644
+--- a/vendor-portal/app/products/[id]/page.tsx
++++ b/vendor-portal/app/(vendor)/products/[id]/page.tsx
+@@ -13,7 +13,6 @@ import {
+   Textarea,
+   toast,
+ } from "@medusajs/ui"
+-import VendorShell from "@/components/VendorShell"
+ import VariantMatrixEditor from "@/components/VariantMatrixEditor"
+ import GstTaxCodeField from "@/components/GstTaxCodeField"
+ import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorInventoryApi } from "@/lib/api/client"
+@@ -844,7 +843,7 @@ const VendorProductEditPage = () => {
+   }
+ 
+   return (
+-    <VendorShell>
++    <>
+       {content}
+       <FocusModal open={approvalSentOpen} onOpenChange={setApprovalSentOpen}>
+         <FocusModal.Content className="z-[100]">
+@@ -884,7 +883,7 @@ const VendorProductEditPage = () => {
+           </FocusModal.Body>
+         </FocusModal.Content>
+       </FocusModal>
+-    </VendorShell>
++    </>
+   )
+ }
+ 
+diff --git a/vendor-portal/app/products/bulk-upload/page.tsx b/vendor-portal/app/(vendor)/products/bulk-upload/page.tsx
+similarity index 99%
+rename from vendor-portal/app/products/bulk-upload/page.tsx
+rename to vendor-portal/app/(vendor)/products/bulk-upload/page.tsx
+index 3f7235d..3b9d01c 100644
+--- a/vendor-portal/app/products/bulk-upload/page.tsx
++++ b/vendor-portal/app/(vendor)/products/bulk-upload/page.tsx
+@@ -12,7 +12,6 @@ import {
+ } from "@medusajs/ui"
+ import * as XLSX from "xlsx"
+ import axios from "axios"
+-import VendorShell from "@/components/VendorShell"
+ import GuideCard from "@/components/bulk-upload/GuideCard"
+ import StepCard from "@/components/bulk-upload/StepCard"
+ import {
+@@ -1893,7 +1892,7 @@ const VendorProductsBulkUploadPage = () => {
+   }
+ 
+   return (
+-    <VendorShell>
++    <>
+       <div className="mx-auto max-w-7xl p-4 md:p-6 space-y-5 md:space-y-6">
+         <div
+           className="animate-fade-in-up flex flex-wrap items-start justify-between gap-4"
+@@ -3139,7 +3138,7 @@ const VendorProductsBulkUploadPage = () => {
+           </div>
+         )}
+       </div>
+-    </VendorShell>
++    </>
+   )
+ }
+ 
+diff --git a/vendor-portal/app/products/categories/page.tsx b/vendor-portal/app/(vendor)/products/categories/page.tsx
+similarity index 96%
+rename from vendor-portal/app/products/categories/page.tsx
+rename to vendor-portal/app/(vendor)/products/categories/page.tsx
+index f209938..f3b726e 100644
+--- a/vendor-portal/app/products/categories/page.tsx
++++ b/vendor-portal/app/(vendor)/products/categories/page.tsx
+@@ -3,7 +3,6 @@
+ import React, { useEffect, useMemo, useState } from "react"
+ import { Container, Heading, Text, Button, clx } from "@medusajs/ui"
+ import { ChevronDown, ChevronRight, MagnifyingGlass, Tag } from "@medusajs/icons"
+-import VendorShell from "@/components/VendorShell"
+ import PageSkeleton from "@/components/PageSkeleton"
+ import EmptyState from "@/components/EmptyState"
+ import StatCard from "@/components/dashboard/StatCard"
+@@ -314,7 +313,7 @@ const VendorCategoriesPage = () => {
+     )
+   }
+ 
+-  return <VendorShell>{content}</VendorShell>
++  return content
+ }
+ 
+ export default VendorCategoriesPage
+diff --git a/vendor-portal/app/products/collections/page.tsx b/vendor-portal/app/(vendor)/products/collections/page.tsx
+similarity index 96%
+rename from vendor-portal/app/products/collections/page.tsx
+rename to vendor-portal/app/(vendor)/products/collections/page.tsx
+index 5d73b7d..a5dae7c 100644
+--- a/vendor-portal/app/products/collections/page.tsx
++++ b/vendor-portal/app/(vendor)/products/collections/page.tsx
+@@ -3,7 +3,6 @@
+ import { useEffect, useMemo, useState } from "react"
+ import { Container, Heading, Text, Badge, Button } from "@medusajs/ui"
+ import { MagnifyingGlass, Plus, SquaresPlus } from "@medusajs/icons"
+-import VendorShell from "@/components/VendorShell"
+ import PageSkeleton from "@/components/PageSkeleton"
+ import EmptyState from "@/components/EmptyState"
+ import StatCard from "@/components/dashboard/StatCard"
+@@ -241,7 +240,7 @@ const VendorCollectionsPage = () => {
+     )
+   }
+ 
+-  return <VendorShell>{content}</VendorShell>
++  return content
+ }
+ 
+ export default VendorCollectionsPage
+diff --git a/vendor-portal/app/products/new/page.tsx b/vendor-portal/app/(vendor)/products/new/page.tsx
+similarity index 99%
+rename from vendor-portal/app/products/new/page.tsx
+rename to vendor-portal/app/(vendor)/products/new/page.tsx
+index dc2db0a..305911f 100644
+--- a/vendor-portal/app/products/new/page.tsx
++++ b/vendor-portal/app/(vendor)/products/new/page.tsx
+@@ -2,7 +2,6 @@
+ 
+ import React, { useState, useEffect, useRef } from "react"
+ import { Heading, Text, Button, Input, Textarea, Label, Switch, toast, clx } from "@medusajs/ui"
+-import VendorShell from "@/components/VendorShell"
+ import { useRouter } from "next/navigation"
+ import { BrandAuthorizationField } from "@/components/BrandAuthorizationField"
+ import GstTaxCodeField from "@/components/GstTaxCodeField"
+@@ -1733,7 +1732,7 @@ const VendorProductNewPage = () => {
+     !loading
+ 
+   return (
+-    <VendorShell>
++    <>
+       <div className="p-4 md:p-8 max-w-[1200px] mx-auto">
+         <div className="sticky top-0 z-20 -mx-4 md:-mx-8 px-4 md:px-8 py-4 mb-6 bg-ui-bg-base/95 backdrop-blur border-b border-ui-border-base flex items-center justify-between gap-4">
+           <div className="flex items-center gap-4 min-w-0">
+@@ -1854,7 +1853,7 @@ const VendorProductNewPage = () => {
+           </Button>
+         </div>
+       </div>
+-    </VendorShell>
++    </>
+   )
+ }
+ 
+diff --git a/vendor-portal/app/products/page.tsx b/vendor-portal/app/(vendor)/products/page.tsx
+similarity index 99%
+rename from vendor-portal/app/products/page.tsx
+rename to vendor-portal/app/(vendor)/products/page.tsx
+index 82d5ab3..8cc5263 100644
+--- a/vendor-portal/app/products/page.tsx
++++ b/vendor-portal/app/(vendor)/products/page.tsx
+@@ -3,7 +3,6 @@
+ import { useEffect, useMemo, useState } from "react"
+ import { Container, Heading, Text, Button } from "@medusajs/ui"
+ import { ArchiveBox, MagnifyingGlass, Plus, ArrowUpRightMini, Tag } from "@medusajs/icons"
+-import VendorShell from "@/components/VendorShell"
+ import PageSkeleton from "@/components/PageSkeleton"
+ import EmptyState from "@/components/EmptyState"
+ import StatCard from "@/components/dashboard/StatCard"
+@@ -464,7 +463,7 @@ const VendorProductsPage = () => {
+     )
+   }
+ 
+-  return <VendorShell>{content}</VendorShell>
++  return content
+ }
+ 
+ export default VendorProductsPage
+diff --git a/vendor-portal/app/profile/page.tsx b/vendor-portal/app/(vendor)/profile/page.tsx
+similarity index 96%
+rename from vendor-portal/app/profile/page.tsx
+rename to vendor-portal/app/(vendor)/profile/page.tsx
+index dc70fd2..f090644 100644
+--- a/vendor-portal/app/profile/page.tsx
++++ b/vendor-portal/app/(vendor)/profile/page.tsx
+@@ -12,7 +12,6 @@ import {
+   IconButton,
+   toast,
+ } from "@medusajs/ui"
+-import VendorShell from "@/components/VendorShell"
+ import { vendorAuthApi, vendorProfileApi } from "@/lib/api/client"
+ import { useRouter } from "next/navigation"
+ import {
+@@ -379,7 +378,7 @@ const VendorProfilePage = () => {
+ 
+   if (loading) {
+     return (
+-      <VendorShell>
++      <>
+         <div className="p-6 max-w-6xl mx-auto space-y-6">
+           <div className="h-40 rounded-2xl bg-ui-bg-subtle animate-pulse" />
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+@@ -387,13 +386,13 @@ const VendorProfilePage = () => {
+             <div className="h-96 rounded-xl bg-ui-bg-subtle animate-pulse" />
+           </div>
+         </div>
+-      </VendorShell>
++      </>
+     )
+   }
+ 
+   if (!vendor) {
+     return (
+-      <VendorShell>
++      <>
+         <div className="p-6 max-w-6xl mx-auto">
+           <div className="rounded-xl border border-ui-border-base bg-ui-bg-base p-8 text-center">
+             <Heading level="h2">No profile found</Heading>
+@@ -402,7 +401,7 @@ const VendorProfilePage = () => {
+             </Text>
+           </div>
+         </div>
+-      </VendorShell>
++      </>
+     )
+   }
+ 
+@@ -410,7 +409,7 @@ const VendorProfilePage = () => {
+   const verified = !!vendor.is_approved
+ 
+   return (
+-    <VendorShell>
++    <>
+       <div className="bg-ui-bg-subtle min-h-full">
+         <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
+           {/* Hero Card */}
+@@ -981,7 +980,7 @@ const VendorProfilePage = () => {
+           </div>
+         </div>
+       </div>
+-    </VendorShell>
++    </>
+   )
+ }
+ 
+diff --git a/vendor-portal/app/returns/page.tsx b/vendor-portal/app/(vendor)/returns/page.tsx
+similarity index 97%
+rename from vendor-portal/app/returns/page.tsx
+rename to vendor-portal/app/(vendor)/returns/page.tsx
+index e334454..d50376a 100644
+--- a/vendor-portal/app/returns/page.tsx
++++ b/vendor-portal/app/(vendor)/returns/page.tsx
+@@ -3,7 +3,6 @@
+ import { useCallback, useEffect, useMemo, useState } from "react"
+ import { Button, Container, Heading, Text } from "@medusajs/ui"
+ import { ArrowPath, MagnifyingGlass } from "@medusajs/icons"
+-import VendorShell from "@/components/VendorShell"
+ import PageSkeleton from "@/components/PageSkeleton"
+ import EmptyState from "@/components/EmptyState"
+ import StatCard from "@/components/dashboard/StatCard"
+@@ -797,7 +796,7 @@ const VendorReturnsPage = () => {
+     )
+   }
+ 
+-  return <VendorShell>{content}</VendorShell>
++  return content
+ }
+ 
+ export default VendorReturnsPage
+diff --git a/vendor-portal/app/search/page.tsx b/vendor-portal/app/(vendor)/search/page.tsx
+similarity index 97%
+rename from vendor-portal/app/search/page.tsx
+rename to vendor-portal/app/(vendor)/search/page.tsx
+index c2262dc..db1cd36 100644
+--- a/vendor-portal/app/search/page.tsx
++++ b/vendor-portal/app/(vendor)/search/page.tsx
+@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react"
+ import { useRouter } from "next/navigation"
+ import { Button, Container, Heading, Text } from "@medusajs/ui"
+ import { MagnifyingGlass, ShoppingCart, Tag, Users } from "@medusajs/icons"
+-import VendorShell from "@/components/VendorShell"
+ import PageSkeleton from "@/components/PageSkeleton"
+ import EmptyState from "@/components/EmptyState"
+ import StatCard from "@/components/dashboard/StatCard"
+@@ -516,5 +515,5 @@ export default function VendorSearchPage() {
+     )
+   }
+ 
+-  return <VendorShell>{content}</VendorShell>
++  return content
+ }
+diff --git a/vendor-portal/app/settings/page.tsx b/vendor-portal/app/(vendor)/settings/page.tsx
+similarity index 75%
+rename from vendor-portal/app/settings/page.tsx
+rename to vendor-portal/app/(vendor)/settings/page.tsx
+index 22c6c2a..4c464ae 100644
+--- a/vendor-portal/app/settings/page.tsx
++++ b/vendor-portal/app/(vendor)/settings/page.tsx
+@@ -2,7 +2,6 @@
+ 
+ import { useEffect } from "react"
+ import { useRouter } from "next/navigation"
+-import VendorShell from "@/components/VendorShell"
+ 
+ function SettingsRedirect() {
+   const router = useRouter()
+@@ -16,8 +15,8 @@ function SettingsRedirect() {
+ 
+ export default function SettingsPage() {
+   return (
+-    <VendorShell>
++    <>
+       <SettingsRedirect />
+-    </VendorShell>
++    </>
+   )
+ }
+diff --git a/vendor-portal/package-lock.json b/vendor-portal/package-lock.json
+index ca756cc..4caacb3 100644
+--- a/vendor-portal/package-lock.json
++++ b/vendor-portal/package-lock.json
+@@ -22,6 +22,7 @@
+         "react": "19.2.0",
+         "react-dom": "19.2.0",
+         "recharts": "^3.6.0",
++        "swr": "^2.3.3",
+         "xlsx": "^0.18.5"
+       },
+       "devDependencies": {
+@@ -6530,6 +6531,15 @@
+         "node": ">=0.4.0"
+       }
+     },
++    "node_modules/dequal": {
++      "version": "2.0.3",
++      "resolved": "https://registry.npmjs.org/dequal/-/dequal-2.0.3.tgz",
++      "integrity": "sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=6"
++      }
++    },
+     "node_modules/detect-libc": {
+       "version": "2.1.2",
+       "resolved": "https://registry.npmjs.org/detect-libc/-/detect-libc-2.1.2.tgz",
+@@ -10754,6 +10764,19 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/swr": {
++      "version": "2.5.0",
++      "resolved": "https://registry.npmjs.org/swr/-/swr-2.5.0.tgz",
++      "integrity": "sha512-W0GomadRJe9OfzIoRX0kZHhDSaRRfdiOUeH6uazgR05SibBhDNwfdTbhAxmFtObvkf59fFymo22mooKukosvNA==",
++      "license": "MIT",
++      "dependencies": {
++        "dequal": "^2.0.3",
++        "use-sync-external-store": "^1.6.0"
++      },
++      "peerDependencies": {
++        "react": "^16.11.0 || ^17.0.0 || ^18.0.0 || ^19.0.0"
++      }
++    },
+     "node_modules/tailwind-merge": {
+       "version": "2.6.0",
+       "resolved": "https://registry.npmjs.org/tailwind-merge/-/tailwind-merge-2.6.0.tgz",
+diff --git a/vendor-portal/package.json b/vendor-portal/package.json
+index ea1d297..7dc9d28 100644
+--- a/vendor-portal/package.json
++++ b/vendor-portal/package.json
+@@ -23,6 +23,7 @@
+     "react": "19.2.0",
+     "react-dom": "19.2.0",
+     "recharts": "^3.6.0",
++    "swr": "^2.3.3",
+     "xlsx": "^0.18.5"
+   },
+   "overrides": {

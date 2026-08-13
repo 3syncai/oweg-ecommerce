@@ -307,11 +307,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       const meta = getReturnMetadata(request)
       const selfTracking = getSelfReverseTracking(request)
       const hasSelfTracking = Boolean(
-        selfTracking.reverse_tracking_number || selfTracking.reverse_tracking_url
+        selfTracking.reverse_courier_partner &&
+          selfTracking.reverse_tracking_number &&
+          selfTracking.reverse_tracking_url
       )
       const activeForLogistics = ["pending_approval", "approved", "pickup_initiated"].includes(
         String(request.status)
       )
+      const canAdvanceSelfShipStatus =
+        shippingMethod !== "self" || hasSelfTracking
 
       return {
         id: request.id,
@@ -367,13 +371,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
             !meta.reverse_courier_id &&
             !request.shiprocket_order_id) ||
             (shippingMethod === "self" && !hasSelfTracking)),
-        can_mark_pickup_initiated: ["approved", "pending_approval"].includes(
-          String(request.status)
-        ),
-        can_mark_picked_up: ["approved", "pickup_initiated"].includes(String(request.status)),
-        can_mark_received: ["approved", "pickup_initiated", "picked_up"].includes(
-          String(request.status)
-        ),
+        can_mark_pickup_initiated:
+          canAdvanceSelfShipStatus &&
+          ["approved", "pending_approval"].includes(String(request.status)),
+        can_mark_picked_up:
+          canAdvanceSelfShipStatus &&
+          ["approved", "pickup_initiated"].includes(String(request.status)),
+        can_mark_received:
+          canAdvanceSelfShipStatus &&
+          ["approved", "pickup_initiated", "picked_up"].includes(String(request.status)),
         returned_to_vendor:
           String(request.status) === "received" || Boolean(meta.returned_to_vendor),
         returned_to_vendor_at: meta.returned_to_vendor_at

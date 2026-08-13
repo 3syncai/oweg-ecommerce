@@ -50,9 +50,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const labelUrl = String(body.label_url || "").trim().slice(0, 500)
   const courierPartner = String(body.courier_partner || "").trim().slice(0, 120)
 
-  if (!trackingNumber && !trackingUrl) {
+  if (!courierPartner || !trackingNumber || !trackingUrl) {
     return res.status(400).json({
-      message: "Provide at least a tracking ID (AWB) or tracking URL",
+      message: "Courier partner, tracking ID (AWB), and tracking URL are all required",
     })
   }
 
@@ -85,17 +85,15 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     const updated = await returnService.updateReturnRequests({
       id: request.id,
       // Mirror AWB onto the standard field so admin lists already showing AWB pick it up
-      ...(trackingNumber ? { shiprocket_awb: trackingNumber } : {}),
-      ...(trackingNumber || trackingUrl
-        ? { shiprocket_status: request.shiprocket_status || "self_return_booked" }
-        : {}),
+      shiprocket_awb: trackingNumber,
+      shiprocket_status: request.shiprocket_status || "self_return_booked",
       metadata: {
         ...meta,
         reverse_shipping_method: "self",
         reverse_vendor_id: auth.vendor_id,
-        reverse_courier_partner: courierPartner || meta.reverse_courier_partner || null,
-        reverse_tracking_number: trackingNumber || meta.reverse_tracking_number || null,
-        reverse_tracking_url: trackingUrl || meta.reverse_tracking_url || null,
+        reverse_courier_partner: courierPartner,
+        reverse_tracking_number: trackingNumber,
+        reverse_tracking_url: trackingUrl,
         reverse_label_url: labelUrl || meta.reverse_label_url || null,
         reverse_tracking_saved_at: savedAt,
       },
