@@ -23,6 +23,7 @@ type VendorAcceptance = {
   can_mark_delivered?: boolean
   accepted_at?: string | null
   shipping_method?: string | null
+  shipping_provider?: string | null
   easy_courier_partner?: string | null
   self_courier_partner?: string | null
   self_awb?: string | null
@@ -242,7 +243,10 @@ const OrderVendorAcceptanceWidget = () => {
                 label="Shipping"
                 value={
                   vendor.shipping_method === "easy"
-                    ? `Easy · ${vendor.easy_courier_partner || "Shiprocket"}`
+                    ? `Easy · ${
+                        vendor.easy_courier_partner ||
+                        (vendor.shipping_provider === "itl" ? "ITL" : "Shiprocket")
+                      }`
                     : `Self · ${vendor.self_courier_partner || "Carrier"}`
                 }
               />

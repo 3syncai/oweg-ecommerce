@@ -1,6 +1,10 @@
 import type { MedusaRequest } from "@medusajs/framework/http"
 import VendorModuleService from "../modules/vendor/service"
 import { VENDOR_MODULE } from "../modules/vendor"
+import {
+  getConfiguredEasyShipProviderName,
+  getEasyShipProvider,
+} from "../services/easy-ship"
 import ShiprocketService from "../services/shiprocket"
 import { getItemUnits } from "./vendor-order-workflow"
 
@@ -84,7 +88,7 @@ export function buildVendorPickupAddress(vendor: any): VendorPickupAddress {
     throw new Error("Complete a valid 10-digit store/phone number in Vendor Profile before Easy Shipping")
   }
   if (!email) {
-    throw new Error("Vendor email is required for Shiprocket pickup")
+    throw new Error("Vendor email is required for Easy Shipping pickup")
   }
 
   const fingerprint = [
@@ -115,6 +119,45 @@ export function buildVendorPickupAddress(vendor: any): VendorPickupAddress {
 export async function retrieveVendorOrThrow(req: MedusaRequest, vendorId: string) {
   const vendorService: VendorModuleService = req.scope.resolve(VENDOR_MODULE)
   return await vendorService.retrieveVendor(vendorId)
+}
+
+/**
+ * Ensure vendor pickup for the configured Easy Ship provider.
+ * ITL (dummy/live): local nickname only. Shiprocket: register via Shiprocket API.
+ */
+export async function ensureVendorEasyShipPickup(
+  req: MedusaRequest,
+  vendor: any
+): Promise<{ pickup_location: string; pin_code: string; address: VendorPickupAddress }> {
+  if (getConfiguredEasyShipProviderName() === "shiprocket") {
+    return ensureVendorShiprocketPickup(req, vendor)
+  }
+
+  const pickup = buildVendorPickupAddress(vendor)
+  const provider = getEasyShipProvider()
+  await provider.ensurePickup(pickup)
+
+  const metadata = (vendor.metadata && typeof vendor.metadata === "object"
+    ? { ...vendor.metadata }
+    : {}) as Record<string, any>
+
+  const vendorService: VendorModuleService = req.scope.resolve(VENDOR_MODULE)
+  await vendorService.updateVendors({
+    id: vendor.id,
+    metadata: {
+      ...metadata,
+      itl_pickup_location: pickup.pickup_location,
+      itl_pickup_fingerprint: pickup.fingerprint,
+      itl_pickup_pincode: pickup.pin_code,
+      easy_ship_provider: provider.name,
+    },
+  })
+
+  return {
+    pickup_location: pickup.pickup_location,
+    pin_code: pickup.pin_code,
+    address: pickup,
+  }
 }
 
 /**

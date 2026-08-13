@@ -669,6 +669,8 @@ export const vendorOrdersApi = {
         is_surface: boolean
         rating: number | null
       }>
+      provider?: string
+      provider_label?: string
       pickup_postcode: string
       pickup_city?: string
       pickup_address?: string

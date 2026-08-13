@@ -1,6 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../../../_lib/guards"
-import ShiprocketService from "../../../../../services/shiprocket"
+import { getEasyShipProvider } from "../../../../../services/easy-ship"
 import {
   getPaymentType,
   getVendorOrderOrRespond,
@@ -22,63 +22,6 @@ function parsePositiveNumber(raw: unknown, fallback: number): number {
   const n = typeof raw === "string" ? parseFloat(raw) : Number(raw)
   if (!Number.isFinite(n) || n <= 0) return fallback
   return n
-}
-
-function normalizeCouriers(raw: Record<string, unknown>) {
-  const root = (raw?.data || raw) as Record<string, any>
-  // Some Shiprocket payloads nest again under data.data
-  const data =
-    root?.available_courier_companies || root?.couriers
-      ? root
-      : ((root?.data || root) as Record<string, any>)
-
-  const buckets: any[] = []
-  const pushList = (value: unknown) => {
-    if (!value) return
-    if (Array.isArray(value)) {
-      buckets.push(...value)
-      return
-    }
-    if (typeof value === "object") {
-      buckets.push(value)
-    }
-  }
-
-  // Prefer full availability list; never stop at recommended-only when the array exists
-  pushList(data?.available_courier_companies)
-  pushList(data?.couriers)
-  if (buckets.length === 0) {
-    pushList(data?.recommended_courier_company)
-  }
-
-  const seen = new Set<number>()
-  return buckets
-    .map((c: any) => {
-      const id = Number(c?.courier_company_id ?? c?.id ?? c?.courier_id)
-      const name = String(c?.courier_name || c?.name || "").trim()
-      if (!Number.isFinite(id) || id <= 0 || !name) return null
-      if (seen.has(id)) return null
-      seen.add(id)
-      return {
-        courier_id: id,
-        courier_name: name,
-        rate: c?.rate != null ? Number(c.rate) : null,
-        etd: c?.etd || c?.estimated_delivery_days || c?.edd || null,
-        freight_charge: c?.freight_charge != null ? Number(c.freight_charge) : null,
-        rto_charges: c?.rto_charges != null ? Number(c.rto_charges) : null,
-        cod_charges: c?.cod_charges != null ? Number(c.cod_charges) : null,
-        charge_weight: c?.charge_weight != null ? Number(c.charge_weight) : null,
-        cod: Boolean(c?.cod),
-        is_surface: Boolean(c?.is_surface),
-        rating: c?.rating != null ? Number(c.rating) : null,
-      }
-    })
-    .filter(Boolean)
-    .sort((a: any, b: any) => {
-      const ar = a.rate == null ? Number.POSITIVE_INFINITY : a.rate
-      const br = b.rate == null ? Number.POSITIVE_INFINITY : b.rate
-      return ar - br
-    })
 }
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
@@ -127,14 +70,14 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const height = parsePositiveNumber(query.height, suggested.height)
     const packageSource = hasOverride ? "manual" : suggested.source
 
-    const shiprocket = new ShiprocketService()
+    const provider = getEasyShipProvider()
     const isCod = getPaymentType(result.order) === "PostPaid"
     const declaredValue = vendorItems.reduce((sum, item: any) => {
       const qty = Number(item?.quantity ?? item?.detail?.quantity ?? 1) || 1
       return sum + Number(item?.unit_price || 0) * qty
     }, 0)
 
-    const response = await shiprocket.getServiceability({
+    const { couriers, rawAvailableCount } = await provider.listCouriers({
       pickup_postcode: pickupPostcode,
       delivery_postcode: deliveryPostcode,
       weight,
@@ -145,18 +88,16 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       declared_value: declaredValue > 0 ? declaredValue : undefined,
     })
 
-    const couriers = normalizeCouriers(response)
     const volumetric = Number(((length * breadth * height) / 5000).toFixed(3))
-    const rawData = ((response as any)?.data || response || {}) as Record<string, any>
-    const rawAvailable = rawData?.available_courier_companies
-    const rawAvailableCount = Array.isArray(rawAvailable) ? rawAvailable.length : null
 
     console.log(
-      `[Vendor order couriers] order=${orderId} pickup=${pickupPostcode} delivery=${deliveryPostcode} ` +
+      `[Vendor order couriers] provider=${provider.name} order=${orderId} pickup=${pickupPostcode} delivery=${deliveryPostcode} ` +
         `weight=${weight} declared=${declaredValue} raw_available=${rawAvailableCount ?? "n/a"} normalized=${couriers.length}`
     )
 
     return res.json({
+      provider: provider.name,
+      provider_label: provider.displayName,
       pickup_postcode: pickupPostcode,
       pickup_city: pickup.city,
       pickup_address: pickup.address,

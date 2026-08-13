@@ -102,6 +102,7 @@ const VendorReturnsPage = () => {
   const [couriersLoading, setCouriersLoading] = useState(false)
   const [courierError, setCourierError] = useState<string | null>(null)
   const [selectedCourierId, setSelectedCourierId] = useState<number | null>(null)
+  const [reverseProviderLabel, setReverseProviderLabel] = useState("ITL")
   const [savingCourier, setSavingCourier] = useState(false)
   const [selfTrackingReturn, setSelfTrackingReturn] = useState<VendorReturnRequest | null>(
     null
@@ -192,15 +193,20 @@ const VendorReturnsPage = () => {
     setCouriers([])
     setSelectedCourierId(null)
     setCourierError(null)
+    setReverseProviderLabel("ITL")
     setCouriersLoading(true)
     try {
       const data = await vendorReturnsApi.listCouriers(returnId)
       setCouriers(data.couriers || [])
+      setReverseProviderLabel(
+        String((data as any).provider_label || (data as any).provider || "ITL").trim() ||
+          "ITL"
+      )
       if (!data.couriers?.length) {
-        setCourierError("No Shiprocket reverse services available for this pincode pair.")
+        setCourierError("No reverse courier services available for this pincode pair.")
       }
     } catch (e: any) {
-      setCourierError(e?.message || "Failed to load Shiprocket services")
+      setCourierError(e?.message || "Failed to load reverse courier services")
     } finally {
       setCouriersLoading(false)
     }
@@ -351,7 +357,7 @@ const VendorReturnsPage = () => {
             accent="oweg"
             icon={<ArrowPath />}
             title="No returns yet"
-            description="When a customer requests a return: Easy Ship → pick a Shiprocket reverse service with charges; Self Ship → add tracking ID / URL for admin."
+            description="When a customer requests a return: Easy Ship → pick a reverse courier service with charges; Self Ship → add tracking ID / URL for admin."
             primaryAction={{ label: "View orders", onClick: () => router.push("/orders") }}
             secondaryAction={{ label: "Go to dashboard", onClick: () => router.push("/dashboard") }}
           />
@@ -564,8 +570,8 @@ const VendorReturnsPage = () => {
                                 onClick={() => void openCourierPicker(item.id)}
                               >
                                 {item.reverse_courier_name
-                                  ? "Change Shiprocket service"
-                                  : "Select Shiprocket service"}
+                                  ? "Change reverse courier"
+                                  : "Select reverse courier"}
                               </Button>
                             ) : null}
                             {item.can_add_self_tracking ? (
@@ -637,7 +643,7 @@ const VendorReturnsPage = () => {
                             {item.shipping_method === "easy" &&
                             item.needs_return_logistics ? (
                               <Text size="xsmall" className="text-amber-700 dark:text-amber-300">
-                                Select a Shiprocket reverse service (rates shown). After admin
+                                Select a reverse courier service (rates shown). After admin
                                 approves, pickup to your store is booked automatically.
                               </Text>
                             ) : null}
@@ -692,11 +698,11 @@ const VendorReturnsPage = () => {
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
             <div className="w-full max-w-lg rounded-xl border border-ui-border-base bg-ui-bg-base p-5 shadow-xl">
               <Heading level="h2" className="text-lg">
-                Select Shiprocket reverse service
+                Select {reverseProviderLabel} reverse courier
               </Heading>
               <Text size="small" className="mt-1 text-ui-fg-subtle">
-                Pickup from customer → your store. Rates below are from Shiprocket. Admin
-                approval books this automatically.
+                Pickup from customer → your store. Rates below are from {reverseProviderLabel}.
+                Admin approval books this automatically.
               </Text>
 
               {couriersLoading ? (

@@ -116,7 +116,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         autoPickup = {
           ok: false,
           message:
-            "Approved. Waiting for vendor to select a Shiprocket reverse service before pickup.",
+            "Approved. Waiting for vendor to select a reverse courier service before pickup.",
         }
       }
     }

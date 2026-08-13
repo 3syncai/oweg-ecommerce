@@ -2,18 +2,25 @@ import type { MedusaRequest } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { markOrderFulfillmentAsDeliveredWorkflow } from "@medusajs/medusa/core-flows"
 import { trackSelfShipment } from "../services/self-shipping-tracking"
-import ShiprocketService from "../services/shiprocket"
+import {
+  easyShipDisplayName,
+  getEasyShipProvider,
+} from "../services/easy-ship"
 import { shipVendorFulfillment } from "./vendor-order-fulfillment"
 import { getSharedDbPool } from "./db-pool"
 import { scheduleVendorEarningsOnDelivery } from "./vendor-earnings"
+import {
+  buildLogisticsStatusPatch,
+  normalizeNdrReason,
+  stageFromLogisticsStatus,
+} from "./vendor-logistics-status"
 
 type MedusaContainer = MedusaRequest["scope"]
 import {
   extractTrackingStatus,
+  getPaymentType,
   getVendorWorkflow,
   getVendorWorkflows,
-  isMovementTrackingStatus,
-  isPreDispatchTrackingStatus,
   mergeVendorWorkflowMetadata,
   normalizeTrackingStatus,
   summarizeTrackingPayload,
@@ -29,10 +36,7 @@ type OrderLike = {
 }
 
 export function stageFromTrackingStatus(status: string): VendorOrderStage | null {
-  if (status === "delivered") return "delivered"
-  if (isMovementTrackingStatus(status)) return "in_transit"
-  if (isPreDispatchTrackingStatus(status)) return "to_dispatch"
-  return null
+  return stageFromLogisticsStatus(status)
 }
 
 const STAGE_RANK: Record<VendorOrderStage, number> = {
@@ -72,37 +76,48 @@ async function persistWorkflow(
 
 async function fetchTrackingForWorkflow(workflow: VendorOrderWorkflow) {
   if (workflow.shipping_method === "easy") {
+    const provider = getEasyShipProvider()
+    const providerLabel =
+      easyShipDisplayName(workflow.shipping_provider) || provider.displayName
+    const trackSource =
+      workflow.shipping_provider === "shiprocket" || provider.name === "shiprocket"
+        ? "shiprocket"
+        : "itl"
+
     const awb = workflow.shiprocket_awb || workflow.tracking_number
     if (!awb) {
       return summarizeTrackingPayload({
         provider: "easy",
-        courierPartnerName: workflow.easy_courier_partner || "Shiprocket",
+        courierPartnerName: workflow.easy_courier_partner || providerLabel,
         awb: null,
         status: normalizeTrackingStatus(workflow.shiprocket_status || "created"),
         error: "AWB not assigned yet",
+        source: trackSource,
       })
     }
     try {
-      const shiprocket = new ShiprocketService()
-      const payload = await shiprocket.trackByAwb(String(awb))
+      const payload = await provider.trackByAwb(String(awb))
       return {
         ...summarizeTrackingPayload({
           provider: "easy",
-          courierPartnerName: workflow.easy_courier_partner || "Shiprocket",
+          courierPartnerName: workflow.easy_courier_partner || providerLabel,
           awb: String(awb),
           payload,
           status: extractTrackingStatus(payload),
+          source: trackSource,
         }),
-        tracking_url: workflow.tracking_url || null,
+        tracking_url:
+          workflow.tracking_url || provider.trackingUrlForAwb(String(awb)) || null,
         label_url: workflow.label_url || null,
       }
     } catch (error: any) {
       return summarizeTrackingPayload({
         provider: "easy",
-        courierPartnerName: workflow.easy_courier_partner || "Shiprocket",
+        courierPartnerName: workflow.easy_courier_partner || providerLabel,
         awb: String(awb),
         status: normalizeTrackingStatus(workflow.shiprocket_status || "not_shipped"),
         error: error?.message || "Tracking unavailable",
+        source: trackSource,
       })
     }
   }
@@ -148,17 +163,24 @@ export async function syncVendorShipmentTracking(input: {
   }
 
   if (workflow.stage === "delivered") {
-    return {
-      updated: false,
-      tracking: null as any,
-      status: "delivered",
-      stage: "delivered" as VendorOrderStage,
+    // Still allow COD cash_collected updates after delivery
+    const peek = await fetchTrackingForWorkflow(workflow)
+    const peekStatus = normalizeTrackingStatus(peek?.status || "")
+    if (peekStatus !== "cash_collected") {
+      return {
+        updated: false,
+        tracking: peek,
+        status: "delivered",
+        stage: "delivered" as VendorOrderStage,
+      }
     }
   }
 
   const tracking = await fetchTrackingForWorkflow(workflow)
   const status = normalizeTrackingStatus(tracking?.status || workflow.shiprocket_status || "")
+  const ndrReason = normalizeNdrReason(tracking?.ndr_reason || workflow.ndr_reason)
   const nextStage = stageFromTrackingStatus(status)
+  const isCod = getPaymentType(order as any) === "PostPaid"
 
   let metadata = order.metadata
   let stage = (workflow.stage || null) as VendorOrderStage | null
@@ -197,6 +219,16 @@ export async function syncVendorShipmentTracking(input: {
     }
   }
 
+  const logistics = buildLogisticsStatusPatch({
+    status,
+    reason: ndrReason,
+    isCodOrder: isCod,
+  })
+  if (status === "cash_collected" && (workflow.stage === "delivered" || stage === "delivered")) {
+    logistics.stage = "delivered"
+  }
+  const { should_schedule_earnings, ...logisticsPatch } = logistics
+
   if (nextStage === "delivered") {
     const fulfillmentId = String(
       getVendorWorkflow(order.metadata, vendorId).medusa_fulfillment_id ||
@@ -222,6 +254,7 @@ export async function syncVendorShipmentTracking(input: {
     }
 
     metadata = await persistWorkflow(container, order, vendorId, {
+      ...logisticsPatch,
       stage: "delivered",
       shiprocket_status: "delivered",
       shiprocket_delivered_at: new Date().toISOString(),
@@ -229,15 +262,43 @@ export async function syncVendorShipmentTracking(input: {
     stage = "delivered"
     updated = true
 
-    try {
-      const pool = getSharedDbPool()
-      await scheduleVendorEarningsOnDelivery(order.id, pool)
-    } catch (error: any) {
-      console.warn(
-        `[shipment-sync] earnings schedule failed order=${order.id}:`,
-        error?.message
-      )
+    if (should_schedule_earnings) {
+      try {
+        const pool = getSharedDbPool()
+        await scheduleVendorEarningsOnDelivery(order.id, pool)
+      } catch (error: any) {
+        console.warn(
+          `[shipment-sync] earnings schedule failed order=${order.id}:`,
+          error?.message
+        )
+      }
     }
+  } else if (status === "cash_collected") {
+    metadata = await persistWorkflow(container, order, vendorId, logisticsPatch)
+    updated = true
+    if (should_schedule_earnings || isCod) {
+      try {
+        const pool = getSharedDbPool()
+        await scheduleVendorEarningsOnDelivery(order.id, pool)
+      } catch (error: any) {
+        console.warn(
+          `[shipment-sync] COD earnings schedule failed order=${order.id}:`,
+          error?.message
+        )
+      }
+    }
+  } else if (
+    status === "ndr" ||
+    status === "rto_initiated" ||
+    status === "rto_in_transit" ||
+    status === "rto_delivered"
+  ) {
+    metadata = await persistWorkflow(container, order, vendorId, {
+      ...logisticsPatch,
+      stage: canAdvanceStage(stage, "in_transit") ? "in_transit" : stage || "in_transit",
+    })
+    stage = "in_transit"
+    updated = true
   } else if (canAdvanceStage(stage, nextStage) && nextStage !== stage) {
     metadata = await persistWorkflow(container, order, vendorId, {
       stage: nextStage,
@@ -248,6 +309,7 @@ export async function syncVendorShipmentTracking(input: {
   } else if (status && status !== workflow.shiprocket_status) {
     metadata = await persistWorkflow(container, order, vendorId, {
       shiprocket_status: status,
+      ...(ndrReason ? { ndr_reason: ndrReason } : {}),
     })
     updated = true
   }

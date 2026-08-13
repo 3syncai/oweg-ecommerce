@@ -1,6 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../../../_lib/guards"
-import ShiprocketService from "../../../../../services/shiprocket"
+import { getEasyShipProvider } from "../../../../../services/easy-ship"
 import {
   buildShiprocketForwardPayload,
   formatVendorOrder,
@@ -13,7 +13,7 @@ import {
 } from "../../../../../lib/vendor-order-workflow"
 import { isShiprocketEligibleOrder } from "../../../../../lib/vendor-order-visibility"
 import {
-  ensureVendorShiprocketPickup,
+  ensureVendorEasyShipPickup,
   retrieveVendorOrThrow,
 } from "../../../../../lib/vendor-shiprocket-pickup"
 import { getKnownTrackingUrl } from "../../../../../services/self-shipping-tracking"
@@ -95,7 +95,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       if (!isShiprocketEligibleOrder(result.order as any)) {
         return res.status(409).json({
           message:
-            "Order is not ready for Shiprocket (draft, unpaid, failed payment, or unconfirmed COD).",
+            "Order is not ready for Easy Shipping (draft, unpaid, failed payment, or unconfirmed COD).",
         })
       }
 
@@ -128,7 +128,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       const vendor = await retrieveVendorOrThrow(req, auth.vendor_id)
       let vendorPickup
       try {
-        vendorPickup = await ensureVendorShiprocketPickup(req, vendor)
+        vendorPickup = await ensureVendorEasyShipPickup(req, vendor)
       } catch (e: any) {
         return res.status(400).json({
           message: e?.message || "Vendor pickup address incomplete",
@@ -141,8 +141,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       const packageHeight = Number(body.height)
 
       const vendorItems = pickVendorItems(result.order, result.vendorProductIds)
-      const shiprocket = new ShiprocketService()
-      const response = await shiprocket.createForwardShipment(
+      const provider = getEasyShipProvider()
+      const created = await provider.createForwardShipment(
         buildShiprocketForwardPayload(result.order, vendorItems, auth.vendor_id, {
           courier_id: courierId,
           courier_name: courierName || null,
@@ -154,34 +154,22 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         }) as any
       )
 
-      const shipmentId =
-        (response as any)?.shipment_id ||
-        (response as any)?.data?.shipment_id ||
-        null
-      let awb =
-        (response as any)?.awb ||
-        (response as any)?.awb_code ||
-        (response as any)?.data?.awb ||
-        null
+      const shipmentId = created.shipment_id
+      let awb = created.awb
       let assignWarning: string | null = null
 
       if (shipmentId && !awb) {
         try {
-          const assigned = await shiprocket.assignAwb(shipmentId, courierId)
-          awb =
-            (assigned as any)?.response?.data?.awb_code ||
-            (assigned as any)?.awb_code ||
-            (assigned as any)?.awb ||
-            awb
+          const assigned = await provider.assignAwb(shipmentId, courierId)
+          awb = assigned.awb || awb
         } catch (assignError: any) {
           const msg = String(assignError?.message || "")
-          console.warn("[Shiprocket] AWB assign after create failed:", msg)
+          console.warn(`[${provider.displayName}] AWB assign after create failed:`, msg)
           if (/KYC/i.test(msg)) {
             return res.status(400).json({
               message:
-                "Shiprocket blocked AWB assignment: complete KYC on your Shiprocket account (Settings → KYC), then try Easy Shipping again.",
-              shiprocket_order_id:
-                (response as any)?.order_id || (response as any)?.data?.order_id || null,
+                `${provider.displayName} blocked AWB assignment: complete KYC on your account, then try Easy Shipping again.`,
+              shiprocket_order_id: created.order_id,
               shiprocket_shipment_id: shipmentId,
               detail: msg,
             })
@@ -190,10 +178,17 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         }
       }
 
+      if (!trackingUrl && awb) {
+        trackingUrl = provider.trackingUrlForAwb(String(awb))
+      }
+      if (!labelUrl) {
+        labelUrl = created.label_url || trackingUrl
+      }
+
       patch = {
         ...patch,
-        shiprocket_order_id:
-          (response as any)?.order_id || (response as any)?.data?.order_id || null,
+        shipping_provider: provider.name,
+        shiprocket_order_id: created.order_id != null ? String(created.order_id) : null,
         shiprocket_shipment_id: shipmentId,
         shiprocket_awb: awb,
         shiprocket_status: awb ? "awb_assigned" : "created",

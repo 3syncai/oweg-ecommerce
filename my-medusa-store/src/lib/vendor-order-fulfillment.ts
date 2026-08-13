@@ -35,12 +35,17 @@ function buildLabels(workflow: VendorOrderWorkflow) {
       "PENDING"
   ).slice(0, 120)
 
-  const trackingUrl = String(
-    workflow.tracking_url ||
-      (trackingNumber !== "PENDING"
-        ? `https://shiprocket.co/tracking/${encodeURIComponent(trackingNumber)}`
-        : "https://oweg.in")
-  ).slice(0, 500)
+  const provider =
+    String(workflow.shipping_provider || "").toLowerCase() === "itl" ? "itl" : "shiprocket"
+
+  const defaultTrackingUrl =
+    trackingNumber !== "PENDING"
+      ? provider === "itl"
+        ? `https://www.ithinklogistics.com/track-order?awb=${encodeURIComponent(trackingNumber)}`
+        : `https://shiprocket.co/tracking/${encodeURIComponent(trackingNumber)}`
+      : "https://oweg.in"
+
+  const trackingUrl = String(workflow.tracking_url || defaultTrackingUrl).slice(0, 500)
 
   const labelUrl = String(workflow.label_url || trackingUrl).slice(0, 500)
 

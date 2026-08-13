@@ -5,6 +5,7 @@ import type { MouseEvent, ReactNode } from "react"
 import { Button, Container, Heading, Text, clx } from "@medusajs/ui"
 import {
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clipboard,
@@ -34,12 +35,19 @@ type VendorWorkflow = {
   stage?: VendorStage
   accepted_at?: string
   shipping_method?: "easy" | "self"
+  shipping_provider?: "itl" | "shiprocket" | string | null
   shiprocket_order_id?: string | number | null
   shiprocket_shipment_id?: string | number | null
   shiprocket_awb?: string | null
   shiprocket_status?: string | null
+  cod_cash_collected_at?: string | null
+  ndr_reason?: string | null
+  ndr_at?: string | null
+  rto_status?: string | null
+  rto_at?: string | null
   easy_courier_id?: number | null
   easy_courier_partner?: string | null
+  easy_courier_rate?: number | null
   tracking_number?: string | null
   tracking_url?: string | null
   label_url?: string | null
@@ -50,8 +58,19 @@ type VendorWorkflow = {
   self_packing_info?: string | null
   self_delivery_confirmation?: string | null
   self_delivered_at?: string | null
+  return_courier_rate?: number | null
   invoice_generated_at?: string
   rtd_at?: string
+}
+
+function easyProviderLabel(workflow?: VendorWorkflow | null) {
+  const provider = String(workflow?.shipping_provider || "").toLowerCase()
+  if (provider === "itl") return "ITL"
+  if (provider === "shiprocket") return "Shiprocket"
+  const awb = String(workflow?.shiprocket_awb || workflow?.tracking_number || "")
+  if (/^ITL-/i.test(awb)) return "ITL"
+  if (awb) return "Shiprocket"
+  return "ITL"
 }
 
 type VendorOrder = {
@@ -294,6 +313,7 @@ const VendorOrdersContent = () => {
     }>
   >([])
   const [easyCourierLoading, setEasyCourierLoading] = useState(false)
+  const [easyProviderLabel, setEasyProviderLabel] = useState("ITL")
   const [selectedCourierId, setSelectedCourierId] = useState<number | null>(null)
   const [easyPackage, setEasyPackage] = useState({
     weight: "0.5",
@@ -534,6 +554,9 @@ const VendorOrdersContent = () => {
 
       const data = await vendorOrdersApi.listCouriers(order.id, params)
       setEasyCouriers(data.couriers || [])
+      setEasyProviderLabel(
+        String(data.provider_label || data.provider || "ITL").trim() || "ITL"
+      )
       setEasyPackage({
         weight: String(data.weight),
         length: String(data.length),
@@ -568,6 +591,7 @@ const VendorOrdersContent = () => {
     setEasyCouriers([])
     setSelectedCourierId(null)
     setEasyPickupInfo({})
+    setEasyProviderLabel("ITL")
     setError(null)
     try {
       // No package params → backend loads weight/size from product DB
@@ -599,7 +623,7 @@ const VendorOrdersContent = () => {
     }
     const courierName = courier?.courier_name?.trim() || ""
     if (!courierName) {
-      setError("Select a Shiprocket courier to continue")
+      setError("Select a courier to continue")
       return
     }
     setProcessing(`easy:${easyShipOrder.id}`)
@@ -746,77 +770,71 @@ const VendorOrdersContent = () => {
     }
 
     if (selectedStage === "to_pack") {
-      if (hasShipping) {
-        const methodLabel =
-          workflow.shipping_method === "easy"
-            ? workflow.easy_courier_partner
-              ? `Easy · ${workflow.easy_courier_partner}`
-              : "Easy Shipping"
-            : workflow.self_courier_partner
-              ? `Self · ${workflow.self_courier_partner}`
-              : "Self Shipping"
-
-        return (
-          <div className="flex min-w-[220px] flex-col gap-1.5">
-            <Text size="xsmall" className="truncate text-ui-fg-subtle" title={methodLabel}>
-              {methodLabel}
-            </Text>
-            <div className="grid grid-cols-2 gap-1.5">
-              {hasInvoice ? (
-                <ActionButton
-                  icon={<Truck size={14} />}
-                  label="RTD"
-                  disabled={busy}
-                  onClick={() => void markReadyToDispatch(order)}
-                />
-              ) : (
-                <ActionButton
-                  icon={<FileText size={14} />}
-                  label="Invoice"
-                  disabled={busy}
-                  onClick={() => void generateInvoice(order)}
-                />
-              )}
-              <ActionButton
-                icon={<Eye size={14} />}
-                label="View"
-                disabled={busy}
-                onClick={() => void openDetails(order)}
-              />
-            </div>
-          </div>
-        )
-      }
+      const methodLabel =
+        workflow.shipping_method === "easy"
+          ? workflow.easy_courier_partner
+            ? `Easy · ${workflow.easy_courier_partner}`
+            : "Easy Shipping"
+          : workflow.self_courier_partner
+            ? `Self · ${workflow.self_courier_partner}`
+            : "Self Shipping"
 
       return (
-        <div className="grid min-w-[220px] grid-cols-3 gap-1.5">
-          <ActionButton
-            icon={<Truck size={14} />}
-            label="Easy"
-            disabled={busy}
-            onClick={() => void openEasyShipping(order)}
-          />
-          <ActionButton
-            icon={<PackageCheck size={14} />}
-            label="Self"
-            disabled={busy}
-            onClick={() => {
-              setSelfShipOrder(order)
-              setSelfShipping({
-                courier_partner_name: workflow.self_courier_partner || "",
-                tracking_source: workflow.self_tracking_source || "shiprocket",
-                awb: workflow.self_awb || "",
-                packing_info: workflow.self_packing_info || "",
-                tracking_url: workflow.tracking_url || "",
-              })
-            }}
-          />
-          <ActionButton
-            icon={<FileText size={14} />}
-            label="Invoice"
-            disabled
-            onClick={() => undefined}
-          />
+        <div className="flex w-full min-w-0 flex-col gap-1.5">
+          {hasShipping ? (
+            <>
+              <Text size="xsmall" className="truncate text-ui-fg-subtle" title={methodLabel}>
+                {methodLabel}
+              </Text>
+              <div className="grid grid-cols-2 gap-1.5">
+                {hasInvoice ? (
+                  <ActionButton
+                    icon={<Truck size={14} />}
+                    label="RTD"
+                    disabled={busy}
+                    onClick={() => void markReadyToDispatch(order)}
+                  />
+                ) : (
+                  <ActionButton
+                    icon={<FileText size={14} />}
+                    label="Invoice"
+                    disabled={busy}
+                    onClick={() => void generateInvoice(order)}
+                  />
+                )}
+                <ActionButton
+                  icon={<Eye size={14} />}
+                  label="View"
+                  disabled={busy}
+                  onClick={() => void openDetails(order)}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-2 gap-1.5">
+              <ActionButton
+                icon={<Truck size={14} />}
+                label="Easy"
+                disabled={busy}
+                onClick={() => void openEasyShipping(order)}
+              />
+              <ActionButton
+                icon={<PackageCheck size={14} />}
+                label="Self"
+                disabled={busy}
+                onClick={() => {
+                  setSelfShipOrder(order)
+                  setSelfShipping({
+                    courier_partner_name: workflow.self_courier_partner || "",
+                    tracking_source: workflow.self_tracking_source || "shiprocket",
+                    awb: workflow.self_awb || "",
+                    packing_info: workflow.self_packing_info || "",
+                    tracking_url: workflow.tracking_url || "",
+                  })
+                }}
+              />
+            </div>
+          )}
         </div>
       )
     }
@@ -824,7 +842,7 @@ const VendorOrdersContent = () => {
     if (selectedStage === "to_dispatch") {
       // Legacy self-ship parked here before Amazon-style RTD; Dispatch still advances them.
       return (
-        <div className="grid min-w-[220px] grid-cols-2 gap-1.5">
+        <div className="grid w-full grid-cols-2 gap-1.5">
           <ActionButton
             icon={<Truck size={14} />}
             label={busy ? "…" : "Confirm ship"}
@@ -849,7 +867,7 @@ const VendorOrdersContent = () => {
 
     if (showDelivered) {
       return (
-        <div className="grid min-w-[220px] grid-cols-2 gap-1.5">
+        <div className="grid w-full grid-cols-2 gap-1.5">
           <ActionButton
             icon={<CheckCircle2 size={14} />}
             label={busy ? "…" : "Delivered"}
@@ -889,7 +907,6 @@ const VendorOrdersContent = () => {
       </Container>
     )
   } else {
-    const attentionCount = counts.to_accept
     content = (
       <Container className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
         <PageHeader
@@ -927,32 +944,6 @@ const VendorOrdersContent = () => {
           />
         ) : (
           <>
-            {attentionCount > 0 && selectedStage !== "to_accept" ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedStage("to_accept")
-                  setPage(1)
-                  const params = new URLSearchParams(searchParams.toString())
-                  params.set("stage", "to_accept")
-                  router.replace(`/orders?${params.toString()}`)
-                }}
-                className="animate-fade-in-up group flex w-full items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-gradient-to-r from-amber-500/[0.08] to-transparent px-4 py-3 text-left transition-all duration-300 hover:border-amber-500/40 hover:shadow-sm"
-              >
-                <div className="min-w-0">
-                  <Text weight="plus" size="small" className="text-amber-900 dark:text-amber-200">
-                    {attentionCount} order{attentionCount === 1 ? "" : "s"} waiting to accept
-                  </Text>
-                  <Text size="xsmall" className="text-ui-fg-subtle">
-                    Confirm soon so packing can start
-                  </Text>
-                </div>
-                <span className="shrink-0 rounded-lg border border-amber-500/30 bg-ui-bg-base px-3 py-1.5 text-xs font-medium text-amber-800 transition group-hover:bg-amber-500/10 dark:text-amber-200">
-                  Review
-                </span>
-              </button>
-            ) : null}
-
             <div
               className="oweg-stagger grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6"
               style={{ animationDelay: "40ms" }}
@@ -1043,8 +1034,9 @@ const VendorOrdersContent = () => {
                 </div>
               </div>
 
-              <div className="overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base shadow-sm shadow-oweg-500/[0.03]">
-                <div className="sticky top-0 z-10 hidden border-b border-ui-border-base/70 bg-ui-bg-subtle/80 px-4 py-3 backdrop-blur-sm md:grid md:grid-cols-[100px_120px_minmax(0,1.3fr)_110px_100px_130px_150px] md:gap-3">
+              <div className="overflow-x-auto rounded-xl border border-ui-border-base/70 bg-ui-bg-base shadow-sm shadow-oweg-500/[0.03]">
+                <div className="min-w-[920px]">
+                <div className="sticky top-0 z-10 hidden border-b border-ui-border-base/70 bg-ui-bg-subtle/80 px-4 py-3 backdrop-blur-sm md:grid md:grid-cols-[88px_96px_minmax(0,1.4fr)_100px_88px_112px_minmax(168px,1fr)] md:gap-3">
                   {["Date", "Order", "Product", "Amount", "Payment", "Status", "Action"].map(
                     (heading) => (
                       <Text
@@ -1102,7 +1094,7 @@ const VendorOrdersContent = () => {
                       return (
                         <div
                           key={order.id}
-                          className="group grid grid-cols-1 gap-3 px-4 py-3.5 transition-all duration-200 hover:bg-ui-bg-subtle/70 md:grid-cols-[100px_120px_minmax(0,1.3fr)_110px_100px_130px_150px] md:items-center md:gap-3"
+                          className="group grid grid-cols-1 gap-3 px-4 py-3.5 transition-all duration-200 hover:bg-ui-bg-subtle/70 md:grid-cols-[88px_96px_minmax(0,1.4fr)_100px_88px_112px_minmax(168px,1fr)] md:items-center md:gap-3"
                         >
                           <div>
                             <Text size="xsmall" className="mb-0.5 text-ui-fg-muted md:hidden">
@@ -1176,12 +1168,13 @@ const VendorOrdersContent = () => {
                             </span>
                           </div>
 
-                          <div>{renderAction(order)}</div>
+                          <div className="min-w-0">{renderAction(order)}</div>
                         </div>
                       )
                     })}
                   </div>
                 )}
+                </div>
               </div>
 
               <div className="flex flex-col gap-2 text-ui-fg-muted sm:flex-row sm:items-center sm:justify-between">
@@ -1255,6 +1248,7 @@ const VendorOrdersContent = () => {
             busy={processing === `easy:${easyShipOrder.id}`}
             pkg={easyPackage}
             pickupInfo={easyPickupInfo}
+            providerLabel={easyProviderLabel}
             onPackageChange={setEasyPackage}
             onRefreshRates={() => void refreshEasyCouriers()}
             onSelect={setSelectedCourierId}
@@ -1346,7 +1340,7 @@ function ActionButton({
       disabled={disabled}
       onClick={onClick}
       className={clx(
-        "inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border px-2 text-xs font-medium transition-all duration-200 active:scale-[0.98]",
+        "inline-flex h-8 w-full min-w-0 items-center justify-center gap-1 rounded-lg border px-1.5 text-xs font-medium transition-all duration-200 active:scale-[0.98]",
         active
           ? "border-oweg-500/40 bg-oweg-500/10 text-oweg-800 shadow-sm dark:text-oweg-300"
           : "border-ui-border-base/70 bg-ui-bg-base text-ui-fg-base hover:border-ui-border-strong hover:bg-ui-bg-subtle",
@@ -1443,20 +1437,18 @@ function DetailsModal({
   const commission = Number(settlement?.commission_amount ?? order.commission_amount ?? 0)
   const tcs = Number(settlement?.tcs_amount ?? order.tcs_amount ?? 0)
   const tds = Number(settlement?.tds_amount ?? order.tds_amount ?? 0)
-  const payout = Number(
-    settlement?.net_amount ??
-      Math.max(0, taxable - commission - tcs - tds)
+  const forwardLogistic =
+    workflow.shipping_method === "easy"
+      ? Math.max(0, Number(workflow.easy_courier_rate) || 0)
+      : 0
+  const returnLogistic = Math.max(0, Number(workflow.return_courier_rate) || 0)
+  const logisticFees = Math.round((forwardLogistic + returnLogistic) * 100) / 100
+  const marketplaceFee = Math.round((commission + logisticFees) * 100) / 100
+  const baseNet = Number(
+    settlement?.net_amount ?? Math.max(0, taxable - commission - tcs - tds)
   )
+  const payout = Math.max(0, Math.round((baseNet - logisticFees) * 100) / 100)
   const progress = orderProgressSteps(order.vendor_stage)
-  const timelineSource: Array<[string, string]> = [
-    ["Order placed", order.created_at],
-    ["Accepted", workflow.accepted_at || ""],
-    ["Shipping selected", workflow.shipping_method || ""],
-    ["Invoice generated", workflow.invoice_generated_at || ""],
-    ["Ready to dispatch", workflow.rtd_at || ""],
-    ["Current status", order.vendor_status_label],
-  ]
-  const timeline = timelineSource.filter(([, value]) => Boolean(value))
   const stageBadge =
     order.vendor_stage === "to_accept"
       ? { label: "Need vendor acceptance", className: "bg-amber-100 text-amber-900 border-amber-200" }
@@ -1605,7 +1597,7 @@ function DetailsModal({
                   [
                     "Booked through",
                     workflow.shipping_method === "easy"
-                      ? "Shiprocket"
+                      ? easyProviderLabel(workflow)
                       : workflow.self_tracking_source === "shiprocket"
                         ? "Shiprocket"
                         : workflow.self_tracking_source === "carrier_api"
@@ -1618,28 +1610,45 @@ function DetailsModal({
                     "Courier",
                     workflow.easy_courier_partner ||
                       workflow.self_courier_partner ||
-                      (workflow.shipping_method === "easy" ? "Shiprocket" : "N/A"),
+                      (workflow.shipping_method === "easy"
+                        ? easyProviderLabel(workflow)
+                        : "N/A"),
                   ],
                   [
                     "AWB / Tracking",
                     workflow.tracking_number ||
                       workflow.shiprocket_awb ||
                       workflow.self_awb ||
-                      (workflow.shipping_method === "easy" ? "Pending from Shiprocket" : "N/A"),
+                      (workflow.shipping_method === "easy"
+                        ? `Pending from ${easyProviderLabel(workflow)}`
+                        : "N/A"),
                   ],
                   ["Tracking URL", workflow.tracking_url || "N/A"],
                   ...(workflow.shipping_method === "easy"
                     ? [
                         [
-                          "Shiprocket order",
+                          `${easyProviderLabel(workflow)} order`,
                           workflow.shiprocket_order_id ? String(workflow.shiprocket_order_id) : "N/A",
                         ] as [string, string],
                         [
-                          "Shiprocket shipment",
+                          `${easyProviderLabel(workflow)} shipment`,
                           workflow.shiprocket_shipment_id
                             ? String(workflow.shiprocket_shipment_id)
                             : "N/A",
                         ] as [string, string],
+                        [
+                          "Carrier status",
+                          workflow.shiprocket_status || "N/A",
+                        ] as [string, string],
+                        ...(workflow.ndr_reason
+                          ? [["NDR reason", String(workflow.ndr_reason)] as [string, string]]
+                          : []),
+                        ...(workflow.rto_status
+                          ? [["RTO status", String(workflow.rto_status)] as [string, string]]
+                          : []),
+                        ...(workflow.cod_cash_collected_at
+                          ? [["COD cash collected", String(workflow.cod_cash_collected_at)] as [string, string]]
+                          : []),
                       ]
                     : [["Packing", workflow.self_packing_info || "N/A"] as [string, string]]),
                 ]}
@@ -1666,10 +1675,11 @@ function DetailsModal({
                         : undefined
                     }
                   />
-                  <SummaryRow
-                    label="Marketplace fee"
-                    value={`−${formatCurrency(commission, currency)}`}
-                    muted
+                  <MarketplaceFeeBreakdown
+                    currency={currency}
+                    commission={commission}
+                    logisticFees={logisticFees}
+                    marketplaceFee={marketplaceFee}
                   />
                   <SummaryRow label="TCS" value={`−${formatCurrency(tcs, currency)}`} muted />
                   <SummaryRow label="TDS" value={`−${formatCurrency(tds, currency)}`} muted />
@@ -1682,13 +1692,13 @@ function DetailsModal({
                   </div>
                 </div>
                 <Text size="xsmall" className="mt-3 leading-relaxed text-ui-fg-muted">
-                  Payout = Taxable − commission − TCS − TDS. Courier fees are deducted later at
-                  dispatch / return.
+                  Payout = Taxable − commission − logistic fees − TCS − TDS. Logistic fees update
+                  after Easy Ship courier selection (and RTO on return at delivery).
                 </Text>
               </div>
 
               <InfoBlock
-                title="Order meta"
+                title="Order detail"
                 rows={[
                   ["Order ID", order.id],
                   ["Display ID", compactOrderId(order)],
@@ -1696,17 +1706,112 @@ function DetailsModal({
                   ["Created", formatDate(order.created_at)],
                 ]}
               />
-
-              <InfoBlock
-                title="Timeline"
-                rows={timeline.map(([label, value]) => [label, String(value)])}
-              />
             </div>
           </div>
 
           {tracking && <TrackingPanel tracking={tracking} />}
         </div>
       </div>
+    </div>
+  )
+}
+
+function MarketplaceFeeBreakdown({
+  currency,
+  commission,
+  logisticFees,
+  marketplaceFee,
+}: {
+  currency: string
+  commission: number
+  logisticFees: number
+  marketplaceFee: number
+}) {
+  const [open, setOpen] = useState(false)
+  const [logisticInfoOpen, setLogisticInfoOpen] = useState(false)
+
+  return (
+    <div className="rounded-lg border border-ui-border-base/60 bg-ui-bg-subtle/30">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-3 px-2.5 py-2 text-left transition hover:bg-ui-bg-subtle/70"
+        aria-expanded={open}
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <ChevronDown
+            size={14}
+            className={clx(
+              "text-ui-fg-muted transition-transform duration-200",
+              open ? "rotate-0" : "-rotate-90"
+            )}
+          />
+          <Text size="small" className="text-ui-fg-subtle">
+            Marketplace fee
+          </Text>
+        </span>
+        <Text size="small" className="tabular-nums text-ui-fg-subtle">
+          −{formatCurrency(marketplaceFee, currency)}
+        </Text>
+      </button>
+
+      {open ? (
+        <div className="space-y-1.5 border-t border-ui-border-base/50 px-2.5 py-2">
+          <div className="flex items-center justify-between gap-3 pl-5">
+            <Text size="small" className="text-ui-fg-muted">
+              Commission
+            </Text>
+            <Text size="small" className="tabular-nums text-ui-fg-subtle">
+              −{formatCurrency(commission, currency)}
+            </Text>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 pl-5">
+            <div
+              className="relative inline-flex items-center gap-1.5"
+              onMouseEnter={() => setLogisticInfoOpen(true)}
+              onMouseLeave={() => setLogisticInfoOpen(false)}
+            >
+              <Text size="small" className="text-ui-fg-muted">
+                Logistic fees
+              </Text>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setLogisticInfoOpen((v) => !v)
+                }}
+                className={clx(
+                  "inline-flex h-4 w-4 items-center justify-center rounded-full border text-[9px] font-semibold transition",
+                  logisticInfoOpen
+                    ? "border-oweg-500/50 text-oweg-700"
+                    : "border-ui-border-base text-ui-fg-muted hover:border-ui-border-strong hover:text-ui-fg-base"
+                )}
+                aria-expanded={logisticInfoOpen}
+                aria-label="Logistic fees info"
+                title="Logistic fees info"
+              >
+                i
+              </button>
+              <div
+                className={clx(
+                  "oweg-popover absolute left-0 top-full z-30 mt-1.5 w-64 rounded-xl border border-ui-border-base bg-ui-bg-base p-3 shadow-lg shadow-black/5",
+                  logisticInfoOpen ? "oweg-popover-open" : "oweg-popover-closed"
+                )}
+                role="tooltip"
+              >
+                <Text size="xsmall" className="leading-relaxed text-ui-fg-subtle">
+                  This will be updated when you select Easy Ship and select the courier. If the
+                  order is returned at delivery time, RTO will be updated here.
+                </Text>
+              </div>
+            </div>
+            <Text size="small" className="tabular-nums text-ui-fg-subtle">
+              −{formatCurrency(logisticFees, currency)}
+            </Text>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -1748,13 +1853,17 @@ function TrackingPanel({ tracking }: { tracking: any }) {
       ? "Carrier API"
       : tracking?.source === "shiprocket"
         ? "Shiprocket"
-        : tracking?.source === "not_configured"
-          ? "Not configured"
-          : tracking?.source === "provider_error"
-            ? "Provider error"
-            : tracking?.source === "misconfigured"
-              ? "Misconfigured"
-              : "Manual"
+        : tracking?.source === "itl"
+          ? "ITL"
+          : tracking?.source === "easy_ship"
+            ? "Easy Ship"
+            : tracking?.source === "not_configured"
+              ? "Not configured"
+              : tracking?.source === "provider_error"
+                ? "Provider error"
+                : tracking?.source === "misconfigured"
+                  ? "Misconfigured"
+                  : "Manual"
 
   return (
     <div className="md:col-span-2 rounded-lg border border-ui-border-base/70 bg-ui-bg-subtle/30 p-4">
@@ -1762,7 +1871,10 @@ function TrackingPanel({ tracking }: { tracking: any }) {
         <div>
           <Text weight="plus">Tracking Status</Text>
           <Text size="small" className="mt-1 text-ui-fg-subtle">
-            {tracking?.source === "carrier_api" || tracking?.source === "shiprocket"
+            {tracking?.source === "carrier_api" ||
+            tracking?.source === "shiprocket" ||
+            tracking?.source === "itl" ||
+            tracking?.source === "easy_ship"
               ? tracking?.awb
                 ? "Live status fetched from the configured tracking provider."
                 : "Shipment created — waiting for AWB / tracking number from the courier."
@@ -1770,7 +1882,7 @@ function TrackingPanel({ tracking }: { tracking: any }) {
           </Text>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-ui-border-base/70 bg-ui-bg-base px-3 py-1 text-sm">
-          <StatusDot variant={tracking?.status === "delivered" ? "success" : tracking?.status === "in_transit" || tracking?.status === "out_for_delivery" ? "info" : "warning"} />
+          <StatusDot variant={tracking?.status === "delivered" || tracking?.status === "cash_collected" ? "success" : tracking?.status === "ndr" || String(tracking?.status || "").startsWith("rto") ? "warning" : tracking?.status === "in_transit" || tracking?.status === "out_for_delivery" ? "info" : "warning"} />
           {tracking?.status_label || "Not shipped"}
         </span>
       </div>
@@ -1780,6 +1892,14 @@ function TrackingPanel({ tracking }: { tracking: any }) {
         <InfoMini label="AWB / Tracking" value={tracking?.awb || "N/A"} />
         <InfoMini label="Tracking source" value={sourceLabel} />
       </div>
+
+      {tracking?.ndr_reason && (
+        <div className="mt-4 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2">
+          <Text size="small" className="text-amber-800">
+            NDR / exception: {String(tracking.ndr_reason).replace(/_/g, " ")}
+          </Text>
+        </div>
+      )}
 
       {tracking?.error && (
         <div className="mt-4 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2">
@@ -1857,6 +1977,7 @@ function EasyShippingModal({
   busy,
   pkg,
   pickupInfo,
+  providerLabel = "ITL",
   onPackageChange,
   onRefreshRates,
   onSelect,
@@ -1884,6 +2005,7 @@ function EasyShippingModal({
     applied_weight?: number
     package_source?: "product" | "default" | "manual"
   }
+  providerLabel?: string
   onPackageChange: (next: { weight: string; length: string; breadth: string; height: string }) => void
   onRefreshRates: () => void
   onSelect: (id: number) => void
@@ -1907,7 +2029,7 @@ function EasyShippingModal({
         <div className="border-b border-ui-border-base px-5 py-4">
           <Heading level="h2" className="text-xl">Book Easy Shipping</Heading>
           <Text size="small" className="text-ui-fg-subtle">
-            {compactOrderId(order)} · Shiprocket rates & courier partners
+            {compactOrderId(order)} · {providerLabel} rates & courier partners
           </Text>
         </div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
@@ -1976,7 +2098,7 @@ function EasyShippingModal({
               <Text size="small" weight="plus">Available courier services</Text>
               {!loading && couriers.length > 0 ? (
                 <Text size="xsmall" className="text-ui-fg-subtle">
-                  {couriers.length} from Shiprocket
+                  {couriers.length} from {providerLabel}
                 </Text>
               ) : null}
             </div>
@@ -1990,9 +2112,9 @@ function EasyShippingModal({
               <>
                 {couriers.length === 1 ? (
                   <Text size="xsmall" className="text-ui-fg-muted">
-                    Shiprocket only returned 1 serviceable courier for this pickup → delivery
-                    pincode and package. That is usually lane coverage on your Shiprocket
-                    account, not a UI filter.
+                    {providerLabel} only returned 1 serviceable courier for this pickup → delivery
+                    pincode and package. That is usually lane coverage on the carrier account,
+                    not a UI filter.
                   </Text>
                 ) : null}
                 <ul className="space-y-2">
