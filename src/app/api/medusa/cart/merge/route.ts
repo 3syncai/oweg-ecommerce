@@ -47,23 +47,50 @@ export async function POST(req: NextRequest) {
       referer: req.headers.get("referer") ?? undefined,
       "user-agent": req.headers.get("user-agent") ?? undefined,
     }
-    
+
     // Get guest cart ID from header
     const guestCartId = req.headers.get(GUEST_CART_HEADER)
-    
+
     if (!forwardedCookie) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
-    
+
     if (!guestCartId) {
       // No guest cart to merge, just return success
       return NextResponse.json({ success: true, merged: false })
     }
-    
+
     // Get customer cart ID from cookie
     const c = await cookies()
     const customerCartId = c.get(CART_COOKIE)?.value
-    
+
+    // Cookie already points at the guest cart (common guest→checkout→login path).
+    // Re-adding would inflate quantities because Medusa POST line-items ADDS qty.
+    if (customerCartId && guestCartId === customerCartId) {
+      const sameRes = await medusaStoreFetch(`/store/carts/${customerCartId}`, {
+        method: "GET",
+        forwardedCookie,
+        forwardedHeaders,
+      })
+      if (sameRes.ok) {
+        const sameData = await sameRes.json()
+        const sameCart = sameData.cart || sameData
+        const response = NextResponse.json({
+          success: true,
+          merged: true,
+          cart: sameCart,
+          skipped_same_cart: true,
+        })
+        appendUpstreamCookies(response, sameRes)
+        return response
+      }
+      return NextResponse.json({
+        success: true,
+        merged: true,
+        skipped_same_cart: true,
+      })
+    }
+
     if (!customerCartId) {
       // No customer cart exists, assign guest cart to customer
       const assignRes = await medusaStoreFetch(`/store/carts/${guestCartId}`, {
@@ -72,20 +99,20 @@ export async function POST(req: NextRequest) {
         forwardedHeaders,
         body: JSON.stringify({ customer_id: undefined }), // Will be set by Medusa from session
       })
-      
+
       if (!assignRes.ok) {
         const errorPayload = await extractErrorPayload(assignRes)
         const message = toErrorMessage(errorPayload, "Failed to assign cart to customer")
         return NextResponse.json({ error: message }, { status: assignRes.status })
       }
-      
+
       const assignData = await assignRes.json()
       const response = NextResponse.json({ success: true, merged: true, cart: assignData.cart || assignData })
       appendUpstreamCookies(response, assignRes)
       response.cookies.set(CART_COOKIE, guestCartId, { httpOnly: false, sameSite: "lax", path: "/" })
       return response
     }
-    
+
     // Both carts exist - merge guest cart into customer cart
     // First, get line items from guest cart
     const guestCartRes = await backend(`/store/carts/${guestCartId}`)
@@ -93,71 +120,62 @@ export async function POST(req: NextRequest) {
       // Guest cart doesn't exist or is invalid, just return success
       return NextResponse.json({ success: true, merged: false })
     }
-    
+
     const guestCartData = await guestCartRes.json()
     const guestCart = guestCartData.cart || guestCartData
     const guestLineItems = guestCart.items || []
-    
+
     if (guestLineItems.length === 0) {
       // No items to merge
       return NextResponse.json({ success: true, merged: false })
     }
-    
-    // Get customer cart to check existing items
+
+    // Ensure customer cart is reachable before merging
     const customerCartRes = await medusaStoreFetch(`/store/carts/${customerCartId}`, {
       method: "GET",
       forwardedCookie,
       forwardedHeaders,
     })
-    
+
     if (!customerCartRes.ok) {
       const errorPayload = await extractErrorPayload(customerCartRes)
       const message = toErrorMessage(errorPayload, "Failed to fetch customer cart")
       return NextResponse.json({ error: message }, { status: customerCartRes.status })
     }
-    
-    const customerCartData = await customerCartRes.json()
-    const customerCart = customerCartData.cart || customerCartData
-    const existingItems = (customerCart.items || []).reduce((acc: Record<string, number>, item: { variant_id?: string; quantity?: number }) => {
-      if (item.variant_id) {
-        acc[item.variant_id] = (acc[item.variant_id] || 0) + (item.quantity || 0)
-      }
-      return acc
-    }, {})
-    
-    // Merge line items: add guest items to customer cart
+
+    // Medusa POST /line-items ADDS quantity — only send guest qty
     const mergePromises = guestLineItems.map(async (item: { variant_id?: string; quantity?: number }) => {
       if (!item.variant_id) return null
-      
-      const existingQty = existingItems[item.variant_id] || 0
-      const newQty = (item.quantity || 0) + existingQty
-      
+
+      const guestQty = item.quantity || 0
+      if (guestQty <= 0) return null
+
       return medusaStoreFetch(`/store/carts/${customerCartId}/line-items`, {
         method: "POST",
         forwardedCookie,
         forwardedHeaders,
         body: JSON.stringify({
           variant_id: item.variant_id,
-          quantity: newQty,
+          quantity: guestQty,
         }),
       })
     })
-    
+
     await Promise.all(mergePromises.filter(Boolean))
-    
+
     // Get updated customer cart
     const updatedCartRes = await medusaStoreFetch(`/store/carts/${customerCartId}`, {
       method: "GET",
       forwardedCookie,
       forwardedHeaders,
     })
-    
+
     if (!updatedCartRes.ok) {
       const errorPayload = await extractErrorPayload(updatedCartRes)
       const message = toErrorMessage(errorPayload, "Failed to fetch updated cart")
       return NextResponse.json({ error: message }, { status: updatedCartRes.status })
     }
-    
+
     const updatedCartData = await updatedCartRes.json()
     const response = NextResponse.json({
       success: true,
@@ -171,4 +189,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
-
