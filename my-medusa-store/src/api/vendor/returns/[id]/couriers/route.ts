@@ -1,6 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../../../_lib/guards"
-import ShiprocketService from "../../../../../services/shiprocket"
+import { getEasyShipProvider } from "../../../../../services/easy-ship"
 import {
   buildVendorPickupAddress,
   estimatePackageFromVendorItems,
@@ -8,7 +8,6 @@ import {
 } from "../../../../../lib/vendor-shiprocket-pickup"
 import {
   isVendorEasyShipOrder,
-  normalizeCouriers,
   resolveVendorOwnedReturn,
 } from "../../../../../lib/vendor-return-shiprocket"
 
@@ -50,9 +49,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     }
 
     const { request, order, vendorProductIds } = resolved
+    const provider = getEasyShipProvider()
+
     if (!isVendorEasyShipOrder(order, auth.vendor_id)) {
       return res.status(400).json({
-        message: "Shiprocket reverse services are only available for Easy Ship orders",
+        message: `${provider.displayName} reverse services are only available for Easy Ship orders`,
       })
     }
 
@@ -84,8 +85,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     })
     const pkg = await estimatePackageFromVendorItems(req, vendorItems)
 
-    const shiprocket = new ShiprocketService()
-    const response = await shiprocket.getServiceability({
+    const { couriers, rawAvailableCount } = await provider.listCouriers({
       pickup_postcode: pickupPostcode,
       delivery_postcode: delivery.pin_code,
       weight: pkg.weight,
@@ -96,9 +96,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       is_return: true,
     })
 
-    const couriers = normalizeCouriers(response)
-
     return res.json({
+      provider: provider.name,
+      provider_label: provider.displayName,
       return_request_id: request.id,
       status: request.status,
       pickup_postcode: pickupPostcode,
@@ -111,6 +111,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       height: pkg.height,
       couriers,
       count: couriers.length,
+      available_count: rawAvailableCount,
     })
   } catch (error: any) {
     console.error("[Vendor return couriers] error:", error)

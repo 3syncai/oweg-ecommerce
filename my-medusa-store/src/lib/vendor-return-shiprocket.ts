@@ -2,7 +2,7 @@ import type { MedusaRequest } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import ReturnModuleService from "../modules/returns/service"
 import { RETURN_MODULE } from "../modules/returns"
-import ShiprocketService from "../services/shiprocket"
+import { getEasyShipProvider } from "../services/easy-ship"
 import { syncOrderReturnMetadata } from "../services/sync-order-return-metadata"
 import { getVendorWorkflow } from "./vendor-order-workflow"
 import {
@@ -271,11 +271,11 @@ export async function initiateEasyShipReversePickup(params: {
   returnRequestId: string
   vendorId: string
   reason?: string
-}): Promise<{ return_request: any; shiprocket: any }> {
+}): Promise<{ return_request: any; shiprocket: any; provider: string }> {
   const { req, returnRequestId, vendorId, reason } = params
   const returnService: ReturnModuleService = req.scope.resolve(RETURN_MODULE)
   const orderModuleService = req.scope.resolve(Modules.ORDER)
-  const shiprocket = new ShiprocketService()
+  const provider = getEasyShipProvider()
 
   const requests = await returnService.listReturnRequests({ id: returnRequestId })
   if (!requests.length) {
@@ -286,12 +286,14 @@ export async function initiateEasyShipReversePickup(params: {
     throw new Error("Pickup can only be initiated after approval.")
   }
   if (request.shiprocket_order_id || request.pickup_initiated_at) {
-    return { return_request: request, shiprocket: null }
+    return { return_request: request, shiprocket: null, provider: provider.name }
   }
 
   const selection = getReverseCourierSelection(request)
   if (!selection) {
-    throw new Error("Select a Shiprocket reverse courier before initiating Easy Ship pickup.")
+    throw new Error(
+      `Select a ${provider.displayName} reverse courier before initiating Easy Ship pickup.`
+    )
   }
 
   const order = await orderModuleService.retrieveOrder(request.order_id, {
@@ -349,6 +351,7 @@ export async function initiateEasyShipReversePickup(params: {
     height: pkg.height,
     weight: pkg.weight,
     courier_id: selection.reverse_courier_id,
+    courier_name: selection.reverse_courier_name,
     order_items: returnItems.map((item: any) => {
       const original = orderItems.find((orderItem: any) => orderItem.id === item.order_item_id) as any
       return {
@@ -367,21 +370,16 @@ export async function initiateEasyShipReversePickup(params: {
   }
 
   console.log(
-    `[Return] Easy Ship reverse pickup for ${request.id} via courier ${selection.reverse_courier_id}`
+    `[Return] Easy Ship reverse pickup for ${request.id} via ${provider.displayName} courier ${selection.reverse_courier_id}`
   )
-  const response = await shiprocket.createReversePickup(payload)
+  const created = await provider.createReversePickup(payload)
 
-  const shiprocketOrderIdRaw =
-    (response as any)?.order_id || (response as any)?.data?.order_id || null
-  const shiprocketAwbRaw = (response as any)?.awb || (response as any)?.data?.awb || null
   const shiprocketOrderId =
-    shiprocketOrderIdRaw !== null && shiprocketOrderIdRaw !== undefined
-      ? String(shiprocketOrderIdRaw)
+    created.order_id !== null && created.order_id !== undefined
+      ? String(created.order_id)
       : null
   const shiprocketAwb =
-    shiprocketAwbRaw !== null && shiprocketAwbRaw !== undefined
-      ? String(shiprocketAwbRaw)
-      : null
+    created.awb !== null && created.awb !== undefined ? String(created.awb) : null
 
   const meta = getReturnMetadata(request)
   const updated = await returnService.updateReturnRequests({
@@ -392,8 +390,10 @@ export async function initiateEasyShipReversePickup(params: {
     metadata: {
       ...meta,
       reverse_shipping_method: "easy",
+      reverse_shipping_provider: provider.name,
       reverse_pickup_destination: "vendor",
       reverse_vendor_id: vendorId,
+      reverse_tracking_url: created.tracking_url || null,
     },
   })
 
@@ -411,7 +411,11 @@ export async function initiateEasyShipReversePickup(params: {
     })
   }
 
-  return { return_request: updated, shiprocket: response }
+  return {
+    return_request: updated,
+    shiprocket: created.raw || created,
+    provider: provider.name,
+  }
 }
 
 /** Resolve owning vendor id for a return (first matching product vendor). */

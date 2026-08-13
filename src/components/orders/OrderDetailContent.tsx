@@ -25,6 +25,7 @@ import {
   getOrderDisplayLabel,
   getPaymentMethodDisplayName,
   getPaymentMethodLabel,
+  getEasyShipPartnerLabel,
   getShiprocketAwb,
   isPaymentPending,
   resolveOrderLineItemsForCart,
@@ -208,6 +209,7 @@ export default function OrderDetailContent({
 
   const displayLabel = getOrderDisplayLabel(order, orderNumber);
   const awb = getShiprocketAwb(order);
+  const partnerLabel = getEasyShipPartnerLabel(order);
   const trackHref = buildTrackHref(orderId, order?.display_id ?? orderNumber);
   const address = order?.shipping_address;
   const mapsUrl = getGoogleMapsUrl(address);
@@ -442,7 +444,7 @@ export default function OrderDetailContent({
               <OrderDetailsIcon name="delivery-partner" size={24} className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-[#1F2A33]">Shiprocket</p>
+              <p className="text-sm font-semibold text-[#1F2A33]">{partnerLabel}</p>
               <p className="text-xs text-gray-500">
                 {awb ? `Tracking ID: ${awb}` : "Tracking will appear once shipped"}
               </p>

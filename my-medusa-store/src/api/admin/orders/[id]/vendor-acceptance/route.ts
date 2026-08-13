@@ -127,6 +127,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         can_mark_delivered: stage !== "delivered",
         accepted_at: workflow.accepted_at || null,
         shipping_method: workflow.shipping_method || null,
+        shipping_provider: workflow.shipping_provider || null,
         easy_courier_partner: workflow.easy_courier_partner || null,
         self_courier_partner: workflow.self_courier_partner || null,
         self_awb: workflow.self_awb || null,

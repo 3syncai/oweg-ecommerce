@@ -21,11 +21,21 @@ export type VendorOrderWorkflow = {
   store_name?: string | null
   vendor_email?: string | null
   shipping_method?: VendorShippingMethod
+  /** Easy Ship aggregator: itl | shiprocket */
+  shipping_provider?: "itl" | "shiprocket" | string | null
   shiprocket_order_id?: string | null
   shiprocket_shipment_id?: string | number | null
   shiprocket_awb?: string | null
   shiprocket_status?: string | null
   shiprocket_delivered_at?: string | null
+  /** COD: courier confirmed cash collected */
+  cod_cash_collected_at?: string | null
+  /** NDR / failed delivery reason (not_available, refused, …) */
+  ndr_reason?: string | null
+  ndr_at?: string | null
+  /** RTO lifecycle: rto_initiated | rto_in_transit | rto_delivered */
+  rto_status?: string | null
+  rto_at?: string | null
   easy_courier_id?: number | null
   easy_courier_partner?: string | null
   /** Shiprocket serviceability rate charged as forward logistic fee */
@@ -114,8 +124,40 @@ export function mergeVendorWorkflowMetadata(
 export function normalizeTrackingStatus(status: unknown) {
   const normalized = String(status || "").trim().toLowerCase()
   if (!normalized) return ""
+
+  // RTO must be checked before generic "delivered"
+  if (normalized.includes("rto") || normalized.includes("return_to_origin") || normalized.includes("return to origin")) {
+    if (normalized.includes("deliver")) return "rto_delivered"
+    if (normalized.includes("transit") || normalized.includes("in_transit")) return "rto_in_transit"
+    return "rto_initiated"
+  }
+
+  if (
+    (normalized.includes("cash") && normalized.includes("collect")) ||
+    (normalized.includes("cod") && normalized.includes("collect")) ||
+    normalized === "cash_collected" ||
+    normalized === "cod_collected"
+  ) {
+    return "cash_collected"
+  }
+
+  if (
+    normalized.includes("ndr") ||
+    normalized.includes("undeliver") ||
+    normalized.includes("not_available") ||
+    normalized.includes("not available") ||
+    normalized.includes("customer_not_available") ||
+    normalized.includes("refused") ||
+    normalized.includes("refuse") ||
+    normalized.includes("rejected by customer")
+  ) {
+    return "ndr"
+  }
+
   if (normalized.includes("delivered")) return "delivered"
-  if (normalized.includes("out for delivery")) return "out_for_delivery"
+  if (normalized.includes("out for delivery") || normalized.includes("out_for_delivery")) {
+    return "out_for_delivery"
+  }
   if (normalized.includes("out for pickup")) return "pickup_scheduled"
   if (normalized.includes("transit")) return "in_transit"
   if (normalized.includes("picked up") || normalized.includes("pickup completed") || normalized.includes("pickup done")) {
@@ -130,16 +172,26 @@ export function normalizeTrackingStatus(status: unknown) {
   ) {
     return "pickup_scheduled"
   }
+  if (normalized.includes("pickup")) return "pickup_initiated"
   if (normalized.includes("manifest")) return "manifested"
   if (normalized.includes("label")) return "label_generated"
   if (normalized.includes("ready to ship") || normalized.includes("ready_to_ship")) return "ready_to_ship"
-  if (normalized.includes("created") || normalized.includes("booked")) return "created"
+  if (normalized.includes("created") || normalized.includes("booked") || normalized.includes("awb")) {
+    return normalized.includes("awb") ? "awb_assigned" : "created"
+  }
   if (normalized.includes("cancel")) return "cancelled"
   return normalized.replace(/\s+/g, "_")
 }
 
+/** NDR / RTO — still in network, not customer-delivered. */
+export function isExceptionTrackingStatus(status: string) {
+  return ["ndr", "rto_initiated", "rto_in_transit", "rto_delivered"].includes(status)
+}
+
 export function isMovementTrackingStatus(status: string) {
-  return ["in_transit", "out_for_delivery", "shipped", "picked_up"].includes(status)
+  return ["in_transit", "out_for_delivery", "shipped", "picked_up", "ndr", "rto_initiated", "rto_in_transit"].includes(
+    status
+  )
 }
 
 export function isPreDispatchTrackingStatus(status: string) {
@@ -729,14 +781,21 @@ export function extractTrackingStatus(payload: any): string {
 
 function humanizeTrackingStatus(status: string) {
   if (status === "delivered") return "Delivered"
+  if (status === "cash_collected") return "COD cash collected"
+  if (status === "ndr") return "Delivery attempt failed (NDR)"
+  if (status === "rto_initiated") return "RTO initiated"
+  if (status === "rto_in_transit") return "RTO in transit"
+  if (status === "rto_delivered") return "Returned to origin"
   if (status === "out_for_delivery") return "Out for delivery"
   if (status === "in_transit") return "In transit"
   if (status === "picked_up") return "Picked up"
   if (status === "shipped") return "Shipped"
   if (status === "pickup_scheduled") return "Pickup scheduled"
+  if (status === "pickup_initiated") return "Pickup initiated"
   if (status === "manifested") return "Manifested"
   if (status === "label_generated") return "Label generated"
   if (status === "ready_to_ship") return "Ready to ship"
+  if (status === "awb_assigned") return "AWB assigned"
   if (status === "created") return "Created"
   if (status === "cancelled") return "Cancelled"
   if (status === "not_shipped") return "Not shipped"
@@ -770,6 +829,7 @@ export function summarizeTrackingPayload(input: {
   payload?: any
   status?: string
   error?: string | null
+  source?: string | null
 }) {
   const status = normalizeTrackingStatus(input.status || extractTrackingStatus(input.payload) || "not_shipped")
   const shipment = input.payload?.tracking_data?.shipment_track?.[0] || {}
@@ -784,7 +844,18 @@ export function summarizeTrackingPayload(input: {
     awb: input.awb || shipment?.awb_code || null,
     status,
     status_label: humanizeTrackingStatus(status),
-    source: input.payload ? "shiprocket" : "manual",
+    ndr_reason:
+      input.payload?.ndr_reason ||
+      input.payload?.tracking_data?.ndr_reason ||
+      input.payload?.reason ||
+      null,
+    source:
+      input.source ||
+      (input.payload
+        ? input.provider === "easy"
+          ? "easy_ship"
+          : "shiprocket"
+        : "manual"),
     error: input.error || null,
     checkpoints: extractTrackingEvents(input.payload),
   }

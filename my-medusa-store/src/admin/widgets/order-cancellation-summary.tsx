@@ -169,7 +169,7 @@ const OrderCancellationSummaryWidget = () => {
           <InfoRow label="Requested at" value={formatDate(requestedAt)} />
           <InfoRow label="Customer ID" value={requestedBy || "Not recorded"} />
           {shiprocketStatus ? (
-            <InfoRow label="Shiprocket status" value={shiprocketStatus} />
+            <InfoRow label="Tracking status" value={shiprocketStatus} />
           ) : null}
           {payoutMethod ? (
             <>

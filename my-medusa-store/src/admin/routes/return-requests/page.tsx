@@ -228,7 +228,7 @@ const ReturnRequestsPage = () => {
                     </Text>
                     {request.shipping_method === "easy" ? (
                       <div className="rounded-lg border border-ui-border-base bg-ui-bg-subtle/50 px-3 py-2 space-y-1">
-                        <Text className="text-sm font-medium">Shiprocket reverse logistics</Text>
+                        <Text className="text-sm font-medium">Easy Ship reverse logistics</Text>
                         {request.reverse_courier_name ? (
                           <Text className="text-sm text-ui-fg-subtle">
                             Service: {request.reverse_courier_name}
@@ -238,7 +238,7 @@ const ReturnRequestsPage = () => {
                           </Text>
                         ) : (
                           <Text className="text-sm text-amber-700">
-                            Vendor has not selected a Shiprocket reverse service yet
+                            Vendor has not selected a reverse courier service yet
                           </Text>
                         )}
                         {request.shiprocket_awb && (

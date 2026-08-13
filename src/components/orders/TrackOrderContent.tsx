@@ -14,6 +14,7 @@ import {
   formatShippingAddress,
   getGoogleMapsUrl,
   getOrderDisplayLabel,
+  getEasyShipPartnerLabel,
   getShiprocketAwb,
 } from "@/lib/order-utils";
 
@@ -27,6 +28,7 @@ export default function TrackOrderContent({ orderId, orderNumber }: TrackOrderCo
 
   const displayLabel = getOrderDisplayLabel(order, orderNumber);
   const awb = getShiprocketAwb(order);
+  const partnerLabel = getEasyShipPartnerLabel(order);
   const hero = getTrackHeroContent(order, existingReturn);
   const statusImageSrc = resolveOrderStatusImage(order, existingReturn);
   const isCancelledHero = isCancelledStatusImage(statusImageSrc);
@@ -116,7 +118,7 @@ export default function TrackOrderContent({ orderId, orderNumber }: TrackOrderCo
                   <OrdersUiIcon name="delivery-partner" size={22} className="h-[22px] w-[22px]" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-[#1F2A33]">Shiprocket</p>
+                  <p className="text-sm font-semibold text-[#1F2A33]">{partnerLabel}</p>
                   <p className="text-xs text-gray-500">Delivery partner</p>
                 </div>
               </div>

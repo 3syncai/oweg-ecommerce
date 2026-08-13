@@ -3,7 +3,7 @@ import { MedusaError, MedusaErrorTypes, Modules } from "@medusajs/framework/util
 import ReturnModuleService from "../../../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../../../modules/returns"
 import { syncOrderReturnMetadata } from "../../../../../services/sync-order-return-metadata"
-import ShiprocketService from "../../../../../services/shiprocket"
+import { getEasyShipProvider } from "../../../../../services/easy-ship"
 import {
   getReverseCourierSelection,
   initiateEasyShipReversePickup,
@@ -23,7 +23,19 @@ function getReturnWarehouseAddress() {
   ]
   const missing = required.filter((key) => !process.env[key])
   if (missing.length) {
-    throw new Error(`Missing Shiprocket return address env: ${missing.join(", ")}`)
+    const provider = getEasyShipProvider()
+    if (provider.name === "itl") {
+      return {
+        name: process.env.SHIPROCKET_RETURN_NAME || "OWEG Returns",
+        phone: process.env.SHIPROCKET_RETURN_PHONE || "9999999999",
+        address: process.env.SHIPROCKET_RETURN_ADDRESS || "Return Warehouse",
+        city: process.env.SHIPROCKET_RETURN_CITY || "Mumbai",
+        state: process.env.SHIPROCKET_RETURN_STATE || "Maharashtra",
+        country: process.env.SHIPROCKET_RETURN_COUNTRY || "India",
+        pincode: process.env.SHIPROCKET_RETURN_PINCODE || "400001",
+      }
+    }
+    throw new Error(`Missing return warehouse address env: ${missing.join(", ")}`)
   }
 
   return {
@@ -49,7 +61,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   console.log(`[Return] Initiate pickup requested for ${id}`)
   const returnService: ReturnModuleService = req.scope.resolve(RETURN_MODULE)
   const orderModuleService = req.scope.resolve(Modules.ORDER)
-  const shiprocket = new ShiprocketService()
+  const provider = getEasyShipProvider()
   const body = (req.body || {}) as { reason?: string }
 
   const requests = await returnService.listReturnRequests({ id })
@@ -87,6 +99,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       return res.json({
         return_request: result.return_request,
         shiprocket: result.shiprocket,
+        provider: result.provider,
         destination: "vendor",
       })
     }
@@ -153,33 +166,39 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     ...(reason ? { reason } : {}),
   }
 
-  console.log(`[Return] Calling Shiprocket reverse pickup for return ${request.id}`)
-  let response: any
+  console.log(
+    `[Return] Calling ${provider.displayName} reverse pickup (warehouse) for return ${request.id}`
+  )
+  let created: Awaited<ReturnType<typeof provider.createReversePickup>>
   try {
-    response = await shiprocket.createReversePickup(payload as any)
-    console.log(`[Return] Shiprocket reverse pickup created for return ${request.id}`)
+    created = await provider.createReversePickup(payload as any)
+    console.log(`[Return] ${provider.displayName} reverse pickup created for return ${request.id}`)
   } catch (error: any) {
-    console.error("[Return] Shiprocket reverse pickup failed", error?.message || error)
+    console.error(`[Return] ${provider.displayName} reverse pickup failed`, error?.message || error)
     throw new MedusaError(
       MedusaErrorTypes.INVALID_DATA,
-      error?.message || "Shiprocket reverse pickup failed."
+      error?.message || `${provider.displayName} reverse pickup failed.`
     )
   }
 
-  const shiprocketOrderIdRaw = (response as any)?.order_id || (response as any)?.data?.order_id || null
-  const shiprocketAwbRaw = (response as any)?.awb || (response as any)?.data?.awb || null
-  const shiprocketOrderId = shiprocketOrderIdRaw !== null && shiprocketOrderIdRaw !== undefined
-    ? String(shiprocketOrderIdRaw)
-    : null
-  const shiprocketAwb = shiprocketAwbRaw !== null && shiprocketAwbRaw !== undefined
-    ? String(shiprocketAwbRaw)
-    : null
+  const shiprocketOrderId =
+    created.order_id !== null && created.order_id !== undefined
+      ? String(created.order_id)
+      : null
+  const shiprocketAwb =
+    created.awb !== null && created.awb !== undefined ? String(created.awb) : null
 
   const updated = await returnService.updateReturnRequests({
     id: request.id,
     shiprocket_order_id: shiprocketOrderId,
     shiprocket_awb: shiprocketAwb,
     shiprocket_status: "pickup_initiated",
+    metadata: {
+      ...((request.metadata && typeof request.metadata === "object"
+        ? request.metadata
+        : {}) as Record<string, unknown>),
+      reverse_shipping_provider: provider.name,
+    },
   })
 
   await returnService.markPickupInitiated(request.id)
@@ -197,5 +216,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     })
   }
 
-  return res.json({ return_request: updated, shiprocket: response })
+  return res.json({
+    return_request: updated,
+    shiprocket: created.raw || created,
+    provider: provider.name,
+  })
 }

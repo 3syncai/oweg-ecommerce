@@ -90,16 +90,52 @@ export function getPaymentMethodLabel(order?: OrderDetail | null): string {
   return order?.payment_status || "Pending";
 }
 
+function firstVendorWorkflow(meta: Record<string, unknown>) {
+  const raw = meta.vendor_order_workflows;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const first = Object.values(raw as Record<string, Record<string, unknown>>)[0];
+  return first && typeof first === "object" ? first : null;
+}
+
 export function getShiprocketAwb(order?: OrderDetail | null): string | null {
   const meta = (order?.metadata || {}) as Record<string, unknown>;
-  return typeof meta.shiprocket_awb === "string" && meta.shiprocket_awb
-    ? meta.shiprocket_awb
-    : null;
+  if (typeof meta.shiprocket_awb === "string" && meta.shiprocket_awb) {
+    return meta.shiprocket_awb;
+  }
+  const wf = firstVendorWorkflow(meta);
+  const awb = wf?.shiprocket_awb || wf?.tracking_number;
+  return typeof awb === "string" && awb ? awb : null;
 }
 
 export function getShiprocketStatus(order?: OrderDetail | null): string {
   const meta = (order?.metadata || {}) as Record<string, unknown>;
-  return typeof meta.shiprocket_status === "string" ? meta.shiprocket_status.toLowerCase() : "";
+  if (typeof meta.shiprocket_status === "string") {
+    return meta.shiprocket_status.toLowerCase();
+  }
+  const wf = firstVendorWorkflow(meta);
+  return typeof wf?.shiprocket_status === "string"
+    ? String(wf.shiprocket_status).toLowerCase()
+    : "";
+}
+
+/** Delivery partner label for Easy Ship (ITL / Shiprocket). */
+export function getEasyShipPartnerLabel(order?: OrderDetail | null): string {
+  const meta = (order?.metadata || {}) as Record<string, unknown>;
+  const wf = firstVendorWorkflow(meta);
+  const provider = String(
+    wf?.shipping_provider || meta.shipping_provider || ""
+  ).toLowerCase();
+  if (provider === "itl") return "ITL";
+  if (provider === "shiprocket") return "Shiprocket";
+  // Prefer courier partner name when present
+  const courier =
+    (typeof wf?.easy_courier_partner === "string" && wf.easy_courier_partner) ||
+    null;
+  if (courier) return courier;
+  // Default to ITL for new Easy Ship stack when provider unset but AWB looks dummy/ITL
+  const awb = getShiprocketAwb(order) || "";
+  if (/^ITL-/i.test(awb)) return "ITL";
+  return awb ? "Shiprocket" : "ITL";
 }
 
 export function buildOrderHref(orderId: string, displayId?: number | null) {
