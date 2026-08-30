@@ -42,29 +42,29 @@ export default function AboutPage() {
         <div className="absolute top-20 right-0 h-72 w-72 rounded-full bg-lime-200/50 blur-3xl" />
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 py-16 sm:py-20 space-y-16 relative z-10">
-        <header className="space-y-6">
-          <p className="inline-flex items-center gap-2 rounded-full bg-emerald-100 text-emerald-700 px-3 py-1 text-xs font-semibold tracking-wide">
+      <div className="oweg-container relative z-10 max-w-6xl space-y-12 py-12 md:space-y-16 md:py-20">
+        <header className="space-y-5 md:space-y-6">
+          <p className="inline-flex items-center gap-2 rounded-full bg-[var(--oweg-surface-tint)] px-3 py-1 text-xs font-semibold tracking-wide text-[var(--oweg-green-dark)]">
             <Sparkles className="w-4 h-4" />
             About OWEG
           </p>
-          <h1 className="text-3xl sm:text-4xl font-semibold leading-tight">
+          <h1 className="oweg-title text-[clamp(1.7rem,1.1rem+2.8vw,2.75rem)] leading-tight">
             We make premium appliances feel personal, fast, and joyful to buy.
           </h1>
-          <p className="text-lg text-gray-600 max-w-3xl">
+          <p className="oweg-subtle max-w-3xl text-base md:text-lg">
             From kitchen wins to everyday essentials, OWEG blends curated
             products, intuitive shopping, and reliable delivery. We obsess over
             every detail so you can plug in, power up, and get back to living.
           </p>
         </header>
 
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           {stats.map((stat) => (
             <div
               key={stat.label}
-              className="rounded-2xl border border-emerald-100 bg-white/80 backdrop-blur shadow-sm px-4 py-5 flex flex-col gap-1"
+              className="oweg-surface-card flex flex-col gap-1 bg-white/80 px-4 py-5 backdrop-blur"
             >
-              <div className="text-2xl font-semibold text-gray-900">
+              <div className="text-xl font-semibold text-gray-900 sm:text-2xl">
                 {stat.value}
               </div>
               <div className="text-sm text-gray-700">{stat.label}</div>
@@ -73,10 +73,10 @@ export default function AboutPage() {
           ))}
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-2 items-center">
+        <section className="grid items-center gap-6 lg:grid-cols-2">
           <div className="space-y-4">
-            <h2 className="text-2xl font-semibold">What keeps us building</h2>
-            <p className="text-gray-600 leading-relaxed">
+            <h2 className="oweg-title text-[clamp(1.35rem,1rem+1.4vw,1.75rem)]">What keeps us building</h2>
+            <p className="leading-relaxed text-[var(--oweg-ink-muted)]">
               We started OWEG because appliance shopping felt stale—too many
               tabs, unclear specs, no support after delivery. Our answer: sharp
               storytelling, transparent prices, and hands-on service. We’re
@@ -92,33 +92,33 @@ export default function AboutPage() {
               ].map((pill) => (
                 <span
                   key={pill}
-                  className="rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 px-3 py-1 font-semibold"
+                  className="rounded-full border border-[var(--oweg-border)] bg-[var(--oweg-surface-tint)] px-3 py-1 font-semibold text-[var(--oweg-green-dark)]"
                 >
                   {pill}
                 </span>
               ))}
             </div>
           </div>
-          <div className="rounded-3xl border border-gray-100 bg-gradient-to-br from-white via-emerald-50 to-emerald-100 shadow-lg p-8 space-y-6">
-            <div className="inline-flex items-center gap-3 rounded-full bg-white px-4 py-2 shadow-sm border border-gray-100 text-sm font-semibold text-emerald-700">
+          <div className="space-y-5 rounded-[var(--oweg-radius-xl)] border border-[var(--oweg-border)] bg-gradient-to-br from-white via-[var(--oweg-surface-tint)] to-[#dff0d2] p-5 shadow-[var(--oweg-shadow-md)] sm:p-8 md:space-y-6">
+            <div className="inline-flex items-center gap-3 rounded-full border border-[var(--oweg-border)] bg-white px-4 py-2 text-sm font-semibold text-[var(--oweg-green-dark)] shadow-[var(--oweg-shadow-sm)]">
               <ShieldCheck className="w-4 h-4" />
               Zero-tricks pricing
             </div>
-            <p className="text-lg font-semibold text-gray-900">
+            <p className="text-base font-semibold text-[var(--oweg-ink)] sm:text-lg">
               We price-match smartly, display total landed cost upfront, and
               keep warranty terms on every product page.
             </p>
-            <div className="grid grid-cols-2 gap-3 text-sm text-gray-700">
-              <div className="rounded-2xl bg-white p-4 border border-gray-100 shadow-sm">
+            <div className="grid grid-cols-1 gap-3 text-sm text-[var(--oweg-ink-soft)] sm:grid-cols-2">
+              <div className="rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-white p-4 shadow-[var(--oweg-shadow-sm)]">
                 Warranty tracking inside your account
               </div>
-              <div className="rounded-2xl bg-white p-4 border border-gray-100 shadow-sm">
+              <div className="rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-white p-4 shadow-[var(--oweg-shadow-sm)]">
                 Technician-ready installation notes
               </div>
-              <div className="rounded-2xl bg-white p-4 border border-gray-100 shadow-sm">
+              <div className="rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-white p-4 shadow-[var(--oweg-shadow-sm)]">
                 Pickup-ready returns with packaging help
               </div>
-              <div className="rounded-2xl bg-white p-4 border border-gray-100 shadow-sm">
+              <div className="rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-white p-4 shadow-[var(--oweg-shadow-sm)]">
                 Human chat for part replacements
               </div>
             </div>
@@ -129,16 +129,16 @@ export default function AboutPage() {
           {values.map((item) => (
             <div
               key={item.title}
-              className="rounded-3xl border border-gray-100 bg-white p-6 shadow-[0_15px_45px_-28px_rgba(0,0,0,0.35)] flex gap-4"
+              className="oweg-surface-card flex gap-4 p-5 sm:p-6"
             >
-              <div className="h-12 w-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-100">
+              <div className="oweg-icon-tile h-12 w-12 shrink-0 text-[var(--oweg-green-dark)]">
                 <item.icon className="w-6 h-6" />
               </div>
-              <div className="space-y-1.5">
-                <h3 className="text-lg font-semibold text-gray-900">
+              <div className="min-w-0 space-y-1.5">
+                <h3 className="text-base font-semibold text-[var(--oweg-ink)] sm:text-lg">
                   {item.title}
                 </h3>
-                <p className="text-sm text-gray-600 leading-relaxed">
+                <p className="text-sm leading-relaxed text-[var(--oweg-ink-muted)]">
                   {item.copy}
                 </p>
               </div>

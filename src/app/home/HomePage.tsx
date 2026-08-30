@@ -4,17 +4,15 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, MapPin, UserRound } from 'lucide-react';
-import { useQuery, useQueries } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ProductCard } from '@/components/modules/ProductCard';
 import type { MedusaCategory } from '@/lib/medusa';
 import { useAuth } from '@/contexts/AuthProvider';
-import PreferenceModal from '@/components/modules/PreferenceModal';
-import { usePreferences } from '@/hooks/usePreferences';
 import { useStoreCategories } from '@/hooks/useStoreCategories';
-import { buildPreferenceSlug } from '@/lib/personalization';
 import { normalizeBrandKey, resolveBrandLogo, getCollectionLogoUrl, getCollectionLogoScale } from '@/lib/brand-logos';
 import { BrandLogoImage, brandLogoFallbackHandler } from '@/components/modules/BrandLogoImage';
 import FlashSaleSection from '@/components/flash-sale/FlashSaleSection';
+import CategoryIconTile from '@/components/ui/icons/CategoryIconTile';
 
 // UI product type (used by carousel/cards)
 type UIProduct = {
@@ -31,126 +29,106 @@ type UIProduct = {
   inventory_quantity?: number;
 };
 
-type ProductQuery = {
-  tag?: string;
-  type?: string;
-  category?: string;
-  limit?: number;
-};
-
-async function fetchProducts(query: ProductQuery, limitFallback = 20): Promise<UIProduct[]> {
-  const params = new URLSearchParams();
-  if (query.tag) params.set('tag', query.tag);
-  if (query.type) params.set('type', query.type);
-  if (query.category) params.set('category', query.category);
-  params.set('limit', String(query.limit ?? limitFallback));
-  const url = `/api/medusa/products?${params.toString()}`;
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) {
-    throw new Error('Unable to load products');
-  }
-  const data = await res.json();
-  return (data?.products || []) as UIProduct[];
-}
-
 // Product Carousel Component
 function ProductCarousel({
   title,
   products,
   sourceTag,
   loading,
-  paddingClass = 'px-4',
 }: {
   title: string;
   products: UIProduct[];
   sourceTag?: string;
   loading?: boolean;
-  paddingClass?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scroll = (direction: 'left' | 'right') => {
-    if (scrollRef.current) {
-      const scrollAmount = 220;
-      scrollRef.current.scrollBy({
-        left: direction === 'left' ? -scrollAmount : scrollAmount,
-        behavior: 'smooth',
-      });
-    }
+    const node = scrollRef.current;
+    if (!node) return;
+    // Page by ~80% of the visible track so cards never land half-cut.
+    const scrollAmount = Math.max(200, Math.round(node.clientWidth * 0.8));
+    node.scrollBy({
+      left: direction === 'left' ? -scrollAmount : scrollAmount,
+      behavior: 'smooth',
+    });
   };
 
   const skeletonCards = Array.from({ length: 8 }).map((_, idx) => (
     <div
       key={`loader-${idx}`}
-      className="flex-shrink-0 w-[200px] sm:w-[220px] md:w-[260px] lg:w-[300px] rounded-2xl bg-white border border-gray-100 shadow-sm overflow-hidden animate-pulse"
+      className="oweg-rail-item oweg-surface-card overflow-hidden animate-pulse"
     >
-      <div className="h-40 sm:h-48 bg-gray-100" />
-      <div className="p-4 space-y-3">
-        <div className="h-4 w-2/3 bg-gray-200 rounded" />
+      <div className="aspect-square bg-[var(--oweg-surface-subtle)]" />
+      <div className="p-3 sm:p-4 space-y-2.5">
+        <div className="h-3.5 w-2/3 bg-gray-200 rounded" />
         <div className="h-3 w-1/2 bg-gray-200 rounded" />
-        <div className="h-5 w-full bg-gray-200 rounded" />
+        <div className="h-4 w-full bg-gray-200 rounded" />
       </div>
     </div>
   ));
 
   return (
-    <div className={`mb-8 ${paddingClass}`}>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-bold text-gray-900 transition-all duration-300 hover:text-green-600">{title}</h2>
-        <div className="flex gap-2">
-          <button
-            onClick={() => scroll('left')}
-            className="w-8 h-8 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:bg-gray-50 hover:border-green-500 transition-all duration-300 hover:scale-110"
-            aria-label="Scroll left"
-          >
-            <ChevronLeft className="w-5 h-5 text-gray-600" />
-          </button>
-          <button
-            onClick={() => scroll('right')}
-            className="w-8 h-8 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:bg-gray-50 hover:border-green-500 transition-all duration-300 hover:scale-110"
-            aria-label="Scroll right"
-          >
-            <ChevronRight className="w-5 h-5 text-gray-600" />
-          </button>
+    <section className="oweg-section-tight">
+      <div className="oweg-container">
+        <div className="oweg-section-head">
+          <h2 className="oweg-title">{title}</h2>
+          <div className="hidden sm:flex gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => scroll('left')}
+              className="oweg-rail-btn"
+              aria-label={`Scroll ${title} left`}
+            >
+              <ChevronLeft className="w-4.5 h-4.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scroll('right')}
+              className="oweg-rail-btn"
+              aria-label={`Scroll ${title} right`}
+            >
+              <ChevronRight className="w-4.5 h-4.5" />
+            </button>
+          </div>
+        </div>
+        <div
+          ref={scrollRef}
+          className="oweg-rail oweg-rail-bleed scrollbar-hidden"
+          role="region"
+          aria-label={`${title} product carousel`}
+        >
+          {loading
+            ? skeletonCards
+            : [...products]
+                .sort((a, b) => {
+                  // Sort in-stock products first, out-of-stock last
+                  const aInStock = typeof a.inventory_quantity === 'number' && a.inventory_quantity > 0;
+                  const bInStock = typeof b.inventory_quantity === 'number' && b.inventory_quantity > 0;
+                  if (aInStock && !bInStock) return -1;
+                  if (!aInStock && bInStock) return 1;
+                  return 0;
+                })
+                .map((product) => (
+                  <div key={product.id} className="oweg-rail-item">
+                    <ProductCard
+                      id={product.id}
+                      name={product.name}
+                      image={product.image}
+                      price={product.price}
+                      mrp={product.mrp}
+                      discount={product.discount}
+                      limitedDeal={product.limitedDeal}
+                      variant_id={product.variant_id}
+                      handle={product.handle}
+                      sourceTag={sourceTag}
+                      inventory_quantity={product.inventory_quantity}
+                    />
+                  </div>
+                ))}
         </div>
       </div>
-      <div
-        ref={scrollRef}
-        // make sure scrollbar-hidden class is present (utility defined in this file's global styles)
-        className="flex gap-4 overflow-x-auto scrollbar-hidden pb-4 scroll-smooth snap-x snap-mandatory"
-        role="region"
-        aria-label={`${title} product carousel`}
-      >
-        {loading
-          ? skeletonCards
-          : [...products]
-              .sort((a, b) => {
-                // Sort in-stock products first, out-of-stock last
-                const aInStock = typeof a.inventory_quantity === 'number' && a.inventory_quantity > 0;
-                const bInStock = typeof b.inventory_quantity === 'number' && b.inventory_quantity > 0;
-                if (aInStock && !bInStock) return -1;
-                if (!aInStock && bInStock) return 1;
-                return 0;
-              })
-              .map((product) => (
-              <div key={product.id} className="flex-shrink-0 w-[200px] sm:w-[220px] md:w-[260px] lg:w-[300px]">
-                <ProductCard
-                  id={product.id}
-                  name={product.name}
-                  image={product.image}
-                  price={product.price}
-                  mrp={product.mrp}
-                  discount={product.discount}
-                  limitedDeal={product.limitedDeal}
-                  variant_id={product.variant_id}
-                  handle={product.handle}
-                  sourceTag={sourceTag}
-                  inventory_quantity={product.inventory_quantity}
-                />
-              </div>
-            ))}
-      </div>
-    </div>
+    </section>
   );
 }
 
@@ -173,38 +151,82 @@ const HERO_SLIDES = [
 ];
 
 const BAG_SECTION_BANNERS = [
-  { image: '/kitchen-appliances_banner.png', href: '/c/kitchen-appliances', alt: 'Shop kitchen appliances' },
-  { image: '/ceiling-fans_banner.png', href: '/c/ceiling-fans', alt: 'Shop ceiling fans' },
   { image: '/Mixer_banner.png', href: '/c/mixer-grinders', alt: 'Shop mixer grinders' },
 ];
 
-const MOBILE_TOP_BANNERS: Array<{ src: string; href: string; alt: string }> = [
-  { src: '/App_Banner-1.jpg', href: '/specials', alt: 'Explore Specials' },
-  { src: '/App_Banner-3.jpg', href: '/c/kitchen-appliances', alt: 'Shop kitchen appliances' },
+// Portrait-friendly artwork used for the hero on small screens (source ratio ~2:1),
+// so the wide 3.28:1 desktop slides never get their left-aligned copy cropped.
+const MOBILE_HERO_SLIDES = [
+  { src: '/App_Banner-1.jpg', href: '/specials', label: 'Explore Specials' },
+  { src: '/App_Banner-3.jpg', href: '/c/kitchen-appliances', label: 'Shop Kitchen Appliances' },
+  { src: '/App_Banner-9.png', href: '/c/home-appliances', label: 'Shop Home Appliances' },
 ];
 
-function MobileBanner({
+/**
+ * Full-width banner that keeps the artwork's own aspect ratio, so images are
+ * never stretched or letterboxed at any breakpoint.
+ */
+function BannerTile({
   src,
   href,
   alt,
   priority = false,
+  ratio = '3.28',
+  sizes = '100vw',
+  className = '',
 }: {
   src: string;
   href: string;
   alt: string;
   priority?: boolean;
+  ratio?: string;
+  sizes?: string;
+  className?: string;
 }) {
   return (
-    <Link href={href} className="relative w-full h-34 overflow-hidden shadow-sm border border-gray-100 block">
+    <Link
+      href={href}
+      aria-label={alt}
+      className={`oweg-media group block w-full ${className}`}
+      style={{ aspectRatio: ratio }}
+    >
       <Image
         src={src}
         alt={alt}
         fill
-        className="object-container"
-        sizes="(max-width: 768px) 100vw, 0px"
+        className="object-cover object-center transition-transform duration-700 ease-out group-hover:scale-[1.035]"
+        sizes={sizes}
         priority={priority}
       />
     </Link>
+  );
+}
+
+function HeroDot({
+  active,
+  index,
+  onSelect,
+}: {
+  active: boolean;
+  index: number;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-label={`Go to slide ${index + 1}`}
+      aria-current={active ? 'true' : undefined}
+      className="group/dot flex h-11 items-center justify-center px-1.5"
+    >
+      <span
+        className={`h-1.5 rounded-full transition-all duration-300 ${
+          active
+            ? 'w-7 bg-[var(--oweg-green)]'
+            : 'w-1.5 bg-[var(--oweg-border-strong)] group-hover/dot:bg-[var(--oweg-green-light)]'
+        }`}
+      />
+    </button>
   );
 }
 
@@ -251,80 +273,115 @@ function HeroBanner() {
     setTouchDelta(0);
   };
 
+  const mobileSlide = MOBILE_HERO_SLIDES[currentSlide % MOBILE_HERO_SLIDES.length];
+
   return (
-    <div className="relative w-full h-[320px] md:h-[400px] rounded-2xl overflow-hidden mb-8 transition-all duration-700">
-      {!heroReady && <div className="absolute inset-0 z-10 bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 animate-pulse" />}
-      <div
-        className={`absolute inset-0 transition-all duration-700 ${heroReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-      <div className="absolute inset-0 flex items-center justify-between px-3 sm:px-6 z-10 pointer-events-none">
-        <button
-          onClick={prev}
-          className="w-9 h-9 sm:w-12 sm:h-12 bg-white/85 backdrop-blur-sm rounded-full hidden md:flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all duration-300 pointer-events-auto"
-          aria-label="Previous slide"
-        >
-          <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-gray-800" />
-        </button>
-        <button
-          onClick={next}
-          className="w-9 h-9 sm:w-12 sm:h-12 bg-white/85 backdrop-blur-sm rounded-full hidden md:flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all duration-300 pointer-events-auto"
-          aria-label="Next slide"
-        >
-          <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 text-gray-800" />
-        </button>
+    <section
+      className="relative w-full overflow-hidden bg-[var(--oweg-surface-subtle)]"
+      aria-roledescription="carousel"
+      aria-label="Featured offers"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Mobile: portrait-friendly artwork at its own ratio */}
+      <div className="relative w-full md:hidden" style={{ aspectRatio: '2.05' }}>
+        {!heroReady && (
+          <div className="absolute inset-0 z-10 bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 animate-pulse" />
+        )}
+        <Link href={mobileSlide.href} aria-label={mobileSlide.label} className="absolute inset-0 block">
+          <Image
+            key={mobileSlide.src}
+            src={mobileSlide.src}
+            alt={mobileSlide.label}
+            fill
+            priority
+            onLoad={() => setHeroReady(true)}
+            className="object-cover object-center oweg-fade-up"
+            sizes="100vw"
+          />
+        </Link>
       </div>
-      <div className="relative w-full h-full min-h-[320px] sm:min-h-[360px]">
+
+      {/* Desktop: wide slides at their native 3.28:1 ratio — no crop, no stretch */}
+      <div className="relative hidden w-full md:block" style={{ aspectRatio: '3.28' }}>
+        {!heroReady && (
+          <div className="absolute inset-0 z-10 bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 animate-pulse" />
+        )}
         {HERO_SLIDES.map((slide, idx) => {
           const dist = Math.min(
             Math.abs(idx - currentSlide),
             HERO_SLIDES.length - Math.abs(idx - currentSlide)
           );
           if (dist > 1) return null;
-          return (
-          <div
-            key={slide.src}
-            className={`absolute inset-0 transition-opacity duration-700 ${
-              idx === currentSlide ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-            }`}
-            aria-hidden={idx !== currentSlide}
-          >
-            <Link href={slide.href} aria-label={slide.label} className="absolute inset-0 block">
-              <Image
-                src={slide.src}
-                alt={slide.label}
-                fill
-                priority={idx === 0}
-                onLoad={() => setHeroReady(true)}
-                className="object-container object-center"
-                sizes="100vw"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent md:from-black/30 md:via-black/10 md:to-transparent" />
-            </Link>
-          </div>
-          );
-        })}
-      </div>
-      <div className="absolute inset-0 pointer-events-none" />
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 md:hidden">
-        {HERO_SLIDES.map((_, idx) => {
           const isActive = idx === currentSlide;
           return (
-            <button
-              key={`dot-${idx}`}
-              type="button"
-              onClick={() => setCurrentSlide(idx)}
-              className={`h-2 rounded-full transition-all ${isActive ? 'w-6 bg-white' : 'w-2 bg-white/50'}`}
-            />
+            <div
+              key={slide.src}
+              className={`absolute inset-0 transition-opacity duration-700 ease-out ${
+                isActive ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+              }`}
+              aria-hidden={!isActive}
+            >
+              <Link href={slide.href} aria-label={slide.label} className="absolute inset-0 block">
+                <Image
+                  src={slide.src}
+                  alt={slide.label}
+                  fill
+                  priority={idx === 0}
+                  onLoad={() => setHeroReady(true)}
+                  className="object-cover object-center"
+                  sizes="100vw"
+                />
+              </Link>
+            </div>
           );
         })}
+
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-between px-4 lg:px-8">
+          <button
+            type="button"
+            onClick={prev}
+            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-white/50 bg-white/80 text-[var(--oweg-ink)] shadow-md backdrop-blur-sm transition hover:bg-white"
+            aria-label="Previous slide"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={next}
+            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-white/50 bg-white/80 text-[var(--oweg-ink)] shadow-md backdrop-blur-sm transition hover:bg-white"
+            aria-label="Next slide"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </div>
       </div>
+
+      {/* Progress rails — one dot per slide actually shown at that breakpoint */}
+      <div className="flex items-center justify-center gap-0.5 md:hidden">
+        {MOBILE_HERO_SLIDES.map((slide, idx) => (
+          <HeroDot
+            key={`m-dot-${slide.src}`}
+            active={currentSlide % MOBILE_HERO_SLIDES.length === idx}
+            index={idx}
+            onSelect={() => setCurrentSlide(idx)}
+          />
+        ))}
       </div>
-    </div>
+      <div className="hidden items-center justify-center gap-0.5 md:flex">
+        {HERO_SLIDES.map((slide, idx) => (
+          <HeroDot
+            key={`d-dot-${slide.src}`}
+            active={currentSlide === idx}
+            index={idx}
+            onSelect={() => setCurrentSlide(idx)}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -355,24 +412,51 @@ function PromoBanners() {
   ];
 
   return (
-    <div className="hidden md:grid grid-cols-1 lg:grid-cols-4 gap-4 mb-8">
-      {banners.map((banner) => (
-        <Link
-          key={banner.href}
-          href={banner.href}
-          aria-label={banner.alt}
-          className="relative h-52 overflow-hidden shadow border border-gray-100 bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
-        >
-          <Image
-            src={banner.image}
-            alt={banner.alt}
-            fill
-            className="object-container"
-            sizes="(min-width: 1024px) 25vw, 100vw"
-          />
-        </Link>
-      ))}
-    </div>
+    <section className="oweg-section-tight">
+      <div className="oweg-container">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          {banners.map((banner) => (
+            <BannerTile
+              key={banner.href}
+              src={banner.image}
+              href={banner.href}
+              alt={banner.alt}
+              ratio="2.41"
+              sizes="(min-width: 1024px) 25vw, 50vw"
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Category discovery strip driven by the existing category SVG set. */
+function CategoryStrip({ categories }: { categories: MobileCategory[] }) {
+  if (!categories.length) return null;
+
+  return (
+    <section className="oweg-section-tight">
+      <div className="oweg-container">
+        <div className="oweg-section-head">
+          <div className="min-w-0">
+            <h2 className="oweg-title">Shop by category</h2>
+            <p className="oweg-subtle mt-1">Every department, one tap away.</p>
+          </div>
+        </div>
+        <div className="oweg-cat-strip oweg-rail-bleed scrollbar-hidden">
+          {categories.map((cat) => (
+            <Link
+              key={cat.id}
+              href={cat.handle ? `/c/${encodeURIComponent(cat.handle)}` : '/c'}
+              className="group flex flex-col items-center rounded-[var(--oweg-radius-md)] p-1 outline-none focus-visible:ring-2 focus-visible:ring-[var(--oweg-green)]"
+            >
+              <CategoryIconTile handle={cat.handle} title={cat.title} size="lg" />
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -407,8 +491,6 @@ export default function HomePage({
   initialFeed?: HomeFeedPayload;
 }) {
   const { customer } = useAuth();
-  const { preferences, hasPreferences, loading: prefLoading, saving: prefSaving, savePreferences } = usePreferences();
-  const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [placeName, setPlaceName] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     return window.localStorage.getItem('oweg_pincode_place') || null;
@@ -416,7 +498,6 @@ export default function HomePage({
   const [placeLoading, setPlaceLoading] = useState(false);
   const [pincode, setPincode] = useState('');
   const [pinInput, setPinInput] = useState('');
-  const [personalizedReady, setPersonalizedReady] = useState(false);
 
   useEffect(() => {
     const hydratePlace = async () => {
@@ -433,20 +514,6 @@ export default function HomePage({
     void hydratePlace();
   }, [pincode, placeName]);
 
-  useEffect(() => {
-    if (!customer || !hasPreferences) {
-      setPersonalizedReady(false);
-      return;
-    }
-    const run = () => setPersonalizedReady(true);
-    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-      const id = window.requestIdleCallback(run, { timeout: 2500 });
-      return () => window.cancelIdleCallback(id);
-    }
-    const t = globalThis.setTimeout(run, 1200);
-    return () => globalThis.clearTimeout(t);
-  }, [customer, hasPreferences]);
-
   const homeFeedQuery = useQuery({
     queryKey: ['home-feed'],
     queryFn: async (): Promise<HomeFeedPayload> => {
@@ -458,40 +525,6 @@ export default function HomePage({
     staleTime: 1000 * 60 * 2,
   });
 
-  const personalizedSections = useMemo(() => {
-    if (!customer || !hasPreferences || !preferences) return [];
-    const seen = new Set<string>();
-    const items: Array<{ key: string; title: string; query: ProductQuery; sourceTag?: string }> = [];
-
-    const push = (title: string, query: ProductQuery, sourceTag?: string) => {
-      const key = buildPreferenceSlug(title || sourceTag || JSON.stringify(query));
-      if (!key || seen.has(key)) return;
-      seen.add(key);
-      items.push({ key, title, query, sourceTag });
-    };
-
-    preferences.categories.forEach((cat) => push(cat, { category: cat, limit: 32 }, `category:${cat}`));
-    preferences.productTypes.forEach((type) => push(type, { type, limit: 32 }, `type:${type}`));
-    preferences.brands.forEach((brand) => push(`${brand} picks`, { tag: brand, limit: 32 }, `brand:${brand}`));
-
-    return items.slice(0, 3);
-  }, [customer, hasPreferences, preferences]);
-
-  const personalizedQueries = useQueries({
-    queries: personalizedSections.map((section) => ({
-      queryKey: ['personalized-home', section.key, section.query],
-      queryFn: () => fetchProducts(section.query, 32),
-      enabled:
-        personalizedReady &&
-        Boolean(customer) &&
-        hasPreferences &&
-        personalizedSections.length > 0 &&
-        !prefLoading,
-      staleTime: 1000 * 60 * 5,
-      placeholderData: (prev: UIProduct[] | undefined) => prev,
-    })),
-  });
-
   const autoSections = useMemo(() => {
     const feed = homeFeedQuery.data;
     if (!feed) return [] as Array<{
@@ -499,7 +532,6 @@ export default function HomePage({
       products: UIProduct[];
       loading: boolean;
       sourceTag?: string;
-      isPersonalized: boolean;
       key: string;
     }>;
 
@@ -508,7 +540,6 @@ export default function HomePage({
       products: UIProduct[];
       loading: boolean;
       sourceTag?: string;
-      isPersonalized: boolean;
       key: string;
     }> = [];
 
@@ -519,7 +550,6 @@ export default function HomePage({
         products: feed.popular.products,
         loading: false,
         sourceTag: feed.popular.sourceTag,
-        isPersonalized: false,
       });
     }
 
@@ -531,34 +561,13 @@ export default function HomePage({
         products: section.products,
         loading: false,
         sourceTag: section.sourceTag,
-        isPersonalized: false,
       });
     }
 
     return rows;
   }, [homeFeedQuery.data]);
 
-  const personalizedSectionsData = personalizedSections.map((section, idx) => ({
-    key: section.key,
-    title: section.title,
-    products: personalizedQueries[idx]?.data ?? [],
-    loading:
-      personalizedQueries[idx]?.isLoading ||
-      (!personalizedQueries[idx]?.data && personalizedQueries[idx]?.isFetching) ||
-      false,
-    sourceTag: section.sourceTag,
-    isPersonalized: true,
-  }));
-
-  const personalizedLoading =
-    hasPreferences &&
-    personalizedSections.length > 0 &&
-    personalizedSectionsData.some((section) => section.loading);
-
   const sectionsToRender = useMemo(() => {
-    const personalizedFilled = personalizedSectionsData.filter(
-      (section) => section.loading || (section.products?.length ?? 0) > 0
-    );
     const seen = new Set<string>();
     const merged: typeof autoSections = [];
 
@@ -570,7 +579,6 @@ export default function HomePage({
       merged.push(section);
     };
 
-    personalizedFilled.forEach(push);
     autoSections.forEach(push);
 
     if (merged.length === 0 && homeFeedQuery.isLoading) {
@@ -580,27 +588,24 @@ export default function HomePage({
           title: 'Popular picks',
           products: [],
           loading: true,
-          isPersonalized: false,
         },
         {
           key: 'loading-2',
           title: 'Loading products',
           products: [],
           loading: true,
-          isPersonalized: false,
         },
         {
           key: 'loading-3',
           title: 'More to explore',
           products: [],
           loading: true,
-          isPersonalized: false,
         },
       ];
     }
 
     return merged;
-  }, [autoSections, personalizedSectionsData, homeFeedQuery.isLoading]);
+  }, [autoSections, homeFeedQuery.isLoading]);
 
   const spotlightSection = homeFeedQuery.data?.spotlight?.products?.length
     ? homeFeedQuery.data.spotlight
@@ -668,27 +673,16 @@ export default function HomePage({
     });
   }, [categoriesData]);
 
-  const categorySuggestions = useMemo(
-    () => mobileCategories.slice(0, 12).map((cat) => cat.title),
-    [mobileCategories]
-  );
-
   const loading =
     sectionsToRender.some((section) => section.loading) ||
-    homeFeedQuery.isLoading ||
-    personalizedLoading;
+    homeFeedQuery.isLoading;
   const feedError = homeFeedQuery.error;
-  const personalizedError = personalizedQueries.find((q) => q?.error)?.error;
   const errorMessage =
     feedError instanceof Error
       ? feedError.message
       : feedError
         ? 'Unable to load products'
-        : personalizedError instanceof Error
-          ? personalizedError.message
-          : personalizedError
-            ? 'Unable to load your picks'
-            : null;
+        : null;
   const displayError = errorMessage;
 
   useEffect(() => {
@@ -736,199 +730,180 @@ export default function HomePage({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <main className="w-full pb-6 md:pt-6 md:pb-6">
-        <div className="md:hidden px-4 pt-3 space-y-3">
-          <div className="space-y-2">
-            {!pincode ? (
-              <>
-                <p className="text-sm font-semibold text-gray-900">Share pincode for faster delivery by local sellers</p>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <MapPin className="w-4 h-4 text-[#7AC943] absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={pinInput}
-                      onChange={(e) => setPinInput(e.target.value)}
-                      className="w-full rounded-xl border border-gray-200 pl-9 pr-3 py-2 text-sm"
-                      placeholder="Enter pincode"
-                    />
+    <div className="oweg-page min-h-screen">
+      <main className="w-full pb-8">
+        <HeroBanner />
+
+        <CategoryStrip categories={mobileCategories} />
+
+        {(!pincode || !customer) && (
+          <section className="oweg-section-tight">
+            <div className="oweg-container grid gap-3 sm:gap-4 md:grid-cols-2">
+              {!pincode ? (
+                <div className="oweg-surface-card p-4 sm:p-5">
+                  <p className="text-sm font-semibold text-[var(--oweg-ink)]">
+                    Share your pincode for faster delivery by local sellers
+                  </p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--oweg-green)]" />
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={pinInput}
+                        onChange={(e) => setPinInput(e.target.value)}
+                        className="oweg-tap w-full rounded-xl border border-[var(--oweg-border-strong)] bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-[var(--oweg-green)] focus:ring-2 focus:ring-[var(--oweg-green)]/25"
+                        placeholder="Enter pincode"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handlePinSubmit}
+                      className="oweg-tap whitespace-nowrap rounded-xl bg-[var(--oweg-green)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--oweg-green-dark)]"
+                    >
+                      Submit
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handlePinSubmit}
-                    className="px-3 py-2 rounded-xl bg-[#7AC943] text-white text-sm font-semibold shadow hover:brightness-95 whitespace-nowrap"
-                  >
-                    Submit
-                  </button>
+                  {placeLoading ? (
+                    <p className="mt-2 text-xs text-[var(--oweg-ink-muted)]">Checking serviceability...</p>
+                  ) : null}
                 </div>
-                {placeLoading ? <p className="text-xs text-gray-500">Checking serviceability...</p> : null}
-              </>
-            ) : null}
-          </div>
+              ) : null}
 
-          {!customer && (
-            <div className="flex items-center gap-3 px-2 py-2 rounded-2xl bg-emerald-50/70">
-              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#7AC943] text-white shrink-0">
-                <UserRound className="w-6 h-6" />
-              </div>
-              <div className="flex-1">
-                <p className="text-base font-semibold text-emerald-800 leading-snug">You are missing out</p>
-                <p className="text-sm text-emerald-700 leading-snug line-clamp-2">Sign in for the best offers.</p>
-              </div>
-              <Link
-                href="/login"
-                className="px-4 py-2.5 rounded-xl bg-[#7AC943] text-white text-sm font-semibold shadow hover:brightness-95 whitespace-nowrap"
-              >
-                Sign in
-              </Link>
+              {!customer && (
+                <div className="oweg-surface-card flex items-center gap-3 p-4 sm:gap-4 sm:p-5">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--oweg-green)] text-white">
+                    <UserRound className="h-6 w-6" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-[var(--oweg-ink)] sm:text-base">You are missing out</p>
+                    <p className="oweg-subtle line-clamp-2">Sign in for member pricing and faster checkout.</p>
+                  </div>
+                  <Link
+                    href="/login"
+                    className="oweg-tap flex items-center whitespace-nowrap rounded-xl bg-[var(--oweg-green)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--oweg-green-dark)]"
+                  >
+                    Sign in
+                  </Link>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-
-        <div className="md:hidden px-4 mb-6 space-y-4">
-          {MOBILE_TOP_BANNERS.map((banner, index) => (
-            <MobileBanner
-              key={banner.src}
-              src={banner.src}
-              href={banner.href}
-              alt={banner.alt}
-              priority={index === 0}
-            />
-          ))}
-        </div>
-        <div className="px-4">
-          <div className="hidden md:block">
-            <HeroBanner />
-          </div>
-        </div>
+          </section>
+        )}
 
         <FlashSaleSection />
-        <div className="md:hidden px-4 mt-8 mb-4">
-          <MobileBanner src="/App_Banner-4.png" href="/c/kitchen-appliances" alt="Shop kitchen appliances" />
-        </div>
 
-        {customer ? (
-          <div className="px-4 mt-4">
-            {hasPreferences ? (
-              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  
-                  <div>
-                    <p className="text-xs text-emerald-700">Showing your favourite categories, types, and brands first.</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPreferencesOpen(true)}
-                  className="px-4 py-2 rounded-xl border border-emerald-200 bg-white text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
-                >
-                  Edit preferences
-                </button>
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  
-                  <div>
-                    <p className="text-sm font-semibold text-amber-800">Get a better home feed</p>
-                    <p className="text-xs text-amber-700">Tell us what you shop often to surface those first.</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPreferencesOpen(true)}
-                  className="px-4 py-2 rounded-xl border border-amber-200 bg-white text-sm font-semibold text-amber-800 hover:bg-amber-100"
-                >
-                  Set preferences
-                </button>
-              </div>
-            )}
+        <section className="oweg-section-tight">
+          <div className="oweg-container">
+            <BannerTile
+              src="/App_Banner-4.png"
+              href="/c/kitchen-appliances"
+              alt="Shop kitchen appliances"
+              sizes="(min-width: 1400px) 1400px, 100vw"
+            />
           </div>
-        ) : null}
+        </section>
 
         {sectionsToRender.map((section, idx) => (
-          <div key={`${section.key || section.title}-${idx}`}>
+          <React.Fragment key={`${section.key || section.title}-${idx}`}>
             <ProductCarousel
               title={section.title}
               products={section.products}
               sourceTag={section.sourceTag}
-              loading={section.loading || (personalizedLoading && section.isPersonalized)}
+              loading={section.loading}
             />
-            {idx === 1 && (
-              <div className="px-4">
-                <PromoBanners />
-              </div>
-            )}
+            {idx === 1 && <PromoBanners />}
             {idx === 2 && (
-              <div className="md:hidden px-4 mb-4 space-y-4">
-                <MobileBanner src="/App_Banner-5.png" href="/c/home-appliances" alt="Shop home appliances" />
-                <MobileBanner src="/App_Banner-6.png" href="/c/ceiling-fans" alt="Shop ceiling fans" />
-              </div>
+              <section className="oweg-section-tight">
+                <div className="oweg-container grid gap-3 sm:gap-4 md:grid-cols-2">
+                  <BannerTile
+                    src="/App_Banner-5.png"
+                    href="/c/home-appliances"
+                    alt="Shop home appliances"
+                    ratio="2.41"
+                    sizes="(min-width: 768px) 50vw, 100vw"
+                  />
+                  <BannerTile
+                    src="/App_Banner-7.png"
+                    href="/c/computer-and-mobile-accessories"
+                    alt="Shop computer and mobile accessories"
+                    ratio="2.41"
+                    sizes="(min-width: 768px) 50vw, 100vw"
+                  />
+                </div>
+              </section>
             )}
             {idx === 3 && (
-              <div className="md:hidden px-4 mt-4 space-y-4">
-                <MobileBanner
-                  src="/App_Banner-7.png"
-                  href="/c/computer-and-mobile-accessories"
-                  alt="Shop computer and mobile accessories"
-                />
-                <MobileBanner
-                  src="/App_Banner-8.png"
-                  href="/c/water-heaters-%26-geysers"
-                  alt="Shop water heaters and geysers"
-                />
-              </div>
+              <section className="oweg-section-tight">
+                <div className="oweg-container space-y-3 sm:space-y-4">
+                  <BannerTile
+                    src="/App_Banner-6.png"
+                    href="/c/ceiling-fans"
+                    alt="Shop ceiling fans"
+                    sizes="(min-width: 1400px) 1400px, 100vw"
+                  />
+                  <BannerTile
+                    src="/App_Banner-8.png"
+                    href="/c/water-heaters-%26-geysers"
+                    alt="Shop water heaters and geysers"
+                    sizes="(min-width: 1400px) 1400px, 100vw"
+                  />
+                </div>
+              </section>
             )}
-          </div>
+          </React.Fragment>
         ))}
-        {sectionsToRender.length <= 1 && (
-          <div className="px-4">
-            <PromoBanners />
-          </div>
-        )}
-        <div className="px-4 md:px-4 mt-10 space-y-4">
-          <div className="hidden md:grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        {sectionsToRender.length <= 1 && <PromoBanners />}
+
+        <section className="oweg-section-tight">
+          <div className="oweg-container">
             {BAG_SECTION_BANNERS.map((banner) => (
-              <Link
+              <BannerTile
                 key={banner.href}
+                src={banner.image}
                 href={banner.href}
-                aria-label={banner.alt}
-                className="relative h-48 overflow-hidden border border-gray-100 bg-white shadow transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
-              >
-                <Image src={banner.image} alt={banner.alt} fill className="object-container" sizes="(min-width: 768px) 33vw, 100vw" />
-              </Link>
+                alt={banner.alt}
+                sizes="(min-width: 1400px) 1400px, 100vw"
+              />
             ))}
           </div>
-          {spotlightSection ? (
-            <ProductCarousel
-              title={spotlightSection.title}
-              products={spotlightSection.products}
-              sourceTag={spotlightSection.sourceTag}
-              paddingClass="px-2 md:px-4"
-            />
-          ) : null}
-        </div>
+        </section>
+
+        {spotlightSection ? (
+          <ProductCarousel
+            title={spotlightSection.title}
+            products={spotlightSection.products}
+            sourceTag={spotlightSection.sourceTag}
+          />
+        ) : null}
+
         {brandCollectionsQuery.isLoading ? (
-          <div className="px-4 mt-10">
-            <div className="p-4 sm:p-6 space-y-4">
-              <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Top brands we carry</h1>
-              <div className="flex gap-4 overflow-x-auto scrollbar-hidden pb-3">
+          <section className="oweg-section-tight">
+            <div className="oweg-container">
+              <div className="oweg-section-head">
+                <h2 className="oweg-title">Top brands we carry</h2>
+              </div>
+              <div className="oweg-rail oweg-rail-bleed scrollbar-hidden">
                 {Array.from({ length: 8 }).map((_, idx) => (
                   <div
                     key={idx}
-                    className="min-w-[170px] h-24 rounded-2xl border border-gray-100 bg-gray-50 animate-pulse"
+                    className="h-24 w-[150px] animate-pulse rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-[var(--oweg-surface-subtle)] sm:w-[170px]"
                   />
                 ))}
               </div>
             </div>
-          </div>
+          </section>
         ) : brandCollections.length > 0 ? (
-          <div className="px-4 mt-10">
-            <div className="p-4 sm:p-6 space-y-4">
-              <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Top brands we carry</h1>
-              <div className="flex gap-4 overflow-x-auto scrollbar-hidden pb-3">
+          <section className="oweg-section-tight">
+            <div className="oweg-container">
+              <div className="oweg-section-head">
+                <div className="min-w-0">
+                  <h2 className="oweg-title">Top brands we carry</h2>
+                  <p className="oweg-subtle mt-1">Authorised stock, straight from the makers.</p>
+                </div>
+              </div>
+              <div className="oweg-rail oweg-rail-bleed scrollbar-hidden">
                 {brandCollections.map((brand) => {
                   const logo = resolveBrandLogo({
                     title: brand.title,
@@ -941,7 +916,7 @@ export default function HomePage({
                     <Link
                       key={brand.id}
                       href={`/brands/${encodeURIComponent(slug)}?from=home`}
-                      className="group min-w-[170px] h-24 rounded-2xl border border-gray-100 bg-white shadow-sm flex items-center justify-center px-3 py-2 overflow-hidden hover:-translate-y-1 transition hover:shadow-[0_15px_36px_-24px_rgba(0,0,0,0.35)]"
+                      className="oweg-surface-card group flex h-24 w-[150px] items-center justify-center overflow-hidden px-3 py-2 transition hover:-translate-y-1 hover:shadow-[var(--oweg-shadow-md)] sm:w-[170px]"
                     >
                       <BrandLogoImage
                         src={logo.src}
@@ -958,34 +933,18 @@ export default function HomePage({
                 })}
               </div>
             </div>
-          </div>
+          </section>
         ) : null}
-        <div className="md:hidden px-4 mb-8">
-          <MobileBanner src="/App_Banner-9.png" href="/c/kitchen-appliances" alt="Shop kitchen appliances" />
-        </div>
+
         {loading && (
-          <div className="px-4 py-3">
-            <div className="w-full rounded-2xl bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 animate-pulse h-14" />
+          <div className="oweg-container py-3">
+            <div className="h-14 w-full animate-pulse rounded-[var(--oweg-radius-lg)] bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
           </div>
         )}
-        {!loading && displayError && <div className="px-4 text-sm text-red-500">{displayError}</div>}
+        {!loading && displayError && (
+          <div className="oweg-container text-sm text-red-500">{displayError}</div>
+        )}
       </main>
-
-      <PreferenceModal
-        open={preferencesOpen}
-        onClose={() => setPreferencesOpen(false)}
-        onSave={async (prefs) => {
-          try {
-            await savePreferences(prefs);
-            setPreferencesOpen(false);
-          } catch (err) {
-            console.error('Failed to save preferences', err);
-          }
-        }}
-        saving={prefSaving}
-        initial={preferences ?? undefined}
-        suggestedCategories={categorySuggestions}
-      />
     </div>
   );
 }

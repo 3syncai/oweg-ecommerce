@@ -85,7 +85,7 @@ export function ProductCard({
     <Link
       ref={cardRef}
       href={productHref}
-      className="group relative w-full bg-white rounded-lg overflow-visible shadow-sm hover:shadow-xl transition-all duration-150 hover:border-[#7AC943] border border-gray-200 flex flex-col h-full"
+      className="group relative flex h-full w-full flex-col overflow-visible rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-white shadow-[var(--oweg-shadow-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--oweg-green)] hover:shadow-[var(--oweg-shadow-md)]"
       onMouseEnter={() => {
         setIsHovered(true);
         prefetchRoute();
@@ -94,21 +94,21 @@ export function ProductCard({
       onTouchStart={prefetchRoute}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="relative aspect-square bg-gray-50 overflow-visible rounded-t-lg">
-        <div className="absolute inset-0 overflow-hidden rounded-t-lg">
+      <div className="relative aspect-square overflow-visible rounded-t-[var(--oweg-radius-lg)] bg-[var(--oweg-surface-subtle)]">
+        <div className="absolute inset-0 overflow-hidden rounded-t-[var(--oweg-radius-lg)]">
           <Image
             src={image}
             alt={name}
             fill
-            className={`object-contain p-3 transition-all duration-150 ${
+            className={`object-contain p-3 transition-transform duration-300 ease-out group-hover:scale-[1.04] ${
               isOutOfStock ? "opacity-60 grayscale" : ""
             }`}
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 20vw"
           />
         </div>
         {isOutOfStock && (
-          <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-t-lg z-20">
-            <div className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-lg">
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-t-[var(--oweg-radius-lg)] bg-black/40">
+            <div className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white shadow-lg sm:px-4 sm:py-2 sm:text-sm">
               OUT OF STOCK
             </div>
           </div>
@@ -125,7 +125,7 @@ export function ProductCard({
             onClick={handleWishlist}
             title="Add to Wishlist"
             disabled={isAddingToWishlist}
-            className={`w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-lg border hover:text-red-500 transition ${
+            className={`relative flex h-9 w-9 items-center justify-center rounded-full border bg-white shadow-lg transition before:absolute before:-inset-1 before:content-[''] hover:text-red-500 ${
               isWishlisted ? "text-red-500 border-red-200" : "text-gray-700"
             } ${isAddingToWishlist ? "opacity-60 cursor-not-allowed" : ""}`}
           >
@@ -133,25 +133,25 @@ export function ProductCard({
           </button>
         </ProductCardQuickActions>
       </div>
-      <div className="p-3 flex flex-col flex-1">
-        <div className="flex items-start gap-2 mb-2">
-          <span className="bg-red-600 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full">
+      <div className="flex flex-1 flex-col p-2.5 sm:p-3">
+        <div className="mb-2 flex flex-wrap items-start gap-1.5">
+          <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white">
             {discount}% off
           </span>
           {limitedDeal && (
-            <span className="bg-red-100 text-red-700 text-[11px] font-medium px-2 py-0.5 rounded-full">
+            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">
               Limited
             </span>
           )}
         </div>
-        <p className="text-sm text-gray-700 line-clamp-2 flex-1 mb-2">{name}</p>
-        <div className="mt-auto">
-          <div className="flex items-baseline gap-2">
-            <span className="text-lg font-bold text-gray-900">{inr.format(price)}</span>
-            <span className="text-xs text-gray-500 line-through">
-              {inr.format(mrp)}
-            </span>
-          </div>
+        <p className="mb-2 line-clamp-2 flex-1 text-[13px] leading-snug text-[var(--oweg-ink-soft)] sm:text-sm">
+          {name}
+        </p>
+        <div className="mt-auto flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="text-base font-bold text-[var(--oweg-ink)] sm:text-lg">
+            {inr.format(price)}
+          </span>
+          <span className="text-xs text-[var(--oweg-ink-muted)] line-through">{inr.format(mrp)}</span>
         </div>
       </div>
     </Link>

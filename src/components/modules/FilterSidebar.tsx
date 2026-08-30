@@ -144,7 +144,7 @@ export function FilterSidebar({
   }, [filters.priceMin, filters.priceMax]);
 
   return (
-    <div className="w-full lg:w-80 bg-white border-r border-gray-200 h-full overflow-y-auto">
+    <div className="h-full w-full overflow-y-auto rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-white lg:rounded-none lg:border-0 lg:border-r lg:border-gray-200">
       <div className="p-4">
         <h2 className="text-xl font-bold text-gray-900 mb-4">Shop by</h2>
 

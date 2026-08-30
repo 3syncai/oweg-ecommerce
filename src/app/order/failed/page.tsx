@@ -36,7 +36,7 @@ function OrderFailedPageInner() {
   }, [orderId]);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
+    <div className="oweg-page flex min-h-screen items-center justify-center px-4 py-12">
       <div className="bg-white shadow-md rounded-2xl p-6 md:p-8 max-w-lg w-full space-y-4">
         <div className="flex items-start gap-4">
           <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center">

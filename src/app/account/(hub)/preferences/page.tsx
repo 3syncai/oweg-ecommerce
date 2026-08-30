@@ -1,7 +1,5 @@
-"use client";
-
-import PreferencesContent from "@/components/account/PreferencesContent";
+import { redirect } from "next/navigation";
 
 export default function AccountPreferencesPage() {
-  return <PreferencesContent embedded />;
+  redirect("/account");
 }

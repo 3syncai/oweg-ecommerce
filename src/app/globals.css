@@ -80,6 +80,250 @@ html.debug-devtools-blocked body > *:not(.debug-devtools-shield) {
   --header-nav-bg: #efefef;
   --header-text: #111827;
   --header-muted: #6b7280;
+
+  /* Surfaces & ink */
+  --oweg-ink: #17211b;
+  --oweg-ink-soft: #2c342f;
+  --oweg-ink-muted: #647067;
+  --oweg-surface: #ffffff;
+  --oweg-surface-subtle: #f6f9f4;
+  --oweg-surface-tint: #eef7e8;
+  --oweg-border: rgba(23, 33, 27, 0.09);
+  --oweg-border-strong: rgba(23, 33, 27, 0.16);
+
+  /* Radius scale */
+  --oweg-radius-sm: 10px;
+  --oweg-radius-md: 14px;
+  --oweg-radius-lg: 20px;
+  --oweg-radius-xl: 28px;
+
+  /* Elevation */
+  --oweg-shadow-sm: 0 1px 2px rgba(23, 33, 27, 0.05);
+  --oweg-shadow-md: 0 10px 30px -18px rgba(23, 33, 27, 0.28);
+  --oweg-shadow-lg: 0 24px 60px -32px rgba(23, 33, 27, 0.34);
+
+  /* Fluid rhythm */
+  --oweg-gutter: clamp(1rem, 4vw, 2.5rem);
+  --oweg-section-gap: clamp(2rem, 5vw, 3.75rem);
+  --oweg-container: 1400px;
+}
+
+/* ---------------------------------------------------------------
+   OWEG layout primitives (presentational only)
+   --------------------------------------------------------------- */
+
+.oweg-container {
+  width: 100%;
+  max-width: var(--oweg-container);
+  margin-inline: auto;
+  padding-inline: var(--oweg-gutter);
+}
+
+.oweg-section {
+  margin-block: var(--oweg-section-gap);
+}
+
+.oweg-section-tight {
+  margin-block: clamp(1.25rem, 3vw, 2rem);
+}
+
+.oweg-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: clamp(0.875rem, 2vw, 1.5rem);
+}
+
+.oweg-title {
+  font-family: var(--font-plus-jakarta), var(--font-manrope), system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--oweg-ink);
+  font-size: clamp(1.125rem, 1rem + 1.1vw, 1.75rem);
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.oweg-title-display {
+  font-family: var(--font-plus-jakarta), var(--font-manrope), system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  font-size: clamp(1.9rem, 1.1rem + 4.4vw, 4.25rem);
+  line-height: 1.02;
+  text-wrap: balance;
+}
+
+.oweg-subtle {
+  color: var(--oweg-ink-muted);
+  font-size: clamp(0.8125rem, 0.78rem + 0.2vw, 0.9375rem);
+}
+
+/* Horizontal product / brand rails */
+.oweg-rail {
+  display: flex;
+  gap: clamp(0.625rem, 1.4vw, 1.25rem);
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline-start: 2px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  padding-bottom: 0.5rem;
+}
+
+.oweg-rail > * {
+  scroll-snap-align: start;
+  flex: 0 0 auto;
+}
+
+/* Fluid card track: ~2 per screen on phones up to ~6 on wide desktops */
+.oweg-rail-item {
+  width: clamp(150px, 42vw, 264px);
+}
+
+@media (min-width: 640px) {
+  .oweg-rail-item {
+    width: clamp(180px, 30vw, 264px);
+  }
+}
+
+@media (min-width: 1024px) {
+  .oweg-rail-item {
+    width: clamp(210px, 20vw, 280px);
+  }
+}
+
+/* Let a rail scroll edge-to-edge while its first item stays on the content grid */
+.oweg-rail-bleed {
+  margin-inline: calc(var(--oweg-gutter) * -1);
+  padding-inline: var(--oweg-gutter);
+}
+
+/* Category discovery strip: scrolls on phones, wraps into a grid on desktop */
+.oweg-cat-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 84px;
+  gap: clamp(0.5rem, 2vw, 1rem);
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  padding-bottom: 0.5rem;
+}
+
+.oweg-cat-strip > * {
+  scroll-snap-align: start;
+}
+
+@media (min-width: 768px) {
+  .oweg-cat-strip {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
+}
+
+.oweg-rail-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--oweg-border-strong);
+  background: var(--oweg-surface);
+  color: var(--oweg-ink-soft);
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.oweg-rail-btn:hover {
+  color: var(--oweg-green-dark);
+  border-color: var(--oweg-green);
+  background: var(--oweg-surface-tint);
+  transform: translateY(-1px);
+}
+
+/* Generic soft surface card */
+.oweg-surface-card {
+  background: var(--oweg-surface);
+  border: 1px solid var(--oweg-border);
+  border-radius: var(--oweg-radius-lg);
+  box-shadow: var(--oweg-shadow-sm);
+}
+
+/* Media frames keep aspect ratio so banners never stretch */
+.oweg-media {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--oweg-radius-lg);
+  background: var(--oweg-surface-subtle);
+}
+
+/* Category / subcategory icon tile — shared across header, mega menu, mobile sheet */
+.oweg-icon-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--oweg-radius-md);
+  background: var(--oweg-surface-subtle);
+  border: 1px solid var(--oweg-border);
+  color: var(--oweg-ink);
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.group:hover .oweg-icon-tile,
+.oweg-icon-tile:hover {
+  background: var(--oweg-surface-tint);
+  border-color: rgba(122, 201, 67, 0.45);
+  transform: translateY(-2px);
+  box-shadow: var(--oweg-shadow-md);
+}
+
+.oweg-icon-tile[data-active="true"] {
+  background: var(--oweg-surface-tint);
+  border-color: var(--oweg-green);
+}
+
+/* Tap-target floor for touch UI */
+@media (max-width: 767px) {
+  .oweg-tap {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Safe-area helpers for fixed mobile chrome */
+.oweg-safe-bottom {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+/* Entrance motions (respect reduced motion) */
+@keyframes owegFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.oweg-fade-up {
+  animation: owegFadeUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oweg-fade-up,
+  .oweg-rail-btn,
+  .oweg-icon-tile {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 /* Checkout / Cart shared page surface — Manrope / Plus Jakarta Sans */

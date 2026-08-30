@@ -120,17 +120,16 @@ const FlashSaleSection: React.FC = () => {
     setTimeRemaining({ days, hours, minutes, seconds })
   }
 
-  const scrollLeft = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: -220, behavior: 'smooth' })
-    }
+  const scrollByPage = (direction: -1 | 1) => {
+    const node = scrollRef.current
+    if (!node) return
+    const amount = Math.max(200, Math.round(node.clientWidth * 0.8))
+    node.scrollBy({ left: direction * amount, behavior: 'smooth' })
   }
 
-  const scrollRight = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: 220, behavior: 'smooth' })
-    }
-  }
+  const scrollLeft = () => scrollByPage(-1)
+
+  const scrollRight = () => scrollByPage(1)
 
   if (loading) {
     return null
@@ -141,62 +140,56 @@ const FlashSaleSection: React.FC = () => {
   }
 
   return (
-    <div className="mb-8 px-4">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Megaphone className="w-5 h-5 md:w-6 md:h-6 text-pink-500" />
-            <h2 className="text-2xl font-bold text-gray-900 transition-all duration-300 hover:text-green-600">
-              FLASH SALE
-            </h2>
+    <section className="oweg-section-tight">
+      <div className="oweg-container">
+        <div className="oweg-section-head">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+            <span className="inline-flex items-center gap-2">
+              <Megaphone className="h-5 w-5 shrink-0 text-pink-500 md:h-6 md:w-6" />
+              <h2 className="oweg-title">FLASH SALE</h2>
+            </span>
+            {/* Countdown Timer */}
+            <div className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 font-mono text-sm font-semibold tabular-nums text-[var(--oweg-ink-soft)] ring-1 ring-[var(--oweg-border)] md:text-base">
+              <span>{String(timeRemaining.days).padStart(1, '0')}</span>
+              <span className="text-[var(--oweg-ink-muted)]">:</span>
+              <span>{String(timeRemaining.hours).padStart(2, '0')}</span>
+              <span className="text-[var(--oweg-ink-muted)]">:</span>
+              <span>{String(timeRemaining.minutes).padStart(2, '0')}</span>
+              <span className="text-[var(--oweg-ink-muted)]">:</span>
+              <span>{String(timeRemaining.seconds).padStart(2, '0')}</span>
+            </div>
           </div>
-          {/* Countdown Timer - Matching image style */}
-          <div className="flex items-center gap-1 text-base md:text-lg font-semibold text-gray-700">
-            <span className="font-mono">
-              {String(timeRemaining.days).padStart(1, '0')}
-            </span>
-            <span className="text-gray-600">:</span>
-            <span className="font-mono">
-              {String(timeRemaining.hours).padStart(2, '0')}
-            </span>
-            <span className="text-gray-600">:</span>
-            <span className="font-mono">
-              {String(timeRemaining.minutes).padStart(2, '0')}
-            </span>
-            <span className="text-gray-600">:</span>
-            <span className="font-mono">
-              {String(timeRemaining.seconds).padStart(2, '0')}
-            </span>
+          <div className="hidden shrink-0 gap-2 sm:flex">
+            <button
+              type="button"
+              onClick={scrollLeft}
+              className="oweg-rail-btn"
+              aria-label="Scroll flash sale left"
+            >
+              <ChevronLeft className="h-4.5 w-4.5" />
+            </button>
+            <button
+              type="button"
+              onClick={scrollRight}
+              className="oweg-rail-btn"
+              aria-label="Scroll flash sale right"
+            >
+              <ChevronRight className="h-4.5 w-4.5" />
+            </button>
           </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={scrollLeft}
-            className="w-8 h-8 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:bg-gray-50 hover:border-green-500 transition-all duration-300 hover:scale-110"
-            aria-label="Scroll left"
-          >
-            <ChevronLeft className="w-5 h-5 text-gray-600" />
-          </button>
-          <button
-            onClick={scrollRight}
-            className="w-8 h-8 rounded-full bg-white border border-gray-300 flex items-center justify-center hover:bg-gray-50 hover:border-green-500 transition-all duration-300 hover:scale-110"
-            aria-label="Scroll right"
-          >
-            <ChevronRight className="w-5 h-5 text-gray-600" />
-          </button>
+        <div
+          ref={scrollRef}
+          className="oweg-rail oweg-rail-bleed scrollbar-hidden"
+          role="region"
+          aria-label="Flash Sale product carousel"
+        >
+          {flashSaleData.products.map((product) => (
+            <FlashSaleProductCard key={product.id} product={product} />
+          ))}
         </div>
       </div>
-      <div
-        ref={scrollRef}
-        className="flex gap-4 overflow-x-auto scrollbar-hidden pb-4 scroll-smooth snap-x snap-mandatory"
-        role="region"
-        aria-label="Flash Sale product carousel"
-      >
-        {flashSaleData.products.map((product) => (
-          <FlashSaleProductCard key={product.id} product={product} />
-        ))}
-      </div>
-    </div>
+    </section>
   )
 }
 
@@ -284,21 +277,21 @@ function FlashSaleProductCard({ product }: { product: FlashSaleProduct }) {
   }
 
   return (
-    <div className="flex-shrink-0 w-[200px] sm:w-[220px] md:w-[260px] lg:w-[300px]">
+    <div className="oweg-rail-item">
       <Link
         href={productHref}
-        className="group relative w-full bg-white rounded-lg overflow-visible shadow-sm hover:shadow-xl transition-all duration-300 hover:border-[#7AC943] border border-gray-200 flex flex-col h-full"
+        className="group relative flex h-full w-full flex-col overflow-visible rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-white shadow-[var(--oweg-shadow-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--oweg-green)] hover:shadow-[var(--oweg-shadow-md)]"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        <div className="relative aspect-square bg-gray-50 overflow-visible rounded-t-lg">
-          <div className="absolute inset-0 overflow-hidden rounded-t-lg">
+        <div className="relative aspect-square overflow-visible rounded-t-[var(--oweg-radius-lg)] bg-[var(--oweg-surface-subtle)]">
+          <div className="absolute inset-0 overflow-hidden rounded-t-[var(--oweg-radius-lg)]">
             <Image
               src={imageUrl}
               alt={product.title}
               fill
-              className="object-contain p-3"
-              sizes="(max-width: 640px) 200px, (max-width: 1024px) 220px, 260px"
+              className="object-contain p-3 transition-transform duration-300 ease-out group-hover:scale-[1.04]"
+              sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 20vw"
             />
           </div>
           <ProductCardQuickActions
@@ -319,23 +312,23 @@ function FlashSaleProductCard({ product }: { product: FlashSaleProduct }) {
             </button>
           </ProductCardQuickActions>
         </div>
-        <div className="p-3 flex flex-col flex-1">
-          <div className="flex items-start gap-2 mb-2">
-            <span className="bg-red-600 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full">
+        <div className="flex flex-1 flex-col p-2.5 sm:p-3">
+          <div className="mb-2 flex flex-wrap items-start gap-1.5">
+            <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white">
               {discount}% off
             </span>
-            <span className="bg-red-100 text-red-700 text-[11px] font-medium px-2 py-0.5 rounded-full">
+            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">
               Limited
             </span>
           </div>
-          <p className="text-sm text-gray-700 line-clamp-2 flex-1 mb-2">{product.title}</p>
-          <div className="mt-auto">
-            <div className="flex items-baseline gap-2">
-              <span className="text-lg font-bold text-gray-900">{inr.format(price)}</span>
-              <span className="text-xs text-gray-500 line-through">
-                {inr.format(mrp)}
-              </span>
-            </div>
+          <p className="mb-2 line-clamp-2 flex-1 text-[13px] leading-snug text-[var(--oweg-ink-soft)] sm:text-sm">
+            {product.title}
+          </p>
+          <div className="mt-auto flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-base font-bold text-[var(--oweg-ink)] sm:text-lg">
+              {inr.format(price)}
+            </span>
+            <span className="text-xs text-[var(--oweg-ink-muted)] line-through">{inr.format(mrp)}</span>
           </div>
         </div>
       </Link>

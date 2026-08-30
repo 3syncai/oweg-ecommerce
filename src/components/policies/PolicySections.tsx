@@ -28,7 +28,7 @@ function renderText(text: string) {
     typeof part === "string" ? (
       <span key={index}>{part}</span>
     ) : (
-      <Link key={index} href={part.href} className="text-emerald-600 hover:underline">
+      <Link key={index} href={part.href} className="font-medium text-[var(--oweg-green-dark)] hover:underline">
         {part.label}
       </Link>
     )
@@ -51,7 +51,7 @@ function BulletList({ bullets }: { bullets?: string[] }) {
   if (!bullets?.length) return null;
 
   return (
-    <ul className="list-disc list-inside space-y-1 ml-4">
+    <ul className="ml-4 list-outside list-disc space-y-1.5 pl-1">
       {bullets.map((bullet, index) => (
         <li key={index}>{renderText(bullet)}</li>
       ))}
@@ -67,7 +67,7 @@ function Subsections({ subsections }: { subsections?: PolicySubsection[] }) {
       {subsections.map((subsection, index) => (
         <div key={index} className="space-y-2">
           {subsection.title ? (
-            <h3 className="font-medium text-gray-900">{subsection.title}</h3>
+            <h3 className="font-semibold text-[var(--oweg-ink)]">{subsection.title}</h3>
           ) : null}
           <Paragraphs paragraphs={subsection.paragraphs} />
           <BulletList bullets={subsection.bullets} />
@@ -79,8 +79,8 @@ function Subsections({ subsections }: { subsections?: PolicySubsection[] }) {
 
 function SectionBlock({ section }: { section: PolicySection }) {
   return (
-    <section className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm space-y-4 text-sm text-gray-700 leading-relaxed">
-      <h2 className="font-semibold text-lg text-gray-900">{section.title}</h2>
+    <section className="oweg-surface-card space-y-4 p-5 text-sm leading-relaxed text-[var(--oweg-ink-soft)] sm:p-6">
+      <h2 className="text-base font-semibold text-[var(--oweg-ink)] sm:text-lg">{section.title}</h2>
       <Paragraphs paragraphs={section.paragraphs} />
       <BulletList bullets={section.bullets} />
       <Subsections subsections={section.subsections} />
@@ -96,7 +96,7 @@ export function PolicySections({ document }: PolicySectionsProps) {
   return (
     <>
       {document.intro?.length ? (
-        <section className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm space-y-4 text-sm text-gray-700 leading-relaxed">
+        <section className="oweg-surface-card space-y-4 p-5 text-sm leading-relaxed text-[var(--oweg-ink-soft)] sm:p-6">
           {document.intro.map((paragraph, index) => (
             <p key={index}>{renderText(paragraph)}</p>
           ))}
@@ -108,8 +108,8 @@ export function PolicySections({ document }: PolicySectionsProps) {
       ))}
 
       {document.footer ? (
-        <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 text-center">
-          <p className="font-semibold text-emerald-800 text-sm">{document.footer}</p>
+        <div className="rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-[var(--oweg-surface-tint)] p-4 text-center">
+          <p className="text-sm font-semibold text-[var(--oweg-green-dark)]">{document.footer}</p>
         </div>
       ) : null}
     </>

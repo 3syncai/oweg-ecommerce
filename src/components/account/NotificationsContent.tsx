@@ -151,7 +151,7 @@ export default function NotificationsContent({ embedded = false }: Notifications
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-[minmax(0,1.4fr)_repeat(3,72px)] items-center gap-2 border-b border-gray-100 bg-[#FAFAFA] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500 sm:px-6">
+            <div className="grid grid-cols-[minmax(0,1.4fr)_repeat(3,56px)] items-center gap-2 border-b border-gray-100 bg-[#FAFAFA] px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500 sm:grid-cols-[minmax(0,1.4fr)_repeat(3,72px)] sm:px-6 sm:text-xs">
               <span>Notification type</span>
               {CHANNELS.map((channel) => (
                 <span key={channel.key} className="flex flex-col items-center gap-1 text-center">
@@ -165,7 +165,7 @@ export default function NotificationsContent({ embedded = false }: Notifications
               {NOTIFICATION_ROWS.map((row) => (
                 <div
                   key={row.key}
-                  className="grid grid-cols-[minmax(0,1.4fr)_repeat(3,72px)] items-center gap-2 px-4 py-4 sm:px-6"
+                  className="grid grid-cols-[minmax(0,1.4fr)_repeat(3,56px)] items-center gap-2 px-4 py-4 sm:grid-cols-[minmax(0,1.4fr)_repeat(3,72px)] sm:px-6"
                 >
                   <p className="text-sm font-medium text-[#1F2A33]">{row.label}</p>
                   {CHANNELS.map((channel) => (

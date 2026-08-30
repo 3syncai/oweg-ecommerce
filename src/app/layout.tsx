@@ -106,13 +106,15 @@ export default function RootLayout({
                 </Suspense>
 
                 <div className="min-h-screen flex flex-col">
-                  <SiteProtections />
                   <Header />
 
                   <main
                     className="flex-1 pb-24 md:pb-0"
                     style={{ paddingTop: "var(--app-header-height, 136px)" }}
                   >
+                    {/* Kept inside the header offset so the announcement banner is
+                        visible instead of sitting behind the fixed header. */}
+                    <SiteProtections />
                     {children}
                   </main>
 
