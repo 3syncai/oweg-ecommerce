@@ -95,15 +95,15 @@ function renderAnswer(text: string) {
 
 export default function FAQPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/40 to-white text-gray-900">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 space-y-12">
+    <div className="oweg-page min-h-screen text-[var(--oweg-ink)]">
+      <div className="oweg-container max-w-5xl space-y-10 py-10 md:space-y-12 md:py-16">
         <header className="space-y-4 text-center">
-          <div className="inline-flex items-center gap-2 rounded-full bg-emerald-100 text-emerald-700 px-4 py-1 text-xs font-semibold">
+          <div className="inline-flex items-center gap-2 rounded-full bg-[var(--oweg-surface-tint)] px-4 py-1 text-xs font-semibold text-[var(--oweg-green-dark)]">
             <Headphones className="w-4 h-4" />
             FAQs & Support
           </div>
-          <h1 className="text-3xl sm:text-4xl font-semibold">Ask us anything before you plug in.</h1>
-          <p className="text-gray-600 max-w-3xl mx-auto">
+          <h1 className="oweg-title text-[clamp(1.6rem,1.1rem+2.4vw,2.5rem)]">Ask us anything before you plug in.</h1>
+          <p className="oweg-subtle mx-auto max-w-3xl">
             Find answers about orders, returns, and shopping on OWEG. Need a human? Ping support from your profile—real people respond fast.
           </p>
         </header>
@@ -111,17 +111,17 @@ export default function FAQPage() {
         <div className="space-y-10">
           {faqSections.map((section) => (
             <section key={section.title} className="space-y-4">
-              <h2 className="text-xl font-semibold text-gray-900 border-b border-gray-100 pb-2">
+              <h2 className="border-b border-[var(--oweg-border)] pb-2 text-lg font-semibold text-[var(--oweg-ink)] sm:text-xl">
                 {section.title}
               </h2>
-              <div className="grid gap-4">
+              <div className="grid gap-3 sm:gap-4">
                 {section.items.map((item) => (
                   <div
                     key={item.q}
-                    className="group rounded-2xl border border-gray-100 bg-white shadow-[0_18px_38px_-28px_rgba(0,0,0,0.35)] px-5 py-4 transition hover:-translate-y-1 hover:shadow-[0_22px_46px_-28px_rgba(0,0,0,0.45)]"
+                    className="oweg-surface-card group px-4 py-4 transition hover:-translate-y-0.5 hover:shadow-[var(--oweg-shadow-lg)] sm:px-5"
                   >
-                    <p className="text-lg font-semibold">{item.q}</p>
-                    <p className="text-sm text-gray-600 mt-2 leading-relaxed whitespace-pre-line">
+                    <p className="text-base font-semibold sm:text-lg">{item.q}</p>
+                    <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-[var(--oweg-ink-muted)]">
                       {renderAnswer(item.a)}
                     </p>
                   </div>
@@ -131,34 +131,34 @@ export default function FAQPage() {
           ))}
 
           <section className="space-y-4">
-            <h2 className="text-xl font-semibold text-gray-900 border-b border-gray-100 pb-2">
+            <h2 className="border-b border-[var(--oweg-border)] pb-2 text-lg font-semibold text-[var(--oweg-ink)] sm:text-xl">
               {customerCareSupport.title}
             </h2>
-            <div className="rounded-2xl border border-gray-100 bg-white shadow-[0_18px_38px_-28px_rgba(0,0,0,0.35)] px-5 py-4">
-              <p className="text-sm text-gray-600 leading-relaxed">{customerCareSupport.body}</p>
+            <div className="oweg-surface-card px-4 py-4 sm:px-5">
+              <p className="text-sm leading-relaxed text-[var(--oweg-ink-muted)]">{customerCareSupport.body}</p>
             </div>
           </section>
         </div>
 
-        <section className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-600 via-emerald-500 to-lime-400 text-white p-6 shadow-lg space-y-3">
+        <section className="grid gap-3 sm:grid-cols-2 sm:gap-4">
+          <div className="space-y-3 rounded-[var(--oweg-radius-xl)] bg-gradient-to-br from-[var(--oweg-green-dark)] via-[var(--oweg-green)] to-lime-400 p-5 text-white shadow-[var(--oweg-shadow-md)] sm:p-6">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">
               <ShieldCheck className="w-4 h-4" />
               Priority Care
             </div>
-            <h3 className="text-xl font-semibold">Need escalation?</h3>
+            <h3 className="text-lg font-semibold sm:text-xl">Need escalation?</h3>
             <p className="text-sm text-white/90">
               Talk to the Priority Care team for warranty, installation, or delivery escalations.
             </p>
-            <div className="text-sm font-semibold">Email: owegonline@oweg.in</div>
+            <div className="break-all text-sm font-semibold">Email: owegonline@oweg.in</div>
           </div>
-          <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 text-emerald-700 px-3 py-1 text-xs font-semibold">
+          <div className="oweg-surface-card space-y-3 p-5 sm:p-6">
+            <div className="inline-flex items-center gap-2 rounded-full bg-[var(--oweg-surface-tint)] px-3 py-1 text-xs font-semibold text-[var(--oweg-green-dark)]">
               <Timer className="w-4 h-4" />
               Quick chat
             </div>
-            <h3 className="text-xl font-semibold text-gray-900">Live help from profile</h3>
-            <p className="text-sm text-gray-600">
+            <h3 className="text-lg font-semibold text-[var(--oweg-ink)] sm:text-xl">Live help from profile</h3>
+            <p className="text-sm text-[var(--oweg-ink-muted)]">
               Jump to Profile → Support to start a chat. We respond within minutes during 11:00 AM to 6:00 PM IST.
             </p>
             <div className="text-sm text-gray-700">Call: +91 8797787877</div>

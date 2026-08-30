@@ -65,13 +65,3 @@ export type BreadcrumbItem = {
   label: string
   href?: string
 }
-
-export type SavingsCategoryOption = {
-  id: string
-  label: string
-  matchIds: string[]
-  count: number
-  minPrice?: number
-  categoryId?: string
-  categoryHandle?: string
-}

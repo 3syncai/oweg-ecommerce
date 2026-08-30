@@ -10,7 +10,6 @@ import {
   X,
   Bell,
   User,
-  Gift,
   Pencil,
 } from "lucide-react";
 // import UserIcon from "@/components/ui/icons/UserIcon";
@@ -18,6 +17,7 @@ import OrderIcon from "@/components/ui/icons/OrderIcon";
 import CartIcon from "@/components/ui/icons/CartIcon";
 import LocationIcon from "@/components/ui/icons/LocationIcon";
 import CategoryIcon from "@/components/ui/icons/CategoryIcon";
+import CategoryIconTile from "@/components/ui/icons/CategoryIconTile";
 import CategoryMegaMenu from "@/components/modules/CategoryMegaMenu";
 import {
   prefetchMegaMenuBanners,
@@ -36,9 +36,7 @@ import AccountDropdown from "@/components/modules/AccountDropdown";
 import GuestAccountDropdown from "@/components/modules/GuestAccountDropdown";
 import LogoutConfirmModal from "@/components/account/LogoutConfirmModal";
 import PincodeModal from "@/components/PincodeModal";
-import { usePreferences } from "@/hooks/usePreferences";
 import { useStoreCategories } from "@/hooks/useStoreCategories";
-import { reorderByPreferences } from "@/lib/personalization";
 import WalletBalance from "@/components/wallet/WalletBalance";
 
 type NavCategory = {
@@ -145,7 +143,6 @@ const isCategoryActive = (pathname: string | null, handle?: string) => {
 const Header: React.FC = () => {
   const { count: cartCount, refresh: refreshCart } = useCartSummary();
   const { customer, initializing } = useAuth();
-  const { preferences } = usePreferences();
   const [oweg10Visible, setOweg10Visible] = React.useState(false);
   const [cartPreviewOpen, setCartPreviewOpen] = React.useState(false);
   const [cartPreviewLoading, setCartPreviewLoading] = React.useState(false);
@@ -176,14 +173,6 @@ const Header: React.FC = () => {
   const [expandedCol, setExpandedCol] = React.useState<string | null>(null);
   const [hasMounted, setHasMounted] = React.useState(false);
   const storeCategoriesQuery = useStoreCategories();
-  const preferredCategoryOrder = React.useMemo(
-    () => preferences?.categories ?? [],
-    [preferences?.categories]
-  );
-  const reorderNav = React.useCallback(
-    (items: NavCategory[]) => reorderByPreferences(items, (item) => item.title || item.handle, preferredCategoryOrder),
-    [preferredCategoryOrder]
-  );
   const { navCategories, overflowCategories } = React.useMemo(() => {
     const raw = storeCategoriesQuery.data;
     if (!raw?.length) {
@@ -191,10 +180,10 @@ const Header: React.FC = () => {
     }
     const { withChildren, withoutChildren } = buildNavCategories(raw as MedusaCategory[]);
     return {
-      navCategories: reorderNav(withChildren),
-      overflowCategories: reorderNav(withoutChildren),
+      navCategories: withChildren,
+      overflowCategories: withoutChildren,
     };
-  }, [storeCategoriesQuery.data, reorderNav]);
+  }, [storeCategoriesQuery.data]);
   const navCatsLoading =
     !hasMounted ||
     storeCategoriesQuery.isPending ||
@@ -301,10 +290,9 @@ const Header: React.FC = () => {
     return Math.max(1, Math.floor((available + desktopGridColumnGap) / (desktopMinColumnWidth + desktopGridColumnGap)));
   }, [desktopNavWidth, viewportWidth, desktopMinColumnWidth, desktopGridColumnGap]);
   const desktopVisibleCapacity = React.useMemo(() => {
-    const reserved = customer ? 1 : 0; // For You
     const totalSlots = desktopMaxColumnsFit * 2;
-    return Math.max(0, totalSlots - reserved);
-  }, [desktopMaxColumnsFit, customer]);
+    return Math.max(0, totalSlots);
+  }, [desktopMaxColumnsFit]);
   const desktopCategoryLimit = React.useMemo(() => {
     if (allDesktopCategories.length > desktopVisibleCapacity) {
       return Math.max(0, desktopVisibleCapacity - 1); // reserve one slot for More
@@ -320,16 +308,12 @@ const Header: React.FC = () => {
     [allDesktopCategories, desktopCategoryLimit]
   );
   const desktopGridItems = React.useMemo(() => {
-    const items: NavCategory[] = [];
-    if (customer) {
-      items.push({ id: "__for_you__", title: "For You", handle: "" } as NavCategory);
-    }
-    items.push(...desktopVisibleCategories);
+    const items: NavCategory[] = [...desktopVisibleCategories];
     if (desktopMoreCategories.length > 0) {
       items.push({ id: "__more__", title: "More", handle: "" } as NavCategory);
     }
     return items;
-  }, [customer, desktopVisibleCategories, desktopMoreCategories.length]);
+  }, [desktopVisibleCategories, desktopMoreCategories.length]);
   const desktopGridColumns = React.useMemo(
     () => Math.max(1, Math.min(desktopMaxColumnsFit, Math.ceil(desktopGridItems.length / 2))),
     [desktopGridItems.length, desktopMaxColumnsFit]
@@ -1211,13 +1195,17 @@ const Header: React.FC = () => {
                 <Link
                   key={cat.id}
                   href={getCategoryHref(cat.handle)}
-                  className="flex items-center justify-between px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 transition"
+                  className="group flex items-center justify-between gap-2 px-2.5 py-2 transition hover:bg-[var(--oweg-surface-tint)]"
                   onClick={() => setAllOpen(false)}
                 >
-                  <span className="flex items-center gap-2.5 min-w-0">
-                    <CategoryIcon handle={cat.handle} title={cat.title} className="w-6 h-6" />
-                    <span className="truncate">{cat.title}</span>
-                  </span>
+                  <CategoryIconTile
+                    handle={cat.handle}
+                    title={cat.title}
+                    size="sm"
+                    orientation="horizontal"
+                    className="min-w-0 flex-1"
+                    labelClassName="text-[13px]"
+                  />
                   <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
                 </Link>
               ))
@@ -1616,12 +1604,12 @@ const Header: React.FC = () => {
 
             <div className="flex flex-col gap-0 md:hidden bg-white">
               <div className="bg-white/95 backdrop-blur border-b border-gray-100">
-                <div className="flex items-center justify-between gap-3 pb-2 px-2">
-                  <div className="flex items-center gap-4 flex-1">
+                <div className="flex items-center justify-between gap-2 px-3 pb-2">
+                  <div className="flex flex-1 items-center gap-2">
                     <button
                       type="button"
                       aria-label="Open menu"
-                      className=" border-grey-200 text-[#7AC943] flex items-center justify-center"
+                      className="oweg-tap -ml-1.5 flex items-center justify-center rounded-full text-[#7AC943] active:bg-[var(--oweg-surface-tint)]"
                       onClick={() => {
                         window.dispatchEvent(
                           new CustomEvent("oweg:open-mobile-categories")
@@ -1634,16 +1622,20 @@ const Header: React.FC = () => {
                       <Image src="/oweg_logo.png" alt="OWEG" width={100} height={28} className="h-7 w-auto" priority />
                     </Link>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-1">
                     <Link
                       href="/notifications"
-                      className="relative border-gray-200 flex items-center justify-center  text-[#7AC943]"
+                      className="oweg-tap relative flex items-center justify-center rounded-full text-[#7AC943] active:bg-[var(--oweg-surface-tint)]"
                       aria-label="Notifications"
                     >
-                      <Bell className="w-7 h-7" />
+                      <Bell className="w-6 h-6" />
                     </Link>
-                    <Link href="/cart" className="relative  border-gray-200 flex items-center justify-center text-[#7AC943]" aria-label="Cart">
-                      <CartIcon className="w-8 h-8" count={cartCount} />
+                    <Link
+                      href="/cart"
+                      className="oweg-tap relative -mr-1.5 flex items-center justify-center rounded-full text-[#7AC943] active:bg-[var(--oweg-surface-tint)]"
+                      aria-label="Cart"
+                    >
+                      <CartIcon className="w-7 h-7" count={cartCount} />
                     </Link>
                   </div>
                 </div>
@@ -1659,7 +1651,7 @@ const Header: React.FC = () => {
                       aria-hidden={!showTopBarMobile}
                       inert={!showTopBarMobile}
                     >
-                    <div className="relative mobile-search-bar">
+                    <div className="relative mobile-search-bar px-3">
                       <Input
                         value={q}
                         onChange={(e) => {
@@ -1675,7 +1667,7 @@ const Header: React.FC = () => {
                         placeholder="Search products, categories..."
                         className="h-12 rounded-full border-gray-200 bg-white shadow-sm pr-14"
                       />
-                      <div className="absolute inset-y-1 right-3 flex items-center">
+                      <div className="absolute inset-y-1 right-4 flex items-center">
                         <button
                           type="button"
                           aria-label="Search"
@@ -1694,17 +1686,17 @@ const Header: React.FC = () => {
                         <h2 className="text-lg font-semibold text-gray-900">Category</h2>
                       </div>
                     ) : mobilePincode ? (
-                      <div className="px-1">
-                        <div className="flex items-center gap-2 text-sm w-full">
-                          <LocationIcon className="w-4 h-4 text-[#7AC943] flex-shrink-0" />
-                          <span className="text-xs text-gray-600">Deliver to</span>
-                          <span className="text-sm font-semibold text-gray-900 truncate flex-1">
+                      <div className="px-3 py-1">
+                        <div className="flex w-full items-center gap-2 text-sm">
+                          <LocationIcon className="w-4 h-4 shrink-0 text-[#7AC943]" />
+                          <span className="shrink-0 text-xs text-gray-600">Deliver to</span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900">
                             {mobilePlace || mobilePincode}
                           </span>
                           <button
                             type="button"
                             onClick={() => setPinModalOpen(true)}
-                            className="border-gray-200 flex items-center justify-center text-gray-700"
+                            className="oweg-tap -mr-2 flex shrink-0 items-center justify-center rounded-full text-gray-700"
                             aria-label="Edit pincode"
                           >
                             <Pencil className="w-4 h-4" />
@@ -1747,18 +1739,6 @@ const Header: React.FC = () => {
                       }}
                     >
                       {desktopGridItems.map((cat) => {
-                        if (cat.id === "__for_you__") {
-                          return (
-                            <Link
-                              key={cat.id}
-                              href="/for-you"
-                              className="flex items-center gap-1.5 py-3 px-2 text-sm font-medium text-header-text whitespace-nowrap hover:text-header-accent transition-colors"
-                            >
-                              <Gift className="w-4 h-4" />
-                              <span>For You</span>
-                            </Link>
-                          );
-                        }
                         if (cat.id === "__more__") {
                           return (
                             <div
@@ -1896,18 +1876,18 @@ const Header: React.FC = () => {
                             <Link
                               key={cat.id}
                               href={getCategoryHref(cat.handle)}
-                              className="flex items-center justify-between py-3 px-3 text-sm text-header-text hover:bg-white"
+                              className="oweg-tap group flex items-center justify-between gap-2 px-2.5 py-2.5 hover:bg-white"
                               onClick={() => setMobileMenuOpen(false)}
                             >
-                              <span className="flex items-center gap-2.5 min-w-0">
-                                <CategoryIcon
-                                  handle={cat.handle}
-                                  title={cat.title}
-                                  active={isCategoryActive(pathname, cat.handle)}
-                                  className="w-6 h-6"
-                                />
-                                <span className="truncate">{cat.title}</span>
-                              </span>
+                              <CategoryIconTile
+                                handle={cat.handle}
+                                title={cat.title}
+                                active={isCategoryActive(pathname, cat.handle)}
+                                size="sm"
+                                orientation="horizontal"
+                                className="min-w-0 flex-1"
+                                labelClassName="text-sm"
+                              />
                               <ChevronRight className="w-4 h-4 text-header-muted shrink-0" />
                             </Link>
                           );
@@ -1916,32 +1896,41 @@ const Header: React.FC = () => {
                           <div key={cat.id} className="py-1 px-2">
                             <button
                               type="button"
-                              className="w-full flex items-center justify-between py-3 text-sm font-semibold text-header-text"
+                              className="oweg-tap group w-full flex items-center justify-between gap-2 py-2.5"
                               onClick={() => setMobileExpandedCat(isOpen ? null : cat.id)}
                             >
-                              <span className="flex items-center gap-2.5 min-w-0">
-                                <CategoryIcon
-                                  handle={cat.handle}
-                                  title={cat.title}
-                                  active={isCategoryActive(pathname, cat.handle) || isOpen}
-                                  className="w-6 h-6"
-                                />
-                                <span className="truncate">{cat.title}</span>
-                              </span>
+                              <CategoryIconTile
+                                handle={cat.handle}
+                                title={cat.title}
+                                active={isCategoryActive(pathname, cat.handle) || isOpen}
+                                size="sm"
+                                orientation="horizontal"
+                                className="min-w-0 flex-1"
+                                labelClassName="text-sm font-semibold"
+                              />
                               <ChevronDown className={`w-4 h-4 text-header-muted transition-transform shrink-0 ${isOpen ? "rotate-180" : ""}`} />
                             </button>
                             <div
                               className={`overflow-hidden transition-[max-height,opacity] duration-200 ${isOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}`}
                             >
-                              <div className="flex flex-col gap-1 pb-3 pl-1 pr-1 max-h-64 overflow-y-auto">
+                              <div className="grid grid-cols-2 gap-1.5 pb-3 pl-1 pr-1 max-h-64 overflow-y-auto">
                                 {cat.children.map((child) => (
                                   <Link
                                     key={child.id}
                                     href={getCategoryHref(child.handle)}
-                                    className="text-sm text-header-muted px-3 py-2 text-left bg-white rounded-lg shadow-sm whitespace-normal break-words leading-snug"
+                                    className="oweg-tap group flex items-center rounded-[var(--oweg-radius-md)] bg-white px-2 py-2 shadow-sm"
                                     onClick={() => setMobileMenuOpen(false)}
                                   >
-                                    {child.title}
+                                    <CategoryIconTile
+                                      kind="subcategory"
+                                      handle={child.handle}
+                                      title={child.title}
+                                      size="sm"
+                                      orientation="horizontal"
+                                      labelWrap
+                                      className="min-w-0 flex-1"
+                                      labelClassName="text-[12px] leading-snug"
+                                    />
                                   </Link>
                                 ))}
                               </div>

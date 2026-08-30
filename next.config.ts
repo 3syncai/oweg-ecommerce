@@ -113,6 +113,17 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
   },
+  async redirects() {
+    return [
+      { source: "/for-you", destination: "/", permanent: true },
+      { source: "/account/preferences", destination: "/account", permanent: true },
+      {
+        source: "/account/preferences/:path*",
+        destination: "/account",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {

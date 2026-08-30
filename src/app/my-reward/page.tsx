@@ -77,17 +77,17 @@ export default function MyRewardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+      <div className="oweg-page flex min-h-screen items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--oweg-green-dark)]" />
       </div>
     );
   }
 
   if (!customer) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center space-y-4 px-4">
-        <h1 className="text-2xl font-bold text-gray-900">Sign in to view rewards</h1>
-        <p className="text-gray-600 text-center max-w-md">Join the OWEG ecosystem to start earning coins on every purchase.</p>
+      <div className="oweg-page flex min-h-screen flex-col items-center justify-center space-y-4 px-4">
+        <h1 className="oweg-title text-2xl">Sign in to view rewards</h1>
+        <p className="oweg-subtle max-w-md text-center">Join the OWEG ecosystem to start earning coins on every purchase.</p>
         <Link href="/login?redirect=/my-reward" className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium">
           Sign In / Join
         </Link>
@@ -96,22 +96,22 @@ export default function MyRewardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/30 to-white text-gray-900">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-10 py-10 space-y-10">
+    <div className="oweg-page min-h-screen text-[var(--oweg-ink)]">
+      <div className="oweg-container max-w-5xl space-y-8 py-8 md:space-y-10 md:py-10">
 
         {/* Wallet Dashboard Section */}
-        <section className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-            <img src="/uploads/coin/coin.png" alt="" className="w-64 h-64 object-contain" />
+        <section className="oweg-surface-card relative overflow-hidden p-5 sm:p-8">
+          <div className="pointer-events-none absolute right-0 top-0 p-8 opacity-10">
+            <img src="/uploads/coin/coin.png" alt="" className="h-40 w-40 object-contain sm:h-64 sm:w-64" />
           </div>
 
-          <div className="relative z-10 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+          <div className="relative z-10 grid gap-6 md:grid-cols-2 md:gap-8 lg:grid-cols-3">
             {/* Main Balance */}
             <div className="space-y-2">
               <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Available Balance</p>
               <div className="flex items-center gap-3">
-                <img src="/uploads/coin/coin.png" alt="Coin" className="w-12 h-12 object-contain" />
-                <span className="text-5xl font-bold text-gray-900">{(wallet?.balance || 0).toFixed(0)}</span>
+                <img src="/uploads/coin/coin.png" alt="Coin" className="h-10 w-10 object-contain sm:h-12 sm:w-12" />
+                <span className="text-4xl font-bold text-gray-900 sm:text-5xl">{(wallet?.balance || 0).toFixed(0)}</span>
               </div>
               <p className="text-emerald-700 text-sm font-medium pl-1">Worth ₹{(wallet?.balance || 0).toFixed(0)} at checkout</p>
               {wallet?.lifetime_earned != null && wallet?.lifetime_spent != null && (
@@ -153,7 +153,7 @@ export default function MyRewardPage() {
             </div>
 
             {/* CTA */}
-            <div className="flex flex-col justify-center items-start space-y-3 pl-4 border-l border-gray-100">
+            <div className="flex flex-col items-start justify-center space-y-3 border-t border-[var(--oweg-border)] pt-4 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
               <h3 className="font-semibold text-gray-900">Spend your coins</h3>
               <p className="text-sm text-gray-500">Apply coins directly at checkout for instant discounts.</p>
               <Link href="/" className="px-5 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors">
@@ -173,13 +173,13 @@ export default function MyRewardPage() {
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-100">
+                <table className="w-full min-w-[560px] text-left text-sm">
+                  <thead className="border-b border-gray-100 bg-gray-50 font-medium text-gray-500">
                     <tr>
-                      <th className="px-6 py-4">Description / Order</th>
-                      <th className="px-6 py-4">Date</th>
-                      <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4 text-right">Coins</th>
+                      <th className="px-4 py-3 sm:px-6 sm:py-4">Description / Order</th>
+                      <th className="px-4 py-3 sm:px-6 sm:py-4">Date</th>
+                      <th className="px-4 py-3 sm:px-6 sm:py-4">Status</th>
+                      <th className="px-4 py-3 text-right sm:px-6 sm:py-4">Coins</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -242,7 +242,7 @@ export default function MyRewardPage() {
             <Crown className="w-4 h-4" />
             My Reward Tiers
           </div>
-          <h1 className="text-2xl font-semibold">Earn coins, unlock perks, stay VIP.</h1>
+          <h1 className="oweg-title text-2xl">Earn coins, unlock perks, stay VIP.</h1>
           <Link
             href="/reward-policy"
             className="inline-flex text-sm font-medium text-emerald-700 hover:text-emerald-800 hover:underline"
@@ -251,9 +251,9 @@ export default function MyRewardPage() {
           </Link>
         </header>
 
-        <section className="grid gap-4 sm:grid-cols-3">
+        <section className="grid gap-3 sm:grid-cols-3 sm:gap-4">
           {tiers.map((tier) => (
-            <div key={tier.name} className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm space-y-2">
+            <div key={tier.name} className="oweg-surface-card space-y-2 p-5 sm:p-6">
               <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 text-emerald-700 px-3 py-1 text-xs font-semibold">
                 <Star className="w-4 h-4" />
                 {tier.name}

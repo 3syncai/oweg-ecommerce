@@ -137,7 +137,7 @@ export function ProductCardQuickActions({
           title={disabled ? "Out of Stock" : "Add to Cart"}
           disabled={!canAdd || isBusy}
           aria-label={disabled ? "Out of Stock" : "Add to Cart"}
-          className={`flex h-9 w-9 items-center justify-center border-0 bg-transparent p-0 shadow-none transition ${
+          className={`relative flex h-9 w-9 items-center justify-center border-0 bg-transparent p-0 shadow-none transition before:absolute before:-inset-1 before:content-[''] ${
             canAdd ? "hover:scale-105" : "cursor-not-allowed"
           } ${isBusy ? "opacity-60 cursor-not-allowed" : ""}`}
         >

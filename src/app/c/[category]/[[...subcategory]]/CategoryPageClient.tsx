@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { SlidersHorizontal, X } from "lucide-react";
 import { CategoryHeader } from "@/components/modules/CategoryHeader";
 import { CategoryPagination } from "@/components/modules/CategoryPagination";
 import {
@@ -109,6 +110,7 @@ export function CategoryPageClient({
     () => (initialDeals?.products as DealPreview[]) || []
   );
   const [dealCount, setDealCount] = useState(() => initialDeals?.total ?? 0);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   const activeCategoryId = selectedSubcategory?.id || category.id;
   const categoryTitle =
@@ -372,6 +374,21 @@ export function CategoryPageClient({
     };
   }, [activeCategoryId, includeSubcategories, initialDeals]);
 
+  // Lock background scroll and allow Escape while the mobile filter sheet is open.
+  useEffect(() => {
+    if (!mobileFiltersOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileFiltersOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [mobileFiltersOpen]);
+
   const headingDescription = isLoading
     ? "Loading products…"
     : brandFilterActive
@@ -389,22 +406,26 @@ export function CategoryPageClient({
     ? filteredProducts.length
     : pageOffset + filteredProducts.length;
 
+  const filterSidebar = (
+    <FilterSidebar
+      categoryHandle={categoryHandle}
+      subcategories={subcategories}
+      filters={filters}
+      onFilterChange={handleFilterChange}
+      selectedSubcategory={subcategoryHandle}
+      dealPreview={dealPreview}
+      dealCount={dealCount}
+      brandOptions={brandOptions}
+    />
+  );
+
   return (
-    <div className="bg-gray-50 min-h-screen">
+    <div className="oweg-page min-h-screen">
       <HealthCareAgeGate enabled={showHealthCareAgeGate} />
-      <div className="container mx-auto px-4 py-6">
-        <div className="flex gap-6">
-          <aside className="hidden lg:block flex-shrink-0 w-80 sticky self-start z-10 top-[calc(var(--app-header-height,136px)+1rem)] max-h-[calc(100vh-var(--app-header-height,136px)-2rem)] overflow-y-auto overscroll-contain">
-            <FilterSidebar
-              categoryHandle={categoryHandle}
-              subcategories={subcategories}
-              filters={filters}
-              onFilterChange={handleFilterChange}
-              selectedSubcategory={subcategoryHandle}
-              dealPreview={dealPreview}
-              dealCount={dealCount}
-              brandOptions={brandOptions}
-            />
+      <div className="oweg-container py-5 md:py-6">
+        <div className="flex gap-6 xl:gap-8">
+          <aside className="hidden lg:block flex-shrink-0 w-[clamp(240px,22vw,320px)] sticky self-start z-10 top-[calc(var(--app-header-height,136px)+1rem)] max-h-[calc(100vh-var(--app-header-height,136px)-2rem)] overflow-y-auto overscroll-contain">
+            {filterSidebar}
           </aside>
 
           <main className="flex-1 min-w-0">
@@ -419,18 +440,30 @@ export function CategoryPageClient({
               </div>
             )}
 
-            <div className="mb-6">
-              <h1 className="sr-only">{categoryTitle}</h1>
-              <SectionHeading title={categoryTitle} className="mb-2" />
-              <p className="text-gray-600 mt-1 text-sm">
-                {headingDescription}
-                {!isLoading && filteredProducts.length > 0 && (
-                  <span className="text-gray-500">
-                    {" "}
-                    · Showing {resultsRangeStart}–{resultsRangeEnd}
-                  </span>
-                )}
-              </p>
+            <div className="mb-5 flex flex-wrap items-end justify-between gap-3 md:mb-6">
+              <div className="min-w-0">
+                <h1 className="sr-only">{categoryTitle}</h1>
+                <SectionHeading title={categoryTitle} className="mb-2" />
+                <p className="mt-1 text-sm text-[var(--oweg-ink-muted)]">
+                  {headingDescription}
+                  {!isLoading && filteredProducts.length > 0 && (
+                    <span className="text-gray-500">
+                      {" "}
+                      · Showing {resultsRangeStart}–{resultsRangeEnd}
+                    </span>
+                  )}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(true)}
+                className="oweg-tap inline-flex shrink-0 items-center gap-2 rounded-full border border-[var(--oweg-border-strong)] bg-white px-4 py-2 text-sm font-semibold text-[var(--oweg-ink)] shadow-[var(--oweg-shadow-sm)] transition hover:border-[var(--oweg-green)] lg:hidden"
+                aria-haspopup="dialog"
+                aria-expanded={mobileFiltersOpen}
+              >
+                <SlidersHorizontal className="h-4 w-4 text-[var(--oweg-green-dark)]" />
+                Filters
+              </button>
             </div>
 
             <ProductGrid
@@ -450,6 +483,43 @@ export function CategoryPageClient({
           </main>
         </div>
       </div>
+
+      {/* Mobile / tablet filter sheet — same state, same handlers */}
+      {mobileFiltersOpen && (
+        <div className="fixed inset-0 z-[950] lg:hidden" role="dialog" aria-modal="true" aria-label="Filters">
+          <button
+            type="button"
+            aria-label="Close filters"
+            className="absolute inset-0 h-full w-full bg-black/45 backdrop-blur-[2px]"
+            onClick={() => setMobileFiltersOpen(false)}
+          />
+          <div className="absolute inset-x-0 bottom-0 flex max-h-[88vh] flex-col rounded-t-[var(--oweg-radius-xl)] bg-white shadow-[0_-20px_60px_-30px_rgba(0,0,0,0.5)]">
+            <div className="flex shrink-0 items-center justify-between border-b border-[var(--oweg-border)] px-4 py-3">
+              <p className="text-base font-semibold text-[var(--oweg-ink)]">Filters</p>
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(false)}
+                aria-label="Close filters"
+                className="oweg-tap flex items-center justify-center rounded-full border border-[var(--oweg-border-strong)] text-[var(--oweg-ink-soft)]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
+              {filterSidebar}
+            </div>
+            <div className="oweg-safe-bottom shrink-0 border-t border-[var(--oweg-border)] px-4 pt-3">
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(false)}
+                className="oweg-tap w-full rounded-xl bg-[var(--oweg-green)] py-3 text-sm font-semibold text-white transition hover:bg-[var(--oweg-green-dark)]"
+              >
+                Show {filteredProducts.length} results
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

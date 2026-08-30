@@ -15,6 +15,7 @@ export type CategoryIconKey =
   | "health-care"
   | "stationery"
   | "jewellery"
+  | "shoes"
   | "more"
   | "default";
 
@@ -54,6 +55,7 @@ const CATEGORY_SVG_FILES: Record<Exclude<CategoryIconKey, "default">, string> = 
   "health-care": "health-care.svg",
   stationery: "stationery.svg",
   jewellery: "jewellery.svg",
+  shoes: "shoes.svg",
   more: "more-categories.svg",
 };
 
@@ -83,6 +85,8 @@ const HANDLE_ICON_MAP: Record<string, CategoryIconKey> = {
   stationary: "stationery",
   jewellery: "jewellery",
   jewelry: "jewellery",
+  shoes: "shoes",
+  shoe: "shoes",
 };
 
 const KEYWORD_RULES: Array<{ key: CategoryIconKey; includes: string[] }> = [
@@ -107,6 +111,7 @@ const KEYWORD_RULES: Array<{ key: CategoryIconKey; includes: string[] }> = [
   { key: "stationery", includes: ["stationery"] },
   { key: "stationery", includes: ["stationary"] },
   { key: "jewellery", includes: ["jewel"] },
+  { key: "shoes", includes: ["shoe"] },
 ];
 
 export function normalizeCategorySlug(value?: string) {

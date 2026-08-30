@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthProvider";
-import { usePreferences } from "@/hooks/usePreferences";
-import { buildPreferenceSlug } from "@/lib/personalization";
 
 type Order = {
   id: string;
@@ -128,27 +126,8 @@ const formatAddressLine = (address?: AddressForm) => {
   return parts.length ? parts.join(", ") : "Add address";
 };
 
-const normalizePrefList = (list: string[]) => {
-  const seen = new Set<string>();
-  return list.filter((item) => {
-    const slug = buildPreferenceSlug(item);
-    if (!slug || seen.has(slug)) return false;
-    seen.add(slug);
-    return true;
-  });
-};
-
-const normalizeOptionList = (list: string[]) => {
-  const cleaned = list
-    .map((item) => (item || "").trim())
-    .filter(Boolean);
-  return normalizePrefList(cleaned);
-};
-
 export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerHubProps) {
   const { customer, refresh } = useAuth();
-  const { preferences, savePreferences, saving: savingPreferences } = usePreferences();
-
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
@@ -173,76 +152,6 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [_passwordError, setPasswordError] = useState<string | null>(null);
-
-  const [prefCategories, setPrefCategories] = useState<string[]>([]);
-  const [prefBrands, setPrefBrands] = useState<string[]>([]);
-  const [prefTypes, setPrefTypes] = useState<string[]>([]);
-  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
-  const [availableBrands, setAvailableBrands] = useState<string[]>([]);
-  const [availableTypes, setAvailableTypes] = useState<string[]>([]);
-  const [optionsLoading, setOptionsLoading] = useState(false);
-  const [visibleCategoryCount, setVisibleCategoryCount] = useState(10);
-  const [visibleTypeCount, setVisibleTypeCount] = useState(10);
-
-  useEffect(() => {
-    if (!customer?.id) return;
-    setPrefCategories(preferences?.categories || []);
-    setPrefBrands(preferences?.brands || []);
-    setPrefTypes(preferences?.productTypes || []);
-  }, [customer?.id, preferences?.brands, preferences?.categories, preferences?.productTypes]);
-
-  useEffect(() => {
-    let isActive = true;
-    const loadOptions = async () => {
-      setOptionsLoading(true);
-      try {
-        const [catRes, brandRes, typeRes] = await Promise.all([
-          fetch("/api/medusa/categories", { cache: "no-store" }),
-          fetch("/api/medusa/collections", { cache: "no-store" }),
-          fetch("/api/medusa/product-types", { cache: "no-store" }),
-        ]);
-
-        const catData = catRes.ok ? await catRes.json().catch(() => ({})) : {};
-        const brandData = brandRes.ok ? await brandRes.json().catch(() => ({})) : {};
-        const typeData = typeRes.ok ? await typeRes.json().catch(() => ({})) : {};
-
-        const cats = normalizeOptionList(
-          (catData.categories || catData.product_categories || [])
-            .map((item: { title?: string; name?: string; handle?: string }) =>
-              item?.title || item?.name || item?.handle || ""
-            )
-        );
-        const brands = normalizeOptionList(
-          (brandData.collections || [])
-            .map((item: { title?: string; handle?: string }) =>
-              item?.title || item?.handle || ""
-            )
-        );
-        const types = normalizeOptionList(
-          (typeData.product_types || typeData.types || [])
-            .map((item: { value?: string; handle?: string }) =>
-              item?.value || item?.handle || ""
-            )
-        );
-
-        if (!isActive) return;
-        setAvailableCategories(cats);
-        setAvailableBrands(brands);
-        setAvailableTypes(types);
-        setVisibleCategoryCount(10);
-        setVisibleTypeCount(10);
-      } catch (error) {
-        console.warn("Failed to load preference options", error);
-      } finally {
-        if (isActive) setOptionsLoading(false);
-      }
-    };
-
-    void loadOptions();
-    return () => {
-      isActive = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (!customer?.id) return;
@@ -464,39 +373,6 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
     }
   };
 
-  const handleSavePreferences = async () => {
-    try {
-      await savePreferences({
-        categories: prefCategories,
-        brands: prefBrands,
-        productTypes: prefTypes,
-      });
-      toast.success("Preferences saved.");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to save preferences.";
-      toast.error(message);
-    }
-  };
-
-  const togglePreference = (
-    value: string,
-    list: string[],
-    setList: Dispatch<SetStateAction<string[]>>
-  ) => {
-    setList((prev) => {
-      const has = prev.some((item) => buildPreferenceSlug(item) === buildPreferenceSlug(value));
-      const next = has ? prev.filter((item) => buildPreferenceSlug(item) !== buildPreferenceSlug(value)) : [...prev, value];
-      return normalizePrefList(next);
-    });
-  };
-
-  const removePreference = (
-    value: string,
-    setList: Dispatch<SetStateAction<string[]>>
-  ) => {
-    setList((prev) => prev.filter((item) => buildPreferenceSlug(item) !== buildPreferenceSlug(value)));
-  };
-
   const customerName =
     customer?.first_name || customer?.last_name
       ? `${customer?.first_name || ""} ${customer?.last_name || ""}`.trim()
@@ -597,179 +473,6 @@ export default function CustomerHub({ onLogout, layout = "dropdown" }: CustomerH
               {savingPassword ? "Saving..." : "Update password"}
             </Button>
           </div>
-        </div>
-
-        <div className="rounded-md border border-gray-200 p-4 transition hover:-translate-y-0.5 hover:shadow-md">
-          <p className="text-base font-semibold text-gray-900">Preferences</p>
-          <div className="mt-3 space-y-3 max-h-[420px] overflow-y-auto pr-1">
-            <div>
-              <p className="text-sm font-medium text-gray-700 mb-2">Chosen</p>
-              <div className="flex flex-wrap gap-2">
-                {normalizePrefList([...prefCategories, ...prefBrands, ...prefTypes]).length === 0 && (
-                  <span className="text-sm text-gray-500">No preferences selected yet.</span>
-                )}
-                {prefCategories.map((item) => (
-                  <span key={`cat-${buildPreferenceSlug(item)}`} className="relative px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-sm font-medium">
-                    {item}
-                    <button
-                      type="button"
-                      className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-emerald-600 text-white text-xs leading-none flex items-center justify-center"
-                      onClick={() => removePreference(item, setPrefCategories)}
-                      aria-label={`Remove ${item}`}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-                {prefBrands.map((item) => (
-                  <span key={`brand-${buildPreferenceSlug(item)}`} className="relative px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-sm font-medium">
-                    {item}
-                    <button
-                      type="button"
-                      className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-emerald-600 text-white text-xs leading-none flex items-center justify-center"
-                      onClick={() => removePreference(item, setPrefBrands)}
-                      aria-label={`Remove ${item}`}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-                {prefTypes.map((item) => (
-                  <span key={`type-${buildPreferenceSlug(item)}`} className="relative px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-sm font-medium">
-                    {item}
-                    <button
-                      type="button"
-                      className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-emerald-600 text-white text-xs leading-none flex items-center justify-center"
-                      onClick={() => removePreference(item, setPrefTypes)}
-                      aria-label={`Remove ${item}`}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <p className="text-sm font-medium text-gray-700 mb-2">Categories</p>
-                <div className="flex flex-wrap gap-2">
-                  {(() => {
-                    const chosen = new Set(prefCategories.map((value) => buildPreferenceSlug(value)));
-                    const options = availableCategories.filter((item) => !chosen.has(buildPreferenceSlug(item)));
-                    const visible = options.slice(0, visibleCategoryCount);
-                    if (options.length === 0) {
-                      return (
-                        <span className="text-sm text-gray-500">
-                          {optionsLoading ? "Loading categories..." : "No more categories to choose."}
-                        </span>
-                      );
-                    }
-                    return (
-                      <>
-                        {visible.map((item) => (
-                          <button
-                            key={`opt-cat-${buildPreferenceSlug(item)}`}
-                            type="button"
-                            onClick={() => togglePreference(item, prefCategories, setPrefCategories)}
-                            className="px-3 py-1.5 rounded-full text-sm font-medium border transition border-gray-200 text-gray-700 hover:border-emerald-400"
-                          >
-                            {item}
-                          </button>
-                        ))}
-                        {options.length > visible.length && (
-                          <button
-                            type="button"
-                            onClick={() => setVisibleCategoryCount((prev) => prev + 10)}
-                            className="group flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 active:scale-95"
-                          >
-                            Show more
-                            <ChevronDown className="h-4 w-4 transition-transform duration-200 group-hover:translate-y-0.5" />
-                          </button>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-700 mb-2">Brands</p>
-                <div className="flex flex-wrap gap-2">
-                  {(() => {
-                    const chosen = new Set(prefBrands.map((value) => buildPreferenceSlug(value)));
-                    const options = availableBrands.filter((item) => !chosen.has(buildPreferenceSlug(item)));
-                    if (options.length === 0) {
-                      return (
-                        <span className="text-sm text-gray-500">
-                          {optionsLoading ? "Loading brands..." : "No more brands to choose."}
-                        </span>
-                      );
-                    }
-                    return options.map((item) => (
-                      <button
-                        key={`opt-brand-${buildPreferenceSlug(item)}`}
-                        type="button"
-                        onClick={() => togglePreference(item, prefBrands, setPrefBrands)}
-                        className="px-3 py-1.5 rounded-full text-sm font-medium border transition border-gray-200 text-gray-700 hover:border-emerald-400"
-                      >
-                        {item}
-                      </button>
-                    ));
-                  })()}
-                </div>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-700 mb-2">Product types</p>
-                <div className="flex flex-wrap gap-2">
-                  {(() => {
-                    const chosen = new Set(prefTypes.map((value) => buildPreferenceSlug(value)));
-                    const options = availableTypes.filter((item) => !chosen.has(buildPreferenceSlug(item)));
-                    const visible = options.slice(0, visibleTypeCount);
-                    if (options.length === 0) {
-                      return (
-                        <span className="text-sm text-gray-500">
-                          {optionsLoading ? "Loading product types..." : "No more product types to choose."}
-                        </span>
-                      );
-                    }
-                    return (
-                      <>
-                        {visible.map((item) => (
-                          <button
-                            key={`opt-type-${buildPreferenceSlug(item)}`}
-                            type="button"
-                            onClick={() => togglePreference(item, prefTypes, setPrefTypes)}
-                            className="px-3 py-1.5 rounded-full text-sm font-medium border transition border-gray-200 text-gray-700 hover:border-emerald-400"
-                          >
-                            {item}
-                          </button>
-                        ))}
-                        {options.length > visible.length && (
-                          <button
-                            type="button"
-                            onClick={() => setVisibleTypeCount((prev) => prev + 10)}
-                            className="group flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 active:scale-95"
-                          >
-                            Show more
-                            <ChevronDown className="h-4 w-4 transition-transform duration-200 group-hover:translate-y-0.5" />
-                          </button>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
-
-          </div>
-          <Button
-            size="sm"
-            className="w-full bg-emerald-600 text-white hover:bg-emerald-700 text-base"
-            onClick={handleSavePreferences}
-            disabled={savingPreferences}
-          >
-            {savingPreferences ? "Saving..." : "Save preferences"}
-          </Button>
         </div>
       </div>
 

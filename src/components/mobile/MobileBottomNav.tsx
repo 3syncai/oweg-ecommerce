@@ -17,37 +17,16 @@ import {
   ChevronRight,
   Heart,
   Home,
-  Mail,
-  Facebook,
-  Twitter,
-  Instagram,
-  Linkedin,
-  LogOut,
-  Phone,
-  ShoppingBag,
-  Store,
   User,
   X,
   ChevronsLeft,
-  Gift,
-  Trophy,
-  Tag,
-  FileText,
-  RefreshCw,
-  Truck,
-  Percent,
-  Lock,
-  Info,
-  HelpCircle,
-  Users,
 } from "lucide-react";
 import type { MedusaCategory } from "@/lib/medusa";
 import { useAuth } from "@/contexts/AuthProvider";
 import { getOriginalImageUrl } from "@/lib/image-utils";
-import { usePreferences } from "@/hooks/usePreferences";
-import { buildPreferenceSlug } from "@/lib/personalization";
 import CategoryIcon from "@/components/ui/icons/CategoryIcon";
-import SubcategoryIcon from "@/components/ui/icons/SubcategoryIcon";
+import CategoryIconTile from "@/components/ui/icons/CategoryIconTile";
+import MobileProfileSheet from "@/components/mobile/MobileProfileSheet";
 import { buildLoginUrl, buildSignupUrl } from "@/lib/auth-redirect";
 
 type MobileCategory = {
@@ -83,30 +62,6 @@ const normalizeCategoryKey = (title?: string) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .replace(/\s+/g, "-");
-
-const accountLinks = [
-  { label: "Brands", href: "/brands" },
-  { label: "Gift Card", href: "/gift-card" },
-  { label: "My Reward", href: "/my-reward" },
-  { label: "My Wishlist", href: "/wishlist" },
-];
-
-const policyLinks = [
-  { label: "Terms & Conditions", href: "/terms" },
-  { label: "Returns Policy", href: "/returns-policy" },
-  { label: "Shipping Policy", href: "/shipping-policy" },
-  { label: "Coupon Code Policy", href: "/coupon-policy" },
-  { label: "Reward", href: "/reward-policy" },
-  { label: "Privacy Policy", href: "/privacy-policy" },
-];
-
-const quickLinks = [
-  { label: "About Us", href: "/about" },
-  { label: "FAQ", href: "/faq" },
-  { label: "Contact", href: "/contact" },
-  { label: "Seller Registration", href: "/seller-registration" },
-  { label: "Agent Registration", href: "/agent-registration" },
-];
 
 const buildCategoryList = (data?: unknown): MobileCategory[] => {
   const raw: MedusaCategory[] = Array.isArray(
@@ -271,7 +226,7 @@ const formatCurrency = (value?: number) => {
       maximumFractionDigits: 0,
     }).format(value);
   } catch {
-    return `₹${Math.round(value)}`;
+    return `â‚¹${Math.round(value)}`;
   }
 };
 
@@ -280,26 +235,28 @@ const Overlay = ({
   onClose,
   children,
   scrollable = true,
+  panelClassName = "bg-white",
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
   scrollable?: boolean;
+  panelClassName?: string;
 }) => (
   <div
-    className={`fixed inset-0 z-[110] md:hidden transition-opacity duration-200 ${
+    className={`fixed inset-0 z-[130] md:hidden transition-opacity duration-200 ${
       open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
     }`}
     onClick={onClose}
   >
     <div
-      className={`absolute inset-x-0 top-0 bottom-0 bg-white transition-transform duration-200 ${
+      className={`absolute inset-x-0 top-0 bottom-0 transition-transform duration-200 ${
         open ? "translate-y-0" : "translate-y-full"
-      } shadow-[0_-6px_30px_-20px_rgba(0,0,0,0.35)] border-t border-gray-100 overflow-hidden`}
+      } shadow-[0_-6px_30px_-20px_rgba(0,0,0,0.35)] border-t border-[var(--oweg-border)] overflow-hidden ${panelClassName}`}
       onClick={(e) => e.stopPropagation()}
     >
       <div
-        className={`h-full ${scrollable ? "overflow-y-auto" : "overflow-hidden"} px-4 pt-14 pb-[calc(env(safe-area-inset-bottom,0px)+160px)]`}
+        className={`h-full ${scrollable ? "overflow-y-auto" : "overflow-hidden"} px-4 pt-4 pb-[calc(env(safe-area-inset-bottom,0px)+160px)]`}
       >
         {children}
       </div>
@@ -328,33 +285,6 @@ export default function MobileBottomNav() {
     () => buildCategoryList({ categories: categoryData }),
     [categoryData],
   );
-  const { preferences, hasPreferences } = usePreferences();
-  const categoryHandleBySlug = useMemo(() => {
-    const map: Record<string, string> = {};
-    categories.forEach((cat) => {
-      const slug = normalizeCategoryKey(cat.title);
-      if (slug) map[slug] = cat.handle || slug;
-    });
-    return map;
-  }, [categories]);
-  const forYouItems = useMemo(() => {
-    const items: Array<{
-      label: string;
-      query: { tag?: string; type?: string; category?: string; limit?: number };
-    }> = [];
-    preferences?.categories.forEach((cat) => {
-      const slug = buildPreferenceSlug(cat);
-      const handle = categoryHandleBySlug[slug] || slug;
-      items.push({ label: cat, query: { category: handle, limit: 12 } });
-    });
-    preferences?.productTypes.forEach((type) => {
-      items.push({ label: type, query: { type, limit: 12 } });
-    });
-    preferences?.brands.forEach((brand) => {
-      items.push({ label: brand, query: { tag: brand, limit: 12 } });
-    });
-    return items.slice(0, 12);
-  }, [preferences, categoryHandleBySlug]);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -487,20 +417,6 @@ export default function MobileBottomNav() {
     [categories],
   );
 
-  const forYouCategory = useMemo<MobileCategory | null>(
-    () =>
-      customer
-        ? {
-            id: "for-you",
-            title: "For You",
-            handle: "for-you",
-            image: "/oweg_logo.png",
-            children: [],
-          }
-        : null,
-    [customer],
-  );
-
   useEffect(() => {
     if (!categoryOpen) return;
     if (selectedCategoryId) return;
@@ -516,46 +432,17 @@ export default function MobileBottomNav() {
   }, [categoryOpen, categoriesWithChildren, selectedCategoryId]);
 
   const filteredCategories = useMemo(() => {
-    const base = forYouCategory
-      ? [forYouCategory, ...categoriesWithChildren]
-      : categoriesWithChildren;
+    const base = categoriesWithChildren;
     if (selectedSubcategory) return base;
     if (!searchTerm.trim()) return base;
     const term = searchTerm.toLowerCase();
     return base.filter((cat) => cat.title.toLowerCase().includes(term));
-  }, [categoriesWithChildren, forYouCategory, searchTerm, selectedSubcategory]);
+  }, [categoriesWithChildren, searchTerm, selectedSubcategory]);
 
   const displayedCategory = useMemo(() => {
     if (!selectedCategoryId) return null;
     return filteredCategories.find((c) => c.id === selectedCategoryId) || null;
   }, [filteredCategories, selectedCategoryId]);
-
-  const mapInlineProduct = useCallback((p: any): InlineProduct => {
-    let img: string | undefined;
-    if (typeof p?.image === "string") img = p.image;
-    else if (typeof p?.thumbnail === "string") img = p.thumbnail;
-    else if (Array.isArray(p?.images) && p.images.length > 0) {
-      const first = p.images[0];
-      if (typeof first === "string") img = first;
-      else if (first && typeof (first as { url?: string }).url === "string")
-        img = (first as { url?: string }).url;
-    }
-    return {
-      id: String(p?.id || p?.handle || Math.random()),
-      name: p?.title || p?.name || "Product",
-      image: img,
-      price: typeof p?.price === "number" ? p.price : undefined,
-      mrp: typeof p?.mrp === "number" ? p.mrp : undefined,
-      discount: typeof p?.discount === "number" ? p.discount : undefined,
-      brand: (p as { brand?: string })?.brand,
-    };
-  }, []);
-  const forYouSelected = false;
-  const _forYouQueries: Array<{ data?: any; isLoading?: boolean }> = [];
-  const _forYouProductMap: Record<string, InlineProduct[]> = useMemo(
-    () => ({}),
-    [],
-  );
 
   useEffect(() => {
     if (selectedCategoryId && !displayedCategory) {
@@ -710,8 +597,6 @@ export default function MobileBottomNav() {
     },
     [],
   );
-  // inline For You disabled; use dedicated page
-  // const forYouSelected = selectedCategoryId === 'for-you';
   const navActiveKey = profileOpen
     ? "profile"
     : pathname?.startsWith("/account/wishlist") ||
@@ -776,44 +661,6 @@ export default function MobileBottomNav() {
     return metaPlace || addressCity || storedPincode || "Set your location";
   }, [customer?.metadata, customer?.shipping_addresses, storedPincode]);
 
-  const accountIcon = (label: string) => {
-    if (label.toLowerCase().includes("brand"))
-      return <Store className="w-5 h-5 text-emerald-600" />;
-    if (label.toLowerCase().includes("gift"))
-      return <Gift className="w-5 h-5 text-emerald-600" />;
-    if (label.toLowerCase().includes("reward"))
-      return <Trophy className="w-5 h-5 text-emerald-600" />;
-    if (label.toLowerCase().includes("wishlist"))
-      return <Heart className="w-5 h-5 text-emerald-600" />;
-    return <Tag className="w-5 h-5 text-emerald-600" />;
-  };
-  const policyIcon = (label: string) => {
-    const lower = label.toLowerCase();
-    if (lower.includes("return"))
-      return <RefreshCw className="w-5 h-5 text-emerald-600" />;
-    if (lower.includes("shipping"))
-      return <Truck className="w-5 h-5 text-emerald-600" />;
-    if (lower.includes("coupon"))
-      return <Percent className="w-5 h-5 text-emerald-600" />;
-    if (lower.includes("privacy"))
-      return <Lock className="w-5 h-5 text-emerald-600" />;
-    return <FileText className="w-5 h-5 text-emerald-600" />;
-  };
-  const quickIcon = (label: string) => {
-    const lower = label.toLowerCase();
-    if (lower.includes("about"))
-      return <Info className="w-5 h-5 text-emerald-600" />;
-    if (lower.includes("faq"))
-      return <HelpCircle className="w-5 h-5 text-emerald-600" />;
-    if (lower.includes("contact"))
-      return <Phone className="w-5 h-5 text-emerald-600" />;
-    if (lower.includes("seller"))
-      return <Store className="w-5 h-5 text-emerald-600" />;
-    if (lower.includes("agent"))
-      return <Users className="w-5 h-5 text-emerald-600" />;
-    return <Tag className="w-5 h-5 text-emerald-600" />;
-  };
-
   const goNav = (href: string) => {
     resetPanels();
     router.push(href);
@@ -847,7 +694,7 @@ export default function MobileBottomNav() {
           <div className="relative h-16 rounded-full bg-white shadow-[0_10px_28px_rgba(0,0,0,0.12),0_2px_6px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04]">
             <div className="absolute inset-0 flex items-center justify-between px-5">
               {navItems
-                .filter((item) => item.key !== "profile")
+                .filter((item) => item.key !== "home")
                 .map((item) => {
                   const active = navActiveKey === item.key;
                   return (
@@ -867,6 +714,11 @@ export default function MobileBottomNav() {
                       }}
                       onClick={(e) => {
                         e.preventDefault();
+                        if (item.key === "profile") {
+                          setCategoryOpen(false);
+                          setProfileOpen(true);
+                          return;
+                        }
                         if (item.href) goNav(item.href);
                       }}
                     >
@@ -897,21 +749,20 @@ export default function MobileBottomNav() {
             </div>
           </div>
 
-          {/* Raised Profile orb — center focal point */}
+          {/* Raised Home orb — center focal point */}
           {(() => {
-            const profile = navItems.find((i) => i.key === "profile");
-            if (!profile) return null;
-            const active = navActiveKey === "profile";
+            const home = navItems.find((i) => i.key === "home");
+            if (!home) return null;
+            const active = navActiveKey === "home";
             return (
               <button
                 type="button"
-                aria-label={profile.label}
+                aria-label={home.label}
                 aria-current={active ? "page" : undefined}
                 className="absolute left-1/2 top-0 z-10 flex -translate-x-1/2 -translate-y-[38%] flex-col items-center"
                 onClick={(e) => {
                   e.preventDefault();
-                  setCategoryOpen(false);
-                  setProfileOpen(true);
+                  goNav("/");
                 }}
               >
                 <span
@@ -921,14 +772,14 @@ export default function MobileBottomNav() {
                       : "bg-[#E8F3DE] text-[#3d6b14] shadow-[0_8px_18px_rgba(0,0,0,0.12)]"
                   }`}
                 >
-                  <User className="h-7 w-7" strokeWidth={2.25} />
+                  <Home className="h-7 w-7" strokeWidth={2.25} />
                 </span>
                 <span
                   className={`mt-0.5 text-[10px] font-bold tracking-[0.01em] ${
                     active ? "text-[#326b00]" : "text-gray-600"
                   }`}
                 >
-                  {profile.label}
+                  {home.label}
                 </span>
               </button>
             );
@@ -1021,42 +872,6 @@ export default function MobileBottomNav() {
                     const isExpanded = expandedCatId === cat.id;
                     const hasChildren =
                       Array.isArray(cat.children) && cat.children.length > 0;
-                    if (cat.id === "for-you") {
-                      return (
-                        <div
-                          key={cat.id}
-                          className="rounded-2xl border-gray-200 bg-white"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              resetPanels();
-                              setCategoryOpen(false);
-                              setSidebarOverlayOpen(false);
-                              router.push("/for-you");
-                            }}
-                            className="w-full px-2.5 py-2 flex items-center justify-between gap-2"
-                            title="For You"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-white border  flex items-center justify-center">
-                                <Image
-                                  src="/For_You.png"
-                                  alt="For You"
-                                  fill
-                                  className="object-contain"
-                                  sizes="48px"
-                                  unoptimized
-                                />
-                              </div>
-                              <span className="text-sm font-semibold text-gray-800 line-clamp-2">
-                                For You
-                              </span>
-                            </div>
-                          </button>
-                        </div>
-                      );
-                    }
                     return (
                       <div
                         key={cat.id}
@@ -1081,19 +896,16 @@ export default function MobileBottomNav() {
                           className="w-full px-2.5 py-2 flex items-center justify-between gap-2"
                           title={cat.title}
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50 ring-1 ring-emerald-100">
-                              <CategoryIcon
-                                handle={cat.handle}
-                                title={cat.title}
-                                active={active}
-                                className="h-7 w-7"
-                              />
-                            </div>
-                            <span className="text-sm font-semibold text-gray-800 line-clamp-2">
-                              {cat.title}
-                            </span>
-                          </div>
+                          <CategoryIconTile
+                            handle={cat.handle}
+                            title={cat.title}
+                            active={active}
+                            size="md"
+                            orientation="horizontal"
+                            labelWrap
+                            className="min-w-0 flex-1"
+                            labelClassName="text-sm font-semibold"
+                          />
                           {hasChildren ? (
                             <ChevronRight
                               className={`w-4 h-4 text-gray-500 transition-transform ${isExpanded ? "rotate-90" : ""}`}
@@ -1143,7 +955,7 @@ export default function MobileBottomNav() {
               >
                 {categoriesLoading ? (
                   <div className="text-sm text-gray-500">
-                    Loading categories…
+                    Loading categoriesâ€¦
                   </div>
                 ) : filteredCategories.length === 0 ? (
                   <div className="text-sm text-gray-500">
@@ -1151,45 +963,6 @@ export default function MobileBottomNav() {
                   </div>
                 ) : (
                   filteredCategories.map((cat) => {
-                    if (cat.id === "for-you") {
-                      return (
-                        <button
-                          key={cat.id}
-                          type="button"
-                          onClick={() => {
-                            resetPanels();
-                            setCategoryOpen(false);
-                            setSidebarOverlayOpen(false);
-                            router.push("/for-you");
-                          }}
-                          className={`group w-full rounded-2xl border transition-all duration-300 text-left ${
-                            isOpen ? "px-2.5 py-2" : "px-1.5 py-1.5"
-                          }`}
-                          title="For You"
-                        >
-                          <div className="flex flex-col items-center">
-                            <div
-                              className="relative w-full rounded-xl overflow-hidden bg-emerald-50 flex items-center justify-center border border-emerald-100"
-                              style={{ height: isOpen ? 96 : 80 }}
-                            >
-                              <Image
-                                src="/For_You.png"
-                                alt="For You"
-                                fill
-                                className="object-contain"
-                                sizes={isOpen ? "140px" : "120px"}
-                                unoptimized
-                              />
-                            </div>
-                            {isOpen ? (
-                              <span className="mt-1 text-sm font-semibold text-emerald-800 text-center">
-                                For You
-                              </span>
-                            ) : null}
-                          </div>
-                        </button>
-                      );
-                    }
                     const active = displayedCategory?.id === cat.id;
                     return (
                       <button
@@ -1208,7 +981,8 @@ export default function MobileBottomNav() {
                       >
                         <div className="flex flex-col items-center">
                           <div
-                            className="relative w-full rounded-xl bg-emerald-50/80 ring-1 ring-emerald-100 flex items-center justify-center"
+                            className="oweg-icon-tile relative w-full"
+                            data-active={active ? "true" : "false"}
                             style={{ height: isOpen ? 72 : 56 }}
                           >
                             <CategoryIcon
@@ -1219,7 +993,7 @@ export default function MobileBottomNav() {
                             />
                           </div>
                           {isOpen ? (
-                            <span className="mt-2 text-[12px] font-semibold text-gray-800 text-center leading-tight transition-opacity duration-200">
+                            <span className="mt-2 text-center text-[12px] font-semibold leading-tight text-[var(--oweg-ink-soft)] transition-opacity duration-200">
                               {cat.title}
                             </span>
                           ) : null}
@@ -1238,183 +1012,7 @@ export default function MobileBottomNav() {
               }}
             >
               <div className="space-y-3">
-                {forYouSelected ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                          For You
-                        </p>
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Your picks
-                        </h2>
-                        <p className="text-xs text-gray-600">
-                          Quick access to what you chose.
-                        </p>
-                      </div>
-                    </div>
-                    {!hasPreferences ? (
-                      <div className="text-sm text-gray-600">
-                        Set your preferences to see them here.
-                      </div>
-                    ) : forYouItems.length === 0 ? (
-                      <div className="text-sm text-gray-600">
-                        No preferences added yet.
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-3">
-                        {forYouItems.map((item, idx) => {
-                          const query = _forYouQueries[idx];
-                          const prod = (query?.data && query.data[0]) || null;
-                          let img = "/oweg_logo.png";
-                          if (prod) {
-                            if (typeof prod.image === "string")
-                              img = prod.image;
-                            else if (typeof prod.thumbnail === "string")
-                              img = prod.thumbnail;
-                            else if (
-                              Array.isArray(prod.images) &&
-                              prod.images.length > 0
-                            ) {
-                              const first = prod.images[0];
-                              if (typeof first === "string") img = first;
-                              else if (
-                                first &&
-                                typeof (first as { url?: string }).url ===
-                                  "string"
-                              ) {
-                                img = (first as { url?: string }).url as string;
-                              }
-                            }
-                          }
-                          const loading = query?.isLoading;
-                          return (
-                            <button
-                              key={item.label}
-                              type="button"
-                              onClick={() => {
-                                setSelectedSubcategory({
-                                  id: item.label,
-                                  title: item.label,
-                                  children: [],
-                                  handle: item.label,
-                                });
-                                setActiveCategory({
-                                  id: item.label,
-                                  title: item.label,
-                                  children: [],
-                                });
-                                setIsOpen(false);
-                                setSidebarOverlayOpen(false);
-                                if (query?.data && query.data.length > 0) {
-                                  setSubProducts(
-                                    query.data.map((p: any) =>
-                                      mapInlineProduct(p),
-                                    ),
-                                  );
-                                } else {
-                                  setSubProducts([]);
-                                }
-                              }}
-                              className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden text-left"
-                            >
-                              <div className="relative w-full h-24 bg-gray-50">
-                                {loading ? (
-                                  <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-gray-100 via-white to-gray-100" />
-                                ) : (
-                                  <Image
-                                    src={img}
-                                    alt={item.label}
-                                    fill
-                                    className="object-contain p-3"
-                                    sizes="180px"
-                                    unoptimized
-                                  />
-                                )}
-                              </div>
-                              <div className="p-2 space-y-1">
-                                <p className="text-sm font-semibold text-gray-900 line-clamp-2">
-                                  {item.label}
-                                </p>
-                                <p className="text-[11px] text-gray-600">
-                                  {query?.data?.length
-                                    ? `${query.data.length} picks`
-                                    : loading
-                                      ? "Loading…"
-                                      : "Tap to view"}
-                                </p>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {selectedSubcategory ? (
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between gap-2 text-sm text-gray-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-gray-900">
-                              {selectedSubcategory.title}
-                            </span>
-                          </div>
-                          <span className="text-xs text-gray-500">
-                            {filteredProducts.length} products
-                          </span>
-                        </div>
-                        {productsLoading ? (
-                          <div className="grid grid-cols-2 gap-3">
-                            {Array.from({ length: 6 }).map((_, i) => (
-                              <div
-                                key={i}
-                                className="h-32 rounded-xl bg-gradient-to-br from-gray-100 via-white to-gray-100 animate-pulse"
-                              />
-                            ))}
-                          </div>
-                        ) : filteredProducts.length === 0 ? (
-                          <div className="text-sm text-gray-600">
-                            No products found for this preference.
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-2 gap-3">
-                            {filteredProducts.map((p) => (
-                              <Link
-                                key={p.id}
-                                href={
-                                  typeof p.id === "string"
-                                    ? `/products/${p.id}`
-                                    : "#"
-                                }
-                                className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden"
-                              >
-                                <div className="relative w-full h-28 bg-gray-50">
-                                  <Image
-                                    src={p.image || "/oweg_logo.png"}
-                                    alt={p.name}
-                                    fill
-                                    className="object-contain p-2"
-                                    sizes="180px"
-                                    unoptimized
-                                  />
-                                </div>
-                                <div className="p-2 space-y-1">
-                                  <p className="text-xs font-semibold text-gray-900 line-clamp-2">
-                                    {p.name}
-                                  </p>
-                                  {p.price ? (
-                                    <p className="text-xs font-semibold text-emerald-700">
-                                      ₹{p.price}
-                                    </p>
-                                  ) : null}
-                                </div>
-                              </Link>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <>
+                <>
                     {activeCategory &&
                       (activeCategory.children || []).length > 0 &&
                       !selectedSubcategory && (
@@ -1435,18 +1033,18 @@ export default function MobileBottomNav() {
                                     onClick={() =>
                                       setSelectedSubcategory(child)
                                     }
-                                    className="group flex w-full items-center gap-3 rounded-2xl border border-emerald-100/80 bg-white px-3.5 py-3.5 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:border-emerald-300 hover:bg-emerald-50/70 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7AC943]/40"
+                                    className="group flex w-full items-center gap-2 rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-white px-3 py-3 text-left shadow-[var(--oweg-shadow-sm)] transition-all duration-200 hover:border-[rgba(122,201,67,0.45)] hover:bg-[var(--oweg-surface-tint)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7AC943]/40"
                                   >
-                                    <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#7AC943]/12 ring-1 ring-[#7AC943]/20">
-                                      <SubcategoryIcon
-                                        handle={child.handle}
-                                        title={child.title}
-                                        className="h-5 w-5"
-                                      />
-                                    </span>
-                                    <span className="min-w-0 flex-1 text-[14px] font-medium text-gray-900 line-clamp-2">
-                                      {child.title}
-                                    </span>
+                                    <CategoryIconTile
+                                      kind="subcategory"
+                                      handle={child.handle}
+                                      title={child.title}
+                                      size="md"
+                                      orientation="horizontal"
+                                      labelWrap
+                                      className="min-w-0 flex-1"
+                                      labelClassName="text-[14px] font-medium"
+                                    />
                                     <ChevronRight className="h-4 w-4 shrink-0 text-[#7AC943] transition-transform group-hover:translate-x-0.5" />
                                   </button>
                                 </li>
@@ -1562,7 +1160,7 @@ export default function MobileBottomNav() {
                                 onChange={(e) => setPriceMin(e.target.value)}
                                 className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-xs"
                               />
-                              <span>–</span>
+                              <span>â€“</span>
                               <input
                                 type="number"
                                 inputMode="numeric"
@@ -1652,7 +1250,6 @@ export default function MobileBottomNav() {
                       </div>
                     ) : null}
                   </>
-                )}
               </div>
             </div>
           </div>
@@ -1660,207 +1257,30 @@ export default function MobileBottomNav() {
       </Overlay>
 
       {/* Profile sheet */}
-      <Overlay open={profileOpen} onClose={closeProfile}>
-        <div className="p-4 pb-32 space-y-5">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold text-gray-900">
-              {customer ? `Hi, ${customerName}` : "Welcome back"}
-            </h1>
-            <p className="text-sm text-gray-600">
-              Deliver to {deliverLocation}
-            </p>
-          </div>
-
-          {!customer && (
-            <div className="space-y-2">
-              <p className="text-sm text-gray-700">
-                Sign in for a better experience.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  className="flex-1 bg-emerald-600 text-white px-4 py-2.5 text-center font-semibold hover:bg-emerald-700"
-                  onClick={() => {
-                    closeProfile();
-                    router.push(buildLoginUrl(pathname));
-                  }}
-                >
-                  Login
-                </button>
-                <button
-                  type="button"
-                  className="flex-1 border border-gray-300 text-emerald-700 px-4 py-2.5 text-center font-semibold hover:bg-gray-50"
-                  onClick={() => {
-                    closeProfile();
-                    router.replace(buildSignupUrl(pathname));
-                  }}
-                >
-                  Sign up
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <p className="text-base font-semibold text-gray-900">
-              Quick actions
-            </p>
-            <div className="space-y-2">
-              {customer ? (
-                <Link
-                  href="/account"
-                  onClick={closeProfile}
-                  className="flex items-center justify-between border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
-                >
-                  <span className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-emerald-600" />
-                    My Profile
-                  </span>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                </Link>
-              ) : null}
-              <Link
-                href="/account/orders"
-                onClick={closeProfile}
-                className="flex items-center justify-between border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
-              >
-                <span className="flex items-center gap-2">
-                  <ChevronsLeft className="w-4 h-4 text-emerald-600" />
-                  Orders & Returns
-                </span>
-                <ChevronRight className="w-4 h-4 text-gray-400" />
-              </Link>
-              <Link
-                href="/cart"
-                onClick={closeProfile}
-                className="flex items-center justify-between border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
-              >
-                <span className="flex items-center gap-2">
-                  <ShoppingBag className="w-4 h-4 text-emerald-600" />
-                  Cart & Checkout
-                </span>
-                <ChevronRight className="w-4 h-4 text-gray-400" />
-              </Link>
-              <a
-                href="mailto:owegonline@oweg.in"
-                onClick={closeProfile}
-                className="flex items-center justify-between border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
-              >
-                <span className="flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-emerald-600" />
-                  Support
-                </span>
-                <ChevronRight className="w-4 h-4 text-gray-400" />
-              </a>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-base font-semibold text-gray-900">My Account</p>
-            <div className="space-y-2">
-              {accountLinks.map((link) => (
-                <Link
-                  key={link.label}
-                  href={link.href}
-                  className="flex items-center justify-between border border-gray-200 px-3 py-3 text-base font-semibold text-gray-900 hover:bg-gray-50"
-                  onClick={closeProfile}
-                >
-                  <span className="flex items-center gap-3">
-                    {accountIcon(link.label)}
-                    {link.label}
-                  </span>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-base font-semibold text-gray-900">Policy</p>
-            <div className="space-y-2">
-              {policyLinks.map((link) => (
-                <Link
-                  key={link.label}
-                  href={link.href}
-                  className="flex items-center justify-between border border-gray-200 px-3 py-3 text-base font-semibold text-gray-900 hover:bg-gray-50"
-                  onClick={closeProfile}
-                >
-                  <span className="flex items-center gap-3">
-                    {policyIcon(link.label)}
-                    {link.label}
-                  </span>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-base font-semibold text-gray-900">Quick Links</p>
-            <div className="space-y-2">
-              {quickLinks.map((link) => (
-                <Link
-                  key={link.label}
-                  href={link.href}
-                  className="flex items-center justify-between border border-gray-200 px-3 py-3 text-base font-semibold text-gray-900 hover:bg-gray-50"
-                  onClick={closeProfile}
-                >
-                  <span className="flex items-center gap-3">
-                    {quickIcon(link.label)}
-                    {link.label}
-                  </span>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-1 text-sm text-gray-600">
-            <p className="font-semibold text-gray-900">Support</p>
-            <p>Ascent Retechno India Pvt Ltd</p>
-            <p>
-              Shop No.04, 05, 06 & 07 AV Crystal, Near Navneet Hospital, Opp.
-              Achole Talav, Nallasopara East, Palghar, Maharashtra - 401209.
-            </p>
-            <a
-              href="mailto:owegonline@oweg.in"
-              className="inline-flex items-center gap-2 text-emerald-700 font-semibold"
-              onClick={closeProfile}
-            >
-              <Mail className="w-4 h-4" />
-              owegonline@oweg.in
-            </a>
-            <div className="flex gap-4 text-gray-500">
-              <a href="#" aria-label="Facebook">
-                <Facebook className="h-5 w-5" />
-              </a>
-              <a href="#" aria-label="Twitter">
-                <Twitter className="h-5 w-5" />
-              </a>
-              <a href="#" aria-label="Instagram">
-                <Instagram className="h-5 w-5" />
-              </a>
-              <a href="#" aria-label="LinkedIn">
-                <Linkedin className="h-5 w-5" />
-              </a>
-            </div>
-          </div>
-
-          {customer ? (
-            <button
-              type="button"
-              onClick={async () => {
-                await logout();
-                setProfileOpen(false);
-                router.refresh();
-              }}
-              className="w-full border border-red-200 bg-red-50 text-red-600 px-4 py-3 flex items-center justify-center gap-2 font-semibold"
-            >
-              <LogOut className="w-4 h-4" />
-              Sign out
-            </button>
-          ) : null}
-        </div>
+      <Overlay
+        open={profileOpen}
+        onClose={closeProfile}
+        panelClassName="bg-[var(--oweg-surface-subtle)]"
+      >
+        <MobileProfileSheet
+          customer={customer}
+          customerName={customerName}
+          deliverLocation={deliverLocation}
+          onClose={closeProfile}
+          onLogin={() => {
+            closeProfile();
+            router.push(buildLoginUrl(pathname));
+          }}
+          onSignup={() => {
+            closeProfile();
+            router.replace(buildSignupUrl(pathname));
+          }}
+          onSignOut={async () => {
+            await logout();
+            setProfileOpen(false);
+            router.refresh();
+          }}
+        />
       </Overlay>
     </>
   );

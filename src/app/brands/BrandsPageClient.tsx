@@ -50,25 +50,25 @@ export default function BrandsPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/30 to-white text-gray-900">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 py-16 space-y-10">
+    <div className="oweg-page min-h-screen">
+      <div className="oweg-container space-y-8 py-10 md:space-y-10 md:py-16">
         <header className="space-y-3">
           {/* <div className="inline-flex items-center gap-2 rounded-full bg-emerald-100 text-emerald-700 px-4 py-1 text-xs font-semibold">
             <BadgeCheck className="w-4 h-4" />
             Brands
           </div> */}
-          <h1 className="text-3xl sm:text-4xl font-semibold">
+          <h1 className="oweg-title text-[clamp(1.6rem,1.1rem+2.4vw,2.5rem)]">
             Pick a brand to see everything from that collection.
           </h1>
-          <p className="text-gray-600">
+          <p className="oweg-subtle max-w-2xl">
             Find every brand we offer in one clean grid. Select a brand to
             access its dedicated product catalog.
           </p>
         </header>
 
-        <section className=" bg-white/80 backdrop-blur p-4 sm:p-6 space-y-4">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 text-emerald-700 px-3 py-1 text-xs font-semibold">
+        <section className="oweg-surface-card space-y-4 bg-white/80 p-4 backdrop-blur sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex items-center gap-2 rounded-full bg-[var(--oweg-surface-tint)] px-3 py-1 text-xs font-semibold text-[var(--oweg-green-dark)]">
               <Filter className="w-4 h-4" />
               All brands
             </div>
@@ -88,7 +88,7 @@ export default function BrandsPage() {
           ) : collections.length === 0 ? (
             <div className="text-sm text-gray-600">No brands found.</div>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {collections.map((col) => {
                 const logo = resolveBrandLogo({
                   title: col.title,
@@ -101,9 +101,9 @@ export default function BrandsPage() {
                   <Link
                     key={col.id}
                     href={`/brands/${encodeURIComponent(slug)}`}
-                    className="group  p-5  flex items-center gap-4 transition hover:-translate-y-1 hover:shadow-[0_22px_48px_-28px_rgba(0,0,0,0.45)]"
+                    className="oweg-surface-card group flex items-center gap-3 p-4 transition hover:-translate-y-1 hover:border-[var(--oweg-green)] hover:shadow-[var(--oweg-shadow-lg)] sm:gap-4 sm:p-5"
                   >
-                    <div className="h-14 w-14 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center overflow-hidden p-1.5">
+                    <div className="oweg-icon-tile h-14 w-14 shrink-0 overflow-hidden p-1.5">
                       <BrandLogoImage
                         src={logo.src}
                         alt={col.title || "Brand logo"}
@@ -112,11 +112,11 @@ export default function BrandsPage() {
                         onError={brandLogoFallbackHandler}
                       />
                     </div>
-                    <div className="flex-1 space-y-1">
-                      <p className="text-lg font-semibold text-gray-900">
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <p className="truncate text-base font-semibold text-[var(--oweg-ink)] sm:text-lg">
                         {col.title || col.handle || "Brand"}
                       </p>
-                      <p className="text-xs text-gray-500 inline-flex items-center gap-1">
+                      <p className="inline-flex items-center gap-1 text-xs text-[var(--oweg-ink-muted)]">
                         View products
                       </p>
                     </div>

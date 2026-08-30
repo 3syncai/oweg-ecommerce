@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import SubcategoryIcon from "@/components/ui/icons/SubcategoryIcon";
+import CategoryIconTile from "@/components/ui/icons/CategoryIconTile";
 import { normalizeCategorySlug } from "@/components/ui/icons/CategoryIcon";
 import CategoryMegaMenuBannerCarousel, {
   type MegaMenuBannerSlide,
@@ -22,10 +22,10 @@ export type MegaMenuCategory = {
 };
 
 const itemClassName =
-  "group flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-sm text-[#1F2A33] transition-all duration-200 hover:bg-[#EAF8E7] hover:text-[#66C940]";
+  "group flex min-w-0 items-center rounded-[var(--oweg-radius-md)] px-2 py-1.5 transition-colors duration-200 hover:bg-[var(--oweg-surface-tint)]";
 
 const chipClassName =
-  "group flex items-center gap-2 rounded-[10px] px-2.5 py-2 text-xs font-medium text-[#1F2A33] transition-all duration-200 hover:bg-[#EAF8E7] hover:text-[#66C940] whitespace-nowrap";
+  "group flex min-w-0 items-center rounded-[var(--oweg-radius-md)] px-2 py-1.5 transition-colors duration-200 hover:bg-[var(--oweg-surface-tint)]";
 
 export function getSubcategoryHref(parentHandle?: string, subHandle?: string) {
   if (!parentHandle || !subHandle) return "#";
@@ -114,7 +114,9 @@ export default function CategoryMegaMenu({
   );
 
   const subcategoryCols =
-    category.children.length <= 3 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2";
+    category.children.length <= 3
+      ? "grid-cols-1"
+      : "grid-cols-1 sm:grid-cols-2";
 
   return (
     <div className="flex min-h-0 flex-1 gap-4 overflow-x-hidden p-1">
@@ -134,8 +136,14 @@ export default function CategoryMegaMenu({
                   className={chipClassName}
                   onClick={onClose}
                 >
-                  <SubcategoryIcon handle={sub.handle} title={sub.title} className="w-6 h-6" />
-                  <span className="truncate max-w-[120px]">{sub.title}</span>
+                  <CategoryIconTile
+                    kind="subcategory"
+                    handle={sub.handle}
+                    title={sub.title}
+                    size="sm"
+                    orientation="horizontal"
+                    labelClassName="max-w-[124px]"
+                  />
                 </Link>
               ))}
             </div>
@@ -161,8 +169,16 @@ export default function CategoryMegaMenu({
                 className={itemClassName}
                 onClick={onClose}
               >
-                <SubcategoryIcon handle={sub.handle} title={sub.title} className="w-6 h-6" />
-                <span className="min-w-0 flex-1 truncate leading-snug">{sub.title}</span>
+                <CategoryIconTile
+                  kind="subcategory"
+                  handle={sub.handle}
+                  title={sub.title}
+                  size="sm"
+                  orientation="horizontal"
+                  labelWrap
+                  className="w-full"
+                  labelClassName="flex-1 text-[13px]"
+                />
               </Link>
             ))}
           </div>
@@ -181,7 +197,7 @@ export default function CategoryMegaMenu({
       </div>
 
       {showFeaturedPanel ? (
-        <aside className="hidden w-[180px] shrink-0 self-start sm:block">
+        <aside className="hidden w-[clamp(160px,16vw,208px)] shrink-0 self-start sm:block">
           <div className="flex min-h-0 flex-col rounded-xl bg-[#EAF8E7] p-4">
             {config?.featured ? (
               <div className="shrink-0">

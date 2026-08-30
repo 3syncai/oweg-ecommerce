@@ -388,7 +388,7 @@ const Signup = () => {
   return (
     <div className="signup-page">
       <main className="signup-main flex-1 py-6 md:py-10">
-        <div className="mx-auto w-full max-w-[1600px] px-8">
+        <div className="mx-auto w-full max-w-[1600px] px-4 sm:px-6 lg:px-8">
           <div className="auth-shell">
             <aside className="gallery-column gallery-left" aria-hidden="true">
               {LEFT_PRODUCTS.map((product) => (
@@ -398,8 +398,8 @@ const Signup = () => {
 
             <section className="form-column">
               <div className="form-panel">
-                <div className="mb-8 text-center">
-                  <h1 className="text-3xl font-bold text-foreground font-footer">Create your account</h1>
+                <div className="mb-6 text-center sm:mb-8">
+                  <h1 className="font-footer text-2xl font-bold text-foreground sm:text-3xl">Create your account</h1>
                   <p className="mt-2 text-sm text-muted-foreground font-footer">
                     Register for free to start shopping
                   </p>

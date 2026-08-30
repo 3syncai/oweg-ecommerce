@@ -15,7 +15,6 @@ import Breadcrumbs from './components/Breadcrumbs'
 import CompareTable from './components/CompareTable'
 import DeliveryInfo from './components/DeliveryInfo'
 import DescriptionTabs from './components/DescriptionTabs'
-import dynamic from 'next/dynamic'
 import ProductGallery from './components/ProductGallery'
 import ProductSummary from './components/ProductSummary'
 import type {
@@ -26,7 +25,6 @@ import type {
   PinStatus,
   ProductDetailProps,
   RelatedProduct,
-  SavingsCategoryOption,
 } from './types'
 import {
   deriveColorName,
@@ -50,13 +48,6 @@ import { useFlashSale } from '@/hooks/useFlashSale'
 import HealthCareAgeGate from '@/components/modules/HealthCareAgeGate'
 import { productHasHealthCareCategory } from '@/lib/health-care-age-gate'
 
-const ProductSavingsExplorer = dynamic(() => import('./components/ProductSavingsExplorer'), {
-  ssr: false,
-  loading: () => (
-    <div className="rounded-2xl border border-emerald-100 bg-white p-6 shadow-sm animate-pulse h-48" />
-  ),
-})
-
 type CategoryNode = Pick<MedusaCategory, 'id' | 'title' | 'name' | 'handle'> & {
   category_children?: CategoryNode[]
   parent_category_id?: string | null
@@ -76,14 +67,6 @@ const inr = new Intl.NumberFormat('en-IN', {
   minimumFractionDigits: 0,
   maximumFractionDigits: 0,
 })
-
-const humanizeCategoryLabel = (value: string) =>
-  value
-    .replace(/^(handle:|label:)/i, '')
-    .replace(/[-_]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase())
-    .trim()
 
 function deriveBrandName(name?: string) {
   if (!name) return 'Other'
@@ -521,14 +504,6 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     return Array.from(set)
   }, [shouldUseSourceTag, sourceTagParam, product?.tags])
 
-  const savedAmount = useMemo(() => {
-    if (!product) return 0
-    const mrp = typeof product.mrp === 'number' ? product.mrp : 0
-    const price = typeof product.price === 'number' ? product.price : 0
-    const delta = mrp - price
-    return Number.isFinite(delta) && delta > 0 ? delta : 0
-  }, [product])
-
   const galleryImages = useMemo(() => {
     if (!product) return [FALLBACK_IMAGE]
 
@@ -826,142 +801,6 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   }, [getMetaNumber])
 
   const compareOptions = useMemo(() => related, [related])
-  const savingsCategoryOptions = useMemo(() => {
-    const countMap = new Map<string, number>()
-    const minPriceMap = new Map<string, number>()
-    const labelHintMap = new Map<string, string>()
-
-    const registerToken = (token?: string, labelHint?: string, price?: number) => {
-      if (!token) return
-      const normalized = token.trim()
-      if (!normalized) return
-      countMap.set(normalized, (countMap.get(normalized) || 0) + 1)
-      if (Number.isFinite(price) && price && price > 0) {
-        const existing = minPriceMap.get(normalized)
-        if (existing === undefined || price < existing) {
-          minPriceMap.set(normalized, price)
-        }
-      }
-      if (labelHint && !labelHintMap.has(normalized)) {
-        labelHintMap.set(normalized, labelHint.trim())
-      }
-    }
-
-    related.forEach((item) => {
-      const price = Number(item.price)
-      const labels = item.category_labels || {}
-      const tokens = new Set<string>()
-        ; (item.category_ids || [])
-          .map((id) => (id == null ? '' : String(id)))
-          .filter((id) => id.trim().length > 0)
-          .forEach((id) => tokens.add(id))
-      Object.entries(labels).forEach(([key, value]) => {
-        if (!key) return
-        tokens.add(String(key))
-        if (value) {
-          labelHintMap.set(String(key), value)
-        }
-      })
-      tokens.forEach((token) => registerToken(token, labels[token], price))
-    })
-
-    const entries = Object.entries(categoryMap)
-    const childrenMap = new Map<string, string[]>()
-    entries.forEach(([id]) => {
-      if (!childrenMap.has(id)) {
-        childrenMap.set(id, [])
-      }
-    })
-    entries.forEach(([id, entry]) => {
-      const parent = entry?.parentId
-      if (!parent) return
-      const existing = childrenMap.get(parent) || []
-      existing.push(id)
-      childrenMap.set(parent, existing)
-    })
-
-    const descendantCache = new Map<string, Set<string>>()
-    const getDescendants = (id: string): Set<string> => {
-      if (descendantCache.has(id)) {
-        return descendantCache.get(id)!
-      }
-      const acc = new Set<string>([id])
-      const children = childrenMap.get(id) || []
-      children.forEach((childId) => {
-        if (childId === id) return
-        getDescendants(childId).forEach((desc) => acc.add(desc))
-      })
-      descendantCache.set(id, acc)
-      return acc
-    }
-
-    const collectTokensForCategory = (id: string): Set<string> => {
-      const tokens = new Set<string>()
-      const descendants = getDescendants(id)
-      descendants.forEach((descId) => {
-        tokens.add(descId)
-        const handle = categoryMap[descId]?.handle
-        if (handle) {
-          tokens.add(handle)
-          tokens.add(`handle:${handle}`)
-        }
-        const title = categoryMap[descId]?.title
-        if (title) {
-          tokens.add(`label:${humanizeCategoryLabel(title)}`)
-        }
-      })
-      return tokens
-    }
-
-    const options: SavingsCategoryOption[] = []
-    const coveredTokens = new Set<string>()
-
-    entries.forEach(([id, entry]) => {
-      const tokenSet = collectTokensForCategory(id)
-      tokenSet.forEach((token) => coveredTokens.add(token))
-      const count = Array.from(tokenSet).reduce((sum, token) => sum + (countMap.get(token) || 0), 0)
-      const minPrice = Array.from(tokenSet).reduce<number | undefined>((min, token) => {
-        const price = minPriceMap.get(token)
-        if (price === undefined) return min
-        if (min === undefined || price < min) return price
-        return min
-      }, undefined)
-      const label =
-        entry?.title || (entry?.handle ? humanizeCategoryLabel(entry.handle) : humanizeCategoryLabel(id))
-      options.push({
-        id,
-        label,
-        matchIds: Array.from(tokenSet),
-        count,
-        minPrice,
-        categoryId: id,
-        categoryHandle: entry?.handle,
-      })
-    })
-
-    const extraTokens = Array.from(countMap.keys()).filter((token) => !coveredTokens.has(token))
-    extraTokens.forEach((token) => {
-      const normalizedHandle = token.startsWith('handle:') ? token.replace(/^handle:/i, '') : undefined
-      const matchTokens = normalizedHandle ? [token, normalizedHandle] : [token]
-      options.push({
-        id: token,
-        label: labelHintMap.get(token) || humanizeCategoryLabel(token),
-        matchIds: matchTokens,
-        count: countMap.get(token) || 0,
-        minPrice: minPriceMap.get(token),
-        categoryHandle: normalizedHandle,
-      })
-    })
-
-    options.sort((a, b) => {
-      const aIsReal = Boolean(categoryMap[a.id])
-      const bIsReal = Boolean(categoryMap[b.id])
-      if (aIsReal !== bIsReal) return aIsReal ? -1 : 1
-      return a.label.localeCompare(b.label)
-    })
-
-    return options
-  }, [related, categoryMap])
   const availableBrands = useMemo(() => {
     const set = new Set<string>()
     compareOptions.forEach((item) => {
@@ -1573,40 +1412,6 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   onPinCodeChange={handlePinInputChange}
                   onCheck={handlePinCheck}
                 />
-              </div>
-            </section>
-
-            {/* ====== REST OF THE PAGE ====== */}
-            <section className="mt-12">
-              <div className="relative overflow-hidden border border-emerald-100 bg-gradient-to-b from-emerald-50 via-white to-green-50 shadow-xl transition duration-700 hover:-translate-y-0.5 hover:shadow-2xl">
-                <div className="pointer-events-none absolute -left-10 top-0 h-48 w-48 rounded-full bg-emerald-300/20 blur-3xl animate-pulse" aria-hidden="true" />
-                <div className="pointer-events-none absolute -bottom-10 right-0 h-40 w-40 rounded-full bg-lime-300/20 blur-3xl animate-[pulse_5s_linear_infinite]" aria-hidden="true" />
-                <div className="relative z-10 space-y-8 p-6 sm:p-8 lg:p-12">
-                  <div className="space-y-6 text-center">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/40 px-5 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700 backdrop-blur">
-                      Smart savings
-                    </div>
-                    <div className="space-y-4 max-w-4xl mx-auto">
-                      <h2 className="text-3xl font-bold text-slate-900 sm:text-[2.4rem] sm:leading-tight">
-                        {`Put your \u20B9${Math.round(savedAmount).toLocaleString('en-IN')} savings back into something delightful`}
-                      </h2>
-                    </div>
-                  </div>
-                  <div className="relative   p-4 sm:p-6 lg:p-8">
-                    <ProductSavingsExplorer
-                      savedAmount={savedAmount}
-                      products={related}
-                      loading={loadingRelated}
-                      currentProductId={product.id}
-                      categoryOptions={savingsCategoryOptions}
-                      formatCurrency={(value) => inr.format(value)}
-                      onQuickAdd={async (item) => addVariantToCart(item.variant_id, 1, item.name)}
-                      onWishlist={(item) => {
-                        void addProductToWishlist(item.id?.toString(), item.name)
-                      }}
-                    />
-                  </div>
-                </div>
               </div>
             </section>
 

@@ -14,12 +14,12 @@ export default function SellerJoinPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
+    <div className="oweg-page min-h-screen text-[var(--oweg-ink)]">
+      <div className="oweg-container max-w-4xl space-y-8 py-8 md:space-y-10 md:py-10">
         <header className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Vendors · Sellers</p>
-          <h1 className="text-3xl sm:text-4xl font-semibold">Start selling on OWEG</h1>
-          <p className="text-gray-600 text-sm sm:text-base">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--oweg-green-dark)]">Vendors · Sellers</p>
+          <h1 className="oweg-title text-[clamp(1.6rem,1.1rem+2.4vw,2.5rem)]">Start selling on OWEG</h1>
+          <p className="oweg-subtle max-w-2xl text-sm sm:text-base">
             Everything you need to know before you start—clear process, policies, and support.
           </p>
         </header>
@@ -42,13 +42,13 @@ export default function SellerJoinPage() {
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:brightness-95 transition"
+              className="min-h-[44px] rounded-[var(--oweg-radius-sm)] bg-[var(--oweg-green)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95"
             >
               Signup (Vendors)
             </button>
             <button
               type="button"
-              className="px-4 py-2 rounded-lg bg-white text-emerald-700 border border-emerald-200 text-sm font-semibold shadow-sm hover:bg-emerald-50 transition"
+              className="min-h-[44px] rounded-[var(--oweg-radius-sm)] border border-[var(--oweg-border-strong)] bg-white px-4 py-2 text-sm font-semibold text-[var(--oweg-green-dark)] shadow-[var(--oweg-shadow-sm)] transition hover:bg-[var(--oweg-surface-tint)]"
             >
               Login (Vendors)
             </button>

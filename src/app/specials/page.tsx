@@ -71,14 +71,14 @@ function SpecialsPageContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-10">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-6">
+    <div className="oweg-page min-h-screen pb-10">
+      <div className="oweg-container space-y-6 py-8 md:py-10">
         <header className="space-y-2">
-          <div className="inline-flex items-center gap-2 rounded-full bg-emerald-100 text-emerald-700 px-4 py-1 text-xs font-semibold">
+          <div className="inline-flex items-center gap-2 rounded-full bg-[var(--oweg-surface-tint)] px-4 py-1 text-xs font-semibold text-[var(--oweg-green-dark)]">
             Specials
           </div>
-          <h1 className="text-3xl sm:text-4xl font-semibold text-gray-900">Specials tagged products</h1>
-          <p className="text-gray-600 text-sm sm:text-base">
+          <h1 className="oweg-title text-[clamp(1.6rem,1.1rem+2.4vw,2.5rem)]">Specials tagged products</h1>
+          <p className="oweg-subtle">
             Explore every product marked with the Specials tag across the store.
             {!loading && count > 0 ? ` · ${count} products` : ''}
           </p>
@@ -95,7 +95,7 @@ function SpecialsPageContent() {
           <div className="text-sm text-gray-600">No Specials products available right now.</div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {[...products]
                 .sort((a, b) => {
                   const aInStock = typeof a.inventory_quantity === 'number' && a.inventory_quantity > 0;
@@ -157,7 +157,7 @@ export default function SpecialsPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center text-emerald-700 text-sm gap-2">
+        <div className="oweg-page flex min-h-screen items-center justify-center gap-2 text-sm text-[var(--oweg-green-dark)]">
           <Loader2 className="w-4 h-4 animate-spin" />
           Loading Specials…
         </div>

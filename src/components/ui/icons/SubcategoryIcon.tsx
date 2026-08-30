@@ -45,6 +45,16 @@ const SUBCATEGORY_ICON_FILES = new Set([
   "biometric-devices",
   "sassiest-health-care",
   "castor-wheels",
+  "bulb",
+  "water-pumps",
+  "air-coolers",
+  "tubelights",
+  "room-heater",
+  "airfryer",
+  "hardware-fittings",
+  "bathroom-fittings",
+  "puma",
+  "sneakers",
 ]);
 
 const SLUG_ALIASES: Record<string, string> = {
@@ -108,6 +118,22 @@ const SLUG_ALIASES: Record<string, string> = {
   "castor-wheel": "castor-wheels",
   "caster-wheels": "castor-wheels",
   "caster-wheel": "castor-wheels",
+  "water-pump": "water-pumps",
+  "water-pumps": "water-pumps",
+  "air-cooler": "air-coolers",
+  "air-coolers": "air-coolers",
+  "tube-light": "tubelights",
+  "tube-lights": "tubelights",
+  tubelight: "tubelights",
+  "tubelights": "tubelights",
+  "room-heaters": "room-heater",
+  "air-fryer": "airfryer",
+  "air-fryers": "airfryer",
+  airfryers: "airfryer",
+  "hardware-fitting": "hardware-fittings",
+  "bathroom-fitting": "bathroom-fittings",
+  bulbs: "bulb",
+  sneaker: "sneakers",
 };
 
 export function resolveSubcategoryIconSlug(handle?: string, title?: string): string | null {

@@ -28,13 +28,13 @@ const quickLinks = [
 
 const Footer = () => {
   return (
-    <footer className="footer-root hidden md:block">
-      <div className="container mx-auto px-6 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12">
+    <footer className="footer-root block">
+      <div className="oweg-container py-10 md:py-16">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-9 md:gap-10 lg:grid-cols-5 lg:gap-12">
           {/* My Account Section */}
           <div>
-            <h3 className="text-xl font-normal mb-6 section-title">My Account</h3>
-            <ul className="space-y-4">
+            <h3 className="section-title mb-4 text-base font-normal md:mb-6 md:text-xl">My Account</h3>
+            <ul className="link-list space-y-0 md:space-y-4">
               {accountLinks.map((item) => (
                 <li key={item.href}>
                   <Link href={item.href} className="link-item group">
@@ -48,8 +48,8 @@ const Footer = () => {
 
           {/* Policy Section */}
           <div>
-            <h3 className="text-xl font-normal mb-6 section-title">Policy</h3>
-            <ul className="space-y-4">
+            <h3 className="section-title mb-4 text-base font-normal md:mb-6 md:text-xl">Policy</h3>
+            <ul className="link-list space-y-0 md:space-y-4">
               {policyLinks.map((item) => (
                 <li key={item.href}>
                   <Link href={item.href} className="link-item group">
@@ -63,8 +63,8 @@ const Footer = () => {
 
           {/* Quick Link Section */}
           <div>
-            <h3 className="text-xl font-normal mb-6 section-title">Quick Link</h3>
-            <ul className="space-y-4">
+            <h3 className="section-title mb-4 text-base font-normal md:mb-6 md:text-xl">Quick Link</h3>
+            <ul className="link-list space-y-0 md:space-y-4">
               {quickLinks.map((item) => (
                 <li key={item.href}>
                   <Link href={item.href} className="link-item group">
@@ -77,8 +77,8 @@ const Footer = () => {
           </div>
 
           {/* Support Section */}
-          <div>
-            <h3 className="text-xl font-normal mb-6 section-title">Support</h3>
+          <div className="col-span-2 lg:col-span-1">
+            <h3 className="section-title mb-4 text-base font-normal md:mb-6 md:text-xl">Support</h3>
             <div className="text-sm">
               <p>Ascent Retechno India Pvt Ltd</p>
               <p>
@@ -97,9 +97,9 @@ const Footer = () => {
           </div>
 
           {/* Connect With Us Section */}
-          <div>
-            <h3 className="text-xl font-normal mb-6 section-title">Connect With Us</h3>
-            <div className="flex gap-6">
+          <div className="col-span-2 lg:col-span-1">
+            <h3 className="section-title mb-4 text-base font-normal md:mb-6 md:text-xl">Connect With Us</h3>
+            <div className="flex gap-5 md:gap-6">
               <a href="https://www.facebook.com/owegonline/" target="_blank" rel="noopener noreferrer" className="icon-link" aria-label="Facebook">
                 <Facebook className="h-6 w-6" />
               </a>
@@ -119,8 +119,8 @@ const Footer = () => {
 
       {/* Copyright */}
       <div className="border-top">
-        <div className="container mx-auto px-6 py-6">
-          <p className="text-center copyright hoverable">© 2026 OWEG. All Rights Reserved.</p>
+        <div className="oweg-container py-5 md:py-6">
+          <p className="copyright hoverable text-center">© 2026 OWEG. All Rights Reserved.</p>
         </div>
       </div>
 
@@ -242,10 +242,29 @@ const Footer = () => {
           color: var(--footer-hover);
         }
 
-        @media (max-width: 768px) {
+        .footer-root .icon-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        @media (max-width: 767px) {
           .footer-root .link-underline { bottom: -4px; }
           .footer-root {
-            padding-bottom: 96px; /* leave room for mobile bottom nav */
+            /* clear the fixed mobile bottom nav + device safe area */
+            padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+          }
+          /* comfortable touch targets without changing the visual rhythm */
+          .footer-root .link-item {
+            min-height: 44px;
+            padding-block: 11px;
+          }
+          .footer-root .link-list {
+            margin-block: -11px;
+          }
+          .footer-root .icon-link {
+            min-width: 44px;
+            min-height: 44px;
           }
         }
       `}</style>
