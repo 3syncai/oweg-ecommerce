@@ -732,7 +732,11 @@ export async function POST(req: Request) {
         await updateCheckoutOrderMetadata(medusaOrderId, !converted, {
           razorpay_order_id: rzpOrder.id,
           razorpay_payment_status: "created",
+          checkout_status: "awaiting_payment",
         });
+
+        const { persistSnapshotForCheckout } = await import("@/lib/checkout-payment-snapshot");
+        await persistSnapshotForCheckout(medusaOrderId, rzpOrder.id);
 
         razorpay = {
           orderId: rzpOrder.id,

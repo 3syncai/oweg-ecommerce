@@ -200,9 +200,37 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "invalid_signature" }, { status: 400 });
     }
 
-    const placed = await ensurePlacedCheckoutOrder(medusaOrderId);
+    let placed = await ensurePlacedCheckoutOrder(medusaOrderId);
     if (!placed) {
-      return NextResponse.json({ error: "order_not_found" }, { status: 404 });
+      // Draft may be tombstoned/missing after dismiss race — recover from Razorpay capture.
+      const { recoverRazorpayCapture } = await import("@/lib/razorpay-capture-recover");
+      const recovered = await recoverRazorpayCapture({
+        medusaOrderId,
+        razorpayPaymentId: razorpay_payment_id,
+        razorpayOrderId: razorpay_order_id,
+        razorpaySignature: razorpay_signature,
+        amountMinor,
+        currencyCode,
+        // HMAC already verified. Prefer local tombstone/snapshot rebuild; skip RZP GET
+        // so QA fake pay_* ids still recover (remote lookup is for unsigned recover API).
+        skipRemotePaymentLookup: true,
+      });
+      if (recovered.ok) {
+        return NextResponse.json({
+          ok: true,
+          recovered: true,
+          paymentCreated: recovered.paymentCreated,
+          medusaOrderId: recovered.orderId,
+          orderId: recovered.orderId,
+        });
+      }
+      if (recovered.error === "orphan_capture") {
+        return NextResponse.json(recovered, { status: 502 });
+      }
+      return NextResponse.json(
+        { error: "order_not_found", recovery: recovered },
+        { status: 404 }
+      );
     }
 
     const finalOrderId = placed.orderId;
@@ -324,6 +352,7 @@ export async function POST(req: Request) {
 
     // Create payment records + sync Medusa admin "Captured" status
     let paymentCreated = false;
+    let finalizeOk = false;
     const resolvedAmountMinor =
       typeof amountMinor === "number" && amountMinor > 0
         ? amountMinor
@@ -338,10 +367,12 @@ export async function POST(req: Request) {
         razorpayOrderId: razorpay_order_id,
         razorpaySignature: razorpay_signature,
       });
-      paymentCreated = finalizeResult.paymentCreated || finalizeResult.transactionCreated || finalizeResult.skipped === true;
+      paymentCreated =
+        Boolean(finalizeResult.paymentCreated) || Boolean(finalizeResult.skipped);
+      finalizeOk = Boolean(finalizeResult.ok);
 
-      if (!finalizeResult.ok) {
-        console.error("razorpay confirm: finalize payment failed", finalizeResult);
+      if (!finalizeResult.ok || !paymentCreated) {
+        console.error("razorpay confirm: finalize payment incomplete", finalizeResult);
       }
     } else {
       console.error("razorpay confirm: missing payable amount for order", finalOrderId);
@@ -349,10 +380,53 @@ export async function POST(req: Request) {
 
     await updateOrderMetadata(finalOrderId, {
       payment_method: "razorpay",
-      razorpay_capture_status: paymentCreated ? "captured" : "failed",
+      razorpay_capture_status: finalizeOk && paymentCreated ? "captured" : "failed",
+      razorpay_admin_reconcile_required: !finalizeOk || !paymentCreated,
       cod_status: null,
       cod_post_process_done: null,
     });
+
+    // Background repair if payment module rows failed but Razorpay already captured.
+    if (!finalizeOk || !paymentCreated) {
+      const repairAmount = resolvedAmountMinor;
+      const repairPaymentId = razorpay_payment_id;
+      const repairOrderId = razorpay_order_id;
+      const repairSignature = razorpay_signature;
+      const repairCurrency = currencyCode;
+      after(async () => {
+        try {
+          let amount = repairAmount;
+          if (!amount || amount <= 0) {
+            amount = await resolveOrderPayableAmountMinor(finalOrderId);
+          }
+          if (!amount || amount <= 0) {
+            console.warn("razorpay confirm: background reconcile skipped; no amount", finalOrderId);
+            return;
+          }
+          const retry = await finalizeRazorpayOrderPayment({
+            orderId: finalOrderId,
+            amountMinor: amount,
+            currencyCode: repairCurrency,
+            razorpayPaymentId: repairPaymentId,
+            razorpayOrderId: repairOrderId,
+            razorpaySignature: repairSignature,
+          });
+          await updateOrderMetadata(finalOrderId, {
+            razorpay_capture_status: retry.ok ? "captured" : "failed",
+            razorpay_admin_reconcile_required: !retry.ok,
+            razorpay_reconciled_at: new Date().toISOString(),
+            razorpay_reconcile_source: "confirm_after",
+          });
+          console.info("razorpay confirm: background reconcile result", {
+            finalOrderId,
+            ok: retry.ok,
+            paymentCreated: retry.paymentCreated,
+          });
+        } catch (err) {
+          console.error("razorpay confirm: background reconcile failed", err);
+        }
+      });
+    }
 
     // Spend wallet coins after successful payment (discount already on order from draft-order).
     try {
@@ -394,7 +468,14 @@ export async function POST(req: Request) {
     // Non-blocking: affiliate webhooks + customer-affiliate coins after response
     after(() => runPostPaidSideEffects(finalOrderId, amountMinor));
 
-    return NextResponse.json({ ok: true, paymentCreated, medusaOrderId: finalOrderId });
+    return NextResponse.json({
+      ok: true,
+      paymentCreated,
+      finalizeOk,
+      medusaOrderId: finalOrderId,
+      orderId: finalOrderId,
+      adminReconcileRequired: !finalizeOk || !paymentCreated,
+    });
   } catch (err) {
     console.error("razorpay confirm failed", err);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });

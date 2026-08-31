@@ -405,7 +405,28 @@ export async function convertDraftOrder(orderId: string) {
   });
 }
 
+/**
+ * Hard-delete a draft. Blocked by default — unpaid dismiss must tombstone, not DELETE.
+ * Set ALLOW_DRAFT_HARD_DELETE=1 only for explicit ops/QA cleanup.
+ */
 export async function deleteDraftOrder(orderId: string) {
+  const stack = new Error("deleteDraftOrder caller").stack || "";
+  console.error("[DRAFT_HARD_DELETE]", {
+    orderId,
+    allowed: process.env.ALLOW_DRAFT_HARD_DELETE === "1",
+    stack: stack.split("\n").slice(0, 12).join("\n"),
+  });
+  if (process.env.ALLOW_DRAFT_HARD_DELETE !== "1") {
+    return {
+      ok: false as const,
+      status: 403,
+      data: {
+        error: "draft_hard_delete_blocked",
+        message:
+          "Hard-delete of drafts is disabled. Tombstone unpaid drafts; recover paid captures from checkout_payment_snapshot.",
+      },
+    };
+  }
   return adminFetch(`/admin/draft-orders/${encodeURIComponent(orderId)}`, {
     method: "DELETE",
   });

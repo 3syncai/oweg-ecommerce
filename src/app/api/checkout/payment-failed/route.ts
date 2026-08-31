@@ -17,15 +17,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "medusaOrderId is required" }, { status: 400 });
     }
 
-    await markCheckoutPaymentFailed(orderId);
+    const result = await markCheckoutPaymentFailed(orderId);
 
-    try {
-      await refundCoinSpendForOrder({ orderId, reason: "failed" });
-    } catch {
-      // Best-effort coin refund; webhook also handles this.
+    // Do not refund coins if we recovered a real capture.
+    if (!result.recovered) {
+      try {
+        await refundCoinSpendForOrder({ orderId, reason: "failed" });
+      } catch {
+        // Best-effort coin refund; webhook also handles this.
+      }
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      tombstoned: result.tombstoned || false,
+      recovered: result.recovered || false,
+      orderId: result.orderId || orderId,
+      alreadyGone: result.alreadyGone || false,
+    });
   } catch (err) {
     console.error("payment-failed cleanup error", err);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });

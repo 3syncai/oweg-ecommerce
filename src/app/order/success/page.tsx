@@ -104,9 +104,14 @@ function OrderSuccessPageInner() {
   const [autoPollingStarted, setAutoPollingStarted] = useState(false);
   const [initialOrderChecked, setInitialOrderChecked] = useState(false);
   const [coinsEarned, setCoinsEarned] = useState<number | null>(null);
+  const [confirmFailed, setConfirmFailed] = useState(false);
+  const [confirmFailReason, setConfirmFailReason] = useState<string | null>(null);
   const pollAttempts = useRef(0);
+  const consecutiveNotFound = useRef(0);
   const clearedCartRef = useRef(false);
+  const confirmStartedRef = useRef(false);
   const maxPollAttempts = 30;
+  const maxConsecutiveNotFound = 5;
   const pollIntervalMs = isConfirmingFlow ? 1000 : 2000;
 
   async function confirmCodOrder(refId: string) {
@@ -120,22 +125,34 @@ function OrderSuccessPageInner() {
     return data.medusaOrderId || refId;
   }
 
-  async function fetchOrder() {
-    if (!orderId) return null;
+  type FetchOrderResult = { order: OrderSummary | null; notFound: boolean };
+
+  async function fetchOrder(targetId: string = orderId): Promise<FetchOrderResult> {
+    if (!targetId) return { order: null, notFound: false };
     setLoading(true);
     try {
-      const res = await fetch(`/api/checkout/order-summary?orderId=${encodeURIComponent(orderId)}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) return null;
+      const res = await fetch(
+        `/api/checkout/order-summary?orderId=${encodeURIComponent(targetId)}`,
+        { cache: "no-store" }
+      );
+      if (res.status === 404) {
+        return { order: null, notFound: true };
+      }
+      if (!res.ok) return { order: null, notFound: false };
       const data = await res.json();
-      return data.order as OrderSummary;
+      return { order: data.order as OrderSummary, notFound: false };
     } catch (err) {
       console.error("fetchOrder error", err);
-      return null;
+      return { order: null, notFound: false };
     } finally {
       setLoading(false);
     }
+  }
+
+  function stopPollingWithFailure(reason: string) {
+    setPolling(false);
+    setConfirmFailed(true);
+    setConfirmFailReason(reason);
   }
 
   useEffect(() => {
@@ -157,45 +174,190 @@ function OrderSuccessPageInner() {
     };
   }, [orderId, isConfirmingFlow, isCodCheckout, router]);
 
+  // Razorpay: await confirm (from session handoff) and replace URL with placed order id.
   useEffect(() => {
     if (!orderId || !isConfirmingFlow || isCodCheckout) return;
+    if (confirmStartedRef.current) return;
+    confirmStartedRef.current = true;
     let cancelled = false;
 
     (async () => {
+      type PendingRzpConfirm = {
+        medusaOrderId?: string;
+        finalOrderId?: string;
+        razorpay_payment_id?: string;
+        razorpay_order_id?: string;
+        razorpay_signature?: string;
+        amount_minor?: number;
+        currency?: string;
+        at?: number;
+      };
+      let pending: PendingRzpConfirm | null = null;
+
       try {
-        await fetch("/api/checkout/razorpay/reconcile", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ medusaOrderId: orderId }),
-        });
+        const raw = sessionStorage.getItem("oweg_pending_rzp_confirm");
+        if (raw) pending = JSON.parse(raw) as PendingRzpConfirm;
+      } catch {
+        pending = null;
+      }
+
+      // Stale handoff (>15 min) — ignore payload but keep reconcile.
+      if (pending?.at && Date.now() - pending.at > 15 * 60 * 1000) {
+        pending = null;
+        try {
+          sessionStorage.removeItem("oweg_pending_rzp_confirm");
+        } catch {
+          /* ignore */
+        }
+      }
+
+      try {
+        if (pending?.finalOrderId && pending.finalOrderId !== orderId) {
+          if (!cancelled) {
+            try {
+              sessionStorage.removeItem("oweg_pending_rzp_confirm");
+            } catch {
+              /* ignore */
+            }
+            router.replace(
+              `/order/success?orderId=${encodeURIComponent(pending.finalOrderId)}&confirming=1`
+            );
+          }
+          return;
+        }
+
+        if (
+          pending?.medusaOrderId === orderId &&
+          pending.razorpay_payment_id &&
+          pending.razorpay_order_id &&
+          pending.razorpay_signature
+        ) {
+          const confirmRes = await fetch("/api/checkout/razorpay/confirm", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              medusaOrderId: pending.medusaOrderId,
+              razorpay_payment_id: pending.razorpay_payment_id,
+              razorpay_order_id: pending.razorpay_order_id,
+              razorpay_signature: pending.razorpay_signature,
+              amount_minor: pending.amount_minor,
+              currency: pending.currency,
+            }),
+          });
+          const confirmData = (await confirmRes.json().catch(() => ({}))) as {
+            orderId?: string;
+            medusaOrderId?: string;
+            error?: string;
+          };
+          try {
+            sessionStorage.removeItem("oweg_pending_rzp_confirm");
+          } catch {
+            /* ignore */
+          }
+
+          if (cancelled) return;
+
+          if (confirmRes.status === 404 || confirmData.error === "order_not_found") {
+            // Attempt recover before showing "no longer available" — dismiss race
+            // may have tombstoned the draft while Razorpay already captured.
+            try {
+              const recoverRes = await fetch("/api/checkout/razorpay/recover", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                  medusaOrderId: pending.medusaOrderId || orderId,
+                  razorpay_payment_id: pending.razorpay_payment_id,
+                  razorpay_order_id: pending.razorpay_order_id,
+                  razorpay_signature: pending.razorpay_signature,
+                  amount_minor: pending.amount_minor,
+                  currency: pending.currency,
+                }),
+              });
+              const recoverData = (await recoverRes.json().catch(() => ({}))) as {
+                ok?: boolean;
+                orderId?: string;
+                error?: string;
+              };
+              if (!cancelled && recoverRes.ok && recoverData.ok && recoverData.orderId) {
+                router.replace(
+                  `/order/success?orderId=${encodeURIComponent(recoverData.orderId)}&confirming=1`
+                );
+                return;
+              }
+              if (!cancelled && recoverData.error === "orphan_capture") {
+                stopPollingWithFailure(
+                  "Payment was received but we could not attach it to an order automatically. Contact support with your payment reference — you will not be charged twice."
+                );
+                return;
+              }
+            } catch (recoverErr) {
+              console.error("success recover failed", recoverErr);
+            }
+            if (!cancelled) {
+              stopPollingWithFailure(
+                "This order is no longer available. It may have been cancelled before payment finished confirming."
+              );
+            }
+            return;
+          }
+
+          if (confirmRes.status === 502 && confirmData.error === "orphan_capture") {
+            stopPollingWithFailure(
+              "Payment was received but we could not attach it to an order automatically. Contact support with your payment reference — you will not be charged twice."
+            );
+            return;
+          }
+
+          const finalId = confirmData.orderId || confirmData.medusaOrderId || orderId;
+          if (finalId && finalId !== orderId) {
+            router.replace(`/order/success?orderId=${encodeURIComponent(finalId)}&confirming=1`);
+            return;
+          }
+        } else {
+          await fetch("/api/checkout/razorpay/reconcile", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ medusaOrderId: orderId }),
+          });
+        }
+
         if (!cancelled) {
-          const o = await fetchOrder();
+          const { order: o, notFound } = await fetchOrder();
           if (o) setOrder(o);
+          if (notFound) {
+            consecutiveNotFound.current += 1;
+          }
         }
       } catch (err) {
-        console.error("razorpay reconcile failed", err);
+        console.error("razorpay confirm/reconcile failed", err);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [orderId, isConfirmingFlow, isCodCheckout]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, isConfirmingFlow, isCodCheckout, router]);
 
   useEffect(() => {
     setInitialOrderChecked(false);
     setAutoPollingStarted(false);
     setPolling(false);
+    setConfirmFailed(false);
+    setConfirmFailReason(null);
     pollAttempts.current = 0;
+    consecutiveNotFound.current = 0;
+    confirmStartedRef.current = false;
   }, [orderId]);
 
   useEffect(() => {
     if (!orderId) return;
     let mounted = true;
     (async () => {
-      const o = await fetchOrder();
+      const { order: o, notFound } = await fetchOrder();
       if (!mounted) return;
       if (o) setOrder(o);
+      if (notFound) consecutiveNotFound.current += 1;
       setInitialOrderChecked(true);
     })();
     return () => {
@@ -212,9 +374,13 @@ function OrderSuccessPageInner() {
     async function tick() {
       if (cancelled) return;
       pollAttempts.current += 1;
-      const latest = await fetchOrder();
+      const { order: latest, notFound } = await fetchOrder();
       if (cancelled) return;
-      if (latest) {
+
+      if (notFound) {
+        consecutiveNotFound.current += 1;
+      } else if (latest) {
+        consecutiveNotFound.current = 0;
         setOrder(latest);
         const codStatus =
           typeof latest?.metadata?.cod_status === "string" ? latest.metadata.cod_status : undefined;
@@ -229,11 +395,25 @@ function OrderSuccessPageInner() {
           statusValue === "captured" ||
           statusValue === "paid" ||
           statusValue === "cod";
-        if (isConfirmed || pollAttempts.current >= maxPollAttempts) {
+        if (isConfirmed) {
           setPolling(false);
+          setConfirmFailed(false);
           return;
         }
       }
+
+      if (
+        consecutiveNotFound.current >= maxConsecutiveNotFound ||
+        pollAttempts.current >= maxPollAttempts
+      ) {
+        stopPollingWithFailure(
+          consecutiveNotFound.current >= maxConsecutiveNotFound
+            ? "We couldn't find this order anymore. If you paid, check My Orders — your payment may still have gone through under a different reference."
+            : "Confirmation is taking longer than expected. Check My Orders or contact support with your order reference."
+        );
+        return;
+      }
+
       timer = setTimeout(() => {
         void tick();
       }, pollIntervalMs);
@@ -264,27 +444,37 @@ function OrderSuccessPageInner() {
   const isCod = isCodCheckout || orderPaymentMethod === "cod" || rawPaymentStatus === "cod";
   const codStatus =
     typeof order?.metadata?.cod_status === "string" ? order.metadata.cod_status : undefined;
-  const isCodPending = isCodCheckout && isConfirmingFlow && codStatus !== "confirmed";
+  const isCodPending = isCodCheckout && isConfirmingFlow && codStatus !== "confirmed" && !confirmFailed;
   const isPaidOnline = rawPaymentStatus === "captured" || rawPaymentStatus === "paid";
   const isOrderComplete = isPaidOnline || (isCod && !isCodPending);
   const isPaid = isOrderComplete;
-  const paymentStatusLabel = isCod ? "Cash on Delivery" : isPaidOnline ? "Paid" : rawPaymentStatus || "Pending";
-
-  const statusMessage = isCodPending
-    ? "We're confirming your order. This usually takes a few seconds."
+  const paymentStatusLabel = confirmFailed
+    ? "Unavailable"
     : isCod
-      ? "Your order is confirmed. Pay when your order arrives."
+      ? "Cash on Delivery"
       : isPaidOnline
-        ? "Your payment is confirmed. We'll share updates on your order."
-        : rawPaymentStatus
-          ? "Payment received. Waiting for Razorpay to confirm."
-          : "Payment received. Waiting for confirmation.";
+        ? "Paid"
+        : rawPaymentStatus || "Pending";
 
-  const statusVariant: StatusVariant = isCodPending
-    ? "cod-pending"
-    : isOrderComplete
-      ? "success"
-      : "payment-pending";
+  const statusMessage = confirmFailed
+    ? confirmFailReason || "We couldn't confirm this order."
+    : isCodPending
+      ? "We're confirming your order. This usually takes a few seconds."
+      : isCod
+        ? "Your order is confirmed. Pay when your order arrives."
+        : isPaidOnline
+          ? "Your payment is confirmed. We'll share updates on your order."
+          : rawPaymentStatus
+            ? "Payment received. Waiting for Razorpay to confirm."
+            : "Payment received. Waiting for confirmation.";
+
+  const statusVariant: StatusVariant = confirmFailed
+    ? "payment-pending"
+    : isCodPending
+      ? "cod-pending"
+      : isOrderComplete
+        ? "success"
+        : "payment-pending";
 
   const orderMode =
     typeof order?.metadata?.mode === "string" ? (order.metadata.mode as string) : undefined;
@@ -326,14 +516,14 @@ function OrderSuccessPageInner() {
   }, [isPaid, orderMode, orderPaymentMethod]);
 
   useEffect(() => {
-    if (!orderId || !isConfirmingFlow || isCodCheckout) return;
-    // Wait for first order fetch so we skip polling when already paid
+    if (!orderId || !isConfirmingFlow || isCodCheckout || confirmFailed) return;
     if (!initialOrderChecked) return;
     if (isPaidOnline || polling || autoPollingStarted) return;
     setAutoPollingStarted(true);
     setPolling(true);
   }, [
     autoPollingStarted,
+    confirmFailed,
     initialOrderChecked,
     isCodCheckout,
     isConfirmingFlow,
@@ -343,12 +533,20 @@ function OrderSuccessPageInner() {
   ]);
 
   useEffect(() => {
-    if (!orderId || !isConfirmingFlow || !isCodPending) return;
+    if (!orderId || !isConfirmingFlow || !isCodPending || confirmFailed) return;
     if (!initialOrderChecked) return;
     if (polling || autoPollingStarted) return;
     setAutoPollingStarted(true);
     setPolling(true);
-  }, [autoPollingStarted, initialOrderChecked, isCodPending, isConfirmingFlow, orderId, polling]);
+  }, [
+    autoPollingStarted,
+    confirmFailed,
+    initialOrderChecked,
+    isCodPending,
+    isConfirmingFlow,
+    orderId,
+    polling,
+  ]);
 
   function formatItemAmount(item: OrderLineItem) {
     if (!item) return "N/A";
@@ -378,6 +576,9 @@ function OrderSuccessPageInner() {
     }
   }, [order, isPaid]);
 
+  const showConfirmingChip =
+    !confirmFailed && (isCodPending || (!isPaidOnline && !isCod && isConfirmingFlow && polling));
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-emerald-50/40 px-4 py-10 md:py-14">
       <div className="mx-auto max-w-2xl">
@@ -391,22 +592,47 @@ function OrderSuccessPageInner() {
                 className="mt-6 space-y-2 order-success-slide-up"
                 style={{ animationDelay: "0.12s" }}
               >
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
-                  {isCodPending ? "Processing" : isCod ? "Order placed" : isPaidOnline ? "Payment successful" : "Processing payment"}
+                <p
+                  className={`text-xs font-semibold uppercase tracking-[0.2em] ${
+                    confirmFailed ? "text-amber-700" : "text-emerald-600"
+                  }`}
+                >
+                  {confirmFailed
+                    ? "Needs attention"
+                    : isCodPending
+                      ? "Processing"
+                      : isCod
+                        ? "Order placed"
+                        : isPaidOnline
+                          ? "Payment successful"
+                          : "Processing payment"}
                 </p>
                 <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
-                  Thanks for ordering
+                  {confirmFailed ? "We couldn't finish confirming" : "Thanks for ordering"}
                 </h1>
                 <p className="mx-auto max-w-md text-sm leading-relaxed text-slate-600">{statusMessage}</p>
               </div>
 
-              {(isCodPending || (!isPaidOnline && !isCod && isConfirmingFlow)) && (
+              {showConfirmingChip && (
                 <div
                   className="mt-4 flex items-center gap-2 rounded-full border border-amber-200/80 bg-amber-50 px-4 py-2 text-xs text-amber-800 order-success-slide-up"
                   style={{ animationDelay: "0.2s" }}
                 >
                   <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
                   <span>{isCodPending ? "Finalizing your COD order…" : "Confirming payment…"}</span>
+                </div>
+              )}
+
+              {confirmFailed && (
+                <div
+                  className="mt-4 w-full max-w-md rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm text-amber-950 order-success-slide-up"
+                  style={{ animationDelay: "0.2s" }}
+                >
+                  <p className="font-medium">What to do next</p>
+                  <p className="mt-1 text-amber-900/90">
+                    Open My Orders to see if the payment already created an order. If not, try checkout
+                    again — you will not be charged twice for a cancelled attempt.
+                  </p>
                 </div>
               )}
 
@@ -512,11 +738,13 @@ function OrderSuccessPageInner() {
 
                 {!order?.items?.length && (
                   <div className="flex items-center justify-center gap-2 p-8 text-sm text-slate-500">
-                    {loading ? (
+                    {loading && !confirmFailed ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                         Loading items…
                       </>
+                    ) : confirmFailed ? (
+                      "No order details available for this reference."
                     ) : (
                       "We'll load your items shortly."
                     )}
@@ -531,10 +759,10 @@ function OrderSuccessPageInner() {
               style={{ animationDelay: "0.58s" }}
             >
               <Button
-                onClick={() => router.push("/")}
+                onClick={() => router.push(confirmFailed ? "/checkout" : "/")}
                 className="h-11 flex-1 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
               >
-                Continue shopping
+                {confirmFailed ? "Back to checkout" : "Continue shopping"}
                 <ArrowRight className="ml-1 h-4 w-4" aria-hidden />
               </Button>
               <Button
@@ -546,12 +774,16 @@ function OrderSuccessPageInner() {
               </Button>
             </div>
 
-            {!isPaidOnline && !isCod && (
+            {!isPaidOnline && !isCod && !confirmFailed && (
               <div className="flex justify-center order-success-slide-up" style={{ animationDelay: "0.64s" }}>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setPolling(true)}
+                  onClick={() => {
+                    consecutiveNotFound.current = 0;
+                    setConfirmFailed(false);
+                    setPolling(true);
+                  }}
                   disabled={loading || polling}
                   className="text-slate-500 hover:text-slate-800"
                 >

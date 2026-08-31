@@ -199,6 +199,28 @@ async function blockFailedOnlineDraftConvert(
   return next()
 }
 
+/** Log every admin draft hard-delete (stack + ids) so paid-orphan races are attributable. */
+async function logDraftOrderHardDelete(
+  req: MedusaRequest,
+  _res: MedusaResponse,
+  next: MedusaNextFunction
+) {
+  const orderId =
+    typeof req.params?.id === "string"
+      ? req.params.id
+      : String(req.url || "").match(/draft-orders\/([^/?]+)/)?.[1] || "unknown"
+  const stack = new Error("draft DELETE").stack || ""
+  console.error("[DRAFT_HARD_DELETE]", {
+    orderId,
+    method: req.method,
+    path: req.url,
+    actor: (req as { auth_context?: { actor_id?: string } }).auth_context?.actor_id,
+    stack: stack.split("\n").slice(0, 14).join("\n"),
+    at: new Date().toISOString(),
+  })
+  return next()
+}
+
 export default defineMiddlewares({
   routes: [
     {
@@ -213,6 +235,11 @@ export default defineMiddlewares({
       method: ["POST"],
       matcher: "/admin/draft-orders/*/convert-to-order",
       middlewares: [blockFailedOnlineDraftConvert],
+    },
+    {
+      method: ["DELETE"],
+      matcher: "/admin/draft-orders/*",
+      middlewares: [logDraftOrderHardDelete],
     },
     {
       matcher: "/vendor",

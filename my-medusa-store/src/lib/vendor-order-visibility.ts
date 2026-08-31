@@ -73,6 +73,9 @@ export function isShiprocketEligibleOrder(order: VendorOrderLike | null | undefi
  * Failed / incomplete online drafts must never convert — that is when Medusa
  * reserves inventory. Captured Razorpay, convert-authorized checkouts, and
  * non-Razorpay drafts (e.g. COD) are allowed.
+ *
+ * `checkout_convert_authorized` is set only by verified confirm/webhook/recover
+ * after Razorpay HMAC/signature proof — it must override dismiss tombstones.
  */
 export function isBlockedFromDraftConvert(order: VendorOrderLike | null | undefined): boolean {
   if (!order) return true
@@ -80,8 +83,6 @@ export function isBlockedFromDraftConvert(order: VendorOrderLike | null | undefi
   const metadata = (order.metadata || {}) as Record<string, unknown>
   const checkoutStatus =
     typeof metadata.checkout_status === "string" ? metadata.checkout_status.toLowerCase() : ""
-  if (checkoutStatus === "payment_failed") return true
-
   const paymentMethod =
     typeof metadata.payment_method === "string" ? metadata.payment_method.toLowerCase() : ""
   const razorpayStatus =
@@ -94,12 +95,15 @@ export function isBlockedFromDraftConvert(order: VendorOrderLike | null | undefi
     metadata.checkout_convert_authorized === true ||
     metadata.checkout_convert_authorized === "true"
 
+  // Verified payment recovery / confirm always wins over tombstone flags.
+  if (convertAuthorized) return false
+
+  if (checkoutStatus === "payment_failed") return true
   if (razorpayStatus === "failed") return true
 
   if (paymentMethod === "razorpay" || razorpayStatus === "created") {
     if (razorpayStatus === "captured") return false
     if (["captured", "paid"].includes(paymentStatus)) return false
-    if (convertAuthorized) return false
     // Incomplete / abandoned Razorpay draft — do not convert (would reserve stock)
     return true
   }

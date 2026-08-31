@@ -1,6 +1,5 @@
 import {
   convertDraftOrder,
-  deleteDraftOrder,
   getDraftOrderById,
   getOrderById,
   updateDraftOrderMetadata,
@@ -102,11 +101,15 @@ export async function ensurePlacedCheckoutOrder(orderId: string): Promise<{
 
   // Authorize convert so Medusa middleware allows it after verified payment.
   // Without this, unpaid Razorpay drafts stay blocked (inventory protection).
+  // Also clear dismiss-tombstone flags so convert is not blocked by payment_failed.
   const metadata = (loaded.order.metadata || {}) as Record<string, unknown>;
   await updateCheckoutOrderMetadata(orderId, true, {
     ...metadata,
     checkout_convert_authorized: true,
     checkout_convert_authorized_at: new Date().toISOString(),
+    checkout_status: "awaiting_payment",
+    checkout_tombstone: false,
+    checkout_failed_at: null,
   });
 
   const converted = await convertCheckoutDraftToPlacedOrder(orderId);
@@ -173,6 +176,8 @@ export function isCustomerVisibleOrder(order: CheckoutOrderRecord): boolean {
 
   const status = typeof order.status === "string" ? order.status.toLowerCase() : "";
   const metadata = (order.metadata || {}) as Record<string, unknown>;
+  if (metadata.checkout_duplicate_suppressed === true) return false;
+
   const paymentMethod =
     typeof metadata.payment_method === "string" ? metadata.payment_method.toLowerCase() : "";
   const razorpayStatus =
@@ -200,21 +205,124 @@ export function isCustomerVisibleOrder(order: CheckoutOrderRecord): boolean {
     return false;
   }
 
-  if (razorpayStatus === "created" || razorpayStatus === "failed") {
+  if (
+    razorpayStatus === "created" ||
+    razorpayStatus === "failed" ||
+    razorpayStatus === "attempted_failed"
+  ) {
     return false;
   }
 
   return true;
 }
 
+/**
+ * Soft-stamp an in-modal Razorpay `payment.failed` webhook.
+ * Keeps the Medusa draft alive (no inventory release / coin refund / delete) so
+ * Standard Checkout can retry another method on the same session.
+ */
+export async function recordCheckoutPaymentAttemptFailed(
+  orderId: string,
+  extraMetadata: Record<string, unknown> = {}
+): Promise<{ ok: boolean; alreadyGone?: boolean; skippedTerminal?: boolean }> {
+  const loaded = await loadCheckoutOrder(orderId);
+  if (!loaded) {
+    return { ok: true, alreadyGone: true };
+  }
+
+  const metadata = (loaded.order.metadata || {}) as Record<string, unknown>;
+  const status =
+    typeof metadata.razorpay_payment_status === "string"
+      ? metadata.razorpay_payment_status.toLowerCase()
+      : "";
+  if (status === "captured" || status === "authorized" || status === "paid") {
+    return { ok: true, skippedTerminal: true };
+  }
+  // Terminal abandon already happened (dismiss / payment-failed API).
+  if (status === "failed" || String(metadata.checkout_status || "").toLowerCase() === "payment_failed") {
+    return { ok: true, skippedTerminal: true };
+  }
+
+  await updateCheckoutOrderMetadata(orderId, loaded.isDraft, {
+    ...metadata,
+    ...extraMetadata,
+    razorpay_payment_status: "attempted_failed",
+    razorpay_last_attempt_failed_at: new Date().toISOString(),
+    checkout_status: "awaiting_payment",
+  });
+
+  return { ok: true };
+}
+
+/**
+ * Terminal payment abandon (modal dismiss / explicit cancel): release inventory/coupon
+ * holds and soft-tombstone the draft (do NOT hard-delete).
+ *
+ * Hard-delete caused paid orphans when Razorpay captured after dismiss.
+ * If Razorpay already has an authorized/captured payment for this draft's
+ * razorpay_order_id, convert + finalize instead of abandoning.
+ *
+ * Do NOT call this from webhook `payment.failed` — that fires during in-modal retries.
+ */
 export async function markCheckoutPaymentFailed(
   orderId: string,
   extraMetadata: Record<string, unknown> = {}
-) {
+): Promise<{
+  ok: boolean;
+  tombstoned?: boolean;
+  recovered?: boolean;
+  orderId?: string;
+  alreadyGone?: boolean;
+}> {
   const loaded = await loadCheckoutOrder(orderId);
-  if (!loaded) return;
+  if (!loaded) {
+    return { ok: true, alreadyGone: true };
+  }
 
   const metadata = (loaded.order.metadata || {}) as Record<string, unknown>;
+  const existingStatus =
+    typeof metadata.razorpay_payment_status === "string"
+      ? metadata.razorpay_payment_status.toLowerCase()
+      : "";
+  if (existingStatus === "captured" || existingStatus === "authorized" || existingStatus === "paid") {
+    // Already paid — never tombstone; ensure placed.
+    if (loaded.isDraft) {
+      const placed = await ensurePlacedCheckoutOrder(orderId);
+      if (placed) {
+        return { ok: true, recovered: true, orderId: placed.orderId };
+      }
+    }
+    return { ok: true, recovered: true, orderId: loaded.order.id || orderId };
+  }
+
+  // Gate: if Razorpay already captured against this draft, recover instead of abandon.
+  const razorpayOrderId =
+    typeof metadata.razorpay_order_id === "string" ? metadata.razorpay_order_id : "";
+  if (razorpayOrderId && loaded.isDraft) {
+    try {
+      const { getSuccessfulRazorpayPaymentForOrder, recoverRazorpayCapture } = await import(
+        "@/lib/razorpay-capture-recover"
+      );
+      const successPay = await getSuccessfulRazorpayPaymentForOrder(razorpayOrderId);
+      if (successPay?.id) {
+        const recovered = await recoverRazorpayCapture({
+          medusaOrderId: orderId,
+          razorpayPaymentId: successPay.id,
+          razorpayOrderId,
+          amountMinor: typeof successPay.amount === "number" ? successPay.amount : undefined,
+          currencyCode: successPay.currency,
+        });
+        if (recovered.ok) {
+          return { ok: true, recovered: true, orderId: recovered.orderId };
+        }
+        console.warn("markCheckoutPaymentFailed: capture gate recover failed", recovered);
+        // Fall through to tombstone — do not delete while recovery is ambiguous.
+      }
+    } catch (err) {
+      console.warn("markCheckoutPaymentFailed: Razorpay gate check failed", err);
+    }
+  }
+
   const reservationToken =
     typeof metadata.oweg10_reservation_token === "string"
       ? metadata.oweg10_reservation_token
@@ -230,7 +338,7 @@ export async function markCheckoutPaymentFailed(
     await releaseOweg10Reservation(customerId, reservationToken).catch(() => undefined);
   }
 
-  // Free any Medusa stock holds before delete — failed pay must not keep inventory reserved.
+  // Free any Medusa stock holds — failed pay must not keep inventory reserved.
   await releaseOrderInventoryReservations(orderId).catch((err) => {
     console.warn("markCheckoutPaymentFailed: releaseOrderInventoryReservations failed", orderId, err);
   });
@@ -245,23 +353,13 @@ export async function markCheckoutPaymentFailed(
     checkout_status: "payment_failed",
     checkout_failed_at: new Date().toISOString(),
     checkout_convert_authorized: false,
+    checkout_tombstone: true,
     oweg10_pending: metadata.oweg10_applied ? false : metadata.oweg10_pending,
   };
 
   await updateCheckoutOrderMetadata(orderId, loaded.isDraft, failedMetadata);
 
-  // Remove abandoned online drafts from the active Draft Orders pile so they are
-  // not confused with real COD drafts in Medusa admin. Metadata is stamped first
-  // for any audit/logging that already ran.
-  if (loaded.isDraft) {
-    const paymentMethod =
-      typeof failedMetadata.payment_method === "string"
-        ? String(failedMetadata.payment_method).toLowerCase()
-        : "";
-    if (paymentMethod !== "cod") {
-      await deleteDraftOrder(orderId).catch((err) => {
-        console.warn("markCheckoutPaymentFailed: deleteDraftOrder failed", orderId, err);
-      });
-    }
-  }
+  // Keep the draft row as a tombstone so late webhook/confirm can still convert.
+  // Do NOT call deleteDraftOrder — that created paid orphans after dismiss races.
+  return { ok: true, tombstoned: true, orderId };
 }
