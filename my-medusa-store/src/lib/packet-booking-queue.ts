@@ -5,6 +5,11 @@ import {
   type VendorOrderWorkflow,
 } from "./vendor-order-workflow"
 
+export type PacketBookingQueueStatus =
+  | "waiting_rtd"
+  | "awaiting_booking"
+  | "booked"
+
 export type PacketBookingQueueItem = {
   order_id: string
   order_display_id: string | number | null
@@ -15,6 +20,7 @@ export type PacketBookingQueueItem = {
   payment_type: string
   stage: string | null
   rtd_at: string | null
+  invoice_generated_at: string | null
   easy_booking_status: string | null
   preferred_courier_id: number | null
   preferred_courier_partner: string | null
@@ -31,17 +37,20 @@ export type PacketBookingQueueItem = {
   admin_booked_at: string | null
   created_at: string | null
   currency_code: string | null
-  status: "awaiting_booking" | "booked"
+  status: PacketBookingQueueStatus
 }
 
 /**
- * Scan orders for Easy Ship workflows awaiting admin packet booking (or already booked).
+ * Scan Easy Ship vendor workflows for admin Packet Booking.
+ * - waiting_rtd: Easy chosen, invoice optional, RTD not done yet
+ * - awaiting_booking: RTD done, admin must book courier
+ * - booked: AWB / admin booking done
  */
 export async function listPacketBookingQueue(opts?: {
-  status?: "awaiting_booking" | "booked" | "all"
+  status?: PacketBookingQueueStatus | "all" | "open"
   limit?: number
 }): Promise<PacketBookingQueueItem[]> {
-  const statusFilter = opts?.status || "awaiting_booking"
+  const statusFilter = opts?.status || "open"
   const limit = Math.min(Math.max(Number(opts?.limit) || 100, 1), 300)
   const pool = getSharedDbPool()
 
@@ -56,7 +65,8 @@ export async function listPacketBookingQueue(opts?: {
       SELECT id, display_id, metadata, currency_code, created_at
       FROM "order"
       WHERE deleted_at IS NULL
-        AND metadata::text ILIKE '%"shipping_method":"easy"%'
+        AND metadata ? 'vendor_order_workflows'
+        AND metadata::text ~* '"shipping_method"[[:space:]]*:[[:space:]]*"easy"'
       ORDER BY updated_at DESC NULLS LAST
       LIMIT $1
     `,
@@ -79,18 +89,25 @@ export async function listPacketBookingQueue(opts?: {
           workflow.easy_booking_status === "booked" ||
           workflow.admin_booked_at
       )
-      const awaiting =
-        Boolean(workflow.rtd_at) &&
-        !booked &&
-        (workflow.easy_booking_status === "awaiting_admin" ||
-          workflow.easy_booking_status === "intent" ||
-          workflow.stage === "to_dispatch")
 
-      let status: "awaiting_booking" | "booked" | null = null
-      if (awaiting) status = "awaiting_booking"
-      else if (booked) status = "booked"
+      let status: PacketBookingQueueStatus | null = null
+      if (booked) {
+        status = "booked"
+      } else if (workflow.rtd_at) {
+        status = "awaiting_booking"
+      } else if (
+        workflow.easy_booking_status === "intent" ||
+        workflow.stage === "to_pack"
+      ) {
+        status = "waiting_rtd"
+      }
       if (!status) continue
-      if (statusFilter !== "all" && status !== statusFilter) continue
+
+      if (statusFilter === "open") {
+        if (status === "booked") continue
+      } else if (statusFilter !== "all" && status !== statusFilter) {
+        continue
+      }
 
       items.push({
         order_id: row.id,
@@ -102,6 +119,7 @@ export async function listPacketBookingQueue(opts?: {
         payment_type: paymentType,
         stage: workflow.stage || null,
         rtd_at: workflow.rtd_at || null,
+        invoice_generated_at: workflow.invoice_generated_at || null,
         easy_booking_status: workflow.easy_booking_status || null,
         preferred_courier_id: workflow.easy_courier_id ?? null,
         preferred_courier_partner: workflow.easy_courier_partner || null,
@@ -123,9 +141,14 @@ export async function listPacketBookingQueue(opts?: {
     }
   }
 
+  const rank = (s: PacketBookingQueueStatus) =>
+    s === "awaiting_booking" ? 0 : s === "waiting_rtd" ? 1 : 2
+
   items.sort((a, b) => {
-    const ta = a.rtd_at || a.created_at || ""
-    const tb = b.rtd_at || b.created_at || ""
+    const rd = rank(a.status) - rank(b.status)
+    if (rd !== 0) return rd
+    const ta = a.rtd_at || a.invoice_generated_at || a.created_at || ""
+    const tb = b.rtd_at || b.invoice_generated_at || b.created_at || ""
     return tb.localeCompare(ta)
   })
 

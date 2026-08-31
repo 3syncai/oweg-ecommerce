@@ -3,16 +3,20 @@ import { listPacketBookingQueue } from "../../../lib/packet-booking-queue"
 
 /**
  * GET /admin/packet-booking
- * Queue of Easy Ship orders for admin packet booking.
- * Query: status=awaiting_booking|booked|all
+ * Query: status=open|waiting_rtd|awaiting_booking|booked|all
+ * Default: open (waiting_rtd + awaiting_booking)
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   try {
-    const statusRaw = String((req.query as any)?.status || "awaiting_booking").trim()
-    const status =
-      statusRaw === "booked" || statusRaw === "all" || statusRaw === "awaiting_booking"
-        ? statusRaw
-        : "awaiting_booking"
+    const statusRaw = String((req.query as any)?.status || "open").trim()
+    const allowed = new Set([
+      "open",
+      "waiting_rtd",
+      "awaiting_booking",
+      "booked",
+      "all",
+    ])
+    const status = allowed.has(statusRaw) ? (statusRaw as any) : "open"
     const limit = Number((req.query as any)?.limit) || 100
 
     const items = await listPacketBookingQueue({ status, limit })

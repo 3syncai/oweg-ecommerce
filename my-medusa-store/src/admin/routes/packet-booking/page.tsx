@@ -22,6 +22,7 @@ type QueueItem = {
   payment_type: string
   stage: string | null
   rtd_at: string | null
+  invoice_generated_at?: string | null
   preferred_courier_partner: string | null
   preferred_courier_rate: number | null
   preferred_courier_id: number | null
@@ -33,7 +34,7 @@ type QueueItem = {
   shiprocket_awb: string | null
   tracking_number: string | null
   admin_booked_at: string | null
-  status: "awaiting_booking" | "booked"
+  status: "waiting_rtd" | "awaiting_booking" | "booked"
 }
 
 type Courier = {
@@ -114,7 +115,7 @@ const formatDate = (iso: string | null | undefined) => {
 }
 
 const PacketBookingPage = () => {
-  const [tab, setTab] = useState<"awaiting_booking" | "booked">("awaiting_booking")
+  const [tab, setTab] = useState<"open" | "booked">("open")
   const [items, setItems] = useState<QueueItem[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<QueueItem | null>(null)
@@ -127,9 +128,14 @@ const PacketBookingPage = () => {
   const loadQueue = useCallback(async () => {
     try {
       setLoading(true)
-      const res = await fetch(`/admin/packet-booking?status=${tab}&limit=100`, {
-        credentials: "include",
-      })
+      const res = await fetch(
+        `/admin/packet-booking?status=${tab}&limit=100&_=${Date.now()}`,
+        {
+          credentials: "include",
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+        }
+      )
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.message || "Failed to load queue")
@@ -149,6 +155,10 @@ const PacketBookingPage = () => {
   }, [loadQueue])
 
   const openBooking = async (item: QueueItem) => {
+    if (item.status === "waiting_rtd") {
+      toast.info("Vendor still needs to mark RTD before you can book the courier")
+      return
+    }
     setSelected(item)
     setDetail(null)
     setSelectedCourierId(item.preferred_courier_id || null)
@@ -263,8 +273,8 @@ const PacketBookingPage = () => {
         <div>
           <Heading level="h1">Packet Booking</Heading>
           <Text size="small" className="mt-1 text-ui-fg-subtle">
-            Vendors choose Easy Ship and mark RTD. Review addresses here, then book the
-            courier.
+            Easy Ship orders show here after the vendor chooses Easy. Book courier only after
+            they mark RTD.
           </Text>
         </div>
         <Button variant="secondary" size="small" onClick={() => void loadQueue()}>
@@ -275,10 +285,10 @@ const PacketBookingPage = () => {
       <div className="mb-4 flex gap-2">
         <Button
           size="small"
-          variant={tab === "awaiting_booking" ? "primary" : "secondary"}
-          onClick={() => setTab("awaiting_booking")}
+          variant={tab === "open" ? "primary" : "secondary"}
+          onClick={() => setTab("open")}
         >
-          Awaiting booking
+          Open queue
         </Button>
         <Button
           size="small"
@@ -295,8 +305,8 @@ const PacketBookingPage = () => {
         <div className="rounded-lg border border-ui-border-base bg-ui-bg-subtle p-8 text-center">
           <Text weight="plus">No orders in this queue</Text>
           <Text size="small" className="mt-1 text-ui-fg-subtle">
-            {tab === "awaiting_booking"
-              ? "Orders appear after the vendor chooses Easy Ship and clicks RTD."
+            {tab === "open"
+              ? "Orders appear when a vendor chooses Easy Shipping."
               : "Booked Easy Ship packets will show here."}
           </Text>
         </div>
@@ -360,9 +370,20 @@ const PacketBookingPage = () => {
                           {item.shiprocket_awb || item.tracking_number || "AWB pending"}
                         </Text>
                       </div>
+                    ) : item.status === "waiting_rtd" ? (
+                      <div>
+                        <Badge size="2xsmall" color="grey">
+                          Waiting for RTD
+                        </Badge>
+                        <Text size="xsmall" className="mt-0.5 text-ui-fg-muted">
+                          {item.invoice_generated_at
+                            ? "Invoice done · vendor must RTD"
+                            : "Easy chosen · invoice + RTD pending"}
+                        </Text>
+                      </div>
                     ) : (
                       <Badge size="2xsmall" color="orange">
-                        Awaiting booking
+                        Ready to book
                       </Badge>
                     )}
                   </td>
@@ -370,6 +391,10 @@ const PacketBookingPage = () => {
                     {item.status === "awaiting_booking" ? (
                       <Button size="small" onClick={() => void openBooking(item)}>
                         Review & book
+                      </Button>
+                    ) : item.status === "waiting_rtd" ? (
+                      <Button size="small" variant="secondary" disabled>
+                        Wait for RTD
                       </Button>
                     ) : (
                       <Button
