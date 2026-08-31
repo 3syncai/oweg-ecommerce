@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-31T08:45:00.000Z",
+  "medusaOrderId": "order_01M1BEYG54Y6QN1H8Q8QTVS6MW",
+  "razorpayPaymentId": "pay_TWJLjsNYPmhcBm",
+  "razorpayOrderId": "order_TWJLLZP6HSUUtR",
+  "amountPaise": 136000,
+  "action": "refund",
+  "refundId": "rfnd_TWJckeoTJQnkZC",
+  "notes": "Parent Medusa draft hard-deleted; Razorpay captured; refunded to restore money integrity pending snapshot-rebuild fix",
+  "fixShippedAt": "2026-08-31T09:02:00.000Z",
+  "fix": "checkout_payment_snapshot at RZP mint + recover rebuild when parent missing; deleteDraftOrder gated; Medusa DELETE logged",
+  "matrixCase": "snapshot-rebuild-after-parent-delete PASS"
+}

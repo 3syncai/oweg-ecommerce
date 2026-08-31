@@ -1,0 +1,195 @@
+{
+  "ranAt": "2026-08-31T09:26:51.323Z",
+  "suite": "verify-payment-matrix",
+  "host": {
+    "medusa": "http://localhost:9000",
+    "next": "http://localhost:3000"
+  },
+  "results": [
+    {
+      "case": 7,
+      "result": "PASS",
+      "notes": "soft_failed retained order_01M1BJ490KVZTQBVB3XFC0CZXC"
+    },
+    {
+      "case": 2,
+      "result": "PASS (server)",
+      "notes": "in-modal retry reuses RZP after soft-fail"
+    },
+    {
+      "case": 3,
+      "result": "PASS (server)",
+      "notes": "same lifecycle as case 2; method switch is Razorpay UI"
+    },
+    {
+      "case": 4,
+      "result": "PASS",
+      "notes": "tombstoned order_01M1BJ4GYKCBTQ29P1G0D17FDS; fresh RZP order_TWKIHDUn24b45w"
+    },
+    {
+      "case": 5,
+      "result": "PASS",
+      "notes": "soft-fail recoverable; hard refresh + new draft after terminal"
+    },
+    {
+      "case": 6,
+      "result": "PASS",
+      "notes": "failed page 200; Retry → /checkout without stale orderId"
+    },
+    {
+      "case": 1,
+      "result": "PASS",
+      "notes": "confirm ok order_01M1BJ53W7YE1N1AG7PQ2F7SPN; signature verify + place path + payment rows=1"
+    },
+    {
+      "case": 16,
+      "result": "PASS",
+      "notes": "soft-fail then confirm recovers (Confirming path)"
+    },
+    {
+      "case": 8,
+      "result": "PASS",
+      "notes": "double confirm status 200/200"
+    },
+    {
+      "case": 19,
+      "result": "PASS",
+      "notes": "parallel confirm+webhook 200/200"
+    },
+    {
+      "case": 9,
+      "result": "PASS",
+      "notes": "COD placed {\"ok\":true,\"medusaOrderId\":\"order_01M1BJ5Y71WJWEBDNR5XDYTBMM\",\"status\":\"confirmed\"}"
+    },
+    {
+      "case": 10,
+      "result": "PASS",
+      "notes": "online→COD blocked; pure COD ok; RZP mint on COD returns 400"
+    },
+    {
+      "case": 11,
+      "result": "PASS",
+      "notes": "terminal fail with coins metadata; draft tombstoned (refund best-effort)"
+    },
+    {
+      "case": 12,
+      "result": "PASS",
+      "notes": "OWEG10 reservation released on terminal fail"
+    },
+    {
+      "case": 13,
+      "result": "PASS",
+      "notes": "both returned order_TWKJLZMxec384U"
+    },
+    {
+      "case": 14,
+      "result": "PASS",
+      "notes": "buy_now soft-fail retain + terminal tombstone"
+    },
+    {
+      "case": 15,
+      "result": "PASS",
+      "notes": "terminal fail tombstones draft / releases holds path"
+    },
+    {
+      "case": 17,
+      "result": "PASS",
+      "notes": "soft-fail hidden; terminal tombstoned (not customer-visible)"
+    },
+    {
+      "case": 18,
+      "result": "PASS",
+      "notes": "attempted_failed vs failed distinguishable in metadata"
+    },
+    {
+      "case": 20,
+      "result": "PASS (server)",
+      "notes": "soft-fail retains session; cart clear is success-path client concern"
+    },
+    {
+      "case": "16-poll-404",
+      "result": "PASS",
+      "notes": "order-summary terminal 404 + success poller guards present"
+    },
+    {
+      "case": "admin-paid-confirm",
+      "result": "PASS",
+      "notes": "payment rows=1; webhook uses finalize"
+    },
+    {
+      "case": "admin-paid-backfill",
+      "result": "PASS",
+      "notes": "poison→reconcile restored payment rows=1"
+    },
+    {
+      "case": "dismiss-unpaid-tombstone",
+      "result": "PASS",
+      "notes": "tombstone order_01M1BJ7KDN4BRGQK5SZK7ZFHVZ kept + RZP refused"
+    },
+    {
+      "case": "confirm-after-tombstone",
+      "result": "PASS",
+      "notes": "placed order_01M1BJ7QYED9QJ1VVVN2FT5CWQ paymentRows=1"
+    },
+    {
+      "case": "webhook-after-tombstone",
+      "result": "PASS",
+      "notes": "webhook placed/finalized order_01M1BJ7YMA7E56779NMDMPV4C1"
+    },
+    {
+      "case": "success-recover-guards",
+      "result": "PASS",
+      "notes": "recover API + success handoff + no hard-delete"
+    },
+    {
+      "case": "snapshot-rebuild-after-parent-delete",
+      "result": "PASS",
+      "notes": "deleted order_01M1BJ8476KRZAATBPJ41T6CF6 → rebuilt order_01M1BJ89ZHR36HTBYPNZTRCH7P paymentRows=1"
+    },
+    {
+      "case": "concurrent-snapshot-rebuild",
+      "result": "PASS",
+      "notes": "3 parallel confirms → 1 order order_01M1BJ8KHBDRBSHV6CDEDH50A2 paymentRows=1"
+    },
+    {
+      "case": "reuse-guard",
+      "result": "PASS",
+      "notes": "refused mint on tombstone (was order_TWKKgGvB7duH9c)"
+    },
+    {
+      "case": 21,
+      "result": "PASS (server)",
+      "notes": "GPay cancel → alternate = soft-fail + reuse (cases 2/7)"
+    },
+    {
+      "case": 22,
+      "result": "PASS (server)",
+      "notes": "Bank reject → alternate = soft-fail + reuse"
+    },
+    {
+      "case": 23,
+      "result": "PASS (server)",
+      "notes": "Card decline → alternate = soft-fail + reuse"
+    },
+    {
+      "case": 24,
+      "result": "PASS (server)",
+      "notes": "Wallet cancel → alternate = soft-fail + reuse"
+    }
+  ],
+  "placedOrders": [
+    "order_01M1BJ53W7YE1N1AG7PQ2F7SPN",
+    "order_01M1BJ5AHJ58Q086TJ7FDQA51B",
+    "order_01M1BJ5FRBG5JRTC08R3EMNCA2",
+    "order_01M1BJ5R7D3NYHJCJ65ZJY3GD8",
+    "order_01M1BJ5Y71WJWEBDNR5XDYTBMM",
+    "order_01M1BJ63VMDBQ00EF6G1JPRQ6X",
+    "order_01M1BJ65W5QYVGP1JN1HPM0BTC",
+    "order_01M1BJ75ZFSEGF9VTCZPV0Y4EX",
+    "order_01M1BJ7B9RC019S302XS65EEP6",
+    "order_01M1BJ7QYED9QJ1VVVN2FT5CWQ",
+    "order_01M1BJ7YMA7E56779NMDMPV4C1",
+    "order_01M1BJ89ZHR36HTBYPNZTRCH7P",
+    "order_01M1BJ8KHBDRBSHV6CDEDH50A2"
+  ]
+}

@@ -70,7 +70,7 @@ function assertEligibleForCodConfirm(metadata: Record<string, unknown>): string 
     return "This checkout failed online payment and cannot be confirmed as COD.";
   }
 
-  if (razorpayStatus === "failed" || razorpayStatus === "created") {
+  if (["failed", "created", "attempted_failed"].includes(razorpayStatus)) {
     return "This order has an unpaid or failed online payment and cannot be confirmed as COD.";
   }
 

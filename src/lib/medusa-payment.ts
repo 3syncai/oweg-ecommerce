@@ -716,23 +716,9 @@ export async function finalizeRazorpayOrderPayment(input: FinalizeRazorpayPaymen
         return { ok: false, error: "invalid_finalize_input" };
     }
 
-    let pool: Pool | null = null;
-    try {
-        pool = createPaymentPool();
-        const summaryRes = await pool.query(
-            `SELECT totals FROM order_summary WHERE order_id = $1 LIMIT 1`,
-            [input.orderId]
-        );
-        const totals = (summaryRes.rows[0]?.totals || {}) as Record<string, unknown>;
-        const orderTotal = Number(totals.current_order_total ?? totals.original_order_total ?? 0);
-        const paidTotal = Number(totals.paid_total ?? 0);
-        if (orderTotal > 0 && paidTotal >= orderTotal) {
-            await pool.end();
-            return { ok: true, skipped: true, reason: "already_paid" };
-        }
-    } catch (err) {
-        console.warn("finalizeRazorpayOrderPayment: summary pre-check failed", err);
-    }
+    // Do NOT skip solely because order_summary.paid_total looks complete.
+    // Webhook-first / tx-only paths can leave Admin "Not paid" with empty payment rows.
+    // createMedusaPayment + createOrderTransaction are already idempotent on razorpay_payment_id.
 
     let paymentCreated = false;
     const paymentResult = await createMedusaPayment({
@@ -774,7 +760,9 @@ export async function finalizeRazorpayOrderPayment(input: FinalizeRazorpayPaymen
         reference: "capture",
         reference_id: input.razorpayPaymentId,
     });
-    transactionCreated = txResult.success;
+    transactionCreated = Boolean(
+        txResult.success || (txResult && "skipped" in txResult && txResult.skipped)
+    );
 
     if (transactionCreated) {
         await updateOrderSummaryTotals(input.orderId);
@@ -799,18 +787,23 @@ export async function finalizeRazorpayOrderPayment(input: FinalizeRazorpayPaymen
         console.warn("finalizeRazorpayOrderPayment: admin status sync failed", statusErr);
     }
 
-    if (pool) {
-        try {
-            await pool.end();
-        } catch {
-            // ignore
-        }
-    }
-
     return {
         ok: paymentCreated || transactionCreated,
         paymentCreated,
         transactionCreated,
+        skipped: Boolean(
+            paymentResult &&
+                typeof paymentResult === "object" &&
+                "skipped" in paymentResult &&
+                paymentResult.skipped
+        ),
+        reason:
+            paymentResult &&
+            typeof paymentResult === "object" &&
+            "reason" in paymentResult &&
+            typeof paymentResult.reason === "string"
+                ? paymentResult.reason
+                : undefined,
     };
 }
 

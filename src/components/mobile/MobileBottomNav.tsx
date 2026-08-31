@@ -817,6 +817,14 @@ export default function MobileBottomNav() {
                   Categories
                 </h3>
               </div>
+              <button
+                type="button"
+                aria-label="Close categories"
+                onClick={closeCategory}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--oweg-border)] bg-white text-[var(--oweg-ink)] shadow-sm transition active:scale-[0.97]"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           )}
 

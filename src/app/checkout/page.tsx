@@ -1472,6 +1472,24 @@ function CheckoutPageInner() {
   ) => {
     setPaymentReceivedOverlay(true);
     setProcessing(true);
+    // Hand off confirm payload to the success page so it can await the final
+    // placed order id and replace the URL (draft id may be converted/deleted).
+    try {
+      sessionStorage.setItem(
+        "oweg_pending_rzp_confirm",
+        JSON.stringify({
+          medusaOrderId: draft.medusaOrderId,
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_signature: response.razorpay_signature,
+          amount_minor: amountMinor,
+          currency,
+          at: Date.now(),
+        })
+      );
+    } catch {
+      // sessionStorage unavailable — success page still fire-and-forgets via reconcile
+    }
     void fetch("/api/checkout/razorpay/confirm", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1484,44 +1502,62 @@ function CheckoutPageInner() {
         currency,
       }),
       keepalive: true,
-    }).catch((err) => {
-      console.error("razorpay background confirm failed", err);
-    });
+    })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json().catch(() => ({}))) as {
+          orderId?: string;
+          medusaOrderId?: string;
+        };
+        const finalId = data.orderId || data.medusaOrderId;
+        if (finalId && finalId !== draft.medusaOrderId) {
+          try {
+            sessionStorage.setItem(
+              "oweg_pending_rzp_confirm",
+              JSON.stringify({
+                medusaOrderId: draft.medusaOrderId,
+                finalOrderId: finalId,
+                at: Date.now(),
+              })
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("razorpay background confirm failed", err);
+      });
     router.push(
       `${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}&confirming=1`
     );
   };
 
   const handleStandardRazorpay = async (draft: DraftOrderResponse, payableRupees: number) => {
-    let createData: {
+    // Always mint/validate via create-razorpay-order so terminal-failed sessions
+    // never reuse a dead Razorpay order (draft.razorpay alone can be stale).
+    const createRes = await fetch("/api/create-razorpay-order", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        medusaOrderId: draft.medusaOrderId,
+        amount: payableRupees > 0 ? payableRupees : draft.total,
+      }),
+    });
+    if (!createRes.ok) {
+      const err = await createRes.json().catch(() => ({}));
+      if (createRes.status === 404 || err.error === "order_not_found" || err.error === "Order not found") {
+        draftWarmupRef.current = null;
+        draftWarmupInFlightRef.current = null;
+      }
+      throw new Error(err.error || "Unable to create payment");
+    }
+    const createData = (await createRes.json()) as {
       key: string;
       amount: number;
       currency: string;
       orderId: string;
     };
-
-    if (draft.razorpay?.orderId && draft.razorpay.key) {
-      createData = {
-        key: draft.razorpay.key,
-        amount: draft.razorpay.amount,
-        currency: draft.razorpay.currency,
-        orderId: draft.razorpay.orderId,
-      };
-    } else {
-      const createRes = await fetch("/api/create-razorpay-order", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          medusaOrderId: draft.medusaOrderId,
-          amount: payableRupees > 0 ? payableRupees : draft.total,
-        }),
-      });
-      if (!createRes.ok) {
-        const err = await createRes.json().catch(() => ({}));
-        throw new Error(err.error || "Unable to create payment");
-      }
-      createData = await createRes.json();
-    }
 
     const amountMinor = razorpayAmountToMinor(
       createData.amount,
@@ -1550,6 +1586,8 @@ function CheckoutPageInner() {
         finalizeRazorpayCheckout(draft, response, amountMinor, createData.currency);
       },
       onFailure: async () => {
+        draftWarmupRef.current = null;
+        draftWarmupInFlightRef.current = null;
         setPaymentReceivedOverlay(false);
         await fetch("/api/checkout/payment-failed", {
           method: "POST",
@@ -1561,12 +1599,29 @@ function CheckoutPageInner() {
         router.push(`${RAZORPAY_FAILED}?orderId=${encodeURIComponent(draft.medusaOrderId)}`);
       },
       onDismiss: async () => {
+        draftWarmupRef.current = null;
+        draftWarmupInFlightRef.current = null;
         setPaymentReceivedOverlay(false);
-        await fetch("/api/checkout/payment-failed", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ medusaOrderId: draft.medusaOrderId }),
-        }).catch(() => undefined);
+        try {
+          const failRes = await fetch("/api/checkout/payment-failed", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ medusaOrderId: draft.medusaOrderId }),
+          });
+          const failData = (await failRes.json().catch(() => ({}))) as {
+            recovered?: boolean;
+            orderId?: string;
+          };
+          if (failData.recovered && failData.orderId) {
+            setProcessing(false);
+            router.push(
+              `${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(failData.orderId)}&confirming=1`
+            );
+            return;
+          }
+        } catch {
+          /* ignore */
+        }
         await refundCoinsForOrder(draft.medusaOrderId);
         setProcessing(false);
       },
@@ -1622,7 +1677,15 @@ function CheckoutPageInner() {
       await handleStandardRazorpay(draft, payableTotal);
     } catch (err) {
       console.error(err);
-      toast.error(err instanceof Error ? err.message : "Checkout failed");
+      const message = err instanceof Error ? err.message : "Checkout failed";
+      if (
+        /order not found/i.test(message) ||
+        /order_not_found/i.test(message)
+      ) {
+        draftWarmupRef.current = null;
+        draftWarmupInFlightRef.current = null;
+      }
+      toast.error(message);
       setProcessing(false);
     }
   };

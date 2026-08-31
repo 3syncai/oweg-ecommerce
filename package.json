@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
+    "dev:warm": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-warm.ps1",
     "dev:turbo": "next dev --turbopack",
     "build": "next build --webpack",
     "build:turbo": "next build --turbopack",

@@ -173,6 +173,28 @@ export async function fetchRazorpayOrder(orderId: string): Promise<RazorpayOrder
   return razorpayApiRequest<RazorpayOrderResponse>(`/v1/orders/${orderId}`, { method: "GET" });
 }
 
+export type RazorpayOrderPaymentsResponse = {
+  entity?: string;
+  count?: number;
+  items?: Array<RazorpayPaymentEntity & { notes?: Record<string, string> }>;
+};
+
+/** List payments for a Razorpay order (used to gate terminal dismiss). */
+export async function fetchRazorpayOrderPayments(
+  razorpayOrderId: string
+): Promise<Array<RazorpayPaymentEntity & { notes?: Record<string, string> }>> {
+  const res = await razorpayApiRequest<RazorpayOrderPaymentsResponse>(
+    `/v1/orders/${encodeURIComponent(razorpayOrderId)}/payments`,
+    { method: "GET" }
+  );
+  return Array.isArray(res.items) ? res.items : [];
+}
+
+export function isRazorpayPaymentSuccessful(status: string | undefined | null): boolean {
+  const s = String(status || "").toLowerCase();
+  return s === "captured" || s === "authorized" || s === "paid";
+}
+
 export async function fetchRazorpayMethods(): Promise<RazorpayMethodsResponse> {
   return razorpayApiRequest<RazorpayMethodsResponse>("/v1/methods", {
     method: "GET",

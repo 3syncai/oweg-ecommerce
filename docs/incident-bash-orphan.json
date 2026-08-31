@@ -1,0 +1,29 @@
+{
+  "at": "2026-08-31T08:45:06.069Z",
+  "medusaOrderId": "order_01M1BASHRGEV90PZ7JSK1GSETF",
+  "razorpayPaymentId": "pay_TWJLjsNYPmhcBm",
+  "razorpayOrderId": "order_TWJLLZP6HSUUtR",
+  "amountPaise": 136000,
+  "action": "refund",
+  "refund": {
+    "acquirer_data": {
+      "arn": null
+    },
+    "amount": 136000,
+    "base_amount": 136000,
+    "batch_id": null,
+    "created_at": 1788165905,
+    "currency": "INR",
+    "entity": "refund",
+    "id": "rfnd_TWJckeoTJQnkZC",
+    "notes": {
+      "medusa_order_id": "order_01M1BEYG54Y6QN1H8Q8QTVS6MW",
+      "reason": "orphan_capture_medusa_draft_deleted"
+    },
+    "payment_id": "pay_TWJLjsNYPmhcBm",
+    "receipt": null,
+    "speed_processed": "normal",
+    "speed_requested": "normal",
+    "status": "processed"
+  }
+}

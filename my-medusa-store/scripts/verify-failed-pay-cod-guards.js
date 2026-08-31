@@ -59,7 +59,7 @@ function assertEligibleForCodConfirm(metadata) {
   if (checkoutStatus === "payment_failed") {
     return "failed"
   }
-  if (razorpayStatus === "failed" || razorpayStatus === "created") {
+  if (["failed", "created", "attempted_failed"].includes(razorpayStatus)) {
     return "unpaid-online"
   }
   if (paymentMethod && paymentMethod !== "cod") {
@@ -158,6 +158,13 @@ assert(
     razorpay_payment_status: "created",
   }) === "unpaid-online",
   "created blocked"
+)
+assert(
+  assertEligibleForCodConfirm({
+    payment_method: "cod",
+    razorpay_payment_status: "attempted_failed",
+  }) === "unpaid-online",
+  "attempted_failed blocked"
 )
 
 assert(
