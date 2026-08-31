@@ -621,7 +621,7 @@ export const vendorOrdersApi = {
   chooseEasyShipping: async (
     id: string,
     data: {
-      courier_id: number
+      courier_id?: number
       courier_partner_name?: string
       rate?: number
       freight_charge?: number

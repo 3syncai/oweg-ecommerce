@@ -48,6 +48,8 @@ type VendorWorkflow = {
   easy_courier_id?: number | null
   easy_courier_partner?: string | null
   easy_courier_rate?: number | null
+  easy_booking_status?: "intent" | "awaiting_admin" | "booked" | null
+  admin_booked_at?: string | null
   tracking_number?: string | null
   tracking_url?: string | null
   label_url?: string | null
@@ -611,29 +613,28 @@ const VendorOrdersContent = () => {
   }
 
   const chooseEasyShipping = async () => {
-    if (!easyShipOrder || !selectedCourierId) return
+    if (!easyShipOrder) return
     const courier = easyCouriers.find((c) => c.courier_id === selectedCourierId)
     const weight = Number(easyPackage.weight)
     const length = Number(easyPackage.length)
     const breadth = Number(easyPackage.breadth)
     const height = Number(easyPackage.height)
     if (![weight, length, breadth, height].every((n) => Number.isFinite(n) && n > 0)) {
-      setError("Enter valid weight (kg) and dimensions (cm) before booking")
-      return
-    }
-    const courierName = courier?.courier_name?.trim() || ""
-    if (!courierName) {
-      setError("Select a courier to continue")
+      setError("Enter valid weight (kg) and dimensions (cm) before continuing")
       return
     }
     setProcessing(`easy:${easyShipOrder.id}`)
     try {
       const data = await vendorOrdersApi.chooseEasyShipping(easyShipOrder.id, {
-        courier_id: selectedCourierId,
-        courier_partner_name: courierName,
-        rate: courier?.rate != null ? Number(courier.rate) : undefined,
-        freight_charge:
-          courier?.freight_charge != null ? Number(courier.freight_charge) : undefined,
+        ...(selectedCourierId
+          ? {
+              courier_id: selectedCourierId,
+              courier_partner_name: courier?.courier_name?.trim() || undefined,
+              rate: courier?.rate != null ? Number(courier.rate) : undefined,
+              freight_charge:
+                courier?.freight_charge != null ? Number(courier.freight_charge) : undefined,
+            }
+          : {}),
         weight,
         length,
         breadth,
@@ -643,7 +644,7 @@ const VendorOrdersContent = () => {
       setEasyShipOrder(null)
       notifyVendorDataChanged()
     } catch (e: any) {
-      setError(e?.message || "Failed to create Easy Shipping order")
+      setError(e?.message || "Failed to choose Easy Shipping")
     } finally {
       setProcessing(null)
     }
@@ -702,8 +703,12 @@ const VendorOrdersContent = () => {
     try {
       const data = await vendorOrdersApi.markReadyToDispatch(order.id)
       replaceOrder(data.order)
-      // Amazon-style confirm shipment → In Transit immediately (self + easy)
-      setSelectedStage(data.order?.vendor_stage === "delivered" ? "delivered" : "in_transit")
+      const stage = data.order?.vendor_stage
+      // Easy: stay on To Dispatch until admin books courier
+      if (stage === "delivered") setSelectedStage("delivered")
+      else if (stage === "to_dispatch") setSelectedStage("to_dispatch")
+      else if (stage === "in_transit") setSelectedStage("in_transit")
+      else setSelectedStage("to_dispatch")
       notifyVendorDataChanged()
     } catch (e: any) {
       setError(e?.message || "Failed to mark RTD")
@@ -770,14 +775,19 @@ const VendorOrdersContent = () => {
     }
 
     if (selectedStage === "to_pack") {
-      const methodLabel =
-        workflow.shipping_method === "easy"
+      const isEasy = workflow.shipping_method === "easy"
+      const easyBooked = Boolean(workflow.shiprocket_awb || workflow.easy_booking_status === "booked")
+      const methodLabel = isEasy
+        ? easyBooked
           ? workflow.easy_courier_partner
             ? `Easy · ${workflow.easy_courier_partner}`
-            : "Easy Shipping"
-          : workflow.self_courier_partner
-            ? `Self · ${workflow.self_courier_partner}`
-            : "Self Shipping"
+            : "Easy · Courier booked"
+          : workflow.easy_courier_partner
+            ? `Easy · Pref ${workflow.easy_courier_partner}`
+            : "Easy · Awaiting admin booking"
+        : workflow.self_courier_partner
+          ? `Self · ${workflow.self_courier_partner}`
+          : "Self Shipping"
 
       return (
         <div className="flex w-full min-w-0 flex-col gap-1.5">
@@ -840,7 +850,44 @@ const VendorOrdersContent = () => {
     }
 
     if (selectedStage === "to_dispatch") {
-      // Legacy self-ship parked here before Amazon-style RTD; Dispatch still advances them.
+      const isEasy = workflow.shipping_method === "easy"
+      const easyBooked = Boolean(workflow.shiprocket_awb || workflow.easy_booking_status === "booked")
+
+      if (isEasy && !easyBooked) {
+        return (
+          <div className="flex w-full min-w-0 flex-col gap-1.5">
+            <Text size="xsmall" className="text-amber-700">
+              Waiting for admin to book courier
+            </Text>
+            <ActionButton
+              icon={<Eye size={14} />}
+              label="View"
+              disabled={busy}
+              onClick={() => void openDetails(order)}
+            />
+          </div>
+        )
+      }
+
+      if (isEasy && easyBooked) {
+        return (
+          <div className="flex w-full min-w-0 flex-col gap-1.5">
+            <Text size="xsmall" className="truncate text-emerald-700" title={workflow.easy_courier_partner || ""}>
+              Courier booked
+              {workflow.easy_courier_partner ? ` · ${workflow.easy_courier_partner}` : ""}
+              {workflow.shiprocket_awb ? ` · ${workflow.shiprocket_awb}` : ""}
+            </Text>
+            <ActionButton
+              icon={<Truck size={14} />}
+              label="Track"
+              disabled={busy}
+              onClick={() => void openDetails(order, true)}
+            />
+          </div>
+        )
+      }
+
+      // Self-ship: Confirm ship advances to In Transit
       return (
         <div className="grid w-full grid-cols-2 gap-1.5">
           <ActionButton
@@ -1595,6 +1642,18 @@ function DetailsModal({
                         : "Not selected",
                   ],
                   [
+                    "Booking status",
+                    workflow.shipping_method === "easy"
+                      ? workflow.shiprocket_awb || workflow.easy_booking_status === "booked"
+                        ? "Courier booked by admin"
+                        : workflow.rtd_at
+                          ? "Waiting for admin packet booking"
+                          : "Easy selected · generate invoice & RTD"
+                      : workflow.shipping_method === "self"
+                        ? "Self ship"
+                        : "N/A",
+                  ],
+                  [
                     "Booked through",
                     workflow.shipping_method === "easy"
                       ? easyProviderLabel(workflow)
@@ -1608,11 +1667,16 @@ function DetailsModal({
                   ],
                   [
                     "Courier",
-                    workflow.easy_courier_partner ||
-                      workflow.self_courier_partner ||
-                      (workflow.shipping_method === "easy"
-                        ? easyProviderLabel(workflow)
-                        : "N/A"),
+                    workflow.shiprocket_awb || workflow.easy_booking_status === "booked"
+                      ? workflow.easy_courier_partner ||
+                        workflow.self_courier_partner ||
+                        easyProviderLabel(workflow)
+                      : workflow.easy_courier_partner
+                        ? `Preferred · ${workflow.easy_courier_partner}`
+                        : workflow.self_courier_partner ||
+                          (workflow.shipping_method === "easy"
+                            ? "Admin will assign"
+                            : "N/A"),
                   ],
                   [
                     "AWB / Tracking",
@@ -1620,7 +1684,9 @@ function DetailsModal({
                       workflow.shiprocket_awb ||
                       workflow.self_awb ||
                       (workflow.shipping_method === "easy"
-                        ? `Pending from ${easyProviderLabel(workflow)}`
+                        ? workflow.rtd_at
+                          ? "Awaiting admin booking"
+                          : "After admin books courier"
                         : "N/A"),
                   ],
                   ["Tracking URL", workflow.tracking_url || "N/A"],
@@ -2027,9 +2093,9 @@ function EasyShippingModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-ui-border-base bg-ui-bg-base shadow-xl">
         <div className="border-b border-ui-border-base px-5 py-4">
-          <Heading level="h2" className="text-xl">Book Easy Shipping</Heading>
+          <Heading level="h2" className="text-xl">Choose Easy Shipping</Heading>
           <Text size="small" className="text-ui-fg-subtle">
-            {compactOrderId(order)} · {providerLabel} rates & courier partners
+            {compactOrderId(order)} · Confirm package. Admin will book the courier after you mark RTD.
           </Text>
         </div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
@@ -2172,14 +2238,9 @@ function EasyShippingModal({
           <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button
             onClick={onSubmit}
-            disabled={
-              busy ||
-              loading ||
-              !selectedCourierId ||
-              couriers.length === 0
-            }
+            disabled={busy || loading}
           >
-            {busy ? "Booking…" : "Create shipment & AWB"}
+            {busy ? "Saving…" : "Use Easy Shipping"}
           </Button>
         </div>
       </div>
