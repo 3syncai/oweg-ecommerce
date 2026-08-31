@@ -1,19 +1,22 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Button, Container, Heading, Text, clx } from "@medusajs/ui"
+import { Button, Container, Heading, Text } from "@medusajs/ui"
 import {
   ArrowPath,
   ArchiveBox,
-  ArrowUpRightMini,
+  ArrowRightMini,
+  Calendar,
   CurrencyDollar,
   DocumentText,
   ShoppingCart,
   Tag,
 } from "@medusajs/icons"
 import VendorShell from "@/components/VendorShell"
-import EmptyState from "@/components/EmptyState"
 import DashboardSection from "@/components/dashboard/DashboardSection"
+import DashboardSalesChart from "@/components/dashboard/DashboardSalesChart"
+import DashboardQuickActions from "@/components/dashboard/DashboardQuickActions"
+import DashboardAnnouncements from "@/components/dashboard/DashboardAnnouncements"
 import StatusDot, { type StatusVariant } from "@/components/dashboard/StatusDot"
 import {
   vendorOrdersApi,
@@ -42,27 +45,6 @@ type DashboardCachePayload = {
 }
 
 const DASHBOARD_CACHE_KEY = "dashboard"
-
-type ActivityFilter = "all" | "orders" | "returns" | "tickets"
-
-type ActivityItem = {
-  id: string
-  kind: ActivityFilter extends "all" ? string : ActivityFilter
-  title: string
-  description: string
-  href: string
-  at: string
-  variant: StatusVariant
-}
-
-type AttentionItem = {
-  href: string
-  title: string
-  detail: string
-  value: number | string
-  variant: StatusVariant
-  priority: number
-}
 
 type DayPoint = {
   key: string
@@ -98,6 +80,9 @@ type DashboardData = {
     inProgress: number
     refunded: number
     today: number
+    initiated: number
+    pickedUp: number
+    delivered: number
   }
   reports: {
     total: number
@@ -119,12 +104,10 @@ type DashboardData = {
   }
   weekSeries: DayPoint[]
   topProducts: TopProduct[]
-  recentActivity: ActivityItem[]
-  attention: AttentionItem[]
   snapshot: {
     salesToday: number
-    toAccept: number
     returnsToday: number
+    paymentInitiated: number
   }
 }
 
@@ -134,29 +117,6 @@ const formatCurrency = (amount: number) =>
     currency: "INR",
     maximumFractionDigits: amount >= 1000 ? 0 : 2,
   }).format(Number.isFinite(amount) ? amount : 0)
-
-const formatDateTime = (dateString?: string | null) => {
-  if (!dateString) return "N/A"
-  return new Date(dateString).toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
-
-const formatRelativeTime = (dateString?: string | null) => {
-  if (!dateString) return "N/A"
-  const diffMs = Date.now() - new Date(dateString).getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  if (diffMins < 1) return "Just now"
-  if (diffMins < 60) return `${diffMins}m ago`
-  const diffHours = Math.floor(diffMins / 60)
-  if (diffHours < 24) return `${diffHours}h ago`
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return `${diffDays}d ago`
-  return formatDateTime(dateString)
-}
 
 const getTimeGreeting = () => {
   const hour = Number(
@@ -175,14 +135,18 @@ const getTimeGreeting = () => {
   return "Good night"
 }
 
-const startOfDay = (date: Date) =>
-  new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
-
-const startOfToday = () => startOfDay(new Date())
-
+/** Compare calendar day in Asia/Kolkata so "today" matches vendor business day. */
 const isToday = (dateString?: string | null) => {
   if (!dateString) return false
-  return new Date(dateString).getTime() >= startOfToday()
+  const parsed = new Date(dateString)
+  if (Number.isNaN(parsed.getTime())) return false
+  const dayKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+  return dayKey.format(parsed) === dayKey.format(new Date())
 }
 
 const daysAgoStart = (n: number) => {
@@ -193,8 +157,18 @@ const daysAgoStart = (n: number) => {
 }
 
 const orderAmount = (order: any) => {
-  if (typeof order?.total === "number") return order.total
-  if (typeof order?.total?.amount === "number") return order.total.amount
+  if (typeof order?.total === "number" && Number.isFinite(order.total)) return order.total
+  if (typeof order?.total?.amount === "number" && Number.isFinite(order.total.amount)) {
+    return order.total.amount
+  }
+  const items = Array.isArray(order?.items) ? order.items : []
+  if (items.length) {
+    return items.reduce(
+      (sum: number, item: any) =>
+        sum + (Number(item.unit_price || 0) || 0) * (Number(item.quantity || 1) || 1),
+      0
+    )
+  }
   return 0
 }
 
@@ -224,14 +198,6 @@ const orderDeliveredAt = (order: any): string | null => {
   return null
 }
 
-const activityVariant = (kind: string): StatusVariant => {
-  if (["delivered", "credited", "active", "resolved"].includes(kind)) return "success"
-  if (["return", "pending", "to_accept", "open"].includes(kind)) return "warning"
-  if (["reversed", "rejected"].includes(kind)) return "error"
-  if (["in_review"].includes(kind)) return "info"
-  return "info"
-}
-
 function buildWeekSeries(orders: any[]): DayPoint[] {
   const points: DayPoint[] = []
   for (let i = 6; i >= 0; i -= 1) {
@@ -246,7 +212,7 @@ function buildWeekSeries(orders: any[]): DayPoint[] {
     })
     points.push({
       key: day.toISOString().slice(0, 10),
-      label: day.toLocaleDateString("en-IN", { weekday: "short" }),
+      label: day.toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
       orders: dayOrders.length,
       sales: dayOrders.reduce((sum, order) => sum + orderAmount(order), 0),
     })
@@ -311,8 +277,21 @@ function buildDashboardData(input: {
   )
 
   const totalSale = orders.reduce((sum, order) => sum + orderAmount(order), 0)
-  // Today's sale = GMV of orders delivered today (not placed today)
-  const todaysSale = todayDeliveredOrders.reduce((sum, order) => sum + orderAmount(order), 0)
+  // Today's sales = GMV of orders placed today (vendor business day)
+  const todaysSale = todayOrders.reduce((sum, order) => sum + orderAmount(order), 0)
+  // Payout expected today: unlocking entries that unlock today, else available+unlocking
+  const unlockingToday = Array.isArray(payoutSummary?.unlocking)
+    ? payoutSummary.unlocking.filter((item: any) => isToday(item.unlock_at || item.delivered_at))
+    : []
+  const unlockingTodayTotal = unlockingToday.reduce(
+    (sum: number, item: any) => sum + (Number(item.net_amount || 0) || 0),
+    0
+  )
+  const paymentInitiatedToday =
+    unlockingTodayTotal > 0
+      ? unlockingTodayTotal
+      : Number(payoutSummary?.available_balance || 0) +
+        Number(payoutSummary?.unlocking_balance || 0)
 
   const last7Start = daysAgoStart(6)
   const prev7Start = daysAgoStart(13)
@@ -340,6 +319,19 @@ function buildDashboardData(input: {
   const refundedReturns = returns.filter((request) =>
     ["refunded", "replaced", "closed"].includes(String(request?.status || "").toLowerCase())
   )
+  const initiatedReturns = returns.filter((request) =>
+    ["pending_approval", "pending", "approved"].includes(
+      String(request?.status || "").toLowerCase()
+    )
+  )
+  const pickedUpReturns = returns.filter((request) =>
+    ["pickup_initiated", "picked_up"].includes(String(request?.status || "").toLowerCase())
+  )
+  const deliveredReturns = returns.filter((request) =>
+    ["received", "refunded", "replaced", "closed"].includes(
+      String(request?.status || "").toLowerCase()
+    )
+  )
 
   const openTickets = reports.filter((r) => String(r.status).toLowerCase() === "open")
   const inReviewTickets = reports.filter((r) => String(r.status).toLowerCase() === "in_review")
@@ -355,107 +347,6 @@ function buildDashboardData(input: {
   const pending =
     Number(payoutSummary?.available_balance || 0) +
     Number(payoutSummary?.unlocking_balance || 0)
-
-  const activity: ActivityItem[] = []
-
-  for (const order of orders) {
-    const stage = orderStage(order)
-    const statusLabel =
-      order.vendor_status_label ||
-      (stage === "to_accept" ? "Pending acceptance" : stage.replace(/_/g, " "))
-    activity.push({
-      id: `order-${order.id}-${stage}`,
-      kind: "orders",
-      title: `Order ${order.display_id || String(order.id).slice(0, 10)}`,
-      description: `${statusLabel} · ${formatCurrency(orderAmount(order))}`,
-      href: "/orders",
-      at: order.updated_at || order.created_at,
-      variant: activityVariant(stage),
-    })
-  }
-
-  for (const item of returns) {
-    const status = String(item.status || "return").replace(/_/g, " ")
-    activity.push({
-      id: `return-${item.id}`,
-      kind: "returns",
-      title: `Return ${item.order_display_id || String(item.order_id || "").slice(0, 10)}`,
-      description: `${status}${item.reason ? ` · ${item.reason}` : ""}`,
-      href: "/returns",
-      at: item.updated_at || item.created_at,
-      variant: activityVariant("return"),
-    })
-  }
-
-  for (const ticket of reports) {
-    activity.push({
-      id: `ticket-${ticket.id}`,
-      kind: "tickets",
-      title: ticket.issue_title || "Claim",
-      description: `Order #${ticket.order_display_id || String(ticket.order_id).slice(-6)} · ${(ticket.status || "open").replace(/_/g, " ")}`,
-      href: "/claims",
-      at: ticket.updated_at || ticket.created_at || new Date().toISOString(),
-      variant: activityVariant(String(ticket.status || "open").toLowerCase()),
-    })
-  }
-
-  for (const item of payoutSummary?.unlocking || []) {
-    activity.push({
-      id: `payout-unlocking-${item.id}`,
-      kind: "orders",
-      title: `Payout pending ${item.order_display_id || String(item.order_id).slice(0, 10)}`,
-      description: `${formatCurrency(Number(item.net_amount || 0))} unlocking`,
-      href: "/payout",
-      at: item.delivered_at || item.unlock_at,
-      variant: "warning",
-    })
-  }
-
-  for (const item of payoutSummary?.credited_recent || []) {
-    activity.push({
-      id: `payout-credited-${item.id}`,
-      kind: "orders",
-      title: `Payout credited ${item.order_display_id || String(item.order_id).slice(0, 10)}`,
-      description: `${formatCurrency(Number(item.net_amount || 0))} credited`,
-      href: "/payout",
-      at: item.credited_at,
-      variant: "success",
-    })
-  }
-
-  const attention: AttentionItem[] = []
-  if (pendingApproval) {
-    attention.push({
-      href: "/products",
-      title: "Products awaiting approval",
-      detail: "Admin review before catalog publish",
-      value: pendingApproval,
-      variant: "info",
-      priority: 1,
-    })
-  }
-  if (inactive > 0) {
-    attention.push({
-      href: "/products",
-      title: "Inactive products",
-      detail: "Fix listing status or approval",
-      value: inactive,
-      variant: "neutral",
-      priority: 2,
-    })
-  }
-  if (pending > 0) {
-    attention.push({
-      href: "/payout",
-      title: "Payout pending",
-      detail: "Available + unlocking balance",
-      value: formatCurrency(pending),
-      variant: "info",
-      priority: 3,
-    })
-  }
-
-  attention.sort((a, b) => a.priority - b.priority)
 
   return {
     products: {
@@ -480,6 +371,9 @@ function buildDashboardData(input: {
       inProgress: inProgressReturns.length,
       refunded: refundedReturns.length,
       today: returns.filter((request) => isToday(request.created_at)).length,
+      initiated: initiatedReturns.length,
+      pickedUp: pickedUpReturns.length,
+      delivered: deliveredReturns.length,
     },
     reports: {
       total: reports.length,
@@ -500,16 +394,11 @@ function buildDashboardData(input: {
       credited,
     },
     weekSeries: buildWeekSeries(orders),
-    topProducts: buildTopProducts(orders),
-    recentActivity: activity
-      .filter((item) => item.at)
-      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-      .slice(0, 10),
-    attention,
+    topProducts: buildTopProducts(orders).slice(0, 3),
     snapshot: {
       salesToday: todaysSale,
-      toAccept: toAcceptOrders.length,
       returnsToday: returns.filter((request) => isToday(request.created_at)).length,
+      paymentInitiated: paymentInitiatedToday,
     },
   }
 }
@@ -519,135 +408,109 @@ const KpiCard = ({
   icon,
   label,
   value,
+  subtitle,
   helper,
-  tone = "default",
+  footer,
   metrics,
 }: {
   href: string
   icon: React.ReactNode
   label: string
   value: string | number
+  subtitle?: string
   helper?: string
-  tone?: "default" | "hero"
+  footer: string
   metrics: Array<{ label: string; value: string | number; variant?: StatusVariant }>
 }) => (
-  <Link href={href} className="block h-full text-inherit no-underline">
-    <div
-      className={clx(
-        "group h-full rounded-2xl border bg-ui-bg-base p-4 md:p-5 transition-all duration-200",
-        "hover:border-ui-border-strong hover:bg-ui-bg-subtle/40 hover:shadow-sm",
-        "animate-fade-in-up",
-        tone === "hero"
-          ? "border-oweg-500/30 bg-gradient-to-br from-oweg-500/[0.12] via-ui-bg-base to-ui-bg-base"
-          : "border-ui-border-base/70"
-      )}
-    >
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div
-          className={clx(
-            "flex h-10 w-10 items-center justify-center rounded-xl",
-            tone === "hero" ? "bg-oweg-500/20 text-oweg-700" : "bg-oweg-500/10 text-oweg-700"
-          )}
-        >
-          {icon}
-        </div>
-        <ArrowUpRightMini className="text-ui-fg-muted transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-ui-fg-base" />
+  <div className="flex h-full flex-col rounded-xl border border-black/5 bg-white p-3 shadow-sm dark:border-ui-border-base/70 dark:bg-ui-bg-base">
+    <div className="mb-1.5 flex items-center gap-2">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-700 [&_svg]:h-3.5 [&_svg]:w-3.5 dark:bg-oweg-500/15 dark:text-oweg-700">
+        {icon}
       </div>
-      <Text size="small" className="text-ui-fg-subtle">
+      <Text size="small" weight="plus" className="text-[13px] text-zinc-800 dark:text-ui-fg-base">
         {label}
       </Text>
-      <Heading level="h2" className="mt-1 text-2xl md:text-[1.75rem] leading-tight">
+    </div>
+    <div className="flex items-baseline gap-1.5">
+      <Heading
+        level="h2"
+        className="text-[1.35rem] font-semibold leading-none tracking-tight text-zinc-900 dark:text-ui-fg-base md:text-[1.5rem]"
+      >
         {typeof value === "number" ? String(value) : value}
       </Heading>
-      {helper && (
-        <Text size="small" className="mt-1 text-ui-fg-subtle">
-          {helper}
+      {subtitle ? (
+        <Text size="xsmall" className="text-zinc-500 dark:text-ui-fg-subtle">
+          {subtitle}
         </Text>
-      )}
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        {metrics.map((metric) => (
-          <div
-            key={metric.label}
-            className="rounded-xl border border-ui-border-base/60 bg-ui-bg-subtle/40 px-2.5 py-2"
-          >
-            <span className="flex items-center gap-1.5">
-              <StatusDot variant={metric.variant || "neutral"} />
-              <Text size="xsmall" className="text-ui-fg-subtle">
-                {metric.label}
-              </Text>
-            </span>
-            <Text size="small" weight="plus" className="mt-1 truncate">
-              {metric.value}
-            </Text>
-          </div>
-        ))}
-      </div>
+      ) : null}
     </div>
-  </Link>
+    {helper ? (
+      <Text size="xsmall" className="mt-1 font-medium text-emerald-700 dark:text-oweg-600">
+        {helper}
+      </Text>
+    ) : null}
+    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+      {metrics.map((metric) => (
+        <span key={metric.label} className="flex items-center gap-1">
+          <StatusDot variant={metric.variant || "neutral"} />
+          <Text size="xsmall" className="text-[11px] text-zinc-500 dark:text-ui-fg-subtle">
+            {metric.label}
+          </Text>
+          <Text size="xsmall" weight="plus" className="text-[11px] text-zinc-800 dark:text-ui-fg-base">
+            {metric.value}
+          </Text>
+        </span>
+      ))}
+    </div>
+    <Link
+      href={href}
+      className="mt-auto inline-flex items-center gap-0.5 pt-2.5 text-xs font-medium text-emerald-700 no-underline hover:underline dark:text-oweg-600"
+    >
+      {footer}
+      <ArrowRightMini />
+    </Link>
+  </div>
 )
 
 const SnapshotChip = ({
   label,
   value,
   href,
-  hot,
+  icon,
+  hint,
 }: {
   label: string
   value: string | number
   href: string
-  hot?: boolean
+  icon: React.ReactNode
+  hint?: string
 }) => (
-  <Link
-    href={href}
-    className={clx(
-      "group inline-flex min-w-[140px] flex-1 flex-col rounded-2xl border px-4 py-3 transition",
-      hot
-        ? "border-white/25 bg-white/10 hover:bg-white/15"
-        : "border-white/10 bg-white/5 hover:bg-white/10"
-    )}
-  >
-    <Text size="xsmall" className="text-white/70">
-      {label}
-    </Text>
-    <span className="mt-1 flex items-center justify-between gap-2">
-      <Text weight="plus" className="text-lg text-white">
-        {value}
+  <div className="min-w-[140px] flex-1 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 backdrop-blur-sm">
+    <div className="mb-1 flex items-center gap-1.5">
+      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-white/15 text-white [&_svg]:h-3.5 [&_svg]:w-3.5">
+        {icon}
+      </span>
+      <Text size="xsmall" className="text-white/75">
+        {label}
       </Text>
-      <ArrowUpRightMini className="text-white opacity-60 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-    </span>
-  </Link>
-)
-
-const WeekBars = ({ series }: { series: DayPoint[] }) => {
-  const max = Math.max(...series.map((d) => d.sales), 1)
-  return (
-    <div className="flex h-36 items-end gap-2">
-      {series.map((day) => {
-        const height = Math.max(8, Math.round((day.sales / max) * 100))
-        const isTodayBar = day.key === new Date().toISOString().slice(0, 10)
-        return (
-          <div key={day.key} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-            <div className="flex h-28 w-full items-end justify-center">
-              <div
-                title={`${day.label}: ${formatCurrency(day.sales)} · ${day.orders} orders`}
-                className={clx(
-                  "w-full max-w-[36px] rounded-t-lg transition-all duration-500",
-                  isTodayBar
-                    ? "bg-gradient-to-t from-oweg-600 to-oweg-400"
-                    : "bg-oweg-500/25 hover:bg-oweg-500/45"
-                )}
-                style={{ height: `${height}%` }}
-              />
-            </div>
-            <Text size="xsmall" className={clx(isTodayBar ? "text-oweg-700" : "text-ui-fg-muted")}>
-              {day.label}
-            </Text>
-          </div>
-        )
-      })}
     </div>
-  )
-}
+    <Text weight="plus" className="text-lg leading-tight text-white md:text-xl">
+      {value}
+    </Text>
+    {hint ? (
+      <Text size="xsmall" className="mt-0.5 text-white/55">
+        {hint}
+      </Text>
+    ) : null}
+    <Link
+      href={href}
+      className="mt-1.5 inline-flex items-center gap-0.5 text-[11px] font-medium text-white/85 no-underline hover:text-white"
+    >
+      View details
+      <ArrowRightMini />
+    </Link>
+  </div>
+)
 
 const VendorDashboardPage = () => {
   const router = useRouter()
@@ -657,7 +520,6 @@ const VendorDashboardPage = () => {
   const [loading, setLoading] = useState(() => !hasPageCache(DASHBOARD_CACHE_KEY))
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all")
 
   const loadDashboardData = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = Boolean(opts?.silent) || hasPageCache(DASHBOARD_CACHE_KEY)
@@ -752,14 +614,6 @@ const VendorDashboardPage = () => {
     [vendorInfo]
   )
 
-  const storeLabel = vendorInfo?.store_name ? `${vendorInfo.store_name} Store` : "Vendor workspace"
-
-  const filteredActivity = useMemo(() => {
-    if (!data) return []
-    if (activityFilter === "all") return data.recentActivity
-    return data.recentActivity.filter((item) => item.kind === activityFilter)
-  }, [data, activityFilter])
-
   let content
 
   if (loading && !data) {
@@ -778,32 +632,23 @@ const VendorDashboardPage = () => {
       trend == null
         ? "No prior week to compare"
         : `${trend >= 0 ? "+" : ""}${trend.toFixed(0)}% vs previous 7 days`
+    const orderDelta = data.orders.today
 
     content = (
-      <Container className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
+      <Container className="mx-auto max-w-[1400px] space-y-3 bg-transparent p-3 md:p-4">
         {/* Hero */}
-        <section className="animate-fade-in-up relative overflow-hidden rounded-3xl border border-oweg-500/20 bg-gradient-to-br from-[#0b3d2e] via-[#0f5c42] to-[#147a56] p-5 text-white shadow-sm md:p-6">
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.12]"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 20% 20%, #fff 0.8px, transparent 1px), radial-gradient(circle at 80% 0%, rgba(255,255,255,0.35), transparent 40%)",
-              backgroundSize: "18px 18px, auto",
-            }}
-          />
-          <div className="relative flex flex-wrap items-start justify-between gap-4">
+        <section className="animate-fade-in-up relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0a3d32] via-[#0f5c45] to-[#147a56] p-3.5 text-white shadow-sm md:p-4">
+          <div className="relative flex flex-wrap items-start justify-between gap-2">
             <div className="max-w-xl">
-              <Text size="small" className="text-white/70">
-                {storeLabel}
-              </Text>
-              <Heading level="h1" className="mt-1 text-2xl text-white md:text-3xl">
-                {getTimeGreeting()}, {displayName}
+              <Heading level="h1" className="text-xl text-white md:text-2xl">
+                {getTimeGreeting()}, {displayName}!
               </Heading>
-              <Text className="mt-2 text-sm text-white/75">
-                Today’s pulse across sales, orders, returns, and claims.
+              <Text className="mt-1 text-xs text-white/75 md:text-sm">
+                Here&apos;s a quick overview of your business.
               </Text>
             </div>
             <Button
+              size="small"
               variant="secondary"
               disabled={refreshing}
               className="!border-white/20 !bg-white/10 !text-white hover:!bg-white/15"
@@ -814,339 +659,222 @@ const VendorDashboardPage = () => {
             </Button>
           </div>
 
-          <div className="relative mt-5 flex flex-wrap gap-2.5">
+          <div className="relative mt-3 flex flex-wrap gap-2">
             <SnapshotChip
               href="/orders"
-              label="Today's sale"
+              label="Today's sales"
               value={formatCurrency(data.snapshot.salesToday)}
+              icon={<CurrencyDollar />}
             />
             <SnapshotChip
               href="/returns"
-              label="Today's return"
+              label="Today's returns"
               value={data.snapshot.returnsToday}
-              hot={data.snapshot.returnsToday > 0}
+              icon={<ArrowPath />}
             />
             <SnapshotChip
-              href="/orders?stage=to_accept"
-              label="To accept"
-              value={data.snapshot.toAccept}
-              hot={data.snapshot.toAccept > 0}
+              href="/payout"
+              label="Payment initiated"
+              value={formatCurrency(data.snapshot.paymentInitiated)}
+              hint="(expected by today)"
+              icon={<Calendar />}
             />
           </div>
         </section>
 
-        {/* Needs attention */}
-        {data.attention.length > 0 && (
-          <DashboardSection title="Needs attention">
-            <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
-              {data.attention.map((item) => (
-                <Link
-                  key={item.title}
-                  href={item.href}
-                  className="group flex items-center gap-3 rounded-2xl border border-ui-border-base/70 bg-ui-bg-base px-4 py-3.5 transition hover:border-ui-border-strong hover:bg-ui-bg-subtle/60"
-                >
-                  <StatusDot variant={item.variant} />
-                  <div className="min-w-0 flex-1">
-                    <Text weight="plus" className="truncate">
-                      {item.title}
-                    </Text>
-                    <Text size="small" className="truncate text-ui-fg-subtle">
-                      {item.detail}
-                    </Text>
-                  </div>
-                  <Text weight="plus" className="shrink-0">
-                    {item.value}
-                  </Text>
-                  <ArrowUpRightMini className="shrink-0 text-ui-fg-muted transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                </Link>
-              ))}
-            </div>
-          </DashboardSection>
-        )}
-
-        {/* KPIs */}
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <KpiCard
-            href="/products"
-            icon={<Tag />}
-            label="Catalog"
-            value={data.products.totalPublished}
-            helper={`${data.products.pendingApproval} awaiting approval`}
-            metrics={[
-              { label: "Active", value: data.products.active, variant: "success" },
-              { label: "Inactive", value: data.products.inactive, variant: "warning" },
-            ]}
-          />
-          <KpiCard
-            href="/orders"
-            icon={<ShoppingCart />}
-            label="Orders"
-            value={data.orders.total}
-            helper={`${data.orders.today} today · ${data.orders.toAccept} to accept`}
-            metrics={[
-              {
-                label: "In transit",
-                value: `${data.orders.inTransit}`,
-                variant: "info",
-              },
-              {
-                label: "Delivered",
-                value: `${data.orders.delivered}`,
-                variant: "success",
-              },
-            ]}
-          />
-          <KpiCard
-            href="/returns"
-            icon={<ArrowPath />}
-            label="Returns"
-            value={data.returns.total}
-            helper={`${data.returns.today} today`}
-            metrics={[
-              { label: "In progress", value: data.returns.inProgress, variant: "warning" },
-              { label: "Closed", value: data.returns.refunded, variant: "success" },
-            ]}
-          />
-          <KpiCard
-            href="/orders"
-            icon={<CurrencyDollar />}
-            label="Total sale"
-            value={formatCurrency(data.sales.total)}
-            helper={`${formatCurrency(data.sales.today)} today · ${trendLabel}`}
-            tone="hero"
-            metrics={[
-              {
-                label: "Last 7 days",
-                value: formatCurrency(data.sales.last7Days),
-                variant: "info",
-              },
-              {
-                label: "To accept",
-                value: data.orders.toAccept,
-                variant: "warning",
-              },
-            ]}
-          />
-          <KpiCard
-            href="/payout"
-            icon={<ArchiveBox />}
-            label="Payout"
-            value={formatCurrency(data.payout.totalPaid)}
-            helper="Processed / paid amount"
-            metrics={[
-              {
-                label: "Pending",
-                value: formatCurrency(data.payout.pending),
-                variant: "warning",
-              },
-              {
-                label: "Credited",
-                value: formatCurrency(data.payout.credited),
-                variant: "success",
-              },
-            ]}
-          />
-          <KpiCard
-            href="/claims"
-            icon={<DocumentText />}
-            label="Claims"
-            value={data.reports.total}
-            helper={`${data.reports.open} open · ${data.reports.inReview} in review`}
-            metrics={[
-              { label: "Open", value: data.reports.open, variant: "warning" },
-              { label: "Resolved", value: data.reports.resolved, variant: "success" },
-            ]}
-          />
-        </div>
-
-        {/* Sales pulse + top products */}
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
-          <DashboardSection
-            title="Sales pulse · last 7 days"
-            action={{ label: "View orders", onClick: () => router.push("/orders") }}
-          >
-            <div className="rounded-2xl border border-ui-border-base/70 bg-ui-bg-base p-4 md:p-5">
-              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <Text size="small" className="text-ui-fg-subtle">
-                    Week sales
-                  </Text>
-                  <Heading level="h2" className="text-2xl">
-                    {formatCurrency(data.sales.last7Days)}
-                  </Heading>
-                </div>
-                <div
-                  className={clx(
-                    "rounded-full border px-3 py-1 text-sm",
-                    trend != null && trend >= 0
-                      ? "border-oweg-500/25 bg-oweg-500/10 text-oweg-800"
-                      : "border-ui-border-base bg-ui-bg-subtle text-ui-fg-subtle"
-                  )}
-                >
-                  {trendLabel}
-                </div>
-              </div>
-              <WeekBars series={data.weekSeries} />
-              <div className="mt-3 flex flex-wrap gap-4 text-sm text-ui-fg-subtle">
-                <span>
-                  Orders this week:{" "}
-                  <strong className="text-ui-fg-base">
-                    {data.weekSeries.reduce((s, d) => s + d.orders, 0)}
-                  </strong>
-                </span>
-                <span>
-                  Avg / day:{" "}
-                  <strong className="text-ui-fg-base">
-                    {formatCurrency(data.sales.last7Days / 7)}
-                  </strong>
-                </span>
-              </div>
-            </div>
-          </DashboardSection>
-
-          <DashboardSection title="Top products">
-            <div className="rounded-2xl border border-ui-border-base/70 bg-ui-bg-base">
-              {data.topProducts.length === 0 ? (
-                <div className="p-5">
-                  <Text size="small" className="text-ui-fg-subtle">
-                    Product mix will appear as orders come in.
-                  </Text>
-                </div>
-              ) : (
-                <div className="divide-y divide-ui-border-base/70">
-                  {data.topProducts.map((product, index) => (
-                    <div
-                      key={product.title}
-                      className="flex items-center gap-3 px-4 py-3"
-                    >
-                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-oweg-500/10 text-xs font-semibold text-oweg-800">
-                        {index + 1}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <Text weight="plus" className="truncate">
-                          {product.title}
-                        </Text>
-                        <Text size="small" className="text-ui-fg-subtle">
-                          {product.quantity} sold
-                          {product.revenue > 0 ? ` · ${formatCurrency(product.revenue)}` : ""}
-                        </Text>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </DashboardSection>
-        </div>
-
-        {/* Activity + ops */}
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.85fr)]">
-          <DashboardSection title="Recent activity">
-            <div className="mb-3 flex flex-wrap gap-2">
-              {(
-                [
-                  ["all", "All"],
-                  ["orders", "Orders"],
-                  ["returns", "Returns"],
-                  ["tickets", "Tickets"],
-                ] as const
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setActivityFilter(key)}
-                  className={clx(
-                    "rounded-full border px-3 py-1.5 text-sm transition",
-                    activityFilter === key
-                      ? "border-oweg-500/40 bg-oweg-500/15 text-oweg-900"
-                      : "border-ui-border-base bg-ui-bg-base text-ui-fg-subtle hover:bg-ui-bg-subtle"
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {filteredActivity.length > 0 ? (
-              <div className="overflow-hidden rounded-2xl border border-ui-border-base/70 bg-ui-bg-base">
-                <div className="divide-y divide-ui-border-base/70">
-                  {filteredActivity.map((item) => (
-                    <Link
-                      key={item.id}
-                      href={item.href}
-                      className="group grid grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition hover:bg-ui-bg-subtle/60"
-                    >
-                      <StatusDot variant={item.variant} />
-                      <div className="min-w-0">
-                        <Text weight="plus" className="truncate">
-                          {item.title}
-                        </Text>
-                        <Text size="small" className="truncate text-ui-fg-subtle">
-                          {item.description}
-                        </Text>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Text size="small" className="text-ui-fg-muted">
-                          {formatRelativeTime(item.at)}
-                        </Text>
-                        <ArrowUpRightMini className="hidden text-ui-fg-muted transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 sm:block" />
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <EmptyState
-                accent="oweg"
-                icon={<ShoppingCart />}
-                title="Nothing in this filter"
-                description="Try All, or create a product / process an order to see activity."
-                primaryAction={{
-                  label: "Create product",
-                  onClick: () => router.push("/products/new"),
-                }}
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="space-y-3">
+            {/* KPI grid — keep both rows visible without scrolling */}
+            <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+              <KpiCard
+                href="/products"
+                icon={<Tag />}
+                label="Catalog"
+                value={data.products.totalPublished}
+                subtitle="Total products"
+                footer="Manage catalog"
+                metrics={[
+                  { label: "Active", value: data.products.active, variant: "success" },
+                  { label: "Inactive", value: data.products.inactive, variant: "warning" },
+                ]}
               />
-            )}
-          </DashboardSection>
+              <KpiCard
+                href="/orders"
+                icon={<ShoppingCart />}
+                label="Orders"
+                value={data.orders.total}
+                subtitle="Total orders"
+                footer="View all orders"
+                metrics={[
+                  {
+                    label: "To be accepted",
+                    value: data.orders.toAccept,
+                    variant: "warning",
+                  },
+                  {
+                    label: "In transit",
+                    value: data.orders.inTransit,
+                    variant: "info",
+                  },
+                  {
+                    label: "Delivered",
+                    value: data.orders.delivered,
+                    variant: "success",
+                  },
+                ]}
+              />
+              <KpiCard
+                href="/returns"
+                icon={<ArrowPath />}
+                label="Returns"
+                value={data.returns.total}
+                subtitle="Total returns"
+                footer="View returns"
+                metrics={[
+                  {
+                    label: "Return initiated",
+                    value: data.returns.initiated,
+                    variant: "warning",
+                  },
+                  {
+                    label: "Picked up",
+                    value: data.returns.pickedUp,
+                    variant: "info",
+                  },
+                  {
+                    label: "Delivered",
+                    value: data.returns.delivered,
+                    variant: "success",
+                  },
+                ]}
+              />
+              <KpiCard
+                href="/orders"
+                icon={<CurrencyDollar />}
+                label="Total sales"
+                value={formatCurrency(data.sales.total)}
+                helper={trendLabel}
+                footer="View sales report"
+                metrics={[
+                  {
+                    label: "Last 7 days",
+                    value: formatCurrency(data.sales.last7Days),
+                    variant: "info",
+                  },
+                  {
+                    label: "vs last week",
+                    value: `${orderDelta >= 0 ? "+" : ""}${orderDelta}`,
+                    variant: orderDelta >= 0 ? "success" : "warning",
+                  },
+                ]}
+              />
+              <KpiCard
+                href="/payout"
+                icon={<ArchiveBox />}
+                label="Payout"
+                value={formatCurrency(data.payout.pending)}
+                subtitle="Available + unlocking balance"
+                footer="View payouts"
+                metrics={[
+                  {
+                    label: "Pending",
+                    value: formatCurrency(data.payout.pending),
+                    variant: "warning",
+                  },
+                  {
+                    label: "Credited",
+                    value: formatCurrency(data.payout.credited),
+                    variant: "success",
+                  },
+                ]}
+              />
+              <KpiCard
+                href="/claims"
+                icon={<DocumentText />}
+                label="Claims"
+                value={data.reports.open + data.reports.inReview}
+                subtitle={
+                  data.reports.open + data.reports.inReview === 0
+                    ? "No open claims"
+                    : "Open claims"
+                }
+                footer="View claims"
+                metrics={[
+                  { label: "Open", value: data.reports.open, variant: "warning" },
+                  { label: "Resolved", value: data.reports.resolved, variant: "success" },
+                ]}
+              />
+            </div>
 
-          <div className="space-y-5">
-            <DashboardSection title="Operational focus">
-              <div className="space-y-2.5">
-                <FocusRow
-                  href="/orders?stage=to_accept"
-                  label="Orders waiting to accept"
-                  value={data.orders.toAccept}
-                  variant={data.orders.toAccept > 0 ? "warning" : "success"}
-                />
-                <FocusRow
+            {/* Sales + top products */}
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.9fr)]">
+              <div className="rounded-2xl border border-black/5 bg-white p-4 shadow-sm dark:border-ui-border-base/70 dark:bg-ui-bg-base md:p-5">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <Text weight="plus" className="text-[15px] text-zinc-900 dark:text-ui-fg-base">
+                    Sales performance
+                  </Text>
+                  <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-600 dark:border-ui-border-base dark:bg-ui-bg-subtle dark:text-ui-fg-subtle">
+                    Last 7 days
+                  </span>
+                </div>
+                <DashboardSalesChart series={data.weekSeries} formatValue={formatCurrency} />
+                <Link
                   href="/orders"
-                  label="Orders moving today"
-                  value={data.orders.inTransitToday}
-                  variant="info"
-                />
-                <FocusRow
-                  href="/returns"
-                  label="Returns in progress"
-                  value={data.returns.inProgress}
-                  variant={data.returns.inProgress > 0 ? "warning" : "success"}
-                />
-                <FocusRow
-                  href="/claims"
-                  label="Open claims"
-                  value={data.reports.open + data.reports.inReview}
-                  variant={
-                    data.reports.open + data.reports.inReview > 0 ? "warning" : "success"
-                  }
-                />
-                <FocusRow
-                  href="/products"
-                  label="Inactive products"
-                  value={data.products.inactive}
-                  variant={data.products.inactive > 0 ? "warning" : "success"}
-                />
+                  className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 no-underline hover:underline dark:text-oweg-600"
+                >
+                  View full report
+                  <ArrowRightMini />
+                </Link>
               </div>
-            </DashboardSection>
+
+              <DashboardSection title="Top products">
+                <div className="rounded-2xl border border-black/5 bg-white shadow-sm dark:border-ui-border-base/70 dark:bg-ui-bg-base">
+                  <div className="flex items-center justify-end px-4 pt-3">
+                    <Link
+                      href="/products"
+                      className="text-xs font-medium text-emerald-700 no-underline hover:underline dark:text-oweg-600"
+                    >
+                      View all
+                    </Link>
+                  </div>
+                  {data.topProducts.length === 0 ? (
+                    <div className="px-4 pb-4 pt-2">
+                      <Text size="small" className="text-zinc-500 dark:text-ui-fg-subtle">
+                        Product mix will appear as orders come in.
+                      </Text>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-zinc-100 dark:divide-ui-border-base/70">
+                      {data.topProducts.map((product, index) => (
+                        <div key={product.title} className="flex items-center gap-3 px-4 py-3">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-xs font-semibold text-emerald-800 dark:bg-oweg-500/15 dark:text-oweg-800">
+                            {index + 1}
+                          </span>
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-[10px] font-medium uppercase text-zinc-500 dark:bg-ui-bg-subtle dark:text-ui-fg-muted">
+                            {product.title.slice(0, 2)}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <Text weight="plus" className="truncate text-zinc-900 dark:text-ui-fg-base">
+                              {product.title}
+                            </Text>
+                            <Text size="small" className="text-zinc-500 dark:text-ui-fg-subtle">
+                              {product.quantity} units
+                              {product.revenue > 0 ? ` · ${formatCurrency(product.revenue)}` : ""}
+                            </Text>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </DashboardSection>
+            </div>
           </div>
+
+          <aside className="space-y-4">
+            <DashboardQuickActions />
+            <DashboardAnnouncements />
+          </aside>
         </div>
       </Container>
     )
@@ -1154,28 +882,5 @@ const VendorDashboardPage = () => {
 
   return <VendorShell>{content}</VendorShell>
 }
-
-const FocusRow = ({
-  href,
-  label,
-  value,
-  variant,
-}: {
-  href: string
-  label: string
-  value: string | number
-  variant: StatusVariant
-}) => (
-  <Link
-    href={href}
-    className="flex items-center justify-between gap-3 rounded-2xl border border-ui-border-base/70 bg-ui-bg-base px-4 py-3 transition hover:border-ui-border-strong hover:bg-ui-bg-subtle/60"
-  >
-    <span className="flex min-w-0 items-center gap-2">
-      <StatusDot variant={variant} />
-      <Text className="truncate">{label}</Text>
-    </span>
-    <Text weight="plus">{value}</Text>
-  </Link>
-)
 
 export default VendorDashboardPage

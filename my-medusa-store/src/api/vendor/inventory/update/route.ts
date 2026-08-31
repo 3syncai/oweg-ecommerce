@@ -19,14 +19,17 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         const body = (req as any).body || {}
         const { variant_id, quantity } = body
 
-        if (!variant_id || typeof quantity !== 'number') {
+        if (!variant_id || typeof quantity !== 'number' || Number.isNaN(quantity)) {
             return res.status(400).json({
                 success: false,
                 message: "variant_id and quantity are required"
             })
         }
 
-        console.log(`📦 Updating inventory for variant ${variant_id} to ${quantity}`)
+        // Stock quantity must never go below zero
+        const safeQuantity = Math.max(0, Math.floor(quantity))
+
+        console.log(`📦 Updating inventory for variant ${variant_id} to ${safeQuantity}`)
 
         // Verify the variant belongs to this vendor
         const query = req.scope.resolve("query")
@@ -97,24 +100,24 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
             await inventoryModule.updateInventoryLevels([{
                 inventory_item_id: inventoryItemId,
                 location_id: defaultLocation.id,
-                stocked_quantity: quantity
+                stocked_quantity: safeQuantity
             }])
-            console.log(`✅ Updated inventory level ${levels[0].id} to ${quantity}`)
+            console.log(`✅ Updated inventory level ${levels[0].id} to ${safeQuantity}`)
         } else {
             // Create new level
             await inventoryModule.createInventoryLevels([{
                 inventory_item_id: inventoryItemId,
                 location_id: defaultLocation.id,
-                stocked_quantity: quantity
+                stocked_quantity: safeQuantity
             }])
-            console.log(`✅ Created new inventory level with quantity ${quantity}`)
+            console.log(`✅ Created new inventory level with quantity ${safeQuantity}`)
         }
 
         return res.json({
             success: true,
             message: "Inventory updated successfully",
             variant_id,
-            quantity,
+            quantity: safeQuantity,
             location: defaultLocation.name
         })
     } catch (error: any) {

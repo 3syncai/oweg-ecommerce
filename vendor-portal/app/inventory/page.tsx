@@ -49,10 +49,15 @@ type StockFilter = "in_stock" | "low_stock" | "out_of_stock"
 
 const PAGE_SIZE = 50
 
+/** Quantity is never shown or treated as below zero. */
+const normalizeStock = (quantity: number) =>
+  Math.max(0, Math.floor(Number.isFinite(Number(quantity)) ? Number(quantity) : 0))
+
 const matchesStockFilter = (quantity: number, filter: StockFilter) => {
-  if (filter === "in_stock") return quantity >= 10
-  if (filter === "low_stock") return quantity > 0 && quantity < 10
-  return quantity === 0
+  const qty = normalizeStock(quantity)
+  if (filter === "in_stock") return qty >= 10
+  if (filter === "low_stock") return qty > 0 && qty < 10
+  return qty === 0
 }
 
 const stockFilterLabel = (filter: StockFilter) => {
@@ -62,16 +67,20 @@ const stockFilterLabel = (filter: StockFilter) => {
 }
 
 const StockStatus = ({ quantity }: { quantity: number }) => {
-  if (quantity === 0) {
+  const qty = normalizeStock(quantity)
+
+  if (qty === 0) {
     return (
       <span className="inline-flex items-center gap-1.5">
         <StatusDot variant="error" />
-        <Text size="small">Out of stock</Text>
+        <Text size="small" weight="plus" className="text-rose-700 dark:text-rose-400">
+          Out of stock
+        </Text>
       </span>
     )
   }
 
-  if (quantity < 10) {
+  if (qty < 10) {
     return (
       <span className="inline-flex items-center gap-1.5">
         <StatusDot variant="warning" />
@@ -139,13 +148,17 @@ export default function InventoryPage() {
       })
 
       if (data.success) {
-        setInventory(data.inventory || [])
+        const rows = (data.inventory || []).map((item) => ({
+          ...item,
+          stock_quantity: normalizeStock(item.stock_quantity),
+        }))
+        setInventory(rows)
         setTotalFiltered(
           typeof data.count === "number"
             ? data.count
             : typeof data.total === "number"
               ? data.total
-              : (data.inventory || []).length
+              : rows.length
         )
       } else {
         console.error("Failed to fetch inventory")
@@ -176,7 +189,7 @@ export default function InventoryPage() {
 
   const handleEdit = (item: InventoryItem) => {
     setEditingId(item.variant_id)
-    setEditValue(item.stock_quantity)
+    setEditValue(normalizeStock(item.stock_quantity))
   }
 
   const handleCancel = () => {
@@ -185,17 +198,19 @@ export default function InventoryPage() {
   }
 
   const handleSave = async (variantId: string) => {
+    const nextQty = normalizeStock(editValue)
     try {
       setSaving(true)
-      const data = await vendorInventoryApi.update(variantId, editValue)
+      const data = await vendorInventoryApi.update(variantId, nextQty)
 
       if (data.success) {
         setInventory((prev) =>
           prev.map((item) =>
-            item.variant_id === variantId ? { ...item, stock_quantity: editValue } : item
+            item.variant_id === variantId ? { ...item, stock_quantity: nextQty } : item
           )
         )
         setEditingId(null)
+        setEditValue(0)
       } else {
         alert("Failed to update stock")
       }
@@ -217,11 +232,12 @@ export default function InventoryPage() {
   }
 
   const stats = useMemo(() => {
-    const outOfStock = inventory.filter((item) => item.stock_quantity === 0).length
-    const lowStock = inventory.filter(
-      (item) => item.stock_quantity > 0 && item.stock_quantity < 10
-    ).length
-    const inStock = inventory.filter((item) => item.stock_quantity >= 10).length
+    const outOfStock = inventory.filter((item) => normalizeStock(item.stock_quantity) === 0).length
+    const lowStock = inventory.filter((item) => {
+      const qty = normalizeStock(item.stock_quantity)
+      return qty > 0 && qty < 10
+    }).length
+    const inStock = inventory.filter((item) => normalizeStock(item.stock_quantity) >= 10).length
     const productCount = new Set(inventory.map((i) => i.product_id)).size
 
     return { total: totalFiltered, pageTotal: inventory.length, productCount, outOfStock, lowStock, inStock }
@@ -231,22 +247,23 @@ export default function InventoryPage() {
     const map = new Map<string, ProductGroup>()
 
     for (const item of inventory) {
+      const qty = normalizeStock(item.stock_quantity)
+      const normalizedItem = { ...item, stock_quantity: qty }
       const existing = map.get(item.product_id)
       if (existing) {
-        existing.variants.push(item)
-        existing.totalStock += item.stock_quantity
-        if (item.stock_quantity === 0) existing.outOfStock += 1
-        else if (item.stock_quantity < 10) existing.lowStock += 1
+        existing.variants.push(normalizedItem)
+        existing.totalStock += qty
+        if (qty === 0) existing.outOfStock += 1
+        else if (qty < 10) existing.lowStock += 1
       } else {
         map.set(item.product_id, {
           product_id: item.product_id,
           product_title: item.product_title,
           product_thumbnail: item.product_thumbnail,
-          variants: [item],
-          totalStock: item.stock_quantity,
-          outOfStock: item.stock_quantity === 0 ? 1 : 0,
-          lowStock:
-            item.stock_quantity > 0 && item.stock_quantity < 10 ? 1 : 0,
+          variants: [normalizedItem],
+          totalStock: qty,
+          outOfStock: qty === 0 ? 1 : 0,
+          lowStock: qty > 0 && qty < 10 ? 1 : 0,
         })
       }
     }
@@ -266,11 +283,17 @@ export default function InventoryPage() {
         )
         if (!variants.length) return null
 
-        const totalStock = variants.reduce((sum, item) => sum + item.stock_quantity, 0)
-        const outOfStock = variants.filter((item) => item.stock_quantity === 0).length
-        const lowStock = variants.filter(
-          (item) => item.stock_quantity > 0 && item.stock_quantity < 10
+        const totalStock = variants.reduce(
+          (sum, item) => sum + normalizeStock(item.stock_quantity),
+          0
+        )
+        const outOfStock = variants.filter(
+          (item) => normalizeStock(item.stock_quantity) === 0
         ).length
+        const lowStock = variants.filter((item) => {
+          const qty = normalizeStock(item.stock_quantity)
+          return qty > 0 && qty < 10
+        }).length
 
         return {
           ...group,
@@ -563,16 +586,32 @@ export default function InventoryPage() {
                                     type="number"
                                     min={0}
                                     value={editValue}
-                                    onChange={(e) =>
-                                      setEditValue(parseInt(e.target.value) || 0)
-                                    }
+                                    onChange={(e) => {
+                                      const raw = e.target.value
+                                      if (raw === "") {
+                                        setEditValue(0)
+                                        return
+                                      }
+                                      setEditValue(normalizeStock(parseInt(raw, 10)))
+                                    }}
                                     className="h-8 w-24"
                                     autoFocus
                                   />
                                 ) : (
-                                  <Text className="font-mono text-sm">
-                                    {item.stock_quantity}
-                                  </Text>
+                                  <div className="space-y-0.5">
+                                    <Text className="font-mono text-sm">
+                                      {normalizeStock(item.stock_quantity)}
+                                    </Text>
+                                    {normalizeStock(item.stock_quantity) === 0 ? (
+                                      <Text
+                                        size="xsmall"
+                                        weight="plus"
+                                        className="text-rose-700 dark:text-rose-400"
+                                      >
+                                        Currently unavailable
+                                      </Text>
+                                    ) : null}
+                                  </div>
                                 )}
                               </div>
 

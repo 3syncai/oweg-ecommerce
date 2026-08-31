@@ -106,7 +106,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         if (level?.inventory_item_id) {
           levelByItemId.set(String(level.inventory_item_id), {
             id: level.id,
-            stocked_quantity: Number(level.stocked_quantity) || 0,
+            stocked_quantity: Math.max(0, Number(level.stocked_quantity) || 0),
           })
         }
       }
@@ -140,7 +140,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           variant_sku: variant.sku,
           inventory_item_id: inventoryItemId,
           inventory_level_id: level?.id || null,
-          stock_quantity: level?.stocked_quantity || 0,
+          stock_quantity: Math.max(0, Number(level?.stocked_quantity) || 0),
           location_id: defaultLocation?.id,
           location_name: level ? defaultLocation?.name || "Default Warehouse" : "No Location",
           manage_inventory: variant.manage_inventory !== false,
