@@ -303,34 +303,6 @@ const VendorOrdersContent = () => {
   const [acceptCandidate, setAcceptCandidate] = useState<VendorOrder | null>(null)
   const [selfShipOrder, setSelfShipOrder] = useState<VendorOrder | null>(null)
   const [easyShipOrder, setEasyShipOrder] = useState<VendorOrder | null>(null)
-  const [easyCouriers, setEasyCouriers] = useState<
-    Array<{
-      courier_id: number
-      courier_name: string
-      rate: number | null
-      freight_charge?: number | null
-      etd: string | null
-      rto_charges?: number | null
-      cod_charges?: number | null
-    }>
-  >([])
-  const [easyCourierLoading, setEasyCourierLoading] = useState(false)
-  const [easyProviderLabel, setEasyProviderLabel] = useState("ITL")
-  const [selectedCourierId, setSelectedCourierId] = useState<number | null>(null)
-  const [easyPackage, setEasyPackage] = useState({
-    weight: "0.5",
-    length: "10",
-    breadth: "10",
-    height: "10",
-  })
-  const [easyPickupInfo, setEasyPickupInfo] = useState<{
-    pickup_postcode?: string
-    pickup_city?: string
-    pickup_address?: string
-    volumetric_weight?: number
-    applied_weight?: number
-    package_source?: "product" | "default" | "manual"
-  }>({})
   const [selfShipping, setSelfShipping] = useState({
     courier_partner_name: "",
     tracking_source: "shiprocket" as "shiprocket" | "carrier_api" | "manual",
@@ -532,114 +504,17 @@ const VendorOrdersContent = () => {
     }
   }
 
-  const loadEasyCouriers = async (
-    order: VendorOrder,
-    pkg?: { weight: string; length: string; breadth: string; height: string } | null
-  ) => {
-    setEasyCourierLoading(true)
-    setError(null)
-    try {
-      let params:
-        | { weight: number; length: number; breadth: number; height: number }
-        | undefined
-
-      if (pkg) {
-        const weight = Number(pkg.weight)
-        const length = Number(pkg.length)
-        const breadth = Number(pkg.breadth)
-        const height = Number(pkg.height)
-        if (![weight, length, breadth, height].every((n) => Number.isFinite(n) && n > 0)) {
-          throw new Error("Enter valid weight (kg) and dimensions (cm)")
-        }
-        params = { weight, length, breadth, height }
-      }
-
-      const data = await vendorOrdersApi.listCouriers(order.id, params)
-      setEasyCouriers(data.couriers || [])
-      setEasyProviderLabel(
-        String(data.provider_label || data.provider || "ITL").trim() || "ITL"
-      )
-      setEasyPackage({
-        weight: String(data.weight),
-        length: String(data.length),
-        breadth: String(data.breadth),
-        height: String(data.height),
-      })
-      setEasyPickupInfo({
-        pickup_postcode: data.pickup_postcode,
-        pickup_city: data.pickup_city,
-        pickup_address: data.pickup_address,
-        volumetric_weight: data.volumetric_weight,
-        applied_weight: data.applied_weight,
-        package_source: data.package_source,
-      })
-      if (data.couriers?.length) {
-        setSelectedCourierId(data.couriers[0].courier_id)
-      } else {
-        setSelectedCourierId(null)
-      }
-    } catch (e: any) {
-      setEasyCouriers([])
-      setSelectedCourierId(null)
-      setError(e?.message || "Failed to load courier partners")
-      throw e
-    } finally {
-      setEasyCourierLoading(false)
-    }
-  }
-
   const openEasyShipping = async (order: VendorOrder) => {
     setEasyShipOrder(order)
-    setEasyCouriers([])
-    setSelectedCourierId(null)
-    setEasyPickupInfo({})
-    setEasyProviderLabel("ITL")
     setError(null)
-    try {
-      // No package params → backend loads weight/size from product DB
-      await loadEasyCouriers(order, null)
-    } catch {
-      setEasyShipOrder(null)
-    }
-  }
-
-  const refreshEasyCouriers = async () => {
-    if (!easyShipOrder) return
-    try {
-      await loadEasyCouriers(easyShipOrder, easyPackage)
-    } catch {
-      // error already set
-    }
   }
 
   const chooseEasyShipping = async () => {
     if (!easyShipOrder) return
-    const courier = easyCouriers.find((c) => c.courier_id === selectedCourierId)
-    const weight = Number(easyPackage.weight)
-    const length = Number(easyPackage.length)
-    const breadth = Number(easyPackage.breadth)
-    const height = Number(easyPackage.height)
-    if (![weight, length, breadth, height].every((n) => Number.isFinite(n) && n > 0)) {
-      setError("Enter valid weight (kg) and dimensions (cm) before continuing")
-      return
-    }
     setProcessing(`easy:${easyShipOrder.id}`)
     try {
-      const data = await vendorOrdersApi.chooseEasyShipping(easyShipOrder.id, {
-        ...(selectedCourierId
-          ? {
-              courier_id: selectedCourierId,
-              courier_partner_name: courier?.courier_name?.trim() || undefined,
-              rate: courier?.rate != null ? Number(courier.rate) : undefined,
-              freight_charge:
-                courier?.freight_charge != null ? Number(courier.freight_charge) : undefined,
-            }
-          : {}),
-        weight,
-        length,
-        breadth,
-        height,
-      })
+      // Intent only — admin books courier after RTD (Packet Booking)
+      const data = await vendorOrdersApi.chooseEasyShipping(easyShipOrder.id, {})
       replaceOrder(data.order)
       setEasyShipOrder(null)
       notifyVendorDataChanged()
@@ -1289,16 +1164,7 @@ const VendorOrdersContent = () => {
         {easyShipOrder && (
           <EasyShippingModal
             order={easyShipOrder}
-            couriers={easyCouriers}
-            loading={easyCourierLoading}
-            selectedCourierId={selectedCourierId}
             busy={processing === `easy:${easyShipOrder.id}`}
-            pkg={easyPackage}
-            pickupInfo={easyPickupInfo}
-            providerLabel={easyProviderLabel}
-            onPackageChange={setEasyPackage}
-            onRefreshRates={() => void refreshEasyCouriers()}
-            onSelect={setSelectedCourierId}
             onClose={() => setEasyShipOrder(null)}
             onSubmit={() => void chooseEasyShipping()}
           />
@@ -2037,210 +1903,42 @@ function InfoBlock({ title, rows }: { title: string; rows: Array<[string, string
 
 function EasyShippingModal({
   order,
-  couriers,
-  loading,
-  selectedCourierId,
   busy,
-  pkg,
-  pickupInfo,
-  providerLabel = "ITL",
-  onPackageChange,
-  onRefreshRates,
-  onSelect,
   onClose,
   onSubmit,
 }: {
   order: VendorOrder
-  couriers: Array<{
-    courier_id: number
-    courier_name: string
-    rate: number | null
-    etd: string | null
-    rto_charges?: number | null
-    cod_charges?: number | null
-  }>
-  loading: boolean
-  selectedCourierId: number | null
   busy: boolean
-  pkg: { weight: string; length: string; breadth: string; height: string }
-  pickupInfo: {
-    pickup_postcode?: string
-    pickup_city?: string
-    pickup_address?: string
-    volumetric_weight?: number
-    applied_weight?: number
-    package_source?: "product" | "default" | "manual"
-  }
-  providerLabel?: string
-  onPackageChange: (next: { weight: string; length: string; breadth: string; height: string }) => void
-  onRefreshRates: () => void
-  onSelect: (id: number) => void
   onClose: () => void
   onSubmit: () => void
 }) {
-  const setField = (key: keyof typeof pkg, value: string) =>
-    onPackageChange({ ...pkg, [key]: value })
-
-  const pickupLabel = [
-    pickupInfo.pickup_address,
-    pickupInfo.pickup_city,
-    pickupInfo.pickup_postcode,
-  ]
-    .filter(Boolean)
-    .join(" · ")
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-ui-border-base bg-ui-bg-base shadow-xl">
+      <div className="w-full max-w-md rounded-xl border border-ui-border-base bg-ui-bg-base shadow-xl">
         <div className="border-b border-ui-border-base px-5 py-4">
-          <Heading level="h2" className="text-xl">Choose Easy Shipping</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            {compactOrderId(order)} · Confirm package. Admin will book the courier after you mark RTD.
+          <Heading level="h2" className="text-xl">
+            Choose Easy Shipping
+          </Heading>
+          <Text size="small" className="mt-1 text-ui-fg-subtle">
+            {compactOrderId(order)}
           </Text>
         </div>
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
-          <div className="rounded-lg border border-ui-border-base/70 bg-ui-bg-subtle/30 p-3">
-            <Text size="xsmall" className="text-ui-fg-subtle">Pickup warehouse</Text>
-            <Text size="small" weight="plus" className="mt-0.5">
-              {pickupLabel || "Your store address"}
-            </Text>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <Text size="small" weight="plus">Package details</Text>
-              <Text size="xsmall" className="text-ui-fg-subtle">
-                {pickupInfo.package_source === "product"
-                  ? "From product catalog"
-                  : pickupInfo.package_source === "manual"
-                    ? "Manual override"
-                    : "Default values"}
-              </Text>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field
-                label="Weight (kg)"
-                type="number"
-                value={pkg.weight}
-                onChange={(value) => setField("weight", value)}
-              />
-              <Field
-                label="Length (cm)"
-                type="number"
-                value={pkg.length}
-                onChange={(value) => setField("length", value)}
-              />
-              <Field
-                label="Breadth (cm)"
-                type="number"
-                value={pkg.breadth}
-                onChange={(value) => setField("breadth", value)}
-              />
-              <Field
-                label="Height (cm)"
-                type="number"
-                value={pkg.height}
-                onChange={(value) => setField("height", value)}
-              />
-            </div>
-            {(pickupInfo.volumetric_weight != null || pickupInfo.applied_weight != null) && (
-              <Text size="xsmall" className="text-ui-fg-subtle">
-                Volumetric {pickupInfo.volumetric_weight ?? "—"} kg · Applied{" "}
-                {pickupInfo.applied_weight ?? "—"} kg
-              </Text>
-            )}
-            <Button
-              variant="secondary"
-              size="small"
-              onClick={onRefreshRates}
-              disabled={busy || loading}
-            >
-              {loading ? "Getting rates…" : "Get exact rates"}
-            </Button>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <Text size="small" weight="plus">Available courier services</Text>
-              {!loading && couriers.length > 0 ? (
-                <Text size="xsmall" className="text-ui-fg-subtle">
-                  {couriers.length} from {providerLabel}
-                </Text>
-              ) : null}
-            </div>
-            {loading ? (
-              <Text size="small" className="text-ui-fg-subtle">Loading couriers…</Text>
-            ) : couriers.length === 0 ? (
-              <Text size="small" className="text-ui-fg-subtle">
-                No courier partners for this package / pincode. Adjust weight or size and refresh.
-              </Text>
-            ) : (
-              <>
-                {couriers.length === 1 ? (
-                  <Text size="xsmall" className="text-ui-fg-muted">
-                    {providerLabel} only returned 1 serviceable courier for this pickup → delivery
-                    pincode and package. That is usually lane coverage on the carrier account,
-                    not a UI filter.
-                  </Text>
-                ) : null}
-                <ul className="space-y-2">
-                  {couriers.map((courier) => {
-                    const selected = selectedCourierId === courier.courier_id
-                    return (
-                      <li key={courier.courier_id}>
-                        <button
-                          type="button"
-                          onClick={() => onSelect(courier.courier_id)}
-                          className={clx(
-                            "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-3 text-left transition",
-                            selected
-                              ? "border-ui-fg-interactive bg-ui-bg-interactive/10"
-                              : "border-ui-border-base/70 hover:border-ui-border-strong"
-                          )}
-                        >
-                          <div>
-                            <Text weight="plus" size="small">{courier.courier_name}</Text>
-                            <Text size="xsmall" className="text-ui-fg-subtle">
-                              {courier.etd ? `ETA ${courier.etd}` : "ETA n/a"}
-                              {courier.cod_charges != null && Number(courier.cod_charges) > 0
-                                ? ` · COD fee ${formatCurrency(
-                                    Number(courier.cod_charges),
-                                    order.currency_code || "INR"
-                                  )}`
-                                : ""}
-                            </Text>
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <Text weight="plus" size="small">
-                              {courier.rate != null
-                                ? formatCurrency(Number(courier.rate), order.currency_code || "INR")
-                                : "—"}
-                            </Text>
-                            <Text size="xsmall" className="block text-ui-fg-subtle">
-                              {courier.rto_charges != null
-                                ? `RTO ${formatCurrency(
-                                    Number(courier.rto_charges),
-                                    order.currency_code || "INR"
-                                  )}`
-                                : "RTO n/a"}
-                            </Text>
-                          </div>
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </>
-            )}
-          </div>
+        <div className="space-y-3 px-5 py-4">
+          <Text size="small" className="text-ui-fg-base">
+            Confirm Easy Shipping for this order. You do not book the courier here.
+          </Text>
+          <ul className="list-disc space-y-1.5 pl-5 text-sm text-ui-fg-subtle">
+            <li>Generate invoice, then mark RTD</li>
+            <li>OWEG admin reviews addresses and books the courier</li>
+            <li>You will see courier + AWB once booking is done</li>
+          </ul>
         </div>
         <div className="flex justify-end gap-2 border-t border-ui-border-base px-5 py-4">
-          <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button
-            onClick={onSubmit}
-            disabled={busy || loading}
-          >
-            {busy ? "Saving…" : "Use Easy Shipping"}
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={onSubmit} disabled={busy} isLoading={busy}>
+            {busy ? "Saving…" : "Confirm Easy Shipping"}
           </Button>
         </div>
       </div>
