@@ -40,6 +40,22 @@ export type VendorOrderWorkflow = {
   easy_courier_partner?: string | null
   /** Shiprocket serviceability rate charged as forward logistic fee */
   easy_courier_rate?: number | null
+  easy_pickup_location?: string | null
+  easy_pickup_pincode?: string | null
+  easy_package_weight?: number | null
+  easy_package_length?: number | null
+  easy_package_breadth?: number | null
+  easy_package_height?: number | null
+  easy_assign_warning?: string | null
+  /**
+   * Easy Ship booking lifecycle:
+   * - intent: vendor chose Easy (no AWB yet)
+   * - awaiting_admin: vendor marked RTD; admin must book packet
+   * - booked: admin created shipment / AWB
+   */
+  easy_booking_status?: "intent" | "awaiting_admin" | "booked" | null
+  /** When admin booked Easy Ship courier */
+  admin_booked_at?: string | null
   /** Optional vendor-entered tracking / label links (Easy or Self) */
   tracking_number?: string | null
   tracking_url?: string | null

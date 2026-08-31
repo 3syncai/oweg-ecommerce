@@ -2,11 +2,9 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../../../_lib/guards"
 import { getEasyShipProvider } from "../../../../../services/easy-ship"
 import {
-  buildShiprocketForwardPayload,
   formatVendorOrder,
   getVendorOrderOrRespond,
   getVendorWorkflow,
-  pickVendorItems,
   setVendorOrderCorsHeaders,
   updateVendorOrderWorkflow,
   type VendorShippingMethod,
@@ -99,6 +97,13 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         })
       }
 
+      // Vendor Easy = intent only. Admin books courier after RTD (Packet Booking).
+      if (workflow.shiprocket_awb || workflow.easy_booking_status === "booked") {
+        return res.status(409).json({
+          message: "Courier is already booked for this order",
+        })
+      }
+
       const courierIdRaw = body.courier_id
       const courierId =
         courierIdRaw != null && String(courierIdRaw).trim() !== ""
@@ -108,22 +113,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       const rateRaw = body.rate != null ? Number(body.rate) : Number(body.freight_charge)
       const courierRate =
         Number.isFinite(rateRaw) && rateRaw >= 0 ? Math.round(rateRaw * 100) / 100 : 0
-
-      if (!Number.isFinite(courierId) || courierId <= 0) {
-        return res.status(400).json({
-          message: "Select a courier partner (courier_id) for Easy Shipping",
-        })
-      }
-
-      let trackingUrl: string | null = null
-      let labelUrl: string | null = null
-      try {
-        trackingUrl = cleanOptionalUrl(body.tracking_url, "Tracking URL")
-        labelUrl = cleanOptionalUrl(body.label_url, "Label URL")
-      } catch (e: any) {
-        return res.status(400).json({ message: e?.message || "Invalid URL" })
-      }
-      const trackingNumber = cleanOptionalText(body.tracking_number || body.tracking_id, 120)
 
       const vendor = await retrieveVendorOrThrow(req, auth.vendor_id)
       let vendorPickup
@@ -139,65 +128,24 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       const packageLength = Number(body.length)
       const packageBreadth = Number(body.breadth)
       const packageHeight = Number(body.height)
-
-      const vendorItems = pickVendorItems(result.order, result.vendorProductIds)
       const provider = getEasyShipProvider()
-      const created = await provider.createForwardShipment(
-        buildShiprocketForwardPayload(result.order, vendorItems, auth.vendor_id, {
-          courier_id: courierId,
-          courier_name: courierName || null,
-          pickup_location: vendorPickup.pickup_location,
-          weight: Number.isFinite(packageWeight) && packageWeight > 0 ? packageWeight : null,
-          length: Number.isFinite(packageLength) && packageLength > 0 ? packageLength : null,
-          breadth: Number.isFinite(packageBreadth) && packageBreadth > 0 ? packageBreadth : null,
-          height: Number.isFinite(packageHeight) && packageHeight > 0 ? packageHeight : null,
-        }) as any
-      )
-
-      const shipmentId = created.shipment_id
-      let awb = created.awb
-      let assignWarning: string | null = null
-
-      if (shipmentId && !awb) {
-        try {
-          const assigned = await provider.assignAwb(shipmentId, courierId)
-          awb = assigned.awb || awb
-        } catch (assignError: any) {
-          const msg = String(assignError?.message || "")
-          console.warn(`[${provider.displayName}] AWB assign after create failed:`, msg)
-          if (/KYC/i.test(msg)) {
-            return res.status(400).json({
-              message:
-                `${provider.displayName} blocked AWB assignment: complete KYC on your account, then try Easy Shipping again.`,
-              shiprocket_order_id: created.order_id,
-              shiprocket_shipment_id: shipmentId,
-              detail: msg,
-            })
-          }
-          assignWarning = msg
-        }
-      }
-
-      if (!trackingUrl && awb) {
-        trackingUrl = provider.trackingUrlForAwb(String(awb))
-      }
-      if (!labelUrl) {
-        labelUrl = created.label_url || trackingUrl
-      }
 
       patch = {
         ...patch,
         shipping_provider: provider.name,
-        shiprocket_order_id: created.order_id != null ? String(created.order_id) : null,
-        shiprocket_shipment_id: shipmentId,
-        shiprocket_awb: awb,
-        shiprocket_status: awb ? "awb_assigned" : "created",
-        easy_courier_id: courierId,
-        easy_courier_partner: courierName.slice(0, 120) || null,
-        easy_courier_rate: courierRate,
-        tracking_number: trackingNumber || (awb ? String(awb) : null),
-        tracking_url: trackingUrl,
-        label_url: labelUrl,
+        // Preferred courier (optional) — admin may change at booking time
+        easy_courier_id:
+          Number.isFinite(courierId) && courierId > 0 ? courierId : null,
+        easy_courier_partner: courierName ? courierName.slice(0, 120) : null,
+        easy_courier_rate: courierRate > 0 ? courierRate : null,
+        // Clear any stale booking fields if re-selecting Easy
+        shiprocket_order_id: null,
+        shiprocket_shipment_id: null,
+        shiprocket_awb: null,
+        shiprocket_status: "pending_admin_booking",
+        tracking_number: null,
+        tracking_url: null,
+        label_url: null,
         easy_pickup_location: vendorPickup.pickup_location,
         easy_pickup_pincode: vendorPickup.pin_code,
         easy_package_weight:
@@ -208,7 +156,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           Number.isFinite(packageBreadth) && packageBreadth > 0 ? packageBreadth : null,
         easy_package_height:
           Number.isFinite(packageHeight) && packageHeight > 0 ? packageHeight : null,
-        easy_assign_warning: assignWarning,
+        easy_assign_warning: null,
+        easy_booking_status: "intent",
+        admin_booked_at: null,
       }
     } else {
       const courier = String(body.courier_partner_name || "").trim()

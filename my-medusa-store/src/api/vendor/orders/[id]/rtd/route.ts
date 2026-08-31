@@ -17,9 +17,8 @@ export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
 /**
  * POST /vendor/orders/:id/rtd
  * Ready to Dispatch:
- * - Requires invoice + shipping method + AWB/tracking
- * - Creates fulfillment (packed) but does NOT mark shipped yet
- * - Parks order in **To Dispatch** until vendor clicks Confirm ship / Dispatch
+ * - Easy: invoice + Easy intent → pack fulfillment; admin books courier after
+ * - Self: invoice + shipping method + AWB/tracking → pack fulfillment
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   setVendorOrderCorsHeaders(res)
@@ -39,23 +38,38 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
     if (!workflow.shipping_method) {
       return res.status(409).json({
-        message: "Choose Easy or Self shipping (with tracking details) before RTD",
+        message: "Choose Easy or Self shipping before RTD",
       })
     }
 
-    const hasTracking = Boolean(
-      workflow.tracking_number ||
-        workflow.shiprocket_awb ||
-        workflow.self_awb ||
-        workflow.tracking_url
-    )
-    if (!hasTracking) {
-      return res.status(409).json({
-        message: "Add AWB / tracking number or tracking URL before RTD",
-      })
+    const isEasy = workflow.shipping_method === "easy"
+    if (isEasy) {
+      if (workflow.easy_booking_status === "booked" && workflow.shiprocket_awb) {
+        // already booked — allow RTD if somehow still in to_pack
+      } else if (
+        workflow.easy_booking_status !== "intent" &&
+        workflow.easy_booking_status !== "awaiting_admin" &&
+        !workflow.shipping_method
+      ) {
+        return res.status(409).json({
+          message: "Choose Easy Shipping before marking RTD",
+        })
+      }
+    } else {
+      const hasTracking = Boolean(
+        workflow.tracking_number ||
+          workflow.shiprocket_awb ||
+          workflow.self_awb ||
+          workflow.tracking_url
+      )
+      if (!hasTracking) {
+        return res.status(409).json({
+          message: "Add AWB / tracking number or tracking URL before RTD",
+        })
+      }
     }
 
-    // Pack / fulfill only — shipping (In Transit) happens on Confirm ship
+    // Pack / fulfill only — Easy In Transit starts after admin books + carrier movement
     const { fulfillment_id } = await fulfillAndShipVendorItems(
       req,
       result.order,
@@ -71,8 +85,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       stage: "to_dispatch",
       rtd_at: workflow.rtd_at || now,
       medusa_fulfillment_id: fulfillment_id,
-      // Keep pre-dispatch until Confirm ship
-      shiprocket_status: workflow.shiprocket_status || "ready_to_ship",
+      shiprocket_status: isEasy
+        ? workflow.shiprocket_awb
+          ? workflow.shiprocket_status || "ready_to_ship"
+          : "awaiting_admin_booking"
+        : workflow.shiprocket_status || "ready_to_ship",
+      ...(isEasy && !workflow.shiprocket_awb
+        ? { easy_booking_status: "awaiting_admin" }
+        : {}),
     })
 
     const latest = await getVendorOrderOrRespond(req, res, auth.vendor_id, orderId)
@@ -85,6 +105,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         fulfilled: true,
         shipped: false,
         stage: "to_dispatch",
+        awaiting_admin_booking: Boolean(isEasy && !workflow.shiprocket_awb),
       },
     })
   } catch (error: any) {
