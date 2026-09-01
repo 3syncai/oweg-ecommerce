@@ -314,8 +314,85 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       const activeForLogistics = ["pending_approval", "approved", "pickup_initiated"].includes(
         String(request.status)
       )
+      const isEasy = shippingMethod === "easy"
+      const easyReturnBooked = Boolean(
+        request.shiprocket_awb ||
+          request.pickup_initiated_at ||
+          request.shiprocket_order_id ||
+          meta.return_admin_booking_status === "booked"
+      )
+      const easyAwaitingAdmin =
+        isEasy && String(request.status) === "approved" && !easyReturnBooked
       const canAdvanceSelfShipStatus =
         shippingMethod !== "self" || hasSelfTracking
+      const canAdvanceEasyReturnStatus = isEasy && easyReturnBooked
+
+      const returnLogisticsTimeline = isEasy
+        ? [
+            {
+              key: "requested",
+              label: "Return requested",
+              at: request.created_at || null,
+              done: true,
+            },
+            {
+              key: "approved",
+              label: "Approved by admin",
+              at: request.approved_at || null,
+              done: Boolean(request.approved_at),
+            },
+            {
+              key: "awaiting_admin",
+              label: "Waiting for admin to book return pickup",
+              at: null,
+              done: !easyAwaitingAdmin,
+              active: easyAwaitingAdmin,
+            },
+            {
+              key: "pickup_initiated",
+              label: "Return pickup initiated",
+              at: request.pickup_initiated_at || meta.admin_return_booked_at || null,
+              done: Boolean(request.pickup_initiated_at || easyReturnBooked),
+            },
+            {
+              key: "picked_up",
+              label: "Product picked up from customer",
+              at: request.picked_up_at || null,
+              done: Boolean(request.picked_up_at),
+            },
+            {
+              key: "received",
+              label: "Delivered to your store",
+              at: request.received_at || null,
+              done: Boolean(request.received_at),
+            },
+            {
+              key: "refunded",
+              label: "Refund processed",
+              at: request.refunded_at || null,
+              done: ["refunded", "closed", "replaced"].includes(String(request.status)),
+            },
+          ]
+        : []
+
+      let easyReturnStatusLabel: string | null = null
+      if (isEasy) {
+        if (easyAwaitingAdmin) {
+          easyReturnStatusLabel = "Waiting for admin to book return pickup"
+        } else if (String(request.status) === "received" || meta.returned_to_vendor) {
+          easyReturnStatusLabel = "Delivered to your store"
+        } else if (String(request.status) === "picked_up" || request.picked_up_at) {
+          easyReturnStatusLabel = "Product picked up — in transit to you"
+        } else if (easyReturnBooked || String(request.status) === "pickup_initiated") {
+          easyReturnStatusLabel = request.shiprocket_awb
+            ? `Return pickup booked · AWB ${request.shiprocket_awb}`
+            : "Return pickup initiated"
+        } else if (String(request.status) === "pending_approval") {
+          easyReturnStatusLabel = "Awaiting admin approval"
+        } else {
+          easyReturnStatusLabel = String(request.status || "unknown").replace(/_/g, " ")
+        }
+      }
 
       return {
         id: request.id,
@@ -358,28 +435,38 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           meta.reverse_courier_selected_at ??
           null,
         ...selfTracking,
-        can_select_reverse_courier:
-          shippingMethod === "easy" &&
-          ["pending_approval", "approved"].includes(String(request.status)) &&
-          !request.pickup_initiated_at &&
-          !request.shiprocket_order_id,
+        can_select_reverse_courier: false,
         can_add_self_tracking: shippingMethod === "self" && activeForLogistics,
         needs_return_logistics:
           activeForLogistics &&
-          ((shippingMethod === "easy" &&
-            !selection &&
-            !meta.reverse_courier_id &&
-            !request.shiprocket_order_id) ||
+          ((isEasy && easyAwaitingAdmin) ||
             (shippingMethod === "self" && !hasSelfTracking)),
+        easy_return_booking_status: isEasy
+          ? easyReturnBooked
+            ? "booked"
+            : easyAwaitingAdmin
+              ? "awaiting_admin"
+              : null
+          : null,
+        easy_return_status_label: easyReturnStatusLabel,
+        return_logistics_timeline: returnLogisticsTimeline,
+        awaiting_admin_return_booking: easyAwaitingAdmin,
         can_mark_pickup_initiated:
+          !isEasy &&
           canAdvanceSelfShipStatus &&
           ["approved", "pending_approval"].includes(String(request.status)),
         can_mark_picked_up:
+          !isEasy &&
           canAdvanceSelfShipStatus &&
           ["approved", "pickup_initiated"].includes(String(request.status)),
         can_mark_received:
-          canAdvanceSelfShipStatus &&
-          ["approved", "pickup_initiated", "picked_up"].includes(String(request.status)),
+          (isEasy
+            ? canAdvanceEasyReturnStatus &&
+              ["pickup_initiated", "picked_up"].includes(String(request.status))
+            : canAdvanceSelfShipStatus &&
+              ["approved", "pickup_initiated", "picked_up"].includes(
+                String(request.status)
+              )),
         returned_to_vendor:
           String(request.status) === "received" || Boolean(meta.returned_to_vendor),
         returned_to_vendor_at: meta.returned_to_vendor_at

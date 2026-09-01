@@ -6,8 +6,6 @@ import { RETURN_MODULE } from "../../../../../modules/returns"
 import { syncOrderReturnMetadata } from "../../../../../services/sync-order-return-metadata"
 import { reverseVendorEarningsForOrder } from "../../../../../lib/vendor-earnings"
 import {
-  getReverseCourierSelection,
-  initiateEasyShipReversePickup,
   isVendorEasyShipOrder,
   resolveReturnVendorId,
 } from "../../../../../lib/vendor-return-shiprocket"
@@ -78,8 +76,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     console.error("[return-approve] Failed to trigger coin reversal webhook:", err)
   }
 
-  // Easy Ship: if vendor already selected a reverse courier, book pickup to vendor address
-  let autoPickup: { ok: boolean; message?: string; shiprocket?: any } | null = null
+  // Easy Ship returns: admin books reverse pickup via Return Packet Booking (no auto-book here)
+  let bookingNote: { ok: boolean; message?: string } | null = null
   let latestRequest = request
   try {
     const refreshed = await returnService.listReturnRequests({ id })
@@ -89,44 +87,24 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       const order = await orderModuleService.retrieveOrder(latestRequest.order_id, {
         relations: ["items", "shipping_address", "billing_address"],
       })
-      const vendorId = await resolveReturnVendorId(req, order)
-      const selection = getReverseCourierSelection(latestRequest)
+      const vendorId = await resolveReturnVendorId(req, order, latestRequest)
 
-      if (
-        vendorId &&
-        selection &&
-        isVendorEasyShipOrder(order, vendorId) &&
-        !latestRequest.pickup_initiated_at &&
-        !latestRequest.shiprocket_order_id
-      ) {
-        const result = await initiateEasyShipReversePickup({
-          req,
-          returnRequestId: latestRequest.id,
-          vendorId,
-        })
-        autoPickup = { ok: true, shiprocket: result.shiprocket }
-        const afterPickup = await returnService.listReturnRequests({ id })
-        return res.json({
-          return_request: afterPickup[0] || result.return_request,
-          auto_pickup: autoPickup,
-        })
-      }
-
-      if (vendorId && isVendorEasyShipOrder(order, vendorId) && !selection) {
-        autoPickup = {
-          ok: false,
-          message:
-            "Approved. Waiting for vendor to select a reverse courier service before pickup.",
+      if (vendorId && isVendorEasyShipOrder(order, vendorId)) {
+        bookingNote = {
+          ok: true,
+          message: "Approved. Book return pickup next.",
         }
+        return res.json({
+          return_request: latestRequest,
+          auto_pickup: bookingNote,
+          redirect_to: `/app/return-packet-booking?return_id=${latestRequest.id}`,
+          is_easy_ship_return: true,
+        })
       }
     }
   } catch (err: any) {
-    console.error("[return-approve] Easy Ship auto pickup failed:", err)
-    autoPickup = {
-      ok: false,
-      message: err?.message || "Auto reverse pickup failed after approval",
-    }
+    console.error("[return-approve] Easy Ship booking note failed:", err)
   }
 
-  return res.json({ return_request: latestRequest, auto_pickup: autoPickup })
+  return res.json({ return_request: latestRequest, auto_pickup: bookingNote })
 }

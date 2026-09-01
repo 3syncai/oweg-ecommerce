@@ -15,6 +15,7 @@ import {
   XMark,
   ChatBubble,
   ChartBar,
+  DocumentText,
 } from "@medusajs/icons"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { vendorProfileApi, vendorPayoutsApi } from "@/lib/api/client"
@@ -90,6 +91,13 @@ const navItems = [
     description: "",
     path: "/payout",
     icon: CurrencyDollar,
+    type: "normal",
+  },
+  {
+    label: "Commission Invoice",
+    description: "",
+    path: "/commission-invoices",
+    icon: DocumentText,
     type: "normal",
   },
   {
@@ -192,7 +200,16 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
   }, [router])
 
   useEffect(() => {
-    const paths = ["/dashboard", "/orders", "/products", "/payout", "/claims", "/inventory", "/messages"]
+    const paths = [
+      "/dashboard",
+      "/orders",
+      "/products",
+      "/payout",
+      "/commission-invoices",
+      "/claims",
+      "/inventory",
+      "/messages",
+    ]
     for (const path of paths) router.prefetch(path)
   }, [router])
 

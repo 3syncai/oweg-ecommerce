@@ -815,8 +815,12 @@ export type VendorPaymentsView = {
     order_amount: number
     taxable_amount: number
     gst_amount: number
+    gst_rate?: number
+    commission_rate?: number
     commission: number
+    tcs_rate?: number
     tcs: number
+    tds_rate?: number
     tds: number
     logistic_fee: number
     return_fee?: number
@@ -892,6 +896,72 @@ export const vendorPayoutsApi = {
 
   payments: async () => {
     return apiRequest<VendorPaymentsView>("/vendor/payouts/payments")
+  },
+}
+
+export type VendorCommissionInvoice = {
+  invoice_title: string
+  invoice_number: string
+  invoice_date: string
+  period_label: string
+  period_from: string | null
+  period_to: string | null
+  billed_from: {
+    name: string
+    address: string
+    phone: string
+    email: string
+    gstin: string
+    pan: string
+  }
+  billed_to: {
+    display_name: string
+    business_name: string
+    address: string
+    place_of_supply: string
+    phone: string
+    email: string
+    gstin: string | null
+    pan: string | null
+  }
+  orders: Array<{
+    order_id: string
+    order_display_id: string | number | null
+    product_name: string
+    delivered_at: string | null
+    sale_amount: number
+    commission_rate: number
+    commission_amount: number
+    logistic_fee: number
+    invoice_date: string | null
+  }>
+  service_lines: Array<{
+    sac: string
+    description: string
+    net_taxable: number
+    gst_rate: number
+    gst_amount: number
+    total: number
+  }>
+  totals: {
+    net_taxable: number
+    gst_amount: number
+    grand_total: number
+  }
+}
+
+export const vendorCommissionInvoicesApi = {
+  get: async (params?: {
+    range?: "today" | "1m" | "custom" | "all"
+    from?: string
+    to?: string
+  }) => {
+    const qs = new URLSearchParams()
+    if (params?.range) qs.set("range", params.range)
+    if (params?.from) qs.set("from", params.from)
+    if (params?.to) qs.set("to", params.to)
+    const suffix = qs.toString() ? `?${qs}` : ""
+    return apiRequest<VendorCommissionInvoice>(`/vendor/commission-invoices${suffix}`)
   },
 }
 
@@ -1062,6 +1132,16 @@ export type VendorReturnRequest = {
   can_mark_received?: boolean
   returned_to_vendor?: boolean
   returned_to_vendor_at?: string | null
+  easy_return_booking_status?: 'awaiting_admin' | 'booked' | null
+  easy_return_status_label?: string | null
+  awaiting_admin_return_booking?: boolean
+  return_logistics_timeline?: Array<{
+    key: string
+    label: string
+    at: string | null
+    done: boolean
+    active?: boolean
+  }>
 }
 
 // Vendor Returns API
