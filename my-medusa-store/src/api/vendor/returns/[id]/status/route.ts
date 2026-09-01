@@ -3,6 +3,7 @@ import { requireApprovedVendor } from "../../../_lib/guards"
 import {
   getReturnMetadata,
   getSelfReverseTracking,
+  isVendorEasyShipOrder,
   isVendorSelfShipOrder,
   resolveVendorOwnedReturn,
 } from "../../../../../lib/vendor-return-shiprocket"
@@ -58,6 +59,15 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     const status = String(request.status || "")
     const meta = getReturnMetadata(request)
     const nowIso = new Date().toISOString()
+
+    if (isVendorEasyShipOrder(order, auth.vendor_id)) {
+      if (action === "pickup_initiated" || action === "picked_up") {
+        return res.status(400).json({
+          message:
+            "Easy Ship return pickup status is updated when admin books the return and via courier tracking.",
+        })
+      }
+    }
 
     if (isVendorSelfShipOrder(order, auth.vendor_id)) {
       const selfTracking = getSelfReverseTracking(request)

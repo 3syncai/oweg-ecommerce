@@ -4,7 +4,7 @@ import ReturnModuleService from "../modules/returns/service"
 import { RETURN_MODULE } from "../modules/returns"
 import { getEasyShipProvider } from "../services/easy-ship"
 import { syncOrderReturnMetadata } from "../services/sync-order-return-metadata"
-import { getVendorWorkflow } from "./vendor-order-workflow"
+import { getVendorWorkflow, getVendorWorkflows } from "./vendor-order-workflow"
 import {
   buildVendorPickupAddress,
   estimatePackageFromVendorItems,
@@ -271,8 +271,14 @@ export async function initiateEasyShipReversePickup(params: {
   returnRequestId: string
   vendorId: string
   reason?: string
+  courierOverride?: {
+    courier_id: number
+    courier_name: string
+    courier_rate?: number
+  }
+  bookedBy?: "admin" | "vendor"
 }): Promise<{ return_request: any; shiprocket: any; provider: string }> {
-  const { req, returnRequestId, vendorId, reason } = params
+  const { req, returnRequestId, vendorId, reason, courierOverride, bookedBy } = params
   const returnService: ReturnModuleService = req.scope.resolve(RETURN_MODULE)
   const orderModuleService = req.scope.resolve(Modules.ORDER)
   const provider = getEasyShipProvider()
@@ -289,8 +295,15 @@ export async function initiateEasyShipReversePickup(params: {
     return { return_request: request, shiprocket: null, provider: provider.name }
   }
 
-  const selection = getReverseCourierSelection(request)
-  if (!selection) {
+  let selection = getReverseCourierSelection(request)
+  if (courierOverride) {
+    selection = {
+      reverse_courier_id: courierOverride.courier_id,
+      reverse_courier_name: courierOverride.courier_name,
+      reverse_courier_selected_at: new Date().toISOString(),
+      reverse_shipping_method: "easy",
+    }
+  } else if (!selection) {
     throw new Error(
       `Select a ${provider.displayName} reverse courier before initiating Easy Ship pickup.`
     )
@@ -382,6 +395,7 @@ export async function initiateEasyShipReversePickup(params: {
     created.awb !== null && created.awb !== undefined ? String(created.awb) : null
 
   const meta = getReturnMetadata(request)
+  const nowIso = new Date().toISOString()
   const updated = await returnService.updateReturnRequests({
     id: request.id,
     shiprocket_order_id: shiprocketOrderId,
@@ -394,6 +408,16 @@ export async function initiateEasyShipReversePickup(params: {
       reverse_pickup_destination: "vendor",
       reverse_vendor_id: vendorId,
       reverse_tracking_url: created.tracking_url || null,
+      reverse_courier_id: selection.reverse_courier_id,
+      reverse_courier_name: selection.reverse_courier_name,
+      reverse_courier_rate:
+        courierOverride?.courier_rate != null
+          ? courierOverride.courier_rate
+          : meta.reverse_courier_rate,
+      reverse_courier_selected_at: selection.reverse_courier_selected_at || nowIso,
+      return_admin_booking_status: "booked",
+      admin_return_booked_at: nowIso,
+      return_booked_by: bookedBy || "vendor",
     },
   })
 
@@ -418,12 +442,34 @@ export async function initiateEasyShipReversePickup(params: {
   }
 }
 
+/** Resolve vendor from order workflow metadata (no order items required). */
+export function resolveReturnVendorIdFromOrderMetadata(
+  order: any,
+  returnRequest?: any
+): string | null {
+  const meta = returnRequest ? getReturnMetadata(returnRequest) : {}
+  const reverseVendorId = meta.reverse_vendor_id
+    ? String(meta.reverse_vendor_id).trim()
+    : ""
+  if (reverseVendorId) return reverseVendorId
+
+  const workflows = getVendorWorkflows(order?.metadata || null)
+  for (const [vendorId, wf] of Object.entries(workflows)) {
+    if (wf?.shipping_method === "easy") return vendorId
+  }
+  for (const vendorId of Object.keys(workflows)) {
+    if (vendorId) return vendorId
+  }
+  return null
+}
+
 /** Resolve owning vendor id for a return (first matching product vendor). */
 export async function resolveReturnVendorId(
   req: MedusaRequest,
-  order: any
+  order: any,
+  returnRequest?: any
 ): Promise<string | null> {
-  const query = req.scope.resolve("query")
+  const metaVendorId = resolveReturnVendorIdFromOrderMetadata(order, returnRequest)
   const productIds = Array.from(
     new Set(
       (order.items || [])
@@ -431,7 +477,9 @@ export async function resolveReturnVendorId(
         .filter(Boolean)
     )
   ) as string[]
-  if (!productIds.length) return null
+  if (!productIds.length) return metaVendorId
+
+  const query = req.scope.resolve("query")
 
   const { data: products } = await query.graph({
     entity: "product",

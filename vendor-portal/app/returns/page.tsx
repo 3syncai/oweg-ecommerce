@@ -549,6 +549,39 @@ const VendorReturnsPage = () => {
                                 {item.shiprocket_awb ? ` · AWB ${item.shiprocket_awb}` : ""}
                               </Text>
                             ) : null}
+                            {item.shipping_method === "easy" &&
+                            item.easy_return_status_label ? (
+                              <Text
+                                size="xsmall"
+                                className={
+                                  item.awaiting_admin_return_booking
+                                    ? "font-medium text-amber-700 dark:text-amber-300"
+                                    : "text-ui-fg-subtle"
+                                }
+                              >
+                                {item.easy_return_status_label}
+                              </Text>
+                            ) : null}
+                            {item.shipping_method === "easy" &&
+                            item.return_logistics_timeline?.length ? (
+                              <ul className="mt-1 space-y-0.5 border-l border-ui-border-base pl-2.5">
+                                {item.return_logistics_timeline.map((step) => (
+                                  <li
+                                    key={step.key}
+                                    className={`text-xsmall ${
+                                      step.active
+                                        ? "font-medium text-amber-700 dark:text-amber-300"
+                                        : step.done
+                                          ? "text-emerald-700 dark:text-emerald-400"
+                                          : "text-ui-fg-muted"
+                                    }`}
+                                  >
+                                    {step.done ? "✓" : step.active ? "→" : "○"} {step.label}
+                                    {step.at ? ` · ${formatDate(step.at)}` : ""}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
                             {item.reverse_tracking_number &&
                             item.reverse_tracking_url &&
                             item.reverse_courier_partner ? (
@@ -643,8 +676,9 @@ const VendorReturnsPage = () => {
                             {item.shipping_method === "easy" &&
                             item.needs_return_logistics ? (
                               <Text size="xsmall" className="text-amber-700 dark:text-amber-300">
-                                Select a reverse courier service (rates shown). After admin
-                                approves, pickup to your store is booked automatically.
+                                {item.awaiting_admin_return_booking
+                                  ? "Waiting for admin to book return pickup. You will see pickup status here once booked."
+                                  : "Return logistics in progress."}
                               </Text>
                             ) : null}
                             {item.shipping_method === "self" && item.needs_return_logistics ? (

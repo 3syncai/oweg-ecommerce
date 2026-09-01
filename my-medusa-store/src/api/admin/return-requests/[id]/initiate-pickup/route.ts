@@ -5,8 +5,6 @@ import { RETURN_MODULE } from "../../../../../modules/returns"
 import { syncOrderReturnMetadata } from "../../../../../services/sync-order-return-metadata"
 import { getEasyShipProvider } from "../../../../../services/easy-ship"
 import {
-  getReverseCourierSelection,
-  initiateEasyShipReversePickup,
   isVendorEasyShipOrder,
   resolveReturnVendorId,
 } from "../../../../../lib/vendor-return-shiprocket"
@@ -82,33 +80,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   })
   console.log(`[Return] Loaded order ${order.id} for reverse pickup`)
 
-  // Easy Ship path: customer → vendor address with vendor-selected courier
+  // Easy Ship path: admin books via Return Packet Booking (customer → vendor)
   try {
     const vendorId = await resolveReturnVendorId(req, order)
-    if (
-      vendorId &&
-      isVendorEasyShipOrder(order, vendorId) &&
-      getReverseCourierSelection(request)
-    ) {
-      const result = await initiateEasyShipReversePickup({
-        req,
-        returnRequestId: request.id,
-        vendorId,
-        reason: body.reason,
-      })
-      return res.json({
-        return_request: result.return_request,
-        shiprocket: result.shiprocket,
-        provider: result.provider,
-        destination: "vendor",
-      })
+    if (vendorId && isVendorEasyShipOrder(order, vendorId)) {
+      throw new MedusaError(
+        MedusaErrorTypes.INVALID_DATA,
+        "Easy Ship returns are booked from Admin → Return Packet Booking after approval."
+      )
     }
   } catch (error: any) {
-    console.error("[Return] Easy Ship reverse pickup failed", error?.message || error)
-    throw new MedusaError(
-      MedusaErrorTypes.INVALID_DATA,
-      error?.message || "Easy Ship reverse pickup failed."
-    )
+    if (error instanceof MedusaError) throw error
+    console.error("[Return] Easy Ship check failed", error?.message || error)
   }
 
   const orderItems = order.items || []

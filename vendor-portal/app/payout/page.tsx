@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Container, Heading, Text, Button, clx } from "@medusajs/ui"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import * as XLSX from "xlsx"
+import { downloadPaymentLedgerExcel } from "@/lib/payment-ledger-export"
 import VendorShell from "@/components/VendorShell"
 import PageSkeleton from "@/components/PageSkeleton"
 import EmptyState from "@/components/EmptyState"
@@ -98,53 +98,7 @@ const filterSettlementsByRange = (rows: SettlementRow[], from: Date, to: Date) =
   })
 
 const downloadLedgerExcel = (rows: SettlementRow[], rangeLabel: string) => {
-  const sheetRows = rows.map((row) => ({
-    Date: row.delivered_at
-      ? new Date(row.delivered_at).toLocaleDateString("en-IN", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-          timeZone: "Asia/Kolkata",
-        })
-      : "",
-    "Product Name": row.product_name,
-    "Order Id": row.order_display_id ? `#${row.order_display_id}` : row.order_id,
-    Type:
-      row.type === "return" ? "Return" : row.type === "claim" ? "Claim" : "Sales",
-    "Order Amount (₹)": row.order_amount,
-    "Taxable (₹)": row.taxable_amount ?? 0,
-    "GST (₹)": row.gst_amount ?? row.taxes ?? 0,
-    "Commission (₹)": row.commission,
-    "TCS (₹)": row.tcs ?? 0,
-    "TDS (₹)": row.tds ?? 0,
-    "Logistic (₹)": row.logistic_fee ?? 0,
-    "Return fee (₹)": row.return_fee ?? 0,
-    "Settlement Amount (₹)": row.settlement_amount,
-    "Payout status":
-      row.type === "return"
-        ? "Reversed"
-        : row.type === "claim"
-          ? "Claim credit"
-          : row.status === "ON_HOLD"
-            ? "Return hold"
-            : row.status === "UNLOCKING"
-              ? "Pending"
-              : row.status === "PAID"
-                ? "Paid"
-                : row.status === "CREDITED"
-                  ? "Settlement amount"
-                  : row.status || "",
-  }))
-
-  const workbook = XLSX.utils.book_new()
-  const sheet = XLSX.utils.json_to_sheet(
-    sheetRows.length
-      ? sheetRows
-      : [{ Note: "No settlement rows in the selected period" }]
-  )
-  XLSX.utils.book_append_sheet(workbook, sheet, "Ledger")
-  const stamp = new Date().toISOString().slice(0, 10)
-  XLSX.writeFile(workbook, `oweg-payments-ledger-${rangeLabel}-${stamp}.xlsx`)
+  downloadPaymentLedgerExcel(rows, rangeLabel)
 }
 
 const MetricChip = ({
@@ -827,7 +781,7 @@ const VendorPayoutPage = () => {
                 Download ledger report
               </Heading>
               <Text size="small" className="mt-1 text-ui-fg-subtle">
-                Export settlement history as Excel (.xlsx).
+                Export payment ledger in finance format (Excel .xlsx).
               </Text>
 
               <div className="mt-5 flex flex-wrap gap-2">

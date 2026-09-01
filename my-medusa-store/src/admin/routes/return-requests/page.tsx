@@ -55,6 +55,9 @@ const ReturnRequestsPage = () => {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [bankDetails, setBankDetails] = useState<Record<string, string> | null>(null)
   const [bankDetailsFor, setBankDetailsFor] = useState<string | null>(null)
+  const [refundModal, setRefundModal] = useState<ReturnRequest | null>(null)
+  const [refundDetails, setRefundDetails] = useState<Record<string, string> | null>(null)
+  const [refundDetailsLoading, setRefundDetailsLoading] = useState(false)
 
   const loadRequests = async () => {
     setLoading(true)
@@ -79,7 +82,12 @@ const ReturnRequestsPage = () => {
     loadRequests()
   }, [])
 
-  const runAction = async (id: string, url: string, body?: any) => {
+  const runAction = async (
+    id: string,
+    url: string,
+    body?: any,
+    opts?: { redirectOnSuccess?: (data: any) => string | null }
+  ) => {
     setActionLoading(id)
     setError("")
     try {
@@ -89,8 +97,18 @@ const ReturnRequestsPage = () => {
         headers: { "Content-Type": "application/json" },
         body: body ? JSON.stringify(body) : undefined,
       })
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        throw new Error(`Action failed: ${res.status}`)
+        throw new Error(data?.message || `Action failed: ${res.status}`)
+      }
+      const redirect =
+        (typeof data?.redirect_to === "string" && data.redirect_to) ||
+        opts?.redirectOnSuccess?.(data) ||
+        null
+      if (redirect) {
+        toast.success("Approved", { description: "Opening return booking…" })
+        window.location.href = redirect
+        return
       }
       toast.success("Success", { description: "Action completed" })
       await loadRequests()
@@ -119,6 +137,30 @@ const ReturnRequestsPage = () => {
     }
   }
 
+  const openRefundModal = async (request: ReturnRequest) => {
+    setRefundModal(request)
+    setRefundDetails(null)
+    setRefundDetailsLoading(true)
+    try {
+      const res = await fetch(`/admin/return-requests/${request.id}`, { credentials: "include" })
+      if (!res.ok) throw new Error(`Failed to load refund details: ${res.status}`)
+      const data = await res.json()
+      setRefundDetails(data?.return_request?.bank_details || null)
+    } catch (e: any) {
+      toast.error("Error", { description: e?.message || "Failed to load refund details" })
+      setRefundModal(null)
+    } finally {
+      setRefundDetailsLoading(false)
+    }
+  }
+
+  const confirmMarkRefunded = async () => {
+    if (!refundModal) return
+    await runAction(refundModal.id, `/admin/return-requests/${refundModal.id}/mark-refunded`)
+    setRefundModal(null)
+    setRefundDetails(null)
+  }
+
   return (
     <Container className="p-8">
       <div className="flex items-center justify-between mb-6">
@@ -126,7 +168,9 @@ const ReturnRequestsPage = () => {
           <Heading level="h1" className="text-2xl font-semibold mb-1">
             Return Requests
           </Heading>
-          <Text className="text-ui-fg-subtle">Approve, initiate pickup, and refund</Text>
+          <Text className="text-ui-fg-subtle">
+            Approve returns — Easy Ship returns open booking automatically
+          </Text>
         </div>
         <Button variant="secondary" onClick={loadRequests} disabled={loading}>
           {loading ? "Loading..." : "Refresh"}
@@ -161,7 +205,9 @@ const ReturnRequestsPage = () => {
                 {(() => {
                   const canApprove = request.status === "pending_approval"
                   const canReject = request.status === "pending_approval"
-                  const canInitiatePickup = request.status === "approved"
+                  const isEasyReturn = request.shipping_method === "easy"
+                  const canBookReturnPickup =
+                    isEasyReturn && request.status === "approved" && !request.shiprocket_awb
                   const canRefund =
                     request.status === "picked_up" || request.status === "received"
                   const returnedToVendor =
@@ -238,7 +284,7 @@ const ReturnRequestsPage = () => {
                           </Text>
                         ) : (
                           <Text className="text-sm text-amber-700">
-                            Vendor has not selected a reverse courier service yet
+                            Approve this return to book reverse pickup
                           </Text>
                         )}
                         {request.shiprocket_awb && (
@@ -330,29 +376,22 @@ const ReturnRequestsPage = () => {
                     >
                       Reject
                     </Button>
-                    <Button
-                      variant="secondary"
-                      size="base"
-                      disabled={actionLoading === request.id || !canInitiatePickup}
-                      onClick={() => {
-                        const reason = window.prompt(
-                          "Return reason (leave blank to use customer reason):",
-                          request.reason || ""
-                        )
-                        runAction(
-                          request.id,
-                          `/admin/return-requests/${request.id}/initiate-pickup`,
-                          reason ? { reason } : undefined
-                        )
-                      }}
-                    >
-                      Initiate Pickup
-                    </Button>
+                    {canBookReturnPickup ? (
+                      <Button
+                        variant="primary"
+                        size="base"
+                        onClick={() => {
+                          window.location.href = `/app/return-packet-booking?return_id=${request.id}`
+                        }}
+                      >
+                        Book Return Pickup
+                      </Button>
+                    ) : null}
                     <Button
                       variant="primary"
                       size="base"
                       disabled={actionLoading === request.id || !canRefund}
-                      onClick={() => runAction(request.id, `/admin/return-requests/${request.id}/mark-refunded`)}
+                      onClick={() => void openRefundModal(request)}
                     >
                       Mark Refunded
                     </Button>
@@ -396,6 +435,94 @@ const ReturnRequestsPage = () => {
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {refundModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl border border-ui-border-base bg-ui-bg-base p-5 shadow-xl">
+            <Heading level="h2" className="text-lg">
+              Mark as refunded
+              {refundModal.order_display_id ? ` · Order #${refundModal.order_display_id}` : ""}
+            </Heading>
+            <Text size="small" className="mt-1 text-ui-fg-subtle">
+              Refund via {refundModal.refund_method || "original payment method"}
+            </Text>
+
+            <div className="mt-4 rounded-lg border border-ui-border-base bg-ui-bg-subtle/50 p-4">
+              <Text weight="plus" className="mb-2">
+                Customer refund details
+              </Text>
+              {refundDetailsLoading ? (
+                <Text size="small" className="text-ui-fg-muted">
+                  Loading…
+                </Text>
+              ) : refundDetails ? (
+                <div className="space-y-1 text-sm">
+                  {refundDetails.method === "upi" || refundDetails.upi_id ? (
+                    <>
+                      <div>
+                        <span className="text-ui-fg-subtle">UPI ID: </span>
+                        <span className="font-medium">{refundDetails.upi_id}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {refundDetails.account_name ? (
+                        <div>
+                          <span className="text-ui-fg-subtle">Account name: </span>
+                          {refundDetails.account_name}
+                        </div>
+                      ) : null}
+                      {refundDetails.account_number ? (
+                        <div>
+                          <span className="text-ui-fg-subtle">Account number: </span>
+                          <span className="font-medium">{refundDetails.account_number}</span>
+                        </div>
+                      ) : null}
+                      {refundDetails.ifsc_code ? (
+                        <div>
+                          <span className="text-ui-fg-subtle">IFSC: </span>
+                          {refundDetails.ifsc_code}
+                        </div>
+                      ) : null}
+                      {refundDetails.bank_name ? (
+                        <div>
+                          <span className="text-ui-fg-subtle">Bank: </span>
+                          {refundDetails.bank_name}
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <Text size="small" className="text-ui-fg-muted">
+                  No UPI or bank details saved for this return. Refund will go via original
+                  payment method.
+                </Text>
+              )}
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setRefundModal(null)
+                  setRefundDetails(null)
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                disabled={actionLoading === refundModal.id || refundDetailsLoading}
+                isLoading={actionLoading === refundModal.id}
+                onClick={() => void confirmMarkRefunded()}
+              >
+                Confirm refund
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </Container>

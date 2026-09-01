@@ -89,8 +89,12 @@ export type VendorPaymentSettlement = {
   order_amount: number;
   taxable_amount: number;
   gst_amount: number;
+  gst_rate: number;
+  commission_rate: number;
   commission: number;
+  tcs_rate: number;
   tcs: number;
+  tds_rate: number;
   tds: number;
   /** Forward Easy Ship / self dispatch courier rate */
   logistic_fee: number;
@@ -1307,8 +1311,12 @@ type SettlementEarningRow = {
   gross_amount: string | number;
   taxable_amount: string | number;
   gst_amount: string | number;
+  gst_rate: string | number;
+  commission_rate: string | number;
   commission_amount: string | number;
+  tcs_rate: string | number;
   tcs_amount: string | number;
+  tds_rate: string | number;
   tds_amount: string | number;
   logistic_fee: string | number;
   return_fee: string | number;
@@ -1349,8 +1357,12 @@ export async function getVendorPaymentsView(
         vel.gross_amount,
         vel.taxable_amount,
         vel.gst_amount,
+        vel.gst_rate,
+        vel.commission_rate,
         vel.commission_amount,
+        vel.tcs_rate,
         vel.tcs_amount,
+        vel.tds_rate,
         vel.tds_amount,
         COALESCE(vel.logistic_fee, 0) AS logistic_fee,
         COALESCE(vel.return_fee, 0) AS return_fee,
@@ -1412,8 +1424,12 @@ export async function getVendorPaymentsView(
     const gross = Number(row.gross_amount) || 0;
     const taxable = Number(row.taxable_amount) || 0;
     const gstAmount = Number(row.gst_amount) || 0;
+    const gstRate = Number(row.gst_rate) || 0;
+    const commissionRate = Number(row.commission_rate) || 0;
     const commissionAmount = Number(row.commission_amount) || 0;
+    const tcsRate = Number(row.tcs_rate) || 0;
     const tcsAmount = Number(row.tcs_amount) || 0;
+    const tdsRate = Number(row.tds_rate) || 0;
     const tdsAmount = Number(row.tds_amount) || 0;
     const logisticFee = Number(row.logistic_fee) || 0;
     const returnFee = Number(row.return_fee) || 0;
@@ -1439,8 +1455,12 @@ export async function getVendorPaymentsView(
         order_amount: -Math.abs(gross),
         taxable_amount: 0,
         gst_amount: 0,
+        gst_rate: 0,
+        commission_rate: 0,
         commission: 0,
+        tcs_rate: 0,
         tcs: 0,
+        tds_rate: 0,
         tds: 0,
         logistic_fee: 0,
         return_fee: returnFee,
@@ -1483,8 +1503,12 @@ export async function getVendorPaymentsView(
       order_amount: isClaim ? claimSettlement : gross,
       taxable_amount: isClaim ? 0 : taxable,
       gst_amount: isClaim ? 0 : gstAmount,
+      gst_rate: isClaim ? 0 : gstRate,
+      commission_rate: isClaim ? 0 : commissionRate,
       commission: isClaim ? 0 : commissionAmount,
+      tcs_rate: isClaim ? 0 : tcsRate,
       tcs: isClaim ? 0 : tcsAmount,
+      tds_rate: isClaim ? 0 : tdsRate,
       tds: isClaim ? 0 : tdsAmount,
       logistic_fee: isClaim ? 0 : logisticFee,
       return_fee: isClaim ? 0 : returnFee,
