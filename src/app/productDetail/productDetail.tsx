@@ -101,6 +101,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [quantity, setQuantity] = useState(1)
+  const [cartActionPending, setCartActionPending] = useState(false)
+  const [buyNowPending, setBuyNowPending] = useState(false)
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({})
   const [selectedImage, setSelectedImage] = useState(0)
   const [activeTab, setActiveTab] = useState<DescriptionTab>('description')
@@ -1089,10 +1091,12 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       notifyCartUnavailable()
       return
     }
+    if (cartActionPending) return
 
     const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
     const itemLabel = label ?? product?.title ?? "Item";
 
+    setCartActionPending(true)
     notifyCartAddSuccess(itemLabel, qty, goToCart);
     const previousCount = count;
     bumpCount(qty);
@@ -1126,10 +1130,13 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       console.warn("addVariantToCart failed", err);
       const message = err instanceof Error ? err.message : undefined;
       notifyCartAddError(message);
+    } finally {
+      setCartActionPending(false)
     }
   };
 
   const handleAddToCart = async () => {
+    if (cartActionPending || buyNowPending) return
     if (!hasStock) {
       notifyOutOfStock()
       return
@@ -1142,6 +1149,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   }
 
   const handleBuyNow = () => {
+    if (cartActionPending || buyNowPending) return
     if (!product) {
       notifyCartUnavailable()
       return
@@ -1183,6 +1191,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
             ? product.price
             : undefined
 
+    setBuyNowPending(true)
     try {
       if (typeof window !== "undefined") {
         const payload = {
@@ -1398,6 +1407,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   onQuantityChange={handleQuantityChange}
                   onAddToCart={handleAddToCart}
                   onBuyNow={handleBuyNow}
+                  cartBusy={cartActionPending}
+                  buyNowBusy={buyNowPending}
                   onShare={shareProduct}
                   onSaveForLater={handleSaveForLater}
                   isWishlisted={isWishlisted}
