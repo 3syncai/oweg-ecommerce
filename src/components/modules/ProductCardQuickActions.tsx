@@ -7,6 +7,7 @@ import {
   QtyMinusIcon,
   QtyPlusIcon,
 } from "@/components/ui/icons/product-actions";
+import { Loader2 } from "lucide-react";
 import { useCartLineByVariant } from "@/hooks/useCart";
 import {
   useAddToCartWithNotification,
@@ -90,9 +91,10 @@ export function ProductCardQuickActions({
       {inCart ? (
         <div
           className={`flex items-center rounded-full border border-[#1F2A33]/20 bg-white shadow-lg overflow-hidden h-9 min-w-[96px] ${
-            isBusy ? "opacity-60 pointer-events-none" : ""
+            isBusy ? "opacity-70 cursor-wait pointer-events-none" : ""
           }`}
           role="group"
+          aria-busy={isBusy || undefined}
           aria-label={`Quantity in cart: ${quantity}`}
         >
           <button
@@ -101,12 +103,18 @@ export function ProductCardQuickActions({
             disabled={isBusy}
             title={quantity <= 1 ? "Remove from cart" : "Decrease quantity"}
             aria-label={quantity <= 1 ? "Remove from cart" : "Decrease quantity"}
-            className="flex h-9 w-9 shrink-0 items-center justify-center hover:bg-[#EAF8E7] transition"
+            className={`flex h-9 w-9 shrink-0 items-center justify-center hover:bg-[#EAF8E7] transition ${
+              isBusy ? "cursor-wait" : ""
+            }`}
           >
             <QtyMinusIcon className="h-6 w-6" />
           </button>
           <span className="min-w-[28px] px-1 text-center text-sm font-bold text-[#1F2A33] tabular-nums">
-            {quantity}
+            {isBusy ? (
+              <Loader2 className="mx-auto h-3.5 w-3.5 animate-spin text-[#1F2A33]" aria-hidden />
+            ) : (
+              quantity
+            )}
           </span>
           <button
             type="button"
@@ -117,7 +125,9 @@ export function ProductCardQuickActions({
             className={`flex h-9 w-9 shrink-0 items-center justify-center transition ${
               atMaxQty
                 ? "opacity-40 cursor-not-allowed"
-                : "hover:bg-[#EAF8E7]"
+                : isBusy
+                  ? "cursor-wait"
+                  : "hover:bg-[#EAF8E7]"
             }`}
           >
             <QtyPlusIcon className="h-6 w-6" />
@@ -134,16 +144,21 @@ export function ProductCardQuickActions({
         <button
           type="button"
           onClick={handleAdd}
-          title={disabled ? "Out of Stock" : "Add to Cart"}
+          title={disabled ? "Out of Stock" : isAdding ? "Adding…" : "Add to Cart"}
           disabled={!canAdd || isBusy}
-          aria-label={disabled ? "Out of Stock" : "Add to Cart"}
+          aria-busy={isAdding || undefined}
+          aria-label={disabled ? "Out of Stock" : isAdding ? "Adding to cart" : "Add to Cart"}
           className={`relative flex h-9 w-9 items-center justify-center border-0 bg-transparent p-0 shadow-none transition before:absolute before:-inset-1 before:content-[''] ${
-            canAdd ? "hover:scale-105" : "cursor-not-allowed"
-          } ${isBusy ? "opacity-60 cursor-not-allowed" : ""}`}
+            canAdd && !isBusy ? "hover:scale-105" : "cursor-not-allowed"
+          } ${isBusy ? "opacity-60 cursor-wait" : ""}`}
         >
-          <AddFabPlusIcon
-            className={`h-9 w-9 drop-shadow-md ${canAdd ? "" : "grayscale opacity-60"}`}
-          />
+          {isAdding ? (
+            <Loader2 className="h-7 w-7 animate-spin text-[#66C940] drop-shadow-md" aria-hidden />
+          ) : (
+            <AddFabPlusIcon
+              className={`h-9 w-9 drop-shadow-md ${canAdd ? "" : "grayscale opacity-60"}`}
+            />
+          )}
         </button>
       )}
 

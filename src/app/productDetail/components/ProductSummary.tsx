@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { GitCompare, Heart, Minus, Plus, Share2, ShoppingCart } from 'lucide-react'
+import { GitCompare, Heart, Loader2, Minus, Plus, Share2, ShoppingCart } from 'lucide-react'
 import type { DetailedProduct as DetailedProductType } from '@/lib/medusa'
 import { isVariantPurchasable, resolveColorImageUrls } from '@/lib/medusa'
 import { FlashSaleBadge } from '@/components/flash-sale/FlashSaleBadge'
@@ -20,6 +20,8 @@ type ProductSummaryProps = {
   onQuantityChange: (delta: number) => void
   onAddToCart: () => void
   onBuyNow: () => void
+  cartBusy?: boolean
+  buyNowBusy?: boolean
   onShare: () => void
   onSaveForLater: () => void
   onOpenCompare: () => void
@@ -88,6 +90,8 @@ const ProductSummary = ({
   onQuantityChange,
   onAddToCart,
   onBuyNow,
+  cartBusy = false,
+  buyNowBusy = false,
   onShare,
   onSaveForLater,
   onOpenCompare,
@@ -386,27 +390,40 @@ const ProductSummary = ({
             <button
               type="button"
               onClick={onAddToCart}
-              disabled={!hasStock}
-              aria-disabled={!hasStock}
-              className={`inline-flex items-center gap-2 rounded-full px-6 py-3 text-white font-semibold shadow transition ${hasStock
+              disabled={!hasStock || cartBusy || buyNowBusy}
+              aria-disabled={!hasStock || cartBusy || buyNowBusy}
+              aria-busy={cartBusy || undefined}
+              className={`inline-flex items-center gap-2 rounded-full px-6 py-3 text-white font-semibold shadow transition ${hasStock && !cartBusy
                 ? 'bg-green-600 hover:bg-green-700'
                 : 'bg-slate-400 cursor-not-allowed opacity-70'
-                }`}
+                } ${cartBusy ? 'cursor-wait' : ''}`}
             >
-              <ShoppingCart className="w-4 h-4" />
-              Add to cart
+              {cartBusy ? (
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+              ) : (
+                <ShoppingCart className="w-4 h-4" />
+              )}
+              {cartBusy ? 'Adding…' : 'Add to cart'}
             </button>
             <button
               type="button"
               onClick={onBuyNow}
-              disabled={!hasStock}
-              aria-disabled={!hasStock}
-              className={`inline-flex items-center gap-2 rounded-full border px-6 py-3 font-semibold transition ${hasStock
+              disabled={!hasStock || cartBusy || buyNowBusy}
+              aria-disabled={!hasStock || cartBusy || buyNowBusy}
+              aria-busy={buyNowBusy || undefined}
+              className={`inline-flex items-center gap-2 rounded-full border px-6 py-3 font-semibold transition ${hasStock && !buyNowBusy
                 ? 'border-green-600 text-green-700 hover:bg-green-50'
                 : 'border-slate-300 text-slate-400 cursor-not-allowed opacity-70'
-                }`}
+                } ${buyNowBusy ? 'cursor-wait' : ''}`}
             >
-              Buy now
+              {buyNowBusy ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                  Redirecting…
+                </>
+              ) : (
+                'Buy now'
+              )}
             </button>
           </div>
         </div>

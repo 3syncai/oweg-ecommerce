@@ -2460,6 +2460,8 @@ function CheckoutPageInner() {
                 className={`hidden md:flex w-full py-3.5 text-base ${checkoutCta}`}
                 onClick={customer ? undefined : openCheckoutLogin}
                 disabled={payDisabled}
+                loading={processing}
+                loadingText={payButtonLabel}
               >
                 {payButtonLabel}
               </Button>
@@ -2482,6 +2484,10 @@ function CheckoutPageInner() {
               className={`shrink-0 min-h-11 px-5 py-3 ${checkoutCta}`}
               onClick={customer ? undefined : openCheckoutLogin}
               disabled={payDisabled}
+              loading={processing}
+              loadingText={
+                paymentMethod === "cod" ? "Placing order…" : "Processing…"
+              }
             >
               {processing
                 ? paymentMethod === "cod"

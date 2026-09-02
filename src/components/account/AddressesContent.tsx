@@ -255,8 +255,10 @@ function AddressModal({
             className="flex-1 bg-[#66C940] text-white hover:bg-[#5ab838]"
             onClick={onSubmit}
             disabled={saving || !form.address_1.trim() || !form.city.trim()}
+            loading={saving}
+            loadingText="Saving…"
           >
-            {saving ? "Saving..." : mode === "add" ? "Add Address" : "Save Changes"}
+            {mode === "add" ? "Add Address" : "Save Changes"}
           </Button>
         </div>
       </div>

@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Minus, Plus, Trash2, ChevronRight, ChevronUp, ChevronDown } from "lucide-react";
+import { Minus, Plus, Trash2, ChevronRight, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
@@ -912,15 +912,20 @@ const Cart: React.FC = () => {
                   <div className="flex items-center gap-3 md:gap-4 w-full md:w-3/5 min-w-0">
                     <button
                       onClick={() => removeItem(item)}
-                      title="Remove item"
+                      title={isRemoving ? "Removing…" : "Remove item"}
                       className={`shrink-0 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl p-2 transition ${
-                        isRemoving ? "opacity-50 cursor-not-allowed" : ""
+                        isRemoving ? "opacity-50 cursor-wait" : ""
                       }`}
                       aria-label={`Remove ${item.name}`}
+                      aria-busy={isRemoving || undefined}
                       type="button"
                       disabled={isRemoving}
                     >
-                      <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
+                      {isRemoving ? (
+                        <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" aria-hidden />
+                      ) : (
+                        <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
+                      )}
                     </button>
 
                     <div className="w-[72px] h-[72px] flex-shrink-0 rounded-xl overflow-hidden bg-[#f0f5ef] flex items-center justify-center">
@@ -957,12 +962,12 @@ const Cart: React.FC = () => {
                   </div>
 
                   <div className="hidden md:flex md:w-1/6 items-center justify-center">
-                    <div className={cartStepper}>
+                    <div className={cartStepper} aria-busy={controlsDisabled || undefined}>
                       <button
                         onClick={() => updateQuantity(item.id, item.quantity - 1, item.name)}
                         aria-label="Decrease"
                         className={`px-3 py-2.5 text-slate-500 transition ${
-                          controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                          controlsDisabled ? "opacity-50 cursor-wait" : ""
                         }`}
                         type="button"
                         disabled={controlsDisabled}
@@ -970,13 +975,17 @@ const Cart: React.FC = () => {
                         <Minus className="w-4 h-4" />
                       </button>
                       <div className="px-3 text-sm font-semibold w-10 text-center text-[#2c342f]">
-                        {item.quantity}
+                        {isUpdating ? (
+                          <Loader2 className="mx-auto h-4 w-4 animate-spin" aria-hidden />
+                        ) : (
+                          item.quantity
+                        )}
                       </div>
                       <button
                         onClick={() => updateQuantity(item.id, item.quantity + 1, item.name)}
                         aria-label="Increase"
                         className={`px-3 py-2.5 text-slate-500 transition ${
-                          controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                          controlsDisabled ? "opacity-50 cursor-wait" : ""
                         }`}
                         type="button"
                         disabled={controlsDisabled}
@@ -995,12 +1004,12 @@ const Cart: React.FC = () => {
                   <div className="w-full md:hidden border-t border-slate-100 pt-3 space-y-3 text-sm text-slate-600">
                     <div className="flex items-center justify-between">
                       <span>Quantity</span>
-                      <div className={cartStepper}>
+                      <div className={cartStepper} aria-busy={controlsDisabled || undefined}>
                         <button
                           onClick={() => updateQuantity(item.id, item.quantity - 1, item.name)}
                           aria-label="Decrease"
                           className={`px-3 py-2 text-slate-500 transition ${
-                            controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                            controlsDisabled ? "opacity-50 cursor-wait" : ""
                           }`}
                           type="button"
                           disabled={controlsDisabled}
@@ -1008,13 +1017,17 @@ const Cart: React.FC = () => {
                           <Minus className="w-4 h-4" />
                         </button>
                         <div className="px-3 text-sm font-semibold w-10 text-center text-[#2c342f]">
-                          {item.quantity}
+                          {isUpdating ? (
+                            <Loader2 className="mx-auto h-4 w-4 animate-spin" aria-hidden />
+                          ) : (
+                            item.quantity
+                          )}
                         </div>
                         <button
                           onClick={() => updateQuantity(item.id, item.quantity + 1, item.name)}
                           aria-label="Increase"
                           className={`px-3 py-2 text-slate-500 transition ${
-                            controlsDisabled ? "opacity-50 cursor-not-allowed" : ""
+                            controlsDisabled ? "opacity-50 cursor-wait" : ""
                           }`}
                           type="button"
                           disabled={controlsDisabled}

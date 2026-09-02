@@ -218,15 +218,16 @@ function OrderCard({
           <button
             type="button"
             disabled={addToCart.isPending}
+            aria-busy={addToCart.isPending || undefined}
             onClick={() => void handleBuyAgain()}
-            className="inline-flex items-center gap-2 rounded-full bg-[#66C940] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5ab838] disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-full bg-[#66C940] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5ab838] disabled:cursor-wait disabled:opacity-60"
           >
             {addToCart.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <AccountHubIcon name="buy-again" size={16} className="h-4 w-4 brightness-0 invert" />
             )}
-            Buy Again
+            {addToCart.isPending ? "Adding…" : "Buy Again"}
           </button>
         ) : null}
       </div>
