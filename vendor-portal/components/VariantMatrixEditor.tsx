@@ -3,6 +3,7 @@
 import React, { useMemo, useRef, useState } from "react"
 import { Button, Heading, Input, Label, Switch, Text, toast } from "@medusajs/ui"
 import axios from "axios"
+import ProductPriceCalculator from "@/components/ProductPriceCalculator"
 import {
   MAX_AUTO_VARIANTS,
   buildVariantRows,
@@ -607,6 +608,8 @@ export default function VariantMatrixEditor({
             </SectionCard>
           )}
 
+          {colorValues.length > 0 ? <ProductPriceCalculator /> : null}
+
           {colorValues.length > 0 && (
             <SectionCard
               title="Step 3 — Sizes, price & stock"
@@ -944,6 +947,11 @@ export default function VariantMatrixEditor({
         >
           {simpleProductExtras}
         </SectionCard>
+      ) : null}
+
+      {/* Vendor estimate — between photos and pricing / stock */}
+      {(!hasVariants || (hasVariants && !useColorFirstFlow)) ? (
+        <ProductPriceCalculator />
       ) : null}
 
       {hasVariants && !useColorFirstFlow && (
