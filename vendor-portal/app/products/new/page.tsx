@@ -1070,7 +1070,11 @@ const VendorProductNewPage = () => {
           onFileSelect={(file) => setBrandAuthorizationFile(file)}
         />
       </div>
+    </section>
+  )
 
+  const renderTaxAttributesSection = () => (
+    <section className="bg-ui-bg-base border border-ui-border-base rounded-xl p-6 mb-6">
       <div className="mb-6">
         <GstTaxCodeField
           value={formData.taxCode}
@@ -1146,20 +1150,9 @@ const VendorProductNewPage = () => {
               />
             </div>
 
-            {/* MID code */}
+            {/* HSN code */}
             <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3">
-              <Text size="small" className="min-w-[120px] text-ui-fg-muted">MID code</Text>
-              <Input
-                value={formData.midCode}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, midCode: e.target.value })}
-                placeholder="-"
-                className="flex-1"
-              />
-            </div>
-
-            {/* HS code */}
-            <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3">
-              <Text size="small" className="min-w-[120px] text-ui-fg-muted">HS code</Text>
+              <Text size="small" className="min-w-[120px] text-ui-fg-muted">HSN code</Text>
               <Input
                 value={formData.hsCode}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, hsCode: e.target.value })}
@@ -1169,7 +1162,7 @@ const VendorProductNewPage = () => {
             </div>
 
             {/* Country of origin */}
-            <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3 col-span-1 md:col-span-2">
+            <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3">
               <Text size="small" className="min-w-[120px] text-ui-fg-muted">Country of origin</Text>
               <Input
                 value={formData.countryOfOrigin}
@@ -1827,8 +1820,9 @@ const VendorProductNewPage = () => {
         </div>
 
         {renderBasicsSection()}
-        {renderOrganizeSection()}
         {renderVariantsSection()}
+        {renderTaxAttributesSection()}
+        {renderOrganizeSection()}
 
         <div className="flex justify-end gap-3 mt-4 pb-8">
           <Button variant="secondary" onClick={() => router.push("/products")} disabled={loading}>
