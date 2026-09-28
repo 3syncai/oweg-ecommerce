@@ -3,12 +3,6 @@ import type { VendorPaymentsView } from "@/lib/api/client"
 
 type SettlementRow = VendorPaymentsView["settlements"][number]
 
-const SERVICE_GST_RATE = 0.18
-
-const round2 = (n: number) => Math.round(n * 100) / 100
-
-const neg = (n: number) => (n === 0 ? 0 : -Math.abs(n))
-
 const formatIsoDate = (iso: string | null | undefined) => {
   if (!iso) return ""
   try {
@@ -23,251 +17,143 @@ const formatIsoDate = (iso: string | null | undefined) => {
   }
 }
 
-const gstRateDecimal = (rate: number | undefined) => {
-  const r = Number(rate) || 0
-  if (r > 1) return r / 100
-  return r
-}
-
-const itemStatusLabel = (row: SettlementRow) => {
-  if (row.type === "return") return "Returned"
-  if (row.type === "claim") return "Claim credited"
-  if (row.status === "REVERSED") return "Returned"
-  if (row.status === "PAID") return "Delivered · Paid"
-  return "Delivered"
-}
-
-/** Commission is shown on sale amount (inclusive), matching finance ledger template. */
-function commissionBlock(saleAmount: number, commissionRate: number) {
-  const base = round2((Math.abs(saleAmount) * commissionRate) / 100)
-  const commissionRs = neg(base)
-  const taxAmount = neg(round2(base * SERVICE_GST_RATE))
-  const total = round2(commissionRs + taxAmount)
-  return {
-    rate: commissionRate,
-    commissionRs,
-    taxRate: SERVICE_GST_RATE,
-    taxAmount,
-    total,
-  }
-}
-
-function feeBlock(fee: number) {
-  const base = Math.abs(fee)
-  if (base <= 0) {
-    return { feeRs: 0, taxRate: 0, taxAmount: 0, total: 0 }
-  }
-  const feeRs = neg(base)
-  const taxAmount = neg(round2(base * SERVICE_GST_RATE))
-  return {
-    feeRs,
-    taxRate: SERVICE_GST_RATE,
-    taxAmount,
-    total: round2(feeRs + taxAmount),
-  }
-}
-
-function buildItemCostRow(row: SettlementRow, opts: { includePaymentMeta: boolean }) {
-  const saleAmount = Math.abs(Number(row.order_amount) || 0)
-  const taxable = Math.abs(Number(row.taxable_amount) || 0)
-  const gstRate = gstRateDecimal(row.gst_rate)
-  const taxAmount = Math.abs(Number(row.gst_amount) || 0)
-  const delivered = formatIsoDate(row.delivered_at)
-  const orderLabel = row.order_display_id ? `#${row.order_display_id}` : row.order_id
-  const invoiceNo = row.order_display_id ? `INV-${row.order_display_id}` : ""
-
-  if (row.type === "return") {
-    const reverse = feeBlock(Number(row.return_fee) || 0)
-    return [
-      "",
-      opts.includePaymentMeta ? delivered : "",
-      opts.includePaymentMeta ? Number(row.settlement_amount) || 0 : "",
-      "Item Cost",
-      delivered,
-      orderLabel,
-      invoiceNo,
-      0,
-      0,
-      0,
-      0,
-      saleAmount,
-      itemStatusLabel(row),
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      reverse.feeRs,
-      reverse.taxRate,
-      reverse.taxAmount,
-      reverse.total,
-      0,
-      0,
-      0,
-      0,
-      "",
-    ]
-  }
-
-  if (row.type === "claim") {
-    const claimAmount = round2(Number(row.settlement_amount) || 0)
-    return [
-      "",
-      opts.includePaymentMeta ? delivered : "",
-      opts.includePaymentMeta ? claimAmount : "",
-      "Claim credit",
-      delivered,
-      orderLabel,
-      invoiceNo,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      itemStatusLabel(row),
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      claimAmount,
-      0,
-      0,
-      "",
-    ]
-  }
-
-  const commission = commissionBlock(saleAmount, Number(row.commission_rate) || 0)
-  const logistic = feeBlock(Number(row.logistic_fee) || 0)
-  const reverse = feeBlock(Number(row.return_fee) || 0)
-
-  return [
-    "",
-    opts.includePaymentMeta ? delivered : "",
-    opts.includePaymentMeta ? Number(row.settlement_amount) || 0 : "",
-    "Item Cost",
-    delivered,
-    orderLabel,
-    invoiceNo,
-    taxable,
-    gstRate,
-    taxAmount,
-    saleAmount,
-    0,
-    itemStatusLabel(row),
-    commission.rate,
-    commission.commissionRs,
-    commission.taxRate,
-    commission.taxAmount,
-    commission.total,
-    logistic.feeRs,
-    logistic.taxRate,
-    logistic.taxAmount,
-    logistic.total,
-    reverse.feeRs,
-    reverse.taxRate,
-    reverse.taxAmount,
-    reverse.total,
-    0,
-    0,
-    neg(Number(row.tcs) || 0),
-    neg(Number(row.tds) || 0),
-    "",
-  ]
-}
+const n = (value: number | undefined) => Number(value) || 0
 
 const HEADER_ROW_1 = [
-  "Payment Details",
-  "",
-  "",
-  "",
-  "Transaction Summary",
   "",
   "",
   "",
   "",
   "",
+  "A",
+  "B",
+  "A+B",
+  "C",
+  "",
+  "D",
   "",
   "",
-  "",
-  "Deduction",
-  "",
+  "E",
   "",
   "",
+  "F",
   "",
   "",
+  "B",
   "",
   "",
+  "G",
+  "H",
+  "I",
+  "J",
   "",
   "",
+  "K",
   "",
   "",
+  "L",
+  "Bank Settlements",
   "",
-  "",
-  "",
-  "",
-  "Taxes",
   "",
   "",
 ]
 
 const HEADER_ROW_2 = [
-  "NEFT ID",
-  "Payment Date",
-  "Bank Settlement Value (Rs.)\n= SUM(J:R)",
-  "Description",
-  "Invoice Date",
   "Order ID",
+  "Order Date",
+  "Category",
+  "Invoice Date",
   "Invoice No",
-  "Sale Taxable Value",
-  "Tax Rate",
-  "Tax Amount",
-  "Sale Amount (Rs.)",
-  "Refund (Rs.)",
+  "Item Price (A)",
+  "Logistics Fee (B)",
+  "GST Amount (A+B)",
+  "Total Listing Price (C)",
   "Item Status",
-  "Commission Rate (%)",
-  "Commission (Rs.)",
-  "Tax Rate",
+  "Platform Fee (D)",
   "Tax Amount",
   "Total",
-  "Loigistic Fee (Rs.)",
-  "Tax Rate",
+  "Commission Fee (E)",
   "Tax Amount",
   "Total",
-  "Reverse Logistic Fee (Rs.)",
-  "Tax Rate",
+  "Partner Commission (F)",
   "Tax Amount",
   "Total",
-  "Product Cancellation Fee (Rs.)",
-  "Claim Amount (Rs.)",
-  "TCS (Rs.) 0.5%",
-  "TDS (Rs.) 0.1%",
-  "",
+  "Logistics Fee (B)",
+  "Tax Amount",
+  "Total",
+  "TCS @0.5% (G)",
+  "TDS @0.1% (H)",
+  "Bank Settlement",
+  "Reverse Logistic Fee",
+  "Tax Amount",
+  "Total",
+  "Cancellation Fee",
+  "Tax Amount",
+  "Total",
+  "Claim Amount",
+  "Transaction ID",
+  "Payment Date",
+  "Payment",
+  "Balance Amount",
 ]
 
-export function downloadPaymentLedgerExcel(
-  rows: SettlementRow[],
-  rangeLabel: string
-) {
-  const body: (string | number)[][] = [HEADER_ROW_1, HEADER_ROW_2, []]
+function categoryLabel(row: SettlementRow) {
+  const key = row.category || (row.type === "sales" ? "sale" : row.type)
+  if (key === "return") return "Return"
+  if (key === "claim") return "Claim"
+  if (key === "payment") return "Payment"
+  if (key === "cancellation") return "Cancellation"
+  return "Sale"
+}
+
+function toSheetRow(row: SettlementRow) {
+  const date = formatIsoDate(row.delivered_at)
+  const orderLabel = row.order_display_id ? `#${row.order_display_id}` : row.order_id
+  return [
+    orderLabel,
+    date,
+    categoryLabel(row),
+    date,
+    row.invoice_no || "",
+    n(row.taxable_amount),
+    n(row.logistic_fee),
+    n(row.listing_gst ?? row.gst_amount),
+    n(row.listing_total),
+    row.item_status || "",
+    n(row.platform_fee),
+    n(row.platform_gst),
+    n(row.platform_total),
+    n(row.commission),
+    n(row.commission_gst),
+    n(row.commission_total),
+    n(row.partner_commission),
+    n(row.partner_gst),
+    n(row.partner_total),
+    n(row.logistic_fee),
+    n(row.logistic_gst),
+    n(row.logistic_total),
+    n(row.tcs),
+    n(row.tds),
+    n(row.bank_settlement ?? row.settlement_amount),
+    n(row.return_fee),
+    n(row.reverse_logistic_gst),
+    n(row.reverse_logistic_total),
+    n(row.cancellation_fee),
+    n(row.cancellation_gst),
+    n(row.cancellation_total),
+    n(row.claim_amount),
+    row.transaction_id || "",
+    formatIsoDate(row.payment_date),
+    n(row.payment),
+    n(row.balance_amount),
+  ]
+}
+
+export function downloadPaymentLedgerExcel(rows: SettlementRow[], rangeLabel: string) {
+  const body: (string | number)[][] = [HEADER_ROW_1, HEADER_ROW_2]
 
   for (const row of rows) {
-    body.push(buildItemCostRow(row, { includePaymentMeta: true }))
+    body.push(toSheetRow(row))
   }
 
   if (rows.length === 0) {
@@ -275,47 +161,18 @@ export function downloadPaymentLedgerExcel(
   }
 
   const sheet = XLSX.utils.aoa_to_sheet(body)
-
   sheet["!merges"] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
-    { s: { r: 0, c: 4 }, e: { r: 0, c: 12 } },
-    { s: { r: 0, c: 13 }, e: { r: 0, c: 27 } },
+    { s: { r: 0, c: 10 }, e: { r: 0, c: 12 } },
+    { s: { r: 0, c: 13 }, e: { r: 0, c: 15 } },
+    { s: { r: 0, c: 16 }, e: { r: 0, c: 18 } },
+    { s: { r: 0, c: 19 }, e: { r: 0, c: 21 } },
+    { s: { r: 0, c: 25 }, e: { r: 0, c: 27 } },
     { s: { r: 0, c: 28 }, e: { r: 0, c: 30 } },
+    { s: { r: 0, c: 32 }, e: { r: 0, c: 35 } },
   ]
-
-  sheet["!cols"] = [
-    { wch: 28 },
-    { wch: 14 },
-    { wch: 22 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 16 },
-    { wch: 10 },
-    { wch: 12 },
-    { wch: 16 },
-    { wch: 12 },
-    { wch: 14 },
-    { wch: 16 },
-    { wch: 14 },
-    { wch: 10 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 16 },
-    { wch: 10 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 20 },
-    { wch: 10 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 22 },
-    { wch: 16 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 4 },
-  ]
+  sheet["!cols"] = HEADER_ROW_2.map((title) => ({
+    wch: Math.max(12, Math.min(22, title.length + 2)),
+  }))
 
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, sheet, "Payment Ledger")

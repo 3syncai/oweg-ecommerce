@@ -17,6 +17,7 @@ type VendorNotification = {
 }
 
 const SEEN_KEY = "oweg_vendor_notif_seen_v2"
+const TOASTED_KEY = "oweg_vendor_notif_toasted_v2"
 const PRIMED_KEY = "oweg_vendor_notif_primed_v2"
 
 const formatCurrency = (amount: number) =>
@@ -25,9 +26,9 @@ const formatCurrency = (amount: number) =>
     currency: "INR",
   }).format(amount)
 
-function readSeenIds(): Set<string> {
+function readIdSet(key: string): Set<string> {
   try {
-    const raw = localStorage.getItem(SEEN_KEY)
+    const raw = localStorage.getItem(key)
     if (!raw) return new Set()
     const parsed = JSON.parse(raw)
     return new Set(Array.isArray(parsed) ? parsed.map(String) : [])
@@ -36,12 +37,28 @@ function readSeenIds(): Set<string> {
   }
 }
 
-function writeSeenIds(ids: Set<string>) {
+function writeIdSet(key: string, ids: Set<string>) {
   try {
-    localStorage.setItem(SEEN_KEY, JSON.stringify(Array.from(ids).slice(-200)))
+    localStorage.setItem(key, JSON.stringify(Array.from(ids).slice(-200)))
   } catch {
     // ignore quota errors
   }
+}
+
+function readSeenIds(): Set<string> {
+  return readIdSet(SEEN_KEY)
+}
+
+function writeSeenIds(ids: Set<string>) {
+  writeIdSet(SEEN_KEY, ids)
+}
+
+function readToastedIds(): Set<string> {
+  return readIdSet(TOASTED_KEY)
+}
+
+function writeToastedIds(ids: Set<string>) {
+  writeIdSet(TOASTED_KEY, ids)
 }
 
 function isPrimed(): boolean {
@@ -86,6 +103,7 @@ export default function VendorNotifications() {
   const [items, setItems] = useState<VendorNotification[]>([])
   const [toast, setToast] = useState<VendorNotification | null>(null)
   const seenRef = useRef<Set<string>>(new Set())
+  const toastedRef = useRef<Set<string>>(new Set())
   const knownUnseenRef = useRef<Set<string>>(new Set())
   const bootstrappedRef = useRef(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -97,10 +115,13 @@ export default function VendorNotifications() {
     if (ids.length === 0) return
     for (const id of ids) {
       seenRef.current.add(id)
+      toastedRef.current.add(id)
       knownUnseenRef.current.delete(id)
     }
     writeSeenIds(seenRef.current)
+    writeToastedIds(toastedRef.current)
     setItems((prev) => prev.filter((item) => !ids.includes(item.id)))
+    setToast((current) => (current && ids.includes(current.id) ? null : current))
   }, [])
 
   const dismissAllVisible = useCallback(() => {
@@ -108,11 +129,27 @@ export default function VendorNotifications() {
       if (prev.length === 0) return prev
       for (const item of prev) {
         seenRef.current.add(item.id)
+        toastedRef.current.add(item.id)
         knownUnseenRef.current.delete(item.id)
       }
       writeSeenIds(seenRef.current)
+      writeToastedIds(toastedRef.current)
       return []
     })
+    setToast(null)
+  }, [])
+
+  const dismissToast = useCallback(() => {
+    if (!toast) {
+      setToast(null)
+      return
+    }
+    dismissIds([toast.id])
+  }, [dismissIds, toast])
+
+  const hideToast = useCallback(() => {
+    // Auto-hide only — already recorded in toastedRef when shown.
+    setToast(null)
   }, [])
 
   const loadNotifications = useCallback(async (pulseOverride?: VendorPulseSnapshot | null) => {
@@ -188,9 +225,11 @@ export default function VendorNotifications() {
       )
 
       const top = next.slice(0, 20)
+      const isFirstLoad = !bootstrappedRef.current
 
-      if (!bootstrappedRef.current) {
+      if (isFirstLoad) {
         seenRef.current = readSeenIds()
+        toastedRef.current = readToastedIds()
         // One-time only: hide old history so the first visit isn't flooded.
         // Never re-run this on refresh — that was swallowing admin payouts.
         if (!isPrimed()) {
@@ -198,10 +237,21 @@ export default function VendorNotifications() {
           for (const item of top) {
             if (new Date(item.createdAt).getTime() < cutoff) {
               seenRef.current.add(item.id)
+              toastedRef.current.add(item.id)
             }
           }
           writeSeenIds(seenRef.current)
+          writeToastedIds(toastedRef.current)
           markPrimed()
+        } else {
+          // Existing session: remember current alerts so a refresh never
+          // re-pops the same "Payment credited" toast.
+          for (const item of top) {
+            if (!seenRef.current.has(item.id)) {
+              toastedRef.current.add(item.id)
+            }
+          }
+          writeToastedIds(toastedRef.current)
         }
         bootstrappedRef.current = true
       }
@@ -211,15 +261,23 @@ export default function VendorNotifications() {
       const unseen = top.filter((item) => !seenRef.current.has(item.id))
       setItems(unseen)
 
-      const brandNew = unseen.filter((item) => !knownUnseenRef.current.has(item.id))
+      // Skip ids already toasted (incl. prior refreshes) so the popup is one-shot.
+      const brandNew = unseen.filter(
+        (item) =>
+          !knownUnseenRef.current.has(item.id) && !toastedRef.current.has(item.id)
+      )
       knownUnseenRef.current = new Set(unseen.map((item) => item.id))
 
-      if (brandNew.length > 0) {
+      // Never toast on the initial page load/refresh — only on live updates
+      // after bootstrap (new credits/payouts that appear while the portal is open).
+      if (!isFirstLoad && brandNew.length > 0) {
         // Prefer payout / return alerts over older credit noise
         const preferred =
           brandNew.find((item) => item.kind === "payout") ||
           brandNew.find((item) => item.kind === "return") ||
           brandNew[0]
+        toastedRef.current.add(preferred.id)
+        writeToastedIds(toastedRef.current)
         setToast(preferred)
       }
     } catch (error) {
@@ -239,9 +297,9 @@ export default function VendorNotifications() {
 
   useEffect(() => {
     if (!toast) return
-    const id = window.setTimeout(() => setToast(null), 8000)
+    const id = window.setTimeout(() => hideToast(), 8000)
     return () => window.clearTimeout(id)
-  }, [toast])
+  }, [toast, hideToast])
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
@@ -388,7 +446,7 @@ export default function VendorNotifications() {
             <button
               type="button"
               className="text-xs text-ui-fg-muted hover:text-ui-fg-base"
-              onClick={() => setToast(null)}
+              onClick={dismissToast}
             >
               Dismiss
             </button>

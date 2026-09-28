@@ -1,14 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Container, Heading, Text, Button, clx } from "@medusajs/ui"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { downloadPaymentLedgerExcel } from "@/lib/payment-ledger-export"
 import VendorShell from "@/components/VendorShell"
 import PageSkeleton from "@/components/PageSkeleton"
 import EmptyState from "@/components/EmptyState"
-import PayoutUnlockTimer from "@/components/PayoutUnlockTimer"
+import PaymentLedgerTable from "@/components/PaymentLedgerTable"
 import StatCard from "@/components/dashboard/StatCard"
 import { vendorPayoutsApi, type VendorPaymentsView } from "@/lib/api/client"
 import { useVendorLive } from "@/lib/useVendorLive"
@@ -17,9 +16,6 @@ import { ArrowPath, CurrencyDollar, Clock, ArchiveBox, ShoppingCart, Tag } from 
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(amount)
-
-const formatDeduction = (amount: number) =>
-  amount === 0 ? formatCurrency(0) : `-${formatCurrency(Math.abs(amount))}`
 
 type ReportRange = "1d" | "1m" | "6m" | "1y" | "custom"
 
@@ -127,33 +123,6 @@ const MetricChip = ({
       {value}
     </Text>
   </div>
-)
-
-const TypeBadge = ({ type }: { type: "sales" | "return" | "claim" }) => {
-  const label = type === "return" ? "Return" : type === "claim" ? "Claim" : "Sales"
-  return (
-    <span
-      className={clx(
-        "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
-        type === "return" && "bg-red-500/10 text-red-700 dark:text-red-300",
-        type === "claim" && "bg-amber-500/10 text-amber-800 dark:text-amber-300",
-        type === "sales" && "bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
-      )}
-    >
-      {label}
-    </span>
-  )
-}
-
-const StatusPill = ({ children, tone }: { children: ReactNode; tone: string }) => (
-  <span
-    className={clx(
-      "inline-flex max-w-[11rem] items-center rounded-full px-2.5 py-1 text-xs font-medium",
-      tone
-    )}
-  >
-    {children}
-  </span>
 )
 
 const PAYMENTS_CACHE_KEY = "payments"
@@ -344,8 +313,8 @@ const VendorPayoutPage = () => {
               Payments
             </Heading>
             <Text size="small" className="mt-1.5 text-ui-fg-subtle">
-              Earnings unlock {unlockMinutes} minutes after delivery. Courier fees are deducted from
-              settlement.
+              Sheet4 settlement: listing C minus platform, commission, partner, logistics, TCS and TDS.
+              Earnings unlock {unlockMinutes} minutes after delivery.
             </Text>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -522,8 +491,7 @@ const VendorPayoutPage = () => {
 
           <Text size="xsmall" className="text-ui-fg-muted">
             Pending unlocks into Settlement after {unlockMinutes} min. Balance = Settlement −
-            Withdrawn (available to pay out). Net = Taxable − commission − TCS − TDS − logistic −
-            return fee.
+            Withdrawn. Bank settlement = C − (D + E + F + B + TCS + TDS).
           </Text>
         </section>
 
@@ -566,6 +534,11 @@ const VendorPayoutPage = () => {
               tone={moneyTone(payments.cards.tds ?? 0, "negative")}
             />
             <MetricChip
+              label="Platform fee"
+              value={formatCurrency(payments.cards.platform_fee || 0)}
+              tone={moneyTone(payments.cards.platform_fee || 0, "negative")}
+            />
+            <MetricChip
               label="Logistic fee"
               value={formatCurrency(shippingFees)}
               tone={moneyTone(shippingFees, "negative")}
@@ -589,7 +562,7 @@ const VendorPayoutPage = () => {
                 Settlement ledger
               </Text>
               <Text size="xsmall" className="mt-0.5 text-ui-fg-muted">
-                Full history of sales, returns, and claim credits
+                Sale, return, claim, and payout rows with Sheet4 fee columns and running balance
               </Text>
             </div>
             {payments.settlements.length > 0 ? (
@@ -606,171 +579,17 @@ const VendorPayoutPage = () => {
               description="Delivered orders will appear here with a full settlement breakdown."
             />
           ) : (
-            <div className="overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-ui-border-base bg-ui-bg-subtle/80">
-                      {[
-                        "Date",
-                        "Product",
-                        "Order",
-                        "Type",
-                        "Amount",
-                        "Taxable",
-                        "GST",
-                        "Commission",
-                        "TCS",
-                        "TDS",
-                        "Logistic",
-                        "Return fee",
-                        "Settlement",
-                        "Status",
-                      ].map((column) => (
-                        <th
-                          key={column}
-                          scope="col"
-                          className="whitespace-nowrap px-3 py-3 text-xs font-medium uppercase tracking-wide text-ui-fg-muted first:pl-4 last:pr-4"
-                        >
-                          {column}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-ui-border-base/60">
-                    {payments.settlements.map((row) => {
-                      const isReturn = row.type === "return"
-                      const isClaim = row.type === "claim"
-                      const displayOrderId = row.order_display_id || row.order_id.slice(0, 8)
-                      const isUnlocking = row.status === "UNLOCKING"
-                      const isOnHold = row.status === "ON_HOLD"
-                      const deliveredLabel = row.delivered_at
-                        ? new Date(row.delivered_at).toLocaleDateString("en-IN", {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                          })
-                        : "—"
-
-                      const amountClass = clx(
-                        "whitespace-nowrap px-3 py-3 tabular-nums font-medium",
-                        isReturn && "text-red-600 dark:text-red-400",
-                        isClaim && "text-amber-700 dark:text-amber-400",
-                        !isReturn && !isClaim && "text-emerald-700 dark:text-emerald-400"
-                      )
-
-                      const deductionClass = (n: number) =>
-                        clx(
-                          "whitespace-nowrap px-3 py-3 tabular-nums",
-                          n === 0 ? "text-ui-fg-muted" : "font-medium text-red-600 dark:text-red-400"
-                        )
-
-                      let statusNode: ReactNode
-                      if (isReturn) {
-                        statusNode = (
-                          <StatusPill tone="bg-ui-bg-subtle text-ui-fg-muted">Reversed</StatusPill>
-                        )
-                      } else if (isClaim) {
-                        statusNode = (
-                          <StatusPill tone="bg-amber-500/10 text-amber-800 dark:text-amber-300">
-                            Claim · pending
-                          </StatusPill>
-                        )
-                      } else if (isOnHold) {
-                        statusNode = (
-                          <StatusPill tone="bg-amber-500/10 text-amber-800 dark:text-amber-300">
-                            Return hold
-                          </StatusPill>
-                        )
-                      } else if (isUnlocking && row.unlock_at) {
-                        statusNode = (
-                          <PayoutUnlockTimer
-                            unlockAt={row.unlock_at}
-                            onComplete={() => void loadPayments()}
-                          />
-                        )
-                      } else if (row.status === "PAID") {
-                        statusNode = (
-                          <StatusPill tone="bg-ui-bg-subtle text-ui-fg-subtle">Paid</StatusPill>
-                        )
-                      } else {
-                        statusNode = (
-                          <StatusPill tone="bg-emerald-500/10 text-emerald-800 dark:text-emerald-300">
-                            Settlement amount
-                          </StatusPill>
-                        )
-                      }
-
-                      return (
-                        <tr
-                          key={row.id}
-                          className="transition-colors hover:bg-ui-bg-subtle/50"
-                        >
-                          <td className="whitespace-nowrap px-3 py-3 first:pl-4 text-ui-fg-subtle">
-                            {deliveredLabel}
-                          </td>
-                          <td className="max-w-[12rem] truncate px-3 py-3 font-medium text-ui-fg-base">
-                            {row.product_name}
-                          </td>
-                          <td className="px-3 py-3">
-                            {isClaim ? (
-                              <span className="font-medium text-oweg-700 dark:text-oweg-300">
-                                {displayOrderId}
-                              </span>
-                            ) : (
-                              <Link
-                                href={`/orders?order=${encodeURIComponent(row.order_id)}`}
-                                className="font-medium text-oweg-700 underline-offset-2 hover:underline dark:text-oweg-300"
-                              >
-                                #{displayOrderId}
-                              </Link>
-                            )}
-                          </td>
-                          <td className="px-3 py-3">
-                            <TypeBadge
-                              type={isReturn ? "return" : isClaim ? "claim" : "sales"}
-                            />
-                          </td>
-                          <td className={amountClass}>{formatCurrency(row.order_amount)}</td>
-                          <td className="whitespace-nowrap px-3 py-3 tabular-nums text-ui-fg-base">
-                            {formatCurrency(row.taxable_amount ?? 0)}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-3 tabular-nums text-ui-fg-subtle">
-                            {formatCurrency(row.gst_amount ?? row.taxes ?? 0)}
-                          </td>
-                          <td className={deductionClass(row.commission)}>
-                            {formatDeduction(row.commission)}
-                          </td>
-                          <td className={deductionClass(row.tcs ?? 0)}>
-                            {formatDeduction(row.tcs ?? 0)}
-                          </td>
-                          <td className={deductionClass(row.tds ?? 0)}>
-                            {formatDeduction(row.tds ?? 0)}
-                          </td>
-                          <td className={deductionClass(row.logistic_fee ?? 0)}>
-                            {formatDeduction(row.logistic_fee ?? 0)}
-                          </td>
-                          <td className={deductionClass(row.return_fee ?? 0)}>
-                            {formatDeduction(row.return_fee ?? 0)}
-                          </td>
-                          <td className={clx(amountClass, "last:pr-4")}>
-                            {formatCurrency(row.settlement_amount)}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-3 last:pr-4">{statusNode}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <PaymentLedgerTable
+              rows={payments.settlements}
+              onUnlock={() => void loadPayments()}
+            />
           )}
         </section>
 
         <div className="rounded-xl border border-ui-border-base/50 bg-ui-bg-subtle/40 px-4 py-3">
           <Text size="small" className="leading-relaxed text-ui-fg-muted">
-            Logistic fee is the courier rate at dispatch. Return fee is the reverse courier rate.
-            Both reduce settlement.
+            Platform, commission, and partner fees include 18% GST. Reverse logistic and
+            cancellation reduce the running balance after bank settlement.
           </Text>
         </div>
 
