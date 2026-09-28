@@ -2,7 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Pool } from "pg"
 import { VENDOR_MODULE } from "../../../../modules/vendor"
 import VendorModuleService from "../../../../modules/vendor/service"
-import { getVendorPayableSnapshot, repairClaimCreditsWithoutCommission } from "../../../../lib/vendor-earnings"
+import { getVendorPayableSnapshot, repairClaimCreditsWithoutCommission, recomputeUnpaidVendorLedger } from "../../../../lib/vendor-earnings"
 import {
   getVendorCommissionDefaultRate,
   resolveVendorCommissionRate,
@@ -46,50 +46,9 @@ export async function POST(
         },
         globalDefault
       )
-      // Apply current policy on unpaid gross — earnings rows may still have an older rate (e.g. 0%).
-      const snapshot = await getVendorPayableSnapshot(vendor_id, pool, {
-        effectiveRate: resolved.rate,
+      await recomputeUnpaidVendorLedger(vendor_id, pool, {
+        commissionRate: resolved.rate,
       })
-
-      // Keep unpaid CREDITED *order* rows in sync with the commission rate we will deduct on pay.
-      // Claim credits (order_id claim:*) are full admin-approved amounts — never take commission.
-      const payableOrderIds = snapshot.order_ids.filter(
-        (id) => !String(id).startsWith("claim:")
-      )
-      if (payableOrderIds.length > 0) {
-        await pool.query(
-          `
-            UPDATE vendor_earnings_log
-            SET
-              commission_rate = $2,
-              commission_amount = ROUND(
-                (COALESCE(NULLIF(taxable_amount, 0), gross_amount)::numeric * $2::numeric) / 100,
-                2
-              ),
-              net_amount = ROUND(
-                GREATEST(
-                  0,
-                  COALESCE(NULLIF(taxable_amount, 0), gross_amount)::numeric
-                    - ROUND(
-                      (COALESCE(NULLIF(taxable_amount, 0), gross_amount)::numeric * $2::numeric) / 100,
-                      2
-                    )
-                    - COALESCE(tcs_amount, 0)
-                    - COALESCE(tds_amount, 0)
-                    - COALESCE(logistic_fee, 0)
-                    - COALESCE(return_fee, 0)
-                ),
-                2
-              ),
-              updated_at = NOW()
-            WHERE vendor_id = $1
-              AND status = 'CREDITED'
-              AND order_id = ANY($3::text[])
-              AND order_id NOT LIKE 'claim:%'
-          `,
-          [vendor_id, resolved.rate, payableOrderIds]
-        )
-      }
 
       // Repair any claim rows that previously had commission wrongly applied
       await repairClaimCreditsWithoutCommission(vendor_id, pool)

@@ -1,7 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Pool } from "pg"
 import { requireApprovedVendor } from "../../_lib/guards"
-import { getVendorPaymentsView } from "../../../../lib/vendor-earnings"
+import { buildVendorPaymentsView } from "../../../../lib/vendor-payments-ledger"
 
 function setCorsHeaders(res: MedusaResponse) {
   res.setHeader(
@@ -28,7 +28,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL })
   try {
-    const data = await getVendorPaymentsView(auth.vendor_id, pool)
+    const data = await buildVendorPaymentsView(auth.vendor_id, pool)
     res.json(data)
   } catch (error: any) {
     console.error("[Vendor Payments] error:", error)

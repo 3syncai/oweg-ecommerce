@@ -8,6 +8,12 @@ import {
   getMarketplaceTaxRates,
   parseLineGstRate,
 } from "./vendor-marketplace-tax";
+import {
+  buildLedgerRatesForVendor,
+  calculateVendorLedgerSettlement,
+  type LedgerCategory,
+  type LedgerSettlementBreakdown,
+} from "./vendor-ledger-settlement";
 
 export const VENDOR_EARNINGS_UNLOCK_MINUTES = 5;
 
@@ -85,25 +91,51 @@ export type VendorPaymentSettlement = {
   order_id: string;
   order_display_id: string | null;
   product_name: string;
-  type: "sales" | "return" | "claim";
+  type: "sales" | "return" | "claim" | "payment" | "cancellation";
+  category: LedgerCategory;
+  order_date?: string | null;
+  invoice_no?: string;
+  item_status?: string;
   order_amount: number;
   taxable_amount: number;
   gst_amount: number;
   gst_rate: number;
+  listing_gst: number;
+  listing_total: number;
+  platform_rate: number;
+  platform_fee: number;
+  platform_gst: number;
+  platform_total: number;
   commission_rate: number;
   commission: number;
+  commission_gst: number;
+  commission_total: number;
+  partner_rate: number;
+  partner_commission: number;
+  partner_gst: number;
+  partner_total: number;
   tcs_rate: number;
   tcs: number;
   tds_rate: number;
   tds: number;
-  /** Forward Easy Ship / self dispatch courier rate */
   logistic_fee: number;
-  /** Reverse return courier rate */
+  logistic_gst: number;
+  logistic_total: number;
   return_fee: number;
+  reverse_logistic_gst: number;
+  reverse_logistic_total: number;
+  cancellation_fee: number;
+  cancellation_gst: number;
+  cancellation_total: number;
+  claim_amount: number;
   taxes: number;
   settlement_amount: number;
-  /** CREDITED = in Pending Payment; UNLOCKING = waiting 5 min after delivery */
-  status: VendorEarningStatus;
+  bank_settlement: number;
+  payment: number;
+  balance_amount: number;
+  transaction_id?: string | null;
+  payment_date?: string | null;
+  status: VendorEarningStatus | "PAYMENT";
   delivered_at: string | null;
   unlock_at: string | null;
 };
@@ -126,8 +158,9 @@ export type VendorPaymentsView = {
     tds: number;
     /** Forward shipping fees (Easy Ship / self) */
     logistic_fee: number;
-    /** Return reverse courier fees */
     return_fee: number;
+    platform_fee: number;
+    partner_commission: number;
     /**
      * Cumulative unlocked settlement (CREDITED + already withdrawn).
      * Pending unlocks into this after the delivery timer.
@@ -186,7 +219,18 @@ export async function ensureVendorEarningsTaxColumns(pool: Pool): Promise<void> 
             ADD COLUMN IF NOT EXISTS tds_rate numeric NOT NULL DEFAULT 0.1,
             ADD COLUMN IF NOT EXISTS tds_amount numeric NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS logistic_fee numeric NOT NULL DEFAULT 0,
-            ADD COLUMN IF NOT EXISTS return_fee numeric NOT NULL DEFAULT 0
+            ADD COLUMN IF NOT EXISTS return_fee numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS platform_fee numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS platform_gst numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS partner_commission numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS partner_gst numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS commission_gst numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS logistic_gst numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS listing_gst numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS listing_total numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS cancellation_fee numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS platform_fee_rate numeric NOT NULL DEFAULT 5,
+            ADD COLUMN IF NOT EXISTS partner_commission_rate numeric NOT NULL DEFAULT 11
         `
       )
       .then(() => undefined)
@@ -245,23 +289,7 @@ export async function applyVendorReturnCourierFee(
   const result = await pool.query(
     `
       UPDATE vendor_earnings_log
-      SET
-        return_fee = $3,
-        net_amount = GREATEST(
-          0,
-          ROUND(
-            (
-              COALESCE(taxable_amount, 0)
-              - COALESCE(commission_amount, 0)
-              - COALESCE(tcs_amount, 0)
-              - COALESCE(tds_amount, 0)
-              - COALESCE(logistic_fee, 0)
-              - $3
-            )::numeric,
-            2
-          )
-        ),
-        updated_at = NOW()
+      SET return_fee = $3, updated_at = NOW()
       WHERE vendor_id = $1
         AND order_id = $2
         AND status IN ('UNLOCKING', 'CREDITED', 'ON_HOLD')
@@ -270,7 +298,109 @@ export async function applyVendorReturnCourierFee(
     [vendorId, orderId, fee]
   );
 
+  if ((result.rowCount ?? 0) > 0) {
+    await recomputeUnpaidVendorLedger(vendorId, pool, { orderId });
+  }
+
   return { updated: (result.rowCount ?? 0) > 0 };
+}
+
+export async function recomputeUnpaidVendorLedger(
+  vendorId: string,
+  pool: Pool,
+  options?: { orderId?: string; commissionRate?: number; platformRate?: number }
+): Promise<number> {
+  await ensureVendorEarningsTaxColumns(pool);
+  const [taxRates, commissionRate] = await Promise.all([
+    getMarketplaceTaxRates(pool),
+    options?.commissionRate != null
+      ? Promise.resolve(options.commissionRate)
+      : fetchVendorCommissionRate(vendorId, pool),
+  ]);
+
+  const rows = await pool.query<{
+    id: string;
+    order_id: string;
+    taxable_amount: string | number;
+    gst_rate: string | number;
+    logistic_fee: string | number;
+    return_fee: string | number;
+    cancellation_fee: string | number | null;
+  }>(
+    `
+      SELECT id, order_id, taxable_amount, gst_rate,
+             COALESCE(logistic_fee, 0) AS logistic_fee,
+             COALESCE(return_fee, 0) AS return_fee,
+             COALESCE(cancellation_fee, 0) AS cancellation_fee
+      FROM vendor_earnings_log
+      WHERE vendor_id = $1
+        AND status IN ('UNLOCKING', 'CREDITED', 'ON_HOLD')
+        AND order_id NOT LIKE 'claim:%'
+        ${options?.orderId ? "AND order_id = $2" : ""}
+    `,
+    options?.orderId ? [vendorId, options.orderId] : [vendorId]
+  );
+
+  let updated = 0;
+  for (const row of rows.rows) {
+    const ledger = await ledgerForSaleRow({
+      vendorId,
+      itemPrice: Number(row.taxable_amount) || 0,
+      logisticFee: Number(row.logistic_fee) || 0,
+      returnFee: Number(row.return_fee) || 0,
+      cancellationFee: Number(row.cancellation_fee) || 0,
+      gstRate: Number(row.gst_rate) || 18,
+      commissionRate,
+      tcsRate: taxRates.tcs_rate,
+      tdsRate: taxRates.tds_rate,
+      platformRate: options?.platformRate,
+      pool,
+    });
+    await pool.query(
+      `
+        UPDATE vendor_earnings_log SET
+          commission_rate = $3,
+          commission_amount = $4,
+          tcs_amount = $5,
+          tds_amount = $6,
+          platform_fee = $7,
+          platform_gst = $8,
+          partner_commission = $9,
+          partner_gst = $10,
+          commission_gst = $11,
+          logistic_gst = $12,
+          listing_gst = $13,
+          listing_total = $14,
+          platform_fee_rate = $15,
+          partner_commission_rate = $16,
+          net_amount = $17,
+          updated_at = NOW()
+        WHERE id = $1 AND vendor_id = $2
+          AND status IN ('UNLOCKING', 'CREDITED', 'ON_HOLD')
+      `,
+      [
+        row.id,
+        vendorId,
+        ledger.commission_rate,
+        Math.abs(ledger.commission_fee),
+        Math.abs(ledger.tcs),
+        Math.abs(ledger.tds),
+        Math.abs(ledger.platform_fee),
+        Math.abs(ledger.platform_gst),
+        Math.abs(ledger.partner_commission),
+        Math.abs(ledger.partner_gst),
+        Math.abs(ledger.commission_gst),
+        Math.abs(ledger.logistic_gst),
+        Math.abs(ledger.listing_gst),
+        Math.abs(ledger.listing_total),
+        ledger.platform_rate,
+        ledger.partner_rate,
+        roundMoney(Math.max(0, ledger.balance_delta)),
+      ]
+    );
+    updated += 1;
+  }
+  return updated;
 }
 
 async function fetchVendorOrderEarnings(
@@ -357,6 +487,55 @@ export async function fetchVendorCommissionRate(
   ).rate;
 }
 
+async function ledgerForSaleRow(params: {
+  vendorId: string;
+  itemPrice: number;
+  logisticFee: number;
+  returnFee?: number;
+  cancellationFee?: number;
+  gstRate: number;
+  commissionRate: number;
+  tcsRate: number;
+  tdsRate: number;
+  platformRate?: number;
+  category?: "sale" | "return";
+  pool: Pool;
+}): Promise<LedgerSettlementBreakdown> {
+  const rates = await buildLedgerRatesForVendor(params.vendorId, params.pool, {
+    commission_rate: params.commissionRate,
+    tcs_rate: params.tcsRate,
+    tds_rate: params.tdsRate,
+    output_gst_rate: params.gstRate,
+    platform_rate: params.platformRate,
+  });
+  const category = params.category || "sale";
+  const sale = calculateVendorLedgerSettlement({
+    category,
+    item_price: params.itemPrice,
+    logistic_fee: params.logisticFee,
+    reverse_logistic_fee: params.returnFee,
+    cancellation_fee: params.cancellationFee,
+    rates,
+  });
+  if (category === "sale" && (params.returnFee || 0) > 0) {
+    const reverse = calculateVendorLedgerSettlement({
+      category: "return",
+      item_price: 0,
+      logistic_fee: 0,
+      reverse_logistic_fee: params.returnFee,
+      rates,
+    });
+    return {
+      ...sale,
+      reverse_logistic_fee: reverse.reverse_logistic_fee,
+      reverse_logistic_gst: reverse.reverse_logistic_gst,
+      reverse_logistic_total: reverse.reverse_logistic_total,
+      balance_delta: roundMoney(sale.bank_settlement - reverse.reverse_logistic_total),
+    };
+  }
+  return sale;
+}
+
 async function upsertVendorEarningRow(
   orderId: string,
   row: VendorOrderEarning,
@@ -383,9 +562,18 @@ async function upsertVendorEarningRow(
   const orderMetadata = orderMetaResult.rows[0]?.metadata || null;
   const logisticFee = resolveVendorLogisticFee(orderMetadata, row.vendor_id);
   const returnFee = resolveVendorReturnFee(orderMetadata, row.vendor_id);
-  const netAfterFees = roundMoney(
-    Math.max(0, settlement.net_amount - logisticFee - returnFee)
-  );
+  const ledger = await ledgerForSaleRow({
+    vendorId: row.vendor_id,
+    itemPrice: settlement.taxable_amount,
+    logisticFee,
+    returnFee,
+    gstRate: settlement.gst_rate || 18,
+    commissionRate,
+    tcsRate: taxRates.tcs_rate,
+    tdsRate: taxRates.tds_rate,
+    pool,
+  });
+  const netAfterFees = roundMoney(Math.max(0, ledger.balance_delta));
 
   const unlockAt = new Date(
     deliveredAt.getTime() + VENDOR_EARNINGS_UNLOCK_MINUTES * 60 * 1000
@@ -410,6 +598,17 @@ async function upsertVendorEarningRow(
         tds_amount,
         logistic_fee,
         return_fee,
+        platform_fee,
+        platform_gst,
+        partner_commission,
+        partner_gst,
+        commission_gst,
+        logistic_gst,
+        listing_gst,
+        listing_total,
+        cancellation_fee,
+        platform_fee_rate,
+        partner_commission_rate,
         net_amount,
         currency_code,
         status,
@@ -419,26 +618,13 @@ async function upsertVendorEarningRow(
         updated_at
       ) VALUES (
         've_' || substr(md5($1 || ':' || $2), 1, 24),
-        $2,
-        $1,
-        $3,
-        $4,
-        $5,
-        $6,
-        $7,
-        $8,
-        $9,
-        $10,
-        $11,
-        $12,
-        $13,
-        $14,
-        $15,
-        $16,
+        $2, $1, $3,
+        $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+        $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27,
         'inr',
         'UNLOCKING',
-        $17,
-        $18,
+        $28,
+        $29,
         NOW(),
         NOW()
       )
@@ -455,20 +641,18 @@ async function upsertVendorEarningRow(
         tds_amount = EXCLUDED.tds_amount,
         logistic_fee = GREATEST(COALESCE(vendor_earnings_log.logistic_fee, 0), EXCLUDED.logistic_fee),
         return_fee = GREATEST(COALESCE(vendor_earnings_log.return_fee, 0), EXCLUDED.return_fee),
-        net_amount = GREATEST(
-          0,
-          ROUND(
-            (
-              EXCLUDED.taxable_amount
-              - EXCLUDED.commission_amount
-              - EXCLUDED.tcs_amount
-              - EXCLUDED.tds_amount
-              - GREATEST(COALESCE(vendor_earnings_log.logistic_fee, 0), EXCLUDED.logistic_fee)
-              - GREATEST(COALESCE(vendor_earnings_log.return_fee, 0), EXCLUDED.return_fee)
-            )::numeric,
-            2
-          )
-        ),
+        platform_fee = EXCLUDED.platform_fee,
+        platform_gst = EXCLUDED.platform_gst,
+        partner_commission = EXCLUDED.partner_commission,
+        partner_gst = EXCLUDED.partner_gst,
+        commission_gst = EXCLUDED.commission_gst,
+        logistic_gst = EXCLUDED.logistic_gst,
+        listing_gst = EXCLUDED.listing_gst,
+        listing_total = EXCLUDED.listing_total,
+        cancellation_fee = EXCLUDED.cancellation_fee,
+        platform_fee_rate = EXCLUDED.platform_fee_rate,
+        partner_commission_rate = EXCLUDED.partner_commission_rate,
+        net_amount = EXCLUDED.net_amount,
         delivered_at = COALESCE(vendor_earnings_log.delivered_at, EXCLUDED.delivered_at),
         unlock_at = COALESCE(vendor_earnings_log.unlock_at, EXCLUDED.unlock_at),
         status = CASE
@@ -487,14 +671,25 @@ async function upsertVendorEarningRow(
       settlement.taxable_amount,
       settlement.gst_amount,
       settlement.gst_rate,
-      settlement.commission_rate,
-      settlement.commission_amount,
+      ledger.commission_rate,
+      Math.abs(ledger.commission_fee),
       settlement.tcs_rate,
-      settlement.tcs_amount,
+      Math.abs(ledger.tcs),
       settlement.tds_rate,
-      settlement.tds_amount,
+      Math.abs(ledger.tds),
       logisticFee,
       returnFee,
+      Math.abs(ledger.platform_fee),
+      Math.abs(ledger.platform_gst),
+      Math.abs(ledger.partner_commission),
+      Math.abs(ledger.partner_gst),
+      Math.abs(ledger.commission_gst),
+      Math.abs(ledger.logistic_gst),
+      Math.abs(ledger.listing_gst),
+      Math.abs(ledger.listing_total),
+      Math.abs(ledger.cancellation_fee),
+      ledger.platform_rate,
+      ledger.partner_rate,
       netAfterFees,
       deliveredAt.toISOString(),
       unlockAt.toISOString(),
@@ -955,6 +1150,14 @@ export async function getVendorPayableSnapshot(
   await syncVendorEarningsStatuses(pool);
   await repairClaimCreditsWithoutCommission(vendorId, pool);
 
+  const liveRate =
+    options?.effectiveRate != null && Number.isFinite(options.effectiveRate)
+      ? Number(options.effectiveRate)
+      : null;
+  if (liveRate != null) {
+    await recomputeUnpaidVendorLedger(vendorId, pool, { commissionRate: liveRate });
+  }
+
   const credited = await pool.query<{
     id: string;
     order_id: string;
@@ -1047,14 +1250,9 @@ export async function getVendorPayableSnapshot(
   let tds = 0;
   let logisticFeeTotal = 0;
   let netAmount = 0;
-  let commissionRate =
-    options?.effectiveRate != null && Number.isFinite(options.effectiveRate)
-      ? Number(options.effectiveRate)
-      : 2;
+  let commissionRate = liveRate != null ? liveRate : 2;
   const orderIds: string[] = [];
   const lineItems: VendorPayableLineItem[] = [];
-  const useLiveRate =
-    options?.effectiveRate != null && Number.isFinite(options.effectiveRate);
 
   for (const row of credited.rows) {
     const gross = Number(row.gross_amount) || 0;
@@ -1067,24 +1265,12 @@ export async function getVendorPayableSnapshot(
     const rowTcs = isClaim ? 0 : Number(row.tcs_amount) || 0;
     const rowTds = isClaim ? 0 : Number(row.tds_amount) || 0;
     const rowLogistic = isClaim ? 0 : Number(row.logistic_fee) || 0;
-    const rowReturnFee = isClaim ? 0 : Number(row.return_fee) || 0;
-    let rowCommission = isClaim ? 0 : Number(row.commission_amount) || 0;
-    // Claim credits are always the full approved amount — never commission
-    let rowNet = isClaim
+    const rowCommission = isClaim ? 0 : Number(row.commission_amount) || 0;
+    const rowNet = isClaim
       ? Math.max(gross, Number(row.net_amount) || 0, taxable)
       : Number(row.net_amount) || 0;
 
-    if (useLiveRate && !isClaim) {
-      const liveCommission =
-        Math.round(((taxable > 0 ? taxable : gross) * commissionRate) / 100 * 100) /
-        100;
-      const base = taxable > 0 ? taxable : gross;
-      rowCommission = liveCommission;
-      rowNet = Math.max(
-        0,
-        base - liveCommission - rowTcs - rowTds - rowLogistic - rowReturnFee
-      );
-    } else if (!useLiveRate && !isClaim) {
+    if (!isClaim) {
       commissionRate = Number(row.commission_rate) || commissionRate;
     }
 
@@ -1326,7 +1512,7 @@ type SettlementEarningRow = {
   product_name: string | null;
 };
 
-function formatOrderFallback(
+export function formatOrderFallback(
   orderDisplayId: string | null,
   orderId: string
 ): string {
@@ -1336,235 +1522,97 @@ function formatOrderFallback(
   return `Order #${orderId.slice(0, 8)}`;
 }
 
-export async function getVendorPaymentsView(
-  vendorId: string,
-  pool: Pool
-): Promise<VendorPaymentsView> {
-  await ensureVendorEarningsTaxColumns(pool);
-  // Promote UNLOCKING → CREDITED once delivery + 5 minutes have passed
-  await syncVendorEarningsStatuses(pool);
-  await repairClaimCreditsWithoutCommission(vendorId, pool);
-  const summary = await getVendorEarningsSummary(vendorId, pool);
+function itemStatusLabel(
+  category: LedgerCategory,
+  status: VendorEarningStatus | "PAYMENT"
+): string {
+  if (category === "return") return "Returned"
+  if (category === "claim") return "Claim credited"
+  if (category === "payment") return "Paid out"
+  if (category === "cancellation") return "Cancelled"
+  if (status === "PAID") return "Delivered · Paid"
+  if (status === "UNLOCKING") return "Unlocking"
+  if (status === "ON_HOLD") return "Return hold"
+  return "Delivered"
+}
 
-  // Full settlement history (not reset daily)
-  const historyResult = await pool.query<SettlementEarningRow>(
-    `
-      SELECT
-        vel.id,
-        vel.order_id,
-        vel.order_display_id,
-        vel.status,
-        vel.gross_amount,
-        vel.taxable_amount,
-        vel.gst_amount,
-        vel.gst_rate,
-        vel.commission_rate,
-        vel.commission_amount,
-        vel.tcs_rate,
-        vel.tcs_amount,
-        vel.tds_rate,
-        vel.tds_amount,
-        COALESCE(vel.logistic_fee, 0) AS logistic_fee,
-        COALESCE(vel.return_fee, 0) AS return_fee,
-        vel.net_amount,
-        vel.delivered_at,
-        vel.unlock_at,
-        (
-          SELECT COALESCE(oli.title, 'Order #' || COALESCE(vel.order_display_id, LEFT(vel.order_id, 8)))
-          FROM order_item oi
-          JOIN order_line_item oli ON oi.item_id = oli.id
-          LEFT JOIN product_variant pv ON oli.variant_id = pv.id
-          LEFT JOIN product p ON COALESCE(oli.product_id, pv.product_id) = p.id
-          WHERE oi.order_id = vel.order_id
-            AND p.metadata->>'vendor_id' = $1
-          ORDER BY oli.id
-          LIMIT 1
-        ) AS product_name
-      FROM vendor_earnings_log vel
-      WHERE vel.vendor_id = $1
-        AND vel.delivered_at IS NOT NULL
-      ORDER BY vel.delivered_at DESC, vel.updated_at DESC
-    `,
-    [vendorId]
-  );
-
-  let totalSale = 0;
-  let fullSale = 0;
-  let lifetimeTaxes = 0;
-  let lifetimeCommission = 0;
-  let lifetimeTcs = 0;
-  let lifetimeTds = 0;
-  let gstTotal = 0;
-  let commissionTotal = 0;
-  let tcsTotal = 0;
-  let tdsTotal = 0;
-  let logisticTotal = 0;
-  let returnFeeTotal = 0;
-
-  const todayKey = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-
-  const isDeliveredToday = (deliveredAt: string | null) => {
-    if (!deliveredAt) return false;
-    return (
-      new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Kolkata",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(new Date(deliveredAt)) === todayKey
-    );
-  };
-
-  const settlements: VendorPaymentSettlement[] = historyResult.rows.map((row) => {
-    const gross = Number(row.gross_amount) || 0;
-    const taxable = Number(row.taxable_amount) || 0;
-    const gstAmount = Number(row.gst_amount) || 0;
-    const gstRate = Number(row.gst_rate) || 0;
-    const commissionRate = Number(row.commission_rate) || 0;
-    const commissionAmount = Number(row.commission_amount) || 0;
-    const tcsRate = Number(row.tcs_rate) || 0;
-    const tcsAmount = Number(row.tcs_amount) || 0;
-    const tdsRate = Number(row.tds_rate) || 0;
-    const tdsAmount = Number(row.tds_amount) || 0;
-    const logisticFee = Number(row.logistic_fee) || 0;
-    const returnFee = Number(row.return_fee) || 0;
-    const netAmount = Number(row.net_amount) || 0;
-    const productName =
-      row.product_name?.trim() ||
-      formatOrderFallback(row.order_display_id, row.order_id);
-    const countInTodayCards = isDeliveredToday(row.delivered_at);
-
-    if (row.status === "REVERSED") {
-      if (countInTodayCards) {
-        const absGross = Math.abs(gross);
-        totalSale -= absGross;
-        returnFeeTotal += returnFee;
-      }
-
-      return {
-        id: row.id,
-        order_id: row.order_id,
-        order_display_id: row.order_display_id,
-        product_name: productName,
-        type: "return" as const,
-        order_amount: -Math.abs(gross),
-        taxable_amount: 0,
-        gst_amount: 0,
-        gst_rate: 0,
-        commission_rate: 0,
-        commission: 0,
-        tcs_rate: 0,
-        tcs: 0,
-        tds_rate: 0,
-        tds: 0,
-        logistic_fee: 0,
-        return_fee: returnFee,
-        taxes: 0,
-        settlement_amount: 0,
-        status: row.status,
-        delivered_at: row.delivered_at,
-        unlock_at: row.unlock_at,
-      };
-    }
-
-    const isClaim = String(row.order_id || "").startsWith("claim:");
-
-    if (!isClaim) {
-      fullSale += gross;
-      lifetimeTaxes += gstAmount;
-      lifetimeCommission += commissionAmount;
-      lifetimeTcs += tcsAmount;
-      lifetimeTds += tdsAmount;
-    }
-
-    if (countInTodayCards && !isClaim) {
-      totalSale += gross;
-      gstTotal += gstAmount;
-      commissionTotal += commissionAmount;
-      tcsTotal += tcsAmount;
-      tdsTotal += tdsAmount;
-      logisticTotal += logisticFee;
-      returnFeeTotal += returnFee;
-    }
-
-    const claimSettlement = Math.max(gross, netAmount, taxable);
-
-    return {
-      id: row.id,
-      order_id: row.order_id,
-      order_display_id: row.order_display_id,
-      product_name: isClaim ? "Claim settlement" : productName,
-      type: isClaim ? ("claim" as const) : ("sales" as const),
-      order_amount: isClaim ? claimSettlement : gross,
-      taxable_amount: isClaim ? 0 : taxable,
-      gst_amount: isClaim ? 0 : gstAmount,
-      gst_rate: isClaim ? 0 : gstRate,
-      commission_rate: isClaim ? 0 : commissionRate,
-      commission: isClaim ? 0 : commissionAmount,
-      tcs_rate: isClaim ? 0 : tcsRate,
-      tcs: isClaim ? 0 : tcsAmount,
-      tds_rate: isClaim ? 0 : tdsRate,
-      tds: isClaim ? 0 : tdsAmount,
-      logistic_fee: isClaim ? 0 : logisticFee,
-      return_fee: isClaim ? 0 : returnFee,
-      taxes: isClaim ? 0 : gstAmount,
-      settlement_amount: isClaim ? claimSettlement : netAmount,
-      status: row.status,
-      delivered_at: row.delivered_at,
-      unlock_at: row.unlock_at,
-    };
-  });
-
-  // Prefer ledger sales total so Total sale never drifts from visible settlement rows
-  const fullSaleFromLedger = settlements
-    .filter((row) => row.type === "sales")
-    .reduce((sum, row) => sum + (Number(row.order_amount) || 0), 0);
-  const taxesFromLedger = settlements
-    .filter((row) => row.type === "sales")
-    .reduce((sum, row) => sum + (Number(row.gst_amount) || 0), 0);
-  const commissionFromLedger = settlements
-    .filter((row) => row.type === "sales")
-    .reduce((sum, row) => sum + (Number(row.commission) || 0), 0);
-  const tcsFromLedger = settlements
-    .filter((row) => row.type === "sales")
-    .reduce((sum, row) => sum + (Number(row.tcs) || 0), 0);
-  const tdsFromLedger = settlements
-    .filter((row) => row.type === "sales")
-    .reduce((sum, row) => sum + (Number(row.tds) || 0), 0);
-
-  const settlementBalance =
-    (Number(summary.available_balance) || 0) + (Number(summary.total_withdrawn) || 0);
-  const balance = Number(summary.available_balance) || 0;
-
+export function settlementFromLedger(params: {
+  id: string
+  order_id: string
+  order_display_id: string | null
+  product_name: string
+  status: VendorEarningStatus | "PAYMENT"
+  delivered_at: string | null
+  unlock_at: string | null
+  ledger: LedgerSettlementBreakdown
+  tcs_rate: number
+  tds_rate: number
+  gst_rate: number
+  transaction_id?: string | null
+  payment_date?: string | null
+}): VendorPaymentSettlement {
+  const { ledger } = params
+  const type =
+    ledger.category === "sale"
+      ? "sales"
+      : ledger.category === "return"
+        ? "return"
+        : ledger.category === "claim"
+          ? "claim"
+          : ledger.category === "cancellation"
+            ? "cancellation"
+            : "payment"
   return {
-    cards: {
-      full_sale: fullSaleFromLedger > 0 ? fullSaleFromLedger : fullSale,
-      taxes: taxesFromLedger > 0 ? taxesFromLedger : lifetimeTaxes,
-      lifetime_commission:
-        commissionFromLedger > 0 ? commissionFromLedger : lifetimeCommission,
-      lifetime_tcs: tcsFromLedger > 0 ? tcsFromLedger : lifetimeTcs,
-      lifetime_tds: tdsFromLedger > 0 ? tdsFromLedger : lifetimeTds,
-      total_sale: totalSale,
-      gst: gstTotal,
-      commission: commissionTotal,
-      tcs: tcsTotal,
-      tds: tdsTotal,
-      logistic_fee: logisticTotal,
-      return_fee: returnFeeTotal,
-      settlement_balance: settlementBalance,
-      balance,
-      pending_payment: summary.available_balance,
-      unlocking_payment: summary.unlocking_balance,
-      withdrawn: summary.total_withdrawn,
-    },
-    settlements,
-    timezone: "Asia/Kolkata",
-    unlock_minutes: VENDOR_EARNINGS_UNLOCK_MINUTES,
-    as_of: new Date().toISOString(),
-  };
+    id: params.id,
+    order_id: params.order_id,
+    order_display_id: params.order_display_id,
+    product_name: params.product_name,
+    type,
+    category: ledger.category,
+    order_date: params.delivered_at,
+    invoice_no: params.order_display_id ? `INV-${params.order_display_id}` : "",
+    item_status: itemStatusLabel(ledger.category, params.status),
+    order_amount: ledger.item_price + ledger.listing_gst,
+    taxable_amount: ledger.item_price,
+    gst_amount: ledger.listing_gst,
+    gst_rate: params.gst_rate,
+    listing_gst: ledger.listing_gst,
+    listing_total: ledger.listing_total,
+    platform_rate: ledger.platform_rate,
+    platform_fee: ledger.platform_fee,
+    platform_gst: ledger.platform_gst,
+    platform_total: ledger.platform_total,
+    commission_rate: ledger.commission_rate,
+    commission: ledger.commission_fee,
+    commission_gst: ledger.commission_gst,
+    commission_total: ledger.commission_total,
+    partner_rate: ledger.partner_rate,
+    partner_commission: ledger.partner_commission,
+    partner_gst: ledger.partner_gst,
+    partner_total: ledger.partner_total,
+    tcs_rate: params.tcs_rate,
+    tcs: ledger.tcs,
+    tds_rate: params.tds_rate,
+    tds: ledger.tds,
+    logistic_fee: ledger.logistic_fee,
+    logistic_gst: ledger.logistic_gst,
+    logistic_total: ledger.logistic_total,
+    return_fee: ledger.reverse_logistic_fee,
+    reverse_logistic_gst: ledger.reverse_logistic_gst,
+    reverse_logistic_total: ledger.reverse_logistic_total,
+    cancellation_fee: ledger.cancellation_fee,
+    cancellation_gst: ledger.cancellation_gst,
+    cancellation_total: ledger.cancellation_total,
+    claim_amount: ledger.claim_amount,
+    taxes: ledger.listing_gst,
+    settlement_amount: ledger.bank_settlement,
+    bank_settlement: ledger.bank_settlement,
+    payment: ledger.payment,
+    balance_amount: 0,
+    transaction_id: params.transaction_id || null,
+    payment_date: params.payment_date || null,
+    status: params.status,
+    delivered_at: params.delivered_at,
+    unlock_at: params.unlock_at,
+  }
 }

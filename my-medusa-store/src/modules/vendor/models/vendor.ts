@@ -47,6 +47,10 @@ const Vendor = model.define("vendor", {
   commission_rate: model.float().default(2.0),
   commission_override: model.boolean().default(false),
 
+  // Platform fee (Sheet4 D) — global default unless override (vendor offer)
+  platform_fee_rate: model.float().default(5.0),
+  platform_fee_override: model.boolean().default(false),
+
   // Documents
   documents: model.json().nullable(), // Array of VendorDocument
 

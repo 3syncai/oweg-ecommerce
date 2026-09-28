@@ -800,6 +800,8 @@ export type VendorPaymentsView = {
     tds: number
     logistic_fee: number
     return_fee?: number
+    platform_fee?: number
+    partner_commission?: number
     settlement_balance: number
     balance: number
     pending_payment: number
@@ -811,22 +813,50 @@ export type VendorPaymentsView = {
     order_id: string
     order_display_id: string | null
     product_name: string
-    type: "sales" | "return" | "claim"
+    type: "sales" | "return" | "claim" | "payment" | "cancellation"
+    category?: "sale" | "return" | "payment" | "claim" | "cancellation"
+    invoice_no?: string
+    item_status?: string
     order_amount: number
     taxable_amount: number
     gst_amount: number
     gst_rate?: number
+    listing_gst?: number
+    listing_total?: number
+    platform_rate?: number
+    platform_fee?: number
+    platform_gst?: number
+    platform_total?: number
     commission_rate?: number
     commission: number
+    commission_gst?: number
+    commission_total?: number
+    partner_rate?: number
+    partner_commission?: number
+    partner_gst?: number
+    partner_total?: number
     tcs_rate?: number
     tcs: number
     tds_rate?: number
     tds: number
     logistic_fee: number
+    logistic_gst?: number
+    logistic_total?: number
     return_fee?: number
+    reverse_logistic_gst?: number
+    reverse_logistic_total?: number
+    cancellation_fee?: number
+    cancellation_gst?: number
+    cancellation_total?: number
+    claim_amount?: number
     taxes: number
     settlement_amount: number
-    status?: 'UNLOCKING' | 'CREDITED' | 'PAID' | 'REVERSED' | 'ON_HOLD'
+    bank_settlement?: number
+    payment?: number
+    balance_amount?: number
+    transaction_id?: string | null
+    payment_date?: string | null
+    status?: "UNLOCKING" | "CREDITED" | "PAID" | "REVERSED" | "ON_HOLD" | "PAYMENT"
     delivered_at?: string | null
     unlock_at?: string | null
   }>

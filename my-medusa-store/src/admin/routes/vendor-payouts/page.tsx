@@ -101,7 +101,7 @@ const PayableLinesDropdown = ({
               Paying for {count} item{count === 1 ? "" : "s"}
             </Text>
             <Text size="xsmall" className="text-ui-fg-muted">
-              Pay = after commission + Easy Ship logistic (Self Ship = ₹0)
+              Pay = Sheet4 bank settlement (C − platform − commission − partner − logistics − TCS − TDS)
             </Text>
           </div>
           <div className="max-h-72 overflow-y-auto">
