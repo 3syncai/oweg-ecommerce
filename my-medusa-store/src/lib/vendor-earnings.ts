@@ -9,8 +9,10 @@ import {
   parseLineGstRate,
 } from "./vendor-marketplace-tax";
 import {
+  adminPayableNetFromLedger,
   buildLedgerRatesForVendor,
   calculateVendorLedgerSettlement,
+  overlaySaleDeductions,
   type LedgerCategory,
   type LedgerSettlementBreakdown,
 } from "./vendor-ledger-settlement";
@@ -395,7 +397,7 @@ export async function recomputeUnpaidVendorLedger(
         Math.abs(ledger.listing_total),
         ledger.platform_rate,
         ledger.partner_rate,
-        roundMoney(Math.max(0, ledger.balance_delta)),
+        adminPayableNetFromLedger(ledger),
       ]
     );
     updated += 1;
@@ -517,21 +519,15 @@ async function ledgerForSaleRow(params: {
     cancellation_fee: params.cancellationFee,
     rates,
   });
-  if (category === "sale" && (params.returnFee || 0) > 0) {
-    const reverse = calculateVendorLedgerSettlement({
-      category: "return",
-      item_price: 0,
-      logistic_fee: 0,
-      reverse_logistic_fee: params.returnFee,
-      rates,
-    });
-    return {
-      ...sale,
-      reverse_logistic_fee: reverse.reverse_logistic_fee,
-      reverse_logistic_gst: reverse.reverse_logistic_gst,
-      reverse_logistic_total: reverse.reverse_logistic_total,
-      balance_delta: roundMoney(sale.bank_settlement - reverse.reverse_logistic_total),
-    };
+  if (category === "sale") {
+    return overlaySaleDeductions(
+      sale,
+      {
+        reverse_logistic_fee: params.returnFee,
+        cancellation_fee: params.cancellationFee,
+      },
+      rates
+    );
   }
   return sale;
 }
@@ -573,7 +569,7 @@ async function upsertVendorEarningRow(
     tdsRate: taxRates.tds_rate,
     pool,
   });
-  const netAfterFees = roundMoney(Math.max(0, ledger.balance_delta));
+  const netAfterFees = adminPayableNetFromLedger(ledger);
 
   const unlockAt = new Date(
     deliveredAt.getTime() + VENDOR_EARNINGS_UNLOCK_MINUTES * 60 * 1000

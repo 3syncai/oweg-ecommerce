@@ -92,6 +92,100 @@ export function clampLedgerRate(rate: unknown, fallback: number): number {
   return clampTaxRate(rate, fallback)
 }
 
+/** Same paisa rounding used by every ledger surface (payments, admin pay, export). */
+export function roundLedgerMoney(n: number): number {
+  return round2(n)
+}
+
+/**
+ * Sale rows can carry reverse / cancel courier without reversing A/B.
+ * Admin net_amount = max(0, this balance_delta).
+ */
+export function overlaySaleDeductions(
+  sale: LedgerSettlementBreakdown,
+  extras: { reverse_logistic_fee?: number; cancellation_fee?: number },
+  rates: LedgerRates
+): LedgerSettlementBreakdown {
+  if (sale.category !== "sale") return sale
+  const reverseFee = Math.abs(Number(extras.reverse_logistic_fee) || 0)
+  const cancelFee = Math.abs(Number(extras.cancellation_fee) || 0)
+  if (reverseFee <= 0 && cancelFee <= 0) return sale
+
+  const reverse =
+    reverseFee > 0
+      ? calculateVendorLedgerSettlement({
+          category: "return",
+          item_price: 0,
+          logistic_fee: 0,
+          reverse_logistic_fee: reverseFee,
+          rates,
+        })
+      : null
+  const cancel =
+    cancelFee > 0
+      ? calculateVendorLedgerSettlement({
+          category: "cancellation",
+          item_price: 0,
+          logistic_fee: 0,
+          cancellation_fee: cancelFee,
+          rates,
+        })
+      : null
+
+  const reverseTotal = reverse?.reverse_logistic_total || 0
+  const cancelTotal = cancel?.cancellation_total || 0
+
+  return {
+    ...sale,
+    reverse_logistic_fee: reverse?.reverse_logistic_fee || 0,
+    reverse_logistic_gst: reverse?.reverse_logistic_gst || 0,
+    reverse_logistic_total: reverseTotal,
+    cancellation_fee: cancel?.cancellation_fee || 0,
+    cancellation_gst: cancel?.cancellation_gst || 0,
+    cancellation_total: cancelTotal,
+    balance_delta: round2(sale.bank_settlement - reverseTotal - cancelTotal),
+  }
+}
+
+/** Admin payout line = unlocked credit, never a negative payable. */
+export function adminPayableNetFromLedger(ledger: LedgerSettlementBreakdown): number {
+  return round2(Math.max(0, Number(ledger.balance_delta) || 0))
+}
+
+export function ledgerRowBalanceDelta(row: {
+  category: LedgerCategory
+  payment: number
+  claim_amount: number
+  bank_settlement: number
+  reverse_logistic_total: number
+  cancellation_total: number
+}): number {
+  if (row.category === "payment") return round2(Number(row.payment) || 0)
+  if (row.category === "claim") return round2(Number(row.claim_amount) || 0)
+  return round2(
+    (Number(row.bank_settlement) || 0) -
+      (Number(row.reverse_logistic_total) || 0) -
+      (Number(row.cancellation_total) || 0)
+  )
+}
+
+export function applyRunningLedgerBalance<
+  T extends {
+    category: LedgerCategory
+    payment: number
+    claim_amount: number
+    bank_settlement: number
+    reverse_logistic_total: number
+    cancellation_total: number
+  },
+>(rows: T[]): Array<T & { balance_amount: number }> {
+  let running = 0
+  return rows.map((row) => {
+    running = round2(running + ledgerRowBalanceDelta(row))
+    return { ...row, balance_amount: running }
+  })
+}
+
 function signedFeeBlock(base: number, serviceGstRate: number) {
   const fee = round2(base)
   const tax = pct(fee, serviceGstRate)
