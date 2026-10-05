@@ -1,6 +1,6 @@
 type Header = { key: string; value: string };
 
-/** Image/CDN hosts aligned with next.config.ts `images.remotePatterns`. */
+/** Static hosts for third-party / leftover product URLs. Current bucket comes from env. */
 const IMAGE_HOSTS = [
   "images.unsplash.com",
   "medusa-public-images.s3.eu-west-1.amazonaws.com",
@@ -12,6 +12,40 @@ const IMAGE_HOSTS = [
   "oweg-media-mumbai-krj-2025.s3.ap-south-1.amazonaws.com",
   "via.placeholder.com",
 ];
+
+/** Public S3 hosts from the same env the storefront/Medusa deploy already uses.
+ * Next.js only inlines static `process.env.NAME` access — never `process.env[key]`.
+ */
+export function resolveConfiguredS3ImageHosts(): string[] {
+  const hosts = new Set<string>();
+
+  const addUrlHost = (raw: string | undefined) => {
+    if (!raw?.trim()) return;
+    try {
+      const hostname = new URL(raw.trim()).hostname;
+      if (hostname) hosts.add(hostname);
+    } catch {
+      // Ignore invalid URLs in env.
+    }
+  };
+
+  // Static property access required for Next.js env inlining (local + production).
+  addUrlHost(process.env.S3_FILE_URL);
+  addUrlHost(process.env.NEXT_PUBLIC_S3_FILE_URL);
+
+  const bucket = process.env.S3_BUCKET?.trim();
+  const region = (process.env.S3_REGION || "ap-south-1").trim();
+  if (bucket) {
+    hosts.add(`${bucket}.s3.${region}.amazonaws.com`);
+    hosts.add(`${bucket}.s3.amazonaws.com`);
+  }
+
+  return [...hosts];
+}
+
+export function getAllowedImageHosts(): string[] {
+  return [...new Set([...IMAGE_HOSTS, ...resolveConfiguredS3ImageHosts()])];
+}
 
 const RAZORPAY_ORIGINS = [
   "https://checkout.razorpay.com",
@@ -49,15 +83,16 @@ function getMedusaConnectOrigins(): string[] {
 export function buildContentSecurityPolicy(): string {
   const isProduction = process.env.NODE_ENV === "production";
   const medusaOrigins = getMedusaConnectOrigins();
+  const imageHosts = getAllowedImageHosts();
   const imageSources = [
     "'self'",
     "data:",
     "blob:",
-    ...IMAGE_HOSTS.map((host) => `https://${host}`),
+    ...imageHosts.map((host) => `https://${host}`),
   ];
 
   // Service workers fetch() image URLs; that requires connect-src, not only img-src.
-  const imageConnectOrigins = IMAGE_HOSTS.map((host) => `https://${host}`);
+  const imageConnectOrigins = imageHosts.map((host) => `https://${host}`);
 
   const scriptSrc = [
     "'self'",

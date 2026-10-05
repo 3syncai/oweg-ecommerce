@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import withSerwistInit from "@serwist/next";
 import type { NextConfig } from "next";
-import { getSecurityHeaders } from "./src/lib/security-headers";
+import { getSecurityHeaders, resolveConfiguredS3ImageHosts } from "./src/lib/security-headers";
 
 const revision =
   spawnSync("git", ["rev-parse", "HEAD"], {
@@ -63,20 +63,13 @@ function buildRemotePatterns(): RemotePattern[] {
     ),
   );
 
-  for (const key of [
-    "MEDUSA_BACKEND_URL",
-    "NEXT_PUBLIC_MEDUSA_BACKEND_URL",
-    "S3_FILE_URL",
-  ] as const) {
-    const raw = process.env[key];
-    if (!raw) continue;
-
+  const addEnvUrl = (raw: string | undefined) => {
+    if (!raw) return;
     try {
       const parsed = new URL(raw);
       const protocol = parsed.protocol.replace(":", "") as "http" | "https";
       const signature = `${protocol}://${parsed.hostname}${parsed.port ? `:${parsed.port}` : ""}`;
-      if (seen.has(signature)) continue;
-
+      if (seen.has(signature)) return;
       seen.add(signature);
       patterns.push({
         protocol,
@@ -86,6 +79,19 @@ function buildRemotePatterns(): RemotePattern[] {
     } catch {
       // Ignore invalid URLs in env.
     }
+  };
+
+  // Static process.env.* access — Next does not inline process.env[dynamicKey].
+  addEnvUrl(process.env.MEDUSA_BACKEND_URL);
+  addEnvUrl(process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL);
+  addEnvUrl(process.env.S3_FILE_URL);
+  addEnvUrl(process.env.NEXT_PUBLIC_S3_FILE_URL);
+
+  for (const hostname of resolveConfiguredS3ImageHosts()) {
+    const signature = `https://${hostname}`;
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    patterns.push({ protocol: "https", hostname });
   }
 
   return patterns;

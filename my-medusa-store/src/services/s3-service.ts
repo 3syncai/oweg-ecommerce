@@ -87,7 +87,7 @@ export class S3Service {
             Key: key,
             Body: file,
             ContentType: mimeType,
-            CacheControl: "public, max-age=31536000, immutable",
+            CacheControl: "public, max-age=3600",
             Metadata: {
                 brandName,
                 uploadedAt: new Date().toISOString(),
@@ -96,7 +96,7 @@ export class S3Service {
 
         await this.s3Client.send(command)
 
-        const url = this.buildPublicUrl(key)
+        const url = `${this.buildPublicUrl(key)}?v=${Date.now()}`
         return { url, key }
     }
 
