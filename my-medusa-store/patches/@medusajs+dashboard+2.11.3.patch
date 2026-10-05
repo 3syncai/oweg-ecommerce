@@ -1,8 +1,8 @@
 diff --git a/node_modules/@medusajs/dashboard/dist/app.js b/node_modules/@medusajs/dashboard/dist/app.js
-index 26667a0..66b320c 100644
+index 26667a0..1cee03b 100644
 --- a/node_modules/@medusajs/dashboard/dist/app.js
 +++ b/node_modules/@medusajs/dashboard/dist/app.js
-@@ -93570,62 +93570,59 @@ var init_main_layout = __esm({
+@@ -93570,62 +93570,62 @@ var init_main_layout = __esm({
          }
        ) });
      };
@@ -14,9 +14,12 @@ index 26667a0..66b320c 100644
 +      "/vendor-commission",
 +      "/vendor-requests",
 +      "/vendor-payouts",
-+      "/vendor-reports",
-+      "/affiliate-admins",
-+      "/oweg-customer-groups"
++      "/vendor-claims",
++      "/packet-booking",
++      "/return-packet-booking",
++      "/vendor-marketplace-tax",
++      "/oweg-customer-groups",
++      "/affiliate-admins"
 +    ];
      useCoreRoutes = () => {
        const { t: t5 } = (0, import_react_i18next10.useTranslation)();
@@ -99,7 +102,7 @@ index 26667a0..66b320c 100644
          },
          {
            icon: /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(import_icons10.ReceiptPercent, {}),
-@@ -93671,15 +93668,46 @@ var init_main_layout = __esm({
+@@ -93671,15 +93671,46 @@ var init_main_layout = __esm({
        const menuItems = getMenu("coreExtensions");
        menuItems.forEach((item) => {
          if (item.nested) {
@@ -127,7 +130,7 @@ index 26667a0..66b320c 100644
 +      });
 +      const beforePromotions = ["/return-requests", "/flash-sale"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
 +      const afterCustomers = ["/oweg-customer-groups"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
-+      const afterPriceLists = ["/oweg-homepage", "/vendors", "/vendor-commission", "/vendor-requests", "/vendor-payouts", "/vendor-reports", "/affiliate-admins"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
++      const afterPriceLists = ["/oweg-homepage", "/vendors", "/vendor-commission", "/vendor-requests", "/vendor-payouts", "/vendor-claims", "/packet-booking", "/return-packet-booking", "/vendor-marketplace-tax", "/affiliate-admins"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
 +      const routes = [];
 +      for (const route of coreRoutes) {
 +        if (route.to === "/promotions") {
@@ -148,7 +151,7 @@ index 26667a0..66b320c 100644
            return /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(NavItem, { ...route }, route.to);
          })
        ] });
-@@ -93687,7 +93715,7 @@ var init_main_layout = __esm({
+@@ -93687,7 +93718,7 @@ var init_main_layout = __esm({
      ExtensionRouteSection = () => {
        const { t: t5 } = (0, import_react_i18next10.useTranslation)();
        const { getMenu } = useExtension();
@@ -157,7 +160,7 @@ index 26667a0..66b320c 100644
        if (!menuItems.length) {
          return null;
        }
-@@ -155280,7 +155308,7 @@ var init_inventory_actions2 = __esm({
+@@ -155280,7 +155311,7 @@ var init_inventory_actions2 = __esm({
  });
  
  // src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
@@ -166,7 +169,7 @@ index 26667a0..66b320c 100644
  var init_use_inventory_table_columns2 = __esm({
    "src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx"() {
      "use strict";
-@@ -155290,8 +155318,20 @@ var init_use_inventory_table_columns2 = __esm({
+@@ -155290,8 +155321,20 @@ var init_use_inventory_table_columns2 = __esm({
      import_react_i18next315 = require("react-i18next");
      init_placeholder_cell2();
      init_inventory_actions2();
@@ -187,7 +190,7 @@ index 26667a0..66b320c 100644
      useInventoryTableColumns2 = () => {
        const { t: t5 } = (0, import_react_i18next315.useTranslation)();
        return (0, import_react229.useMemo)(
-@@ -155322,42 +155362,53 @@ var init_use_inventory_table_columns2 = __esm({
+@@ -155322,42 +155365,53 @@ var init_use_inventory_table_columns2 = __esm({
            }),
            columnHelper49.accessor("title", {
              header: t5("fields.title"),
@@ -248,7 +251,7 @@ index 26667a0..66b320c 100644
              }
            }),
            columnHelper49.display({
-@@ -155546,7 +155597,8 @@ var init_inventory_list_table = __esm({
+@@ -155546,7 +155600,8 @@ var init_inventory_list_table = __esm({
          isError,
          error
        } = useInventoryItems({
@@ -259,10 +262,10 @@ index 26667a0..66b320c 100644
        const filters = useInventoryTableFilters();
        const columns = useInventoryTableColumns2();
 diff --git a/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs b/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs
-index ba656d3..cef7e43 100644
+index ba656d3..dc3102c 100644
 --- a/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs
 +++ b/node_modules/@medusajs/dashboard/dist/chunk-HQKKXLCX.mjs
-@@ -88828,62 +88828,59 @@ var Header = () => {
+@@ -88828,62 +88828,62 @@ var Header = () => {
      }
    ) });
  };
@@ -274,9 +277,12 @@ index ba656d3..cef7e43 100644
 +  "/vendor-commission",
 +  "/vendor-requests",
 +  "/vendor-payouts",
-+  "/vendor-reports",
-+  "/affiliate-admins",
-+  "/oweg-customer-groups"
++  "/vendor-claims",
++  "/packet-booking",
++  "/return-packet-booking",
++  "/vendor-marketplace-tax",
++  "/oweg-customer-groups",
++  "/affiliate-admins"
 +];
  var useCoreRoutes = () => {
    const { t: t2 } = useTranslation9();
@@ -359,7 +365,7 @@ index ba656d3..cef7e43 100644
      },
      {
        icon: /* @__PURE__ */ jsx13(ReceiptPercent, {}),
-@@ -88929,15 +88926,46 @@ var CoreRouteSection = () => {
+@@ -88929,15 +88929,46 @@ var CoreRouteSection = () => {
    const menuItems = getMenu("coreExtensions");
    menuItems.forEach((item) => {
      if (item.nested) {
@@ -387,7 +393,7 @@ index ba656d3..cef7e43 100644
 +  });
 +  const beforePromotions = ["/return-requests", "/flash-sale"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
 +  const afterCustomers = ["/oweg-customer-groups"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
-+  const afterPriceLists = ["/oweg-homepage", "/vendors", "/vendor-commission", "/vendor-requests", "/vendor-payouts", "/vendor-reports", "/affiliate-admins"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
++  const afterPriceLists = ["/oweg-homepage", "/vendors", "/vendor-commission", "/vendor-requests", "/vendor-payouts", "/vendor-claims", "/packet-booking", "/return-packet-booking", "/vendor-marketplace-tax", "/affiliate-admins"].map((p) => extensionByPath.get(p)).filter(Boolean).map(toNavItem);
 +  const routes = [];
 +  for (const route of coreRoutes) {
 +    if (route.to === "/promotions") {
@@ -408,7 +414,7 @@ index ba656d3..cef7e43 100644
        return /* @__PURE__ */ jsx13(NavItem, { ...route }, route.to);
      })
    ] });
-@@ -88945,7 +88973,7 @@ var CoreRouteSection = () => {
+@@ -88945,7 +88976,7 @@ var CoreRouteSection = () => {
  var ExtensionRouteSection = () => {
    const { t: t2 } = useTranslation9();
    const { getMenu } = useExtension();
@@ -418,7 +424,7 @@ index ba656d3..cef7e43 100644
      return null;
    }
 diff --git a/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs b/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs
-index 7661107..f2978b1 100644
+index 7661107..c4a3b12 100644
 --- a/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs
 +++ b/node_modules/@medusajs/dashboard/dist/inventory-list-I7IXI4KC.mjs
 @@ -4,6 +4,9 @@ import {
@@ -524,32 +530,194 @@ index 7661107..f2978b1 100644
    const filters = useInventoryTableFilters();
    const columns = useInventoryTableColumns();
 diff --git a/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx b/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx
-index 5aa04ed..52a25e7 100644
+index 5aa04ed..d52adc8 100644
 --- a/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx
 +++ b/node_modules/@medusajs/dashboard/src/components/layout/main-layout/main-layout.tsx
-@@ -177,63 +177,62 @@ const Header = () => {
-   )
- }
- 
-+/** Custom admin routes promoted into the core sidebar (UI-only; routes unchanged). */
-+const PROMOTED_EXTENSION_PATHS = [
-+  "/return-requests",
-+  "/flash-sale",
-+  "/oweg-homepage",
-+  "/vendors",
-+  "/vendor-commission",
-+  "/vendor-requests",
-+  "/vendor-payouts",
-+  "/affiliate-admins",
-+  "/vendor-reports",
-+  "/oweg-customer-groups",
-+] as const
-+
- const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
-   const { t } = useTranslation()
- 
-   return [
-     {
+@@ -1,388 +1,453 @@
+-import {
+-  BuildingStorefront,
+-  Buildings,
+-  ChevronDownMini,
+-  CogSixTooth,
+-  CurrencyDollar,
+-  EllipsisHorizontal,
+-  MagnifyingGlass,
+-  MinusMini,
+-  OpenRectArrowOut,
+-  ReceiptPercent,
+-  ShoppingCart,
+-  SquaresPlus,
+-  Tag,
+-  Users,
+-} from "@medusajs/icons"
+-import { Avatar, Divider, DropdownMenu, Text, clx } from "@medusajs/ui"
+-import { Collapsible as RadixCollapsible } from "radix-ui"
+-import { useTranslation } from "react-i18next"
+-
+-import { useStore } from "../../../hooks/api/store"
+-import { Skeleton } from "../../common/skeleton"
+-import { INavItem, NavItem } from "../../layout/nav-item"
+-import { Shell } from "../../layout/shell"
+-
+-import { Link, useLocation, useNavigate } from "react-router-dom"
+-import { useLogout } from "../../../hooks/api"
+-import { queryClient } from "../../../lib/query-client"
+-import { useExtension } from "../../../providers/extension-provider"
+-import { useSearch } from "../../../providers/search-provider"
+-import { UserMenu } from "../user-menu"
+-import { useDocumentDirection } from "../../../hooks/use-document-direction"
+-
+-export const MainLayout = () => {
+-  return (
+-    <Shell>
+-      <MainSidebar />
+-    </Shell>
+-  )
+-}
+-
+-const MainSidebar = () => {
+-  return (
+-    <aside className="flex flex-1 flex-col justify-between overflow-y-auto">
+-      <div className="flex flex-1 flex-col">
+-        <div className="bg-ui-bg-subtle sticky top-0">
+-          <Header />
+-          <div className="px-3">
+-            <Divider variant="dashed" />
+-          </div>
+-        </div>
+-        <div className="flex flex-1 flex-col justify-between">
+-          <div className="flex flex-1 flex-col">
+-            <CoreRouteSection />
+-            <ExtensionRouteSection />
+-          </div>
+-          <UtilitySection />
+-        </div>
+-        <div className="bg-ui-bg-subtle sticky bottom-0">
+-          <UserSection />
+-        </div>
+-      </div>
+-    </aside>
+-  )
+-}
+-
+-const Logout = () => {
+-  const { t } = useTranslation()
+-  const navigate = useNavigate()
+-
+-  const { mutateAsync: logoutMutation } = useLogout()
+-
+-  const handleLogout = async () => {
+-    await logoutMutation(undefined, {
+-      onSuccess: () => {
+-        /**
+-         * When the user logs out, we want to clear the query cache
+-         */
+-        queryClient.clear()
+-        navigate("/login")
+-      },
+-    })
+-  }
+-
+-  return (
+-    <DropdownMenu.Item onClick={handleLogout}>
+-      <div className="flex items-center gap-x-2">
+-        <OpenRectArrowOut className="text-ui-fg-subtle" />
+-        <span>{t("app.menus.actions.logout")}</span>
+-      </div>
+-    </DropdownMenu.Item>
+-  )
+-}
+-
+-const Header = () => {
+-  const { t } = useTranslation()
+-  const { store, isPending, isError, error } = useStore()
+-  const direction = useDocumentDirection()
+-  const name = store?.name
+-  const fallback = store?.name?.slice(0, 1).toUpperCase()
+-
+-  const isLoaded = !isPending && !!store && !!name && !!fallback
+-
+-  if (isError) {
+-    throw error
+-  }
+-
+-  return (
+-    <div className="w-full p-3">
+-    <DropdownMenu
+-          dir={direction}>
+-        <DropdownMenu.Trigger
+-          disabled={!isLoaded}
+-          className={clx(
+-            "bg-ui-bg-subtle transition-fg grid w-full grid-cols-[24px_1fr_15px] items-center gap-x-3 rounded-md p-0.5 pe-2 outline-none",
+-            "hover:bg-ui-bg-subtle-hover",
+-            "data-[state=open]:bg-ui-bg-subtle-hover",
+-            "focus-visible:shadow-borders-focus"
+-          )}
+-        >
+-          {fallback ? (
+-            <Avatar variant="squared" size="xsmall" fallback={fallback} />
+-          ) : (
+-            <Skeleton className="h-6 w-6 rounded-md" />
+-          )}
+-          <div className="block overflow-hidden text-start">
+-            {name ? (
+-              <Text
+-                size="small"
+-                weight="plus"
+-                leading="compact"
+-                className="truncate"
+-              >
+-                {store.name}
+-              </Text>
+-            ) : (
+-              <Skeleton className="h-[9px] w-[120px]" />
+-            )}
+-          </div>
+-          <EllipsisHorizontal className="text-ui-fg-muted" />
+-        </DropdownMenu.Trigger>
+-        {isLoaded && (
+-          <DropdownMenu.Content className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-0">
+-            <div className="flex items-center gap-x-3 px-2 py-1">
+-              <Avatar variant="squared" size="small" fallback={fallback} />
+-              <div className="flex flex-col overflow-hidden">
+-                <Text
+-                  size="small"
+-                  weight="plus"
+-                  leading="compact"
+-                  className="truncate"
+-                >
+-                  {name}
+-                </Text>
+-                <Text
+-                  size="xsmall"
+-                  leading="compact"
+-                  className="text-ui-fg-subtle"
+-                >
+-                  {t("app.nav.main.store")}
+-                </Text>
+-              </div>
+-            </div>
+-            <DropdownMenu.Separator />
+-            <DropdownMenu.Item className="gap-x-2" asChild>
+-              <Link to="/settings/store">
+-                <BuildingStorefront className="text-ui-fg-subtle" />
+-                {t("app.nav.main.storeSettings")}
+-              </Link>
+-            </DropdownMenu.Item>
+-            <DropdownMenu.Separator />
+-            <Logout />
+-          </DropdownMenu.Content>
+-        )}
+-      </DropdownMenu>
+-    </div>
+-  )
+-}
+-
+-const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
+-  const { t } = useTranslation()
+-
+-  return [
+-    {
 -      icon: <ShoppingCart />,
 -      label: t("orders.domain"),
 -      to: "/orders",
@@ -560,19 +728,11 @@ index 5aa04ed..52a25e7 100644
 -        //   to: "/draft-orders",
 -        // },
 -      ],
-+      icon: <BuildingStorefront />,
-+      label: t("collections.domain"),
-+      to: "/collections",
-+    },
-+    {
-+      icon: <SquaresPlus />,
-+      label: t("categories.domain"),
-+      to: "/categories",
-     },
-     {
-       icon: <Tag />,
-       label: t("products.domain"),
-       to: "/products",
+-    },
+-    {
+-      icon: <Tag />,
+-      label: t("products.domain"),
+-      to: "/products",
 -      items: [
 -        {
 -          label: t("collections.domain"),
@@ -588,30 +748,406 @@ index 5aa04ed..52a25e7 100644
 -        //   to: "/gift-cards",
 -        // },
 -      ],
-+      items: [],
-     },
-     {
-       icon: <Buildings />,
-       label: t("inventory.domain"),
-       to: "/inventory",
+-    },
+-    {
+-      icon: <Buildings />,
+-      label: t("inventory.domain"),
+-      to: "/inventory",
 -      items: [
 -        {
 -          label: t("reservations.domain"),
 -          to: "/reservations",
 -        },
 -      ],
-+      items: [],
-     },
-     {
-       icon: <Users />,
-       label: t("customers.domain"),
-       to: "/customers",
+-    },
+-    {
+-      icon: <Users />,
+-      label: t("customers.domain"),
+-      to: "/customers",
 -      items: [
 -        {
 -          label: t("customerGroups.domain"),
 -          to: "/customer-groups",
 -        },
 -      ],
+-    },
+-    {
+-      icon: <ReceiptPercent />,
+-      label: t("promotions.domain"),
+-      to: "/promotions",
+-      items: [
+-        {
+-          label: t("campaigns.domain"),
+-          to: "/campaigns",
+-        },
+-      ],
+-    },
+-    {
+-      icon: <CurrencyDollar />,
+-      label: t("priceLists.domain"),
+-      to: "/price-lists",
+-    },
+-  ]
+-}
+-
+-const Searchbar = () => {
+-  const { t } = useTranslation()
+-  const { toggleSearch } = useSearch()
+-
+-  return (
+-    <div className="px-3">
+-      <button
+-        onClick={toggleSearch}
+-        className={clx(
+-          "bg-ui-bg-subtle text-ui-fg-subtle flex w-full items-center gap-x-2.5 rounded-md px-2 py-1 outline-none",
+-          "hover:bg-ui-bg-subtle-hover",
+-          "focus-visible:shadow-borders-focus"
+-        )}
+-      >
+-        <MagnifyingGlass />
+-        <div className="flex-1 text-start">
+-          <Text size="small" leading="compact" weight="plus">
+-            {t("app.search.label")}
+-          </Text>
+-        </div>
+-        <Text size="small" leading="compact" className="text-ui-fg-muted">
+-          ⌘K
+-        </Text>
+-      </button>
+-    </div>
+-  )
+-}
+-
+-const CoreRouteSection = () => {
+-  const coreRoutes = useCoreRoutes()
+-
+-  const { getMenu } = useExtension()
+-
+-  const menuItems = getMenu("coreExtensions")
+-
+-  menuItems.forEach((item) => {
+-    if (item.nested) {
+-      const route = coreRoutes.find((route) => route.to === item.nested)
+-      if (route) {
+-        route.items?.push(item)
+-      }
+-    }
+-  })
+-
+-  return (
+-    <nav className="flex flex-col gap-y-1 py-3">
+-      <Searchbar />
+-      {coreRoutes.map((route) => {
+-        return <NavItem key={route.to} {...route} />
+-      })}
+-    </nav>
+-  )
+-}
+-
+-const ExtensionRouteSection = () => {
+-  const { t } = useTranslation()
+-  const { getMenu } = useExtension()
+-
+-  const menuItems = getMenu("coreExtensions").filter((item) => !item.nested)
+-
+-  if (!menuItems.length) {
+-    return null
+-  }
+-
+-  return (
+-    <div>
+-      <div className="px-3">
+-        <Divider variant="dashed" />
+-      </div>
+-      <div className="flex flex-col gap-y-1 py-3">
+-        <RadixCollapsible.Root defaultOpen>
+-          <div className="px-4">
+-            <RadixCollapsible.Trigger asChild className="group/trigger">
+-              <button className="text-ui-fg-subtle flex w-full items-center justify-between px-2">
+-                <Text size="xsmall" weight="plus" leading="compact">
+-                  {t("app.nav.common.extensions")}
+-                </Text>
+-                <div className="text-ui-fg-muted">
+-                  <ChevronDownMini className="group-data-[state=open]/trigger:hidden" />
+-                  <MinusMini className="group-data-[state=closed]/trigger:hidden" />
+-                </div>
+-              </button>
+-            </RadixCollapsible.Trigger>
+-          </div>
+-          <RadixCollapsible.Content>
+-            <nav className="flex flex-col gap-y-0.5 py-1 pb-4">
+-              {menuItems.map((item, i) => {
+-                return (
+-                  <NavItem
+-                    key={i}
+-                    to={item.to}
+-                    label={item.label}
+-                    icon={item.icon ? item.icon : <SquaresPlus />}
+-                    items={item.items}
+-                    type="extension"
+-                  />
+-                )
+-              })}
+-            </nav>
+-          </RadixCollapsible.Content>
+-        </RadixCollapsible.Root>
+-      </div>
+-    </div>
+-  )
+-}
+-
+-const UtilitySection = () => {
+-  const location = useLocation()
+-  const { t } = useTranslation()
+-
+-  return (
+-    <div className="flex flex-col gap-y-0.5 py-3">
+-      <NavItem
+-        label={t("app.nav.settings.header")}
+-        to="/settings"
+-        from={location.pathname}
+-        icon={<CogSixTooth />}
+-      />
+-    </div>
+-  )
+-}
+-
+-const UserSection = () => {
+-  return (
+-    <div>
+-      <div className="px-3">
+-        <Divider variant="dashed" />
+-      </div>
+-      <UserMenu />
+-    </div>
+-  )
+-}
++import {
++  BuildingStorefront,
++  Buildings,
++  ChevronDownMini,
++  CogSixTooth,
++  CurrencyDollar,
++  EllipsisHorizontal,
++  MagnifyingGlass,
++  MinusMini,
++  OpenRectArrowOut,
++  ReceiptPercent,
++  ShoppingCart,
++  SquaresPlus,
++  Tag,
++  Users,
++} from "@medusajs/icons"
++import { Avatar, Divider, DropdownMenu, Text, clx } from "@medusajs/ui"
++import { Collapsible as RadixCollapsible } from "radix-ui"
++import { useTranslation } from "react-i18next"
++
++import { useStore } from "../../../hooks/api/store"
++import { Skeleton } from "../../common/skeleton"
++import { INavItem, NavItem } from "../../layout/nav-item"
++import { Shell } from "../../layout/shell"
++
++import { Link, useLocation, useNavigate } from "react-router-dom"
++import { useLogout } from "../../../hooks/api"
++import { queryClient } from "../../../lib/query-client"
++import { useExtension } from "../../../providers/extension-provider"
++import { useSearch } from "../../../providers/search-provider"
++import { UserMenu } from "../user-menu"
++import { useDocumentDirection } from "../../../hooks/use-document-direction"
++
++export const MainLayout = () => {
++  return (
++    <Shell>
++      <MainSidebar />
++    </Shell>
++  )
++}
++
++const MainSidebar = () => {
++  return (
++    <aside className="flex flex-1 flex-col justify-between overflow-y-auto">
++      <div className="flex flex-1 flex-col">
++        <div className="bg-ui-bg-subtle sticky top-0">
++          <Header />
++          <div className="px-3">
++            <Divider variant="dashed" />
++          </div>
++        </div>
++        <div className="flex flex-1 flex-col justify-between">
++          <div className="flex flex-1 flex-col">
++            <CoreRouteSection />
++            <ExtensionRouteSection />
++          </div>
++          <UtilitySection />
++        </div>
++        <div className="bg-ui-bg-subtle sticky bottom-0">
++          <UserSection />
++        </div>
++      </div>
++    </aside>
++  )
++}
++
++const Logout = () => {
++  const { t } = useTranslation()
++  const navigate = useNavigate()
++
++  const { mutateAsync: logoutMutation } = useLogout()
++
++  const handleLogout = async () => {
++    await logoutMutation(undefined, {
++      onSuccess: () => {
++        /**
++         * When the user logs out, we want to clear the query cache
++         */
++        queryClient.clear()
++        navigate("/login")
++      },
++    })
++  }
++
++  return (
++    <DropdownMenu.Item onClick={handleLogout}>
++      <div className="flex items-center gap-x-2">
++        <OpenRectArrowOut className="text-ui-fg-subtle" />
++        <span>{t("app.menus.actions.logout")}</span>
++      </div>
++    </DropdownMenu.Item>
++  )
++}
++
++const Header = () => {
++  const { t } = useTranslation()
++  const { store, isPending, isError, error } = useStore()
++  const direction = useDocumentDirection()
++  const name = store?.name
++  const fallback = store?.name?.slice(0, 1).toUpperCase()
++
++  const isLoaded = !isPending && !!store && !!name && !!fallback
++
++  if (isError) {
++    throw error
++  }
++
++  return (
++    <div className="w-full p-3">
++    <DropdownMenu
++          dir={direction}>
++        <DropdownMenu.Trigger
++          disabled={!isLoaded}
++          className={clx(
++            "bg-ui-bg-subtle transition-fg grid w-full grid-cols-[24px_1fr_15px] items-center gap-x-3 rounded-md p-0.5 pe-2 outline-none",
++            "hover:bg-ui-bg-subtle-hover",
++            "data-[state=open]:bg-ui-bg-subtle-hover",
++            "focus-visible:shadow-borders-focus"
++          )}
++        >
++          {fallback ? (
++            <Avatar variant="squared" size="xsmall" fallback={fallback} />
++          ) : (
++            <Skeleton className="h-6 w-6 rounded-md" />
++          )}
++          <div className="block overflow-hidden text-start">
++            {name ? (
++              <Text
++                size="small"
++                weight="plus"
++                leading="compact"
++                className="truncate"
++              >
++                {store.name}
++              </Text>
++            ) : (
++              <Skeleton className="h-[9px] w-[120px]" />
++            )}
++          </div>
++          <EllipsisHorizontal className="text-ui-fg-muted" />
++        </DropdownMenu.Trigger>
++        {isLoaded && (
++          <DropdownMenu.Content className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-0">
++            <div className="flex items-center gap-x-3 px-2 py-1">
++              <Avatar variant="squared" size="small" fallback={fallback} />
++              <div className="flex flex-col overflow-hidden">
++                <Text
++                  size="small"
++                  weight="plus"
++                  leading="compact"
++                  className="truncate"
++                >
++                  {name}
++                </Text>
++                <Text
++                  size="xsmall"
++                  leading="compact"
++                  className="text-ui-fg-subtle"
++                >
++                  {t("app.nav.main.store")}
++                </Text>
++              </div>
++            </div>
++            <DropdownMenu.Separator />
++            <DropdownMenu.Item className="gap-x-2" asChild>
++              <Link to="/settings/store">
++                <BuildingStorefront className="text-ui-fg-subtle" />
++                {t("app.nav.main.storeSettings")}
++              </Link>
++            </DropdownMenu.Item>
++            <DropdownMenu.Separator />
++            <Logout />
++          </DropdownMenu.Content>
++        )}
++      </DropdownMenu>
++    </div>
++  )
++}
++
++/** Custom admin routes promoted into the core sidebar (UI-only; routes unchanged). */
++const PROMOTED_EXTENSION_PATHS = [
++  "/return-requests",
++  "/flash-sale",
++  "/oweg-homepage",
++  "/vendors",
++  "/vendor-commission",
++  "/vendor-requests",
++  "/vendor-payouts",
++  "/vendor-claims",
++  "/packet-booking",
++  "/return-packet-booking",
++  "/vendor-marketplace-tax",
++  "/oweg-customer-groups",
++  "/affiliate-admins",
++] as const
++
++const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
++  const { t } = useTranslation()
++
++  return [
++    {
++      icon: <BuildingStorefront />,
++      label: t("collections.domain"),
++      to: "/collections",
++    },
++    {
++      icon: <SquaresPlus />,
++      label: t("categories.domain"),
++      to: "/categories",
++    },
++    {
++      icon: <Tag />,
++      label: t("products.domain"),
++      to: "/products",
++      items: [],
++    },
++    {
++      icon: <Buildings />,
++      label: t("inventory.domain"),
++      to: "/inventory",
++      items: [],
++    },
++    {
++      icon: <Users />,
++      label: t("customers.domain"),
++      to: "/customers",
 +      items: [],
 +    },
 +    {
@@ -624,36 +1160,76 @@ index 5aa04ed..52a25e7 100644
 +      icon: <OpenRectArrowOut />,
 +      label: t("draftOrders.domain"),
 +      to: "/draft-orders",
-     },
-     {
-       icon: <ReceiptPercent />,
-@@ -253,7 +252,6 @@ const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
-     },
-   ]
- }
--
- const Searchbar = () => {
-   const { t } = useTranslation()
-   const { toggleSearch } = useSearch()
-@@ -291,17 +289,73 @@ const CoreRouteSection = () => {
- 
-   menuItems.forEach((item) => {
-     if (item.nested) {
++    },
++    {
++      icon: <ReceiptPercent />,
++      label: t("promotions.domain"),
++      to: "/promotions",
++      items: [
++        {
++          label: t("campaigns.domain"),
++          to: "/campaigns",
++        },
++      ],
++    },
++    {
++      icon: <CurrencyDollar />,
++      label: t("priceLists.domain"),
++      to: "/price-lists",
++    },
++  ]
++}
++const Searchbar = () => {
++  const { t } = useTranslation()
++  const { toggleSearch } = useSearch()
++
++  return (
++    <div className="px-3">
++      <button
++        onClick={toggleSearch}
++        className={clx(
++          "bg-ui-bg-subtle text-ui-fg-subtle flex w-full items-center gap-x-2.5 rounded-md px-2 py-1 outline-none",
++          "hover:bg-ui-bg-subtle-hover",
++          "focus-visible:shadow-borders-focus"
++        )}
++      >
++        <MagnifyingGlass />
++        <div className="flex-1 text-start">
++          <Text size="small" leading="compact" weight="plus">
++            {t("app.search.label")}
++          </Text>
++        </div>
++        <Text size="small" leading="compact" className="text-ui-fg-muted">
++          ⌘K
++        </Text>
++      </button>
++    </div>
++  )
++}
++
++const CoreRouteSection = () => {
++  const coreRoutes = useCoreRoutes()
++
++  const { getMenu } = useExtension()
++
++  const menuItems = getMenu("coreExtensions")
++
++  menuItems.forEach((item) => {
++    if (item.nested) {
 +      // Hide plugin Drafts under Orders; we already show top-level Draft Orders
 +      if (item.to === "/draft-orders") {
 +        return
 +      }
-       const route = coreRoutes.find((route) => route.to === item.nested)
-       if (route) {
--        route.items?.push(item)
++      const route = coreRoutes.find((route) => route.to === item.nested)
++      if (route) {
 +        if (!route.items) {
 +          route.items = []
 +        }
 +        route.items.push(item)
-       }
-     }
-   })
- 
++      }
++    }
++  })
++
 +  const extensionByPath = new Map(
 +    menuItems
 +      .filter((item) => !item.nested)
@@ -683,7 +1259,11 @@ index 5aa04ed..52a25e7 100644
 +    "/vendor-commission",
 +    "/vendor-requests",
 +    "/vendor-payouts",
-+    "/affiliate-admins",
++    "/vendor-claims",
++    "/packet-booking",
++    "/return-packet-booking",
++    "/vendor-marketplace-tax",
++    "/affiliate-admins", // last in sidebar
 +  ]
 +    .map((path) => extensionByPath.get(path))
 +    .filter((item): item is NonNullable<typeof item> => Boolean(item))
@@ -703,29 +1283,100 @@ index 5aa04ed..52a25e7 100644
 +    }
 +  }
 +
-   return (
-     <nav className="flex flex-col gap-y-1 py-3">
-       <Searchbar />
--      {coreRoutes.map((route) => {
++  return (
++    <nav className="flex flex-col gap-y-1 py-3">
++      <Searchbar />
 +      {routes.map((route) => {
-         return <NavItem key={route.to} {...route} />
-       })}
-     </nav>
-@@ -312,7 +366,11 @@ const ExtensionRouteSection = () => {
-   const { t } = useTranslation()
-   const { getMenu } = useExtension()
- 
--  const menuItems = getMenu("coreExtensions").filter((item) => !item.nested)
++        return <NavItem key={route.to} {...route} />
++      })}
++    </nav>
++  )
++}
++
++const ExtensionRouteSection = () => {
++  const { t } = useTranslation()
++  const { getMenu } = useExtension()
++
 +  const promoted = new Set<string>(PROMOTED_EXTENSION_PATHS)
 +
 +  const menuItems = getMenu("coreExtensions").filter(
 +    (item) => !item.nested && !promoted.has(item.to)
 +  )
- 
-   if (!menuItems.length) {
-     return null
++
++  if (!menuItems.length) {
++    return null
++  }
++
++  return (
++    <div>
++      <div className="px-3">
++        <Divider variant="dashed" />
++      </div>
++      <div className="flex flex-col gap-y-1 py-3">
++        <RadixCollapsible.Root defaultOpen>
++          <div className="px-4">
++            <RadixCollapsible.Trigger asChild className="group/trigger">
++              <button className="text-ui-fg-subtle flex w-full items-center justify-between px-2">
++                <Text size="xsmall" weight="plus" leading="compact">
++                  {t("app.nav.common.extensions")}
++                </Text>
++                <div className="text-ui-fg-muted">
++                  <ChevronDownMini className="group-data-[state=open]/trigger:hidden" />
++                  <MinusMini className="group-data-[state=closed]/trigger:hidden" />
++                </div>
++              </button>
++            </RadixCollapsible.Trigger>
++          </div>
++          <RadixCollapsible.Content>
++            <nav className="flex flex-col gap-y-0.5 py-1 pb-4">
++              {menuItems.map((item, i) => {
++                return (
++                  <NavItem
++                    key={i}
++                    to={item.to}
++                    label={item.label}
++                    icon={item.icon ? item.icon : <SquaresPlus />}
++                    items={item.items}
++                    type="extension"
++                  />
++                )
++              })}
++            </nav>
++          </RadixCollapsible.Content>
++        </RadixCollapsible.Root>
++      </div>
++    </div>
++  )
++}
++
++const UtilitySection = () => {
++  const location = useLocation()
++  const { t } = useTranslation()
++
++  return (
++    <div className="flex flex-col gap-y-0.5 py-3">
++      <NavItem
++        label={t("app.nav.settings.header")}
++        to="/settings"
++        from={location.pathname}
++        icon={<CogSixTooth />}
++      />
++    </div>
++  )
++}
++
++const UserSection = () => {
++  return (
++    <div>
++      <div className="px-3">
++        <Divider variant="dashed" />
++      </div>
++      <UserMenu />
++    </div>
++  )
++}
 diff --git a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx
-index 7ef287c..d2d6988 100644
+index 7ef287c..633200d 100644
 --- a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx
 +++ b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/inventory-list-table.tsx
 @@ -33,6 +33,7 @@ export const InventoryListTable = () => {
@@ -737,7 +1388,7 @@ index 7ef287c..d2d6988 100644
  
    const filters = useInventoryTableFilters()
 diff --git a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
-index c726fbf..76aa5fb 100644
+index c726fbf..ae1fa75 100644
 --- a/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
 +++ b/node_modules/@medusajs/dashboard/src/routes/inventory/inventory-list/components/use-inventory-table-columns.tsx
 @@ -4,6 +4,7 @@ import { Checkbox } from "@medusajs/ui"
