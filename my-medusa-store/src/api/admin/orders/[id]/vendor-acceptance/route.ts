@@ -11,6 +11,7 @@ import {
   pickVendorItems,
   type VendorOrderStage,
 } from "../../../../../lib/vendor-order-workflow"
+import { readCancellationInfo } from "../../../../../lib/order-cancel/metadata"
 
 /**
  * GET /admin/orders/:id/vendor-acceptance
@@ -166,6 +167,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     return res.json({
       order_id: order.id,
       display_id: order.display_id,
+      status: order.status,
+      cancellation: readCancellationInfo(order as any),
       vendors,
       summary: {
         vendor_count: vendors.length,

@@ -16,6 +16,10 @@ import {
   type LedgerCategory,
   type LedgerSettlementBreakdown,
 } from "./vendor-ledger-settlement";
+import {
+  getOrFreezeOrderSettlementRates,
+  readOrderSettlementRates,
+} from "./vendor-settlement-snapshot";
 
 export const VENDOR_EARNINGS_UNLOCK_MINUTES = 5;
 
@@ -313,12 +317,8 @@ export async function recomputeUnpaidVendorLedger(
   options?: { orderId?: string; commissionRate?: number; platformRate?: number }
 ): Promise<number> {
   await ensureVendorEarningsTaxColumns(pool);
-  const [taxRates, commissionRate] = await Promise.all([
-    getMarketplaceTaxRates(pool),
-    options?.commissionRate != null
-      ? Promise.resolve(options.commissionRate)
-      : fetchVendorCommissionRate(vendorId, pool),
-  ]);
+  // Live store TCS/TDS only as legacy fallback — prefer per-order snapshot.
+  const taxRates = await getMarketplaceTaxRates(pool);
 
   const rows = await pool.query<{
     id: string;
@@ -328,23 +328,59 @@ export async function recomputeUnpaidVendorLedger(
     logistic_fee: string | number;
     return_fee: string | number;
     cancellation_fee: string | number | null;
+    commission_rate: string | number | null;
+    platform_fee_rate: string | number | null;
   }>(
     `
       SELECT id, order_id, taxable_amount, gst_rate,
              COALESCE(logistic_fee, 0) AS logistic_fee,
              COALESCE(return_fee, 0) AS return_fee,
-             COALESCE(cancellation_fee, 0) AS cancellation_fee
+             COALESCE(cancellation_fee, 0) AS cancellation_fee,
+             commission_rate,
+             platform_fee_rate
       FROM vendor_earnings_log
       WHERE vendor_id = $1
         AND status IN ('UNLOCKING', 'CREDITED', 'ON_HOLD')
         AND order_id NOT LIKE 'claim:%'
+        AND order_id NOT LIKE 'clawback:%'
+        AND order_id NOT LIKE 'cancel-fee:%'
         ${options?.orderId ? "AND order_id = $2" : ""}
     `,
     options?.orderId ? [vendorId, options.orderId] : [vendorId]
   );
 
+  const orderIds = [...new Set(rows.rows.map((r) => r.order_id).filter(Boolean))];
+  const orderMetaById = new Map<string, Record<string, unknown> | null>();
+  if (orderIds.length > 0) {
+    const metaResult = await pool.query<{
+      id: string;
+      metadata: Record<string, unknown> | null;
+    }>(`SELECT id, metadata FROM "order" WHERE id = ANY($1::text[])`, [orderIds]);
+    for (const row of metaResult.rows) {
+      orderMetaById.set(row.id, row.metadata || null);
+    }
+  }
+
   let updated = 0;
   for (const row of rows.rows) {
+    let orderMeta = orderMetaById.get(row.order_id) || null;
+    let snap = readOrderSettlementRates(orderMeta, vendorId);
+    if (!snap) {
+      snap = await getOrFreezeOrderSettlementRates({
+        orderId: row.order_id,
+        vendorId,
+        pool,
+        metadata: orderMeta,
+      });
+      const refreshed = await pool.query<{ metadata: Record<string, unknown> | null }>(
+        `SELECT metadata FROM "order" WHERE id = $1 LIMIT 1`,
+        [row.order_id]
+      );
+      orderMeta = refreshed.rows[0]?.metadata || null;
+      orderMetaById.set(row.order_id, orderMeta);
+    }
+
+    // Frozen order snapshot only — admin rate changes never rewrite these rows.
     const ledger = await ledgerForSaleRow({
       vendorId,
       itemPrice: Number(row.taxable_amount) || 0,
@@ -352,10 +388,12 @@ export async function recomputeUnpaidVendorLedger(
       returnFee: Number(row.return_fee) || 0,
       cancellationFee: Number(row.cancellation_fee) || 0,
       gstRate: Number(row.gst_rate) || 18,
-      commissionRate,
-      tcsRate: taxRates.tcs_rate,
-      tdsRate: taxRates.tds_rate,
-      platformRate: options?.platformRate,
+      commissionRate: snap.commission_rate,
+      tcsRate: snap.tcs_rate ?? taxRates.tcs_rate,
+      tdsRate: snap.tds_rate ?? taxRates.tds_rate,
+      platformRate: snap.platform_fee_rate,
+      partnerRate: snap.partner_rate,
+      serviceGstRate: snap.service_gst_rate,
       pool,
     });
     await pool.query(
@@ -500,6 +538,8 @@ async function ledgerForSaleRow(params: {
   tcsRate: number;
   tdsRate: number;
   platformRate?: number;
+  partnerRate?: number;
+  serviceGstRate?: number;
   category?: "sale" | "return";
   pool: Pool;
 }): Promise<LedgerSettlementBreakdown> {
@@ -509,6 +549,8 @@ async function ledgerForSaleRow(params: {
     tds_rate: params.tdsRate,
     output_gst_rate: params.gstRate,
     platform_rate: params.platformRate,
+    partner_rate: params.partnerRate,
+    service_gst_rate: params.serviceGstRate,
   });
   const category = params.category || "sale";
   const sale = calculateVendorLedgerSettlement({
@@ -540,22 +582,24 @@ async function upsertVendorEarningRow(
 ): Promise<void> {
   await ensureVendorEarningsTaxColumns(pool);
 
-  const [commissionRate, taxRates, orderMetaResult] = await Promise.all([
-    fetchVendorCommissionRate(row.vendor_id, pool),
-    getMarketplaceTaxRates(pool),
-    pool.query<{ metadata: Record<string, unknown> | null }>(
-      `SELECT metadata FROM "order" WHERE id = $1 LIMIT 1`,
-      [orderId]
-    ),
-  ]);
+  const orderMetaResult = await pool.query<{
+    metadata: Record<string, unknown> | null;
+  }>(`SELECT metadata FROM "order" WHERE id = $1 LIMIT 1`, [orderId]);
+  const orderMetadata = orderMetaResult.rows[0]?.metadata || null;
 
-  const settlement = calculateMarketplaceSettlementFromLines(row.lines, {
-    commission_rate: commissionRate,
-    tcs_rate: taxRates.tcs_rate,
-    tds_rate: taxRates.tds_rate,
+  const snap = await getOrFreezeOrderSettlementRates({
+    orderId,
+    vendorId: row.vendor_id,
+    pool,
+    metadata: orderMetadata,
   });
 
-  const orderMetadata = orderMetaResult.rows[0]?.metadata || null;
+  const settlement = calculateMarketplaceSettlementFromLines(row.lines, {
+    commission_rate: snap.commission_rate,
+    tcs_rate: snap.tcs_rate,
+    tds_rate: snap.tds_rate,
+  });
+
   const logisticFee = resolveVendorLogisticFee(orderMetadata, row.vendor_id);
   const returnFee = resolveVendorReturnFee(orderMetadata, row.vendor_id);
   const ledger = await ledgerForSaleRow({
@@ -564,9 +608,12 @@ async function upsertVendorEarningRow(
     logisticFee,
     returnFee,
     gstRate: settlement.gst_rate || 18,
-    commissionRate,
-    tcsRate: taxRates.tcs_rate,
-    tdsRate: taxRates.tds_rate,
+    commissionRate: snap.commission_rate,
+    tcsRate: snap.tcs_rate,
+    tdsRate: snap.tds_rate,
+    platformRate: snap.platform_fee_rate,
+    partnerRate: snap.partner_rate,
+    serviceGstRate: snap.service_gst_rate,
     pool,
   });
   const netAfterFees = adminPayableNetFromLedger(ledger);
@@ -693,16 +740,49 @@ async function upsertVendorEarningRow(
   );
 }
 
+/** Normalize optional vendor scope for delivery earnings. */
+export function normalizeDeliveryVendorScope(options?: {
+  vendorId?: string | null;
+  vendorIds?: string[] | null;
+}): string[] {
+  const ids = [
+    ...(options?.vendorId ? [String(options.vendorId)] : []),
+    ...((options?.vendorIds || []).map((id) => String(id || ""))),
+  ]
+    .map((id) => id.trim())
+    .filter(Boolean);
+  return [...new Set(ids)];
+}
+
 /**
- * When an order is delivered, create (or refresh) vendor earnings rows with a
- * 5-minute unlock timer before the amount becomes available for payout.
+ * When a vendor's shipment is delivered, create (or refresh) that vendor's
+ * earnings row with a 5-minute unlock timer.
+ *
+ * IMPORTANT: Always pass `vendorId` / `vendorIds`. Without a vendor scope this
+ * refuses to credit anyone — multi-vendor carts must not unlock sibling vendors
+ * when only one package is delivered.
  */
 export async function scheduleVendorEarningsOnDelivery(
   orderId: string,
   pool: Pool,
-  options?: { deliveredAt?: Date }
-): Promise<{ scheduled: number; vendors: string[] }> {
-  const rows = await fetchVendorOrderEarnings(orderId, pool);
+  options?: {
+    deliveredAt?: Date;
+    vendorId?: string | null;
+    vendorIds?: string[] | null;
+  }
+): Promise<{ scheduled: number; vendors: string[]; skipped_unscoped?: boolean }> {
+  const scope = normalizeDeliveryVendorScope(options);
+  if (scope.length === 0) {
+    console.warn(
+      `[vendor-earnings] refusing unscoped delivery earnings for order ${orderId} (pass vendorId)`
+    );
+    return { scheduled: 0, vendors: [], skipped_unscoped: true };
+  }
+
+  const allowed = new Set(scope);
+  const rows = (await fetchVendorOrderEarnings(orderId, pool)).filter((row) =>
+    allowed.has(row.vendor_id)
+  );
   if (rows.length === 0) {
     return { scheduled: 0, vendors: [] };
   }
@@ -782,7 +862,7 @@ export async function syncVendorEarningsStatuses(pool: Pool): Promise<number> {
     `
   );
 
-  // Keep unlock paused for any order with a return waiting on admin
+  // Keep unlock paused only for vendors whose items are on a pending return
   await pool.query(
     `
       UPDATE vendor_earnings_log vel
@@ -795,9 +875,21 @@ export async function syncVendorEarningsStatuses(pool: Pool): Promise<number> {
         AND EXISTS (
           SELECT 1
           FROM return_request rr
+          JOIN return_request_item rri
+            ON rri.return_request_id = rr.id
+           AND rri.deleted_at IS NULL
+          LEFT JOIN order_line_item oli ON oli.id = rri.order_item_id
+          LEFT JOIN order_item oi
+            ON oi.id = rri.order_item_id OR oi.item_id = rri.order_item_id
+          LEFT JOIN order_line_item oli2 ON oli2.id = oi.item_id
+          LEFT JOIN product_variant pv
+            ON pv.id = COALESCE(oli.variant_id, oli2.variant_id)
+          LEFT JOIN product p
+            ON p.id = COALESCE(oli.product_id, oli2.product_id, pv.product_id)
           WHERE rr.order_id = vel.order_id
             AND rr.status = 'pending_approval'
             AND rr.deleted_at IS NULL
+            AND TRIM(p.metadata->>'vendor_id') = vel.vendor_id
         )
     `
   );
@@ -820,14 +912,76 @@ export async function syncVendorEarningsStatuses(pool: Pool): Promise<number> {
 }
 
 /**
+ * Vendors whose products appear on a return request (via return_request_item → product).
+ * Used so hold/reverse/credit never touch sibling vendors on multi-vendor carts.
+ */
+export async function listVendorIdsForReturnRequest(
+  pool: Pool,
+  returnRequestId: string
+): Promise<string[]> {
+  if (!returnRequestId) return [];
+  const result = await pool.query<{ vendor_id: string | null }>(
+    `
+      SELECT DISTINCT TRIM(p.metadata->>'vendor_id') AS vendor_id
+      FROM return_request_item rri
+      LEFT JOIN order_line_item oli ON oli.id = rri.order_item_id
+      LEFT JOIN order_item oi
+        ON oi.id = rri.order_item_id OR oi.item_id = rri.order_item_id
+      LEFT JOIN order_line_item oli2 ON oli2.id = oi.item_id
+      LEFT JOIN product_variant pv
+        ON pv.id = COALESCE(oli.variant_id, oli2.variant_id)
+      LEFT JOIN product p
+        ON p.id = COALESCE(oli.product_id, oli2.product_id, pv.product_id)
+      WHERE rri.return_request_id = $1
+        AND rri.deleted_at IS NULL
+        AND p.metadata->>'vendor_id' IS NOT NULL
+        AND TRIM(p.metadata->>'vendor_id') <> ''
+    `,
+    [returnRequestId]
+  );
+  return [
+    ...new Set(
+      result.rows
+        .map((row) => String(row.vendor_id || "").trim())
+        .filter(Boolean)
+    ),
+  ];
+}
+
+function normalizeVendorScope(options?: {
+  vendorId?: string | null;
+  vendorIds?: string[] | null;
+}): string[] {
+  return [
+    ...new Set(
+      [
+        ...(options?.vendorId ? [String(options.vendorId)] : []),
+        ...((options?.vendorIds || []).map((id) => String(id || ""))),
+      ]
+        .map((id) => id.trim())
+        .filter(Boolean)
+    ),
+  ];
+}
+
+/**
  * Pause the 5-minute unlock (and pull out of Pending Payment) while a return
- * waits for admin confirmation.
+ * waits for admin confirmation. Always pass vendorIds for the returned items.
  */
 export async function holdVendorEarningsForReturn(
   orderId: string,
-  pool: Pool
-): Promise<{ held: number; skipped: boolean }> {
+  pool: Pool,
+  options?: { vendorId?: string | null; vendorIds?: string[] | null }
+): Promise<{ held: number; skipped: boolean; skipped_unscoped?: boolean }> {
   if (!orderId) return { held: 0, skipped: true };
+
+  const vendorIds = normalizeVendorScope(options);
+  if (vendorIds.length === 0) {
+    console.warn(
+      `[vendor-earnings] refusing unscoped return hold for order ${orderId}`
+    );
+    return { held: 0, skipped: true, skipped_unscoped: true };
+  }
 
   const result = await pool.query<{ id: string }>(
     `
@@ -838,15 +992,18 @@ export async function holdVendorEarningsForReturn(
         credited_at = NULL,
         updated_at = NOW()
       WHERE order_id = $1
+        AND vendor_id = ANY($2::text[])
         AND status IN ('UNLOCKING', 'CREDITED')
       RETURNING id
     `,
-    [orderId]
+    [orderId, vendorIds]
   );
 
   const held = result.rowCount ?? 0;
   if (held > 0) {
-    console.log(`[vendor-earnings] held ${held} row(s) for order ${orderId} (return pending)`);
+    console.log(
+      `[vendor-earnings] held ${held} row(s) for order ${orderId} vendors=${vendorIds.join(",")}`
+    );
   }
 
   return { held, skipped: held === 0 };
@@ -854,12 +1011,22 @@ export async function holdVendorEarningsForReturn(
 
 /**
  * Admin rejected the return — credit settlement to Pending Payment immediately.
+ * Only releases vendors that were held for this return.
  */
 export async function creditVendorEarningsAfterReturnRejected(
   orderId: string,
-  pool: Pool
-): Promise<{ credited: number; skipped: boolean }> {
+  pool: Pool,
+  options?: { vendorId?: string | null; vendorIds?: string[] | null }
+): Promise<{ credited: number; skipped: boolean; skipped_unscoped?: boolean }> {
   if (!orderId) return { credited: 0, skipped: true };
+
+  const vendorIds = normalizeVendorScope(options);
+  if (vendorIds.length === 0) {
+    console.warn(
+      `[vendor-earnings] refusing unscoped return credit for order ${orderId}`
+    );
+    return { credited: 0, skipped: true, skipped_unscoped: true };
+  }
 
   const result = await pool.query<{ id: string }>(
     `
@@ -870,16 +1037,17 @@ export async function creditVendorEarningsAfterReturnRejected(
         unlock_at = NULL,
         updated_at = NOW()
       WHERE order_id = $1
+        AND vendor_id = ANY($2::text[])
         AND status = 'ON_HOLD'
       RETURNING id
     `,
-    [orderId]
+    [orderId, vendorIds]
   );
 
   const credited = result.rowCount ?? 0;
   if (credited > 0) {
     console.log(
-      `[vendor-earnings] credited ${credited} row(s) for order ${orderId} (return rejected)`
+      `[vendor-earnings] credited ${credited} row(s) for order ${orderId} (return rejected) vendors=${vendorIds.join(",")}`
     );
   }
 
@@ -887,38 +1055,471 @@ export async function creditVendorEarningsAfterReturnRejected(
 }
 
 /**
+ * CREDITED debit for the fixed cancellation charge (fee + service GST).
+ * Hits available/payable balance — unlike stamping cancellation_fee on REVERSED net=0.
+ * Works for pre-delivery cancels (no earnings row) and post-delivery reverses.
+ */
+async function insertCancelFeeDebitsForOrder(
+  orderId: string,
+  pool: Pool,
+  vendorIds: string[],
+  options?: {
+    /** Vendors already known from reverse/paid rows */
+    knownVendors?: Array<{ vendor_id: string; order_display_id?: string | null }>;
+    orderMetadata?: Record<string, unknown> | null;
+  }
+): Promise<number> {
+  await ensureVendorEarningsTaxColumns(pool);
+
+  const known = new Map<string, string | null>();
+  for (const row of options?.knownVendors || []) {
+    if (row.vendor_id) known.set(row.vendor_id, row.order_display_id || null);
+  }
+
+  // Pre-delivery cancel: no earnings rows — resolve vendors from order line items.
+  if (known.size === 0) {
+    const fromOrder = await fetchVendorOrderEarnings(orderId, pool);
+    for (const row of fromOrder) {
+      if (!row.vendor_id) continue;
+      if (vendorIds.length > 0 && !vendorIds.includes(row.vendor_id)) continue;
+      known.set(row.vendor_id, row.order_display_id || null);
+    }
+  } else if (vendorIds.length > 0) {
+    for (const id of [...known.keys()]) {
+      if (!vendorIds.includes(id)) known.delete(id);
+    }
+  }
+
+  if (known.size === 0) return 0;
+
+  let orderMetadata = options?.orderMetadata ?? null;
+  if (!orderMetadata) {
+    const metaResult = await pool.query<{
+      metadata: Record<string, unknown> | null;
+      display_id: string | number | null;
+    }>(`SELECT metadata, display_id::text AS display_id FROM "order" WHERE id = $1 LIMIT 1`, [
+      orderId,
+    ]);
+    orderMetadata = metaResult.rows[0]?.metadata || null;
+    const displayId = metaResult.rows[0]?.display_id
+      ? String(metaResult.rows[0].display_id)
+      : null;
+    if (displayId) {
+      for (const [vid, existing] of known) {
+        if (!existing) known.set(vid, displayId);
+      }
+    }
+  }
+
+  let insertedCount = 0;
+  const now = new Date().toISOString();
+
+  for (const [vendorId, displayId] of known) {
+    const snap = await getOrFreezeOrderSettlementRates({
+      orderId,
+      vendorId,
+      pool,
+      metadata: orderMetadata,
+    });
+    const fee = roundMoney(Number(snap.cancellation_charge) || 0);
+    if (fee <= 0) continue;
+
+    const ledger = calculateVendorLedgerSettlement({
+      category: "cancellation",
+      item_price: 0,
+      logistic_fee: 0,
+      cancellation_fee: fee,
+      rates: {
+        platform_rate: snap.platform_fee_rate,
+        commission_rate: snap.commission_rate,
+        partner_rate: snap.partner_rate,
+        output_gst_rate: 18,
+        service_gst_rate: snap.service_gst_rate,
+        tcs_rate: snap.tcs_rate,
+        tds_rate: snap.tds_rate,
+      },
+    });
+    // Full Sheet4 cancel total (fee + GST) as a negative CREDITED net.
+    const debit = -Math.abs(Number(ledger.cancellation_total) || fee);
+    if (debit >= 0) continue;
+
+    const syntheticOrderId = `cancel-fee:${orderId}`;
+    const label = displayId ? `CANCEL-${displayId}` : `CANCEL-${orderId.slice(-6)}`;
+
+    const inserted = await pool.query(
+      `
+        INSERT INTO vendor_earnings_log (
+          id,
+          vendor_id,
+          order_id,
+          order_display_id,
+          gross_amount,
+          taxable_amount,
+          gst_amount,
+          gst_rate,
+          commission_rate,
+          commission_amount,
+          tcs_rate,
+          tcs_amount,
+          tds_rate,
+          tds_amount,
+          logistic_fee,
+          return_fee,
+          cancellation_fee,
+          net_amount,
+          currency_code,
+          status,
+          delivered_at,
+          unlock_at,
+          credited_at,
+          created_at,
+          updated_at
+        ) VALUES (
+          've_' || substr(md5($1 || ':' || $2 || ':cancel-fee'), 1, 24),
+          $2,
+          $1,
+          $3,
+          $4,
+          0,
+          $5,
+          $6,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          $7,
+          $4,
+          'inr',
+          'CREDITED',
+          $8,
+          NULL,
+          $8,
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT (vendor_id, order_id) DO NOTHING
+        RETURNING id
+      `,
+      [
+        syntheticOrderId,
+        vendorId,
+        label,
+        debit,
+        Math.abs(Number(ledger.cancellation_gst) || 0),
+        snap.service_gst_rate,
+        fee,
+        now,
+      ]
+    );
+
+    if ((inserted.rowCount ?? 0) > 0) {
+      insertedCount += 1;
+      console.log(
+        `[vendor-earnings] cancel-fee debit ${debit} (fee ${fee}) for vendor ${vendorId} order ${orderId}`
+      );
+    }
+  }
+
+  return insertedCount;
+}
+
+/**
+ * Claw back settlement that was already paid out (status=PAID).
+ * Leaves the PAID row intact for audit and inserts a CREDITED debit
+ * (`clawback:<orderId>`) so the amount is deducted from the next payout.
+ */
+async function insertPaidClawbacksForOrder(
+  orderId: string,
+  pool: Pool,
+  reason: string,
+  vendorIds: string[]
+): Promise<number> {
+  await ensureVendorEarningsTaxColumns(pool);
+
+  const paid =
+    vendorIds.length > 0
+      ? await pool.query<{
+          vendor_id: string;
+          net_amount: string | number;
+          order_display_id: string | null;
+        }>(
+          `
+            SELECT vendor_id, net_amount, order_display_id
+            FROM vendor_earnings_log
+            WHERE order_id = $1
+              AND vendor_id = ANY($2::text[])
+              AND status = 'PAID'
+              AND COALESCE(net_amount, 0) > 0
+          `,
+          [orderId, vendorIds]
+        )
+      : await pool.query<{
+          vendor_id: string;
+          net_amount: string | number;
+          order_display_id: string | null;
+        }>(
+          `
+            SELECT vendor_id, net_amount, order_display_id
+            FROM vendor_earnings_log
+            WHERE order_id = $1
+              AND status = 'PAID'
+              AND COALESCE(net_amount, 0) > 0
+          `,
+          [orderId]
+        );
+
+  let clawed = 0;
+  const now = new Date().toISOString();
+  const label = /cancel/i.test(reason) ? "CANCEL" : "RETURN";
+
+  for (const row of paid.rows) {
+    const paidNet = roundMoney(Number(row.net_amount) || 0);
+    if (paidNet <= 0) continue;
+    const syntheticOrderId = `clawback:${orderId}`;
+    const displayId = row.order_display_id
+      ? `${label}-${row.order_display_id}`
+      : `${label}-${orderId.slice(-6)}`;
+    const debit = -paidNet;
+
+    const inserted = await pool.query(
+      `
+        INSERT INTO vendor_earnings_log (
+          id,
+          vendor_id,
+          order_id,
+          order_display_id,
+          gross_amount,
+          taxable_amount,
+          gst_amount,
+          gst_rate,
+          commission_rate,
+          commission_amount,
+          tcs_rate,
+          tcs_amount,
+          tds_rate,
+          tds_amount,
+          logistic_fee,
+          return_fee,
+          cancellation_fee,
+          net_amount,
+          currency_code,
+          status,
+          delivered_at,
+          unlock_at,
+          credited_at,
+          created_at,
+          updated_at
+        ) VALUES (
+          've_' || substr(md5($1 || ':' || $2 || ':clawback'), 1, 24),
+          $2,
+          $1,
+          $3,
+          $4,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          $4,
+          'inr',
+          'CREDITED',
+          $5,
+          NULL,
+          $5,
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT (vendor_id, order_id) DO NOTHING
+        RETURNING id
+      `,
+      [syntheticOrderId, row.vendor_id, displayId, debit, now]
+    );
+
+    if ((inserted.rowCount ?? 0) > 0) {
+      clawed += 1;
+      console.log(
+        `[vendor-earnings] PAID clawback ${debit} for vendor ${row.vendor_id} order ${orderId} (${reason})`
+      );
+    }
+  }
+
+  return clawed;
+}
+
+/**
  * Reverse vendor earnings when an order is returned/cancelled/refunded.
  * Status becomes REVERSED and net credit is cleared to 0 (not a negative balance).
+ * Already-PAID rows are clawed back via a separate CREDITED debit (next payout).
+ *
+ * - Full order cancel: omit vendorIds → reverse every vendor on the order.
+ * - Return approve: pass vendorIds for returned items only (required via vendorScoped).
  */
 export async function reverseVendorEarningsForOrder(
   orderId: string,
   pool: Pool,
-  reason = "return"
-): Promise<{ reversed: number; skipped: boolean }> {
-  if (!orderId) return { reversed: 0, skipped: true };
+  reason = "return",
+  options?: {
+    vendorId?: string | null;
+    vendorIds?: string[] | null;
+    /** When true, do nothing if vendor scope is empty (return flows). */
+    vendorScoped?: boolean;
+  }
+): Promise<{
+  reversed: number;
+  clawed_back: number;
+  cancel_fees: number;
+  skipped: boolean;
+  skipped_unscoped?: boolean;
+}> {
+  if (!orderId) {
+    return { reversed: 0, clawed_back: 0, cancel_fees: 0, skipped: true };
+  }
 
-  const result = await pool.query<{ id: string }>(
-    `
-      UPDATE vendor_earnings_log
-      SET
-        status = 'REVERSED',
-        net_amount = 0,
-        credited_at = NULL,
-        unlock_at = NULL,
-        updated_at = NOW()
-      WHERE order_id = $1
-        AND status IN ('UNLOCKING', 'CREDITED', 'ON_HOLD')
-      RETURNING id
-    `,
-    [orderId]
+  const vendorIds = normalizeVendorScope(options);
+  if (options?.vendorScoped && vendorIds.length === 0) {
+    console.warn(
+      `[vendor-earnings] refusing unscoped reverse for order ${orderId} (${reason})`
+    );
+    return {
+      reversed: 0,
+      clawed_back: 0,
+      cancel_fees: 0,
+      skipped: true,
+      skipped_unscoped: true,
+    };
+  }
+
+  const applyCancelCharge = /cancel/i.test(reason);
+  const result =
+    vendorIds.length > 0
+      ? await pool.query<{
+          id: string;
+          vendor_id: string;
+          order_display_id: string | null;
+        }>(
+          `
+            UPDATE vendor_earnings_log
+            SET
+              status = 'REVERSED',
+              net_amount = 0,
+              cancellation_fee = 0,
+              credited_at = NULL,
+              unlock_at = NULL,
+              updated_at = NOW()
+            WHERE order_id = $1
+              AND vendor_id = ANY($2::text[])
+              AND status IN ('UNLOCKING', 'CREDITED', 'ON_HOLD')
+            RETURNING id, vendor_id, order_display_id
+          `,
+          [orderId, vendorIds]
+        )
+      : await pool.query<{
+          id: string;
+          vendor_id: string;
+          order_display_id: string | null;
+        }>(
+          `
+            UPDATE vendor_earnings_log
+            SET
+              status = 'REVERSED',
+              net_amount = 0,
+              cancellation_fee = 0,
+              credited_at = NULL,
+              unlock_at = NULL,
+              updated_at = NOW()
+            WHERE order_id = $1
+              AND status IN ('UNLOCKING', 'CREDITED', 'ON_HOLD')
+            RETURNING id, vendor_id, order_display_id
+          `,
+          [orderId]
+        );
+
+  const clawedBack = await insertPaidClawbacksForOrder(
+    orderId,
+    pool,
+    reason,
+    vendorIds
   );
+
+  let cancelFees = 0;
+  if (applyCancelCharge) {
+    const orderMetaResult = await pool.query<{
+      metadata: Record<string, unknown> | null;
+    }>(`SELECT metadata FROM "order" WHERE id = $1 LIMIT 1`, [orderId]);
+    const orderMetadata = orderMetaResult.rows[0]?.metadata || null;
+
+    const knownVendors = result.rows.map((row) => ({
+      vendor_id: row.vendor_id,
+      order_display_id: row.order_display_id,
+    }));
+    // Also cover PAID-only vendors (reversed list empty for them).
+    if (vendorIds.length > 0) {
+      const paidVendors = await pool.query<{
+        vendor_id: string;
+        order_display_id: string | null;
+      }>(
+        `
+          SELECT DISTINCT vendor_id, order_display_id
+          FROM vendor_earnings_log
+          WHERE order_id = $1
+            AND vendor_id = ANY($2::text[])
+            AND status = 'PAID'
+        `,
+        [orderId, vendorIds]
+      );
+      for (const row of paidVendors.rows) {
+        if (!knownVendors.some((k) => k.vendor_id === row.vendor_id)) {
+          knownVendors.push(row);
+        }
+      }
+    } else {
+      const paidVendors = await pool.query<{
+        vendor_id: string;
+        order_display_id: string | null;
+      }>(
+        `
+          SELECT DISTINCT vendor_id, order_display_id
+          FROM vendor_earnings_log
+          WHERE order_id = $1
+            AND status = 'PAID'
+        `,
+        [orderId]
+      );
+      for (const row of paidVendors.rows) {
+        if (!knownVendors.some((k) => k.vendor_id === row.vendor_id)) {
+          knownVendors.push(row);
+        }
+      }
+    }
+
+    cancelFees = await insertCancelFeeDebitsForOrder(orderId, pool, vendorIds, {
+      knownVendors,
+      orderMetadata,
+    });
+  }
 
   const reversed = result.rowCount ?? 0;
   if (reversed > 0) {
     console.log(`[vendor-earnings] reversed ${reversed} row(s) for order ${orderId} (${reason})`);
   }
 
-  return { reversed, skipped: reversed === 0 };
+  return {
+    reversed,
+    clawed_back: clawedBack,
+    cancel_fees: cancelFees,
+    skipped: reversed === 0 && clawedBack === 0 && cancelFees === 0,
+  };
 }
 
 /**
@@ -1029,46 +1630,110 @@ export async function upsertVendorClaimCredit(
   return { credited: true, order_id: syntheticOrderId, net_amount: net };
 }
 
+/** Normalize payout order id lists from JSON / CSV / arrays. */
+export function normalizePayoutOrderIds(orderIds?: unknown): string[] {
+  if (Array.isArray(orderIds)) {
+    return [
+      ...new Set(
+        orderIds
+          .map((id) => String(id || "").trim())
+          .filter(Boolean)
+      ),
+    ];
+  }
+  if (typeof orderIds === "string" && orderIds.trim()) {
+    try {
+      const parsed = JSON.parse(orderIds);
+      if (Array.isArray(parsed)) return normalizePayoutOrderIds(parsed);
+    } catch {
+      // fall through to CSV
+    }
+    return [
+      ...new Set(
+        orderIds
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean)
+      ),
+    ];
+  }
+  return [];
+}
+
 /**
- * Mark CREDITED earnings as PAID after admin processes a payout.
- * If orderIds provided, only those rows; otherwise all CREDITED for the vendor.
+ * Mark CREDITED earnings as PAID after a payout is confirmed.
+ * Requires explicit order_ids — never marks all CREDITED rows for a vendor.
  */
 export async function markVendorEarningsAsPaid(
   vendorId: string,
   pool: Pool,
-  orderIds?: string[]
+  orderIds: string[]
 ): Promise<number> {
-  if (!vendorId) return 0;
+  const ids = normalizePayoutOrderIds(orderIds);
+  if (!vendorId || ids.length === 0) {
+    throw new Error(
+      "order_ids are required to mark earnings as PAID (refusing to mark all CREDITED rows)"
+    );
+  }
 
-  const result =
-    orderIds && orderIds.length > 0
-      ? await pool.query(
-          `
-            UPDATE vendor_earnings_log
-            SET
-              status = 'PAID',
-              updated_at = NOW()
-            WHERE vendor_id = $1
-              AND status = 'CREDITED'
-              AND order_id = ANY($2::text[])
-            RETURNING id
-          `,
-          [vendorId, orderIds]
-        )
-      : await pool.query(
-          `
-            UPDATE vendor_earnings_log
-            SET
-              status = 'PAID',
-              updated_at = NOW()
-            WHERE vendor_id = $1
-              AND status = 'CREDITED'
-            RETURNING id
-          `,
-          [vendorId]
-        );
+  const result = await pool.query(
+    `
+      UPDATE vendor_earnings_log
+      SET
+        status = 'PAID',
+        updated_at = NOW()
+      WHERE vendor_id = $1
+        AND status = 'CREDITED'
+        AND order_id = ANY($2::text[])
+      RETURNING id
+    `,
+    [vendorId, ids]
+  );
 
   return result.rowCount ?? 0;
+}
+
+/** Razorpay statuses that mean money has settled to the vendor. */
+export function isRazorpayPayoutSettled(status: unknown): boolean {
+  return String(status || "")
+    .trim()
+    .toLowerCase() === "processed";
+}
+
+/**
+ * Orders already attached to an in-flight or completed payout must not be paid again.
+ */
+export async function listOrderIdsAlreadyOnPayout(
+  pool: Pool,
+  vendorId: string,
+  orderIds: string[],
+  options?: { excludePayoutId?: string | null }
+): Promise<string[]> {
+  const ids = normalizePayoutOrderIds(orderIds);
+  if (!vendorId || ids.length === 0) return [];
+
+  const result = await pool.query<{ order_ids: unknown }>(
+    `
+      SELECT order_ids
+      FROM vendor_payout
+      WHERE vendor_id = $1
+        AND lower(coalesce(status, '')) IN (
+          'pending', 'queued', 'processing', 'processed', 'completed', 'paid'
+        )
+        ${options?.excludePayoutId ? "AND id <> $2" : ""}
+    `,
+    options?.excludePayoutId
+      ? [vendorId, options.excludePayoutId]
+      : [vendorId]
+  );
+
+  const claimed = new Set<string>();
+  for (const row of result.rows) {
+    for (const orderId of normalizePayoutOrderIds(row.order_ids)) {
+      claimed.add(orderId);
+    }
+  }
+  return ids.filter((id) => claimed.has(id));
 }
 
 /** Payable snapshot for admin payout screen (CREDITED only — not still unlocking).
@@ -1111,7 +1776,7 @@ export type VendorPayableLineItem = {
   order_id: string;
   order_display_id: string | null;
   product_name: string;
-  type: "sales" | "claim";
+  type: "sales" | "claim" | "cancellation" | "clawback";
   order_amount: number;
   commission: number;
   tcs: number;
@@ -1125,7 +1790,7 @@ export type VendorPayableLineItem = {
 export async function getVendorPayableSnapshot(
   vendorId: string,
   pool: Pool,
-  options?: { effectiveRate?: number }
+  _options?: { effectiveRate?: number }
 ): Promise<{
   vendor_id: string;
   total_revenue: number;
@@ -1145,14 +1810,8 @@ export async function getVendorPayableSnapshot(
   await ensureVendorEarningsTaxColumns(pool);
   await syncVendorEarningsStatuses(pool);
   await repairClaimCreditsWithoutCommission(vendorId, pool);
-
-  const liveRate =
-    options?.effectiveRate != null && Number.isFinite(options.effectiveRate)
-      ? Number(options.effectiveRate)
-      : null;
-  if (liveRate != null) {
-    await recomputeUnpaidVendorLedger(vendorId, pool, { commissionRate: liveRate });
-  }
+  // Recompute unpaid rows from frozen per-order snapshots only (never live admin rates).
+  await recomputeUnpaidVendorLedger(vendorId, pool);
 
   const credited = await pool.query<{
     id: string;
@@ -1222,7 +1881,13 @@ export async function getVendorPayableSnapshot(
       FROM vendor_earnings_log vel
       WHERE vel.vendor_id = $1
         AND vel.status = 'CREDITED'
-        AND (vel.gross_amount > 0 OR vel.net_amount > 0)
+        AND (
+          vel.gross_amount > 0
+          OR vel.net_amount <> 0
+          OR vel.order_id LIKE 'claim:%'
+          OR vel.order_id LIKE 'clawback:%'
+          OR vel.order_id LIKE 'cancel-fee:%'
+        )
       ORDER BY vel.credited_at ASC NULLS LAST
     `,
     [vendorId]
@@ -1246,14 +1911,42 @@ export async function getVendorPayableSnapshot(
   let tds = 0;
   let logisticFeeTotal = 0;
   let netAmount = 0;
-  let commissionRate = liveRate != null ? liveRate : 2;
+  let commissionRate = 2;
   const orderIds: string[] = [];
   const lineItems: VendorPayableLineItem[] = [];
 
   for (const row of credited.rows) {
+    const orderIdKey = String(row.order_id || "");
+    const isClaim = orderIdKey.startsWith("claim:");
+    const isClawback = orderIdKey.startsWith("clawback:");
+    const isCancelFee = orderIdKey.startsWith("cancel-fee:");
     const gross = Number(row.gross_amount) || 0;
-    if (gross <= 0 && Number(row.net_amount) <= 0) continue;
-    const isClaim = String(row.order_id || "").startsWith("claim:");
+    const rowNetRaw = Number(row.net_amount) || 0;
+
+    // Debit rows (cancel fee / PAID clawback) reduce payable net.
+    if (isCancelFee || isClawback) {
+      if (rowNetRaw === 0) continue;
+      netAmount += rowNetRaw;
+      if (row.order_id) orderIds.push(row.order_id);
+      lineItems.push({
+        id: row.id,
+        order_id: row.order_id,
+        order_display_id: row.order_display_id,
+        product_name: isCancelFee
+          ? "Cancellation charge"
+          : "Paid clawback (return/cancel)",
+        type: isCancelFee ? "cancellation" : "clawback",
+        order_amount: rowNetRaw,
+        commission: 0,
+        tcs: 0,
+        tds: 0,
+        logistic_fee: 0,
+        pay_amount: rowNetRaw,
+      });
+      continue;
+    }
+
+    if (gross <= 0 && rowNetRaw <= 0) continue;
     // Claims credit net_amount; sales use gross for revenue totals
     if (!isClaim && gross <= 0) continue;
 
@@ -1263,8 +1956,8 @@ export async function getVendorPayableSnapshot(
     const rowLogistic = isClaim ? 0 : Number(row.logistic_fee) || 0;
     const rowCommission = isClaim ? 0 : Number(row.commission_amount) || 0;
     const rowNet = isClaim
-      ? Math.max(gross, Number(row.net_amount) || 0, taxable)
-      : Number(row.net_amount) || 0;
+      ? Math.max(gross, rowNetRaw, taxable)
+      : rowNetRaw;
 
     if (!isClaim) {
       commissionRate = Number(row.commission_rate) || commissionRate;
@@ -1320,6 +2013,13 @@ export async function getVendorPayableSnapshot(
   };
 }
 
+/** Same status set as Payments ledger payout SELECT — keep dashboard cards in sync. */
+export const VENDOR_PAYOUT_WITHDRAWN_STATUSES = [
+  "processed",
+  "completed",
+  "paid",
+] as const;
+
 async function fetchTotalWithdrawn(vendorId: string, pool: Pool): Promise<number> {
   try {
     const result = await pool.query(
@@ -1327,9 +2027,9 @@ async function fetchTotalWithdrawn(vendorId: string, pool: Pool): Promise<number
         SELECT COALESCE(SUM(net_amount), 0) AS total_withdrawn
         FROM vendor_payout
         WHERE vendor_id = $1
-          AND status = 'processed'
+          AND lower(coalesce(status, '')) = ANY($2::text[])
       `,
-      [vendorId]
+      [vendorId, [...VENDOR_PAYOUT_WITHDRAWN_STATUSES]]
     );
     return Number(result.rows[0]?.total_withdrawn) || 0;
   } catch (error: unknown) {

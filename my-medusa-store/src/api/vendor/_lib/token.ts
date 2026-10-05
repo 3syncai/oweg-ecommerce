@@ -1,6 +1,14 @@
 import crypto from "crypto"
 
-const getSecret = () => process.env.JWT_SECRET || "supersecret"
+function getSecret(): string {
+  const secret = process.env.JWT_SECRET?.trim()
+  if (!secret) {
+    throw new Error(
+      "JWT_SECRET is required — refusing to sign/verify vendor tokens with a default secret"
+    )
+  }
+  return secret
+}
 
 export type VendorClaims = {
   sub: string
@@ -24,16 +32,22 @@ export function signVendorToken(payload: Omit<VendorClaims, "iat" | "exp">, ttlS
 }
 
 export function verifyVendorToken(token: string): VendorClaims | null {
-  const parts = token.split(".")
-  if (parts.length !== 3) return null
-  const [h, p, s] = parts
-  const data = `${h}.${p}`
-  const expected = crypto.createHmac("sha256", getSecret()).update(data).digest("base64url")
-  if (!crypto.timingSafeEqual(Buffer.from(s), Buffer.from(expected))) return null
-  const claims = JSON.parse(Buffer.from(p, "base64url").toString()) as VendorClaims
-  if (claims.exp < Math.floor(Date.now() / 1000)) return null
-  if (claims.scope !== "vendor") return null
-  return claims
+  try {
+    const parts = token.split(".")
+    if (parts.length !== 3) return null
+    const [h, p, s] = parts
+    const data = `${h}.${p}`
+    const expected = crypto.createHmac("sha256", getSecret()).update(data).digest("base64url")
+    const sigBuf = Buffer.from(s)
+    const expectedBuf = Buffer.from(expected)
+    if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+      return null
+    }
+    const claims = JSON.parse(Buffer.from(p, "base64url").toString()) as VendorClaims
+    if (claims.exp < Math.floor(Date.now() / 1000)) return null
+    if (claims.scope !== "vendor") return null
+    return claims
+  } catch {
+    return null
+  }
 }
-
-

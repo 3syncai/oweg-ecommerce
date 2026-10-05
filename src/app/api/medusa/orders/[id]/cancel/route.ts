@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminFetch } from "@/lib/medusa-admin";
 import { medusaStoreFetch } from "@/lib/medusa-auth";
-import { cancelOrReverseCoinsForOrder } from "@/lib/customer-affiliate-coins";
+import { settleOrderCancellationWallet } from "@/lib/order-cancel-wallet-settlement";
 
 type RefundPayoutBody =
   | { method: "upi"; upi_id: string }
@@ -69,12 +69,19 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
     return NextResponse.json({ error: "Cancellation reason is required." }, { status: 400 });
   }
 
-  const fireCustomerAffiliate = async () => {
+  /** Same wallet settlement as admin cancel webhook: earned reverse + spend refund + affiliate. */
+  const settleCustomerWallet = async () => {
     try {
-      const result = await cancelOrReverseCoinsForOrder(orderId, { event: "order.cancelled" });
-      console.log("[customer-affiliate-coins] order cancel:", result);
+      const result = await settleOrderCancellationWallet({
+        orderId,
+        event: "order.cancelled",
+        reason: "Customer cancelled order",
+      });
+      console.log("[customer-cancel] wallet settlement:", result);
+      return result;
     } catch (err) {
-      console.error("[customer-affiliate-coins] order cancel failed:", err);
+      console.error("[customer-cancel] wallet settlement failed:", err);
+      return null;
     }
   };
 
@@ -96,8 +103,8 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
     let res = await cancelStore();
     if (res.ok) {
       const data = await res.json();
-      await fireCustomerAffiliate();
-      return NextResponse.json(data);
+      const wallet = await settleCustomerWallet();
+      return NextResponse.json({ ...data, wallet_settlement: wallet });
     }
 
     const text = await res.text();
@@ -132,8 +139,8 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
     }
 
     const data = await res.json();
-    await fireCustomerAffiliate();
-    return NextResponse.json(data);
+    const wallet = await settleCustomerWallet();
+    return NextResponse.json({ ...data, wallet_settlement: wallet });
   } catch {
     return NextResponse.json({ error: "Unexpected error cancelling order" }, { status: 500 });
   }

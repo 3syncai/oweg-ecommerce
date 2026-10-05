@@ -105,6 +105,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       const pool = getSharedDbPool()
       await scheduleVendorEarningsOnDelivery(orderId, pool, {
         deliveredAt: new Date(deliveredAt),
+        vendorId: auth.vendor_id,
       })
     } catch (earningsErr: any) {
       console.warn(

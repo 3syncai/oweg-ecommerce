@@ -3,6 +3,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
 import Busboy from "busboy"
 import path from "path"
 import { randomUUID } from "crypto"
+import { verifyVendorToken } from "../../../vendor/_lib/token"
 
 /**
  * POST /store/vendor/uploads
@@ -55,14 +56,35 @@ function sanitizeForPath(str: string): string {
   )
 }
 
-const ALLOWED_TYPES = new Set([
-  "logo",
-  "banner",
-  "cancelcheque",
-  "doc",
-  "pancard",
-  "report",
-])
+const SIGNUP_TYPES = new Set(["logo", "banner", "cancelcheque", "doc", "pancard"])
+const ALLOWED_TYPES = new Set([...SIGNUP_TYPES, "report"])
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+function readPublishableKey(req: MedusaRequest): string {
+  const headers = (req as any).headers || {}
+  return String(
+    headers["x-publishable-api-key"] ||
+      headers["X-Publishable-Api-Key"] ||
+      ""
+  ).trim()
+}
+
+function readVendorClaims(req: MedusaRequest) {
+  const headers = (req as any).headers || {}
+  const rawAuth = String(headers.authorization || headers.Authorization || "")
+  const token = rawAuth.startsWith("Bearer ") ? rawAuth.slice(7).trim() : ""
+  if (!token) return null
+  return verifyVendorToken(token)
+}
+
+function expectedPublishableKey(): string {
+  return (
+    process.env.MEDUSA_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY ||
+    process.env.PUBLISHABLE_API_KEY ||
+    ""
+  ).trim()
+}
 
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res, req)
@@ -73,6 +95,16 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res, req)
 
   try {
+    const expectedKey = expectedPublishableKey()
+    const providedKey = readPublishableKey(req)
+    if (!expectedKey || !providedKey || providedKey !== expectedKey) {
+      return res.status(401).json({
+        message: "Publishable API key required for vendor uploads.",
+      })
+    }
+
+    const vendorClaims = readVendorClaims(req)
+
     const { s3Region, s3AccessKeyId, s3SecretAccessKey, s3Bucket } = getS3Config()
 
     if (!s3Bucket || !s3AccessKeyId || !s3SecretAccessKey || !s3Region) {
@@ -90,12 +122,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       },
     })
 
+    const configuredFileUrl = (process.env.S3_FILE_URL || "").replace(/\/$/, "").trim()
     const s3FileUrl =
-      process.env.S3_FILE_URL ||
-      `https://${s3Bucket}.s3.${s3Region}.amazonaws.com`
+      configuredFileUrl && configuredFileUrl.includes(s3Bucket)
+        ? configuredFileUrl
+        : `https://${s3Bucket}.s3.${s3Region}.amazonaws.com`
 
     const headers = (req as any).headers || {}
-    const bb = Busboy({ headers })
+    const bb = Busboy({ headers, limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } })
 
     const results: Array<{
       url: string
@@ -114,6 +148,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     // in order — the frontend sends `type` and `vendorHint` first, then
     // `file`, which is the natural busboy order, so this is safe.
     let uploadType = "doc"
+    let fileTooLarge = false
 
     const finished = new Promise<void>((resolve, reject) => {
       let resolved = false
@@ -147,6 +182,27 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           file: NodeJS.ReadableStream,
           info: { filename: string; encoding: string; mimeType: string }
         ) => {
+          // Authenticated portal uploads (reports) require a vendor JWT.
+          // Signup docs only need the publishable key (checked above).
+          if (uploadType === "report" && !vendorClaims) {
+            file.resume()
+            if (!resolved) {
+              resolved = true
+              clearTimeout(timeout)
+              reject(Object.assign(new Error("Vendor authentication required for report uploads."), { statusCode: 401 }))
+            }
+            return
+          }
+          if (uploadType !== "report" && !SIGNUP_TYPES.has(uploadType)) {
+            file.resume()
+            if (!resolved) {
+              resolved = true
+              clearTimeout(timeout)
+              reject(Object.assign(new Error("Unsupported upload type."), { statusCode: 400 }))
+            }
+            return
+          }
+
           fileCount++
           pendingUploads++
 
@@ -155,7 +211,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           const uniqueId = randomUUID().substring(0, 8)
           const storedFilename = `${uniqueId}${extension}`
 
-          const sanitizedVendor = sanitizeForPath(vendorHint || "vendor")
+          const sanitizedVendor = sanitizeForPath(
+            vendorClaims?.vendor_id || vendorHint || "vendor"
+          )
           const fieldName = name || "file"
           const s3Key = `vendor/${sanitizedVendor}/${uploadType}/${storedFilename}`
 
@@ -165,8 +223,17 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
             fileChunks.push(chunk)
           })
 
+          file.on("limit", () => {
+            fileTooLarge = true
+          })
+
           file.on("end", async () => {
             try {
+              if (fileTooLarge) {
+                throw Object.assign(new Error("File exceeds 10MB limit."), {
+                  statusCode: 413,
+                })
+              }
               const fileBuffer = Buffer.concat(fileChunks)
 
               const command = new PutObjectCommand({
@@ -232,14 +299,22 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     await finished
 
+    if (fileCount === 0) {
+      return res.status(400).json({ message: "No file uploaded." })
+    }
+
     return res.json({
       files: results,
       message: `Successfully uploaded ${results.length} file(s)`,
     })
   } catch (error: any) {
     console.error("[vendor/uploads] Upload error:", error)
-    return res.status(500).json({
-      message: "Failed to upload vendor documents",
+    const status = Number(error?.statusCode) || 500
+    return res.status(status).json({
+      message:
+        status === 401 || status === 413 || status === 400
+          ? error?.message || "Upload rejected"
+          : "Failed to upload vendor documents",
       error: error?.message || String(error),
     })
   }

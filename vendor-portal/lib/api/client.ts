@@ -936,6 +936,8 @@ export type VendorCommissionInvoice = {
   period_label: string
   period_from: string | null
   period_to: string | null
+  period_key?: string | null
+  auto_generated?: boolean
   billed_from: {
     name: string
     address: string
@@ -959,10 +961,27 @@ export type VendorCommissionInvoice = {
     order_display_id: string | number | null
     product_name: string
     delivered_at: string | null
+    category?: "sale" | "return" | "cancellation"
+    status?: string
     sale_amount: number
+    taxable_amount?: number
+    product_gst_rate?: number
+    product_gst?: number
+    listing_total?: number
+    logistic_fee: number
+    logistic_gst?: number
+    platform_fee?: number
+    platform_gst?: number
     commission_rate: number
     commission_amount: number
-    logistic_fee: number
+    commission_gst?: number
+    partner_commission?: number
+    partner_gst?: number
+    tcs?: number
+    tds?: number
+    return_fee?: number
+    reverse_logistic_gst?: number
+    cancellation_fee?: number
     invoice_date: string | null
   }>
   service_lines: Array<{
@@ -973,6 +992,21 @@ export type VendorCommissionInvoice = {
     gst_amount: number
     total: number
   }>
+  fee_summary?: {
+    sale_amount: number
+    product_gst: number
+    logistic_fee: number
+    platform_fee: number
+    platform_gst: number
+    commission: number
+    commission_gst: number
+    partner: number
+    partner_gst: number
+    tcs: number
+    tds: number
+    reverse_logistic: number
+    cancellation_fee: number
+  }
   totals: {
     net_taxable: number
     gst_amount: number
@@ -982,14 +1016,18 @@ export type VendorCommissionInvoice = {
 
 export const vendorCommissionInvoicesApi = {
   get: async (params?: {
-    range?: "today" | "1m" | "custom" | "all"
+    range?: "today" | "1m" | "3m" | "6m" | "1y" | "last_month" | "month" | "custom" | "all"
     from?: string
     to?: string
+    month?: number | string
+    year?: number | string
   }) => {
     const qs = new URLSearchParams()
     if (params?.range) qs.set("range", params.range)
     if (params?.from) qs.set("from", params.from)
     if (params?.to) qs.set("to", params.to)
+    if (params?.month != null) qs.set("month", String(params.month))
+    if (params?.year != null) qs.set("year", String(params.year))
     const suffix = qs.toString() ? `?${qs}` : ""
     return apiRequest<VendorCommissionInvoice>(`/vendor/commission-invoices${suffix}`)
   },

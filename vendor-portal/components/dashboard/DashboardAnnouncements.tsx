@@ -7,23 +7,26 @@ const ANNOUNCEMENTS = [
   {
     id: "maintenance",
     tone: "warning" as const,
+    icon: "⚙️",
     title: "System Maintenance",
-    description: "Scheduled window this weekend. Expect brief downtime.",
+    description: "Portal will be under maintenance on 25 May 2025 from 02:00 AM to 04:00 AM.",
     date: "20 May 2025",
   },
   {
     id: "feature",
     tone: "info" as const,
+    icon: "🔵",
     title: "New Feature Update",
-    description: "Faster order acceptance and clearer payout timelines.",
-    date: "18 May 2025",
+    description: "We've improved the product listing flow for faster approvals.",
+    date: "15 May 2025",
   },
   {
     id: "reminder",
     tone: "error" as const,
+    icon: "🔴",
     title: "Important Reminder",
-    description: "Keep return tracking complete before marking pickup.",
-    date: "15 May 2025",
+    description: "Please ensure your bank details are updated to avoid payout delays.",
+    date: "10 May 2025",
   },
 ]
 
@@ -63,11 +66,11 @@ const DashboardAnnouncements = ({ className }: DashboardAnnouncementsProps) => (
         >
           <span
             className={clx(
-              "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-semibold",
+              "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm",
               toneClass[item.tone]
             )}
           >
-            !
+            {item.icon}
           </span>
           <div className="min-w-0 flex-1">
             <Text weight="plus" className="truncate text-sm text-zinc-900 dark:text-ui-fg-base">

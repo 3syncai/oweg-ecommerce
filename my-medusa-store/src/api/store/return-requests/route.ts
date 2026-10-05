@@ -5,7 +5,10 @@ import ReturnModuleService from "../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../modules/returns"
 import { StoreCreateReturnRequest } from "./validators"
 import { syncOrderReturnMetadata } from "../../../services/sync-order-return-metadata"
-import { holdVendorEarningsForReturn } from "../../../lib/vendor-earnings"
+import {
+  holdVendorEarningsForReturn,
+  listVendorIdsForReturnRequest,
+} from "../../../lib/vendor-earnings"
 
 function resolveDeliveryDate(order: any) {
   const metaDate = order?.metadata?.shiprocket_delivered_at
@@ -149,11 +152,19 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     created_at: request.created_at,
   })
 
-  // Pause 5-min unlock / Pending Payment until admin approves or rejects
+  // Pause unlock only for vendors whose items are on this return
   if (process.env.DATABASE_URL) {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL })
     try {
-      await holdVendorEarningsForReturn(body.order_id, pool)
+      const vendorIds = await listVendorIdsForReturnRequest(pool, request.id)
+      const result = await holdVendorEarningsForReturn(body.order_id, pool, {
+        vendorIds,
+      })
+      if (result.skipped_unscoped) {
+        console.error(
+          `[Return] No vendor ids on return ${request.id}; earnings not held`
+        )
+      }
     } catch (err) {
       console.error("[Return] Failed to hold vendor earnings:", err)
     } finally {

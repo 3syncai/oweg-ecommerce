@@ -4,6 +4,7 @@ import { initAuthPageBranding } from "../lib/auth-page-branding"
 import { initDraftPaymentStatusUi } from "../lib/draft-payment-status-ui"
 import { initHideNotificationsUi } from "../lib/hide-notifications-ui"
 import { initInventoryTableLayout } from "../lib/inventory-table-layout"
+import { initOrderDetailLayout } from "../lib/order-detail-layout"
 import { initSidebarBranding } from "../lib/sidebar-branding"
 import { initSidebarChromeHide } from "../lib/sidebar-chrome-hide"
 import owegLogo from "../assets/oweg-logo.png"
@@ -14,6 +15,7 @@ initSidebarChromeHide()
 initHideNotificationsUi()
 initDraftPaymentStatusUi()
 initInventoryTableLayout()
+initOrderDetailLayout()
 
 const messages = {
     en: {

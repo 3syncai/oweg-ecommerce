@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { cancelOrReverseCoinsForOrder } from "@/lib/customer-affiliate-coins"
-import { refundCoinSpendForOrder } from "@/lib/wallet-coin-order"
-import { getOrderById } from "@/lib/medusa-admin"
-import { internalApiHeaders } from "@/lib/store-customer-auth"
+import { settleOrderCancellationWallet } from "@/lib/order-cancel-wallet-settlement"
 import { verifyMedusaWebhookSecret } from "@/lib/medusa-webhook-auth"
 import { getPool } from "@/lib/wallet-ledger"
 import { reverseVendorEarningsForOrder } from "@/lib/vendor-earnings"
@@ -71,79 +68,12 @@ export async function POST(req: NextRequest) {
             })
         }
 
-        // Call the coin reversal endpoint (earned coins)
-        const baseUrl =
-            process.env.NEXT_PUBLIC_APP_URL ||
-            (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
-
-        const reverseRes = await fetch(`${baseUrl}/api/store/wallet/reverse`, {
-            method: "POST",
-            headers: internalApiHeaders(),
-            body: JSON.stringify({
-                order_id: orderId,
-                reason: `Order ${event || "cancelled/refunded"}`
-            })
+        const wallet = await settleOrderCancellationWallet({
+            orderId,
+            event: String(event || "order.cancelled"),
+            reason: `Order ${event || "cancelled/refunded"}`,
         })
-
-        const reverseData = await reverseRes.json()
-        let refundData: unknown = null
-
-        // Refund spent wallet coins (ledger-backed; no credit unless coins were actually spent)
-        try {
-            refundData = await refundCoinSpendForOrder({
-                orderId,
-                reason: event === "order.return_approved" ? "return" : "cancelled",
-            });
-
-            // Legacy promotion-code spend path
-            if (!refundData || (refundData as { message?: string }).message === "No coin spend to refund") {
-                const orderRes = await getOrderById(orderId)
-                const orderPayload = orderRes?.data as Record<string, unknown> | null
-                const order =
-                    (orderPayload && typeof orderPayload === "object" && "order" in orderPayload
-                        ? (orderPayload as Record<string, unknown>).order
-                        : orderPayload) as Record<string, unknown> | null
-
-                const customerId =
-                    (order && typeof order === "object" && (order as Record<string, unknown>).customer_id) ||
-                    (data && typeof data === "object" && (data as Record<string, unknown>).customer_id)
-
-                const metadata =
-                    order && typeof order === "object"
-                        ? ((order as Record<string, unknown>).metadata as Record<string, unknown> | undefined)
-                        : undefined
-
-                const discountCode =
-                    (metadata?.coin_discount_code as string | undefined) ||
-                    (metadata?.coin_discount as string | undefined) ||
-                    (metadata?.coin_discount_id as string | undefined)
-
-                if (customerId && discountCode) {
-                    const refundRes = await fetch(`${baseUrl}/api/store/wallet/refund-coin-discount`, {
-                        method: "POST",
-                        headers: internalApiHeaders(),
-                        body: JSON.stringify({
-                            customer_id: customerId,
-                            discount_code: discountCode
-                        })
-                    })
-                    refundData = await refundRes.json()
-                }
-            }
-        } catch (err) {
-            console.error("Coin discount refund error:", err)
-        }
-
-        console.log("Coin reversal result:", reverseData)
-
-        // Customer-affiliate coins (separate from existing wallet reversal above)
-        let customerAffiliateResult: Awaited<ReturnType<typeof cancelOrReverseCoinsForOrder>> | null = null
-        try {
-            customerAffiliateResult = await cancelOrReverseCoinsForOrder(orderId, { event })
-            console.log("[customer-affiliate-coins] cancel/return:", customerAffiliateResult)
-        } catch (err) {
-            console.error("[customer-affiliate-coins] cancel/return failed:", err)
-        }
+        console.log("Coin reversal result:", wallet.earned_reverse)
 
         let vendorEarningsReversal: Awaited<ReturnType<typeof reverseVendorEarningsForOrder>> | null = null
         try {
@@ -162,9 +92,9 @@ export async function POST(req: NextRequest) {
             success: true,
             event: event,
             order_id: orderId,
-            coin_reversal: reverseData,
-            coin_discount_refund: refundData,
-            customer_affiliate: customerAffiliateResult,
+            coin_reversal: wallet.earned_reverse,
+            coin_discount_refund: wallet.spend_refund,
+            customer_affiliate: wallet.customer_affiliate,
             vendor_earnings: vendorEarningsReversal
         })
     } catch (error) {

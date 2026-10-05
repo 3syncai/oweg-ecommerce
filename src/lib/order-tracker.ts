@@ -252,10 +252,23 @@ export function getTrackHeroContent(
   const orderStatus = (order?.status || "").toLowerCase();
 
   if (orderStatus === "canceled" || orderStatus === "cancelled") {
+    const meta = (order?.metadata || {}) as Record<string, unknown>;
+    const note =
+      (typeof meta.customer_cancel_reason === "string" && meta.customer_cancel_reason.trim()) ||
+      (typeof meta.cancellation_reason === "string" && meta.cancellation_reason.trim()) ||
+      "";
+    const adminCancelled =
+      meta.cancelled_by_admin === true ||
+      meta.cancellation_source === "admin" ||
+      meta.cancelled_by === "admin";
     return {
       title: "Cancelled",
-      subtitle: "This order was cancelled.",
-      description: "Contact support if you need help.",
+      subtitle: adminCancelled
+        ? "OWEG has cancelled your order."
+        : "This order was cancelled.",
+      description: note
+        ? `Reason: ${note}`
+        : "Contact support if you need help.",
     };
   }
 

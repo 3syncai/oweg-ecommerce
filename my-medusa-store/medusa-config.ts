@@ -133,9 +133,15 @@ export default defineConfig({
               region: process.env.S3_REGION,
               access_key_id: process.env.S3_ACCESS_KEY_ID,
               secret_access_key: process.env.S3_SECRET_ACCESS_KEY,
-              file_url:
-                process.env.S3_FILE_URL ??
-                `https://${process.env.S3_BUCKET}.s3.${process.env.S3_REGION}.amazonaws.com`,
+              file_url: (() => {
+                const bucket = process.env.S3_BUCKET || ""
+                const region = process.env.S3_REGION || "ap-south-1"
+                const configured = (process.env.S3_FILE_URL || "").replace(/\/$/, "")
+                if (configured && bucket && configured.includes(bucket)) return configured
+                return bucket
+                  ? `https://${bucket}.s3.${region}.amazonaws.com`
+                  : configured
+              })(),
               additionalOptions: {
                 ACL: undefined,
               },

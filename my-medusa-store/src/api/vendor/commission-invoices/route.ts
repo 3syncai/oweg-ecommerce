@@ -26,8 +26,20 @@ export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
   return res.status(200).end()
 }
 
+const ALLOWED_RANGES = new Set([
+  "today",
+  "1m",
+  "3m",
+  "6m",
+  "1y",
+  "last_month",
+  "month",
+  "custom",
+  "all",
+])
+
 /**
- * GET /vendor/commission-invoices?range=today|1m|custom|all&from=&to=
+ * GET /vendor/commission-invoices?range=...&from=&to=&month=&year=
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res)
@@ -35,11 +47,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   if (!auth) return
 
   const q = (req.query || {}) as Record<string, string>
-  const rangeRaw = String(q.range || "1m").trim().toLowerCase()
-  const allowed = new Set(["today", "1m", "custom", "all"])
-  const range = (allowed.has(rangeRaw) ? rangeRaw : "1m") as CommissionInvoiceRange
+  const rangeRaw = String(q.range || "month").trim().toLowerCase()
+  const range = (ALLOWED_RANGES.has(rangeRaw) ? rangeRaw : "month") as CommissionInvoiceRange
   const from = String(q.from || "").trim()
   const to = String(q.to || "").trim()
+  const month = String(q.month || "").trim()
+  const year = String(q.year || "").trim()
 
   if (!process.env.DATABASE_URL) {
     return res.status(500).json({ message: "DATABASE_URL is not configured" })
@@ -57,7 +70,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         pool,
         range,
         from || undefined,
-        to || undefined
+        to || undefined,
+        {
+          preferSnapshot: range === "last_month" || range === "month",
+          month: month || undefined,
+          year: year || undefined,
+        }
       )
 
       if ("error" in payload) {

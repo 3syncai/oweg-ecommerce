@@ -60,10 +60,10 @@ export function downloadCommissionInvoiceExcel(
   rows.push([
     "Service Accounting Codes",
     "Description",
-    "Net Taxable Value (Rs.)",
+    "Net Taxable Value (₹)",
     "GST Rate (%)",
-    "Amount (Rs.)",
-    "Total (Rs.)",
+    "Amount (₹)",
+    "Total (₹)",
   ])
 
   for (const line of exportData.service_lines) {
@@ -78,7 +78,7 @@ export function downloadCommissionInvoiceExcel(
   }
 
   if (!exportData.service_lines.length) {
-    rows.push(["—", "No commission or shipping fees in this period", 0, 0, 0, 0])
+    rows.push(["—", "No taxable fees in this period", 0, 0, 0, 0])
   }
 
   rows.push([
@@ -95,40 +95,49 @@ export function downloadCommissionInvoiceExcel(
   rows.push([
     "Invoice Date",
     "Order ID",
+    "Type",
     "Product",
-    "Sale Amount (Rs.)",
+    "Sale Amount (₹)",
+    "Product GST (₹)",
+    "GST Rate (%)",
+    "Logistics (₹)",
+    "Platform Fee (₹)",
     "Commission Rate (%)",
-    "Commission (Rs.)",
-    "Shipping Fee (Rs.)",
+    "Commission (₹)",
+    "Partner (₹)",
+    "TCS (₹)",
+    "TDS (₹)",
+    "Reverse Logistics (₹)",
+    "Cancellation (₹)",
   ])
 
   for (const order of exportData.orders) {
     rows.push([
       formatInvoiceDate(order.delivered_at),
       order.order_display_id ? `#${order.order_display_id}` : "—",
+      order.category || "sale",
       order.product_name,
       order.sale_amount,
+      order.product_gst || 0,
+      order.product_gst_rate || 0,
+      order.logistic_fee,
+      order.platform_fee || 0,
       order.commission_rate,
       order.commission_amount,
-      order.logistic_fee,
+      order.partner_commission || 0,
+      order.tcs || 0,
+      order.tds || 0,
+      order.return_fee || 0,
+      order.cancellation_fee || 0,
     ])
   }
 
   const sheet = XLSX.utils.aoa_to_sheet(rows)
-  sheet["!cols"] = [
-    { wch: 22 },
-    { wch: 28 },
-    { wch: 22 },
-    { wch: 14 },
-    { wch: 16 },
-    { wch: 16 },
-    { wch: 18 },
-  ]
+  sheet["!cols"] = Array.from({ length: 16 }, () => ({ wch: 16 }))
 
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, sheet, "Commission Invoice")
-  XLSX.writeFile(
-    workbook,
-    `Commission-Invoice-${exportData.invoice_number.replace(/[^a-zA-Z0-9-]/g, "")}${fileSuffix}.xlsx`
-  )
+  const stamp = new Date().toISOString().slice(0, 10)
+  const safeNumber = exportData.invoice_number.replace(/[^a-zA-Z0-9-]/g, "")
+  XLSX.writeFile(workbook, `Commission-Invoice-${safeNumber}${fileSuffix}-${stamp}.xlsx`)
 }

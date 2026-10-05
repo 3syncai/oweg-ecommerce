@@ -1,7 +1,9 @@
 /**
  * OWEG vendor product settlement (finance Sheet4).
  *
- *   GST (A+B) = (A + B) * output GST%
+ *   GST A     = A * product GST%
+ *   GST B     = B * 18% (service GST, always)
+ *   GST (A+B) = GST A + GST B
  *   C         = A + B + GST(A+B)
  *   D         = A * platform%   + 18% service GST
  *   E         = A * commission% + 18% service GST
@@ -21,10 +23,12 @@ export const DEFAULT_PLATFORM_FEE_RATE = 5
 export const DEFAULT_PARTNER_COMMISSION_RATE = 11
 export const DEFAULT_SERVICE_GST_RATE = 18
 export const DEFAULT_OUTPUT_GST_RATE = 18
+export const DEFAULT_CANCELLATION_CHARGE = 0
 
 export const VENDOR_PLATFORM_FEE_METADATA_KEY = "vendor_platform_fee_default_rate"
 export const VENDOR_PARTNER_COMMISSION_METADATA_KEY = "vendor_partner_commission_rate"
 export const VENDOR_SERVICE_GST_METADATA_KEY = "vendor_service_gst_rate"
+export const VENDOR_CANCELLATION_CHARGE_METADATA_KEY = "vendor_cancellation_charge"
 
 export type LedgerCategory = "sale" | "return" | "payment" | "claim" | "cancellation"
 
@@ -90,6 +94,13 @@ const pct = (base: number, rate: number) =>
 
 export function clampLedgerRate(rate: unknown, fallback: number): number {
   return clampTaxRate(rate, fallback)
+}
+
+/** Fixed rupee amount (Sheet4 cancellation fee). 0–₹1,00,000. */
+export function clampRupeeAmount(amount: unknown, fallback = DEFAULT_CANCELLATION_CHARGE): number {
+  const n = typeof amount === "string" ? Number(amount) : Number(amount)
+  if (!Number.isFinite(n)) return round2(Math.max(0, fallback))
+  return round2(Math.min(100000, Math.max(0, n)))
 }
 
 /** Same paisa rounding used by every ledger surface (payments, admin pay, export). */
@@ -226,7 +237,9 @@ export function calculateVendorLedgerSettlement(
   const A = round2(Math.abs(Number(input.item_price) || 0) * sign)
   const B = round2(Math.abs(Number(input.logistic_fee) || 0) * sign)
 
-  const listingGst = pct(A + B, outputGst)
+  const listingGstItem = pct(A, outputGst)
+  const listingGstLogistic = pct(B, serviceGst)
+  const listingGst = round2(listingGstItem + listingGstLogistic)
   const listingTotal = round2(A + B + listingGst)
 
   const platformFee = pct(A, rates.platform_rate)
@@ -446,7 +459,9 @@ export async function ensureVendorPlatformFeeColumns(pool: Pool): Promise<void> 
         `
           ALTER TABLE vendor
             ADD COLUMN IF NOT EXISTS platform_fee_rate numeric NOT NULL DEFAULT 5,
-            ADD COLUMN IF NOT EXISTS platform_fee_override boolean NOT NULL DEFAULT false
+            ADD COLUMN IF NOT EXISTS platform_fee_override boolean NOT NULL DEFAULT false,
+            ADD COLUMN IF NOT EXISTS cancellation_charge numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS cancellation_charge_override boolean NOT NULL DEFAULT false
         `
       )
       .then(() => undefined)
@@ -467,6 +482,8 @@ export async function buildLedgerRatesForVendor(
     tds_rate: number
     output_gst_rate?: number
     platform_rate?: number
+    partner_rate?: number
+    service_gst_rate?: number
   }
 ): Promise<LedgerRates> {
   const storeRates = await getStoreLedgerFeeRates(pool)
@@ -478,10 +495,93 @@ export async function buildLedgerRatesForVendor(
   return {
     platform_rate: platformRate,
     commission_rate: extras.commission_rate,
-    partner_rate: storeRates.partner_rate,
+    partner_rate:
+      extras.partner_rate != null
+        ? clampLedgerRate(extras.partner_rate, storeRates.partner_rate)
+        : storeRates.partner_rate,
     output_gst_rate: extras.output_gst_rate ?? DEFAULT_OUTPUT_GST_RATE,
-    service_gst_rate: storeRates.service_gst_rate,
+    service_gst_rate:
+      extras.service_gst_rate != null
+        ? clampLedgerRate(extras.service_gst_rate, storeRates.service_gst_rate)
+        : storeRates.service_gst_rate,
     tcs_rate: extras.tcs_rate,
     tds_rate: extras.tds_rate,
   }
+}
+
+export function resolveVendorCancellationCharge(
+  vendor: {
+    cancellation_charge_override?: boolean | null
+    cancellation_charge?: number | null
+  },
+  globalDefault: number
+): { amount: number; source: "custom" | "global" } {
+  if (vendor.cancellation_charge_override === true) {
+    return {
+      amount: clampRupeeAmount(vendor.cancellation_charge, DEFAULT_CANCELLATION_CHARGE),
+      source: "custom",
+    }
+  }
+  return {
+    amount: clampRupeeAmount(globalDefault, DEFAULT_CANCELLATION_CHARGE),
+    source: "global",
+  }
+}
+
+export async function getVendorCancellationChargeDefault(pool: Pool): Promise<number> {
+  const result = await pool.query<{ metadata: Record<string, unknown> | null }>(
+    `SELECT metadata FROM store ORDER BY created_at ASC NULLS LAST LIMIT 1`
+  )
+  const meta = result.rows[0]?.metadata || {}
+  return clampRupeeAmount(
+    meta[VENDOR_CANCELLATION_CHARGE_METADATA_KEY],
+    DEFAULT_CANCELLATION_CHARGE
+  )
+}
+
+export async function setVendorCancellationChargeDefault(
+  pool: Pool,
+  amount: number
+): Promise<number> {
+  const next = clampRupeeAmount(amount, DEFAULT_CANCELLATION_CHARGE)
+  const existing = await pool.query<{ id: string; metadata: Record<string, unknown> | null }>(
+    `SELECT id, metadata FROM store ORDER BY created_at ASC NULLS LAST LIMIT 1`
+  )
+  const row = existing.rows[0]
+  if (!row) throw new Error("Store not found")
+  const metadata = {
+    ...(row.metadata || {}),
+    [VENDOR_CANCELLATION_CHARGE_METADATA_KEY]: next,
+  }
+  await pool.query(
+    `UPDATE store SET metadata = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+    [JSON.stringify(metadata), row.id]
+  )
+  return next
+}
+
+export async function fetchResolvedVendorCancellationCharge(
+  vendorId: string,
+  pool: Pool
+): Promise<number> {
+  await ensureVendorPlatformFeeColumns(pool)
+  const [vendor, globalDefault] = await Promise.all([
+    pool.query<{
+      cancellation_charge: string | number | null
+      cancellation_charge_override: boolean | null
+    }>(
+      `SELECT cancellation_charge, cancellation_charge_override FROM vendor WHERE id = $1 LIMIT 1`,
+      [vendorId]
+    ),
+    getVendorCancellationChargeDefault(pool),
+  ])
+  const row = vendor.rows[0]
+  return resolveVendorCancellationCharge(
+    {
+      cancellation_charge:
+        row?.cancellation_charge == null ? null : Number(row.cancellation_charge),
+      cancellation_charge_override: row?.cancellation_charge_override === true,
+    },
+    globalDefault
+  ).amount
 }

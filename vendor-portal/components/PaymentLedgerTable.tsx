@@ -28,29 +28,44 @@ const CategoryBadge = ({ category }: { category: Row["category"] | Row["type"] }
         : key === "payment"
           ? "Payment"
           : key === "cancellation"
-            ? "Cancellation"
+            ? "Cancel"
             : "Sale"
   return (
     <span
       className={clx(
-        "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
-        key === "return" && "bg-red-500/10 text-red-700 dark:text-red-300",
-        key === "claim" && "bg-amber-500/10 text-amber-800 dark:text-amber-300",
-        key === "payment" && "bg-slate-500/10 text-slate-700 dark:text-slate-300",
-        key === "cancellation" && "bg-orange-500/10 text-orange-800",
-        (key === "sale" || !key) && "bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider leading-none",
+        key === "return" && "bg-gradient-to-r from-red-500/10 to-red-500/5 text-red-600 ring-1 ring-red-500/15 dark:text-red-400",
+        key === "claim" && "bg-gradient-to-r from-amber-500/10 to-amber-500/5 text-amber-700 ring-1 ring-amber-500/15 dark:text-amber-300",
+        key === "payment" && "bg-gradient-to-r from-slate-500/10 to-slate-500/5 text-slate-600 ring-1 ring-slate-500/15 dark:text-slate-300",
+        key === "cancellation" && "bg-gradient-to-r from-orange-500/10 to-orange-500/5 text-orange-700 ring-1 ring-orange-500/15",
+        (key === "sale" || !key) && "bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 text-emerald-700 ring-1 ring-emerald-500/15 dark:text-emerald-300"
       )}
     >
+      <span className={clx(
+        "h-1.5 w-1.5 rounded-full",
+        key === "return" && "bg-red-500",
+        key === "claim" && "bg-amber-500",
+        key === "payment" && "bg-slate-500",
+        key === "cancellation" && "bg-orange-500",
+        (key === "sale" || !key) && "bg-emerald-500"
+      )} />
       {label}
     </span>
   )
 }
 
 const StatusPill = ({ children, tone }: { children: ReactNode; tone: string }) => (
-  <span className={clx("inline-flex rounded-md px-2 py-0.5 text-xs font-medium", tone)}>
+  <span className={clx("inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider leading-none", tone)}>
     {children}
   </span>
 )
+
+const cell = "px-3 py-2.5 text-xs border-b border-ui-border-base/50"
+const groupBase =
+  "px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-widest border-b-2"
+
+const groupStyle =
+  "bg-ui-bg-subtle/80 text-ui-fg-muted border-b-ui-border-base/60 dark:bg-ui-bg-subtle/50"
 
 const TH = ({
   children,
@@ -62,7 +77,8 @@ const TH = ({
   <th
     scope="col"
     className={clx(
-      "whitespace-nowrap px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-ui-fg-muted",
+      cell,
+      "bg-ui-bg-subtle/60 text-left text-[10px] font-semibold uppercase tracking-wider text-ui-fg-muted whitespace-nowrap",
       className
     )}
   >
@@ -74,14 +90,18 @@ const TD = ({
   children,
   className,
   muted,
+  align = "left",
 }: {
   children: ReactNode
   className?: string
   muted?: boolean
+  align?: "left" | "right"
 }) => (
   <td
     className={clx(
-      "whitespace-nowrap px-2 py-2.5 tabular-nums text-xs",
+      cell,
+      "tabular-nums whitespace-nowrap",
+      align === "right" && "text-right",
       muted ? "text-ui-fg-muted" : "text-ui-fg-base",
       className
     )}
@@ -90,6 +110,31 @@ const TD = ({
   </td>
 )
 
+const Money = ({
+  value,
+  strong,
+  tone = "default",
+}: {
+  value: number | undefined
+  strong?: boolean
+  tone?: "default" | "return" | "cancellation"
+}) => {
+  const v = Number(value) || 0
+  return (
+    <TD
+      align="right"
+      className={clx(
+        strong && "font-semibold",
+        tone === "return" && "text-red-600 dark:text-red-400",
+        tone === "cancellation" && "text-orange-600 dark:text-orange-400"
+      )}
+      muted={!strong && v === 0 && tone === "default"}
+    >
+      {money(value, true)}
+    </TD>
+  )
+}
+
 export default function PaymentLedgerTable({
   rows,
   onUnlock,
@@ -97,87 +142,81 @@ export default function PaymentLedgerTable({
   rows: Row[]
   onUnlock: () => void
 }) {
+  const visible = rows.filter((row) => {
+    const category = row.category || row.type
+    return category !== "payment"
+  })
+
   return (
-    <div className="overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="min-w-[96rem] border-collapse text-left">
-          <thead>
-            <tr className="border-b border-ui-border-base bg-ui-bg-subtle/90">
-              <th colSpan={5} className="px-2 py-1.5 text-[11px] font-semibold text-ui-fg-base">
+    <div className="oweg-ledger-table overflow-hidden rounded-2xl border border-ui-border-base/60 bg-ui-bg-base shadow-lg shadow-black/[0.03]">
+      <div className="overflow-x-auto oweg-scroll">
+        <table className="min-w-[80rem] w-full border-collapse text-left">
+          <thead className="sticky top-0 z-10">
+            {/* Group header row */}
+            <tr>
+              <th colSpan={5} className={clx(groupBase, groupStyle)}>
                 Order
               </th>
-              <th colSpan={4} className="px-2 py-1.5 text-[11px] font-semibold text-ui-fg-base">
-                Listing A / B / A+B / C
+              <th colSpan={4} className={clx(groupBase, groupStyle)}>
+                Listing
               </th>
-              <th className="px-2 py-1.5 text-[11px] font-semibold">Status</th>
-              <th colSpan={3} className="px-2 py-1.5 text-[11px] font-semibold text-ui-fg-base">
-                Platform D @5%
+              <th colSpan={3} className={clx(groupBase, groupStyle)}>
+                Platform
               </th>
-              <th colSpan={3} className="px-2 py-1.5 text-[11px] font-semibold text-ui-fg-base">
-                Commission E
+              <th colSpan={3} className={clx(groupBase, groupStyle)}>
+                Commission
               </th>
-              <th colSpan={3} className="px-2 py-1.5 text-[11px] font-semibold text-ui-fg-base">
-                Partner F
+              <th colSpan={3} className={clx(groupBase, groupStyle)}>
+                Partner
               </th>
-              <th colSpan={3} className="px-2 py-1.5 text-[11px] font-semibold text-ui-fg-base">
-                Logistics B
+              <th colSpan={3} className={clx(groupBase, groupStyle)}>
+                Logistics
               </th>
-              <th colSpan={2} className="px-2 py-1.5 text-[11px] font-semibold text-ui-fg-base">
-                G / H
+              <th colSpan={3} className={clx(groupBase, groupStyle)}>
+                Reverse logistics
               </th>
-              <th className="px-2 py-1.5 text-[11px] font-semibold text-ui-fg-base">I</th>
-              <th colSpan={3} className="px-2 py-1.5 text-[11px] font-semibold text-ui-fg-base">
-                Reverse J
+              <th colSpan={3} className={clx(groupBase, groupStyle)}>
+                Cancellation
               </th>
-              <th colSpan={3} className="px-2 py-1.5 text-[11px] font-semibold text-ui-fg-base">
-                Cancel K
-              </th>
-              <th className="px-2 py-1.5 text-[11px] font-semibold">L</th>
-              <th colSpan={4} className="px-2 py-1.5 text-[11px] font-semibold text-ui-fg-base">
-                Bank settlements
-              </th>
+              <th className={clx(groupBase, groupStyle)}>Claim</th>
+              <th colSpan={2} className={clx(groupBase, groupStyle)}>Settlement</th>
             </tr>
-            <tr className="border-b border-ui-border-base bg-ui-bg-subtle/60">
+            {/* Column header row */}
+            <tr>
               <TH>Order ID</TH>
               <TH>Date</TH>
               <TH>Category</TH>
               <TH>Invoice</TH>
               <TH>Invoice no</TH>
-              <TH>Item price (A)</TH>
-              <TH>Logistics (B)</TH>
-              <TH>GST (A+B)</TH>
-              <TH>Listing (C)</TH>
-              <TH>Item status</TH>
-              <TH>Fee</TH>
-              <TH>Tax</TH>
-              <TH>Total</TH>
-              <TH>Fee</TH>
-              <TH>Tax</TH>
-              <TH>Total</TH>
-              <TH>Fee</TH>
-              <TH>Tax</TH>
-              <TH>Total</TH>
-              <TH>Fee</TH>
-              <TH>Tax</TH>
-              <TH>Total</TH>
-              <TH>TCS 0.5%</TH>
-              <TH>TDS 0.1%</TH>
-              <TH>Bank settlement</TH>
-              <TH>Fee</TH>
-              <TH>Tax</TH>
-              <TH>Total</TH>
-              <TH>Fee</TH>
-              <TH>Tax</TH>
-              <TH>Total</TH>
-              <TH>Claim</TH>
-              <TH>Txn ID</TH>
-              <TH>Payment date</TH>
-              <TH>Payment</TH>
-              <TH>Balance</TH>
+              <TH className="text-right">Item price</TH>
+              <TH className="text-right">Logistics</TH>
+              <TH className="text-right">GST</TH>
+              <TH className="text-right">Listing total</TH>
+              <TH className="text-right">Fee</TH>
+              <TH className="text-right">Tax</TH>
+              <TH className="text-right">Total</TH>
+              <TH className="text-right">Fee</TH>
+              <TH className="text-right">Tax</TH>
+              <TH className="text-right">Total</TH>
+              <TH className="text-right">Fee</TH>
+              <TH className="text-right">Tax</TH>
+              <TH className="text-right">Total</TH>
+              <TH className="text-right">Fee</TH>
+              <TH className="text-right">Tax</TH>
+              <TH className="text-right">Total</TH>
+              <TH className="text-right">Fee</TH>
+              <TH className="text-right">Tax</TH>
+              <TH className="text-right">Total</TH>
+              <TH className="text-right">Fee</TH>
+              <TH className="text-right">Tax</TH>
+              <TH className="text-right">Total</TH>
+              <TH className="text-right">Amount</TH>
+              <TH>Status</TH>
+              <TH className="text-right">Balance</TH>
             </tr>
           </thead>
-          <tbody className="divide-y divide-ui-border-base/50">
-            {rows.map((row) => {
+          <tbody>
+            {visible.map((row, index) => {
               const category = row.category || (row.type === "sales" ? "sale" : row.type)
               const orderLabel = row.order_display_id || row.order_id.slice(0, 8)
               const dateLabel = row.delivered_at
@@ -193,19 +232,15 @@ export default function PaymentLedgerTable({
               )
               if (category === "return") {
                 statusNode = (
-                  <StatusPill tone="bg-ui-bg-subtle text-ui-fg-muted">Returned</StatusPill>
+                  <StatusPill tone="bg-red-50 text-red-600 ring-1 ring-red-500/15 dark:bg-red-900/20 dark:text-red-400">Returned</StatusPill>
                 )
               } else if (category === "claim") {
                 statusNode = (
-                  <StatusPill tone="bg-amber-500/10 text-amber-800">Claim</StatusPill>
-                )
-              } else if (category === "payment") {
-                statusNode = (
-                  <StatusPill tone="bg-slate-500/10 text-slate-700">Paid out</StatusPill>
+                  <StatusPill tone="bg-amber-50 text-amber-700 ring-1 ring-amber-500/15 dark:bg-amber-900/20 dark:text-amber-300">Claim</StatusPill>
                 )
               } else if (row.status === "ON_HOLD") {
                 statusNode = (
-                  <StatusPill tone="bg-amber-500/10 text-amber-800">Return hold</StatusPill>
+                  <StatusPill tone="bg-amber-50 text-amber-700 ring-1 ring-amber-500/15 dark:bg-amber-900/20 dark:text-amber-300">Return hold</StatusPill>
                 )
               } else if (row.status === "UNLOCKING" && row.unlock_at) {
                 statusNode = (
@@ -213,19 +248,37 @@ export default function PaymentLedgerTable({
                 )
               } else if (row.status === "PAID") {
                 statusNode = (
-                  <StatusPill tone="bg-ui-bg-subtle text-ui-fg-subtle">Paid</StatusPill>
+                  <StatusPill tone="bg-emerald-50 text-emerald-600 ring-1 ring-emerald-500/15 dark:bg-emerald-900/20 dark:text-emerald-400">Paid</StatusPill>
+                )
+              } else if (row.item_status === "Delivered") {
+                statusNode = (
+                  <StatusPill tone="bg-emerald-50 text-emerald-600 ring-1 ring-emerald-500/15 dark:bg-emerald-900/20 dark:text-emerald-400">Delivered</StatusPill>
                 )
               }
 
+              const moneyTone =
+                category === "return"
+                  ? "return"
+                  : category === "cancellation"
+                    ? "cancellation"
+                    : "default"
+
               return (
-                <tr key={row.id} className="hover:bg-ui-bg-subtle/40">
+                <tr
+                  key={row.id}
+                  className={clx(
+                    "transition-colors duration-150",
+                    index % 2 === 1 ? "bg-ui-bg-subtle/30" : "bg-ui-bg-base",
+                    "hover:bg-oweg-500/[0.04] dark:hover:bg-oweg-500/[0.06]"
+                  )}
+                >
                   <TD className="font-medium">
-                    {category === "claim" || category === "payment" ? (
-                      orderLabel
+                    {category === "claim" ? (
+                      <span className="text-ui-fg-muted">{orderLabel}</span>
                     ) : (
                       <Link
                         href={`/orders?order=${encodeURIComponent(row.order_id)}`}
-                        className="text-oweg-700 underline-offset-2 hover:underline dark:text-oweg-300"
+                        className="text-oweg-700 underline-offset-2 hover:underline dark:text-oweg-400 font-semibold"
                       >
                         #{orderLabel}
                       </Link>
@@ -237,49 +290,39 @@ export default function PaymentLedgerTable({
                   </TD>
                   <TD muted>{dateLabel}</TD>
                   <TD muted>{row.invoice_no || "—"}</TD>
-                  <TD>{money(row.taxable_amount, true)}</TD>
-                  <TD>{money(row.logistic_fee, true)}</TD>
-                  <TD>{money(row.listing_gst ?? row.gst_amount, true)}</TD>
-                  <TD className="font-medium">{money(row.listing_total, true)}</TD>
+                  <Money value={row.taxable_amount} tone={moneyTone} />
+                  <Money value={row.logistic_fee} tone={moneyTone} />
+                  <Money value={row.listing_gst ?? row.gst_amount} tone={moneyTone} />
+                  <Money value={row.listing_total} strong tone={moneyTone} />
+                  <Money value={row.platform_fee} tone={moneyTone} />
+                  <Money value={row.platform_gst} tone={moneyTone} />
+                  <Money value={row.platform_total} tone={moneyTone} />
+                  <Money value={row.commission} tone={moneyTone} />
+                  <Money value={row.commission_gst} tone={moneyTone} />
+                  <Money value={row.commission_total} tone={moneyTone} />
+                  <Money value={row.partner_commission} tone={moneyTone} />
+                  <Money value={row.partner_gst} tone={moneyTone} />
+                  <Money value={row.partner_total} tone={moneyTone} />
+                  <Money value={row.logistic_fee} tone={moneyTone} />
+                  <Money value={row.logistic_gst} tone={moneyTone} />
+                  <Money value={row.logistic_total} tone={moneyTone} />
+                  <Money value={row.return_fee} tone={moneyTone} />
+                  <Money value={row.reverse_logistic_gst} tone={moneyTone} />
+                  <Money value={row.reverse_logistic_total} tone={moneyTone} />
+                  <Money value={row.cancellation_fee} tone={moneyTone} />
+                  <Money value={row.cancellation_gst} tone={moneyTone} />
+                  <Money value={row.cancellation_total} tone={moneyTone} />
+                  <Money value={row.claim_amount} tone={moneyTone} />
                   <TD>{statusNode}</TD>
-                  <TD muted>{money(row.platform_fee, true)}</TD>
-                  <TD muted>{money(row.platform_gst, true)}</TD>
-                  <TD>{money(row.platform_total, true)}</TD>
-                  <TD muted>{money(row.commission, true)}</TD>
-                  <TD muted>{money(row.commission_gst, true)}</TD>
-                  <TD>{money(row.commission_total, true)}</TD>
-                  <TD muted>{money(row.partner_commission, true)}</TD>
-                  <TD muted>{money(row.partner_gst, true)}</TD>
-                  <TD>{money(row.partner_total, true)}</TD>
-                  <TD muted>{money(row.logistic_fee, true)}</TD>
-                  <TD muted>{money(row.logistic_gst, true)}</TD>
-                  <TD>{money(row.logistic_total, true)}</TD>
-                  <TD muted>{money(row.tcs, true)}</TD>
-                  <TD muted>{money(row.tds, true)}</TD>
-                  <TD className="font-semibold">{money(row.bank_settlement ?? row.settlement_amount, true)}</TD>
-                  <TD muted>{money(row.return_fee, true)}</TD>
-                  <TD muted>{money(row.reverse_logistic_gst, true)}</TD>
-                  <TD>{money(row.reverse_logistic_total, true)}</TD>
-                  <TD muted>{money(row.cancellation_fee, true)}</TD>
-                  <TD muted>{money(row.cancellation_gst, true)}</TD>
-                  <TD>{money(row.cancellation_total, true)}</TD>
-                  <TD>{money(row.claim_amount, true)}</TD>
-                  <TD muted>{row.transaction_id || "—"}</TD>
-                  <TD muted>
-                    {row.payment_date
-                      ? new Date(row.payment_date).toLocaleDateString("en-IN")
-                      : "—"}
-                  </TD>
-                  <TD className={clx((row.payment || 0) < 0 && "text-red-600")}>
-                    {money(row.payment, true)}
-                  </TD>
-                  <TD className="font-semibold">{money(row.balance_amount, true)}</TD>
+                  <Money value={row.balance_amount} strong tone={moneyTone} />
                 </tr>
               )
             })}
           </tbody>
         </table>
       </div>
+      {/* Bottom progress bar accent */}
+      <div className="h-1 w-full bg-gradient-to-r from-oweg-400 via-oweg-500 to-oweg-600 opacity-80" />
     </div>
   )
 }

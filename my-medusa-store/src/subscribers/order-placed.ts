@@ -1,6 +1,8 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { Modules } from "@medusajs/framework/utils"
+import { Pool } from "pg"
 import { generateInvoice } from "../services/invoice-generator"
+import { ensureOrderSettlementSnapshots } from "../lib/vendor-settlement-snapshot"
 
 export default async function orderPlacedSubscriber({
   event: { data },
@@ -19,6 +21,33 @@ export default async function orderPlacedSubscriber({
       "billing_address"
     ],
   })
+
+  // 1b. Freeze commission / platform / cancel rates on the order at place time
+  // so later admin rate changes never rewrite historical or in-progress orders.
+  try {
+    if (process.env.DATABASE_URL) {
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: process.env.DATABASE_URL.includes("rds.amazonaws.com")
+          ? { rejectUnauthorized: false }
+          : false,
+      })
+      try {
+        await ensureOrderSettlementSnapshots({
+          orderId,
+          pool,
+          orderModule: orderModuleService,
+        })
+      } finally {
+        await pool.end()
+      }
+    }
+  } catch (snapErr) {
+    console.error(
+      `[order-placed] Failed to snapshot settlement rates for ${orderId}:`,
+      snapErr
+    )
+  }
 
   // 2. Send Webhook to Affiliate Portal
   try {

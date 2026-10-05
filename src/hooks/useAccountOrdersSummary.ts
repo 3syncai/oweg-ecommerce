@@ -108,7 +108,12 @@ export function resolveOrderBucket(order: AccountOrder): AccountOrderBucket {
 export function resolveOrderStatusLabel(order: AccountOrder): string {
   const status = (order.status || "").toLowerCase();
   if (status === "canceled" || status === "cancelled") {
-    return "Canceled";
+    const meta = order.metadata || {};
+    const adminCancelled =
+      meta.cancelled_by_admin === true ||
+      meta.cancellation_source === "admin" ||
+      meta.cancelled_by === "admin";
+    return adminCancelled ? "Cancelled by OWEG" : "Cancelled";
   }
 
   const returnStatus = getOrderReturnRequestStatus(order);

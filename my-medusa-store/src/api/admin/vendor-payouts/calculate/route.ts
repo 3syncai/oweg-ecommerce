@@ -46,20 +46,18 @@ export async function POST(
         },
         globalDefault
       )
-      await recomputeUnpaidVendorLedger(vendor_id, pool, {
-        commissionRate: resolved.rate,
-      })
+      // Recompute from frozen per-order snapshots only (not live admin rates).
+      await recomputeUnpaidVendorLedger(vendor_id, pool)
 
       // Repair any claim rows that previously had commission wrongly applied
       await repairClaimCreditsWithoutCommission(vendor_id, pool)
 
-      const refreshed = await getVendorPayableSnapshot(vendor_id, pool, {
-        effectiveRate: resolved.rate,
-      })
+      const refreshed = await getVendorPayableSnapshot(vendor_id, pool)
 
       res.json({
         vendor_id,
         vendor_name: vendor.store_name || vendor.name,
+        // Display current vendor setting for admin context; payable math uses order snapshots.
         commission_rate: resolved.rate,
         commission_source: resolved.source,
         total_revenue: refreshed.total_revenue,

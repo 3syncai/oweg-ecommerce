@@ -36,17 +36,16 @@ function hasDashboard() {
 
 function isAlreadyPatched() {
   try {
-    const mainLayout = path.join(
-      DASHBOARD,
-      "src",
-      "components",
-      "layout",
-      "main-layout",
-      "main-layout.tsx"
+    // Require the current patch marker in the runtime bundle (dist), not only
+    // src/. Older half-patches set PROMOTED_EXTENSION_PATHS without
+    // /oweg-customer-groups and would skip re-applying forever.
+    const appJs = path.join(DASHBOARD, "dist", "app.js")
+    if (!fs.existsSync(appJs)) return false
+    const src = fs.readFileSync(appJs, "utf8")
+    return (
+      src.includes("PROMOTED_EXTENSION_PATHS") &&
+      src.includes('"/oweg-customer-groups"')
     )
-    if (!fs.existsSync(mainLayout)) return false
-    const src = fs.readFileSync(mainLayout, "utf8")
-    return src.includes("PROMOTED_EXTENSION_PATHS")
   } catch {
     return false
   }
@@ -124,6 +123,21 @@ function reinstallDashboard() {
   log("Reinstalled @medusajs/dashboard@" + DASHBOARD_VERSION)
 }
 
+function clearViteAdminCache() {
+  // Stale Vite prebundles keep old hashed imports like
+  // order-detail-*-XCUWVTL4.js after dashboard patch/reinstall → admin order
+  // detail page shows "An unexpected error occurred while rendering this page."
+  const viteDir = path.join(ROOT, "node_modules", ".vite")
+  try {
+    if (fs.existsSync(viteDir)) {
+      fs.rmSync(viteDir, { recursive: true, force: true })
+      log("Cleared node_modules/.vite (admin order-detail chunk cache)")
+    }
+  } catch (err) {
+    log(`Could not clear Vite cache: ${err?.message || err}`)
+  }
+}
+
 function applyOnce() {
   if (!hasDashboard()) {
     log("@medusajs/dashboard not installed; nothing to patch")
@@ -153,6 +167,7 @@ function main() {
     if (!tryPatchPackage()) {
       log("patch-package reported an error, but dashboard patch is already present — continuing")
     }
+    clearViteAdminCache()
     return
   }
 
@@ -161,6 +176,7 @@ function main() {
 
   if (applyOnce()) {
     tryPatchPackage()
+    clearViteAdminCache()
     return
   }
 

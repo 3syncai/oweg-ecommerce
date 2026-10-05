@@ -109,6 +109,11 @@ type VendorOrder = {
     tds_rate?: number
   } | null
   customer_details_hidden?: boolean
+  cancelled?: boolean
+  cancelled_by?: "admin" | "customer" | null
+  cancellation_note?: string | null
+  cancellation_at?: string | null
+  cancellation_label?: string | null
 }
 
 const PAGE_SIZE = 10
@@ -238,7 +243,15 @@ const addressLineSafe = (order: VendorOrder, address?: Record<string, any> | nul
   return addressLine(address)
 }
 
-const stagePillClass = (stage: VendorStage) => {
+const isCancelledOrder = (order: Pick<VendorOrder, "status" | "cancelled">) =>
+  order.cancelled === true ||
+  String(order.status || "").toLowerCase() === "canceled" ||
+  String(order.status || "").toLowerCase() === "cancelled"
+
+const stagePillClass = (stage: VendorStage, cancelled = false) => {
+  if (cancelled) {
+    return "bg-rose-500/10 text-rose-800 ring-rose-500/20 dark:text-rose-300"
+  }
   switch (stage) {
     case "delivered":
       return "bg-oweg-500/10 text-oweg-800 ring-oweg-500/20 dark:text-oweg-300"
@@ -633,6 +646,10 @@ const VendorOrdersContent = () => {
     const busy = processing?.endsWith(order.id)
     const hasShipping = Boolean(workflow.shipping_method)
     const hasInvoice = Boolean(workflow.invoice_generated_at)
+
+    if (isCancelledOrder(order)) {
+      return <ActionButton icon={<Eye size={14} />} label="View" onClick={() => void openDetails(order)} />
+    }
 
     if (selectedStage === "total") {
       return <ActionButton icon={<Eye size={14} />} label="View" onClick={() => void openDetails(order)} />
@@ -1082,7 +1099,7 @@ const VendorOrdersContent = () => {
                             <span
                               className={clx(
                                 "inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset",
-                                stagePillClass(order.vendor_stage)
+                                stagePillClass(order.vendor_stage, isCancelledOrder(order))
                               )}
                               title={order.vendor_status_label}
                             >
@@ -1362,8 +1379,13 @@ function DetailsModal({
   )
   const payout = Math.max(0, Math.round((baseNet - logisticFees) * 100) / 100)
   const progress = orderProgressSteps(order.vendor_stage)
-  const stageBadge =
-    order.vendor_stage === "to_accept"
+  const cancelled = isCancelledOrder(order)
+  const stageBadge = cancelled
+    ? {
+        label: order.vendor_status_label || "Cancelled by admin",
+        className: "bg-rose-100 text-rose-900 border-rose-200",
+      }
+    : order.vendor_stage === "to_accept"
       ? { label: "Need vendor acceptance", className: "bg-amber-100 text-amber-900 border-amber-200" }
       : order.vendor_stage === "delivered"
         ? { label: "Delivered", className: "bg-emerald-100 text-emerald-900 border-emerald-200" }
@@ -1392,6 +1414,21 @@ function DetailsModal({
         </div>
 
         <div className="space-y-5 p-5">
+          {cancelled ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+              <Text weight="plus" className="text-sm text-rose-900">
+                {order.cancellation_label || "Admin has cancelled this order."}
+              </Text>
+              {order.cancellation_note ? (
+                <Text size="small" className="mt-1 text-rose-800">
+                  Message from admin: {order.cancellation_note}
+                </Text>
+              ) : null}
+              <Text size="small" className="mt-1 text-rose-700">
+                Do not pack or ship this order. The customer has been notified.
+              </Text>
+            </div>
+          ) : null}
           <div className="rounded-xl border border-ui-border-base/70 bg-ui-bg-subtle/20 p-4">
             <Text weight="plus" className="mb-3 text-sm">
               Order progress
@@ -1636,6 +1673,15 @@ function DetailsModal({
                   ["Display ID", compactOrderId(order)],
                   ["Status", order.vendor_status_label],
                   ["Created", formatDate(order.created_at)],
+                  ...(cancelled
+                    ? ([
+                        [
+                          "Cancelled by",
+                          order.cancelled_by === "admin" ? "OWEG admin" : "Customer",
+                        ],
+                        ["Message from admin", order.cancellation_note || "—"],
+                      ] as Array<[string, string]>)
+                    : []),
                 ]}
               />
             </div>

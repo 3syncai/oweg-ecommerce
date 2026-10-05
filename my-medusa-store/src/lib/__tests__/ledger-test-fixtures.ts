@@ -32,7 +32,7 @@ export function expectedSheet4(input: {
   const rates = input.rates || DEFAULT_LEDGER_RATES
   const A = r2(Math.abs(input.item_price) * input.sign)
   const B = r2(Math.abs(input.logistic_fee) * input.sign)
-  const listing_gst = pct(A + B, rates.output_gst_rate)
+  const listing_gst = r2(pct(A, rates.output_gst_rate) + pct(B, rates.service_gst_rate))
   const listing_total = r2(A + B + listing_gst)
   const platform_fee = pct(A, rates.platform_rate)
   const platform_gst = pct(platform_fee, rates.service_gst_rate)

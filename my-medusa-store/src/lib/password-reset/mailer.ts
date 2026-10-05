@@ -342,15 +342,108 @@ export async function sendPasswordResetEmail(input: SendResetMailInput) {
     </div>
   `
 
+  await deliverMimeMessage({
+    to,
+    fromEmail,
+    fromName,
+    subject,
+    previewText,
+    text,
+    html,
+  })
+}
+
+type TransactionalEmailInput = {
+  to: string
+  subject: string
+  heading: string
+  intro: string
+  paragraphs?: string[]
+  previewText?: string
+}
+
+export async function sendTransactionalEmail(input: TransactionalEmailInput) {
+  if (!hasPasswordResetMailerConfig()) {
+    throw new Error("SMTP configuration is incomplete")
+  }
+
+  const to = normalizeEmail(input.to)
+  const fromEmail = normalizeEmail(passwordResetConfig.smtp.fromEmail)
+
+  if (!to || !fromEmail) {
+    throw new Error("Invalid email address")
+  }
+
+  const subject = sanitizeHeaderValue(input.subject)
+  const fromName = sanitizeHeaderValue(passwordResetConfig.smtp.fromName || "OWEG")
+  const paragraphs = (input.paragraphs || []).filter(Boolean)
+  const previewText = input.previewText || input.intro
+  const text = [input.heading, "", input.intro, ...paragraphs.map((line) => `\n${line}`)]
+    .join("\n")
+    .trim()
+
+  const htmlParagraphs = paragraphs
+    .map(
+      (line) =>
+        `<p style="margin:12px 0 0;font-size:14px;line-height:1.7;color:#334155">${escapeHtml(
+          line
+        )}</p>`
+    )
+    .join("")
+
+  const html = `
+    <div style="margin:0;padding:24px;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a">
+      <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;overflow:hidden">
+        <div style="padding:28px 28px 16px;border-bottom:1px solid #ecf0f4">
+          <div style="display:inline-block;padding:6px 10px;border-radius:999px;background:#fef2f2;color:#b91c1c;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase">
+            OWEG
+          </div>
+          <h1 style="margin:16px 0 10px;font-size:26px;line-height:1.25;color:#0f172a">
+            ${escapeHtml(input.heading)}
+          </h1>
+          <p style="margin:0;font-size:14px;line-height:1.6;color:#475569">
+            ${escapeHtml(input.intro)}
+          </p>
+        </div>
+        <div style="padding:24px 28px 28px">
+          ${htmlParagraphs}
+          <p style="margin:18px 0 0;font-size:13px;line-height:1.7;color:#64748b">
+            This is an automated message from OWEG. Reply to this email if you need help.
+          </p>
+        </div>
+      </div>
+    </div>
+  `
+
+  await deliverMimeMessage({
+    to,
+    fromEmail,
+    fromName,
+    subject,
+    previewText,
+    text,
+    html,
+  })
+}
+
+async function deliverMimeMessage(input: {
+  to: string
+  fromEmail: string
+  fromName: string
+  subject: string
+  previewText: string
+  text: string
+  html: string
+}) {
   const message = escapeDataBody(
     buildMimeMessage({
-      fromName,
-      fromEmail,
-      to,
-      subject,
-      previewText,
-      text,
-      html,
+      fromName: input.fromName,
+      fromEmail: input.fromEmail,
+      to: input.to,
+      subject: input.subject,
+      previewText: input.previewText,
+      text: input.text,
+      html: input.html,
     })
   )
 
@@ -372,8 +465,8 @@ export async function sendPasswordResetEmail(input: SendResetMailInput) {
       Buffer.from(passwordResetConfig.smtp.password, "utf8").toString("base64"),
       [235]
     )
-    await sendCommand(socket, `MAIL FROM:<${fromEmail}>`, [250])
-    await sendCommand(socket, `RCPT TO:<${to}>`, [250, 251])
+    await sendCommand(socket, `MAIL FROM:<${input.fromEmail}>`, [250])
+    await sendCommand(socket, `RCPT TO:<${input.to}>`, [250, 251])
     await sendCommand(socket, "DATA", [354])
     await writeLine(socket, `${message}\r\n.\r\n`)
 

@@ -51,6 +51,10 @@ const Vendor = model.define("vendor", {
   platform_fee_rate: model.float().default(5.0),
   platform_fee_override: model.boolean().default(false),
 
+  // Cancellation charge (₹) — deducted on cancelled orders + 18% GST
+  cancellation_charge: model.float().default(0),
+  cancellation_charge_override: model.boolean().default(false),
+
   // Documents
   documents: model.json().nullable(), // Array of VendorDocument
 

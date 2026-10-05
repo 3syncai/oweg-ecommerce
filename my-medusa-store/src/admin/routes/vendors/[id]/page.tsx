@@ -36,8 +36,14 @@ type PayoutCalculation = {
     commission_source?: "global" | "custom"
     gross_amount: number
     commission_amount: number
+    tcs: number
+    tds: number
+    logistic_fee: number
     net_amount: number
     order_count: number
+    unlocking_count: number
+    unlock_minutes: number
+    note?: string
     orders: any[]
 }
 
@@ -88,7 +94,9 @@ type Vendor = {
     store_city?: string | null
     store_pincode?: string | null
     store_logo?: string | null
+    store_logo_signed_url?: string | null
     store_banner?: string | null
+    store_banner_signed_url?: string | null
     shipping_policy?: string | null
     return_policy?: string | null
     whatsapp_number?: string | null
@@ -359,8 +367,14 @@ const VendorDetailPage = () => {
                     commission_source: data.commission_source,
                     gross_amount: data.total_revenue ?? data.gross_amount ?? 0,
                     commission_amount: data.commission ?? data.commission_amount ?? 0,
+                    tcs: Number(data.tcs) || 0,
+                    tds: Number(data.tds) || 0,
+                    logistic_fee: Number(data.logistic_fee) || 0,
                     net_amount: data.net_amount ?? 0,
                     order_count: data.order_count ?? 0,
+                    unlocking_count: Number(data.unlocking_count) || 0,
+                    unlock_minutes: Number(data.unlock_minutes) || 5,
+                    note: typeof data.note === "string" ? data.note : undefined,
                     orders: Array.isArray(data.orders)
                         ? data.orders
                         : (data.order_ids || []).map((id: string) => ({ id })),
@@ -505,7 +519,7 @@ const VendorDetailPage = () => {
 
                 <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 8 }}>
                     <Avatar
-                        src={vendor.store_logo || undefined}
+                        src={vendor.store_logo_signed_url || vendor.store_logo || undefined}
                         fallback={vendor.store_name?.[0] || vendor.name[0]}
                         style={{ width: 64, height: 64 }}
                     />
@@ -948,11 +962,19 @@ const VendorDetailPage = () => {
                                 <div style={{ marginBottom: 24, padding: 16, background: "var(--bg-subtle)", borderRadius: 8 }}>
                                     <Text size="small" style={{ color: "var(--fg-muted)", marginBottom: 8 }}>Payout Summary</Text>
                                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                        <Text>Orders (7+ days old):</Text>
+                                        <Text>Payable orders (unlocked):</Text>
                                         <Text weight="plus">{calculation.order_count}</Text>
                                     </div>
+                                    {calculation.unlocking_count > 0 && (
+                                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                            <Text style={{ color: "var(--fg-muted)" }}>
+                                                Still unlocking ({calculation.unlock_minutes}-min timer):
+                                            </Text>
+                                            <Text style={{ color: "var(--fg-muted)" }}>{calculation.unlocking_count}</Text>
+                                        </div>
+                                    )}
                                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                        <Text>Gross Amount:</Text>
+                                        <Text>Gross (taxable):</Text>
                                         <Text>{formatCurrency(calculation.gross_amount)}</Text>
                                     </div>
                                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
@@ -962,10 +984,25 @@ const VendorDetailPage = () => {
                                         </Text>
                                         <Text style={{ color: "var(--fg-muted)" }}>-{formatCurrency(calculation.commission_amount)}</Text>
                                     </div>
+                                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                        <Text>TCS:</Text>
+                                        <Text style={{ color: "var(--fg-muted)" }}>-{formatCurrency(calculation.tcs)}</Text>
+                                    </div>
+                                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                        <Text>TDS:</Text>
+                                        <Text style={{ color: "var(--fg-muted)" }}>-{formatCurrency(calculation.tds)}</Text>
+                                    </div>
+                                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                        <Text>Logistics:</Text>
+                                        <Text style={{ color: "var(--fg-muted)" }}>-{formatCurrency(calculation.logistic_fee)}</Text>
+                                    </div>
                                     <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 8, borderTop: "1px solid var(--border-base)" }}>
                                         <Text weight="plus">Net Payout:</Text>
                                         <Text weight="plus" style={{ color: "var(--fg-success)", fontSize: 18 }}>{formatCurrency(calculation.net_amount)}</Text>
                                     </div>
+                                    {calculation.note && (
+                                        <Text size="small" style={{ color: "var(--fg-muted)", marginTop: 8 }}>{calculation.note}</Text>
+                                    )}
                                 </div>
 
                                 {/* Bank Details */}

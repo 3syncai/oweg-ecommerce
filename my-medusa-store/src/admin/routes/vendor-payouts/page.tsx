@@ -332,6 +332,14 @@ const VendorPayoutsPage = () => {
       return
     }
 
+    const orderIds = Array.isArray(payout.order_ids)
+      ? payout.order_ids.map((id) => String(id || "").trim()).filter(Boolean)
+      : []
+    if (!orderIds.length) {
+      toast.error("No payable order ids on this payout — recalculate before paying")
+      return
+    }
+
     try {
       setProcessingVendor(selectedVendor.id)
 
@@ -348,7 +356,7 @@ const VendorPayoutsPage = () => {
           transaction_id: txn,
           payment_method: "bank_transfer",
           notes: remark.trim() || undefined,
-          order_ids: payout.order_ids,
+          order_ids: orderIds,
         }),
       })
 

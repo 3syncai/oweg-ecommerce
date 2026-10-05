@@ -9,9 +9,13 @@ import {
 } from "../../../../../lib/vendor-commission"
 import {
   clampLedgerRate,
+  clampRupeeAmount,
+  DEFAULT_CANCELLATION_CHARGE,
   DEFAULT_PLATFORM_FEE_RATE,
   ensureVendorPlatformFeeColumns,
+  getVendorCancellationChargeDefault,
   getVendorPlatformFeeDefaultRate,
+  resolveVendorCancellationCharge,
   resolveVendorPlatformFeeRate,
 } from "../../../../../lib/vendor-ledger-settlement"
 
@@ -24,13 +28,17 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
     commission_rate?: number | string
     platform_fee_override?: boolean
     platform_fee_rate?: number | string
+    cancellation_charge_override?: boolean
+    cancellation_charge?: number | string
   }
 
   const hasCommission = typeof body.commission_override === "boolean"
   const hasPlatform = typeof body.platform_fee_override === "boolean"
-  if (!hasCommission && !hasPlatform) {
+  const hasCancel = typeof body.cancellation_charge_override === "boolean"
+  if (!hasCommission && !hasPlatform && !hasCancel) {
     return res.status(400).json({
-      message: "commission_override or platform_fee_override is required",
+      message:
+        "commission_override, platform_fee_override, or cancellation_charge_override is required",
     })
   }
 
@@ -51,6 +59,22 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
     const n = Number(body.platform_fee_rate)
     if (!Number.isFinite(n) || n < 0 || n > 100) {
       return res.status(400).json({ message: "platform_fee_rate must be 0-100" })
+    }
+  }
+
+  if (body.cancellation_charge_override === true) {
+    if (
+      body.cancellation_charge === undefined ||
+      body.cancellation_charge === null ||
+      body.cancellation_charge === ""
+    ) {
+      return res.status(400).json({
+        message: "cancellation_charge is required when override is enabled",
+      })
+    }
+    const n = Number(body.cancellation_charge)
+    if (!Number.isFinite(n) || n < 0 || n > 100000) {
+      return res.status(400).json({ message: "cancellation_charge must be rupees 0-100000" })
     }
   }
 
@@ -78,22 +102,35 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
         )
       }
     }
+    if (hasCancel) {
+      update.cancellation_charge_override = body.cancellation_charge_override
+      if (body.cancellation_charge_override === true) {
+        update.cancellation_charge = clampRupeeAmount(
+          body.cancellation_charge,
+          DEFAULT_CANCELLATION_CHARGE
+        )
+      }
+    }
 
     const updated = await vendorService.updateVendors(update)
     const vendor = Array.isArray(updated) ? updated[0] : updated
 
-    const [globalDefault, platformDefault] = await Promise.all([
+    const [globalDefault, platformDefault, cancelDefault] = await Promise.all([
       getVendorCommissionDefaultRate(pool),
       getVendorPlatformFeeDefaultRate(pool),
+      getVendorCancellationChargeDefault(pool),
     ])
     const resolved = resolveVendorCommissionRate(vendor as any, globalDefault)
     const platformResolved = resolveVendorPlatformFeeRate(vendor as any, platformDefault)
+    const cancelResolved = resolveVendorCancellationCharge(vendor as any, cancelDefault)
     return res.json({
       vendor,
       effective_rate: resolved.rate,
       source: resolved.source,
       effective_platform_rate: platformResolved.rate,
       platform_source: platformResolved.source,
+      effective_cancellation_charge: cancelResolved.amount,
+      cancellation_source: cancelResolved.source,
     })
   } finally {
     await pool.end().catch(() => {})

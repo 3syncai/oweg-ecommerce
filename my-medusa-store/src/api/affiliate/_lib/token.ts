@@ -1,6 +1,14 @@
 import crypto from "crypto"
 
-const getSecret = () => process.env.JWT_SECRET || "supersecret"
+const getSecret = () => {
+  const secret = process.env.JWT_SECRET?.trim()
+  if (!secret) {
+    throw new Error(
+      "JWT_SECRET is required — refusing to sign/verify affiliate tokens with a default secret"
+    )
+  }
+  return secret
+}
 
 export type AffiliateClaims = {
   sub: string

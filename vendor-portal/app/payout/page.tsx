@@ -13,11 +13,23 @@ import { vendorPayoutsApi, type VendorPaymentsView } from "@/lib/api/client"
 import { useVendorLive } from "@/lib/useVendorLive"
 import { hasPageCache, peekPageCache, writePageCache } from "@/lib/page-cache"
 import { ArrowPath, CurrencyDollar, Clock, ArchiveBox, ShoppingCart, Tag } from "@medusajs/icons"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(amount)
 
 type ReportRange = "1d" | "1m" | "6m" | "1y" | "custom"
+type LedgerFilter = "1m" | "3m" | "6m" | "1y" | "all"
+
+const LEDGER_PAGE_SIZE = 10
+
+const LEDGER_FILTERS: Array<{ key: LedgerFilter; label: string }> = [
+  { key: "1m", label: "Last month" },
+  { key: "3m", label: "3 months" },
+  { key: "6m", label: "6 months" },
+  { key: "1y", label: "Yearly" },
+  { key: "all", label: "All time" },
+]
 
 type SettlementRow = VendorPaymentsView["settlements"][number]
 
@@ -93,30 +105,77 @@ const filterSettlementsByRange = (rows: SettlementRow[], from: Date, to: Date) =
     return delivered >= from.getTime() && delivered <= to.getTime()
   })
 
+const isLedgerDisplayRow = (row: SettlementRow) => {
+  const category = row.category || row.type
+  return category !== "payment"
+}
+
+const resolveLedgerFilterWindow = (
+  filter: LedgerFilter
+): { from: Date; to: Date } | null => {
+  if (filter === "all") return null
+  const now = new Date()
+  const to = endOfDayIst(now)
+  const from = startOfDayIst(now)
+  if (filter === "1m") from.setMonth(from.getMonth() - 1)
+  else if (filter === "3m") from.setMonth(from.getMonth() - 3)
+  else if (filter === "6m") from.setMonth(from.getMonth() - 6)
+  else from.setFullYear(from.getFullYear() - 1)
+  return { from, to }
+}
+
+const filterLedgerRows = (rows: SettlementRow[], filter: LedgerFilter) => {
+  const displayRows = rows.filter(isLedgerDisplayRow)
+  const window = resolveLedgerFilterWindow(filter)
+  if (!window) return displayRows
+  return filterSettlementsByRange(displayRows, window.from, window.to)
+}
+
 const downloadLedgerExcel = (rows: SettlementRow[], rangeLabel: string) => {
   downloadPaymentLedgerExcel(rows, rangeLabel)
 }
 
+/* ----------------------------------------------------------------
+   MetricChip — glassmorphism style daily metric chips
+   ---------------------------------------------------------------- */
 const MetricChip = ({
   label,
   value,
   tone = "neutral",
+  icon,
 }: {
   label: string
   value: string
   tone?: "neutral" | "positive" | "negative"
+  icon?: React.ReactNode
 }) => (
-  <div className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-ui-border-base/60 bg-ui-bg-subtle/40 px-3 py-2.5 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-ui-border-strong hover:bg-ui-bg-base hover:shadow-sm">
-    <Text size="xsmall" className="uppercase tracking-wide text-ui-fg-muted">
-      {label}
-    </Text>
+  <div className={clx(
+    "group relative flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-xl border px-4 py-3 transition-all duration-300 ease-out",
+    "hover:-translate-y-0.5 hover:shadow-md",
+    tone === "positive" && "border-emerald-200/60 bg-gradient-to-br from-emerald-50/80 to-white hover:border-emerald-300/70 hover:shadow-emerald-500/[0.06] dark:border-emerald-800/30 dark:from-emerald-900/20 dark:to-transparent",
+    tone === "negative" && "border-rose-200/50 bg-gradient-to-br from-rose-50/60 to-white hover:border-rose-300/60 hover:shadow-rose-500/[0.06] dark:border-rose-800/30 dark:from-rose-900/20 dark:to-transparent",
+    tone === "neutral" && "border-ui-border-base/60 bg-gradient-to-br from-ui-bg-subtle/60 to-white hover:border-ui-border-strong hover:shadow-black/[0.04] dark:from-ui-bg-subtle/30 dark:to-transparent",
+  )}>
+    {/* Decorative corner accent */}
+    <div className={clx(
+      "absolute -right-3 -top-3 h-10 w-10 rounded-full opacity-0 transition-opacity duration-300 group-hover:opacity-100",
+      tone === "positive" && "bg-emerald-400/10",
+      tone === "negative" && "bg-rose-400/10",
+      tone === "neutral" && "bg-oweg-400/10",
+    )} />
+    <div className="flex items-center gap-1.5">
+      {icon && <span className="text-ui-fg-muted">{icon}</span>}
+      <Text size="xsmall" className="uppercase tracking-widest text-ui-fg-muted font-medium">
+        {label}
+      </Text>
+    </div>
     <Text
       weight="plus"
       size="small"
       className={clx(
-        "truncate tabular-nums",
+        "truncate tabular-nums text-base font-bold",
         tone === "positive" && "text-emerald-700 dark:text-emerald-400",
-        tone === "negative" && "text-red-600 dark:text-red-400",
+        tone === "negative" && "text-rose-600 dark:text-rose-400",
         tone === "neutral" && "text-ui-fg-base"
       )}
     >
@@ -126,6 +185,36 @@ const MetricChip = ({
 )
 
 const PAYMENTS_CACHE_KEY = "payments"
+
+/* ----------------------------------------------------------------
+   Section heading with decorative left bar
+   ---------------------------------------------------------------- */
+const SectionHeading = ({
+  title,
+  subtitle,
+  right,
+}: {
+  title: string
+  subtitle?: string
+  right?: React.ReactNode
+}) => (
+  <div className="flex items-baseline justify-between gap-3">
+    <div className="flex items-center gap-3">
+      <div className="h-5 w-1 rounded-full bg-gradient-to-b from-oweg-400 to-oweg-600" />
+      <div>
+        <Text weight="plus" size="small" className="text-ui-fg-base">
+          {title}
+        </Text>
+        {subtitle && (
+          <Text size="xsmall" className="text-ui-fg-muted mt-0.5">
+            {subtitle}
+          </Text>
+        )}
+      </div>
+    </div>
+    {right}
+  </div>
+)
 
 const VendorPayoutPage = () => {
   const router = useRouter()
@@ -141,6 +230,8 @@ const VendorPayoutPage = () => {
   const [reportError, setReportError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [feesInfoOpen, setFeesInfoOpen] = useState(false)
+  const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>("all")
+  const [ledgerPage, setLedgerPage] = useState(1)
 
   const loadPayments = useCallback(async () => {
     const vendorToken = localStorage.getItem("vendor_token")
@@ -201,6 +292,22 @@ const VendorPayoutPage = () => {
     return filterSettlementsByRange(payments.settlements, window.from, window.to).length
   }, [payments, reportRange, customFrom, customTo])
 
+  const filteredLedgerRows = useMemo(
+    () => filterLedgerRows(payments?.settlements || [], ledgerFilter),
+    [payments?.settlements, ledgerFilter]
+  )
+
+  const ledgerPageCount = Math.max(1, Math.ceil(filteredLedgerRows.length / LEDGER_PAGE_SIZE))
+  const safeLedgerPage = Math.min(ledgerPage, ledgerPageCount)
+  const pagedLedgerRows = useMemo(() => {
+    const start = (safeLedgerPage - 1) * LEDGER_PAGE_SIZE
+    return filteredLedgerRows.slice(start, start + LEDGER_PAGE_SIZE)
+  }, [filteredLedgerRows, safeLedgerPage])
+
+  useEffect(() => {
+    setLedgerPage(1)
+  }, [ledgerFilter])
+
   const handleDownloadReport = () => {
     if (!payments?.settlements) return
     setReportError(null)
@@ -239,7 +346,7 @@ const VendorPayoutPage = () => {
             Refresh
           </Button>
         </div>
-        <div className="mt-6 rounded-xl border border-red-500/20 bg-red-500/5 p-6">
+        <div className="mt-6 rounded-2xl border border-red-500/20 bg-gradient-to-br from-red-50/80 to-white p-6 shadow-sm dark:from-red-900/10 dark:to-transparent">
           <Text className="text-ui-fg-error">{error}</Text>
         </div>
       </Container>
@@ -306,14 +413,20 @@ const VendorPayoutPage = () => {
     }
 
     content = (
-      <Container className="mx-auto max-w-7xl space-y-8 p-4 md:p-6">
+      <Container className="mx-auto max-w-7xl space-y-8 p-4 md:p-6 lg:p-8">
+        {/* Page header */}
         <div className="animate-fade-in-up flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-2xl">
-            <Heading level="h1" className="text-2xl tracking-tight md:text-3xl">
-              Payments
-            </Heading>
-            <Text size="small" className="mt-1.5 text-ui-fg-subtle">
-              Sheet4 settlement: listing C minus platform, commission, partner, logistics, TCS and TDS.
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-oweg-400 to-oweg-600 text-white shadow-md shadow-oweg-500/20">
+                <CurrencyDollar className="h-5 w-5" />
+              </div>
+              <Heading level="h1" className="text-2xl font-bold tracking-tight md:text-3xl">
+                Payments
+              </Heading>
+            </div>
+            <Text size="small" className="mt-2 max-w-xl text-ui-fg-subtle leading-relaxed">
+              Settlement breakdown: listing total minus platform, commission, partner, logistics, TCS and TDS.
               Earnings unlock {unlockMinutes} minutes after delivery.
             </Text>
           </div>
@@ -321,38 +434,38 @@ const VendorPayoutPage = () => {
             <Button
               variant="secondary"
               disabled={!payments.settlements.length}
-              className="transition-transform active:scale-[0.98]"
+              className="rounded-xl transition-all duration-200 active:scale-[0.97] hover:shadow-sm"
               onClick={() => {
                 setReportError(null)
                 setReportOpen(true)
               }}
             >
+              <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
               Download report
             </Button>
             <Button
               variant="secondary"
               disabled={refreshing}
-              className="transition-transform active:scale-[0.98]"
+              className="rounded-xl transition-all duration-200 active:scale-[0.97] hover:shadow-sm"
               onClick={handleRefresh}
             >
-              <ArrowPath className={refreshing ? "animate-spin" : ""} />
+              <ArrowPath className={clx("h-4 w-4", refreshing && "animate-spin")} />
               Refresh
             </Button>
           </div>
         </div>
 
+        {/* ── Balance cards ── */}
         <section
-          className="animate-fade-in-up-slow space-y-3"
+          className="animate-fade-in-up-slow space-y-4"
           style={{ animationDelay: "60ms" }}
         >
-          <div className="flex items-baseline justify-between gap-3">
-            <Text weight="plus" size="small" className="text-ui-fg-base">
-              Balance
-            </Text>
-            <Text size="xsmall" className="text-ui-fg-muted">
-              Lifetime · not reset daily
-            </Text>
-          </div>
+          <SectionHeading
+            title="Balance"
+            subtitle="Lifetime · not reset daily"
+          />
           <div className="oweg-stagger grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <StatCard
               icon={<ShoppingCart />}
@@ -388,10 +501,10 @@ const VendorPayoutPage = () => {
                     setFeesInfoOpen((open) => !open)
                   }}
                   className={clx(
-                    "inline-flex h-6 w-6 items-center justify-center rounded-full border bg-ui-bg-base text-[11px] font-semibold transition-all duration-200",
+                    "inline-flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-bold transition-all duration-200",
                     feesInfoOpen
-                      ? "border-oweg-500/50 text-oweg-700 shadow-sm dark:text-oweg-300"
-                      : "border-ui-border-base text-ui-fg-subtle hover:border-ui-border-strong hover:text-ui-fg-base"
+                      ? "border-oweg-500/50 bg-oweg-500/10 text-oweg-700 shadow-sm dark:text-oweg-300"
+                      : "border-ui-border-base bg-ui-bg-base text-ui-fg-subtle hover:border-oweg-300 hover:bg-oweg-50 hover:text-oweg-600"
                   )}
                   aria-expanded={feesInfoOpen}
                   aria-label="Tax and commission breakdown"
@@ -401,47 +514,33 @@ const VendorPayoutPage = () => {
                 </button>
                 <div
                   className={clx(
-                    "oweg-popover absolute right-0 top-full z-30 mt-1.5 w-56 rounded-xl border border-ui-border-base bg-ui-bg-base p-3 shadow-lg shadow-black/5",
+                    "oweg-popover absolute right-0 top-full z-30 mt-2 w-60 rounded-2xl border border-ui-border-base/60 bg-ui-bg-base p-4 shadow-xl shadow-black/[0.08]",
                     feesInfoOpen ? "oweg-popover-open" : "oweg-popover-closed"
                   )}
                   role="tooltip"
                 >
-                  <Text size="small" weight="plus" className="mb-2 text-ui-fg-base">
-                    Charged separately
+                  <Text size="small" weight="plus" className="mb-3 text-ui-fg-base">
+                    Breakdown
                   </Text>
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-3 rounded-lg bg-ui-bg-subtle/60 px-3 py-2">
-                      <Text size="small" className="text-ui-fg-subtle">
-                        Tax (GST)
-                      </Text>
-                      <Text size="small" weight="plus" className="tabular-nums">
-                        {formatCurrency(taxes)}
-                      </Text>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 rounded-lg bg-ui-bg-subtle/60 px-3 py-2">
-                      <Text size="small" className="text-ui-fg-subtle">
-                        Commission
-                      </Text>
-                      <Text size="small" weight="plus" className="tabular-nums">
-                        {formatCurrency(lifetimeCommission)}
-                      </Text>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 rounded-lg bg-ui-bg-subtle/60 px-3 py-2">
-                      <Text size="small" className="text-ui-fg-subtle">
-                        TCS
-                      </Text>
-                      <Text size="small" weight="plus" className="tabular-nums">
-                        {formatCurrency(lifetimeTcs)}
-                      </Text>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 rounded-lg bg-ui-bg-subtle/60 px-3 py-2">
-                      <Text size="small" className="text-ui-fg-subtle">
-                        TDS
-                      </Text>
-                      <Text size="small" weight="plus" className="tabular-nums">
-                        {formatCurrency(lifetimeTds)}
-                      </Text>
-                    </div>
+                    {[
+                      { label: "Tax (GST)", val: taxes, color: "bg-blue-500" },
+                      { label: "Commission", val: lifetimeCommission, color: "bg-rose-500" },
+                      { label: "TCS", val: lifetimeTcs, color: "bg-amber-500" },
+                      { label: "TDS", val: lifetimeTds, color: "bg-purple-500" },
+                    ].map((item) => (
+                      <div key={item.label} className="flex items-center justify-between gap-3 rounded-xl bg-ui-bg-subtle/60 px-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <div className={clx("h-2 w-2 rounded-full", item.color)} />
+                          <Text size="small" className="text-ui-fg-subtle">
+                            {item.label}
+                          </Text>
+                        </div>
+                        <Text size="small" weight="plus" className="tabular-nums font-semibold">
+                          {formatCurrency(item.val)}
+                        </Text>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -489,25 +588,35 @@ const VendorPayoutPage = () => {
             />
           </div>
 
-          <Text size="xsmall" className="text-ui-fg-muted">
-            Pending unlocks into Settlement after {unlockMinutes} min. Balance = Settlement −
-            Withdrawn. Bank settlement = C − (D + E + F + B + TCS + TDS).
-          </Text>
-        </section>
-
-        <section
-          className="animate-fade-in-up-slow space-y-3"
-          style={{ animationDelay: "140ms" }}
-        >
-          <div className="flex items-baseline justify-between gap-3">
-            <Text weight="plus" size="small" className="text-ui-fg-base">
-              Today&apos;s activity
-            </Text>
-            <Text size="xsmall" className="text-ui-fg-muted">
-              Resets each day (IST)
+          <div className="rounded-xl border border-ui-border-base/40 bg-ui-bg-subtle/30 px-4 py-2.5">
+            <Text size="xsmall" className="text-ui-fg-muted leading-relaxed">
+              <span className="font-medium text-ui-fg-subtle">Formula:</span>{" "}
+              Pending unlocks into Settlement after {unlockMinutes} min. Balance = Settlement −
+              Withdrawn. Bank settlement = C − (D + E + F + B + TCS + TDS).
             </Text>
           </div>
-          <div className="oweg-stagger grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        </section>
+
+        {/* ── Today's activity ── */}
+        <section
+          className="animate-fade-in-up-slow space-y-4"
+          style={{ animationDelay: "140ms" }}
+        >
+          <SectionHeading
+            title="Today's activity"
+            right={
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-ui-border-base/50 bg-ui-bg-subtle/50 px-3 py-1">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-oweg-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-oweg-500" />
+                </span>
+                <Text size="xsmall" className="text-ui-fg-muted font-medium">
+                  Resets each day (IST)
+                </Text>
+              </span>
+            }
+          />
+          <div className="oweg-stagger grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
             <MetricChip
               label="Total sale"
               value={formatCurrency(payments.cards.total_sale)}
@@ -545,61 +654,143 @@ const VendorPayoutPage = () => {
             />
           </div>
           {(payments.cards.logistic_fee || payments.cards.return_fee) ? (
-            <Text size="xsmall" className="text-ui-fg-muted">
-              Ship {formatCurrency(payments.cards.logistic_fee || 0)} · Return{" "}
-              {formatCurrency(payments.cards.return_fee || 0)}
-            </Text>
+            <div className="flex items-center gap-2 rounded-lg bg-ui-bg-subtle/40 px-3 py-1.5">
+              <div className="h-1 w-1 rounded-full bg-ui-fg-muted" />
+              <Text size="xsmall" className="text-ui-fg-muted">
+                Ship {formatCurrency(payments.cards.logistic_fee || 0)} · Return{" "}
+                {formatCurrency(payments.cards.return_fee || 0)}
+              </Text>
+            </div>
           ) : null}
         </section>
 
+        {/* ── Settlement ledger ── */}
         <section
-          className="animate-fade-in-up space-y-3"
+          className="animate-fade-in-up space-y-4"
           style={{ animationDelay: "220ms" }}
         >
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <Text weight="plus" size="small" className="text-ui-fg-base">
-                Settlement ledger
-              </Text>
-              <Text size="xsmall" className="mt-0.5 text-ui-fg-muted">
-                Sale, return, claim, and payout rows with Sheet4 fee columns and running balance
-              </Text>
-            </div>
-            {payments.settlements.length > 0 ? (
-              <Text size="xsmall" className="text-ui-fg-muted">
-                {payments.settlements.length} entr
-                {payments.settlements.length === 1 ? "y" : "ies"}
-              </Text>
-            ) : null}
-          </div>
+          <SectionHeading
+            title="Settlement ledger"
+            subtitle="Sale, return, claim, and cancellation rows. TCS, TDS, bank settlement, and payout details stay in the Excel download."
+            right={
+              filteredLedgerRows.length > 0 ? (
+                <span className="inline-flex items-center rounded-full border border-ui-border-base/50 bg-ui-bg-subtle/50 px-3 py-1">
+                  <Text size="xsmall" className="text-ui-fg-muted font-semibold tabular-nums">
+                    {filteredLedgerRows.length} entr
+                    {filteredLedgerRows.length === 1 ? "y" : "ies"}
+                  </Text>
+                </span>
+              ) : null
+            }
+          />
 
-          {payments.settlements.length === 0 ? (
+          {(payments.settlements.filter(isLedgerDisplayRow).length > 0 ||
+            filteredLedgerRows.length > 0) && (
+            <div className="flex flex-wrap gap-2">
+              {LEDGER_FILTERS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setLedgerFilter(option.key)}
+                  className={clx(
+                    "rounded-xl border px-3.5 py-2 text-xs font-semibold transition-all duration-200",
+                    ledgerFilter === option.key
+                      ? "border-oweg-500/40 bg-gradient-to-br from-oweg-500/15 to-oweg-500/5 text-oweg-800 shadow-sm shadow-oweg-500/10 dark:text-oweg-300"
+                      : "border-ui-border-base/60 bg-ui-bg-base text-ui-fg-subtle hover:border-ui-border-strong hover:bg-ui-bg-subtle hover:shadow-sm"
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {payments.settlements.filter(isLedgerDisplayRow).length === 0 ? (
             <EmptyState
               title="No settlement history yet"
               description="Delivered orders will appear here with a full settlement breakdown."
             />
-          ) : (
-            <PaymentLedgerTable
-              rows={payments.settlements}
-              onUnlock={() => void loadPayments()}
+          ) : filteredLedgerRows.length === 0 ? (
+            <EmptyState
+              title="No entries in this period"
+              description="Try a wider date filter, or switch to All time."
             />
+          ) : (
+            <>
+              <PaymentLedgerTable
+                rows={pagedLedgerRows}
+                onUnlock={() => void loadPayments()}
+              />
+              <div className="flex flex-col gap-2 text-ui-fg-muted sm:flex-row sm:items-center sm:justify-between">
+                <Text size="small" className="tabular-nums">
+                  Showing{" "}
+                  {pagedLedgerRows.length
+                    ? (safeLedgerPage - 1) * LEDGER_PAGE_SIZE + 1
+                    : 0}
+                  –{Math.min(safeLedgerPage * LEDGER_PAGE_SIZE, filteredLedgerRows.length)} of{" "}
+                  {filteredLedgerRows.length}
+                </Text>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={safeLedgerPage <= 1}
+                    onClick={() => setLedgerPage((value) => Math.max(1, value - 1))}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ui-border-base/70 bg-ui-bg-base transition hover:border-ui-border-strong hover:bg-ui-bg-subtle disabled:opacity-40"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <Text size="small" className="min-w-[5.5rem] text-center tabular-nums">
+                    Page {safeLedgerPage} of {ledgerPageCount}
+                  </Text>
+                  <button
+                    type="button"
+                    disabled={safeLedgerPage >= ledgerPageCount}
+                    onClick={() =>
+                      setLedgerPage((value) => Math.min(ledgerPageCount, value + 1))
+                    }
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ui-border-base/70 bg-ui-bg-base transition hover:border-ui-border-strong hover:bg-ui-bg-subtle disabled:opacity-40"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </section>
 
-        <div className="rounded-xl border border-ui-border-base/50 bg-ui-bg-subtle/40 px-4 py-3">
-          <Text size="small" className="leading-relaxed text-ui-fg-muted">
-            Platform, commission, and partner fees include 18% GST. Reverse logistic and
-            cancellation reduce the running balance after bank settlement.
-          </Text>
+        {/* ── Footer note ── */}
+        <div className="rounded-2xl border border-ui-border-base/40 bg-gradient-to-r from-ui-bg-subtle/60 via-white to-ui-bg-subtle/60 px-5 py-4 dark:from-ui-bg-subtle/30 dark:via-transparent dark:to-ui-bg-subtle/30">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-oweg-500/10 text-oweg-600">
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <Text size="small" className="leading-relaxed text-ui-fg-muted">
+              Platform, commission, and partner fees include 18% GST. Download the Excel report
+              for TCS, TDS, bank settlement, transaction ID, and payment date.
+            </Text>
+          </div>
         </div>
 
+        {/* ── Report modal ── */}
         {reportOpen ? (
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-[2px] sm:items-center">
-            <div className="w-full max-w-md rounded-2xl border border-ui-border-base bg-ui-bg-base p-6 shadow-2xl">
-              <Heading level="h2" className="text-lg tracking-tight">
-                Download ledger report
-              </Heading>
-              <Text size="small" className="mt-1 text-ui-fg-subtle">
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 backdrop-blur-sm sm:items-center">
+            <div
+              className="w-full max-w-md animate-fade-in-up rounded-2xl border border-ui-border-base/60 bg-ui-bg-base p-6 shadow-2xl shadow-black/10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-1">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-oweg-400 to-oweg-600 text-white">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <Heading level="h2" className="text-lg font-bold tracking-tight">
+                  Download ledger report
+                </Heading>
+              </div>
+              <Text size="small" className="mt-1 text-ui-fg-subtle ml-12">
                 Export payment ledger in finance format (Excel .xlsx).
               </Text>
 
@@ -621,10 +812,10 @@ const VendorPayoutPage = () => {
                       setReportError(null)
                     }}
                     className={clx(
-                      "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                      "rounded-xl border px-3.5 py-2 text-xs font-semibold transition-all duration-200",
                       reportRange === option.key
-                        ? "border-oweg-500/40 bg-oweg-500/10 text-oweg-800 dark:text-oweg-300"
-                        : "border-ui-border-base/70 bg-ui-bg-base text-ui-fg-subtle hover:bg-ui-bg-subtle"
+                        ? "border-oweg-500/40 bg-gradient-to-br from-oweg-500/15 to-oweg-500/5 text-oweg-800 shadow-sm shadow-oweg-500/10 dark:text-oweg-300"
+                        : "border-ui-border-base/60 bg-ui-bg-base text-ui-fg-subtle hover:border-ui-border-strong hover:bg-ui-bg-subtle hover:shadow-sm"
                     )}
                   >
                     {option.label}
@@ -634,7 +825,7 @@ const VendorPayoutPage = () => {
 
               {reportRange === "custom" ? (
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  <label className="block space-y-1">
+                  <label className="block space-y-1.5">
                     <Text size="small" weight="plus">
                       From
                     </Text>
@@ -642,10 +833,10 @@ const VendorPayoutPage = () => {
                       type="date"
                       value={customFrom}
                       onChange={(e) => setCustomFrom(e.target.value)}
-                      className="h-10 w-full rounded-lg border border-ui-border-base/70 bg-ui-bg-base px-3 text-sm outline-none focus:border-ui-border-strong"
+                      className="h-10 w-full rounded-xl border border-ui-border-base/60 bg-ui-bg-base px-3 text-sm outline-none transition-colors focus:border-oweg-500/50 focus:ring-2 focus:ring-oweg-500/10"
                     />
                   </label>
-                  <label className="block space-y-1">
+                  <label className="block space-y-1.5">
                     <Text size="small" weight="plus">
                       To
                     </Text>
@@ -653,20 +844,25 @@ const VendorPayoutPage = () => {
                       type="date"
                       value={customTo}
                       onChange={(e) => setCustomTo(e.target.value)}
-                      className="h-10 w-full rounded-lg border border-ui-border-base/70 bg-ui-bg-base px-3 text-sm outline-none focus:border-ui-border-strong"
+                      className="h-10 w-full rounded-xl border border-ui-border-base/60 bg-ui-bg-base px-3 text-sm outline-none transition-colors focus:border-oweg-500/50 focus:ring-2 focus:ring-oweg-500/10"
                     />
                   </label>
                 </div>
               ) : null}
 
-              <Text size="small" className="mt-3 text-ui-fg-muted">
-                {reportPreviewCount} row{reportPreviewCount === 1 ? "" : "s"} in this period
-              </Text>
+              <div className="mt-4 flex items-center gap-2 rounded-xl bg-ui-bg-subtle/50 px-3 py-2">
+                <div className="h-2 w-2 rounded-full bg-oweg-500/50" />
+                <Text size="small" className="text-ui-fg-muted tabular-nums">
+                  {reportPreviewCount} row{reportPreviewCount === 1 ? "" : "s"} in this period
+                </Text>
+              </div>
 
               {reportError ? (
-                <Text size="small" className="mt-2 text-ui-fg-error">
-                  {reportError}
-                </Text>
+                <div className="mt-2 rounded-xl border border-red-500/20 bg-red-50/50 px-3 py-2 dark:bg-red-900/10">
+                  <Text size="small" className="text-ui-fg-error">
+                    {reportError}
+                  </Text>
+                </div>
               ) : null}
 
               <div className="mt-6 flex justify-end gap-2">
@@ -674,6 +870,7 @@ const VendorPayoutPage = () => {
                   variant="secondary"
                   size="small"
                   disabled={exporting}
+                  className="rounded-xl"
                   onClick={() => setReportOpen(false)}
                 >
                   Cancel
@@ -682,6 +879,7 @@ const VendorPayoutPage = () => {
                   size="small"
                   disabled={exporting}
                   isLoading={exporting}
+                  className="rounded-xl"
                   onClick={handleDownloadReport}
                 >
                   Download Excel

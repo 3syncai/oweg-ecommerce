@@ -183,7 +183,14 @@ export async function handleItlWebhook(req: MedusaRequest, res: MedusaResponse) 
   if (shouldPay) {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL })
     try {
-      const result = await scheduleVendorEarningsOnDelivery(match.id, pool)
+      if (!vendorId) {
+        console.warn(
+          `[ITL] Skipping earnings for ${match.id}: could not resolve vendor for shipment`
+        )
+      }
+      const result = vendorId
+        ? await scheduleVendorEarningsOnDelivery(match.id, pool, { vendorId })
+        : { scheduled: 0, vendors: [], skipped_unscoped: true }
       console.log(`[ITL] Vendor earnings scheduled for ${match.id}:`, result)
     } catch (earningsErr) {
       console.error(`[ITL] Failed to schedule vendor earnings for ${match.id}:`, earningsErr)
