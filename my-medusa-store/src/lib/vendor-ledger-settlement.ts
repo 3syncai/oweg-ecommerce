@@ -234,8 +234,42 @@ export function calculateVendorLedgerSettlement(
   }
 
   const sign = category === "return" || category === "cancellation" ? -1 : 1
-  const A = round2(Math.abs(Number(input.item_price) || 0) * sign)
-  const B = round2(Math.abs(Number(input.logistic_fee) || 0) * sign)
+  const absItem = round2(Math.abs(Number(input.item_price) || 0))
+  const absLogistic = round2(Math.abs(Number(input.logistic_fee) || 0))
+
+  // Booked cancel with no sale row: charge shipping (+GST) and/or cancel fee only.
+  if (category === "cancellation" && absItem <= 0) {
+    const log = signedFeeBlock(absLogistic, serviceGst)
+    const cancelOnly = signedFeeBlock(
+      Math.abs(Number(input.cancellation_fee) || 0),
+      serviceGst
+    )
+    const reverseOnly = signedFeeBlock(
+      Math.abs(Number(input.reverse_logistic_fee) || 0),
+      serviceGst
+    )
+    const debit = round2(log.total + cancelOnly.total + reverseOnly.total)
+    return {
+      ...emptyBreakdown({
+        category,
+        rates,
+        bank_settlement: 0,
+        balance_delta: -debit,
+      }),
+      logistic_fee: log.fee,
+      logistic_gst: log.tax,
+      logistic_total: log.total,
+      reverse_logistic_fee: reverseOnly.fee,
+      reverse_logistic_gst: reverseOnly.tax,
+      reverse_logistic_total: reverseOnly.total,
+      cancellation_fee: cancelOnly.fee,
+      cancellation_gst: cancelOnly.tax,
+      cancellation_total: cancelOnly.total,
+    }
+  }
+
+  const A = round2(absItem * sign)
+  const B = round2(absLogistic * sign)
 
   const listingGstItem = pct(A, outputGst)
   const listingGstLogistic = pct(B, serviceGst)
@@ -260,7 +294,7 @@ export function calculateVendorLedgerSettlement(
   const tcs = pct(A, rates.tcs_rate)
   const tds = pct(A, rates.tds_rate)
 
-  const bank = round2(
+  let bank = round2(
     listingTotal - platformTotal - commissionTotal - partnerTotal - logisticTotal - tcs - tds
   )
 
@@ -277,10 +311,21 @@ export function calculateVendorLedgerSettlement(
     serviceGst
   )
 
+  // On product reverse, do not refund forward Easy Ship — admin never eats B.
+  let displayLogisticFee = B
+  let displayLogisticGst = logisticGst
+  let displayLogisticTotal = logisticTotal
+  if (sign === -1 && absItem > 0) {
+    bank = round2(bank + logisticTotal)
+    displayLogisticFee = 0
+    displayLogisticGst = 0
+    displayLogisticTotal = 0
+  }
+
   return {
     category,
     item_price: A,
-    logistic_fee: B,
+    logistic_fee: displayLogisticFee,
     listing_gst: listingGst,
     listing_total: listingTotal,
     platform_rate: rates.platform_rate,
@@ -295,8 +340,8 @@ export function calculateVendorLedgerSettlement(
     partner_commission: partnerCommission,
     partner_gst: partnerGst,
     partner_total: partnerTotal,
-    logistic_gst: logisticGst,
-    logistic_total: logisticTotal,
+    logistic_gst: displayLogisticGst,
+    logistic_total: displayLogisticTotal,
     tcs,
     tds,
     bank_settlement: bank,

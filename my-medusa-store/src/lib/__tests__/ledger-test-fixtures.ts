@@ -47,7 +47,7 @@ export function expectedSheet4(input: {
   const logistic_total = r2(B + logistic_gst)
   const tcs = pct(A, rates.tcs_rate)
   const tds = pct(A, rates.tds_rate)
-  const bank_settlement = r2(
+  let bank_settlement = r2(
     listing_total - platform_total - commission_total - partner_total - logistic_total - tcs - tds
   )
   const reverse_fee = r2(Math.abs(input.reverse_logistic_fee || 0))
@@ -56,9 +56,21 @@ export function expectedSheet4(input: {
   const cancel_fee = r2(Math.abs(input.cancellation_fee || 0))
   const cancel_gst = pct(cancel_fee, rates.service_gst_rate)
   const cancel_total = r2(cancel_fee + cancel_gst)
+
+  // Product reverse must not refund forward shipping — vendor still pays B + GST.
+  let displayB = B
+  let displayLogisticGst = logistic_gst
+  let displayLogisticTotal = logistic_total
+  if (input.sign === -1 && Math.abs(A) > 0.0001) {
+    bank_settlement = r2(bank_settlement + logistic_total)
+    displayB = 0
+    displayLogisticGst = 0
+    displayLogisticTotal = 0
+  }
+
   return {
     A,
-    B,
+    B: displayB,
     listing_gst,
     listing_total,
     platform_fee,
@@ -70,8 +82,8 @@ export function expectedSheet4(input: {
     partner_commission,
     partner_gst,
     partner_total,
-    logistic_gst,
-    logistic_total,
+    logistic_gst: displayLogisticGst,
+    logistic_total: displayLogisticTotal,
     tcs,
     tds,
     bank_settlement,

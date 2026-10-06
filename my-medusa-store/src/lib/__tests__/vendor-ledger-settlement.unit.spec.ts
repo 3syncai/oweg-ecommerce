@@ -169,17 +169,17 @@ describe("Sheet4 engine matches independent expected math", () => {
 })
 
 describe("return / cancel identities", () => {
-  it("sale + matching return (no reverse) nets to 0", () => {
+  it("sale + matching return (no reverse) leaves vendor paying forward logistics", () => {
     const sale = settle("sale", { item_price: 1000, logistic_fee: 50 })
     const ret = settle("return", { item_price: 1000, logistic_fee: 50 })
-    expect(r2(sale.bank_settlement + ret.bank_settlement)).toBe(0)
-    expect(r2(sale.listing_total + ret.listing_total)).toBe(0)
+    expect(ret.logistic_total).toBe(0)
+    expect(r2(sale.bank_settlement + ret.bank_settlement)).toBe(-sale.logistic_total)
     expect(r2(sale.platform_total + ret.platform_total)).toBe(0)
     expect(r2(sale.tcs + ret.tcs)).toBe(0)
-    expect(r2(sale.balance_delta + ret.balance_delta)).toBe(0)
+    expect(r2(sale.balance_delta + ret.balance_delta)).toBe(-sale.logistic_total)
   })
 
-  it("sale + return with reverse courier nets to −reverse total only", () => {
+  it("sale + return charges reverse courier AND keeps forward logistics on vendor", () => {
     const sale = settle("sale", { item_price: 1000, logistic_fee: 50 })
     const ret = settle("return", {
       item_price: 1000,
@@ -187,8 +187,9 @@ describe("return / cancel identities", () => {
       reverse_logistic_fee: 80,
     })
     expect(ret.reverse_logistic_total).toBe(94.4)
-    expect(r2(sale.balance_delta + ret.balance_delta)).toBe(-94.4)
-    expect(r2(sale.bank_settlement + ret.bank_settlement)).toBe(0)
+    expect(r2(sale.balance_delta + ret.balance_delta)).toBe(
+      r2(-(sale.logistic_total + 94.4))
+    )
   })
 
   it("cancelled order mirrors return for A/B and deducts cancel fee+18%", () => {
@@ -206,6 +207,29 @@ describe("return / cancel identities", () => {
     expect(cancel.bank_settlement).toBe(ret.bank_settlement)
     expect(cancel.cancellation_total).toBe(23.6)
     expect(cancel.balance_delta).toBe(ret.balance_delta)
+  })
+
+  it("booked cancel with no sale charges only shipping + cancel fee", () => {
+    const row = settle("cancellation", {
+      item_price: 0,
+      logistic_fee: 50,
+      cancellation_fee: 20,
+    })
+    expect(row.item_price).toBe(0)
+    expect(row.logistic_total).toBe(59)
+    expect(row.cancellation_total).toBe(23.6)
+    expect(row.balance_delta).toBe(-82.6)
+  })
+
+  it("unbooked cancel (no item, no courier) is ₹0", () => {
+    const row = settle("cancellation", {
+      item_price: 0,
+      logistic_fee: 0,
+      cancellation_fee: 0,
+    })
+    expect(row.balance_delta).toBe(0)
+    expect(row.logistic_total).toBe(0)
+    expect(row.cancellation_total).toBe(0)
   })
 
   it("return does not apply reverse/cancel fees on a sale category row", () => {
