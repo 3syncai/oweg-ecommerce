@@ -20,6 +20,7 @@ import {
   getOrFreezeOrderSettlementRates,
   readOrderSettlementRates,
 } from "./vendor-settlement-snapshot";
+import { getVendorWorkflow } from "./vendor-order-workflow";
 
 export const VENDOR_EARNINGS_UNLOCK_MINUTES = 5;
 
@@ -276,6 +277,26 @@ export function resolveVendorReturnFee(
   if (!workflows || typeof workflows !== "object" || Array.isArray(workflows)) return 0;
   const wf = (workflows as Record<string, any>)[vendorId] || {};
   return roundMoney(Math.max(0, Number(wf.return_courier_rate) || 0));
+}
+
+/**
+ * True once a packet actually exists (courier booked / AWB / self already dispatched).
+ * Customer cancel before this point must be ₹0 on the vendor ledger.
+ */
+export function isVendorPacketBooked(
+  orderMetadata: Record<string, unknown> | null | undefined,
+  vendorId: string
+): boolean {
+  const wf = getVendorWorkflow(orderMetadata, vendorId)
+  if (wf.shiprocket_awb || wf.tracking_number || wf.self_awb) return true
+  if (wf.admin_booked_at) return true
+  const booking = String(wf.easy_booking_status || "").toLowerCase()
+  if (booking === "booked") return true
+  if (wf.shipping_method === "self") {
+    const stage = String(wf.stage || "")
+    return stage === "to_dispatch" || stage === "in_transit" || stage === "delivered"
+  }
+  return false
 }
 
 /**
@@ -1115,6 +1136,13 @@ async function insertCancelFeeDebitsForOrder(
   const now = new Date().toISOString();
 
   for (const [vendorId, displayId] of known) {
+    if (!isVendorPacketBooked(orderMetadata, vendorId)) {
+      console.log(
+        `[vendor-earnings] skip cancel charges for ${vendorId} order ${orderId}: packet not booked`
+      );
+      continue;
+    }
+
     const snap = await getOrFreezeOrderSettlementRates({
       orderId,
       vendorId,
@@ -1122,12 +1150,18 @@ async function insertCancelFeeDebitsForOrder(
       metadata: orderMetadata,
     });
     const fee = roundMoney(Number(snap.cancellation_charge) || 0);
-    if (fee <= 0) continue;
+    const saleAlreadyHasLogistics = options?.knownVendors?.some(
+      (row) => row.vendor_id === vendorId
+    );
+    const logistic = saleAlreadyHasLogistics
+      ? 0
+      : resolveVendorLogisticFee(orderMetadata, vendorId);
+    if (fee <= 0 && logistic <= 0) continue;
 
     const ledger = calculateVendorLedgerSettlement({
       category: "cancellation",
       item_price: 0,
-      logistic_fee: 0,
+      logistic_fee: logistic,
       cancellation_fee: fee,
       rates: {
         platform_rate: snap.platform_fee_rate,
@@ -1139,8 +1173,7 @@ async function insertCancelFeeDebitsForOrder(
         tds_rate: snap.tds_rate,
       },
     });
-    // Full Sheet4 cancel total (fee + GST) as a negative CREDITED net.
-    const debit = -Math.abs(Number(ledger.cancellation_total) || fee);
+    const debit = roundMoney(Number(ledger.balance_delta) || 0);
     if (debit >= 0) continue;
 
     const syntheticOrderId = `cancel-fee:${orderId}`;
@@ -1189,15 +1222,15 @@ async function insertCancelFeeDebitsForOrder(
           0,
           0,
           0,
-          0,
+          $8,
           0,
           $7,
           $4,
           'inr',
           'CREDITED',
-          $8,
+          $9,
           NULL,
-          $8,
+          $9,
           NOW(),
           NOW()
         )
@@ -1212,6 +1245,7 @@ async function insertCancelFeeDebitsForOrder(
         Math.abs(Number(ledger.cancellation_gst) || 0),
         snap.service_gst_rate,
         fee,
+        logistic,
         now,
       ]
     );
@@ -1219,7 +1253,7 @@ async function insertCancelFeeDebitsForOrder(
     if ((inserted.rowCount ?? 0) > 0) {
       insertedCount += 1;
       console.log(
-        `[vendor-earnings] cancel-fee debit ${debit} (fee ${fee}) for vendor ${vendorId} order ${orderId}`
+        `[vendor-earnings] cancel-fee debit ${debit} (fee ${fee}, logistic ${logistic}) for vendor ${vendorId} order ${orderId}`
       );
     }
   }
@@ -1451,6 +1485,28 @@ export async function reverseVendorEarningsForOrder(
     reason,
     vendorIds
   );
+
+  const isReturn = /return/i.test(reason);
+  if (isReturn && (result.rowCount ?? 0) > 0) {
+    const metaResult = await pool.query<{
+      metadata: Record<string, unknown> | null;
+    }>(`SELECT metadata FROM "order" WHERE id = $1 LIMIT 1`, [orderId]);
+    const orderMetadata = metaResult.rows[0]?.metadata || null;
+    const vendors = [...new Set(result.rows.map((row) => row.vendor_id))];
+    for (const vendorId of vendors) {
+      const returnFee = resolveVendorReturnFee(orderMetadata, vendorId);
+      if (returnFee <= 0) continue;
+      await pool.query(
+        `
+          UPDATE vendor_earnings_log
+          SET return_fee = GREATEST(COALESCE(return_fee, 0), $3),
+              updated_at = NOW()
+          WHERE order_id = $1 AND vendor_id = $2
+        `,
+        [orderId, vendorId, returnFee]
+      );
+    }
+  }
 
   let cancelFees = 0;
   if (applyCancelCharge) {

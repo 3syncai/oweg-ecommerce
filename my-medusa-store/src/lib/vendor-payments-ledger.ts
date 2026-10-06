@@ -167,11 +167,11 @@ export function buildVendorLedgerRowsFromEarning(
   const cancellationFee = Number(row.cancellation_fee) || 0
 
   if (isCancelFee) {
-    const fee = Math.abs(cancellationFee || Number(row.net_amount) || 0)
+    const fee = Math.abs(cancellationFee || 0)
     const ledger = calculateVendorLedgerSettlement({
       category: "cancellation",
       item_price: 0,
-      logistic_fee: 0,
+      logistic_fee: logisticFee,
       cancellation_fee: fee,
       rates,
     })

@@ -252,7 +252,7 @@ describe("Payments table vs admin pay — same numbers", () => {
     expect(rows[0].item_status).toBe("Return hold")
   })
 
-  it("REVERSED order emits sale + return; running balance = −reverse total", () => {
+  it("REVERSED order: vendor still pays forward logistics + reverse courier", () => {
     const rows = applyRunningLedgerBalance(
       saleEarning({ status: "REVERSED", return_fee: 80 })
     )
@@ -260,9 +260,9 @@ describe("Payments table vs admin pay — same numbers", () => {
     expect(rows[0].category).toBe("sale")
     expect(rows[1].category).toBe("return")
     expect(rows[0].bank_settlement).toBe(930.58)
-    expect(rows[1].bank_settlement).toBe(-930.58)
+    expect(rows[1].logistic_total).toBe(0)
     expect(rows[1].reverse_logistic_total).toBe(94.4)
-    expect(rows[1].balance_amount).toBe(-94.4)
+    expect(rows[1].balance_amount).toBe(r2(-(59 + 94.4)))
     expect(adminPayableNetFromLedger(
       calculateVendorLedgerSettlement({
         category: "return",
@@ -274,7 +274,7 @@ describe("Payments table vs admin pay — same numbers", () => {
     )).toBe(0)
   })
 
-  it("cancelled-style return with cancel fee nets to −(reverse+cancel)", () => {
+  it("cancelled-style return with cancel fee nets to −(logistics+reverse+cancel)", () => {
     const rows = applyRunningLedgerBalance(
       saleEarning({
         status: "REVERSED",
@@ -283,7 +283,7 @@ describe("Payments table vs admin pay — same numbers", () => {
       })
     )
     expect(rows[1].cancellation_total).toBe(23.6)
-    expect(rows[1].balance_amount).toBe(r2(-94.4 - 23.6))
+    expect(rows[1].balance_amount).toBe(r2(-(59 + 94.4 + 23.6)))
   })
 })
 
@@ -446,7 +446,7 @@ describe("Excel export columns match on-screen ledger", () => {
     expect(exportNumbers(rows[1])[3]).toBe(-1239)
     expect(exportNumbers(rows[1])[19]).toBe(80)
     expect(exportNumbers(rows[1])[21]).toBe(94.4)
-    expect(exportNumbers(rows[1])[27]).toBe(-94.4)
+    expect(exportNumbers(rows[1])[27]).toBe(-153.4)
   })
 })
 
@@ -495,7 +495,7 @@ describe("mixed vendor day — values match across every surface", () => {
     const rows = applyRunningLedgerBalance(raw)
 
     const expectedEnd = r2(
-      easy.bank_settlement + self.bank_settlement - 94.4 + 75 - 200
+      easy.bank_settlement + self.bank_settlement - 59 - 94.4 + 75 - 200
     )
     expect(rows[rows.length - 1].balance_amount).toBe(expectedEnd)
 
