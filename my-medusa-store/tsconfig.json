@@ -30,6 +30,10 @@
     "node_modules",
     ".medusa/server",
     ".medusa/admin",
-    ".cache"
+    ".cache",
+    "src/lib/__tests__",
+    "integration-tests",
+    "**/*.spec.ts",
+    "**/*.test.ts"
   ]
 }

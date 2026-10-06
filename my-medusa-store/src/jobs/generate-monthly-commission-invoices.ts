@@ -40,6 +40,10 @@ export default async function generateMonthlyCommissionInvoicesJob(container: an
   }
 
   const month = previousCalendarMonthWindow(now)
+  if (!month.periodKey) {
+    logger.warn("[commission-invoice-job] skip: previous month window has no periodKey")
+    return
+  }
   const pool = new Pool({ connectionString: process.env.DATABASE_URL })
   const vendorService = container.resolve(VENDOR_MODULE) as VendorModuleService
 
