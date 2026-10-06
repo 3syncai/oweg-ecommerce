@@ -265,7 +265,7 @@ export async function syncVendorShipmentTracking(input: {
     if (should_schedule_earnings) {
       try {
         const pool = getSharedDbPool()
-        await scheduleVendorEarningsOnDelivery(order.id, pool)
+        await scheduleVendorEarningsOnDelivery(order.id, pool, { vendorId })
       } catch (error: any) {
         console.warn(
           `[shipment-sync] earnings schedule failed order=${order.id}:`,
@@ -279,7 +279,7 @@ export async function syncVendorShipmentTracking(input: {
     if (should_schedule_earnings || isCod) {
       try {
         const pool = getSharedDbPool()
-        await scheduleVendorEarningsOnDelivery(order.id, pool)
+        await scheduleVendorEarningsOnDelivery(order.id, pool, { vendorId })
       } catch (error: any) {
         console.warn(
           `[shipment-sync] COD earnings schedule failed order=${order.id}:`,

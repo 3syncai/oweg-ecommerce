@@ -221,10 +221,24 @@ export default function OrderDetailContent({
   const currentStatusLabel = getCurrentTrackerStepLabel(steps);
   const itemCount = order?.items?.length || 0;
   const showPaymentPending = isPaymentPending(order);
+  const isCancelledOrder =
+    String(order?.status || "").toLowerCase() === "canceled" ||
+    String(order?.status || "").toLowerCase() === "cancelled";
+  const cancelMeta = (order?.metadata || {}) as Record<string, unknown>;
+  const adminCancelled =
+    cancelMeta.cancelled_by_admin === true ||
+    cancelMeta.cancellation_source === "admin" ||
+    cancelMeta.cancelled_by === "admin";
+  const cancellationNote =
+    (typeof cancelMeta.customer_cancel_reason === "string" &&
+      cancelMeta.customer_cancel_reason.trim()) ||
+    (typeof cancelMeta.cancellation_reason === "string" &&
+      cancelMeta.cancellation_reason.trim()) ||
+    "";
   const isActiveReturn = Boolean(
     existingReturn && ACTIVE_RETURN_STATUSES.has(String(existingReturn.status || "").toLowerCase())
   );
-  const statusCardTone = isActiveReturn ? "amber" : "green";
+  const statusCardTone = isCancelledOrder ? "amber" : isActiveReturn ? "amber" : "green";
   const statusCardIcon = isActiveReturn ? (
     <OrderDetailsIcon name="return-replace" size={24} className="h-6 w-6" />
   ) : (
@@ -376,6 +390,26 @@ export default function OrderDetailContent({
           }
         />
       </div>
+
+      {isCancelledOrder ? (
+        <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-4 shadow-sm sm:px-5">
+          <p className="text-sm font-semibold text-[#D92D20]">
+            {adminCancelled
+              ? "OWEG has cancelled your order."
+              : "This order has been cancelled."}
+          </p>
+          {cancellationNote ? (
+            <p className="mt-1 text-sm leading-relaxed text-[#7A271A]">
+              Reason: {cancellationNote}
+            </p>
+          ) : null}
+          <p className="mt-1 text-xs text-[#B42318]">
+            {adminCancelled
+              ? "We emailed you this reason. Refunds for prepaid orders are processed separately."
+              : "If you paid online, the refund follows the details you submitted."}
+          </p>
+        </div>
+      ) : null}
 
       <OrderDetailStatusSection
         id="order-status-timeline"

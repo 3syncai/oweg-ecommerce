@@ -2,7 +2,9 @@ import {
   adminPayableNetFromLedger,
   calculateVendorLedgerSettlement,
   clampLedgerRate,
+  clampRupeeAmount,
   overlaySaleDeductions,
+  resolveVendorCancellationCharge,
   resolveVendorPlatformFeeRate,
   type LedgerRates,
 } from "../vendor-ledger-settlement"
@@ -73,7 +75,7 @@ describe("Sheet4 sale — locked finance fixtures", () => {
     expect(row.bank_settlement).toBe(LOCKED_SELF_SHIP_1000.bank_settlement)
   })
 
-  it("5% output GST product uses 5% on A+B, not 18%", () => {
+  it("5% output GST product uses 5% on A; B stays 18%", () => {
     const row = settle("sale", {
       item_price: 1000,
       logistic_fee: 0,
@@ -82,6 +84,17 @@ describe("Sheet4 sale — locked finance fixtures", () => {
     expect(row.listing_gst).toBe(LOCKED_GST5_1000.listing_gst)
     expect(row.listing_total).toBe(LOCKED_GST5_1000.listing_total)
     expect(row.bank_settlement).toBe(LOCKED_GST5_1000.bank_settlement)
+  })
+
+  it("INV-1111 style: 12% on A, always 18% on B", () => {
+    const row = settle("sale", {
+      item_price: 1214.29,
+      logistic_fee: 35,
+      rates: { ...DEFAULT_LEDGER_RATES, output_gst_rate: 12 },
+    })
+    expect(row.listing_gst).toBe(152.01)
+    expect(row.listing_total).toBe(1401.3)
+    expect(row.logistic_gst).toBe(6.3)
   })
 
   it("custom platform offer 3% changes D only and lifts bank by 23.60", () => {
@@ -309,6 +322,24 @@ describe("rate clamps + platform offer resolution", () => {
     expect(
       resolveVendorPlatformFeeRate({ platform_fee_override: true, platform_fee_rate: undefined }, 5)
     ).toEqual({ rate: 5, source: "custom" })
+  })
+
+  it("cancellation charge is rupees, not a percent", () => {
+    expect(clampRupeeAmount(50)).toBe(50)
+    expect(clampRupeeAmount(-10)).toBe(0)
+    expect(clampRupeeAmount(999999)).toBe(100000)
+    expect(
+      resolveVendorCancellationCharge(
+        { cancellation_charge_override: true, cancellation_charge: 75 },
+        0
+      )
+    ).toEqual({ amount: 75, source: "custom" })
+    expect(
+      resolveVendorCancellationCharge(
+        { cancellation_charge_override: false, cancellation_charge: 75 },
+        40
+      )
+    ).toEqual({ amount: 40, source: "global" })
   })
 })
 

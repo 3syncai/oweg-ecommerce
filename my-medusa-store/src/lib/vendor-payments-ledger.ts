@@ -10,7 +10,6 @@ import {
   getMarketplaceTaxRates,
 } from "./vendor-marketplace-tax"
 import {
-  fetchVendorCommissionRate,
   formatOrderFallback,
   getVendorEarningsSummary,
   repairClaimCreditsWithoutCommission,
@@ -31,10 +30,13 @@ type HistoryRow = {
   taxable_amount: string | number
   gst_rate: string | number
   commission_rate: string | number
+  platform_fee_rate: string | number | null
+  partner_commission_rate: string | number | null
   tcs_rate: string | number
   tds_rate: string | number
   logistic_fee: string | number
   return_fee: string | number
+  cancellation_fee: string | number
   net_amount: string | number
   delivered_at: string | null
   unlock_at: string | null
@@ -59,6 +61,64 @@ const isTodayIst = (iso: string | null, todayKey: string) => {
       day: "2-digit",
     }).format(new Date(iso)) === todayKey
   )
+}
+
+export function parsePayoutOrderIds(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((id) => String(id || "").trim()).filter(Boolean)
+  }
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value)
+      if (Array.isArray(parsed)) return parsePayoutOrderIds(parsed)
+    } catch {
+      return value
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean)
+    }
+  }
+  return []
+}
+
+export function attachPayoutReferencesToOrders<
+  T extends {
+    category?: string | null
+    type?: string | null
+    order_id: string
+    transaction_id?: string | null
+    payment_date?: string | null
+  },
+>(
+  rows: T[],
+  payouts: Array<{
+    transaction_id?: string | null
+    created_at?: string | null
+    payment_date?: string | null
+    order_ids?: unknown
+  }>
+) {
+  const latest = new Map<string, { transaction_id: string | null; payment_date: string }>()
+  for (const payout of payouts) {
+    const paymentDate = payout.payment_date || payout.created_at || null
+    if (!payout.transaction_id && !paymentDate) continue
+    for (const orderId of parsePayoutOrderIds(payout.order_ids)) {
+      latest.set(orderId, {
+        transaction_id: payout.transaction_id || latest.get(orderId)?.transaction_id || null,
+        payment_date: paymentDate || latest.get(orderId)?.payment_date || "",
+      })
+    }
+  }
+
+  for (const row of rows) {
+    const kind = row.category || row.type
+    if (kind === "payment") continue
+    const ref = latest.get(row.order_id)
+    if (!ref) continue
+    if (!row.transaction_id && ref.transaction_id) row.transaction_id = ref.transaction_id
+    if (!row.payment_date && ref.payment_date) row.payment_date = ref.payment_date
+  }
+  return rows
 }
 
 export type EarningLedgerSource = {
@@ -95,7 +155,10 @@ export function buildVendorLedgerRowsFromEarning(
   rates: LedgerRates,
   taxRates: { tcs_rate: number; tds_rate: number }
 ): VendorPaymentSettlement[] {
-  const isClaim = String(row.order_id || "").startsWith("claim:")
+  const orderIdKey = String(row.order_id || "")
+  const isClaim = orderIdKey.startsWith("claim:")
+  const isClawback = orderIdKey.startsWith("clawback:")
+  const isCancelFee = orderIdKey.startsWith("cancel-fee:")
   const productName = row.product_name?.trim() || formatOrderFallback(row.order_display_id, row.order_id)
   const gstRate = Number(row.gst_rate) || 18
   const itemPrice = Number(row.taxable_amount) || 0
@@ -103,17 +166,13 @@ export function buildVendorLedgerRowsFromEarning(
   const returnFee = Number(row.return_fee) || 0
   const cancellationFee = Number(row.cancellation_fee) || 0
 
-  if (isClaim) {
-    const claimAmount = Math.max(
-      Number(row.gross_amount) || 0,
-      Number(row.net_amount) || 0,
-      itemPrice
-    )
+  if (isCancelFee) {
+    const fee = Math.abs(cancellationFee || Number(row.net_amount) || 0)
     const ledger = calculateVendorLedgerSettlement({
-      category: "claim",
+      category: "cancellation",
       item_price: 0,
       logistic_fee: 0,
-      claim_amount: claimAmount,
+      cancellation_fee: fee,
       rates,
     })
     return [
@@ -121,11 +180,50 @@ export function buildVendorLedgerRowsFromEarning(
         id: row.id,
         order_id: row.order_id,
         order_display_id: row.order_display_id,
-        product_name: "Claim settlement",
+        product_name: "Cancellation charge",
         status: row.status,
         delivered_at: row.delivered_at,
         unlock_at: row.unlock_at,
         ledger,
+        tcs_rate: taxRates.tcs_rate,
+        tds_rate: taxRates.tds_rate,
+        gst_rate: 0,
+      }),
+    ]
+  }
+
+  if (isClaim || isClawback) {
+    const rawNet = Number(row.net_amount) || 0
+    const rawGross = Number(row.gross_amount) || 0
+    // Clawbacks are stored as negative CREDITED nets; claims are positive.
+    const claimAmount = isClawback
+      ? Math.abs(rawNet || rawGross)
+      : Math.max(rawGross, rawNet, itemPrice)
+    const ledger = calculateVendorLedgerSettlement({
+      category: "claim",
+      item_price: 0,
+      logistic_fee: 0,
+      claim_amount: claimAmount,
+      rates,
+    })
+    const signedLedger = isClawback
+      ? {
+          ...ledger,
+          claim_amount: -Math.abs(ledger.claim_amount),
+          bank_settlement: -Math.abs(ledger.bank_settlement),
+          balance_delta: -Math.abs(ledger.balance_delta),
+        }
+      : ledger
+    return [
+      settlementFromLedger({
+        id: row.id,
+        order_id: row.order_id,
+        order_display_id: row.order_display_id,
+        product_name: isClawback ? "Paid clawback (return/cancel)" : "Claim settlement",
+        status: row.status,
+        delivered_at: row.delivered_at,
+        unlock_at: row.unlock_at,
+        ledger: signedLedger,
         tcs_rate: taxRates.tcs_rate,
         tds_rate: taxRates.tds_rate,
         gst_rate: 0,
@@ -205,10 +303,8 @@ export function buildVendorLedgerRowFromPayout(
     payment_amount: amount,
     rates,
   })
-  const firstOrder =
-    Array.isArray(payout.order_ids) && payout.order_ids[0]
-      ? String(payout.order_ids[0])
-      : `payout:${payout.id}`
+  const linkedOrders = parsePayoutOrderIds(payout.order_ids)
+  const firstOrder = linkedOrders[0] || `payout:${payout.id}`
   return settlementFromLedger({
     id: `payout:${payout.id}`,
     order_id: firstOrder,
@@ -258,8 +354,8 @@ export function summarizeVendorPaymentCards(
     tds: Math.abs(sum(todaySales, "tds")),
     logistic_fee: Math.abs(sum(todaySales, "logistic_fee")),
     return_fee: Math.abs(sum(todayReturns, "return_fee")),
-    platform_fee: Math.abs(sum(sales, "platform_fee")),
-    partner_commission: Math.abs(sum(sales, "partner_commission")),
+    platform_fee: Math.abs(sum(todaySales, "platform_fee")),
+    partner_commission: Math.abs(sum(todaySales, "partner_commission")),
     settlement_balance: settlementBalance,
     balance: Number(extras.available_balance) || 0,
     pending_payment: extras.available_balance,
@@ -275,11 +371,10 @@ export async function buildVendorPaymentsView(
   await syncVendorEarningsStatuses(pool)
   await repairClaimCreditsWithoutCommission(vendorId, pool)
   await recomputeUnpaidVendorLedger(vendorId, pool)
-  const [summary, taxRates, commissionRate, historyResult, payoutResult] =
+  const [summary, taxRates, historyResult, payoutResult] =
     await Promise.all([
       getVendorEarningsSummary(vendorId, pool),
       getMarketplaceTaxRates(pool),
-      fetchVendorCommissionRate(vendorId, pool),
       pool.query<HistoryRow>(
         `
           SELECT
@@ -291,10 +386,13 @@ export async function buildVendorPaymentsView(
             vel.taxable_amount,
             vel.gst_rate,
             vel.commission_rate,
+            vel.platform_fee_rate,
+            vel.partner_commission_rate,
             vel.tcs_rate,
             vel.tds_rate,
             COALESCE(vel.logistic_fee, 0) AS logistic_fee,
             COALESCE(vel.return_fee, 0) AS return_fee,
+            COALESCE(vel.cancellation_fee, 0) AS cancellation_fee,
             vel.net_amount,
             vel.delivered_at,
             vel.unlock_at,
@@ -329,15 +427,31 @@ export async function buildVendorPaymentsView(
     ])
 
   const ratesCache = new Map<string, LedgerRates>()
-  const ratesFor = async (gstRate: number, storedCommission?: number) => {
-    const key = `${gstRate}:${storedCommission ?? commissionRate}`
+  const ratesFor = async (opts: {
+    gstRate: number
+    commissionRate: number
+    platformRate?: number
+    partnerRate?: number
+    tcsRate?: number
+    tdsRate?: number
+  }) => {
+    const key = [
+      opts.gstRate,
+      opts.commissionRate,
+      opts.platformRate ?? "live",
+      opts.partnerRate ?? "live",
+      opts.tcsRate ?? taxRates.tcs_rate,
+      opts.tdsRate ?? taxRates.tds_rate,
+    ].join(":")
     const cached = ratesCache.get(key)
     if (cached) return cached
     const rates = await buildLedgerRatesForVendor(vendorId, pool, {
-      commission_rate: storedCommission ?? commissionRate,
-      tcs_rate: taxRates.tcs_rate,
-      tds_rate: taxRates.tds_rate,
-      output_gst_rate: gstRate,
+      commission_rate: opts.commissionRate,
+      tcs_rate: opts.tcsRate ?? taxRates.tcs_rate,
+      tds_rate: opts.tdsRate ?? taxRates.tds_rate,
+      output_gst_rate: opts.gstRate,
+      platform_rate: opts.platformRate,
+      partner_rate: opts.partnerRate,
     })
     ratesCache.set(key, rates)
     return rates
@@ -347,7 +461,18 @@ export async function buildVendorPaymentsView(
 
   for (const row of historyResult.rows) {
     const gstRate = Number(row.gst_rate) || 18
-    const rates = await ratesFor(gstRate, Number(row.commission_rate) || undefined)
+    const rates = await ratesFor({
+      gstRate,
+      commissionRate: Number(row.commission_rate) || 0,
+      platformRate:
+        row.platform_fee_rate == null ? undefined : Number(row.platform_fee_rate),
+      partnerRate:
+        row.partner_commission_rate == null
+          ? undefined
+          : Number(row.partner_commission_rate),
+      tcsRate: Number(row.tcs_rate) || undefined,
+      tdsRate: Number(row.tds_rate) || undefined,
+    })
     raw.push(
       ...buildVendorLedgerRowsFromEarning(
         {
@@ -359,6 +484,7 @@ export async function buildVendorPaymentsView(
           taxable_amount: Number(row.taxable_amount) || 0,
           logistic_fee: Number(row.logistic_fee) || 0,
           return_fee: Number(row.return_fee) || 0,
+          cancellation_fee: Number(row.cancellation_fee) || 0,
           gst_rate: gstRate,
           gross_amount: Number(row.gross_amount) || 0,
           net_amount: Number(row.net_amount) || 0,
@@ -371,7 +497,7 @@ export async function buildVendorPaymentsView(
     )
   }
 
-  const zeroRates = await ratesFor(18)
+  const zeroRates = await ratesFor({ gstRate: 18, commissionRate: 0 })
   for (const payout of payoutResult.rows) {
     const paymentRow = buildVendorLedgerRowFromPayout(
       {
@@ -385,6 +511,8 @@ export async function buildVendorPaymentsView(
     )
     if (paymentRow) raw.push(paymentRow)
   }
+
+  attachPayoutReferencesToOrders(raw, payoutResult.rows)
 
   raw.sort((a, b) => {
     const ta = new Date(a.delivered_at || 0).getTime()

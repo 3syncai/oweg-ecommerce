@@ -8,16 +8,19 @@ const ACTIONS = [
   {
     href: "/products/new",
     label: "Add new product",
+    description: "List a new product",
     icon: Plus,
   },
   {
     href: "/orders",
     label: "View all orders",
+    description: "Track & manage orders",
     icon: ShoppingCart,
   },
   {
     href: "/payout",
     label: "Download reports",
+    description: "Sales, orders & more",
     icon: DocumentText,
   },
 ] as const
@@ -48,9 +51,14 @@ const DashboardQuickActions = ({ className }: DashboardQuickActionsProps) => (
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-700 dark:bg-oweg-500/15 dark:text-oweg-700">
               <Icon />
             </span>
-            <Text className="min-w-0 flex-1 truncate text-sm text-zinc-800 dark:text-ui-fg-base">
-              {action.label}
-            </Text>
+            <div className="min-w-0 flex-1">
+              <Text className="truncate text-sm font-medium text-zinc-800 dark:text-ui-fg-base">
+                {action.label}
+              </Text>
+              <Text size="xsmall" className="text-zinc-500 dark:text-ui-fg-subtle">
+                {action.description}
+              </Text>
+            </div>
             <ArrowRightMini className="shrink-0 text-zinc-400 transition group-hover:translate-x-0.5 group-hover:text-emerald-700 dark:text-ui-fg-muted" />
           </Link>
         )

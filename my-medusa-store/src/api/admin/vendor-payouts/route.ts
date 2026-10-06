@@ -1,10 +1,15 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Pool } from "pg"
-import { markVendorEarningsAsPaid } from "../../../lib/vendor-earnings"
+import {
+  listOrderIdsAlreadyOnPayout,
+  markVendorEarningsAsPaid,
+  normalizePayoutOrderIds,
+} from "../../../lib/vendor-earnings"
+import { syncPendingRazorpayPayouts } from "../../../lib/vendor-payout-razorpay-sync"
 
 /**
  * Admin Vendor Payouts API
- * GET  /admin/vendor-payouts - List payouts (optional ?vendor_id=)
+ * GET  /admin/vendor-payouts - List payouts (optional ?vendor_id=); syncs pending Razorpay
  * POST /admin/vendor-payouts - Create a manual payout record + mark earnings PAID
  */
 
@@ -17,6 +22,13 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
   try {
     const vendorId =
       typeof req.query?.vendor_id === "string" ? req.query.vendor_id.trim() : null
+
+    // Settle any Razorpay payouts that moved to processed since last check
+    try {
+      await syncPendingRazorpayPayouts(pool, { vendorId, limit: 25 })
+    } catch (syncErr: any) {
+      console.warn("[vendor-payouts] razorpay sync skipped:", syncErr?.message || syncErr)
+    }
 
     const result = vendorId
       ? await pool.query(
@@ -83,6 +95,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
       order_ids?: string[]
     }
 
+    const scopedOrderIds = normalizePayoutOrderIds(order_ids)
+
     if (!vendor_id || !amount || !transaction_id) {
       res.status(400).json({
         message: "vendor_id, amount, and transaction_id are required",
@@ -90,7 +104,30 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
       return
     }
 
-    const created_by = (req as any).auth_context?.actor_id || (req as any).user?.id || "admin"
+    if (scopedOrderIds.length === 0) {
+      res.status(400).json({
+        message:
+          "order_ids are required. Refusing to mark all CREDITED earnings as paid.",
+      })
+      return
+    }
+
+    const alreadyClaimed = await listOrderIdsAlreadyOnPayout(
+      pool,
+      vendor_id,
+      scopedOrderIds
+    )
+    if (alreadyClaimed.length > 0) {
+      res.status(409).json({
+        message:
+          "One or more orders are already on a pending or completed payout",
+        order_ids: alreadyClaimed,
+      })
+      return
+    }
+
+    const created_by =
+      (req as any).auth_context?.actor_id || (req as any).user?.id || "admin"
     const payoutId = `vpayout_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const now = new Date()
 
@@ -116,15 +153,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
         transaction_id,
         payment_method,
         notes || null,
-        order_ids ? JSON.stringify(order_ids) : null,
+        JSON.stringify(scopedOrderIds),
         created_by,
         now,
       ]
     )
 
-    const marked = await markVendorEarningsAsPaid(vendor_id, pool, order_ids)
+    // Manual payouts are recorded as already settled by admin
+    const marked = await markVendorEarningsAsPaid(vendor_id, pool, scopedOrderIds)
 
-    const { rows } = await pool.query(`SELECT * FROM vendor_payout WHERE id = $1`, [payoutId])
+    const { rows } = await pool.query(`SELECT * FROM vendor_payout WHERE id = $1`, [
+      payoutId,
+    ])
 
     res.status(201).json({
       success: true,

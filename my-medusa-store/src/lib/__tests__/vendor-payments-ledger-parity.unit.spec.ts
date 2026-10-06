@@ -7,8 +7,10 @@ import {
   overlaySaleDeductions,
 } from "../vendor-ledger-settlement"
 import {
+  attachPayoutReferencesToOrders,
   buildVendorLedgerRowFromPayout,
   buildVendorLedgerRowsFromEarning,
+  parsePayoutOrderIds,
   summarizeVendorPaymentCards,
 } from "../vendor-payments-ledger"
 import {
@@ -397,6 +399,8 @@ describe("cards stay consistent with settlement rows", () => {
     expect(cards.full_sale).toBe(1239)
     expect(cards.total_sale).toBe(0)
     expect(cards.gst).toBe(0)
+    expect(cards.platform_fee).toBe(0)
+    expect(cards.commission).toBe(0)
     expect(cards.lifetime_tcs).toBe(5)
     expect(cards.lifetime_tds).toBe(1)
   })
@@ -525,5 +529,29 @@ describe("mixed vendor day — values match across every surface", () => {
     expect(cards.balance).toBe(expectedEnd)
     expect(cards.withdrawn).toBe(200)
     expect(cards.full_sale).toBe(r2(easy.listing_total + self.listing_total + returned[0].listing_total))
+  })
+})
+
+describe("payout references on order rows", () => {
+  it("parses jsonb arrays, json strings, and csv order ids", () => {
+    expect(parsePayoutOrderIds(["ord_1", "ord_2"])).toEqual(["ord_1", "ord_2"])
+    expect(parsePayoutOrderIds(JSON.stringify(["ord_1", "ord_2"]))).toEqual(["ord_1", "ord_2"])
+    expect(parsePayoutOrderIds("ord_1, ord_2")).toEqual(["ord_1", "ord_2"])
+  })
+
+  it("copies txn id and payment date onto matching order rows", () => {
+    const sale = saleEarning({ order_id: "ord_1" })[0]
+    const other = saleEarning({ id: "ve_other", order_id: "ord_9", order_display_id: "1009" })[0]
+    attachPayoutReferencesToOrders([sale, other], [
+      {
+        transaction_id: "pay_abc",
+        created_at: TODAY_ISO,
+        order_ids: ["ord_1"],
+      },
+    ])
+    expect(sale.transaction_id).toBe("pay_abc")
+    expect(sale.payment_date).toBe(TODAY_ISO)
+    expect(other.transaction_id).toBeNull()
+    expect(other.payment_date).toBeNull()
   })
 })

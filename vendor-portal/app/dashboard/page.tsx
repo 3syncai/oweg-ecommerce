@@ -7,6 +7,7 @@ import {
   ArchiveBox,
   ArrowRightMini,
   Calendar,
+  Clock,
   CurrencyDollar,
   DocumentText,
   ShoppingCart,
@@ -25,6 +26,7 @@ import {
   vendorProfileApi,
   vendorReportsApi,
   vendorReturnsApi,
+  type VendorPaymentsView,
   type VendorReportTicket,
 } from "@/lib/api/client"
 import { useVendorLive } from "@/lib/useVendorLive"
@@ -44,7 +46,7 @@ type DashboardCachePayload = {
   vendorInfo: VendorInfo | null
 }
 
-const DASHBOARD_CACHE_KEY = "dashboard"
+const DASHBOARD_CACHE_KEY = "dashboard-v2"
 
 type DayPoint = {
   key: string
@@ -101,22 +103,26 @@ type DashboardData = {
     totalPaid: number
     pending: number
     credited: number
+    settlementBalance: number
   }
   weekSeries: DayPoint[]
   topProducts: TopProduct[]
   snapshot: {
     salesToday: number
     returnsToday: number
-    paymentInitiated: number
+    pending: number
+    paymentInitiated?: number
   }
 }
 
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat("en-IN", {
+const formatCurrency = (amount: number) => {
+  const safeAmount = Number.isFinite(amount) ? amount : 0
+  return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
-    maximumFractionDigits: amount >= 1000 ? 0 : 2,
-  }).format(Number.isFinite(amount) ? amount : 0)
+    maximumFractionDigits: safeAmount >= 1000 ? 0 : 2,
+  }).format(safeAmount)
+}
 
 const getTimeGreeting = () => {
   const hour = Number(
@@ -252,6 +258,14 @@ function buildTopProducts(orders: any[]): TopProduct[] {
     .slice(0, 5)
 }
 
+function isLedgerSaleRow(row: VendorPaymentsView["settlements"][number]) {
+  return row.category === "sale" || row.type === "sales"
+}
+
+function listingAmount(row: VendorPaymentsView["settlements"][number]) {
+  return Number(row.listing_total) || 0
+}
+
 function buildDashboardData(input: {
   products: any[]
   orders: any[]
@@ -259,8 +273,9 @@ function buildDashboardData(input: {
   reports: VendorReportTicket[]
   payoutSummary: any
   payoutTotals?: any
+  payments?: VendorPaymentsView | null
 }): DashboardData {
-  const { products, orders, returns, reports, payoutSummary, payoutTotals } = input
+  const { products, orders, returns, reports, payoutSummary, payoutTotals, payments } = input
 
   const active = products.filter(isActiveProduct).length
   const inactive = Math.max(products.length - active, 0)
@@ -276,34 +291,63 @@ function buildDashboardData(input: {
     isToday(orderDeliveredAt(order))
   )
 
-  const totalSale = orders.reduce((sum, order) => sum + orderAmount(order), 0)
-  // Today's sales = GMV of orders placed today (vendor business day)
-  const todaysSale = todayOrders.reduce((sum, order) => sum + orderAmount(order), 0)
-  // Payout expected today: unlocking entries that unlock today, else available+unlocking
-  const unlockingToday = Array.isArray(payoutSummary?.unlocking)
-    ? payoutSummary.unlocking.filter((item: any) => isToday(item.unlock_at || item.delivered_at))
-    : []
-  const unlockingTodayTotal = unlockingToday.reduce(
-    (sum: number, item: any) => sum + (Number(item.net_amount || 0) || 0),
+  const deliveredSaleFallback = deliveredOrders.reduce(
+    (sum, order) => sum + orderAmount(order),
     0
   )
-  const paymentInitiatedToday =
-    unlockingTodayTotal > 0
-      ? unlockingTodayTotal
-      : Number(payoutSummary?.available_balance || 0) +
-        Number(payoutSummary?.unlocking_balance || 0)
+  const ledgerSales = (payments?.settlements || []).filter(isLedgerSaleRow)
+  const totalSale =
+    Number(payments?.cards?.full_sale) > 0
+      ? Number(payments?.cards?.full_sale)
+      : deliveredSaleFallback
+  const todaysSale =
+    Number.isFinite(Number(payments?.cards?.total_sale))
+      ? Number(payments?.cards?.total_sale)
+      : todayDeliveredOrders.reduce((sum, order) => sum + orderAmount(order), 0)
+  // Pending payment directly aligned with /payout page cards
+  const pending =
+    typeof payments?.cards?.unlocking_payment === "number"
+      ? Number(payments.cards.unlocking_payment)
+      : typeof payments?.cards?.pending_payment === "number"
+        ? Number(payments.cards.pending_payment)
+        : Number(payoutSummary?.unlocking_balance || 0)
+
+  const settlementBalance =
+    Number(payments?.cards?.settlement_balance || 0) > 0
+      ? Number(payments?.cards?.settlement_balance)
+      : Number(payoutSummary?.available_balance || 0)
 
   const last7Start = daysAgoStart(6)
   const prev7Start = daysAgoStart(13)
   const prev7End = daysAgoStart(7)
 
-  const last7Orders = orders.filter((o) => new Date(o.created_at).getTime() >= last7Start)
-  const prev7Orders = orders.filter((o) => {
-    const t = new Date(o.created_at).getTime()
-    return t >= prev7Start && t < prev7End
-  })
-  const last7Days = last7Orders.reduce((sum, o) => sum + orderAmount(o), 0)
-  const prev7Days = prev7Orders.reduce((sum, o) => sum + orderAmount(o), 0)
+  const last7Orders = ledgerSales.length
+    ? ledgerSales.filter((row) => {
+        const t = new Date(row.delivered_at || 0).getTime()
+        return t >= last7Start
+      })
+    : deliveredOrders.filter((o) => new Date(orderDeliveredAt(o) || o.created_at).getTime() >= last7Start)
+  const prev7Orders = ledgerSales.length
+    ? ledgerSales.filter((row) => {
+        const t = new Date(row.delivered_at || 0).getTime()
+        return t >= prev7Start && t < prev7End
+      })
+    : deliveredOrders.filter((o) => {
+        const t = new Date(orderDeliveredAt(o) || o.created_at).getTime()
+        return t >= prev7Start && t < prev7End
+      })
+  const last7Days = last7Orders.reduce(
+    (sum, row) =>
+      sum +
+      (ledgerSales.length ? listingAmount(row as VendorPaymentsView["settlements"][number]) : orderAmount(row)),
+    0
+  )
+  const prev7Days = prev7Orders.reduce(
+    (sum, row) =>
+      sum +
+      (ledgerSales.length ? listingAmount(row as VendorPaymentsView["settlements"][number]) : orderAmount(row)),
+    0
+  )
   const trendPct =
     prev7Days > 0
       ? ((last7Days - prev7Days) / prev7Days) * 100
@@ -344,9 +388,6 @@ function buildDashboardData(input: {
     Number(payoutTotals?.total_credited || 0) ||
     0
   const credited = Number(payoutSummary?.total_credited || 0)
-  const pending =
-    Number(payoutSummary?.available_balance || 0) +
-    Number(payoutSummary?.unlocking_balance || 0)
 
   return {
     products: {
@@ -392,13 +433,15 @@ function buildDashboardData(input: {
       totalPaid,
       pending,
       credited,
+      settlementBalance,
     },
     weekSeries: buildWeekSeries(orders),
     topProducts: buildTopProducts(orders).slice(0, 3),
     snapshot: {
       salesToday: todaysSale,
       returnsToday: returns.filter((request) => isToday(request.created_at)).length,
-      paymentInitiated: paymentInitiatedToday,
+      pending,
+      paymentInitiated: pending,
     },
   }
 }
@@ -485,26 +528,28 @@ const SnapshotChip = ({
   icon: React.ReactNode
   hint?: string
 }) => (
-  <div className="min-w-[140px] flex-1 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 backdrop-blur-sm">
-    <div className="mb-1 flex items-center gap-1.5">
-      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-white/15 text-white [&_svg]:h-3.5 [&_svg]:w-3.5">
+  <div className="min-w-[140px] flex-1 rounded-xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
+    <div className="mb-2 flex items-center gap-2.5">
+      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white [&_svg]:h-4 [&_svg]:w-4">
         {icon}
       </span>
-      <Text size="xsmall" className="text-white/75">
-        {label}
-      </Text>
+      <div className="min-w-0 flex-1">
+        <Text size="xsmall" className="text-white/70 leading-tight">
+          {label}
+        </Text>
+        {hint ? (
+          <Text size="xsmall" className="text-white/50 text-[10px]">
+            {hint}
+          </Text>
+        ) : null}
+      </div>
     </div>
-    <Text weight="plus" className="text-lg leading-tight text-white md:text-xl">
+    <Text weight="plus" className="text-xl leading-tight text-white md:text-2xl font-bold">
       {value}
     </Text>
-    {hint ? (
-      <Text size="xsmall" className="mt-0.5 text-white/55">
-        {hint}
-      </Text>
-    ) : null}
     <Link
       href={href}
-      className="mt-1.5 inline-flex items-center gap-0.5 text-[11px] font-medium text-white/85 no-underline hover:text-white"
+      className="mt-2 inline-flex items-center gap-0.5 text-[11px] font-medium text-white/85 no-underline hover:text-white"
     >
       View details
       <ArrowRightMini />
@@ -525,7 +570,7 @@ const VendorDashboardPage = () => {
     const silent = Boolean(opts?.silent) || hasPageCache(DASHBOARD_CACHE_KEY)
     try {
       if (!silent) setLoading(true)
-      const [productsData, ordersData, returnsData, reportsData, payoutData, profileData] =
+      const [productsData, ordersData, returnsData, reportsData, payoutData, profileData, paymentsData] =
         await Promise.all([
           vendorProductsApi.list().catch(() => ({ products: [] })),
           vendorOrdersApi.list().catch(() => ({ orders: [] })),
@@ -555,6 +600,7 @@ const VendorDashboardPage = () => {
               totals: { total_credited: 0 },
             })),
           vendorProfileApi.getMe().catch(() => ({ vendor: null })),
+          vendorPayoutsApi.payments().catch(() => null),
         ])
 
       const nextVendor = profileData?.vendor || null
@@ -565,6 +611,7 @@ const VendorDashboardPage = () => {
         reports: reportsData?.reports || [],
         payoutSummary: payoutData?.summary || {},
         payoutTotals: payoutData?.totals || {},
+        payments: paymentsData,
       })
       setVendorInfo(nextVendor)
       setData(nextData)
@@ -641,7 +688,7 @@ const VendorDashboardPage = () => {
           <div className="relative flex flex-wrap items-start justify-between gap-2">
             <div className="max-w-xl">
               <Heading level="h1" className="text-xl text-white md:text-2xl">
-                {getTimeGreeting()}, {displayName}!
+                {getTimeGreeting()}, {displayName}! 👋
               </Heading>
               <Text className="mt-1 text-xs text-white/75 md:text-sm">
                 Here&apos;s a quick overview of your business.
@@ -674,10 +721,10 @@ const VendorDashboardPage = () => {
             />
             <SnapshotChip
               href="/payout"
-              label="Payment initiated"
-              value={formatCurrency(data.snapshot.paymentInitiated)}
-              hint="(expected by today)"
-              icon={<Calendar />}
+              label="Pending"
+              value={formatCurrency(data.snapshot.pending)}
+              hint="(moves to settlement)"
+              icon={<Clock />}
             />
           </div>
         </section>
@@ -749,12 +796,13 @@ const VendorDashboardPage = () => {
                 ]}
               />
               <KpiCard
-                href="/orders"
+                href="/payout"
                 icon={<CurrencyDollar />}
                 label="Total sales"
                 value={formatCurrency(data.sales.total)}
+                subtitle="All delivered sales"
                 helper={trendLabel}
-                footer="View sales report"
+                footer="View payments"
                 metrics={[
                   {
                     label: "Last 7 days",
@@ -770,10 +818,10 @@ const VendorDashboardPage = () => {
               />
               <KpiCard
                 href="/payout"
-                icon={<ArchiveBox />}
-                label="Payout"
+                icon={<Clock />}
+                label="Pending"
                 value={formatCurrency(data.payout.pending)}
-                subtitle="Available + unlocking balance"
+                subtitle="Moves to settlement after 5 min"
                 footer="View payouts"
                 metrics={[
                   {
@@ -782,8 +830,8 @@ const VendorDashboardPage = () => {
                     variant: "warning",
                   },
                   {
-                    label: "Credited",
-                    value: formatCurrency(data.payout.credited),
+                    label: "Settlement",
+                    value: formatCurrency(data.payout.settlementBalance),
                     variant: "success",
                   },
                 ]}

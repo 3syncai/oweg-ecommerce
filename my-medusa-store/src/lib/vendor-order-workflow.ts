@@ -4,6 +4,7 @@ import {
   calculateMarketplaceSettlementFromLines,
   parseLineGstRate,
 } from "./vendor-marketplace-tax"
+import { readCancellationInfo } from "./order-cancel/metadata"
 
 export type VendorOrderStage =
   | "to_accept"
@@ -14,12 +15,28 @@ export type VendorOrderStage =
 
 export type VendorShippingMethod = "easy" | "self"
 
+export type VendorSettlementRatesSnapshot = {
+  commission_rate: number
+  platform_fee_rate: number
+  cancellation_charge: number
+  partner_rate: number
+  service_gst_rate: number
+  tcs_rate: number
+  tds_rate: number
+  snapshotted_at: string
+}
+
 export type VendorOrderWorkflow = {
   stage?: VendorOrderStage
   accepted_at?: string
   vendor_name?: string | null
   store_name?: string | null
   vendor_email?: string | null
+  /**
+   * Frozen marketplace rates for this vendor on this order.
+   * Set at place/accept; never overwrite when admin changes global/vendor rates.
+   */
+  settlement_rates?: VendorSettlementRatesSnapshot | null
   shipping_method?: VendorShippingMethod
   /** Easy Ship aggregator: itl | shiprocket */
   shipping_provider?: "itl" | "shiprocket" | string | null
@@ -119,6 +136,43 @@ export function getVendorWorkflow(
   return { ...(getVendorWorkflows(metadata)[vendorId] || {}) }
 }
 
+/**
+ * Resolve which vendor a courier webhook belongs to (AWB / Shiprocket order id).
+ * Falls back to a single vendor on the order when only one workflow exists.
+ */
+export function resolveVendorIdFromShipmentMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+  refs: { awb?: string | null; shiprocketOrderId?: string | number | null }
+): string | null {
+  const awb = String(refs.awb || "").trim()
+  const providerOrderId = String(refs.shiprocketOrderId || "").trim()
+  const workflows = getVendorWorkflows(metadata)
+
+  for (const [vendorId, wf] of Object.entries(workflows)) {
+    const hitsAwb =
+      awb &&
+      (String(wf.shiprocket_awb || "") === awb ||
+        String(wf.tracking_number || "") === awb ||
+        String(wf.self_awb || "") === awb)
+    const hitsOrder =
+      providerOrderId && String(wf.shiprocket_order_id || "") === providerOrderId
+    if (hitsAwb || hitsOrder) return vendorId
+  }
+
+  const rootAwb = String((metadata as any)?.shiprocket_awb || "").trim()
+  const rootOrderId = String((metadata as any)?.shiprocket_order_id || "").trim()
+  const rootMatches =
+    (awb && rootAwb === awb) || (providerOrderId && rootOrderId === providerOrderId)
+  if (rootMatches) {
+    const keys = Object.keys(workflows)
+    if (keys.length === 1) return keys[0]
+  }
+
+  const keys = Object.keys(workflows)
+  if (keys.length === 1) return keys[0]
+  return null
+}
+
 export function mergeVendorWorkflowMetadata(
   metadata: Record<string, unknown> | null | undefined,
   vendorId: string,
@@ -126,9 +180,24 @@ export function mergeVendorWorkflowMetadata(
 ) {
   const base = { ...(metadata || {}) }
   const workflows = getVendorWorkflows(base)
+  const cleanPatch: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(patch || {})) {
+    if (value !== undefined) cleanPatch[key] = value
+  }
+  const previous = workflows[vendorId] || {}
+  // Never clobber an existing settlement snapshot unless explicitly replaced.
+  if (
+    previous.settlement_rates &&
+    cleanPatch.settlement_rates == null
+  ) {
+    delete cleanPatch.settlement_rates
+  }
   workflows[vendorId] = {
-    ...(workflows[vendorId] || {}),
-    ...patch,
+    ...previous,
+    ...cleanPatch,
+    settlement_rates:
+      (cleanPatch.settlement_rates as VendorSettlementRatesSnapshot | undefined) ||
+      previous.settlement_rates,
     updated_at: new Date().toISOString(),
   }
   return {
@@ -543,9 +612,25 @@ export function formatVendorOrder(
     0
   )
 
-  const settlement = rates
-    ? buildVendorOrderSettlement(vendorItems, rates)
+  // Prefer frozen order rates for preview so UI matches ledger after admin changes.
+  const snap = workflow.settlement_rates
+  const effectiveRates: VendorOrderSettlementRates | null | undefined = snap
+    ? {
+        commission_rate: Number(snap.commission_rate),
+        tcs_rate: Number(snap.tcs_rate),
+        tds_rate: Number(snap.tds_rate),
+      }
+    : rates
+
+  const settlement = effectiveRates
+    ? buildVendorOrderSettlement(vendorItems, effectiveRates)
     : null
+  const cancellation = readCancellationInfo(order as any)
+  const statusLabel = cancellation.is_cancelled
+    ? cancellation.source === "admin"
+      ? "Cancelled by admin"
+      : "Cancelled"
+    : getVendorOrderStatusLabel(stage)
 
   const formatted: Record<string, any> = {
     ...order,
@@ -554,7 +639,12 @@ export function formatVendorOrder(
     total: total || (order.summary as any)?.current_order_total || 0,
     fulfillment_status: deriveFulfillmentStatus(order),
     vendor_stage: stage,
-    vendor_status_label: getVendorOrderStatusLabel(stage),
+    vendor_status_label: statusLabel,
+    cancelled: cancellation.is_cancelled,
+    cancelled_by: cancellation.source,
+    cancellation_note: cancellation.vendor_message || cancellation.note,
+    cancellation_at: cancellation.cancelled_at,
+    cancellation_label: cancellation.cancelled_by_label,
     payment_type: getPaymentType(order),
     vendor_workflow: workflow,
     settlement,
@@ -679,7 +769,16 @@ export async function updateVendorOrderWorkflow(
   patch: VendorOrderWorkflow
 ) {
   const orderModuleService = req.scope.resolve(Modules.ORDER)
-  const metadata = mergeVendorWorkflowMetadata(order.metadata, vendorId, patch)
+  // Always merge from the latest DB metadata so a stale accept payload cannot
+  // wipe sibling vendors' frozen settlement_rates snapshots.
+  let latestMetadata = order.metadata
+  try {
+    const fresh = await orderModuleService.retrieveOrder(order.id)
+    latestMetadata = (fresh as OrderLike)?.metadata ?? order.metadata
+  } catch {
+    latestMetadata = order.metadata
+  }
+  const metadata = mergeVendorWorkflowMetadata(latestMetadata, vendorId, patch)
   await orderModuleService.updateOrders(order.id, { metadata })
   return metadata
 }

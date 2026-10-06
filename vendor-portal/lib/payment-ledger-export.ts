@@ -66,7 +66,7 @@ const HEADER_ROW_2 = [
   "Invoice No",
   "Item Price (A)",
   "Logistics Fee (B)",
-  "GST Amount (A+B)",
+  "GST Amount (A + B@18%)",
   "Total Listing Price (C)",
   "Item Status",
   "Platform Fee (D)",
@@ -106,7 +106,33 @@ function categoryLabel(row: SettlementRow) {
   return "Sale"
 }
 
-function toSheetRow(row: SettlementRow) {
+function overlayPayoutFieldsOnOrders(rows: SettlementRow[]) {
+  const latest = new Map<string, { transaction_id: string; payment_date: string }>()
+  for (const row of rows) {
+    const kind = row.category || row.type
+    if (kind !== "payment") continue
+    if (!row.order_id) continue
+    if (!row.transaction_id && !row.payment_date) continue
+    latest.set(row.order_id, {
+      transaction_id: row.transaction_id || latest.get(row.order_id)?.transaction_id || "",
+      payment_date: row.payment_date || latest.get(row.order_id)?.payment_date || "",
+    })
+  }
+
+  return rows.map((row) => {
+    const kind = row.category || row.type
+    if (kind === "payment") return row
+    const ref = latest.get(row.order_id)
+    if (!ref) return row
+    return {
+      ...row,
+      transaction_id: row.transaction_id || ref.transaction_id || null,
+      payment_date: row.payment_date || ref.payment_date || null,
+    }
+  })
+}
+
+export function mapPaymentLedgerExportRow(row: SettlementRow) {
   const date = formatIsoDate(row.delivered_at)
   const orderLabel = row.order_display_id ? `#${row.order_display_id}` : row.order_id
   return [
@@ -151,9 +177,10 @@ function toSheetRow(row: SettlementRow) {
 
 export function downloadPaymentLedgerExcel(rows: SettlementRow[], rangeLabel: string) {
   const body: (string | number)[][] = [HEADER_ROW_1, HEADER_ROW_2]
+  const exportRows = overlayPayoutFieldsOnOrders(rows)
 
-  for (const row of rows) {
-    body.push(toSheetRow(row))
+  for (const row of exportRows) {
+    body.push(mapPaymentLedgerExportRow(row))
   }
 
   if (rows.length === 0) {

@@ -172,6 +172,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     try {
       earnings = await scheduleVendorEarningsOnDelivery(orderId, pool, {
         deliveredAt: new Date(deliveredAt),
+        vendorIds,
       })
     } catch (earningsErr: any) {
       console.error(`[mark-delivered] earnings failed for ${orderId}:`, earningsErr)

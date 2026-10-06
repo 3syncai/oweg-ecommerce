@@ -4,7 +4,10 @@ import { Pool } from "pg"
 import ReturnModuleService from "../../../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../../../modules/returns"
 import { syncOrderReturnMetadata } from "../../../../../services/sync-order-return-metadata"
-import { reverseVendorEarningsForOrder } from "../../../../../lib/vendor-earnings"
+import {
+  listVendorIdsForReturnRequest,
+  reverseVendorEarningsForOrder,
+} from "../../../../../lib/vendor-earnings"
 import {
   isVendorEasyShipOrder,
   resolveReturnVendorId,
@@ -26,11 +29,22 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       created_at: request.created_at,
     })
 
-    // Approved return → reverse vendor settlement (was ON_HOLD after customer request)
+    // Approved return → reverse only vendors whose items are on this return
     if (process.env.DATABASE_URL) {
       const pool = new Pool({ connectionString: process.env.DATABASE_URL })
       try {
-        await reverseVendorEarningsForOrder(request.order_id, pool, "return_approved")
+        const vendorIds = await listVendorIdsForReturnRequest(pool, request.id)
+        const result = await reverseVendorEarningsForOrder(
+          request.order_id,
+          pool,
+          "return_approved",
+          { vendorIds, vendorScoped: true }
+        )
+        if (result.skipped_unscoped) {
+          console.error(
+            `[return-approve] No vendor ids on return ${request.id}; earnings not reversed`
+          )
+        }
       } catch (err) {
         console.error("[return-approve] Failed to reverse vendor earnings:", err)
       } finally {

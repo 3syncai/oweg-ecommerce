@@ -1,7 +1,39 @@
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { CurrencyDollar } from "@medusajs/icons"
-import { Container, Heading, Text, Button, Input, Label, toast, Badge } from "@medusajs/ui"
+import {
+  Container,
+  Heading,
+  Text,
+  Button,
+  Input,
+  toast,
+  Switch,
+} from "@medusajs/ui"
 import { useEffect, useMemo, useState } from "react"
+
+const PAGE_SIZE = 5
+
+const StatusDot = ({
+  tone,
+  children,
+}: {
+  tone: "green" | "orange" | "grey"
+  children: React.ReactNode
+}) => {
+  const toneClass =
+    tone === "green"
+      ? { dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" }
+      : tone === "orange"
+        ? { dot: "bg-orange-500", text: "text-orange-600 dark:text-orange-400" }
+        : { dot: "bg-ui-fg-muted", text: "text-ui-fg-subtle" }
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${toneClass.text}`}>
+      <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${toneClass.dot}`} />
+      {children}
+    </span>
+  )
+}
 
 type VendorRow = {
   id: string
@@ -17,6 +49,10 @@ type VendorRow = {
   platform_fee_rate: number
   effective_platform_rate: number
   platform_source: "global" | "custom"
+  cancellation_charge_override: boolean
+  cancellation_charge: number
+  effective_cancellation_charge: number
+  cancellation_source: "global" | "custom"
 }
 
 type DraftRow = {
@@ -24,18 +60,155 @@ type DraftRow = {
   rate: string
   usePlatformCustom: boolean
   platformRate: string
+  useCancelCustom: boolean
+  cancelCharge: string
   saving: boolean
 }
+
+const RateField = ({
+  label,
+  unit,
+  enabled,
+  value,
+  globalValue,
+  disabled,
+  onToggle,
+  onChange,
+  min = 0,
+  max = 100,
+  step = "0.1",
+}: {
+  label: string
+  unit: string
+  enabled: boolean
+  value: string
+  globalValue: string
+  disabled?: boolean
+  onToggle: (next: boolean) => void
+  onChange: (next: string) => void
+  min?: number
+  max?: number
+  step?: string
+}) => (
+  <div
+    className={`rounded-xl border px-3 py-3 transition-colors ${
+      enabled
+        ? "border-ui-border-interactive bg-ui-bg-base"
+        : "border-ui-border-base bg-ui-bg-subtle"
+    }`}
+  >
+    <div className="mb-2 flex items-center justify-between gap-2">
+      <Text size="small" weight="plus" className="text-ui-fg-base">
+        {label}
+      </Text>
+      <label className="inline-flex items-center gap-2">
+        <Switch
+          size="small"
+          checked={enabled}
+          disabled={disabled}
+          onCheckedChange={(checked) => onToggle(Boolean(checked))}
+        />
+        <Text size="xsmall" className="text-ui-fg-muted">
+          Custom
+        </Text>
+      </label>
+    </div>
+    {enabled ? (
+      <div className="relative">
+        <Input
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+          className="pr-10"
+        />
+        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-ui-fg-muted">
+          {unit}
+        </span>
+      </div>
+    ) : (
+      <div className="flex h-10 items-center rounded-lg border border-dashed border-ui-border-base px-3">
+        <Text size="small" className="text-ui-fg-subtle">
+          Global · {unit === "₹" ? `₹${globalValue}` : `${globalValue}${unit}`}
+        </Text>
+      </div>
+    )}
+  </div>
+)
+
+const DefaultCard = ({
+  title,
+  hint,
+  value,
+  unit,
+  disabled,
+  saving,
+  onChange,
+  onSave,
+  min = 0,
+  max = 100,
+  step = "0.1",
+}: {
+  title: string
+  hint: string
+  value: string
+  unit: string
+  disabled?: boolean
+  saving?: boolean
+  onChange: (v: string) => void
+  onSave: () => void
+  min?: number
+  max?: number
+  step?: string
+}) => (
+  <div className="flex flex-col gap-3 rounded-2xl border border-ui-border-base bg-ui-bg-base p-4 shadow-sm">
+    <div>
+      <Text size="small" weight="plus">
+        {title}
+      </Text>
+      <Text size="xsmall" className="mt-0.5 text-ui-fg-muted">
+        {hint}
+      </Text>
+    </div>
+    <div className="flex items-end gap-2">
+      <div className="relative min-w-0 flex-1">
+        <Input
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          disabled={disabled || saving}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-11 pr-10 text-base font-semibold tabular-nums"
+        />
+        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-ui-fg-muted">
+          {unit}
+        </span>
+      </div>
+      <Button size="small" onClick={onSave} disabled={disabled || saving}>
+        {saving ? "Saving…" : "Save"}
+      </Button>
+    </div>
+  </div>
+)
 
 const VendorCommissionPage = () => {
   const [defaultRate, setDefaultRate] = useState("2")
   const [defaultPlatformRate, setDefaultPlatformRate] = useState("5")
+  const [defaultCancelCharge, setDefaultCancelCharge] = useState("0")
   const [vendors, setVendors] = useState<VendorRow[]>([])
   const [drafts, setDrafts] = useState<Record<string, DraftRow>>({})
+  const [baseline, setBaseline] = useState<Record<string, DraftRow>>({})
   const [search, setSearch] = useState("")
+  const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savingPlatform, setSavingPlatform] = useState(false)
+  const [savingCancel, setSavingCancel] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -46,6 +219,7 @@ const VendorCommissionPage = () => {
       const list: VendorRow[] = data.vendors || []
       setDefaultRate(String(data.default_rate ?? 2))
       setDefaultPlatformRate(String(data.default_platform_rate ?? 5))
+      setDefaultCancelCharge(String(data.default_cancellation_charge ?? 0))
       setVendors(list)
       const nextDrafts: Record<string, DraftRow> = {}
       for (const v of list) {
@@ -54,10 +228,13 @@ const VendorCommissionPage = () => {
           rate: String(v.commission_rate ?? data.default_rate ?? 2),
           usePlatformCustom: v.platform_fee_override,
           platformRate: String(v.platform_fee_rate ?? data.default_platform_rate ?? 5),
+          useCancelCustom: v.cancellation_charge_override,
+          cancelCharge: String(v.cancellation_charge ?? data.default_cancellation_charge ?? 0),
           saving: false,
         }
       }
       setDrafts(nextDrafts)
+      setBaseline(nextDrafts)
     } catch {
       toast.error("Failed to load commission settings")
     } finally {
@@ -77,6 +254,46 @@ const VendorCommissionPage = () => {
       return hay.includes(q)
     })
   }, [vendors, search])
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const safePage = Math.min(page, pageCount)
+  const paged = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE
+    return filtered.slice(start, start + PAGE_SIZE)
+  }, [filtered, safePage])
+
+  useEffect(() => {
+    setPage(1)
+  }, [search])
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount)
+  }, [page, pageCount])
+
+  const customCount = useMemo(
+    () =>
+      vendors.filter(
+        (v) =>
+          v.commission_override ||
+          v.platform_fee_override ||
+          v.cancellation_charge_override
+      ).length,
+    [vendors]
+  )
+
+  const isDirty = (vendorId: string) => {
+    const d = drafts[vendorId]
+    const b = baseline[vendorId]
+    if (!d || !b) return false
+    return (
+      d.useCustom !== b.useCustom ||
+      d.rate !== b.rate ||
+      d.usePlatformCustom !== b.usePlatformCustom ||
+      d.platformRate !== b.platformRate ||
+      d.useCancelCustom !== b.useCancelCustom ||
+      d.cancelCharge !== b.cancelCharge
+    )
+  }
 
   const saveDefault = async () => {
     const n = Number(defaultRate)
@@ -130,6 +347,32 @@ const VendorCommissionPage = () => {
     }
   }
 
+  const saveDefaultCancel = async () => {
+    const n = Number(defaultCancelCharge)
+    if (!Number.isFinite(n) || n < 0 || n > 100000) {
+      toast.error("Enter a cancellation charge between ₹0 and ₹1,00,000")
+      return
+    }
+    setSavingCancel(true)
+    try {
+      const res = await fetch("/admin/vendor-commission", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ default_cancellation_charge: n }),
+      })
+      if (!res.ok) throw new Error("Save failed")
+      const data = await res.json()
+      setDefaultCancelCharge(String(data.default_cancellation_charge))
+      toast.success("Default cancellation charge saved")
+      await load()
+    } catch {
+      toast.error("Could not save default cancellation charge")
+    } finally {
+      setSavingCancel(false)
+    }
+  }
+
   const saveVendor = async (vendorId: string) => {
     const draft = drafts[vendorId]
     if (!draft) return
@@ -148,6 +391,13 @@ const VendorCommissionPage = () => {
         return
       }
     }
+    if (draft.useCancelCustom) {
+      const n = Number(draft.cancelCharge)
+      if (!Number.isFinite(n) || n < 0 || n > 100000) {
+        toast.error("Custom cancellation charge must be ₹0–₹1,00,000")
+        return
+      }
+    }
 
     setDrafts((prev) => ({
       ...prev,
@@ -160,12 +410,16 @@ const VendorCommissionPage = () => {
         commission_rate?: number
         platform_fee_override: boolean
         platform_fee_rate?: number
+        cancellation_charge_override: boolean
+        cancellation_charge?: number
       } = {
         commission_override: draft.useCustom,
         platform_fee_override: draft.usePlatformCustom,
+        cancellation_charge_override: draft.useCancelCustom,
       }
       if (draft.useCustom) body.commission_rate = Number(draft.rate)
       if (draft.usePlatformCustom) body.platform_fee_rate = Number(draft.platformRate)
+      if (draft.useCancelCustom) body.cancellation_charge = Number(draft.cancelCharge)
 
       const res = await fetch(`/admin/vendors/${vendorId}/commission`, {
         method: "PUT",
@@ -196,67 +450,91 @@ const VendorCommissionPage = () => {
     }))
   }
 
+  const resetVendor = (vendorId: string) => {
+    const b = baseline[vendorId]
+    if (!b) return
+    setDrafts((prev) => ({ ...prev, [vendorId]: { ...b, saving: false } }))
+  }
+
   return (
     <Container className="p-0">
-      <div className="flex flex-col gap-y-6 px-6 py-6">
-        <div>
-          <Heading level="h1">Vendor Commission</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            Set global defaults, or give a vendor a custom commission / platform-fee offer.
-          </Text>
-        </div>
+      <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-8">
+        <header className="flex flex-col gap-4 border-b border-ui-border-base pb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-xl">
+            <Heading level="h1" className="text-2xl">
+              Vendor Commission
+            </Heading>
+            <Text size="small" className="mt-1 text-ui-fg-subtle">
+              Changes apply to new orders only. In-progress, delivered, cancelled, and returned orders keep their original rates.
+            </Text>
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            <StatusDot tone="grey">{vendors.length} vendors</StatusDot>
+            <StatusDot tone={customCount ? "orange" : "green"}>
+              {customCount} custom offer{customCount === 1 ? "" : "s"}
+            </StatusDot>
+          </div>
+        </header>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-lg border border-ui-border-base p-4 flex flex-col gap-3">
-            <Label>Default commission (%)</Label>
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              step="0.1"
+        <section className="space-y-3">
+          <div>
+            <Heading level="h2" className="text-base">
+              Global defaults
+            </Heading>
+            <Text size="xsmall" className="text-ui-fg-muted">
+              Used when a vendor has no custom offer. Cancellation amount gets 18% GST in the ledger.
+            </Text>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <DefaultCard
+              title="Commission"
+              hint="Marketplace cut on sales"
               value={defaultRate}
-              disabled={loading || saving}
-              onChange={(e) => setDefaultRate(e.target.value)}
+              unit="%"
+              disabled={loading}
+              saving={saving}
+              onChange={setDefaultRate}
+              onSave={() => void saveDefault()}
             />
-            <Text size="small" className="text-ui-fg-subtle">
-              Used when a vendor does not have a custom commission.
-            </Text>
-            <Button onClick={saveDefault} disabled={loading || saving}>
-              {saving ? "Saving…" : "Save default"}
-            </Button>
-          </div>
-
-          <div className="rounded-lg border border-ui-border-base p-4 flex flex-col gap-3">
-            <Label>Default platform fee (%)</Label>
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              step="0.1"
+            <DefaultCard
+              title="Platform fee"
+              hint="Sheet4 platform fee (D)"
               value={defaultPlatformRate}
-              disabled={loading || savingPlatform}
-              onChange={(e) => setDefaultPlatformRate(e.target.value)}
+              unit="%"
+              disabled={loading}
+              saving={savingPlatform}
+              onChange={setDefaultPlatformRate}
+              onSave={() => void saveDefaultPlatform()}
             />
-            <Text size="small" className="text-ui-fg-subtle">
-              Sheet4 platform fee (D). New vendors inherit this unless you mark Custom.
-            </Text>
-            <Button onClick={saveDefaultPlatform} disabled={loading || savingPlatform}>
-              {savingPlatform ? "Saving…" : "Save platform default"}
-            </Button>
+            <DefaultCard
+              title="Cancellation charge"
+              hint="Fixed rupees per cancelled order"
+              value={defaultCancelCharge}
+              unit="₹"
+              min={0}
+              max={100000}
+              step="1"
+              disabled={loading}
+              saving={savingCancel}
+              onChange={setDefaultCancelCharge}
+              onSave={() => void saveDefaultCancel()}
+            />
           </div>
-        </div>
+        </section>
 
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <section className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <Heading level="h2">Vendors</Heading>
-              <Text size="small" className="text-ui-fg-subtle">
-                Custom commission or platform fee is an offer — uncheck Custom to return to the global default.
+              <Heading level="h2" className="text-base">
+                Vendors
+              </Heading>
+              <Text size="xsmall" className="text-ui-fg-muted">
+                Edit rates per store. Save only appears when something changes.
               </Text>
             </div>
-            <div className="w-full sm:w-64">
+            <div className="w-full sm:w-72">
               <Input
-                placeholder="Search vendor…"
+                placeholder="Search store, name, email…"
                 value={search}
                 disabled={loading}
                 onChange={(e) => setSearch(e.target.value)}
@@ -265,141 +543,158 @@ const VendorCommissionPage = () => {
           </div>
 
           {loading ? (
-            <Text size="small" className="text-ui-fg-subtle">
-              Loading vendors…
-            </Text>
+            <div className="grid gap-3">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="h-36 animate-pulse rounded-2xl border border-ui-border-base bg-ui-bg-subtle"
+                />
+              ))}
+            </div>
           ) : filtered.length === 0 ? (
-            <Text size="small" className="text-ui-fg-subtle">
-              No vendors found.
-            </Text>
+            <div className="rounded-2xl border border-dashed border-ui-border-base px-6 py-12 text-center">
+              <Text weight="plus">No vendors found</Text>
+              <Text size="small" className="mt-1 text-ui-fg-muted">
+                Try another search, or clear the filter.
+              </Text>
+            </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-ui-border-base">
-              <table className="w-full border-collapse text-sm">
-                <thead className="bg-ui-bg-subtle">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium">Vendor</th>
-                    <th className="px-3 py-2 text-left font-medium">Status</th>
-                    <th className="px-3 py-2 text-left font-medium">Custom commission</th>
-                    <th className="px-3 py-2 text-left font-medium">Commission %</th>
-                    <th className="px-3 py-2 text-left font-medium">Effective</th>
-                    <th className="px-3 py-2 text-left font-medium">Custom platform</th>
-                    <th className="px-3 py-2 text-left font-medium">Platform %</th>
-                    <th className="px-3 py-2 text-left font-medium">Effective</th>
-                    <th className="px-3 py-2 text-right font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((v) => {
-                    const draft = drafts[v.id] || {
-                      useCustom: false,
-                      rate: defaultRate,
-                      usePlatformCustom: false,
-                      platformRate: defaultPlatformRate,
-                      saving: false,
-                    }
-                    return (
-                      <tr key={v.id} className="border-t border-ui-border-base">
-                        <td className="px-3 py-3">
-                          <div className="font-medium">{v.store_name || v.name}</div>
-                          <div className="text-ui-fg-subtle text-xs">{v.email}</div>
-                        </td>
-                        <td className="px-3 py-3">
-                          <Badge color={v.is_approved ? "green" : "orange"}>
+            <>
+            <div className="grid gap-3">
+              {paged.map((v) => {
+                const draft = drafts[v.id] || {
+                  useCustom: false,
+                  rate: defaultRate,
+                  usePlatformCustom: false,
+                  platformRate: defaultPlatformRate,
+                  useCancelCustom: false,
+                  cancelCharge: defaultCancelCharge,
+                  saving: false,
+                }
+                const dirty = isDirty(v.id)
+                const title = v.store_name || v.name || "Vendor"
+                const hasAnyCustom =
+                  draft.useCustom || draft.usePlatformCustom || draft.useCancelCustom
+
+                return (
+                  <article
+                    key={v.id}
+                    className={`rounded-2xl border bg-ui-bg-base p-4 shadow-sm transition-colors md:p-5 ${
+                      dirty
+                        ? "border-ui-border-interactive"
+                        : "border-ui-border-base"
+                    }`}
+                  >
+                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <Text weight="plus" className="truncate text-base">
+                            {title}
+                          </Text>
+                          <StatusDot tone={v.is_approved ? "green" : "grey"}>
                             {v.is_approved ? "Approved" : "Other"}
-                          </Badge>
-                        </td>
-                        <td className="px-3 py-3">
-                          <label className="inline-flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={draft.useCustom}
-                              disabled={draft.saving}
-                              onChange={(e) =>
-                                updateDraft(v.id, { useCustom: e.target.checked })
-                              }
-                            />
-                            <span>Custom</span>
-                          </label>
-                        </td>
-                        <td className="px-3 py-3">
-                          {draft.useCustom ? (
-                            <Input
-                              type="number"
-                              min={0}
-                              max={100}
-                              step="0.1"
-                              className="w-24"
-                              value={draft.rate}
-                              disabled={draft.saving}
-                              onChange={(e) => updateDraft(v.id, { rate: e.target.value })}
-                            />
-                          ) : (
-                            <Text size="small" className="text-ui-fg-subtle">
-                              Global ({defaultRate}%)
-                            </Text>
-                          )}
-                        </td>
-                        <td className="px-3 py-3">
-                          <Badge color={v.source === "custom" ? "orange" : "grey"}>
-                            {v.effective_rate}% ({v.source})
-                          </Badge>
-                        </td>
-                        <td className="px-3 py-3">
-                          <label className="inline-flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={draft.usePlatformCustom}
-                              disabled={draft.saving}
-                              onChange={(e) =>
-                                updateDraft(v.id, { usePlatformCustom: e.target.checked })
-                              }
-                            />
-                            <span>Offer</span>
-                          </label>
-                        </td>
-                        <td className="px-3 py-3">
-                          {draft.usePlatformCustom ? (
-                            <Input
-                              type="number"
-                              min={0}
-                              max={100}
-                              step="0.1"
-                              className="w-24"
-                              value={draft.platformRate}
-                              disabled={draft.saving}
-                              onChange={(e) =>
-                                updateDraft(v.id, { platformRate: e.target.value })
-                              }
-                            />
-                          ) : (
-                            <Text size="small" className="text-ui-fg-subtle">
-                              Global ({defaultPlatformRate}%)
-                            </Text>
-                          )}
-                        </td>
-                        <td className="px-3 py-3">
-                          <Badge color={v.platform_source === "custom" ? "orange" : "grey"}>
-                            {v.effective_platform_rate}% ({v.platform_source})
-                          </Badge>
-                        </td>
-                        <td className="px-3 py-3 text-right">
+                          </StatusDot>
+                          {hasAnyCustom ? (
+                            <StatusDot tone="orange">Custom offer</StatusDot>
+                          ) : null}
+                        </div>
+                        {v.email ? (
+                          <Text size="small" className="mt-0.5 truncate text-ui-fg-muted">
+                            {v.email}
+                          </Text>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {dirty ? (
                           <Button
                             size="small"
                             variant="secondary"
                             disabled={draft.saving}
-                            onClick={() => void saveVendor(v.id)}
+                            onClick={() => resetVendor(v.id)}
                           >
-                            {draft.saving ? "Saving…" : "Save"}
+                            Reset
                           </Button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                        ) : null}
+                        <Button
+                          size="small"
+                          disabled={!dirty || draft.saving}
+                          onClick={() => void saveVendor(v.id)}
+                        >
+                          {draft.saving ? "Saving…" : "Save"}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <RateField
+                        label="Commission"
+                        unit="%"
+                        enabled={draft.useCustom}
+                        value={draft.rate}
+                        globalValue={defaultRate}
+                        disabled={draft.saving}
+                        onToggle={(next) => updateDraft(v.id, { useCustom: next })}
+                        onChange={(next) => updateDraft(v.id, { rate: next })}
+                      />
+                      <RateField
+                        label="Platform fee"
+                        unit="%"
+                        enabled={draft.usePlatformCustom}
+                        value={draft.platformRate}
+                        globalValue={defaultPlatformRate}
+                        disabled={draft.saving}
+                        onToggle={(next) => updateDraft(v.id, { usePlatformCustom: next })}
+                        onChange={(next) => updateDraft(v.id, { platformRate: next })}
+                      />
+                      <RateField
+                        label="Cancel charge"
+                        unit="₹"
+                        enabled={draft.useCancelCustom}
+                        value={draft.cancelCharge}
+                        globalValue={defaultCancelCharge}
+                        disabled={draft.saving}
+                        min={0}
+                        max={100000}
+                        step="1"
+                        onToggle={(next) => updateDraft(v.id, { useCancelCustom: next })}
+                        onChange={(next) => updateDraft(v.id, { cancelCharge: next })}
+                      />
+                    </div>
+                  </article>
+                )
+              })}
             </div>
+
+            <div className="flex flex-col gap-3 border-t border-ui-border-base pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <Text size="small" className="text-ui-fg-muted">
+                Showing {(safePage - 1) * PAGE_SIZE + 1}–
+                {Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
+              </Text>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="small"
+                  variant="secondary"
+                  disabled={safePage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </Button>
+                <Text size="small" className="min-w-[4.5rem] text-center tabular-nums text-ui-fg-subtle">
+                  {safePage} / {pageCount}
+                </Text>
+                <Button
+                  size="small"
+                  variant="secondary"
+                  disabled={safePage >= pageCount}
+                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+            </>
           )}
-        </div>
+        </section>
       </div>
     </Container>
   )

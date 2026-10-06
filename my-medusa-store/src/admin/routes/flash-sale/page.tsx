@@ -426,19 +426,15 @@ const FlashSalePage = () => {
 
   return (
     <Container className="divide-y p-0">
-      {/* Page header with brand-accent banner + KPI chips */}
-      <div className="relative px-6 py-6 bg-gradient-to-br from-orange-100 via-amber-50 to-white dark:from-orange-950/60 dark:via-amber-950/40 dark:to-transparent overflow-hidden">
-        {/* Soft orange glow blobs to lift the dark-mode banner */}
-        <div className="pointer-events-none absolute -top-16 -right-10 w-56 h-56 rounded-full bg-orange-500/10 dark:bg-orange-500/20 blur-3xl" aria-hidden />
-        <div className="pointer-events-none absolute -bottom-20 left-1/3 w-72 h-72 rounded-full bg-amber-400/10 dark:bg-amber-500/10 blur-3xl" aria-hidden />
-
-        <div className="relative flex items-center justify-between gap-4 flex-wrap">
+      {/* Page header with KPI chips */}
+      <div className="px-6 py-6 bg-ui-bg-base border-b border-ui-border-base">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 via-orange-500 to-amber-500 flex items-center justify-center text-white shadow-lg shadow-orange-500/30 ring-1 ring-orange-400/50">
-              <Bolt />
+            <div className="w-10 h-10 rounded-xl bg-ui-bg-subtle border border-ui-border-base flex items-center justify-center text-ui-fg-base shadow-sm">
+              <Bolt className="w-5 h-5 text-ui-fg-base" />
             </div>
             <div>
-              <Heading level="h1" className="text-orange-700 dark:text-orange-300">
+              <Heading level="h1">
                 Flash Sale Management
               </Heading>
               <Text className="text-ui-fg-subtle">
@@ -452,13 +448,13 @@ const FlashSalePage = () => {
         </div>
 
         {/* KPI row */}
-        <div className="relative grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
           <button
             type="button"
             onClick={() => setListFilter("live")}
-            className={`text-left rounded-xl border p-4 transition shadow-sm hover:shadow-md backdrop-blur-sm ${listFilter === "live"
+            className={`text-left rounded-xl border p-4 transition shadow-sm hover:shadow-md ${listFilter === "live"
               ? "border-emerald-500 ring-2 ring-emerald-300/50 dark:ring-emerald-700/60 bg-white dark:bg-emerald-950/40"
-              : "border-ui-border-base bg-white/90 dark:bg-ui-bg-base/80 hover:border-emerald-300 dark:hover:border-emerald-800"
+              : "border-ui-border-base bg-ui-bg-base hover:border-emerald-300 dark:hover:border-emerald-800"
               }`}
           >
             <div className="flex items-center justify-between">
@@ -471,9 +467,9 @@ const FlashSalePage = () => {
           <button
             type="button"
             onClick={() => setListFilter("hidden")}
-            className={`text-left rounded-xl border p-4 transition shadow-sm hover:shadow-md backdrop-blur-sm ${listFilter === "hidden"
+            className={`text-left rounded-xl border p-4 transition shadow-sm hover:shadow-md ${listFilter === "hidden"
               ? "border-amber-500 ring-2 ring-amber-300/50 dark:ring-amber-700/60 bg-white dark:bg-amber-950/40"
-              : "border-ui-border-base bg-white/90 dark:bg-ui-bg-base/80 hover:border-amber-300 dark:hover:border-amber-800"
+              : "border-ui-border-base bg-ui-bg-base hover:border-amber-300 dark:hover:border-amber-800"
               }`}
           >
             <div className="flex items-center justify-between">
@@ -486,9 +482,9 @@ const FlashSalePage = () => {
           <button
             type="button"
             onClick={() => setListFilter("expired")}
-            className={`text-left rounded-xl border p-4 transition shadow-sm hover:shadow-md backdrop-blur-sm ${listFilter === "expired"
-              ? "border-gray-400 ring-2 ring-gray-300/50 dark:ring-gray-700/60 bg-white dark:bg-ui-bg-base"
-              : "border-ui-border-base bg-white/90 dark:bg-ui-bg-base/80 hover:border-gray-300 dark:hover:border-gray-700"
+            className={`text-left rounded-xl border p-4 transition shadow-sm hover:shadow-md ${listFilter === "expired"
+              ? "border-ui-border-strong ring-2 ring-ui-border-strong/50 bg-white dark:bg-ui-bg-base"
+              : "border-ui-border-base bg-ui-bg-base hover:border-ui-border-strong"
               }`}
           >
             <div className="flex items-center justify-between">
@@ -498,25 +494,23 @@ const FlashSalePage = () => {
             <div className="text-2xl font-semibold text-ui-fg-subtle mt-1">{counts.expired}</div>
           </button>
 
-          {/* Total Items is the brand-accent card — always tinted orange so the
-              flash-sale identity is anchored even in dark mode. */}
           <button
             type="button"
             onClick={() => setListFilter("all")}
-            className={`text-left rounded-xl border p-4 transition shadow-sm hover:shadow-md backdrop-blur-sm ${listFilter === "all"
-              ? "border-orange-500 ring-2 ring-orange-300/60 dark:ring-orange-600/70 bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/60 dark:to-amber-950/40"
-              : "border-orange-300 dark:border-orange-900 bg-gradient-to-br from-orange-50/60 to-amber-50/40 dark:from-orange-950/30 dark:to-amber-950/20 hover:border-orange-400 dark:hover:border-orange-700"
+            className={`text-left rounded-xl border p-4 transition shadow-sm hover:shadow-md ${listFilter === "all"
+              ? "border-ui-border-interactive ring-2 ring-ui-border-interactive/40 bg-ui-bg-subtle"
+              : "border-ui-border-base bg-ui-bg-base hover:border-ui-border-strong"
               }`}
           >
             <div className="flex items-center justify-between">
-              <Text size="xsmall" className="uppercase tracking-wide text-orange-700 dark:text-orange-300 font-semibold">
+              <Text size="xsmall" className="uppercase tracking-wide text-ui-fg-subtle font-semibold">
                 Total items
               </Text>
-              <span className="text-orange-500 dark:text-orange-400">
+              <span className="text-ui-fg-muted">
                 <Funnel />
               </span>
             </div>
-            <div className="text-2xl font-semibold text-orange-600 dark:text-orange-300 mt-1">{counts.total}</div>
+            <div className="text-2xl font-semibold text-ui-fg-base mt-1">{counts.total}</div>
           </button>
         </div>
       </div>
@@ -525,7 +519,7 @@ const FlashSalePage = () => {
       {/* Flash Sale Form */}
       <div className="px-6 py-6">
         <div className="flex items-center gap-2 mb-5">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center text-sm font-bold shadow-md shadow-orange-500/20 ring-1 ring-orange-400/40">
+          <div className="w-7 h-7 rounded-lg bg-ui-bg-subtle border border-ui-border-base text-ui-fg-base flex items-center justify-center text-sm font-semibold">
             1
           </div>
           <Heading level="h2">
@@ -578,7 +572,7 @@ const FlashSalePage = () => {
           {/* Product Filters */}
           <div className="space-y-4 border-t border-ui-border-base pt-5">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center text-sm font-bold shadow-md shadow-orange-500/20 ring-1 ring-orange-400/40">
+              <div className="w-7 h-7 rounded-lg bg-ui-bg-subtle border border-ui-border-base text-ui-fg-base flex items-center justify-center text-sm font-semibold">
                 2
               </div>
               <Heading level="h3">Filter Products</Heading>
@@ -614,7 +608,7 @@ const FlashSalePage = () => {
                 <select
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full px-3 py-2 border border-ui-border-base bg-ui-bg-base rounded-md text-ui-fg-base focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/50 transition"
+                  className="w-full px-3 py-2 border border-ui-border-base bg-ui-bg-base rounded-md text-ui-fg-base focus:outline-none focus:border-ui-border-interactive focus:ring-1 focus:ring-ui-border-interactive transition"
                 >
                   <option value="">All Categories</option>
                   {categories.map((cat) => (
@@ -627,7 +621,7 @@ const FlashSalePage = () => {
                 <select
                   value={selectedCollection}
                   onChange={(e) => setSelectedCollection(e.target.value)}
-                  className="w-full px-3 py-2 border border-ui-border-base bg-ui-bg-base rounded-md text-ui-fg-base focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/50 transition"
+                  className="w-full px-3 py-2 border border-ui-border-base bg-ui-bg-base rounded-md text-ui-fg-base focus:outline-none focus:border-ui-border-interactive focus:ring-1 focus:ring-ui-border-interactive transition"
                 >
                   <option value="">All Brands</option>
                   {collections.map((col) => (
@@ -640,7 +634,7 @@ const FlashSalePage = () => {
                 <select
                   value={selectedType}
                   onChange={(e) => setSelectedType(e.target.value)}
-                  className="w-full px-3 py-2 border border-ui-border-base bg-ui-bg-base rounded-md text-ui-fg-base focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/50 transition"
+                  className="w-full px-3 py-2 border border-ui-border-base bg-ui-bg-base rounded-md text-ui-fg-base focus:outline-none focus:border-ui-border-interactive focus:ring-1 focus:ring-ui-border-interactive transition"
                 >
                   <option value="">All Types</option>
                   {types.map((type) => (
@@ -654,7 +648,7 @@ const FlashSalePage = () => {
           {/* Product Selection with Prices */}
           <div className="space-y-4 border-t border-ui-border-base pt-5">
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center text-sm font-bold shadow-md shadow-orange-500/20 ring-1 ring-orange-400/40">
+              <div className="w-7 h-7 rounded-lg bg-ui-bg-subtle border border-ui-border-base text-ui-fg-base flex items-center justify-center text-sm font-semibold">
                 3
               </div>
               <Heading level="h3">
@@ -668,7 +662,7 @@ const FlashSalePage = () => {
                 </Badge>
               )}
               {formData.selectedProducts.size > 0 && (
-                <Badge color="orange">{formData.selectedProducts.size} selected</Badge>
+                <Badge color="blue">{formData.selectedProducts.size} selected</Badge>
               )}
               <Text size="small" className="text-ui-fg-subtle ml-auto">
                 Set price per product or apply a bulk discount
@@ -677,8 +671,8 @@ const FlashSalePage = () => {
 
             {/* Bulk discount apply bar — only useful when something is picked */}
             {formData.selectedProducts.size > 0 && (
-              <div className="flex items-center gap-2 flex-wrap rounded-xl border border-orange-300 dark:border-orange-800 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 dark:from-orange-950/50 dark:via-amber-950/40 dark:to-orange-950/50 p-3 shadow-sm">
-                <Text size="small" className="font-semibold text-orange-700 dark:text-orange-300">
+              <div className="flex items-center gap-2 flex-wrap rounded-xl border border-ui-border-base bg-ui-bg-subtle/60 p-3 shadow-sm">
+                <Text size="small" className="font-semibold text-ui-fg-base">
                   Bulk discount:
                 </Text>
                 <div className="flex items-center gap-1.5">
@@ -700,21 +694,21 @@ const FlashSalePage = () => {
                       type="button"
                       onClick={() => setBulkDiscountPct(preset)}
                       className={`px-2.5 py-1 rounded-md text-xs font-semibold border transition ${bulkDiscountPct === preset
-                        ? "border-orange-500 bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-sm shadow-orange-500/20"
-                        : "border-orange-200 dark:border-orange-900 text-orange-700 dark:text-orange-300 bg-white/60 dark:bg-ui-bg-base/40 hover:border-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/40"
+                        ? "border-ui-border-interactive bg-ui-bg-interactive text-ui-fg-on-inverted shadow-sm"
+                        : "border-ui-border-base text-ui-fg-subtle bg-ui-bg-base hover:bg-ui-bg-base-hover hover:text-ui-fg-base"
                         }`}
                     >
                       {preset}%
                     </button>
                   ))}
                 </div>
-                <button
-                  type="button"
+                <Button
+                  size="small"
+                  variant="secondary"
                   onClick={() => applyBulkDiscount(bulkDiscountPct)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white bg-gradient-to-br from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-sm shadow-orange-500/30 transition"
                 >
                   Apply to all selected
-                </button>
+                </Button>
                 <div className="ml-auto text-sm text-ui-fg-subtle">
                   Total savings:{" "}
                   <span className="font-semibold text-emerald-600 dark:text-emerald-400">
@@ -724,7 +718,7 @@ const FlashSalePage = () => {
               </div>
             )}
 
-            <div className="border border-orange-200 dark:border-orange-900/40 rounded-xl p-2 max-h-[28rem] overflow-y-auto bg-gradient-to-b from-orange-50/40 to-transparent dark:from-orange-950/20 dark:to-transparent">
+            <div className="border border-ui-border-base rounded-xl p-2 max-h-[28rem] overflow-y-auto bg-ui-bg-subtle/30">
               {products.length === 0 ? (
                 <div className="p-8 text-center">
                   <Text className="text-ui-fg-subtle">
@@ -760,7 +754,7 @@ const FlashSalePage = () => {
                             className="w-12 h-12 object-cover rounded-lg border border-ui-border-base"
                           />
                         ) : (
-                          <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-orange-200 to-amber-200 dark:from-orange-900 dark:to-amber-900 flex items-center justify-center text-sm font-bold text-orange-800 dark:text-orange-200">
+                          <div className="w-12 h-12 rounded-lg bg-ui-bg-subtle border border-ui-border-base flex items-center justify-center text-sm font-bold text-ui-fg-muted">
                             {getInitial(product.title)}
                           </div>
                         )}
@@ -788,7 +782,7 @@ const FlashSalePage = () => {
                                 currentDiscount >= 50
                                   ? "red"
                                   : currentDiscount >= 20
-                                    ? "orange"
+                                    ? "blue"
                                     : currentDiscount > 0
                                       ? "green"
                                       : "grey"
@@ -830,7 +824,7 @@ const FlashSalePage = () => {
           <div className="px-6 py-6 border-t border-ui-border-base">
             <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
               <div className="flex items-center gap-2">
-                <span className="inline-block w-1.5 h-6 rounded-full bg-gradient-to-b from-orange-500 to-amber-500" aria-hidden />
+                <span className="inline-block w-1.5 h-6 rounded-full bg-ui-border-strong" aria-hidden />
                 <Heading level="h2">Flash Sales</Heading>
               </div>
               <div className="flex items-center gap-1 p-1 rounded-lg bg-ui-bg-base-hover dark:bg-ui-bg-subtle border border-ui-border-base">
@@ -845,17 +839,12 @@ const FlashSalePage = () => {
                     type="button"
                     onClick={() => setListFilter(key)}
                     className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${listFilter === key
-                      ? key === "all"
-                        ? "bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-sm shadow-orange-500/20"
-                        : "bg-white dark:bg-ui-bg-base text-ui-fg-base shadow-sm"
+                      ? "bg-white dark:bg-ui-bg-base text-ui-fg-base shadow-sm font-semibold"
                       : "text-ui-fg-subtle hover:text-ui-fg-base"
                       }`}
                   >
                     {label}
-                    <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${listFilter === key && key === "all"
-                      ? "bg-white/25 text-white"
-                      : "bg-ui-bg-base-hover/80 dark:bg-ui-bg-base"
-                      }`}>
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] bg-ui-bg-base-hover/80 dark:bg-ui-bg-base">
                       {value}
                     </span>
                   </button>
@@ -904,7 +893,7 @@ const FlashSalePage = () => {
                             className="w-20 h-20 object-cover rounded-lg border border-ui-border-base flex-shrink-0"
                           />
                         ) : (
-                          <div className="w-20 h-20 rounded-lg bg-gradient-to-br from-orange-200 to-amber-200 dark:from-orange-900 dark:to-amber-900 flex items-center justify-center text-xl font-bold text-orange-800 dark:text-orange-200 flex-shrink-0">
+                          <div className="w-20 h-20 rounded-lg bg-ui-bg-subtle border border-ui-border-base flex items-center justify-center text-xl font-bold text-ui-fg-muted flex-shrink-0">
                             {getInitial(item.product_title)}
                           </div>
                         )}
@@ -972,7 +961,7 @@ const FlashSalePage = () => {
                               <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-sm font-semibold ${discount >= 50
                                 ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
                                 : discount >= 20
-                                  ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
+                                  ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
                                   : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
                                 }`}>
                                 {discount}% OFF

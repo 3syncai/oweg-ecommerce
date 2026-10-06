@@ -1,267 +1,318 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Pool } from "pg"
 import {
-    createRazorpayContact,
-    createRazorpayFundAccount,
-    createRazorpayPayout
+  createRazorpayContact,
+  createRazorpayFundAccount,
+  createRazorpayPayout,
 } from "../../../../../lib/razorpay-payout"
-import { markVendorEarningsAsPaid } from "../../../../../lib/vendor-earnings"
+import {
+  isRazorpayPayoutSettled,
+  listOrderIdsAlreadyOnPayout,
+  markVendorEarningsAsPaid,
+  normalizePayoutOrderIds,
+} from "../../../../../lib/vendor-earnings"
 
 /**
  * Admin Automated Payout API
  * POST /admin/vendor-payouts/razorpay/process
- * 
- * Automatically process payout to vendor via Razorpay:
- * 1. Create Razorpay contact (if not exists)
- * 2. Create fund account with vendor's bank details
- * 3. Initiate payout
- * 4. Record in database
+ *
+ * Earnings are marked PAID only when Razorpay status is `processed`.
+ * `order_ids` is required so sibling CREDITED rows are never wiped.
  */
 
 export async function POST(
-    req: MedusaRequest,
-    res: MedusaResponse
+  req: MedusaRequest,
+  res: MedusaResponse
 ): Promise<void> {
-    try {
-        const {
-            vendor_id,
-            amount, // Net amount to pay (already after commission deduction)
-            commission_amount,
-            commission_rate,
-            order_ids,
-            notes,
-            razorpay_account_number, // Admin's Razorpay account number (from which money will be debited)
-        } = req.body as {
-            vendor_id: string
-            amount: number // in rupees
-            commission_amount?: number
-            commission_rate?: number
-            order_ids?: string[]
-            notes?: string
-            razorpay_account_number?: string
-        }
-
-        // Validation
-        if (!vendor_id || !amount) {
-            res.status(400).json({
-                message: "vendor_id and amount are required",
-            })
-            return
-        }
-
-        if (amount <= 0) {
-            res.status(400).json({
-                message: "Amount must be greater than 0",
-            })
-            return
-        }
-
-        // Get vendor details
-        const query = req.scope.resolve("query")
-        const { data: vendors } = await query.graph({
-            entity: "vendor",
-            fields: [
-                "id",
-                "name",
-                "email",
-                "phone",
-                "bank_name",
-                "account_no",
-                "ifsc_code",
-                "metadata",
-            ],
-            filters: { id: vendor_id },
-        })
-
-        const vendor = vendors?.[0]
-        if (!vendor) {
-            res.status(404).json({
-                message: "Vendor not found",
-            })
-            return
-        }
-
-        // Validate vendor bank details
-        if (!vendor.bank_name || !vendor.account_no || !vendor.ifsc_code) {
-            res.status(400).json({
-                message: "Vendor bank details are incomplete. Please update bank_name, account_no, and ifsc_code.",
-                vendor_id: vendor.id,
-                vendor_name: vendor.name,
-            })
-            return
-        }
-
-        if (!vendor.phone) {
-            res.status(400).json({
-                message: "Vendor phone number is required",
-            })
-            return
-        }
-
-        // Step 1: Create or get Razorpay Contact
-        let razorpayContactId: string | null = null
-        const vendorMetadata = vendor.metadata || {}
-
-        if (vendorMetadata.razorpay_contact_id) {
-            razorpayContactId = vendorMetadata.razorpay_contact_id
-            console.log(`✅ Using existing Razorpay contact: ${razorpayContactId}`)
-        } else {
-            console.log(`📞 Creating Razorpay contact for vendor: ${vendor.name}`)
-            const contact = await createRazorpayContact({
-                name: vendor.name,
-                email: vendor.email,
-                contact: vendor.phone,
-                type: "vendor",
-                reference_id: vendor.id,
-                notes: {
-                    vendor_id: vendor.id,
-                    created_from: "medusa_admin",
-                },
-            })
-
-            razorpayContactId = contact.id
-
-            // Update vendor metadata with contact ID
-            const manager = req.scope.resolve("manager") as any
-            await manager.transaction(async (em: any) => {
-                await em.nativeUpdate(
-                    "vendor",
-                    { id: vendor.id },
-                    {
-                        metadata: {
-                            ...vendorMetadata,
-                            razorpay_contact_id: razorpayContactId,
-                        },
-                    }
-                )
-            })
-
-            console.log(`✅ Created Razorpay contact: ${razorpayContactId}`)
-        }
-
-        // Ensure we have a valid contact ID
-        if (!razorpayContactId) {
-            res.status(500).json({
-                message: "Failed to create or retrieve Razorpay contact ID",
-            })
-            return
-        }
-
-        // Step 2: Create Fund Account
-        console.log(`🏦 Creating fund account for: ${vendor.bank_name} - ${vendor.account_no}`)
-        const fundAccount = await createRazorpayFundAccount({
-            contact_id: razorpayContactId,
-            account_type: "bank_account",
-            bank_account: {
-                name: vendor.name,
-                ifsc: vendor.ifsc_code,
-                account_number: vendor.account_no,
-            },
-        })
-
-        console.log(`✅ Created fund account: ${fundAccount.id}`)
-
-        // Step 3: Create Payout
-        const amountInPaise = Math.round(amount * 100) // Convert rupees to paise
-        const accountNumber = razorpay_account_number || process.env.RAZORPAY_ACCOUNT_NUMBER
-
-        if (!accountNumber) {
-            res.status(400).json({
-                message: "Razorpay account number not configured. Set RAZORPAY_ACCOUNT_NUMBER environment variable or provide razorpay_account_number in request.",
-            })
-            return
-        }
-
-        console.log(`💰 Initiating payout: ₹${amount} (${amountInPaise} paise)`)
-
-        const internalTxnId = `payout_${vendor.id}_${Date.now()}`
-
-        const payout = await createRazorpayPayout({
-            account_number: accountNumber,
-            fund_account_id: fundAccount.id,
-            amount: amountInPaise,
-            currency: "INR",
-            mode: "IMPS", // Fastest mode
-            purpose: "payout",
-            reference_id: internalTxnId,
-            narration: `Payment for orders - ${vendor.name}`,
-            queue_if_low_balance: true,
-            notes: {
-                vendor_id: vendor.id,
-                vendor_name: vendor.name,
-                order_ids: order_ids ? order_ids.join(",") : "",
-                ...(notes ? { admin_notes: notes } : {}),
-            },
-        })
-
-        console.log(`✅ Payout created: ${payout.id} | Status: ${payout.status}`)
-
-        // Step 4: Save to database
-        const manager = req.scope.resolve("manager") as any
-        const created_by = (req as any).user?.id || "admin"
-
-        const payoutData = {
-            vendor_id,
-            amount: amount + (commission_amount || 0), // Gross amount before commission
-            commission_amount: commission_amount || 0,
-            net_amount: amount,
-            commission_rate: commission_rate || 0,
-            currency_code: "inr",
-            transaction_id: internalTxnId,
-            payment_method: "razorpay_payout",
-            status: payout.status === "processed" ? "processed" : "pending",
-            razorpay_contact_id: razorpayContactId,
-            razorpay_fund_account_id: fundAccount.id,
-            razorpay_payout_id: payout.id,
-            razorpay_status: payout.status,
-            utr: payout.utr,
-            failure_reason: payout.failure_reason,
-            notes: notes || null,
-            order_ids: order_ids ? JSON.stringify(order_ids) : null,
-            created_by,
-            created_at: new Date(),
-            updated_at: new Date(),
-        }
-
-        const result = await manager.transaction(async (em: any) => {
-            const payoutEntity = em.create("vendor_payout", payoutData)
-            await em.persistAndFlush(payoutEntity)
-            return payoutEntity
-        })
-
-        // Mark CREDITED earnings as PAID so they leave vendor "available" balance
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-        let markedPaid = 0
-        try {
-            markedPaid = await markVendorEarningsAsPaid(vendor_id, pool, order_ids)
-        } catch (markErr) {
-            console.error("Failed to mark earnings as PAID:", markErr)
-        } finally {
-            await pool.end().catch(() => {})
-        }
-
-        res.status(201).json({
-            success: true,
-            message: "Payout processed successfully",
-            payout: {
-                id: result.id,
-                vendor_id,
-                vendor_name: vendor.name,
-                amount,
-                razorpay_payout_id: payout.id,
-                razorpay_status: payout.status,
-                utr: payout.utr,
-                fund_account_id: fundAccount.id,
-                contact_id: razorpayContactId,
-                earnings_marked_paid: markedPaid,
-            },
-        })
-    } catch (error: any) {
-        console.error("Automated payout error:", error)
-        res.status(500).json({
-            success: false,
-            message: "Failed to process payout",
-            error: error?.message || "Unknown error",
-        })
+  try {
+    const {
+      vendor_id,
+      amount, // Net amount to pay (already after commission deduction)
+      commission_amount,
+      commission_rate,
+      order_ids,
+      notes,
+      razorpay_account_number, // Admin's Razorpay account number (from which money will be debited)
+    } = req.body as {
+      vendor_id: string
+      amount: number // in rupees
+      commission_amount?: number
+      commission_rate?: number
+      order_ids?: string[]
+      notes?: string
+      razorpay_account_number?: string
     }
+
+    const scopedOrderIds = normalizePayoutOrderIds(order_ids)
+
+    if (!vendor_id || !amount) {
+      res.status(400).json({
+        message: "vendor_id and amount are required",
+      })
+      return
+    }
+
+    if (amount <= 0) {
+      res.status(400).json({
+        message: "Amount must be greater than 0",
+      })
+      return
+    }
+
+    if (scopedOrderIds.length === 0) {
+      res.status(400).json({
+        message:
+          "order_ids are required. Refusing to mark all CREDITED earnings as paid.",
+      })
+      return
+    }
+
+    // Get vendor details
+    const query = req.scope.resolve("query")
+    const { data: vendors } = await query.graph({
+      entity: "vendor",
+      fields: [
+        "id",
+        "name",
+        "email",
+        "phone",
+        "bank_name",
+        "account_no",
+        "ifsc_code",
+        "metadata",
+      ],
+      filters: { id: vendor_id },
+    })
+
+    const vendor = vendors?.[0]
+    if (!vendor) {
+      res.status(404).json({
+        message: "Vendor not found",
+      })
+      return
+    }
+
+    // Validate vendor bank details
+    if (!vendor.bank_name || !vendor.account_no || !vendor.ifsc_code) {
+      res.status(400).json({
+        message:
+          "Vendor bank details are incomplete. Please update bank_name, account_no, and ifsc_code.",
+        vendor_id: vendor.id,
+        vendor_name: vendor.name,
+      })
+      return
+    }
+
+    if (!vendor.phone) {
+      res.status(400).json({
+        message: "Vendor phone number is required",
+      })
+      return
+    }
+
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+    try {
+      const alreadyClaimed = await listOrderIdsAlreadyOnPayout(
+        pool,
+        vendor_id,
+        scopedOrderIds
+      )
+      if (alreadyClaimed.length > 0) {
+        res.status(409).json({
+          message:
+            "One or more orders are already on a pending or completed payout",
+          order_ids: alreadyClaimed,
+        })
+        return
+      }
+    } finally {
+      await pool.end().catch(() => {})
+    }
+
+    // Step 1: Create or get Razorpay Contact
+    let razorpayContactId: string | null = null
+    const vendorMetadata = vendor.metadata || {}
+
+    if (vendorMetadata.razorpay_contact_id) {
+      razorpayContactId = vendorMetadata.razorpay_contact_id
+      console.log(`✅ Using existing Razorpay contact: ${razorpayContactId}`)
+    } else {
+      console.log(`📞 Creating Razorpay contact for vendor: ${vendor.name}`)
+      const contact = await createRazorpayContact({
+        name: vendor.name,
+        email: vendor.email,
+        contact: vendor.phone,
+        type: "vendor",
+        reference_id: vendor.id,
+        notes: {
+          vendor_id: vendor.id,
+          created_from: "medusa_admin",
+        },
+      })
+
+      razorpayContactId = contact.id
+
+      // Update vendor metadata with contact ID
+      const manager = req.scope.resolve("manager") as any
+      await manager.transaction(async (em: any) => {
+        await em.nativeUpdate(
+          "vendor",
+          { id: vendor.id },
+          {
+            metadata: {
+              ...vendorMetadata,
+              razorpay_contact_id: razorpayContactId,
+            },
+          }
+        )
+      })
+
+      console.log(`✅ Created Razorpay contact: ${razorpayContactId}`)
+    }
+
+    if (!razorpayContactId) {
+      res.status(500).json({
+        message: "Failed to create or retrieve Razorpay contact ID",
+      })
+      return
+    }
+
+    // Step 2: Create Fund Account
+    console.log(
+      `🏦 Creating fund account for: ${vendor.bank_name} - ${vendor.account_no}`
+    )
+    const fundAccount = await createRazorpayFundAccount({
+      contact_id: razorpayContactId,
+      account_type: "bank_account",
+      bank_account: {
+        name: vendor.name,
+        ifsc: vendor.ifsc_code,
+        account_number: vendor.account_no,
+      },
+    })
+
+    console.log(`✅ Created fund account: ${fundAccount.id}`)
+
+    // Step 3: Create Payout
+    const amountInPaise = Math.round(amount * 100)
+    const accountNumber =
+      razorpay_account_number || process.env.RAZORPAY_ACCOUNT_NUMBER
+
+    if (!accountNumber) {
+      res.status(400).json({
+        message:
+          "Razorpay account number not configured. Set RAZORPAY_ACCOUNT_NUMBER environment variable or provide razorpay_account_number in request.",
+      })
+      return
+    }
+
+    console.log(`💰 Initiating payout: ₹${amount} (${amountInPaise} paise)`)
+
+    const internalTxnId = `payout_${vendor.id}_${Date.now()}`
+
+    const payout = await createRazorpayPayout({
+      account_number: accountNumber,
+      fund_account_id: fundAccount.id,
+      amount: amountInPaise,
+      currency: "INR",
+      mode: "IMPS",
+      purpose: "payout",
+      reference_id: internalTxnId,
+      narration: `Payment for orders - ${vendor.name}`,
+      queue_if_low_balance: true,
+      notes: {
+        vendor_id: vendor.id,
+        vendor_name: vendor.name,
+        order_ids: scopedOrderIds.join(","),
+        ...(notes ? { admin_notes: notes } : {}),
+      },
+    })
+
+    console.log(`✅ Payout created: ${payout.id} | Status: ${payout.status}`)
+
+    const settled = isRazorpayPayoutSettled(payout.status)
+    const localStatus = settled ? "processed" : "pending"
+
+    // Step 4: Save to database
+    const manager = req.scope.resolve("manager") as any
+    const created_by = (req as any).user?.id || "admin"
+
+    const payoutData = {
+      vendor_id,
+      amount: amount + (commission_amount || 0),
+      commission_amount: commission_amount || 0,
+      net_amount: amount,
+      commission_rate: commission_rate || 0,
+      currency_code: "inr",
+      transaction_id: internalTxnId,
+      payment_method: "razorpay_payout",
+      status: localStatus,
+      razorpay_contact_id: razorpayContactId,
+      razorpay_fund_account_id: fundAccount.id,
+      razorpay_payout_id: payout.id,
+      razorpay_status: payout.status,
+      utr: payout.utr,
+      failure_reason: payout.failure_reason,
+      notes: notes || null,
+      order_ids: JSON.stringify(scopedOrderIds),
+      created_by,
+      created_at: new Date(),
+      updated_at: new Date(),
+    }
+
+    const result = await manager.transaction(async (em: any) => {
+      const payoutEntity = em.create("vendor_payout", payoutData)
+      await em.persistAndFlush(payoutEntity)
+      return payoutEntity
+    })
+
+    // Mark CREDITED → PAID only after Razorpay confirms processed
+    let markedPaid = 0
+    if (settled) {
+      const markPool = new Pool({ connectionString: process.env.DATABASE_URL })
+      try {
+        markedPaid = await markVendorEarningsAsPaid(
+          vendor_id,
+          markPool,
+          scopedOrderIds
+        )
+      } catch (markErr) {
+        console.error("Failed to mark earnings as PAID:", markErr)
+      } finally {
+        await markPool.end().catch(() => {})
+      }
+    } else {
+      console.log(
+        `[razorpay-payout] Leaving earnings CREDITED until Razorpay settles (status=${payout.status})`
+      )
+    }
+
+    res.status(201).json({
+      success: true,
+      message: settled
+        ? "Payout processed successfully"
+        : `Payout submitted (${payout.status}). Earnings stay available until Razorpay reports processed.`,
+      payout: {
+        id: result.id,
+        vendor_id,
+        vendor_name: vendor.name,
+        amount,
+        status: localStatus,
+        order_ids: scopedOrderIds,
+        razorpay_payout_id: payout.id,
+        razorpay_status: payout.status,
+        utr: payout.utr,
+        fund_account_id: fundAccount.id,
+        contact_id: razorpayContactId,
+        earnings_marked_paid: markedPaid,
+      },
+    })
+  } catch (error: any) {
+    console.error("Automated payout error:", error)
+    res.status(500).json({
+      success: false,
+      message: "Failed to process payout",
+      error: error?.message || "Unknown error",
+    })
+  }
 }

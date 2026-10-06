@@ -5,6 +5,11 @@ import ReturnModuleService from "../../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../../modules/returns"
 import { syncOrderReturnMetadata } from "../../../../services/sync-order-return-metadata"
 import { scheduleVendorEarningsOnDelivery } from "../../../../lib/vendor-earnings"
+import {
+  getVendorWorkflows,
+  mergeVendorWorkflowMetadata,
+  resolveVendorIdFromShipmentMetadata,
+} from "../../../../lib/vendor-order-workflow"
 
 function normalizeStatus(status: string) {
   const normalized = status.trim().toLowerCase()
@@ -86,34 +91,66 @@ export async function handleShiprocketWebhook(req: MedusaRequest, res: MedusaRes
     }
   }
 
-  if (!updatedReturn && shiprocketOrderId) {
+  if (!updatedReturn && (shiprocketOrderId || awb)) {
     const orders = await orderModuleService.listOrders({})
     const match = orders.find((order: any) => {
       const metadata = order.metadata || {}
-      return metadata.shiprocket_order_id === shiprocketOrderId || metadata.shiprocket_awb === awb
+      if (
+        (shiprocketOrderId && metadata.shiprocket_order_id === shiprocketOrderId) ||
+        (awb && metadata.shiprocket_awb === awb)
+      ) {
+        return true
+      }
+      const workflows = getVendorWorkflows(metadata)
+      return Object.values(workflows).some((wf) => {
+        if (awb && (wf.shiprocket_awb === awb || wf.tracking_number === awb || wf.self_awb === awb)) {
+          return true
+        }
+        if (shiprocketOrderId && String(wf.shiprocket_order_id || "") === String(shiprocketOrderId)) {
+          return true
+        }
+        return false
+      })
     })
     if (match) {
       console.log(`[Order] Webhook matched order ${match.id}`)
-      const metadata = match.metadata || {}
-      const updates: any = {
+      const metadata = { ...(match.metadata || {}) } as Record<string, unknown>
+      const vendorId = resolveVendorIdFromShipmentMetadata(metadata, {
+        awb: awb ? String(awb) : null,
+        shiprocketOrderId: shiprocketOrderId != null ? String(shiprocketOrderId) : null,
+      })
+      const deliveredAt = new Date().toISOString()
+      let nextMetadata: Record<string, unknown> = {
+        ...metadata,
         shiprocket_status: status,
+        ...(status === "delivered" ? { shiprocket_delivered_at: deliveredAt } : {}),
       }
-      if (status === "delivered") {
-        updates.shiprocket_delivered_at = new Date().toISOString()
+      if (vendorId && status === "delivered") {
+        nextMetadata = mergeVendorWorkflowMetadata(nextMetadata, vendorId, {
+          stage: "delivered",
+          shiprocket_status: "delivered",
+          shiprocket_delivered_at: deliveredAt,
+        })
       }
       await orderModuleService.updateOrders(match.id, {
-        metadata: {
-          ...metadata,
-          ...updates,
-        },
+        metadata: nextMetadata,
       })
-      console.log(`[Order] Updated order ${match.id} metadata with status ${status}`)
+      console.log(
+        `[Order] Updated order ${match.id} metadata with status ${status} vendor=${vendorId || "unresolved"}`
+      )
 
-      // Start vendor payout 5-minute unlock timer on delivery
+      // Start vendor payout unlock only for the vendor whose shipment delivered
       if (status === "delivered") {
         const pool = new Pool({ connectionString: process.env.DATABASE_URL })
         try {
-          const result = await scheduleVendorEarningsOnDelivery(match.id, pool)
+          if (!vendorId) {
+            console.warn(
+              `[Order] Skipping earnings for ${match.id}: could not resolve vendor for shipment`
+            )
+          }
+          const result = vendorId
+            ? await scheduleVendorEarningsOnDelivery(match.id, pool, { vendorId })
+            : { scheduled: 0, vendors: [], skipped_unscoped: true }
           console.log(`[Order] Vendor earnings scheduled for ${match.id}:`, result)
         } catch (earningsErr) {
           console.error(
@@ -137,6 +174,7 @@ export async function handleShiprocketWebhook(req: MedusaRequest, res: MedusaRes
               body: JSON.stringify({
                 order_id: match.id,
                 event: "order.delivered",
+                vendor_id: vendorId,
               }),
             })
           } catch (webhookErr) {

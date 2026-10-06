@@ -278,3 +278,61 @@ html.debug-devtools-blocked body > *:not(.debug-devtools-shield) {
     animation: none !important;
   }
 }
+
+/* ----------------------------------------------------------------
+   Payment Ledger Table — premium enhancements
+   ---------------------------------------------------------------- */
+
+.oweg-ledger-table {
+  position: relative;
+}
+
+.oweg-ledger-table::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 210, 106, 0.3) 20%, rgba(0, 210, 106, 0.5) 50%, rgba(0, 210, 106, 0.3) 80%, transparent 100%);
+  z-index: 20;
+  border-radius: 2px 2px 0 0;
+}
+
+.oweg-ledger-table thead th {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.oweg-ledger-table tbody tr {
+  transition: background-color 0.15s ease-out;
+}
+
+.oweg-ledger-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Custom horizontal scrollbar for the ledger table */
+.oweg-ledger-table .oweg-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.oweg-ledger-table .oweg-scroll::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 0 0 12px 12px;
+}
+
+.oweg-ledger-table .oweg-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, rgba(0, 210, 106, 0.25), rgba(0, 189, 95, 0.35));
+  border-radius: 999px;
+}
+
+.oweg-ledger-table .oweg-scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(90deg, rgba(0, 210, 106, 0.4), rgba(0, 189, 95, 0.5));
+}
+
+/* Pulse animation for live indicators */
+@keyframes oweg-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

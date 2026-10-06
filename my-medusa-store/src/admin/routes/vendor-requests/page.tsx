@@ -6,6 +6,7 @@ import { Users } from "@medusajs/icons"
 type VendorDocument = {
   key: string
   url: string
+  signed_url?: string
   name?: string
   type?: string
 }
@@ -29,7 +30,9 @@ type Vendor = {
   store_city?: string | null
   store_pincode?: string | null
   store_logo?: string | null
+  store_logo_signed_url?: string | null
   store_banner?: string | null
+  store_banner_signed_url?: string | null
   shipping_policy?: string | null
   return_policy?: string | null
   whatsapp_number?: string | null
@@ -37,6 +40,7 @@ type Vendor = {
   account_no?: string | null
   ifsc_code?: string | null
   cancel_cheque_url?: string | null
+  cancel_cheque_signed_url?: string | null
   documents?: VendorDocument[] | null
   marketplace_seller_id?: string | null
 }
@@ -367,7 +371,7 @@ const VendorRequestsPage = () => {
                                       key={doc.key || index}
                                       onClick={(e) => {
                                         e.stopPropagation()
-                                        window.open(doc.url, "_blank", "noopener,noreferrer")
+                                        window.open(doc.signed_url || doc.url, "_blank", "noopener,noreferrer")
                                         setOpenDropdown(null)
                                       }}
                                       className="w-full text-left px-4 py-2 text-sm hover:bg-ui-bg-subtle flex items-center gap-2 cursor-pointer transition-colors"
@@ -485,7 +489,7 @@ const VendorRequestsPage = () => {
                   {reviewVendor.store_logo && (
                     <div className="py-2 border-b border-ui-border-base">
                       <Text className="text-xs font-medium text-ui-fg-muted mb-2">Store Logo</Text>
-                      <img src={reviewVendor.store_logo} alt="Store Logo" className="w-24 h-24 object-cover rounded mt-2" />
+                      <img src={reviewVendor.store_logo_signed_url || reviewVendor.store_logo} alt="Store Logo" className="w-24 h-24 object-cover rounded mt-2" />
                       <div className="mt-2 px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800 inline-block">
                         ✓ Filled
                       </div>
@@ -494,7 +498,7 @@ const VendorRequestsPage = () => {
                   {reviewVendor.store_banner && (
                     <div className="py-2 border-b border-ui-border-base">
                       <Text className="text-xs font-medium text-ui-fg-muted mb-2">Store Banner</Text>
-                      <img src={reviewVendor.store_banner} alt="Store Banner" className="w-full h-32 object-cover rounded mt-2" />
+                      <img src={reviewVendor.store_banner_signed_url || reviewVendor.store_banner} alt="Store Banner" className="w-full h-32 object-cover rounded mt-2" />
                       <div className="mt-2 px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800 inline-block">
                         ✓ Filled
                       </div>
@@ -530,7 +534,7 @@ const VendorRequestsPage = () => {
                     <div className="py-2 border-b border-ui-border-base">
                       <Text className="text-xs font-medium text-ui-fg-muted mb-2">Cancel Cheque</Text>
                       <a
-                        href={reviewVendor.cancel_cheque_url}
+                        href={reviewVendor.cancel_cheque_signed_url || reviewVendor.cancel_cheque_url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-ui-fg-interactive hover:underline text-sm"
@@ -567,7 +571,7 @@ const VendorRequestsPage = () => {
                           <Button
                             variant="secondary"
                             size="small"
-                            onClick={() => window.open(doc.url, "_blank", "noopener,noreferrer")}
+                            onClick={() => window.open(doc.signed_url || doc.url, "_blank", "noopener,noreferrer")}
                           >
                             View
                           </Button>

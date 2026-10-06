@@ -10,10 +10,15 @@ import {
 } from "../../../lib/vendor-commission"
 import {
   clampLedgerRate,
+  clampRupeeAmount,
+  DEFAULT_CANCELLATION_CHARGE,
   DEFAULT_PLATFORM_FEE_RATE,
   ensureVendorPlatformFeeColumns,
+  getVendorCancellationChargeDefault,
   getVendorPlatformFeeDefaultRate,
+  resolveVendorCancellationCharge,
   resolveVendorPlatformFeeRate,
+  setVendorCancellationChargeDefault,
   setVendorPlatformFeeDefaultRate,
 } from "../../../lib/vendor-ledger-settlement"
 
@@ -22,9 +27,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   try {
     const vendorService = req.scope.resolve(VENDOR_MODULE) as VendorModuleService
     await ensureVendorPlatformFeeColumns(pool)
-    const [default_rate, default_platform_rate] = await Promise.all([
+    const [default_rate, default_platform_rate, default_cancellation_charge] = await Promise.all([
       getVendorCommissionDefaultRate(pool),
       getVendorPlatformFeeDefaultRate(pool),
+      getVendorCancellationChargeDefault(pool),
     ])
 
     const allVendors = await vendorService.listVendors({})
@@ -47,6 +53,14 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           },
           default_platform_rate
         )
+        const cancelOverride = v.cancellation_charge_override === true
+        const cancelResolved = resolveVendorCancellationCharge(
+          {
+            cancellation_charge_override: cancelOverride,
+            cancellation_charge: v.cancellation_charge,
+          },
+          default_cancellation_charge
+        )
         return {
           id: v.id,
           name: v.name,
@@ -61,6 +75,13 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           platform_fee_rate: clampLedgerRate(v.platform_fee_rate, DEFAULT_PLATFORM_FEE_RATE),
           effective_platform_rate: platformResolved.rate,
           platform_source: platformResolved.source,
+          cancellation_charge_override: cancelOverride,
+          cancellation_charge: clampRupeeAmount(
+            v.cancellation_charge,
+            DEFAULT_CANCELLATION_CHARGE
+          ),
+          effective_cancellation_charge: cancelResolved.amount,
+          cancellation_source: cancelResolved.source,
         }
       })
       .sort((a: any, b: any) => {
@@ -72,6 +93,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     return res.json({
       default_rate,
       default_platform_rate,
+      default_cancellation_charge,
       vendors,
       vendors_with_override: vendors.filter((v: any) => v.commission_override),
     })
@@ -84,16 +106,21 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
   const body = (req.body || {}) as {
     default_rate?: unknown
     default_platform_rate?: unknown
+    default_cancellation_charge?: unknown
   }
   const hasCommission = body.default_rate !== undefined && body.default_rate !== null && body.default_rate !== ""
   const hasPlatform =
     body.default_platform_rate !== undefined &&
     body.default_platform_rate !== null &&
     body.default_platform_rate !== ""
+  const hasCancel =
+    body.default_cancellation_charge !== undefined &&
+    body.default_cancellation_charge !== null &&
+    body.default_cancellation_charge !== ""
 
-  if (!hasCommission && !hasPlatform) {
+  if (!hasCommission && !hasPlatform && !hasCancel) {
     return res.status(400).json({
-      message: "default_rate or default_platform_rate is required (0-100)",
+      message: "default_rate, default_platform_rate, or default_cancellation_charge is required",
     })
   }
 
@@ -102,6 +129,7 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
     await ensureVendorPlatformFeeColumns(pool)
     let default_rate: number | undefined
     let default_platform_rate: number | undefined
+    let default_cancellation_charge: number | undefined
 
     if (hasCommission) {
       const parsed = Number(body.default_rate)
@@ -119,12 +147,23 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
       }
       default_platform_rate = await setVendorPlatformFeeDefaultRate(pool, parsed)
     }
+    if (hasCancel) {
+      const parsed = Number(body.default_cancellation_charge)
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100000) {
+        return res.status(400).json({
+          message: "default_cancellation_charge must be rupees between 0 and 100000",
+        })
+      }
+      default_cancellation_charge = await setVendorCancellationChargeDefault(pool, parsed)
+    }
 
     return res.json({
       default_rate:
         default_rate ?? (await getVendorCommissionDefaultRate(pool)),
       default_platform_rate:
         default_platform_rate ?? (await getVendorPlatformFeeDefaultRate(pool)),
+      default_cancellation_charge:
+        default_cancellation_charge ?? (await getVendorCancellationChargeDefault(pool)),
     })
   } finally {
     await pool.end().catch(() => {})
