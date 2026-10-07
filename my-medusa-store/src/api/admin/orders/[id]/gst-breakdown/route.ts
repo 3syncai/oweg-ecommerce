@@ -452,8 +452,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
         vendor_settlement = {
           taxable_amount: taxableAmount,
-          inclusive_amount: Number(summary.inclusive) || ledger.listing_total,
-          gst_amount: Number(summary.gst) || ledger.listing_gst,
+          // Product catalog inclusive — never Sheet4 C (A+B+GST) which includes logistics
+          inclusive_amount:
+            Number(summary.inclusive) || ledger.product_total || taxableAmount,
+          gst_amount: Number(summary.gst) || ledger.product_gst,
           gst_rate: outputGstRate,
           commission_rate: ledger.commission_rate,
           commission_amount: ledger.commission_total,

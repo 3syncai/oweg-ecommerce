@@ -263,7 +263,8 @@ function isLedgerSaleRow(row: VendorPaymentsView["settlements"][number]) {
 }
 
 function listingAmount(row: VendorPaymentsView["settlements"][number]) {
-  return Number(row.listing_total) || 0
+  // Product catalog sale (A + GST A). Never Sheet4 C (includes logistics).
+  return Number(row.order_amount) || 0
 }
 
 function buildDashboardData(input: {

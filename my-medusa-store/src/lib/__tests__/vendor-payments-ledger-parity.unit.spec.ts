@@ -52,8 +52,9 @@ function assertMappedToLedger(
   expect(view.category).toBe(ledger.category)
   expect(view.taxable_amount).toBe(ledger.item_price)
   expect(view.listing_gst).toBe(ledger.listing_gst)
-  expect(view.gst_amount).toBe(ledger.listing_gst)
-  expect(view.taxes).toBe(ledger.listing_gst)
+  expect(view.gst_amount).toBe(ledger.product_gst)
+  expect(view.taxes).toBe(ledger.product_gst)
+  expect(view.order_amount).toBe(ledger.product_total)
   expect(view.listing_total).toBe(ledger.listing_total)
   expect(view.platform_fee).toBe(ledger.platform_fee)
   expect(view.platform_gst).toBe(ledger.platform_gst)
@@ -366,12 +367,12 @@ describe("running balance + payout + claim", () => {
     expect(cards.withdrawn).toBe(1000)
     expect(cards.balance).toBe(leftover)
     expect(cards.settlement_balance).toBeCloseTo(leftover + 1000, 2)
-    expect(cards.full_sale).toBe(r2(a.listing_total + b.listing_total))
+    expect(cards.full_sale).toBe(r2(a.order_amount + b.order_amount))
   })
 })
 
 describe("cards stay consistent with settlement rows", () => {
-  it("today sale + today return: total_sale = sale C + return C", () => {
+  it("today sale + today return: total_sale = product sale + return (not Sheet4 C)", () => {
     const rows = applyRunningLedgerBalance(
       saleEarning({ status: "REVERSED", return_fee: 80 })
     )
@@ -381,11 +382,12 @@ describe("cards stay consistent with settlement rows", () => {
       unlocking_balance: 0,
       total_withdrawn: 0,
     })
-    expect(cards.full_sale).toBe(1239)
+    // ₹1000 + 18% product GST — logistics never inflate "sale"
+    expect(cards.full_sale).toBe(1180)
     expect(cards.total_sale).toBe(0)
     expect(cards.return_fee).toBe(80)
     expect(cards.platform_fee).toBe(50)
-    expect(cards.gst).toBe(189)
+    expect(cards.gst).toBe(180)
   })
 
   it("yesterday sale is in lifetime cards but not today's total_sale", () => {
@@ -396,7 +398,7 @@ describe("cards stay consistent with settlement rows", () => {
       unlocking_balance: 0,
       total_withdrawn: 0,
     })
-    expect(cards.full_sale).toBe(1239)
+    expect(cards.full_sale).toBe(1180)
     expect(cards.total_sale).toBe(0)
     expect(cards.gst).toBe(0)
     expect(cards.platform_fee).toBe(0)
@@ -528,7 +530,9 @@ describe("mixed vendor day — values match across every surface", () => {
     })
     expect(cards.balance).toBe(expectedEnd)
     expect(cards.withdrawn).toBe(200)
-    expect(cards.full_sale).toBe(r2(easy.listing_total + self.listing_total + returned[0].listing_total))
+    expect(cards.full_sale).toBe(
+      r2(easy.order_amount + self.order_amount + returned[0].order_amount)
+    )
   })
 })
 
