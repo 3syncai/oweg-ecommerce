@@ -591,7 +591,8 @@ export async function buildVendorCommissionInvoice(
     const cancellationFee = round2(Number(row.cancellation_fee) || 0)
     const status = String(row.status || "")
     const sign = status.toUpperCase() === "REVERSED" ? -1 : 1
-    const productGst = round2(Number(row.listing_gst) || Number(row.gst_amount) || 0) * sign
+    // Product GST only (stored at credit). Never use listing_gst (includes logistics GST).
+    const productGst = round2(Number(row.gst_amount) || 0) * sign
     const category = classifyOrder({
       status,
       cancellation_fee: cancellationFee,

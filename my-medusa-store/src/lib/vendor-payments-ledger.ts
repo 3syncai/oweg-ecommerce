@@ -342,13 +342,14 @@ export function summarizeVendorPaymentCards(
     (Number(extras.available_balance) || 0) + (Number(extras.total_withdrawn) || 0)
 
   return {
-    full_sale: sum(sales, "listing_total"),
-    taxes: sum(sales, "listing_gst"),
+    // Catalog product sales only (A + GST A). Logistics stay on their own card.
+    full_sale: sum(sales, "order_amount"),
+    taxes: sum(sales, "gst_amount"),
     lifetime_commission: sum(sales, "commission"),
     lifetime_tcs: Math.abs(sum(sales, "tcs")),
     lifetime_tds: Math.abs(sum(sales, "tds")),
-    total_sale: sum(todaySales, "listing_total") + sum(todayReturns, "listing_total"),
-    gst: sum(todaySales, "listing_gst"),
+    total_sale: sum(todaySales, "order_amount") + sum(todayReturns, "order_amount"),
+    gst: sum(todaySales, "gst_amount"),
     commission: Math.abs(sum(todaySales, "commission")),
     tcs: Math.abs(sum(todaySales, "tcs")),
     tds: Math.abs(sum(todaySales, "tds")),

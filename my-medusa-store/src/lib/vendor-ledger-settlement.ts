@@ -57,7 +57,13 @@ export type LedgerSettlementBreakdown = {
   category: LedgerCategory
   item_price: number
   logistic_fee: number
+  /** GST on product taxable only (A × product GST%). Not logistics. */
+  product_gst: number
+  /** Catalog / customer product sale = A + GST(A). Never includes Easy Ship. */
+  product_total: number
+  /** GST(A) + GST(B) — Sheet4 listing GST. */
   listing_gst: number
+  /** Sheet4 C = A + B + GST(A+B). Bank math only — not “Total sale”. */
   listing_total: number
   platform_rate: number
   platform_fee: number
@@ -274,6 +280,7 @@ export function calculateVendorLedgerSettlement(
   const listingGstItem = pct(A, outputGst)
   const listingGstLogistic = pct(B, serviceGst)
   const listingGst = round2(listingGstItem + listingGstLogistic)
+  const productTotal = round2(A + listingGstItem)
   const listingTotal = round2(A + B + listingGst)
 
   const platformFee = pct(A, rates.platform_rate)
@@ -326,6 +333,8 @@ export function calculateVendorLedgerSettlement(
     category,
     item_price: A,
     logistic_fee: displayLogisticFee,
+    product_gst: listingGstItem,
+    product_total: productTotal,
     listing_gst: listingGst,
     listing_total: listingTotal,
     platform_rate: rates.platform_rate,
@@ -369,6 +378,8 @@ function emptyBreakdown(opts: {
     category: opts.category,
     item_price: 0,
     logistic_fee: 0,
+    product_gst: 0,
+    product_total: 0,
     listing_gst: 0,
     listing_total: 0,
     platform_rate: opts.rates.platform_rate,
