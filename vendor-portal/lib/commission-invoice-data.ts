@@ -120,8 +120,6 @@ export function buildServiceLinesFromOrders(orders: CommissionInvoiceOrderLine[]
   const logistics = sum((o) => o.logistic_fee)
   const reverse = sum((o) => o.return_fee || 0)
   const cancel = sum((o) => o.cancellation_fee || 0)
-  const tcs = sum((o) => o.tcs || 0)
-  const tds = sum((o) => o.tds || 0)
 
   if (commission > 0) lines.push(serviceLine("998599", "Commission Fee", commission))
   if (platform > 0) lines.push(serviceLine("998599", "Platform Fee", platform))
@@ -129,8 +127,6 @@ export function buildServiceLinesFromOrders(orders: CommissionInvoiceOrderLine[]
   if (logistics > 0) lines.push(serviceLine("996812", "Logistics / Shipping Fee", logistics))
   if (reverse > 0) lines.push(serviceLine("996812", "Reverse Logistics Fee", reverse))
   if (cancel > 0) lines.push(serviceLine("998599", "Cancellation Fee", cancel))
-  if (tcs > 0) lines.push(serviceLine("998599", "TCS @0.5%", tcs, 0))
-  if (tds > 0) lines.push(serviceLine("998599", "TDS @0.1%", tds, 0))
   return lines
 }
 
