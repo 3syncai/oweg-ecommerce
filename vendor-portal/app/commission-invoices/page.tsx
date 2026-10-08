@@ -416,12 +416,10 @@ const CommissionInvoicesPage = () => {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
           <StatCard label="Orders" value={String(invoice?.orders.length || 0)} icon={<DocumentText />} />
           <StatCard label="Sale" value={formatCurrency(fees?.sale_amount || 0)} icon={<DocumentText />} />
-          <StatCard label="Product GST" value={formatCurrency(fees?.product_gst || 0)} icon={<DocumentText />} />
           <StatCard label="Commission" value={formatCurrency(fees?.commission || 0)} icon={<DocumentText />} />
           <StatCard label="Platform" value={formatCurrency(fees?.platform_fee || 0)} icon={<DocumentText />} />
           <StatCard label="Partner" value={formatCurrency(fees?.partner || 0)} icon={<DocumentText />} />
           <StatCard label="Logistics" value={formatCurrency(fees?.logistic_fee || 0)} icon={<DocumentText />} />
-          <StatCard label="TCS + TDS" value={formatCurrency((fees?.tcs || 0) + (fees?.tds || 0))} icon={<DocumentText />} />
           <StatCard
             label="Reverse + Cancel"
             value={formatCurrency((fees?.reverse_logistic || 0) + (fees?.cancellation_fee || 0))}
@@ -482,8 +480,6 @@ const CommissionInvoicesPage = () => {
                       <th className="border border-ui-border-base/70 px-3 py-2 text-right">Platform</th>
                       <th className="border border-ui-border-base/70 px-3 py-2 text-right">Commission</th>
                       <th className="border border-ui-border-base/70 px-3 py-2 text-right">Partner</th>
-                      <th className="border border-ui-border-base/70 px-3 py-2 text-right">TCS</th>
-                      <th className="border border-ui-border-base/70 px-3 py-2 text-right">TDS</th>
                       <th className="border border-ui-border-base/70 px-3 py-2 text-right">Reverse</th>
                       <th className="border border-ui-border-base/70 px-3 py-2 text-right">Cancel</th>
                     </tr>
@@ -535,8 +531,6 @@ const CommissionInvoicesPage = () => {
                           <MoneyCell value={row.platform_fee} tone={tone} />
                           <MoneyCell value={row.commission_amount} tone={tone} />
                           <MoneyCell value={row.partner_commission} tone={tone} />
-                          <MoneyCell value={row.tcs} tone={tone} />
-                          <MoneyCell value={row.tds} tone={tone} />
                           <MoneyCell value={row.return_fee} tone={tone} />
                           <MoneyCell value={row.cancellation_fee} tone={tone} />
                         </tr>

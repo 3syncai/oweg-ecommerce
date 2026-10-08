@@ -148,6 +148,32 @@ export async function downloadCommissionInvoicePdf(
 
   y += 18
 
+  // Sale + Product GST up top (catalog inclusive sale + embedded product GST)
+  const summaryItems = [
+    { label: "Sale (incl. GST)", value: money(exportData.fee_summary?.sale_amount) },
+    { label: "Product GST", value: money(exportData.fee_summary?.product_gst) },
+    {
+      label: "Orders",
+      value: String(exportData.orders?.length || 0),
+    },
+  ]
+  const sumW = (pageW - margin * 2 - 8) / 3
+  summaryItems.forEach((item, i) => {
+    const x = margin + i * (sumW + 4)
+    doc.setDrawColor(0, 210, 106)
+    doc.setFillColor(240, 253, 244)
+    doc.roundedRect(x, y, sumW, 14, 2, 2, "FD")
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(7)
+    doc.setTextColor(...MUTED)
+    doc.text(item.label.toUpperCase(), x + 4, y + 5)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(10)
+    doc.setTextColor(...INK)
+    doc.text(item.value, x + 4, y + 11)
+  })
+  y += 18
+
   const colW = (pageW - margin * 2 - 6) / 2
   const fromLines = [
     exportData.billed_from.name,
@@ -255,8 +281,6 @@ export async function downloadCommissionInvoicePdf(
           "Platform",
           "Commission",
           "Partner",
-          "TCS",
-          "TDS",
           "Reverse",
           "Cancel",
         ],
@@ -277,8 +301,6 @@ export async function downloadCommissionInvoicePdf(
         money(order.platform_fee),
         money(order.commission_amount),
         money(order.partner_commission),
-        money(order.tcs),
-        money(order.tds),
         money(order.return_fee),
         money(order.cancellation_fee),
       ]),
@@ -291,20 +313,18 @@ export async function downloadCommissionInvoicePdf(
       },
       bodyStyles: { fontSize: 6.5, textColor: INK },
       columnStyles: {
-        0: { cellWidth: 14, fontStyle: "bold" },
-        2: { cellWidth: 14 },
-        3: { cellWidth: 28 },
+        0: { cellWidth: 16, fontStyle: "bold" },
+        2: { cellWidth: 16 },
+        3: { cellWidth: 32 },
         4: { halign: "right" },
         5: { halign: "right" },
-        6: { halign: "center", cellWidth: 10 },
+        6: { halign: "center", cellWidth: 12 },
         7: { halign: "right" },
         8: { halign: "right" },
         9: { halign: "right" },
         10: { halign: "right" },
         11: { halign: "right" },
         12: { halign: "right" },
-        13: { halign: "right" },
-        14: { halign: "right" },
       },
       didParseCell: (hookData) => {
         if (hookData.section !== "body") return
