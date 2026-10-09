@@ -18,6 +18,12 @@ const money = (n: number | undefined, signed = false) => {
   return formatCurrency(v)
 }
 
+const formatGstRate = (rate: number | undefined | null) => {
+  const n = Number(rate)
+  if (!Number.isFinite(n) || n <= 0) return "—"
+  return `${n % 1 === 0 ? n.toFixed(0) : String(n)}%`
+}
+
 const CategoryBadge = ({ category }: { category: Row["category"] | Row["type"] }) => {
   const key = category === "sales" ? "sale" : category
   const label =
@@ -41,21 +47,28 @@ const CategoryBadge = ({ category }: { category: Row["category"] | Row["type"] }
         (key === "sale" || !key) && "bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 text-emerald-700 ring-1 ring-emerald-500/15 dark:text-emerald-300"
       )}
     >
-      <span className={clx(
-        "h-1.5 w-1.5 rounded-full",
-        key === "return" && "bg-red-500",
-        key === "claim" && "bg-amber-500",
-        key === "payment" && "bg-slate-500",
-        key === "cancellation" && "bg-orange-500",
-        (key === "sale" || !key) && "bg-emerald-500"
-      )} />
+      <span
+        className={clx(
+          "h-1.5 w-1.5 rounded-full",
+          key === "return" && "bg-red-500",
+          key === "claim" && "bg-amber-500",
+          key === "payment" && "bg-slate-500",
+          key === "cancellation" && "bg-orange-500",
+          (key === "sale" || !key) && "bg-emerald-500"
+        )}
+      />
       {label}
     </span>
   )
 }
 
 const StatusPill = ({ children, tone }: { children: ReactNode; tone: string }) => (
-  <span className={clx("inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider leading-none", tone)}>
+  <span
+    className={clx(
+      "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider leading-none",
+      tone
+    )}
+  >
     {children}
   </span>
 )
@@ -135,6 +148,32 @@ const Money = ({
   )
 }
 
+/** Product catalog sale = A + product GST. Never Sheet4 C (includes logistics). */
+function productListingTotal(row: Row) {
+  const orderAmt = Number(row.order_amount)
+  if (Number.isFinite(orderAmt) && orderAmt !== 0) return orderAmt
+  return (Number(row.taxable_amount) || 0) + (Number(row.gst_amount) || 0)
+}
+
+function sharedRateLabel(
+  rows: Row[],
+  pick: (row: Row) => number | undefined | null
+): string | null {
+  const rates = Array.from(
+    new Set(
+      rows
+        .map((row) => Number(pick(row)))
+        .filter((n) => Number.isFinite(n) && n > 0)
+    )
+  )
+  if (rates.length === 1) {
+    const n = rates[0]
+    return `${n % 1 === 0 ? n.toFixed(0) : String(n)}%`
+  }
+  if (rates.length > 1) return "varies"
+  return null
+}
+
 export default function PaymentLedgerTable({
   rows,
   onUnlock,
@@ -147,41 +186,69 @@ export default function PaymentLedgerTable({
     return category !== "payment"
   })
 
+  const saleLike = visible.filter((row) => {
+    const c = row.category || row.type
+    return c === "sale" || c === "sales" || c === "return"
+  })
+  const platformHdr = sharedRateLabel(saleLike, (r) => r.platform_rate)
+  const commissionHdr = sharedRateLabel(saleLike, (r) => r.commission_rate)
+  const partnerHdr = sharedRateLabel(saleLike, (r) => r.partner_rate)
+  const tcsHdr = sharedRateLabel(saleLike, (r) => r.tcs_rate) || "0.5%"
+  const tdsHdr = sharedRateLabel(saleLike, (r) => r.tds_rate) || "0.1%"
+
+  const Group = ({
+    children,
+    colSpan,
+    rate,
+  }: {
+    children: ReactNode
+    colSpan?: number
+    rate?: string | null
+  }) => (
+    <th colSpan={colSpan} className={clx(groupBase, groupStyle)}>
+      <div className="flex flex-col items-center gap-0.5 leading-tight">
+        <span>{children}</span>
+        {rate ? (
+          <span className="text-[10px] font-bold normal-case tracking-normal text-oweg-700 dark:text-oweg-400">
+            {rate}
+          </span>
+        ) : null}
+      </div>
+    </th>
+  )
+
   return (
     <div className="oweg-ledger-table overflow-hidden rounded-2xl border border-ui-border-base/60 bg-ui-bg-base shadow-lg shadow-black/[0.03]">
       <div className="overflow-x-auto oweg-scroll">
-        <table className="min-w-[80rem] w-full border-collapse text-left">
+        <table className="min-w-[84rem] w-full border-collapse text-left">
           <thead className="sticky top-0 z-10">
-            {/* Group header row */}
             <tr>
-              <th colSpan={5} className={clx(groupBase, groupStyle)}>
-                Order
-              </th>
-              <th colSpan={4} className={clx(groupBase, groupStyle)}>
-                Listing
-              </th>
-              <th colSpan={3} className={clx(groupBase, groupStyle)}>
+              <Group colSpan={5}>Order</Group>
+              <Group colSpan={5}>Listing</Group>
+              <Group colSpan={3} rate={platformHdr}>
                 Platform
-              </th>
-              <th colSpan={3} className={clx(groupBase, groupStyle)}>
+              </Group>
+              <Group colSpan={3} rate={commissionHdr}>
                 Commission
-              </th>
-              <th colSpan={3} className={clx(groupBase, groupStyle)}>
+              </Group>
+              <Group colSpan={3} rate={partnerHdr}>
                 Partner
-              </th>
-              <th colSpan={3} className={clx(groupBase, groupStyle)}>
+              </Group>
+              <Group colSpan={3} rate="GST 18%">
                 Logistics
-              </th>
-              <th colSpan={3} className={clx(groupBase, groupStyle)}>
+              </Group>
+              <Group colSpan={3} rate="GST 18%">
                 Reverse logistics
-              </th>
-              <th colSpan={3} className={clx(groupBase, groupStyle)}>
+              </Group>
+              <Group colSpan={3} rate="GST 18%">
                 Cancellation
-              </th>
-              <th className={clx(groupBase, groupStyle)}>Claim</th>
-              <th colSpan={2} className={clx(groupBase, groupStyle)}>Settlement</th>
+              </Group>
+              <Group>Claim</Group>
+              <Group colSpan={2} rate={`${tcsHdr} / ${tdsHdr}`}>
+                Tax deduct
+              </Group>
+              <Group colSpan={2}>Settlement</Group>
             </tr>
-            {/* Column header row */}
             <tr>
               <TH>Order ID</TH>
               <TH>Date</TH>
@@ -190,7 +257,8 @@ export default function PaymentLedgerTable({
               <TH>Invoice no</TH>
               <TH className="text-right">Item price</TH>
               <TH className="text-right">Logistics</TH>
-              <TH className="text-right">GST</TH>
+              <TH className="text-right">GST rate</TH>
+              <TH className="text-right">GST amount</TH>
               <TH className="text-right">Listing total</TH>
               <TH className="text-right">Fee</TH>
               <TH className="text-right">Tax</TH>
@@ -211,6 +279,8 @@ export default function PaymentLedgerTable({
               <TH className="text-right">Tax</TH>
               <TH className="text-right">Total</TH>
               <TH className="text-right">Amount</TH>
+              <TH className="text-right">TCS</TH>
+              <TH className="text-right">TDS</TH>
               <TH>Status</TH>
               <TH className="text-right">Balance</TH>
             </tr>
@@ -232,15 +302,21 @@ export default function PaymentLedgerTable({
               )
               if (category === "return") {
                 statusNode = (
-                  <StatusPill tone="bg-red-50 text-red-600 ring-1 ring-red-500/15 dark:bg-red-900/20 dark:text-red-400">Returned</StatusPill>
+                  <StatusPill tone="bg-red-50 text-red-600 ring-1 ring-red-500/15 dark:bg-red-900/20 dark:text-red-400">
+                    Returned
+                  </StatusPill>
                 )
               } else if (category === "claim") {
                 statusNode = (
-                  <StatusPill tone="bg-amber-50 text-amber-700 ring-1 ring-amber-500/15 dark:bg-amber-900/20 dark:text-amber-300">Claim</StatusPill>
+                  <StatusPill tone="bg-amber-50 text-amber-700 ring-1 ring-amber-500/15 dark:bg-amber-900/20 dark:text-amber-300">
+                    Claim
+                  </StatusPill>
                 )
               } else if (row.status === "ON_HOLD") {
                 statusNode = (
-                  <StatusPill tone="bg-amber-50 text-amber-700 ring-1 ring-amber-500/15 dark:bg-amber-900/20 dark:text-amber-300">Return hold</StatusPill>
+                  <StatusPill tone="bg-amber-50 text-amber-700 ring-1 ring-amber-500/15 dark:bg-amber-900/20 dark:text-amber-300">
+                    Return hold
+                  </StatusPill>
                 )
               } else if (row.status === "UNLOCKING" && row.unlock_at) {
                 statusNode = (
@@ -248,11 +324,15 @@ export default function PaymentLedgerTable({
                 )
               } else if (row.status === "PAID") {
                 statusNode = (
-                  <StatusPill tone="bg-emerald-50 text-emerald-600 ring-1 ring-emerald-500/15 dark:bg-emerald-900/20 dark:text-emerald-400">Paid</StatusPill>
+                  <StatusPill tone="bg-emerald-50 text-emerald-600 ring-1 ring-emerald-500/15 dark:bg-emerald-900/20 dark:text-emerald-400">
+                    Paid
+                  </StatusPill>
                 )
               } else if (row.item_status === "Delivered") {
                 statusNode = (
-                  <StatusPill tone="bg-emerald-50 text-emerald-600 ring-1 ring-emerald-500/15 dark:bg-emerald-900/20 dark:text-emerald-400">Delivered</StatusPill>
+                  <StatusPill tone="bg-emerald-50 text-emerald-600 ring-1 ring-emerald-500/15 dark:bg-emerald-900/20 dark:text-emerald-400">
+                    Delivered
+                  </StatusPill>
                 )
               }
 
@@ -292,8 +372,11 @@ export default function PaymentLedgerTable({
                   <TD muted>{row.invoice_no || "—"}</TD>
                   <Money value={row.taxable_amount} tone={moneyTone} />
                   <Money value={row.logistic_fee} tone={moneyTone} />
-                  <Money value={row.listing_gst ?? row.gst_amount} tone={moneyTone} />
-                  <Money value={row.listing_total} strong tone={moneyTone} />
+                  <TD align="right" muted={!row.gst_rate}>
+                    {formatGstRate(row.gst_rate)}
+                  </TD>
+                  <Money value={row.gst_amount} tone={moneyTone} />
+                  <Money value={productListingTotal(row)} strong tone={moneyTone} />
                   <Money value={row.platform_fee} tone={moneyTone} />
                   <Money value={row.platform_gst} tone={moneyTone} />
                   <Money value={row.platform_total} tone={moneyTone} />
@@ -313,6 +396,8 @@ export default function PaymentLedgerTable({
                   <Money value={row.cancellation_gst} tone={moneyTone} />
                   <Money value={row.cancellation_total} tone={moneyTone} />
                   <Money value={row.claim_amount} tone={moneyTone} />
+                  <Money value={row.tcs} tone={moneyTone} />
+                  <Money value={row.tds} tone={moneyTone} />
                   <TD>{statusNode}</TD>
                   <Money value={row.balance_amount} strong tone={moneyTone} />
                 </tr>
@@ -321,7 +406,6 @@ export default function PaymentLedgerTable({
           </tbody>
         </table>
       </div>
-      {/* Bottom progress bar accent */}
       <div className="h-1 w-full bg-gradient-to-r from-oweg-400 via-oweg-500 to-oweg-600 opacity-80" />
     </div>
   )
