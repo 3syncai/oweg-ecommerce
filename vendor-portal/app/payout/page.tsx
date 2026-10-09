@@ -365,27 +365,29 @@ const VendorPayoutPage = () => {
       (sum, row) => sum + (Number(row.order_amount) || 0),
       0
     )
-    const taxesFromLedger = salesRows.reduce(
-      (sum, row) => sum + (Number(row.gst_amount) || 0),
+    const tcsFromLedger = salesRows.reduce((sum, row) => sum + Math.abs(Number(row.tcs) || 0), 0)
+    const tdsFromLedger = salesRows.reduce((sum, row) => sum + Math.abs(Number(row.tds) || 0), 0)
+    const platformTotalFromLedger = salesRows.reduce(
+      (sum, row) => sum + Math.abs(Number(row.platform_total) || 0),
       0
     )
-    const commissionFromLedger = salesRows.reduce(
-      (sum, row) => sum + (Number(row.commission) || 0),
+    const commissionTotalFromLedger = salesRows.reduce(
+      (sum, row) => sum + Math.abs(Number(row.commission_total) || 0),
       0
     )
-    const tcsFromLedger = salesRows.reduce((sum, row) => sum + (Number(row.tcs) || 0), 0)
-    const tdsFromLedger = salesRows.reduce((sum, row) => sum + (Number(row.tds) || 0), 0)
+    const partnerTotalFromLedger = salesRows.reduce(
+      (sum, row) => sum + Math.abs(Number(row.partner_total) || 0),
+      0
+    )
+    const logisticTotalFromLedger = salesRows.reduce(
+      (sum, row) => sum + Math.abs(Number(row.logistic_total) || 0),
+      0
+    )
 
     const fullSale =
       Number(payments.cards.full_sale) > 0
         ? Number(payments.cards.full_sale)
         : fullSaleFromLedger
-    const taxes =
-      Number(payments.cards.taxes) > 0 ? Number(payments.cards.taxes) : taxesFromLedger
-    const lifetimeCommission =
-      Number(payments.cards.lifetime_commission) > 0
-        ? Number(payments.cards.lifetime_commission)
-        : commissionFromLedger
     const lifetimeTcs =
       Number(payments.cards.lifetime_tcs) > 0
         ? Number(payments.cards.lifetime_tcs)
@@ -394,7 +396,33 @@ const VendorPayoutPage = () => {
       Number(payments.cards.lifetime_tds) > 0
         ? Number(payments.cards.lifetime_tds)
         : tdsFromLedger
-    const taxesAndCommission = taxes + lifetimeCommission + lifetimeTcs + lifetimeTds
+    const lifetimePlatform = platformTotalFromLedger
+    const lifetimeCommission = commissionTotalFromLedger
+    const lifetimePartner = partnerTotalFromLedger
+    const lifetimeLogistics = logisticTotalFromLedger
+    const taxesAndCommission =
+      lifetimePlatform +
+      lifetimeCommission +
+      lifetimePartner +
+      lifetimeLogistics +
+      lifetimeTcs +
+      lifetimeTds
+
+    // Rates from latest sale (admin-controlled; frozen per order).
+    const rateSource =
+      [...salesRows].reverse().find((row) => Math.abs(Number(row.platform_total) || 0) > 0) ||
+      salesRows[salesRows.length - 1]
+    const formatRate = (rate: number | undefined | null) => {
+      const n = Number(rate)
+      if (!Number.isFinite(n) || n <= 0) return null
+      return `${n % 1 === 0 ? n.toFixed(0) : n}%`
+    }
+    const platformRateLabel = formatRate(rateSource?.platform_rate)
+    const commissionRateLabel = formatRate(rateSource?.commission_rate)
+    const partnerRateLabel = formatRate(rateSource?.partner_rate)
+    const tcsRateLabel = formatRate(rateSource?.tcs_rate) || "0.5%"
+    const tdsRateLabel = formatRate(rateSource?.tds_rate) || "0.1%"
+    const logisticsRateLabel = null
 
     const settlementBalance =
       Number(payments.cards.settlement_balance) > 0
@@ -480,14 +508,9 @@ const VendorPayoutPage = () => {
             <div className="relative">
               <StatCard
                 icon={<Tag />}
-                label="Taxes & commission"
+                label="Total deduction"
                 value={formatCurrency(taxesAndCommission)}
                 className="pr-10"
-                subtext={
-                  <Text size="small" className="text-ui-fg-subtle">
-                    GST + commission + TCS + TDS
-                  </Text>
-                }
               />
               <div
                 className="absolute right-3 top-3 z-20"
@@ -507,14 +530,14 @@ const VendorPayoutPage = () => {
                       : "border-ui-border-base bg-ui-bg-base text-ui-fg-subtle hover:border-oweg-300 hover:bg-oweg-50 hover:text-oweg-600"
                   )}
                   aria-expanded={feesInfoOpen}
-                  aria-label="Tax and commission breakdown"
-                  title="Tax, commission, TCS & TDS"
+                  aria-label="Total deduction breakdown"
+                  title="Platform, commission, partner, logistics, TCS & TDS"
                 >
                   i
                 </button>
                 <div
                   className={clx(
-                    "oweg-popover absolute right-0 top-full z-30 mt-2 w-60 rounded-2xl border border-ui-border-base/60 bg-ui-bg-base p-4 shadow-xl shadow-black/[0.08]",
+                    "oweg-popover absolute right-0 top-full z-30 mt-2 w-72 rounded-2xl border border-ui-border-base/60 bg-ui-bg-base p-4 shadow-xl shadow-black/[0.08]",
                     feesInfoOpen ? "oweg-popover-open" : "oweg-popover-closed"
                   )}
                   role="tooltip"
@@ -524,19 +547,58 @@ const VendorPayoutPage = () => {
                   </Text>
                   <div className="space-y-1.5">
                     {[
-                      { label: "Tax (GST)", val: taxes, color: "bg-blue-500" },
-                      { label: "Commission", val: lifetimeCommission, color: "bg-rose-500" },
-                      { label: "TCS", val: lifetimeTcs, color: "bg-amber-500" },
-                      { label: "TDS", val: lifetimeTds, color: "bg-purple-500" },
+                      {
+                        label: "Platform fee",
+                        rate: platformRateLabel,
+                        val: lifetimePlatform,
+                        color: "bg-blue-500",
+                      },
+                      {
+                        label: "Commission",
+                        rate: commissionRateLabel,
+                        val: lifetimeCommission,
+                        color: "bg-indigo-500",
+                      },
+                      {
+                        label: "Partner fee",
+                        rate: partnerRateLabel,
+                        val: lifetimePartner,
+                        color: "bg-rose-500",
+                      },
+                      {
+                        label: "Logistics",
+                        rate: logisticsRateLabel,
+                        val: lifetimeLogistics,
+                        color: "bg-emerald-500",
+                      },
+                      {
+                        label: "TCS",
+                        rate: tcsRateLabel,
+                        val: lifetimeTcs,
+                        color: "bg-amber-500",
+                      },
+                      {
+                        label: "TDS",
+                        rate: tdsRateLabel,
+                        val: lifetimeTds,
+                        color: "bg-purple-500",
+                      },
                     ].map((item) => (
                       <div key={item.label} className="flex items-center justify-between gap-3 rounded-xl bg-ui-bg-subtle/60 px-3 py-2.5">
-                        <div className="flex items-center gap-2">
-                          <div className={clx("h-2 w-2 rounded-full", item.color)} />
-                          <Text size="small" className="text-ui-fg-subtle">
-                            {item.label}
-                          </Text>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className={clx("h-2 w-2 shrink-0 rounded-full", item.color)} />
+                          <div className="min-w-0">
+                            <Text size="small" className="text-ui-fg-subtle">
+                              {item.label}
+                            </Text>
+                            {item.rate ? (
+                              <Text size="xsmall" className="tabular-nums text-ui-fg-muted">
+                                {item.rate}
+                              </Text>
+                            ) : null}
+                          </div>
                         </div>
-                        <Text size="small" weight="plus" className="tabular-nums font-semibold">
+                        <Text size="small" weight="plus" className="shrink-0 tabular-nums font-semibold">
                           {formatCurrency(item.val)}
                         </Text>
                       </div>
@@ -671,7 +733,7 @@ const VendorPayoutPage = () => {
         >
           <SectionHeading
             title="Settlement ledger"
-            subtitle="Sale, return, claim, and cancellation rows. TCS, TDS, bank settlement, and payout details stay in the Excel download."
+            subtitle="Sale, return, claim, and cancellation rows including TCS and TDS. Bank settlement and payout details stay in the Excel download."
             right={
               filteredLedgerRows.length > 0 ? (
                 <span className="inline-flex items-center rounded-full border border-ui-border-base/50 bg-ui-bg-subtle/50 px-3 py-1">
@@ -767,8 +829,8 @@ const VendorPayoutPage = () => {
               </svg>
             </div>
             <Text size="small" className="leading-relaxed text-ui-fg-muted">
-              Platform, commission, and partner fees include 18% GST. Download the Excel report
-              for TCS, TDS, bank settlement, transaction ID, and payment date.
+              Platform, commission, and partner fees include 18% GST. TCS and TDS show per row
+              above. Download Excel for bank settlement, transaction ID, and payment date.
             </Text>
           </div>
         </div>

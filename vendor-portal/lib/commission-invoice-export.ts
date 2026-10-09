@@ -111,6 +111,8 @@ export function downloadCommissionInvoiceExcel(
     "Commission Rate (%)",
     "Commission (₹)",
     "Partner (₹)",
+    "TCS (₹)",
+    "TDS (₹)",
     "Reverse Logistics (₹)",
     "Cancellation (₹)",
   ])
@@ -129,13 +131,15 @@ export function downloadCommissionInvoiceExcel(
       order.commission_rate,
       order.commission_amount,
       order.partner_commission || 0,
+      order.tcs || 0,
+      order.tds || 0,
       order.return_fee || 0,
       order.cancellation_fee || 0,
     ])
   }
 
   const sheet = XLSX.utils.aoa_to_sheet(rows)
-  sheet["!cols"] = Array.from({ length: 14 }, () => ({ wch: 16 }))
+  sheet["!cols"] = Array.from({ length: 16 }, () => ({ wch: 16 }))
 
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, sheet, "Commission Invoice")
