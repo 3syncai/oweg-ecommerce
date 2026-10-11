@@ -1715,6 +1715,9 @@ const VendorProductNewPage = () => {
       }
       usedSkus={usedSkus}
       simpleProductExtras={!formData.hasVariants ? renderSimpleProductMedia() : undefined}
+      taxAttributesExtras={renderTaxAttributesSection()}
+      productGstRate={formData.gstRate}
+      taxCode={formData.taxCode}
     />
   )
 
@@ -1821,7 +1824,6 @@ const VendorProductNewPage = () => {
 
         {renderBasicsSection()}
         {renderVariantsSection()}
-        {renderTaxAttributesSection()}
         {renderOrganizeSection()}
 
         <div className="flex justify-end gap-3 mt-4 pb-8">

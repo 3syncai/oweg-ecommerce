@@ -6,6 +6,7 @@ import {
   COMMISSION_RATE,
   DEFAULT_LOGISTICS_FEE,
   FEE_GST_RATE,
+  LOGISTICS_GST_RATE,
   PARTNER_COMMISSION_RATE,
   PLATFORM_FEE_RATE,
   PRODUCT_GST_RATE,
@@ -109,28 +110,50 @@ function MoneyTableRow({
   )
 }
 
-export default function ProductPriceCalculator() {
-  const [baseInput, setBaseInput] = useState("")
+export type ProductPriceCalculatorProps = {
+  productGstRate?: number | string
+  taxCode?: string
+}
+
+export default function ProductPriceCalculator({
+  productGstRate,
+  taxCode,
+}: ProductPriceCalculatorProps = {}) {
+  const [priceInput, setPriceInput] = useState("")
   const [logisticsInput, setLogisticsInput] = useState(
     String(DEFAULT_LOGISTICS_FEE)
   )
   const [expanded, setExpanded] = useState(false)
 
+  const effectiveProductGstRate = useMemo(() => {
+    if (
+      productGstRate !== undefined &&
+      productGstRate !== "" &&
+      productGstRate !== null &&
+      !isNaN(Number(productGstRate))
+    ) {
+      const n = Number(productGstRate)
+      if (n >= 0) return n
+    }
+    return PRODUCT_GST_RATE
+  }, [productGstRate])
+
   const pricing = useMemo(
     () =>
       calculateVendorPricing(
-        parseNonNegativeNumber(baseInput),
-        parseNonNegativeNumber(logisticsInput)
+        parseNonNegativeNumber(priceInput),
+        parseNonNegativeNumber(logisticsInput),
+        effectiveProductGstRate
       ),
-    [baseInput, logisticsInput]
+    [priceInput, logisticsInput, effectiveProductGstRate]
   )
 
-  const hasPrice = pricing.item.basic > 0
+  const hasPrice = pricing.item.total > 0
 
-  const onBaseChange = (value: string) => {
+  const onPriceChange = (value: string) => {
     const next = allowDecimalInput(value)
     if (next === null) return
-    setBaseInput(next)
+    setPriceInput(next)
   }
 
   const onLogisticsChange = (value: string) => {
@@ -140,7 +163,7 @@ export default function ProductPriceCalculator() {
   }
 
   const reset = () => {
-    setBaseInput("")
+    setPriceInput("")
     setLogisticsInput(String(DEFAULT_LOGISTICS_FEE))
     setExpanded(false)
   }
@@ -149,11 +172,17 @@ export default function ProductPriceCalculator() {
     <div className="rounded-xl border border-ui-border-base bg-ui-bg-base overflow-hidden">
       <div className="px-5 py-4 border-b border-ui-border-base bg-ui-bg-subtle/40 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <Heading level="h3" className="text-base font-semibold">
-            Product Price Calculator
-          </Heading>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Heading level="h3" className="text-base font-semibold">
+              Product Price Calculator
+            </Heading>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-300">
+              Product GST: {effectiveProductGstRate}%
+              {taxCode ? ` (${taxCode})` : ""}
+            </span>
+          </div>
           <Text size="small" className="text-ui-fg-muted mt-1">
-            Enter your product base price to see the estimated total listing
+            Enter your all-inclusive product price to see the estimated total listing
             price, charges and your bank settlement.
           </Text>
         </div>
@@ -166,30 +195,29 @@ export default function ProductPriceCalculator() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div className="space-y-4">
             <div>
-              <Label htmlFor="vendor-base-price" className="mb-1.5 block">
-                Product Base Price
+              <Label htmlFor="vendor-product-price" className="mb-1.5 block">
+                Product Price
               </Label>
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ui-fg-muted text-sm">
                   ₹
                 </span>
                 <Input
-                  id="vendor-base-price"
+                  id="vendor-product-price"
                   inputMode="decimal"
-                  placeholder="Enter your product base price"
-                  value={baseInput}
-                  onChange={(e) => onBaseChange(e.target.value)}
+                  placeholder="Enter product price (incl. GST)"
+                  value={priceInput}
+                  onChange={(e) => onPriceChange(e.target.value)}
                   className="pl-7 text-base h-11"
-                  aria-describedby="vendor-base-price-hint"
+                  aria-describedby="vendor-product-price-hint"
                 />
               </div>
               <Text
-                id="vendor-base-price-hint"
+                id="vendor-product-price-hint"
                 size="xsmall"
                 className="text-ui-fg-muted mt-1.5 block"
               >
-                Price before GST. Fees and taxes are applied automatically by the
-                platform.
+                The price is GST included.
               </Text>
             </div>
 
@@ -323,11 +351,11 @@ export default function ProductPriceCalculator() {
               </Text>
               <TableHeader col2="Output GST" col3="Total" />
               <MoneyTableRow
-                label={`Item price (GST ${PRODUCT_GST_RATE}%)`}
+                label={`Item price (incl. GST ${effectiveProductGstRate}%)`}
                 row={pricing.item}
               />
               <MoneyTableRow
-                label={`Logistics (GST ${PRODUCT_GST_RATE}%)`}
+                label={`Logistics (GST ${LOGISTICS_GST_RATE}%)`}
                 row={pricing.logistics}
                 muted
               />
