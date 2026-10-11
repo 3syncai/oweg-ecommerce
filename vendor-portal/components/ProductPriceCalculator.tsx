@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useMemo, useState } from "react"
+import React, { useMemo, useState, useEffect } from "react"
 import { Button, Heading, Input, Label, Text } from "@medusajs/ui"
 import {
   COMMISSION_RATE,
@@ -110,20 +110,46 @@ function MoneyTableRow({
   )
 }
 
+export type LogisticsEstimateDetails = {
+  freight_charge?: number
+  gst_rate?: number
+  gst_amount?: number
+  total_logistics_fee?: number
+  courier_name?: string
+  pickup_pincode?: string
+  delivery_pincode?: string
+  provider?: string
+}
+
 export type ProductPriceCalculatorProps = {
   productGstRate?: number | string
   taxCode?: string
+  logisticsFee?: number
+  isLogisticsReadOnly?: boolean
+  logisticsDetails?: LogisticsEstimateDetails | null
+  isFetchingLogistics?: boolean
 }
 
 export default function ProductPriceCalculator({
   productGstRate,
   taxCode,
+  logisticsFee,
+  isLogisticsReadOnly = true,
+  logisticsDetails,
+  isFetchingLogistics = false,
 }: ProductPriceCalculatorProps = {}) {
   const [priceInput, setPriceInput] = useState("")
   const [logisticsInput, setLogisticsInput] = useState(
-    String(DEFAULT_LOGISTICS_FEE)
+    logisticsFee != null ? String(logisticsFee) : String(DEFAULT_LOGISTICS_FEE)
   )
   const [expanded, setExpanded] = useState(false)
+
+  // Sync logisticsInput when logisticsFee prop updates (e.g. from ITL API fetch)
+  useEffect(() => {
+    if (logisticsFee != null && !isNaN(logisticsFee) && logisticsFee >= 0) {
+      setLogisticsInput(String(logisticsFee))
+    }
+  }, [logisticsFee])
 
   const effectiveProductGstRate = useMemo(() => {
     if (
@@ -169,64 +195,97 @@ export default function ProductPriceCalculator({
   }
 
   return (
-    <div className="rounded-xl border border-ui-border-base bg-ui-bg-base overflow-hidden">
-      <div className="px-5 py-4 border-b border-ui-border-base bg-ui-bg-subtle/40 flex items-start justify-between gap-3">
+    <div className="rounded-2xl border border-ui-border-base/70 bg-ui-bg-base shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-ui-border-base/60 bg-ui-bg-subtle/30 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <Heading level="h3" className="text-base font-semibold">
+          <div className="flex flex-wrap items-center gap-2">
+            <Heading level="h3" className="text-base font-semibold tracking-tight">
               Product Price Calculator
             </Heading>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-300">
-              Product GST: {effectiveProductGstRate}%
-              {taxCode ? ` (${taxCode})` : ""}
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-300">
+              GST: {effectiveProductGstRate}%
+              {taxCode ? ` · ${taxCode}` : ""}
             </span>
           </div>
-          <Text size="small" className="text-ui-fg-muted mt-1">
-            Enter your all-inclusive product price to see the estimated total listing
-            price, charges and your bank settlement.
+          <Text size="xsmall" className="text-ui-fg-muted mt-0.5">
+            All-inclusive product pricing with dynamic tax and fee deductions
           </Text>
         </div>
-        <Button variant="secondary" size="small" onClick={reset} type="button">
+        <Button
+          variant="secondary"
+          size="small"
+          onClick={reset}
+          type="button"
+          className="text-xs text-ui-fg-muted hover:text-ui-fg-base"
+        >
           Reset
         </Button>
       </div>
 
       <div className="p-5 space-y-5">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Top inputs and summary */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+          {/* Left: Inputs */}
           <div className="space-y-4">
             <div>
-              <Label htmlFor="vendor-product-price" className="mb-1.5 block">
-                Product Price
-              </Label>
+              <div className="flex items-center justify-between mb-1.5">
+                <Label htmlFor="vendor-product-price" className="text-xs font-semibold text-ui-fg-base">
+                  Product Price
+                </Label>
+                <span className="text-[11px] text-ui-fg-muted">GST inclusive</span>
+              </div>
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ui-fg-muted text-sm">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ui-fg-muted text-sm font-medium">
                   ₹
                 </span>
                 <Input
                   id="vendor-product-price"
                   inputMode="decimal"
-                  placeholder="Enter product price (incl. GST)"
+                  placeholder="Enter product price (e.g. 1360)"
                   value={priceInput}
                   onChange={(e) => onPriceChange(e.target.value)}
-                  className="pl-7 text-base h-11"
+                  className="pl-7 text-base h-10 rounded-lg"
                   aria-describedby="vendor-product-price-hint"
                 />
               </div>
               <Text
                 id="vendor-product-price-hint"
                 size="xsmall"
-                className="text-ui-fg-muted mt-1.5 block"
+                className="text-ui-fg-muted mt-1 block text-[11px]"
               >
                 The price is GST included.
               </Text>
             </div>
 
             <div>
-              <Label htmlFor="vendor-logistics-fee" className="mb-1.5 block">
-                Logistics Fee
-              </Label>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="vendor-logistics-fee" className="text-xs font-semibold text-ui-fg-base">
+                    Logistics Fee
+                  </Label>
+                  <span className="inline-flex items-center gap-1 rounded-md bg-ui-bg-subtle px-1.5 py-0.5 text-[10px] font-medium text-ui-fg-muted ring-1 ring-ui-border-base">
+                    <svg className="w-2.5 h-2.5 text-ui-fg-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    Non-editable
+                  </span>
+                </div>
+                {isFetchingLogistics ? (
+                  <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium animate-pulse flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-600 animate-ping" />
+                    Calculating delivery fee...
+                  </span>
+                ) : logisticsDetails ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-300">
+                    Auto-calculated
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-ui-fg-muted">Auto-calculated</span>
+                )}
+              </div>
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ui-fg-muted text-sm">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ui-fg-muted text-sm font-medium">
                   ₹
                 </span>
                 <Input
@@ -234,78 +293,127 @@ export default function ProductPriceCalculator({
                   inputMode="decimal"
                   placeholder={String(DEFAULT_LOGISTICS_FEE)}
                   value={logisticsInput}
-                  onChange={(e) => onLogisticsChange(e.target.value)}
-                  className="pl-7 text-base h-11"
+                  readOnly={isLogisticsReadOnly}
+                  disabled={isLogisticsReadOnly}
+                  onChange={(e) => {
+                    if (!isLogisticsReadOnly) {
+                      onLogisticsChange(e.target.value)
+                    }
+                  }}
+                  className="pl-7 pr-24 text-base h-10 rounded-lg bg-ui-bg-subtle/70 text-ui-fg-base cursor-not-allowed select-none font-medium opacity-90"
                   aria-describedby="vendor-logistics-fee-hint"
                 />
+                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[11px] font-medium text-ui-fg-muted">
+                  <span>+ 18% GST</span>
+                </div>
               </div>
               <Text
                 id="vendor-logistics-fee-hint"
                 size="xsmall"
-                className="text-ui-fg-muted mt-1.5 block"
+                className="text-ui-fg-muted mt-1.5 block text-[11px] leading-relaxed"
               >
-                Logistics basic before GST. Default ₹{DEFAULT_LOGISTICS_FEE};
-                editable for your shipment.
+                {isFetchingLogistics ? (
+                  <span className="text-blue-600 dark:text-blue-400">
+                    Calculating delivery charges from package attributes...
+                  </span>
+                ) : logisticsDetails ? (
+                  <span>
+                    Delivery fee: <strong>₹{pricing.logistics.basic.toFixed(2)}</strong> basic + 18% GST (<strong>₹{pricing.logistics.gstOrTax.toFixed(2)}</strong>) = <strong>₹{pricing.logistics.total.toFixed(2)}</strong> total.
+                  </span>
+                ) : (
+                  <span>
+                    Logistics basic: <strong>₹{pricing.logistics.basic.toFixed(2)}</strong> + 18% GST (<strong>₹{pricing.logistics.gstOrTax.toFixed(2)}</strong>) = <strong>₹{pricing.logistics.total.toFixed(2)}</strong>. Auto-calculated from package attributes.
+                  </span>
+                )}
               </Text>
             </div>
 
-            <div className="rounded-lg border border-ui-border-base bg-ui-bg-subtle/60 px-3 py-2.5">
-              <Text size="xsmall" className="text-ui-fg-muted block">
-                Total Listing Price
-              </Text>
+            <div className="rounded-lg border border-ui-border-base/70 bg-ui-bg-subtle/40 px-3.5 py-2.5 flex items-center justify-between gap-3">
+              <div>
+                <Text size="xsmall" className="text-ui-fg-muted block">
+                  Total Listing Price
+                </Text>
+                <span className="text-[11px] text-ui-fg-muted">
+                  Shown to customer on storefront
+                </span>
+              </div>
               <Text
                 size="base"
                 weight="plus"
-                className={`tabular-nums block mt-0.5 text-lg ${
+                className={`tabular-nums text-lg font-semibold ${
                   hasPrice ? "text-ui-fg-base" : "text-ui-fg-muted"
                 }`}
               >
                 {formatInr(
-                  hasPrice
-                    ? pricing.totalListingPriceRounded
-                    : 0,
+                  hasPrice ? pricing.totalListingPriceRounded : 0,
                   hasPrice ? 0 : 2
                 )}
-              </Text>
-              <Text size="xsmall" className="text-ui-fg-muted mt-1 block">
-                Use this as your listing / Price ₹.
               </Text>
             </div>
           </div>
 
+          {/* Right: Settlement Summary Card */}
           <div
-            className={`rounded-xl border p-4 sm:p-5 ${
+            className={`rounded-xl border p-4 sm:p-5 flex flex-col justify-between transition-colors ${
               hasPrice
-                ? "border-emerald-200 bg-emerald-50/80"
-                : "border-ui-border-base bg-ui-bg-subtle/50"
+                ? "border-emerald-500/20 bg-emerald-500/[0.03]"
+                : "border-ui-border-base/70 bg-ui-bg-subtle/30"
             }`}
           >
-            <Text size="small" className="text-ui-fg-muted font-medium">
-              Bank Settlement
-            </Text>
-            <p
-              className={`mt-1 text-2xl sm:text-3xl font-semibold tabular-nums tracking-tight ${
-                hasPrice ? "text-emerald-800" : "text-ui-fg-muted"
-              }`}
-            >
-              {formatInr(
-                hasPrice ? pricing.bankSettlementRounded : 0,
-                hasPrice ? 0 : 2
-              )}
-            </p>
-            <Text size="xsmall" className="text-ui-fg-muted mt-1 block">
-              Estimated amount after marketplace charges (listing − deductions)
-            </Text>
+            <div className="space-y-4">
+              {/* Bank Settlement */}
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <Text size="xsmall" weight="plus" className="text-ui-fg-muted uppercase tracking-wider text-[11px]">
+                    Bank Settlement
+                  </Text>
+                  <span className="text-[11px] text-ui-fg-muted tabular-nums">
+                    Total Listing Price - Total Deductions
+                  </span>
+                </div>
+                <p
+                  className={`mt-1 text-2xl font-bold tabular-nums tracking-tight ${
+                    hasPrice ? "text-ui-fg-base" : "text-ui-fg-muted"
+                  }`}
+                >
+                  {formatInr(
+                    hasPrice ? pricing.bankSettlementRounded : 0,
+                    hasPrice ? 0 : 2
+                  )}
+                </p>
+              </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <div className="rounded-lg bg-white/80 border border-ui-border-base/60 px-3 py-2">
-                <Text size="xsmall" className="text-ui-fg-muted block">
+              {/* Final Settlement */}
+              <div className="rounded-xl border border-sky-300/80 bg-sky-50/80 p-3.5 dark:border-sky-800/80 dark:bg-sky-950/40">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <Text size="small" weight="plus" className="text-sky-950 font-bold dark:text-sky-100">
+                      Final Settlement
+                    </Text>
+                    <Text size="xsmall" className="text-sky-800/90 dark:text-sky-300/80 mt-0.5 block text-[11px]">
+                      Total Listing Price - Total Deductions + INPUT GST &amp; TAXES
+                    </Text>
+                  </div>
+                  <p className="text-xl sm:text-2xl font-bold tabular-nums text-sky-950 dark:text-sky-100 shrink-0">
+                    {formatInr(
+                      hasPrice ? pricing.finalSettlementRounded : 0,
+                      hasPrice ? 0 : 2
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Metrics Footer */}
+            <div className="mt-4 pt-3 border-t border-ui-border-base/60 grid grid-cols-2 gap-2.5">
+              <div className="rounded-lg bg-ui-bg-base/80 border border-ui-border-base/50 px-3 py-2">
+                <Text size="xsmall" className="text-ui-fg-muted block text-[11px]">
                   Total Listing Price
                 </Text>
                 <Text
                   size="small"
                   weight="plus"
-                  className="tabular-nums text-ui-fg-base"
+                  className="tabular-nums text-ui-fg-base mt-0.5"
                 >
                   {formatInr(
                     hasPrice ? pricing.totalListingPriceRounded : 0,
@@ -313,14 +421,14 @@ export default function ProductPriceCalculator({
                   )}
                 </Text>
               </div>
-              <div className="rounded-lg bg-white/80 border border-ui-border-base/60 px-3 py-2">
-                <Text size="xsmall" className="text-ui-fg-muted block">
+              <div className="rounded-lg bg-ui-bg-base/80 border border-ui-border-base/50 px-3 py-2">
+                <Text size="xsmall" className="text-ui-fg-muted block text-[11px]">
                   Total Deductions
                 </Text>
                 <Text
                   size="small"
                   weight="plus"
-                  className="tabular-nums text-ui-fg-base"
+                  className="tabular-nums text-ui-fg-base mt-0.5"
                 >
                   {formatInr(
                     hasPrice ? pricing.totalDeductionsRounded : 0,
@@ -332,21 +440,24 @@ export default function ProductPriceCalculator({
           </div>
         </div>
 
-        <div>
+        {/* Detailed breakdown toggle */}
+        <div className="pt-1">
           <button
             type="button"
-            className="text-sm font-medium text-ui-fg-interactive hover:text-ui-fg-interactive-hover"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-ui-fg-interactive hover:text-ui-fg-interactive-hover transition-colors"
             onClick={() => setExpanded((v) => !v)}
             aria-expanded={expanded}
           >
             {expanded ? "Hide detailed breakdown" : "View detailed breakdown"}
+            <span className="text-xs leading-none transition-transform">{expanded ? "▴" : "▾"}</span>
           </button>
         </div>
 
+        {/* Detailed Breakdown */}
         {expanded ? (
-          <div className="space-y-4">
-            <div className="rounded-lg border border-ui-border-base p-4 overflow-x-auto">
-              <Text weight="plus" size="small" className="mb-3 block">
+          <div className="space-y-4 pt-2">
+            <div className="rounded-xl border border-ui-border-base/70 p-4 bg-ui-bg-base overflow-x-auto shadow-sm">
+              <Text weight="plus" size="small" className="mb-3 block font-semibold text-ui-fg-base">
                 Listing Price
               </Text>
               <TableHeader col2="Output GST" col3="Total" />
@@ -366,8 +477,8 @@ export default function ProductPriceCalculator({
               />
             </div>
 
-            <div className="rounded-lg border border-ui-border-base p-4 overflow-x-auto">
-              <Text weight="plus" size="small" className="mb-3 block">
+            <div className="rounded-xl border border-ui-border-base/70 p-4 bg-ui-bg-base overflow-x-auto shadow-sm">
+              <Text weight="plus" size="small" className="mb-3 block font-semibold text-ui-fg-base">
                 Deductions
               </Text>
               <TableHeader col2="Input GST / Tax" col3="Total" />
@@ -408,23 +519,48 @@ export default function ProductPriceCalculator({
               />
             </div>
 
-            <div className="rounded-lg border border-dashed border-emerald-200 bg-emerald-50/50 p-4">
+            {/* Bank Settlement Card */}
+            <div className="rounded-xl border border-dashed border-ui-border-base bg-ui-bg-subtle/40 p-4 transition-colors">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <Text weight="plus" size="small" className="block">
+                  <Text weight="plus" size="small" className="block font-semibold text-ui-fg-base">
                     Bank Settlement
                   </Text>
-                  <Text size="xsmall" className="text-ui-fg-muted mt-0.5 block">
-                    Total listing price − total deductions
+                  <Text size="xsmall" className="text-ui-fg-muted mt-0.5 block text-[11px]">
+                    Total Listing Price - Total Deductions
                   </Text>
                 </div>
                 <Text
                   size="large"
                   weight="plus"
-                  className="tabular-nums text-emerald-800 text-xl"
+                  className="tabular-nums text-ui-fg-base text-xl font-bold"
                 >
                   {formatInr(
                     hasPrice ? pricing.bankSettlementRounded : 0,
+                    hasPrice ? 0 : 2
+                  )}
+                </Text>
+              </div>
+            </div>
+
+            {/* Final Settlement Card */}
+            <div className="rounded-xl border border-sky-300/90 bg-sky-50/90 p-4 dark:border-sky-800 dark:bg-sky-950/40 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <Text weight="plus" size="small" className="block text-sky-950 font-bold dark:text-sky-100">
+                    Final Settlement
+                  </Text>
+                  <Text size="xsmall" className="text-sky-800/90 mt-0.5 block dark:text-sky-300/90 font-medium text-[11px]">
+                    Total Listing Price - Total Deductions + INPUT GST &amp; TAXES
+                  </Text>
+                </div>
+                <Text
+                  size="xlarge"
+                  weight="plus"
+                  className="tabular-nums text-sky-950 font-bold text-2xl dark:text-sky-100"
+                >
+                  {formatInr(
+                    hasPrice ? pricing.finalSettlementRounded : 0,
                     hasPrice ? 0 : 2
                   )}
                 </Text>
