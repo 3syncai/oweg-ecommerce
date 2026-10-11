@@ -111,7 +111,7 @@ type DashboardData = {
     salesToday: number
     returnsToday: number
     pending: number
-    paymentInitiated?: number
+    paymentInitiated: number
   }
 }
 
@@ -274,9 +274,13 @@ function buildDashboardData(input: {
   reports: VendorReportTicket[]
   payoutSummary: any
   payoutTotals?: any
+  payouts?: Array<{
+    net_amount?: number | string | null
+    status?: string | null
+  }>
   payments?: VendorPaymentsView | null
 }): DashboardData {
-  const { products, orders, returns, reports, payoutSummary, payoutTotals, payments } = input
+  const { products, orders, returns, reports, payoutSummary, payoutTotals, payouts, payments } = input
 
   const active = products.filter(isActiveProduct).length
   const inactive = Math.max(products.length - active, 0)
@@ -317,6 +321,14 @@ function buildDashboardData(input: {
     Number(payments?.cards?.settlement_balance || 0) > 0
       ? Number(payments?.cards?.settlement_balance)
       : Number(payoutSummary?.available_balance || 0)
+
+  // A payout has been initiated once the admin submits it to the payout provider.
+  // Keep this distinct from earnings that are merely pending settlement.
+  const paymentInitiated = (payouts || [])
+    .filter((payout) => ["pending", "queued", "processing"].includes(
+      String(payout.status || "").toLowerCase()
+    ))
+    .reduce((sum, payout) => sum + (Number(payout.net_amount) || 0), 0)
 
   const last7Start = daysAgoStart(6)
   const prev7Start = daysAgoStart(13)
@@ -442,7 +454,7 @@ function buildDashboardData(input: {
       salesToday: todaysSale,
       returnsToday: returns.filter((request) => isToday(request.created_at)).length,
       pending,
-      paymentInitiated: pending,
+      paymentInitiated,
     },
   }
 }
@@ -612,6 +624,7 @@ const VendorDashboardPage = () => {
         reports: reportsData?.reports || [],
         payoutSummary: payoutData?.summary || {},
         payoutTotals: payoutData?.totals || {},
+        payouts: payoutData?.payouts || [],
         payments: paymentsData,
       })
       setVendorInfo(nextVendor)
@@ -722,9 +735,9 @@ const VendorDashboardPage = () => {
             />
             <SnapshotChip
               href="/payout"
-              label="Pending"
-              value={formatCurrency(data.snapshot.pending)}
-              hint="(moves to settlement)"
+              label="Payment initiated"
+              value={formatCurrency(data.snapshot.paymentInitiated)}
+              hint="(expected by today)"
               icon={<Clock />}
             />
           </div>

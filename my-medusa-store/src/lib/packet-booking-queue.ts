@@ -6,7 +6,6 @@ import {
 } from "./vendor-order-workflow"
 
 export type PacketBookingQueueStatus =
-  | "waiting_rtd"
   | "awaiting_booking"
   | "booked"
 
@@ -42,8 +41,7 @@ export type PacketBookingQueueItem = {
 
 /**
  * Scan Easy Ship vendor workflows for admin Packet Booking.
- * - waiting_rtd: Easy chosen, invoice optional, RTD not done yet
- * - awaiting_booking: RTD done, admin must book courier
+ * - awaiting_booking: vendor chose Easy Shipping; admin can book courier
  * - booked: AWB / admin booking done
  */
 export async function listPacketBookingQueue(opts?: {
@@ -93,13 +91,14 @@ export async function listPacketBookingQueue(opts?: {
       let status: PacketBookingQueueStatus | null = null
       if (booked) {
         status = "booked"
-      } else if (workflow.rtd_at) {
-        status = "awaiting_booking"
       } else if (
         workflow.easy_booking_status === "intent" ||
+        workflow.easy_booking_status === "awaiting_admin" ||
         workflow.stage === "to_pack"
       ) {
-        status = "waiting_rtd"
+        // Easy Shipping is selected only after the vendor accepts the order.
+        // RTD is a later packing/handover step and must not block booking.
+        status = "awaiting_booking"
       }
       if (!status) continue
 
@@ -142,7 +141,7 @@ export async function listPacketBookingQueue(opts?: {
   }
 
   const rank = (s: PacketBookingQueueStatus) =>
-    s === "awaiting_booking" ? 0 : s === "waiting_rtd" ? 1 : 2
+    s === "awaiting_booking" ? 0 : 1
 
   items.sort((a, b) => {
     const rd = rank(a.status) - rank(b.status)

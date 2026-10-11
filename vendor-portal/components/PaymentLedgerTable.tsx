@@ -224,7 +224,7 @@ export default function PaymentLedgerTable({
           <thead className="sticky top-0 z-10">
             <tr>
               <Group colSpan={5}>Order</Group>
-              <Group colSpan={5}>Listing</Group>
+              <Group colSpan={6}>Listing</Group>
               <Group colSpan={3} rate={platformHdr}>
                 Platform
               </Group>
@@ -256,10 +256,11 @@ export default function PaymentLedgerTable({
               <TH>Invoice</TH>
               <TH>Invoice no</TH>
               <TH className="text-right">Item price</TH>
-              <TH className="text-right">Logistics</TH>
               <TH className="text-right">GST rate</TH>
               <TH className="text-right">GST amount</TH>
-              <TH className="text-right">Listing total</TH>
+              <TH className="text-right">Logistics</TH>
+              <TH className="text-right">Logistics GST</TH>
+              <TH className="text-right">Listing price</TH>
               <TH className="text-right">Fee</TH>
               <TH className="text-right">Tax</TH>
               <TH className="text-right">Total</TH>
@@ -289,21 +290,34 @@ export default function PaymentLedgerTable({
             {visible.map((row, index) => {
               const category = row.category || (row.type === "sales" ? "sale" : row.type)
               const orderLabel = row.order_display_id || row.order_id.slice(0, 8)
-              const dateLabel = row.delivered_at
-                ? new Date(row.delivered_at).toLocaleDateString("en-IN", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  })
+              // Use delivered_at for delivered rows; fall back to order created date if available
+              const dateSource = row.delivered_at
+              const dateLabel = dateSource
+                ? new Date(dateSource).toLocaleDateString("en-IN", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })
                 : "—"
 
               let statusNode: ReactNode = (
                 <Text size="xsmall">{row.item_status || "—"}</Text>
               )
+              // Strip trailing " · Paid" / " · Payout" / " · Payment" that the DB appends
+              const cleanedStatus = (row.item_status || "")
+                .replace(/\s*[·\-]\s*(paid|payout|payment).*/i, "")
+                .trim()
+              const rawStatus = cleanedStatus.toLowerCase()
               if (category === "return") {
                 statusNode = (
                   <StatusPill tone="bg-red-50 text-red-600 ring-1 ring-red-500/15 dark:bg-red-900/20 dark:text-red-400">
                     Returned
+                  </StatusPill>
+                )
+              } else if (category === "cancellation" || rawStatus.includes("cancel")) {
+                statusNode = (
+                  <StatusPill tone="bg-orange-50 text-orange-700 ring-1 ring-orange-500/15 dark:bg-orange-900/20 dark:text-orange-400">
+                    Cancelled
                   </StatusPill>
                 )
               } else if (category === "claim") {
@@ -328,10 +342,16 @@ export default function PaymentLedgerTable({
                     Paid
                   </StatusPill>
                 )
-              } else if (row.item_status === "Delivered") {
+              } else if (rawStatus.includes("deliver") || row.delivered_at) {
                 statusNode = (
                   <StatusPill tone="bg-emerald-50 text-emerald-600 ring-1 ring-emerald-500/15 dark:bg-emerald-900/20 dark:text-emerald-400">
                     Delivered
+                  </StatusPill>
+                )
+              } else if (rawStatus.includes("transit") || rawStatus.includes("ship") || (!row.delivered_at && category === "sale")) {
+                statusNode = (
+                  <StatusPill tone="bg-sky-50 text-sky-700 ring-1 ring-sky-500/15 dark:bg-sky-900/20 dark:text-sky-400">
+                    In transit
                   </StatusPill>
                 )
               }
@@ -371,11 +391,12 @@ export default function PaymentLedgerTable({
                   <TD muted>{dateLabel}</TD>
                   <TD muted>{row.invoice_no || "—"}</TD>
                   <Money value={row.taxable_amount} tone={moneyTone} />
-                  <Money value={row.logistic_fee} tone={moneyTone} />
                   <TD align="right" muted={!row.gst_rate}>
                     {formatGstRate(row.gst_rate)}
                   </TD>
                   <Money value={row.gst_amount} tone={moneyTone} />
+                  <Money value={row.logistic_fee} tone={moneyTone} />
+                  <Money value={row.logistic_gst} tone={moneyTone} />
                   <Money value={productListingTotal(row)} strong tone={moneyTone} />
                   <Money value={row.platform_fee} tone={moneyTone} />
                   <Money value={row.platform_gst} tone={moneyTone} />

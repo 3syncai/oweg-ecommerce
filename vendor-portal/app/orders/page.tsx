@@ -104,6 +104,16 @@ type VendorOrder = {
     tds_amount: number
     commission_amount: number
     net_amount: number
+    platform_fee?: number
+    platform_gst?: number
+    partner_commission?: number
+    partner_gst?: number
+    commission_gst?: number
+    logistic_fee?: number
+    logistic_gst?: number
+    return_fee?: number
+    return_logistic_gst?: number
+    listing_total?: number
     gst_rate?: number
     tcs_rate?: number
     tds_rate?: number
@@ -526,7 +536,7 @@ const VendorOrdersContent = () => {
     if (!easyShipOrder) return
     setProcessing(`easy:${easyShipOrder.id}`)
     try {
-      // Intent only — admin books courier after RTD (Packet Booking)
+      // Intent only — admin can book the courier immediately in Packet Booking.
       const data = await vendorOrdersApi.chooseEasyShipping(easyShipOrder.id, {})
       replaceOrder(data.order)
       setEasyShipOrder(null)
@@ -1372,12 +1382,27 @@ function DetailsModal({
       ? Math.max(0, Number(workflow.easy_courier_rate) || 0)
       : 0
   const returnLogistic = Math.max(0, Number(workflow.return_courier_rate) || 0)
-  const logisticFees = Math.round((forwardLogistic + returnLogistic) * 100) / 100
-  const marketplaceFee = Math.round((commission + logisticFees) * 100) / 100
-  const baseNet = Number(
-    settlement?.net_amount ?? Math.max(0, taxable - commission - tcs - tds)
+  const platformFee = Number(settlement?.platform_fee || 0)
+  const platformGst = Number(settlement?.platform_gst || 0)
+  const partnerFee = Number(settlement?.partner_commission || 0)
+  const partnerGst = Number(settlement?.partner_gst || 0)
+  const commissionGst = Number(settlement?.commission_gst || 0)
+  const logisticFee = Number(settlement?.logistic_fee ?? forwardLogistic)
+  const logisticGst = Number(settlement?.logistic_gst || 0)
+  const returnFee = Number(settlement?.return_fee ?? returnLogistic)
+  const returnGst = Number(settlement?.return_logistic_gst || 0)
+  const feeLines = [
+    { label: "Platform fee", value: platformFee + platformGst },
+    { label: "Commission", value: commission + commissionGst },
+    { label: "Partner fee", value: partnerFee + partnerGst },
+    { label: "Logistic fees", value: logisticFee + logisticGst },
+    { label: "Return logistics", value: returnFee + returnGst },
+  ].filter((fee) => fee.value > 0)
+  const marketplaceFee = Math.round(feeLines.reduce((sum, fee) => sum + fee.value, 0) * 100) / 100
+  const payout = Math.max(
+    0,
+    Math.round(Number(settlement?.net_amount ?? taxable - commission - tcs - tds) * 100) / 100
   )
-  const payout = Math.max(0, Math.round((baseNet - logisticFees) * 100) / 100)
   const progress = orderProgressSteps(order.vendor_stage)
   const cancelled = isCancelledOrder(order)
   const stageBadge = cancelled
@@ -1549,9 +1574,7 @@ function DetailsModal({
                     workflow.shipping_method === "easy"
                       ? workflow.shiprocket_awb || workflow.easy_booking_status === "booked"
                         ? "Courier booked by admin"
-                        : workflow.rtd_at
-                          ? "Waiting for admin packet booking"
-                          : "Easy selected · generate invoice & RTD"
+                        : "Awaiting admin packet booking · RTD can follow"
                       : workflow.shipping_method === "self"
                         ? "Self ship"
                         : "N/A",
@@ -1587,9 +1610,7 @@ function DetailsModal({
                       workflow.shiprocket_awb ||
                       workflow.self_awb ||
                       (workflow.shipping_method === "easy"
-                        ? workflow.rtd_at
-                          ? "Awaiting admin booking"
-                          : "After admin books courier"
+                        ? "Awaiting admin booking"
                         : "N/A"),
                   ],
                   ["Tracking URL", workflow.tracking_url || "N/A"],
@@ -1646,8 +1667,7 @@ function DetailsModal({
                   />
                   <MarketplaceFeeBreakdown
                     currency={currency}
-                    commission={commission}
-                    logisticFees={logisticFees}
+                    fees={feeLines}
                     marketplaceFee={marketplaceFee}
                   />
                   <SummaryRow label="TCS" value={`−${formatCurrency(tcs, currency)}`} muted />
@@ -1661,8 +1681,8 @@ function DetailsModal({
                   </div>
                 </div>
                 <Text size="xsmall" className="mt-3 leading-relaxed text-ui-fg-muted">
-                  Payout = Taxable − commission − logistic fees − TCS − TDS. Logistic fees update
-                  after Easy Ship courier selection (and RTO on return at delivery).
+                  Payout uses the same settlement ledger as Payments: platform, commission,
+                  partner, logistics and their GST, plus TCS and TDS.
                 </Text>
               </div>
 
@@ -1696,17 +1716,14 @@ function DetailsModal({
 
 function MarketplaceFeeBreakdown({
   currency,
-  commission,
-  logisticFees,
+  fees,
   marketplaceFee,
 }: {
   currency: string
-  commission: number
-  logisticFees: number
+  fees: Array<{ label: string; value: number }>
   marketplaceFee: number
 }) {
   const [open, setOpen] = useState(false)
-  const [logisticInfoOpen, setLogisticInfoOpen] = useState(false)
 
   return (
     <div className="rounded-lg border border-ui-border-base/60 bg-ui-bg-subtle/30">
@@ -1735,59 +1752,16 @@ function MarketplaceFeeBreakdown({
 
       {open ? (
         <div className="space-y-1.5 border-t border-ui-border-base/50 px-2.5 py-2">
-          <div className="flex items-center justify-between gap-3 pl-5">
-            <Text size="small" className="text-ui-fg-muted">
-              Commission
-            </Text>
-            <Text size="small" className="tabular-nums text-ui-fg-subtle">
-              −{formatCurrency(commission, currency)}
-            </Text>
-          </div>
-
-          <div className="flex items-center justify-between gap-3 pl-5">
-            <div
-              className="relative inline-flex items-center gap-1.5"
-              onMouseEnter={() => setLogisticInfoOpen(true)}
-              onMouseLeave={() => setLogisticInfoOpen(false)}
-            >
+          {fees.map((fee) => (
+            <div key={fee.label} className="flex items-center justify-between gap-3 pl-5">
               <Text size="small" className="text-ui-fg-muted">
-                Logistic fees
+                {fee.label}
               </Text>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setLogisticInfoOpen((v) => !v)
-                }}
-                className={clx(
-                  "inline-flex h-4 w-4 items-center justify-center rounded-full border text-[9px] font-semibold transition",
-                  logisticInfoOpen
-                    ? "border-oweg-500/50 text-oweg-700"
-                    : "border-ui-border-base text-ui-fg-muted hover:border-ui-border-strong hover:text-ui-fg-base"
-                )}
-                aria-expanded={logisticInfoOpen}
-                aria-label="Logistic fees info"
-                title="Logistic fees info"
-              >
-                i
-              </button>
-              <div
-                className={clx(
-                  "oweg-popover absolute left-0 top-full z-30 mt-1.5 w-64 rounded-xl border border-ui-border-base bg-ui-bg-base p-3 shadow-lg shadow-black/5",
-                  logisticInfoOpen ? "oweg-popover-open" : "oweg-popover-closed"
-                )}
-                role="tooltip"
-              >
-                <Text size="xsmall" className="leading-relaxed text-ui-fg-subtle">
-                  This will be updated when you select Easy Ship and select the courier. If the
-                  order is returned at delivery time, RTO will be updated here.
-                </Text>
-              </div>
+              <Text size="small" className="tabular-nums text-ui-fg-subtle">
+                −{formatCurrency(fee.value, currency)}
+              </Text>
             </div>
-            <Text size="small" className="tabular-nums text-ui-fg-subtle">
-              −{formatCurrency(logisticFees, currency)}
-            </Text>
-          </div>
+          ))}
         </div>
       ) : null}
     </div>
@@ -1974,8 +1948,8 @@ function EasyShippingModal({
             Confirm Easy Shipping for this order. You do not book the courier here.
           </Text>
           <ul className="list-disc space-y-1.5 pl-5 text-sm text-ui-fg-subtle">
-            <li>Generate invoice, then mark RTD</li>
-            <li>OWEG admin reviews addresses and books the courier</li>
+            <li>OWEG admin can review addresses and book the courier immediately</li>
+            <li>Generate the invoice, then mark RTD when the packet is ready</li>
             <li>You will see courier + AWB once booking is done</li>
           </ul>
         </div>

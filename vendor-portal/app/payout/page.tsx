@@ -100,8 +100,15 @@ const resolveReportWindow = (
 
 const filterSettlementsByRange = (rows: SettlementRow[], from: Date, to: Date) =>
   rows.filter((row) => {
-    if (!row.delivered_at) return false
-    const delivered = new Date(row.delivered_at).getTime()
+    // Use delivered_at if available; otherwise use the row's own date fields
+    // so in-transit (not yet delivered) rows are still included
+    const dateStr = row.delivered_at
+    if (!dateStr) {
+      // Include in-transit rows — they have no delivered_at yet
+      // We include them so the Excel / ledger shows pending orders
+      return true
+    }
+    const delivered = new Date(dateStr).getTime()
     return delivered >= from.getTime() && delivered <= to.getTime()
   })
 
@@ -131,9 +138,8 @@ const filterLedgerRows = (rows: SettlementRow[], filter: LedgerFilter) => {
   return filterSettlementsByRange(displayRows, window.from, window.to)
 }
 
-const downloadLedgerExcel = (rows: SettlementRow[], rangeLabel: string) => {
+const downloadLedgerExcel = (rows: SettlementRow[], rangeLabel: string) =>
   downloadPaymentLedgerExcel(rows, rangeLabel)
-}
 
 /* ----------------------------------------------------------------
    MetricChip — glassmorphism style daily metric chips
@@ -308,7 +314,7 @@ const VendorPayoutPage = () => {
     setLedgerPage(1)
   }, [ledgerFilter])
 
-  const handleDownloadReport = () => {
+  const handleDownloadReport = async () => {
     if (!payments?.settlements) return
     setReportError(null)
     const window = resolveReportWindow(reportRange, customFrom, customTo)
@@ -319,7 +325,7 @@ const VendorPayoutPage = () => {
     setExporting(true)
     try {
       const rows = filterSettlementsByRange(payments.settlements, window.from, window.to)
-      downloadLedgerExcel(rows, window.label)
+      await downloadLedgerExcel(rows, window.label)
       setReportOpen(false)
     } catch (e: any) {
       setReportError(e?.message || "Failed to generate Excel report")

@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx"
+import JSZip from "jszip"
 import type { VendorPaymentsView } from "@/lib/api/client"
 
 type SettlementRow = VendorPaymentsView["settlements"][number]
@@ -19,83 +19,11 @@ const formatIsoDate = (iso: string | null | undefined) => {
 
 const n = (value: number | undefined) => Number(value) || 0
 
-const HEADER_ROW_1 = [
-  "",
-  "",
-  "",
-  "",
-  "",
-  "A",
-  "B",
-  "A+B",
-  "C",
-  "",
-  "D",
-  "",
-  "",
-  "E",
-  "",
-  "",
-  "F",
-  "",
-  "",
-  "B",
-  "",
-  "",
-  "G",
-  "H",
-  "I",
-  "J",
-  "",
-  "",
-  "K",
-  "",
-  "",
-  "L",
-  "Bank Settlements",
-  "",
-  "",
-  "",
-]
-
-const HEADER_ROW_2 = [
-  "Order ID",
-  "Order Date",
-  "Category",
-  "Invoice Date",
-  "Invoice No",
-  "Item Price (A)",
-  "Logistics Fee (B)",
-  "GST Amount (A + B@18%)",
-  "Total Listing Price (C)",
-  "Item Status",
-  "Platform Fee (D)",
-  "Tax Amount",
-  "Total",
-  "Commission Fee (E)",
-  "Tax Amount",
-  "Total",
-  "Partner Commission (F)",
-  "Tax Amount",
-  "Total",
-  "Logistics Fee (B)",
-  "Tax Amount",
-  "Total",
-  "TCS @0.5% (G)",
-  "TDS @0.1% (H)",
-  "Bank Settlement",
-  "Reverse Logistic Fee",
-  "Tax Amount",
-  "Total",
-  "Cancellation Fee",
-  "Tax Amount",
-  "Total",
-  "Claim Amount",
-  "Transaction ID",
-  "Payment Date",
-  "Payment",
-  "Balance Amount",
-]
+const TEMPLATE_URL = "/templates/vendor-payment-ledger.xlsx"
+const TEMPLATE_WORKSHEET_PATH = "xl/worksheets/sheet1.xml"
+const TEMPLATE_DATA_START_ROW = 4 // Excel row 4; rows 1–3 are the template's grouped headers
+const TEMPLATE_DATA_END_ROW = 19
+const COLUMN_COUNT = 37 // A:AK
 
 function categoryLabel(row: SettlementRow) {
   const key = row.category || (row.type === "sales" ? "sale" : row.type)
@@ -107,33 +35,74 @@ function categoryLabel(row: SettlementRow) {
 }
 
 function overlayPayoutFieldsOnOrders(rows: SettlementRow[]) {
-  const latest = new Map<string, { transaction_id: string; payment_date: string }>()
+  // Build lookup maps keyed by order_id:
+  // - payout (transaction_id / payment_date) from payment rows
+  // - order_display_id + invoice_no from sale rows (so payment rows can inherit them)
+  const payoutInfo = new Map<string, { transaction_id: string; payment_date: string }>()
+  const displayIdByOrder = new Map<string, string>()
+  const invoiceByOrder = new Map<string, string>()
+
   for (const row of rows) {
     const kind = row.category || row.type
-    if (kind !== "payment") continue
     if (!row.order_id) continue
-    if (!row.transaction_id && !row.payment_date) continue
-    latest.set(row.order_id, {
-      transaction_id: row.transaction_id || latest.get(row.order_id)?.transaction_id || "",
-      payment_date: row.payment_date || latest.get(row.order_id)?.payment_date || "",
-    })
+
+    // Collect display IDs and invoice numbers from non-payment rows
+    if (kind !== "payment") {
+      if (row.order_display_id) displayIdByOrder.set(row.order_id, row.order_display_id)
+      if (row.invoice_no) invoiceByOrder.set(row.order_id, row.invoice_no)
+    }
+
+    // Collect payout info from payment rows
+    if (kind === "payment" && (row.transaction_id || row.payment_date)) {
+      payoutInfo.set(row.order_id, {
+        transaction_id: row.transaction_id || payoutInfo.get(row.order_id)?.transaction_id || "",
+        payment_date: row.payment_date || payoutInfo.get(row.order_id)?.payment_date || "",
+      })
+    }
   }
 
   return rows.map((row) => {
     const kind = row.category || row.type
-    if (kind === "payment") return row
-    const ref = latest.get(row.order_id)
-    if (!ref) return row
+    const isPayment = kind === "payment"
+    const ref = payoutInfo.get(row.order_id)
+    const sharedDisplayId = displayIdByOrder.get(row.order_id)
+    const sharedInvoice = invoiceByOrder.get(row.order_id)
+
     return {
       ...row,
-      transaction_id: row.transaction_id || ref.transaction_id || null,
-      payment_date: row.payment_date || ref.payment_date || null,
+      // Payment rows inherit the display ID and invoice from the matching sale row
+      order_display_id: row.order_display_id || sharedDisplayId || null,
+      invoice_no: row.invoice_no || sharedInvoice || undefined,
+      // transaction_id and payment_date ONLY appear on payment rows
+      transaction_id: isPayment ? (row.transaction_id || ref?.transaction_id || null) : null,
+      payment_date: isPayment ? (row.payment_date || ref?.payment_date || null) : null,
+      // Synthesise item_status for payment rows if missing
+      item_status:
+        row.item_status ||
+        (isPayment ? "Paid out" : undefined),
     }
   })
 }
 
+function itemStatusLabel(row: SettlementRow): string {
+  const kind = row.category || row.type
+  // Strip any trailing " · Paid", " · Payout", " · Payment" etc from raw DB status
+  const rawClean = (row.item_status || "").replace(/\s*[·\-]\s*(paid|payout|payment).*/i, "").trim()
+  if (rawClean) return rawClean
+  // Fallback by category
+  if (kind === "return") return "Returned"
+  if (kind === "cancellation") return "Cancelled"
+  if (kind === "claim") return "Claim"
+  if (kind === "payment") return "Paid out"
+  // sale with no delivered_at → still in transit
+  if (!row.delivered_at) return "In transit"
+  return "Delivered"
+}
+
 export function mapPaymentLedgerExportRow(row: SettlementRow) {
-  const date = formatIsoDate(row.delivered_at)
+  // Use delivered_at for sale/return rows; fall back to payment_date for payment rows
+  const rawDate = row.delivered_at || row.payment_date || null
+  const date = formatIsoDate(rawDate)
   const orderLabel = row.order_display_id ? `#${row.order_display_id}` : row.order_id
   return [
     orderLabel,
@@ -142,10 +111,11 @@ export function mapPaymentLedgerExportRow(row: SettlementRow) {
     date,
     row.invoice_no || "",
     n(row.taxable_amount),
+    n(row.gst_amount),
     n(row.logistic_fee),
-    n(row.listing_gst ?? row.gst_amount),
+    n(row.logistic_gst),
     n(row.listing_total),
-    row.item_status || "",
+    itemStatusLabel(row),
     n(row.platform_fee),
     n(row.platform_gst),
     n(row.platform_total),
@@ -175,34 +145,94 @@ export function mapPaymentLedgerExportRow(row: SettlementRow) {
   ]
 }
 
-export function downloadPaymentLedgerExcel(rows: SettlementRow[], rangeLabel: string) {
-  const body: (string | number)[][] = [HEADER_ROW_1, HEADER_ROW_2]
+const columnName = (index: number) => {
+  let name = ""
+  let value = index + 1
+  while (value > 0) {
+    const remainder = (value - 1) % 26
+    name = String.fromCharCode(65 + remainder) + name
+    value = Math.floor((value - 1) / 26)
+  }
+  return name
+}
+
+const escapeXml = (value: string) =>
+  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;")
+
+const excelDateSerial = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
+  const [year, month, day] = value.split("-").map(Number)
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000) + 25_569
+}
+
+function templateRowStyle(rowXml: string, column: string) {
+  return rowXml.match(new RegExp(`<c r="${column}4" s="(\\d+)"`))?.[1] || "0"
+}
+
+function makeDataRow(rowNumber: number, values: Array<string | number> | null, templateRow: string) {
+  const rowAttributes = templateRow.match(/^<row\b[^>]*>/)?.[0] || '<row spans="1:37">'
+  const rowOpen = rowAttributes.replace(/\br="\d+"/, `r="${rowNumber}"`)
+  const cells = Array.from({ length: COLUMN_COUNT }, (_, columnIndex) => {
+    const column = columnName(columnIndex)
+    const style = templateRowStyle(templateRow, column)
+    const value = values?.[columnIndex]
+    if (value === undefined || value === null || value === "") {
+      return `<c r="${column}${rowNumber}" s="${style}"/>`
+    }
+    if (typeof value === "number") {
+      return `<c r="${column}${rowNumber}" s="${style}"><v>${value}</v></c>`
+    }
+    // The source template already supplies Excel date formatting for these columns.
+    // Write a serial number, not a text date, so its exact d-mmm-yy presentation remains.
+    if (columnIndex === 1 || columnIndex === 3 || columnIndex === 34) {
+      const serial = excelDateSerial(value)
+      if (serial !== null) return `<c r="${column}${rowNumber}" s="${style}"><v>${serial}</v></c>`
+    }
+    return `<c r="${column}${rowNumber}" s="${style}" t="inlineStr"><is><t>${escapeXml(value)}</t></is></c>`
+  }).join("")
+  return `${rowOpen}${cells}</row>`
+}
+
+/**
+ * Starts from the finance-approved workbook so downloaded reports retain its
+ * exact grouped headers, colours, widths, merged cells and number formats.
+ */
+export async function downloadPaymentLedgerExcel(rows: SettlementRow[], rangeLabel: string) {
   const exportRows = overlayPayoutFieldsOnOrders(rows)
+  const response = await fetch(TEMPLATE_URL)
+  if (!response.ok) throw new Error("Payment ledger template could not be loaded")
+  const archive = await JSZip.loadAsync(await response.arrayBuffer())
+  const worksheet = archive.file(TEMPLATE_WORKSHEET_PATH)
+  if (!worksheet) throw new Error("Payment ledger template is missing its Sheet4 layout")
+  let sheetXml = await worksheet.async("string")
+  const templateRow = sheetXml.match(/<row\b[^>]*\br="4"[^>]*>[\s\S]*?<\/row>/)?.[0]
+  if (!templateRow) throw new Error("Payment ledger template is missing its data-row format")
 
-  for (const row of exportRows) {
-    body.push(mapPaymentLedgerExportRow(row))
+  const data = exportRows.length
+    ? exportRows.map(mapPaymentLedgerExportRow)
+    : [["No transactions in the selected period"]]
+  const templateRowCount = TEMPLATE_DATA_END_ROW - TEMPLATE_DATA_START_ROW + 1
+  for (let index = 0; index < templateRowCount; index += 1) {
+    const rowNumber = TEMPLATE_DATA_START_ROW + index
+    const replacement = makeDataRow(rowNumber, data[index] || null, templateRow)
+    sheetXml = sheetXml.replace(new RegExp(`<row\\b[^>]*\\br="${rowNumber}"[^>]*>[\\s\\S]*?<\\/row>`), replacement)
   }
-
-  if (rows.length === 0) {
-    body.push(["No transactions in the selected period"])
+  if (data.length > templateRowCount) {
+    const additionalRows = data
+      .slice(templateRowCount)
+      .map((values, index) => makeDataRow(TEMPLATE_DATA_END_ROW + index + 1, values, templateRow))
+      .join("")
+    sheetXml = sheetXml.replace("</sheetData>", `${additionalRows}</sheetData>`)
   }
-
-  const sheet = XLSX.utils.aoa_to_sheet(body)
-  sheet["!merges"] = [
-    { s: { r: 0, c: 10 }, e: { r: 0, c: 12 } },
-    { s: { r: 0, c: 13 }, e: { r: 0, c: 15 } },
-    { s: { r: 0, c: 16 }, e: { r: 0, c: 18 } },
-    { s: { r: 0, c: 19 }, e: { r: 0, c: 21 } },
-    { s: { r: 0, c: 25 }, e: { r: 0, c: 27 } },
-    { s: { r: 0, c: 28 }, e: { r: 0, c: 30 } },
-    { s: { r: 0, c: 32 }, e: { r: 0, c: 35 } },
-  ]
-  sheet["!cols"] = HEADER_ROW_2.map((title) => ({
-    wch: Math.max(12, Math.min(22, title.length + 2)),
-  }))
-
-  const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, sheet, "Payment Ledger")
+  const finalRow = Math.max(TEMPLATE_DATA_END_ROW, TEMPLATE_DATA_START_ROW + data.length - 1)
+  sheetXml = sheetXml.replace(/<dimension ref="A1:AK\d+"\/>/, `<dimension ref="A1:AK${finalRow}"/>`)
+  archive.file(TEMPLATE_WORKSHEET_PATH, sheetXml)
   const stamp = new Date().toISOString().slice(0, 10)
-  XLSX.writeFile(workbook, `Payment-Ledger-${rangeLabel}-${stamp}.xlsx`)
+  const file = await archive.generateAsync({ type: "blob", compression: "DEFLATE" })
+  const url = URL.createObjectURL(file)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = `Oweg-Vendor-Payment-Ledger-${rangeLabel}-${stamp}.xlsx`
+  link.click()
+  URL.revokeObjectURL(url)
 }
