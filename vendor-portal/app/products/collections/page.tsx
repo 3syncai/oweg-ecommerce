@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { Container, Heading, Text, Button } from "@medusajs/ui"
-import { MagnifyingGlass, Plus, SquaresPlus } from "@medusajs/icons"
+import { MagnifyingGlass, SquaresPlus } from "@medusajs/icons"
 import VendorShell from "@/components/VendorShell"
 import PageSkeleton from "@/components/PageSkeleton"
 import EmptyState from "@/components/EmptyState"
@@ -105,10 +105,6 @@ const VendorCollectionsPage = () => {
                 : "Group products by brand to make them easier to manage and discover"}
             </Text>
           </div>
-          <Button variant="secondary" size="small">
-            <Plus />
-            Create
-          </Button>
         </div>
 
         {collections.length > 0 && (
@@ -143,11 +139,7 @@ const VendorCollectionsPage = () => {
               accent="purple"
               icon={<SquaresPlus />}
               title="No brands yet"
-              description="Create your first brand to organize your products and help customers discover them."
-              primaryAction={{
-                label: "Create brand",
-                onClick: () => {},
-              }}
+              description="Brands organize your products and help customers discover them."
             />
           </div>
         ) : (
