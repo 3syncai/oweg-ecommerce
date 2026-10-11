@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation"
 import { BrandAuthorizationField } from "@/components/BrandAuthorizationField"
 import GstTaxCodeField from "@/components/GstTaxCodeField"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
-import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorTypesApi, vendorInventoryApi, logApiFailure } from "@/lib/api/client"
+import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorTypesApi, vendorInventoryApi, vendorShippingApi, logApiFailure } from "@/lib/api/client"
+import { DEFAULT_LOGISTICS_FEE } from "@/lib/pricingConfig"
 import {
   collectAllImageUrls,
   createDefaultVariantRow,
@@ -155,7 +156,55 @@ const VendorProductNewPage = () => {
     source_url?: string
     source?: string
   } | null>(null)
+  const [logisticsEstimate, setLogisticsEstimate] = useState<{
+    freight_charge: number
+    gst_rate: number
+    gst_amount: number
+    total_logistics_fee: number
+    courier_name: string
+    pickup_pincode?: string
+    delivery_pincode?: string
+    applied_weight?: number
+    provider?: string
+  } | null>(null)
+  const [isFetchingLogistics, setIsFetchingLogistics] = useState(false)
   const menuRefs = React.useRef<{ [key: number]: HTMLDivElement | null }>({})
+
+  // Automatically fetch ITL delivery charges when dimensions / weight are entered
+  useEffect(() => {
+    const h = parseFloat(formData.height)
+    const w = parseFloat(formData.width)
+    const l = parseFloat(formData.length)
+    const wt = parseFloat(formData.weight)
+
+    const hasDimensions = (!isNaN(h) && h > 0) || (!isNaN(w) && w > 0) || (!isNaN(l) && l > 0)
+    const hasWeight = !isNaN(wt) && wt > 0
+
+    if (!hasDimensions && !hasWeight) {
+      return
+    }
+
+    const timer = setTimeout(async () => {
+      setIsFetchingLogistics(true)
+      try {
+        const res = await vendorShippingApi.estimateRate({
+          height: !isNaN(h) && h > 0 ? h : undefined,
+          width: !isNaN(w) && w > 0 ? w : undefined,
+          length: !isNaN(l) && l > 0 ? l : undefined,
+          weight: !isNaN(wt) && wt > 0 ? wt : undefined,
+        })
+        if (res && res.success) {
+          setLogisticsEstimate(res)
+        }
+      } catch (err) {
+        logApiFailure("Failed to auto-fetch ITL shipping rate", err)
+      } finally {
+        setIsFetchingLogistics(false)
+      }
+    }, 400)
+
+    return () => clearTimeout(timer)
+  }, [formData.height, formData.width, formData.length, formData.weight])
 
   useEffect(() => {
     fetchCategoriesAndCollections()
@@ -1173,6 +1222,35 @@ const VendorProductNewPage = () => {
             </div>
 
           </div>
+
+          {/* Delivery Charge Status Banner */}
+          {isFetchingLogistics ? (
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300 animate-pulse">
+              <span className="h-2 w-2 rounded-full bg-blue-600 animate-ping" />
+              <span>Calculating delivery charges from package dimensions & weight...</span>
+            </div>
+          ) : logisticsEstimate ? (
+            <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-emerald-200/80 bg-emerald-50/70 p-3 text-xs text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🚚</span>
+                <div>
+                  <span className="font-semibold text-emerald-900 dark:text-emerald-100">
+                    Delivery Charge: ₹{logisticsEstimate.freight_charge.toFixed(2)} + 18% GST (₹{logisticsEstimate.gst_amount.toFixed(2)}) = ₹{logisticsEstimate.total_logistics_fee.toFixed(2)}
+                  </span>
+                  <span className="block text-[11px] text-emerald-700/80 dark:text-emerald-400">
+                    Applied weight: {logisticsEstimate.applied_weight} kg • Locked in calculator
+                  </span>
+                </div>
+              </div>
+              <span className="inline-flex items-center self-start sm:self-auto rounded-full bg-emerald-600/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-600/20 dark:text-emerald-300">
+                Applied to Calculator
+              </span>
+            </div>
+          ) : (
+            <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-ui-fg-muted">
+              <span>💡 Enter dimensions & weight above to automatically calculate the delivery charge.</span>
+            </div>
+          )}
         </div>
       </div>
     </section>
@@ -1718,6 +1796,10 @@ const VendorProductNewPage = () => {
       taxAttributesExtras={renderTaxAttributesSection()}
       productGstRate={formData.gstRate}
       taxCode={formData.taxCode}
+      logisticsFee={logisticsEstimate ? logisticsEstimate.freight_charge : DEFAULT_LOGISTICS_FEE}
+      isLogisticsReadOnly={true}
+      logisticsDetails={logisticsEstimate}
+      isFetchingLogistics={isFetchingLogistics}
     />
   )
 

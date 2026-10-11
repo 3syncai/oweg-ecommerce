@@ -694,6 +694,47 @@ export const vendorOrdersApi = {
     }>(`/vendor/orders/${id}/couriers${qs ? `?${qs}` : ''}`)
   },
 
+  estimateShippingRate: async (params: {
+    weight?: number
+    length?: number
+    width?: number
+    breadth?: number
+    height?: number
+    pickup_pincode?: string
+    delivery_pincode?: string
+  }) => {
+    const query = new URLSearchParams()
+    if (params.weight != null && !isNaN(params.weight)) query.set('weight', String(params.weight))
+    if (params.length != null && !isNaN(params.length)) query.set('length', String(params.length))
+    if (params.width != null && !isNaN(params.width)) query.set('width', String(params.width))
+    if (params.breadth != null && !isNaN(params.breadth)) query.set('breadth', String(params.breadth))
+    if (params.height != null && !isNaN(params.height)) query.set('height', String(params.height))
+    if (params.pickup_pincode) query.set('pickup_pincode', params.pickup_pincode)
+    if (params.delivery_pincode) query.set('delivery_pincode', params.delivery_pincode)
+    const qs = query.toString()
+    return apiRequest<{
+      success: boolean
+      provider: string
+      courier_name: string
+      freight_charge: number
+      gst_rate: number
+      gst_amount: number
+      total_logistics_fee: number
+      pickup_pincode: string
+      delivery_pincode: string
+      weight: number
+      volumetric_weight: number
+      applied_weight: number
+      couriers?: Array<{
+        courier_id: number
+        courier_name: string
+        freight_charge: number
+        total_with_gst: number
+        etd?: string | null
+      }>
+    }>(`/vendor/shipping/estimate-rate${qs ? `?${qs}` : ''}`)
+  },
+
   chooseSelfShipping: async (
     id: string,
     data: {
@@ -748,6 +789,10 @@ export const vendorOrdersApi = {
   track: async (id: string) => {
     return apiRequest<{ order: any; tracking: any }>(`/vendor/orders/${id}/track`)
   },
+}
+
+export const vendorShippingApi = {
+  estimateRate: vendorOrdersApi.estimateShippingRate,
 }
 
 export type VendorEarningsSummary = {

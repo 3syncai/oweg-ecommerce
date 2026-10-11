@@ -39,6 +39,11 @@ export type VendorPricingResult = {
   totalListingPriceRounded: number
   totalDeductionsRounded: number
   bankSettlementRounded: number
+  /** Total Input GST & Taxes on deductions */
+  inputGstAndTaxes: number
+  /** Final Settlement = Total Listing Price - Total Deductions + Input GST & Taxes */
+  finalSettlement: number
+  finalSettlementRounded: number
 }
 
 function zeroRow(): MoneyRow {
@@ -62,6 +67,9 @@ const ZERO: VendorPricingResult = {
   totalListingPriceRounded: 0,
   totalDeductionsRounded: 0,
   bankSettlementRounded: 0,
+  inputGstAndTaxes: 0,
+  finalSettlement: 0,
+  finalSettlementRounded: 0,
 }
 
 /** Round to 2 decimal places (paise). */
@@ -190,10 +198,16 @@ export function calculateVendorPricing(
   const totalDeductionsAmount = totalDeductions.total
   const bankSettlement = round2(totalListingPrice - totalDeductionsAmount)
 
+  // Input GST & Taxes = total GST/tax on deductions lines
+  const inputGstAndTaxes = totalDeductions.gstOrTax
+  // Final Settlement = Total Listing Price - Total Deductions + Input GST & Taxes
+  const finalSettlement = round2(bankSettlement + inputGstAndTaxes)
+
   const totalListingPriceRounded = roundRupee(totalListingPrice)
   const totalDeductionsRounded = roundRupee(totalDeductionsAmount)
   // Round the precise difference (not rounded−rounded) to match Excel ₹1,124
   const bankSettlementRounded = roundRupee(bankSettlement)
+  const finalSettlementRounded = roundRupee(finalSettlement)
 
   return {
     item,
@@ -212,5 +226,8 @@ export function calculateVendorPricing(
     totalListingPriceRounded,
     totalDeductionsRounded,
     bankSettlementRounded,
+    inputGstAndTaxes,
+    finalSettlement,
+    finalSettlementRounded,
   }
 }

@@ -43,6 +43,10 @@ export type VariantMatrixEditorProps = {
   taxAttributesExtras?: React.ReactNode
   productGstRate?: number | string
   taxCode?: string
+  logisticsFee?: number
+  isLogisticsReadOnly?: boolean
+  logisticsDetails?: any
+  isFetchingLogistics?: boolean
 }
 
 const VariantDiscountCell = ({
@@ -141,6 +145,10 @@ export default function VariantMatrixEditor({
   taxAttributesExtras,
   productGstRate,
   taxCode,
+  logisticsFee,
+  isLogisticsReadOnly,
+  logisticsDetails,
+  isFetchingLogistics,
 }: VariantMatrixEditorProps) {
   const [bulkPrice, setBulkPrice] = useState("")
   const [bulkSalePrice, setBulkSalePrice] = useState("")
@@ -620,6 +628,10 @@ export default function VariantMatrixEditor({
             <ProductPriceCalculator
               productGstRate={productGstRate}
               taxCode={taxCode}
+              logisticsFee={logisticsFee}
+              isLogisticsReadOnly={isLogisticsReadOnly}
+              logisticsDetails={logisticsDetails}
+              isFetchingLogistics={isFetchingLogistics}
             />
           ) : null}
 
@@ -972,6 +984,10 @@ export default function VariantMatrixEditor({
         <ProductPriceCalculator
           productGstRate={productGstRate}
           taxCode={taxCode}
+          logisticsFee={logisticsFee}
+          isLogisticsReadOnly={isLogisticsReadOnly}
+          logisticsDetails={logisticsDetails}
+          isFetchingLogistics={isFetchingLogistics}
         />
       ) : null}
 
