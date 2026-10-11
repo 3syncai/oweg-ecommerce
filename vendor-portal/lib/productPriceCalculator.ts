@@ -93,27 +93,42 @@ function rowFromBasic(basicInput: number, gstRatePct: number): MoneyRow {
   return { basic, gstOrTax, total: round2(basic + gstOrTax) }
 }
 
+/** Inclusive product price: back out basic and GST (e.g. 1360 at 12% -> basic 1214.29, GST 145.71) */
+function rowFromInclusive(inclusiveInput: number, gstRatePct: number): MoneyRow {
+  const total = round2(Math.max(0, inclusiveInput))
+  const rate = Math.max(0, gstRatePct)
+  const basic = round2(total / (1 + rate / 100))
+  const gstOrTax = round2(total - basic)
+  return { basic, gstOrTax, total }
+}
+
 /**
- * Vendor settlement estimate from Product Base Price + logistics basic.
- * Aligns with client "Vendor Product Settlement" Excel.
+ * Vendor settlement estimate from inclusive Product Price + logistics basic.
+ * Vendor enters all-inclusive product price; platform deducts dynamic GST to determine basic.
  */
 export function calculateVendorPricing(
-  basePriceInput: number,
-  logisticsFeeInput: number = DEFAULT_LOGISTICS_FEE
+  productPriceInput: number,
+  logisticsFeeInput: number = DEFAULT_LOGISTICS_FEE,
+  productGstRateInput: number = PRODUCT_GST_RATE
 ): VendorPricingResult {
-  const itemBasic =
-    !Number.isFinite(basePriceInput) || basePriceInput <= 0 ? 0 : basePriceInput
+  const itemTotal =
+    !Number.isFinite(productPriceInput) || productPriceInput <= 0 ? 0 : productPriceInput
   const logisticsBasic =
     !Number.isFinite(logisticsFeeInput) || logisticsFeeInput < 0
       ? 0
       : logisticsFeeInput
 
-  if (itemBasic === 0) {
+  if (itemTotal === 0) {
     return { ...ZERO }
   }
 
-  // --- Listing price (A + B = C) ---
-  const item = rowFromBasic(itemBasic, PRODUCT_GST_RATE)
+  const effectiveGstRate =
+    Number.isFinite(productGstRateInput) && productGstRateInput >= 0
+      ? productGstRateInput
+      : PRODUCT_GST_RATE
+
+  // --- Item pricing (inclusive of GST) ---
+  const item = rowFromInclusive(itemTotal, effectiveGstRate)
   const logistics = rowFromBasic(logisticsBasic, LOGISTICS_GST_RATE)
   const listing: MoneyRow = {
     basic: round2(item.basic + logistics.basic),

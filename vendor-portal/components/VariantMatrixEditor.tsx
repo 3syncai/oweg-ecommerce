@@ -40,6 +40,9 @@ export type VariantMatrixEditorProps = {
   optionsReadOnly?: boolean
   simpleProductExtras?: React.ReactNode
   usedSkus?: Set<string>
+  taxAttributesExtras?: React.ReactNode
+  productGstRate?: number | string
+  taxCode?: string
 }
 
 const VariantDiscountCell = ({
@@ -135,6 +138,9 @@ export default function VariantMatrixEditor({
   optionsReadOnly = false,
   simpleProductExtras,
   usedSkus,
+  taxAttributesExtras,
+  productGstRate,
+  taxCode,
 }: VariantMatrixEditorProps) {
   const [bulkPrice, setBulkPrice] = useState("")
   const [bulkSalePrice, setBulkSalePrice] = useState("")
@@ -608,7 +614,14 @@ export default function VariantMatrixEditor({
             </SectionCard>
           )}
 
-          {colorValues.length > 0 ? <ProductPriceCalculator /> : null}
+          {colorValues.length > 0 && taxAttributesExtras ? taxAttributesExtras : null}
+
+          {colorValues.length > 0 ? (
+            <ProductPriceCalculator
+              productGstRate={productGstRate}
+              taxCode={taxCode}
+            />
+          ) : null}
 
           {colorValues.length > 0 && (
             <SectionCard
@@ -949,9 +962,17 @@ export default function VariantMatrixEditor({
         </SectionCard>
       ) : null}
 
-      {/* Vendor estimate — between photos and pricing / stock */}
+      {/* Tax code & attributes right after photos/images, before calculator */}
+      {(!hasVariants || (hasVariants && !useColorFirstFlow)) && taxAttributesExtras ? (
+        taxAttributesExtras
+      ) : null}
+
+      {/* Vendor estimate — between photos/attributes and pricing / stock */}
       {(!hasVariants || (hasVariants && !useColorFirstFlow)) ? (
-        <ProductPriceCalculator />
+        <ProductPriceCalculator
+          productGstRate={productGstRate}
+          taxCode={taxCode}
+        />
       ) : null}
 
       {hasVariants && !useColorFirstFlow && (
