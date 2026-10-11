@@ -565,7 +565,7 @@ const VendorProductNewPage = () => {
     // Final brand-gate so users can't bypass via direct Publish click after
     // editing form state.
     if (!formData.title) {
-      toast.error("Error", { description: "Title is required" })
+      toast.error("Error", { description: "Product name is required" })
       return
     }
     if (!formData.brand || !formData.brand.trim()) {
@@ -1009,7 +1009,7 @@ const VendorProductNewPage = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div>
-          <Label>Title</Label>
+          <Label>Product name</Label>
           <Input
             value={formData.title}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, title: e.target.value })}

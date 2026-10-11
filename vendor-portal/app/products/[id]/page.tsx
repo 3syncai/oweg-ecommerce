@@ -737,12 +737,12 @@ const VendorProductEditPage = () => {
           <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border border-ui-border-base bg-ui-bg-component p-5 md:p-6">
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               <div className="space-y-2 md:col-span-2">
-                <Label>Title *</Label>
+                <Label>Product name *</Label>
                 <Input
                   value={formData.title}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFieldChange("title", e.target.value)}
                   required
-                  placeholder="Enter product title"
+                  placeholder="Enter product name"
                 />
               </div>
 
