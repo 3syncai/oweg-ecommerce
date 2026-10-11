@@ -4,6 +4,13 @@ import {
   calculateMarketplaceSettlementFromLines,
   parseLineGstRate,
 } from "./vendor-marketplace-tax"
+import {
+  calculateVendorLedgerSettlement,
+  overlaySaleDeductions,
+  DEFAULT_PARTNER_COMMISSION_RATE,
+  DEFAULT_PLATFORM_FEE_RATE,
+  DEFAULT_SERVICE_GST_RATE,
+} from "./vendor-ledger-settlement"
 import { readCancellationInfo } from "./order-cancel/metadata"
 
 export type VendorOrderStage =
@@ -67,7 +74,7 @@ export type VendorOrderWorkflow = {
   /**
    * Easy Ship booking lifecycle:
    * - intent: vendor chose Easy (no AWB yet)
-   * - awaiting_admin: vendor marked RTD; admin must book packet
+   * - awaiting_admin: legacy status for a packet awaiting admin booking
    * - booked: admin created shipment / AWB
    */
   easy_booking_status?: "intent" | "awaiting_admin" | "booked" | null
@@ -436,6 +443,9 @@ export type VendorOrderSettlementRates = {
   commission_rate: number
   tcs_rate: number
   tds_rate: number
+  platform_fee_rate?: number
+  partner_rate?: number
+  service_gst_rate?: number
 }
 
 export type VendorOrderSettlement = {
@@ -449,6 +459,16 @@ export type VendorOrderSettlement = {
   tcs_rate: number
   tds_rate: number
   commission_rate: number
+  platform_fee: number
+  platform_gst: number
+  partner_commission: number
+  partner_gst: number
+  commission_gst: number
+  logistic_fee: number
+  logistic_gst: number
+  return_fee: number
+  return_logistic_gst: number
+  listing_total: number
 }
 
 function resolveItemGstRate(item: any): number {
@@ -493,7 +513,8 @@ function pickPreferredGstMeta(
 /** Marketplace tax preview for a vendor's lines on an order (GST / TCS / TDS). */
 export function buildVendorOrderSettlement(
   vendorItems: any[],
-  rates: VendorOrderSettlementRates
+  rates: VendorOrderSettlementRates,
+  fees?: { logistic_fee?: number; return_fee?: number }
 ): VendorOrderSettlement {
   const lines = vendorItems.map((item) => {
     const qty = getItemUnits(item)
@@ -505,6 +526,26 @@ export function buildVendorOrderSettlement(
   })
 
   const settlement = calculateMarketplaceSettlementFromLines(lines, rates)
+  const ledgerRates = {
+    platform_rate: Number(rates.platform_fee_rate ?? DEFAULT_PLATFORM_FEE_RATE),
+    commission_rate: settlement.commission_rate,
+    partner_rate: Number(rates.partner_rate ?? DEFAULT_PARTNER_COMMISSION_RATE),
+    output_gst_rate: settlement.gst_rate,
+    service_gst_rate: Number(rates.service_gst_rate ?? DEFAULT_SERVICE_GST_RATE),
+    tcs_rate: settlement.tcs_rate,
+    tds_rate: settlement.tds_rate,
+  }
+  const saleLedger = calculateVendorLedgerSettlement({
+    category: "sale",
+    item_price: settlement.taxable_amount,
+    logistic_fee: Math.max(0, Number(fees?.logistic_fee) || 0),
+    rates: ledgerRates,
+  })
+  const ledger = overlaySaleDeductions(
+    saleLedger,
+    { reverse_logistic_fee: Math.max(0, Number(fees?.return_fee) || 0) },
+    ledgerRates
+  )
   return {
     taxable_amount: settlement.taxable_amount,
     gst_amount: settlement.gst_amount,
@@ -512,10 +553,20 @@ export function buildVendorOrderSettlement(
     commission_amount: settlement.commission_amount,
     tcs_amount: settlement.tcs_amount,
     tds_amount: settlement.tds_amount,
-    net_amount: settlement.net_amount,
+    net_amount: ledger.balance_delta,
     tcs_rate: settlement.tcs_rate,
     tds_rate: settlement.tds_rate,
     commission_rate: settlement.commission_rate,
+    platform_fee: Math.abs(ledger.platform_fee),
+    platform_gst: Math.abs(ledger.platform_gst),
+    partner_commission: Math.abs(ledger.partner_commission),
+    partner_gst: Math.abs(ledger.partner_gst),
+    commission_gst: Math.abs(ledger.commission_gst),
+    logistic_fee: Math.abs(ledger.logistic_fee),
+    logistic_gst: Math.abs(ledger.logistic_gst),
+    return_fee: Math.abs(ledger.reverse_logistic_fee),
+    return_logistic_gst: Math.abs(ledger.reverse_logistic_gst),
+    listing_total: ledger.listing_total,
   }
 }
 
@@ -619,11 +670,20 @@ export function formatVendorOrder(
         commission_rate: Number(snap.commission_rate),
         tcs_rate: Number(snap.tcs_rate),
         tds_rate: Number(snap.tds_rate),
+        platform_fee_rate: Number(snap.platform_fee_rate),
+        partner_rate: Number(snap.partner_rate),
+        service_gst_rate: Number(snap.service_gst_rate),
       }
     : rates
 
   const settlement = effectiveRates
-    ? buildVendorOrderSettlement(vendorItems, effectiveRates)
+    ? buildVendorOrderSettlement(vendorItems, effectiveRates, {
+        logistic_fee:
+          workflow.shipping_method === "easy"
+            ? Math.max(0, Number(workflow.easy_courier_rate) || 0)
+            : 0,
+        return_fee: Math.max(0, Number(workflow.return_courier_rate) || 0),
+      })
     : null
   const cancellation = readCancellationInfo(order as any)
   const statusLabel = cancellation.is_cancelled

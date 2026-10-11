@@ -97,7 +97,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         })
       }
 
-      // Vendor Easy = intent only. Admin books courier after RTD (Packet Booking).
+      // Vendor Easy is an intent. Once selected, admin can book in Packet Booking;
+      // RTD remains the later packing/handover step.
       if (workflow.shiprocket_awb || workflow.easy_booking_status === "booked") {
         return res.status(409).json({
           message: "Courier is already booked for this order",

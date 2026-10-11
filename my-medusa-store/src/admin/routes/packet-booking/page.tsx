@@ -34,7 +34,7 @@ type QueueItem = {
   shiprocket_awb: string | null
   tracking_number: string | null
   admin_booked_at: string | null
-  status: "waiting_rtd" | "awaiting_booking" | "booked"
+  status: "awaiting_booking" | "booked"
 }
 
 type Courier = {
@@ -155,10 +155,6 @@ const PacketBookingPage = () => {
   }, [loadQueue])
 
   const openBooking = async (item: QueueItem) => {
-    if (item.status === "waiting_rtd") {
-      toast.info("Vendor still needs to mark RTD before you can book the courier")
-      return
-    }
     setSelected(item)
     setDetail(null)
     setSelectedCourierId(item.preferred_courier_id || null)
@@ -273,8 +269,8 @@ const PacketBookingPage = () => {
         <div>
           <Heading level="h1">Packet Booking</Heading>
           <Text size="small" className="mt-1 text-ui-fg-subtle">
-            Easy Ship orders show here after the vendor chooses Easy. Book courier only after
-            they mark RTD.
+            Easy Ship orders appear after the vendor accepts and chooses Easy Shipping. You can
+            book the courier before RTD.
           </Text>
         </div>
         <Button variant="secondary" size="small" onClick={() => void loadQueue()}>
@@ -370,31 +366,21 @@ const PacketBookingPage = () => {
                           {item.shiprocket_awb || item.tracking_number || "AWB pending"}
                         </Text>
                       </div>
-                    ) : item.status === "waiting_rtd" ? (
+                    ) : (
                       <div>
-                        <Badge size="2xsmall" color="grey">
-                          Waiting for RTD
+                        <Badge size="2xsmall" color="orange">
+                          Ready to book
                         </Badge>
                         <Text size="xsmall" className="mt-0.5 text-ui-fg-muted">
-                          {item.invoice_generated_at
-                            ? "Invoice done · vendor must RTD"
-                            : "Easy chosen · invoice + RTD pending"}
+                          {item.rtd_at ? "RTD marked" : "RTD pending — booking allowed"}
                         </Text>
                       </div>
-                    ) : (
-                      <Badge size="2xsmall" color="orange">
-                        Ready to book
-                      </Badge>
                     )}
                   </td>
                   <td className="px-3 py-2.5">
                     {item.status === "awaiting_booking" ? (
                       <Button size="small" onClick={() => void openBooking(item)}>
                         Review & book
-                      </Button>
-                    ) : item.status === "waiting_rtd" ? (
-                      <Button size="small" variant="secondary" disabled>
-                        Wait for RTD
                       </Button>
                     ) : (
                       <Button

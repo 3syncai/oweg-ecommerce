@@ -188,7 +188,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
 /**
  * POST /admin/packet-booking/:order_id/:vendor_id
- * Admin books Easy Ship courier after vendor RTD.
+ * Admin books an Easy Ship courier after the vendor has accepted and selected Easy Shipping.
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const orderId = req.params?.order_id as string
@@ -205,9 +205,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     if (workflow.shipping_method !== "easy") {
       return res.status(409).json({ message: "Vendor did not choose Easy Shipping" })
     }
-    if (!workflow.rtd_at) {
+    if (!workflow.accepted_at && (!workflow.stage || workflow.stage === "to_accept")) {
       return res.status(409).json({
-        message: "Vendor has not marked Ready to Dispatch yet",
+        message: "Vendor has not accepted this order yet",
       })
     }
     if (workflow.shiprocket_awb || workflow.easy_booking_status === "booked") {

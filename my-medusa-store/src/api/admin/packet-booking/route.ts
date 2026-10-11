@@ -3,15 +3,14 @@ import { listPacketBookingQueue } from "../../../lib/packet-booking-queue"
 
 /**
  * GET /admin/packet-booking
- * Query: status=open|waiting_rtd|awaiting_booking|booked|all
- * Default: open (waiting_rtd + awaiting_booking)
+ * Query: status=open|awaiting_booking|booked|all
+ * Default: open (awaiting_booking)
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   try {
     const statusRaw = String((req.query as any)?.status || "open").trim()
     const allowed = new Set([
       "open",
-      "waiting_rtd",
       "awaiting_booking",
       "booked",
       "all",
