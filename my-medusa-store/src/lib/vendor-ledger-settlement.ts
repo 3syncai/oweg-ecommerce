@@ -24,6 +24,7 @@ export const DEFAULT_PARTNER_COMMISSION_RATE = 11
 export const DEFAULT_SERVICE_GST_RATE = 18
 export const DEFAULT_OUTPUT_GST_RATE = 18
 export const DEFAULT_CANCELLATION_CHARGE = 0
+export const DEFAULT_PAYMENT_GATEWAY_RATE = 2
 
 export const VENDOR_PLATFORM_FEE_METADATA_KEY = "vendor_platform_fee_default_rate"
 export const VENDOR_PARTNER_COMMISSION_METADATA_KEY = "vendor_partner_commission_rate"
@@ -40,6 +41,7 @@ export type LedgerRates = {
   service_gst_rate: number
   tcs_rate: number
   tds_rate: number
+  payment_gateway_rate?: number
 }
 
 export type LedgerSettlementInput = {
@@ -51,6 +53,9 @@ export type LedgerSettlementInput = {
   claim_amount?: number
   payment_amount?: number
   rates: LedgerRates
+  payment_method?: string | null
+  order_status?: string | null
+  is_delivered?: boolean | null
 }
 
 export type LedgerSettlementBreakdown = {
@@ -79,6 +84,10 @@ export type LedgerSettlementBreakdown = {
   partner_total: number
   logistic_gst: number
   logistic_total: number
+  payment_gateway_rate: number
+  payment_gateway_fee: number
+  payment_gateway_gst: number
+  payment_gateway_total: number
   tcs: number
   tds: number
   bank_settlement: number
@@ -93,7 +102,7 @@ export type LedgerSettlementBreakdown = {
   balance_delta: number
 }
 
-const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
+export const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
 
 const pct = (base: number, rate: number) =>
   round2(((Number(base) || 0) * (Number(rate) || 0)) / 100)
@@ -181,8 +190,8 @@ export function ledgerRowBalanceDelta(row: {
   if (row.category === "claim") return round2(Number(row.claim_amount) || 0)
   return round2(
     (Number(row.bank_settlement) || 0) -
-      (Number(row.reverse_logistic_total) || 0) -
-      (Number(row.cancellation_total) || 0)
+      Math.abs(Number(row.reverse_logistic_total) || 0) -
+      Math.abs(Number(row.cancellation_total) || 0)
   )
 }
 
@@ -243,6 +252,29 @@ export function calculateVendorLedgerSettlement(
   const absItem = round2(Math.abs(Number(input.item_price) || 0))
   const absLogistic = round2(Math.abs(Number(input.logistic_fee) || 0))
 
+  const pgRate = clampLedgerRate(rates.payment_gateway_rate, 0)
+  const method = String(input.payment_method || "").toLowerCase().trim()
+  const isCod = method === "cod" || method === "postpaid"
+  const isDelivered = Boolean(
+    input.is_delivered ||
+      (input.order_status &&
+        ["delivered", "completed", "paid"].includes(String(input.order_status).toLowerCase()))
+  )
+
+  let shouldChargePg = false
+  if (pgRate > 0) {
+    if (category === "cancellation") {
+      // Rule 3: if order is cancelled and it is cod then don't charge 2%
+      // Rule 4: if order is cancelled and it is prepaid then charge 2%
+      shouldChargePg = !isCod
+    } else if (category === "sale" || category === "return") {
+      // Rule 1: if payment is prepaid then deduct 2% payment charge
+      // Rule 2: if payment is cod and it is deliverd then take 2% charge
+      // Rule 5: if order is returned then also deduct payment gateway charge
+      shouldChargePg = !isCod || isDelivered
+    }
+  }
+
   // Booked cancel with no sale row: charge shipping (+GST) and/or cancel fee only.
   if (category === "cancellation" && absItem <= 0) {
     const log = signedFeeBlock(absLogistic, serviceGst)
@@ -254,7 +286,12 @@ export function calculateVendorLedgerSettlement(
       Math.abs(Number(input.reverse_logistic_fee) || 0),
       serviceGst
     )
-    const debit = round2(log.total + cancelOnly.total + reverseOnly.total)
+    const pgBase = round2(Math.abs(Number(input.item_price) || 0))
+    const pgFee = shouldChargePg && pgBase > 0 ? pct(pgBase, pgRate) : 0
+    const pgGst = shouldChargePg && pgFee > 0 ? pct(pgFee, serviceGst) : 0
+    const pgTotal = round2(pgFee + pgGst)
+
+    const debit = round2(log.total + cancelOnly.total + reverseOnly.total + pgTotal)
     return {
       ...emptyBreakdown({
         category,
@@ -271,6 +308,10 @@ export function calculateVendorLedgerSettlement(
       cancellation_fee: cancelOnly.fee,
       cancellation_gst: cancelOnly.tax,
       cancellation_total: cancelOnly.total,
+      payment_gateway_rate: pgRate,
+      payment_gateway_fee: pgFee,
+      payment_gateway_gst: pgGst,
+      payment_gateway_total: pgTotal,
     }
   }
 
@@ -298,11 +339,16 @@ export function calculateVendorLedgerSettlement(
   const logisticGst = pct(B, serviceGst)
   const logisticTotal = round2(B + logisticGst)
 
+  const pgBase = round2(Math.abs(productTotal))
+  const pgFee = shouldChargePg ? pct(pgBase, pgRate) : 0
+  const pgGst = shouldChargePg ? pct(pgFee, serviceGst) : 0
+  const pgTotal = round2(pgFee + pgGst)
+
   const tcs = pct(A, rates.tcs_rate)
   const tds = pct(A, rates.tds_rate)
 
   let bank = round2(
-    listingTotal - platformTotal - commissionTotal - partnerTotal - logisticTotal - tcs - tds
+    listingTotal - platformTotal - commissionTotal - partnerTotal - logisticTotal - pgTotal - tcs - tds
   )
 
   const reverse = signedFeeBlock(
@@ -351,6 +397,10 @@ export function calculateVendorLedgerSettlement(
     partner_total: partnerTotal,
     logistic_gst: displayLogisticGst,
     logistic_total: displayLogisticTotal,
+    payment_gateway_rate: pgRate,
+    payment_gateway_fee: pgFee,
+    payment_gateway_gst: pgGst,
+    payment_gateway_total: pgTotal,
     tcs,
     tds,
     bank_settlement: bank,
@@ -396,6 +446,10 @@ function emptyBreakdown(opts: {
     partner_total: 0,
     logistic_gst: 0,
     logistic_total: 0,
+    payment_gateway_rate: opts.rates.payment_gateway_rate ?? 0,
+    payment_gateway_fee: 0,
+    payment_gateway_gst: 0,
+    payment_gateway_total: 0,
     tcs: 0,
     tds: 0,
     bank_settlement: opts.bank_settlement || 0,
@@ -540,6 +594,7 @@ export async function buildLedgerRatesForVendor(
     platform_rate?: number
     partner_rate?: number
     service_gst_rate?: number
+    payment_gateway_rate?: number
   }
 ): Promise<LedgerRates> {
   const storeRates = await getStoreLedgerFeeRates(pool)
@@ -562,6 +617,10 @@ export async function buildLedgerRatesForVendor(
         : storeRates.service_gst_rate,
     tcs_rate: extras.tcs_rate,
     tds_rate: extras.tds_rate,
+    payment_gateway_rate:
+      extras.payment_gateway_rate != null
+        ? clampLedgerRate(extras.payment_gateway_rate, DEFAULT_PAYMENT_GATEWAY_RATE)
+        : DEFAULT_PAYMENT_GATEWAY_RATE,
   }
 }
 

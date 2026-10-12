@@ -76,6 +76,7 @@ type DashboardData = {
     delivered: number
     deliveredToday: number
     toAccept: number
+    cancelled: number
   }
   returns: {
     total: number
@@ -184,8 +185,16 @@ const isActiveProduct = (product: any) => {
   return status === "published" && !["pending", "rejected", "draft"].includes(approval)
 }
 
-const orderStage = (order: any) =>
-  String(order?.vendor_stage || order?.fulfillment_status || order?.status || "to_accept").toLowerCase()
+const isCancelledOrder = (order: any) =>
+  order?.cancelled === true ||
+  String(order?.vendor_stage || "").toLowerCase() === "cancelled" ||
+  String(order?.status || "").toLowerCase() === "canceled" ||
+  String(order?.status || "").toLowerCase() === "cancelled"
+
+const orderStage = (order: any) => {
+  if (isCancelledOrder(order)) return "cancelled"
+  return String(order?.vendor_stage || order?.fulfillment_status || order?.status || "to_accept").toLowerCase()
+}
 
 /** Latest delivery timestamp from fulfillments (falls back for delivered orders missing delivered_at). */
 const orderDeliveredAt = (order: any): string | null => {
@@ -419,6 +428,7 @@ function buildDashboardData(input: {
       delivered: deliveredOrders.length,
       deliveredToday: todayDeliveredOrders.length,
       toAccept: toAcceptOrders.length,
+      cancelled: orders.filter((order) => isCancelledOrder(order)).length,
     },
     returns: {
       total: returns.length,
@@ -781,6 +791,11 @@ const VendorDashboardPage = () => {
                     label: "Delivered",
                     value: data.orders.delivered,
                     variant: "success",
+                  },
+                  {
+                    label: "Cancelled",
+                    value: data.orders.cancelled,
+                    variant: "error",
                   },
                 ]}
               />

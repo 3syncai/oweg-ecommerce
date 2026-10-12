@@ -89,6 +89,25 @@ const VendorProductsPage = () => {
     () => cachedProducts?.counts ?? { total: 0, published: 0, draft: 0, pending: 0 }
   )
 
+  const [draftProduct, setDraftProduct] = useState<{ title: string; savedAt?: string } | null>(null)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("vendor_product_new_draft")
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed?.formData?.title?.trim()) {
+          setDraftProduct({
+            title: parsed.formData.title.trim(),
+            savedAt: parsed.savedAt,
+          })
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
   useEffect(() => {
     const id = window.setTimeout(() => setSearchDebounced(search.trim()), 300)
     return () => window.clearTimeout(id)
@@ -223,6 +242,43 @@ const VendorProductsPage = () => {
             </Button>
           </div>
         </div>
+
+        {draftProduct && (
+          <div className="rounded-xl border border-amber-300/80 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">📝</span>
+              <div>
+                <p className="text-sm font-semibold text-amber-950 dark:text-amber-100">
+                  There is a draft product: &ldquo;{draftProduct.title}&rdquo;
+                </p>
+                <p className="text-xs text-amber-800/80 dark:text-amber-300">
+                  Do you want to publish it?
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+              <Button
+                size="small"
+                variant="secondary"
+                onClick={() => {
+                  try {
+                    localStorage.removeItem("vendor_product_new_draft")
+                  } catch {}
+                  setDraftProduct(null)
+                }}
+              >
+                Discard
+              </Button>
+              <Button
+                size="small"
+                variant="primary"
+                onClick={() => router.push("/products/new")}
+              >
+                Publish product →
+              </Button>
+            </div>
+          </div>
+        )}
 
         {stats.total > 0 && (
           <div

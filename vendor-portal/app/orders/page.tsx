@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { MouseEvent, ReactNode } from "react"
 import { Button, Container, Heading, Text, clx } from "@medusajs/ui"
 import {
@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Search,
   Truck,
+  XCircle,
 } from "lucide-react"
 import VendorShell from "@/components/VendorShell"
 import PageSkeleton from "@/components/PageSkeleton"
@@ -28,7 +29,7 @@ import { notifyVendorDataChanged, useVendorLive } from "@/lib/useVendorLive"
 import { hasPageCache, pageCacheKey, peekPageCache, writePageCache } from "@/lib/page-cache"
 import { useRouter, useSearchParams } from "next/navigation"
 
-type VendorStage = "to_accept" | "to_pack" | "to_dispatch" | "in_transit" | "delivered"
+type VendorStage = "to_accept" | "to_pack" | "to_dispatch" | "in_transit" | "delivered" | "cancelled"
 type StageFilter = "total" | VendorStage
 
 type VendorWorkflow = {
@@ -184,6 +185,14 @@ const stageConfig: Array<{
     tone: "border-oweg-500/30",
     iconTone: "bg-oweg-500/10 text-oweg-700 dark:text-oweg-300",
   },
+  {
+    key: "cancelled",
+    label: "Cancelled",
+    subtext: "Terminated",
+    icon: <XCircle size={18} />,
+    tone: "border-rose-500/30",
+    iconTone: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  },
 ]
 
 const formatDate = (dateString: string) =>
@@ -253,13 +262,18 @@ const addressLineSafe = (order: VendorOrder, address?: Record<string, any> | nul
   return addressLine(address)
 }
 
-const isCancelledOrder = (order: Pick<VendorOrder, "status" | "cancelled">) =>
+const isCancelledOrder = (order: {
+  status?: string | null
+  cancelled?: boolean
+  vendor_stage?: string
+}) =>
   order.cancelled === true ||
+  String(order.vendor_stage || "").toLowerCase() === "cancelled" ||
   String(order.status || "").toLowerCase() === "canceled" ||
   String(order.status || "").toLowerCase() === "cancelled"
 
 const stagePillClass = (stage: VendorStage, cancelled = false) => {
-  if (cancelled) {
+  if (cancelled || stage === "cancelled") {
     return "bg-rose-500/10 text-rose-800 ring-rose-500/20 dark:text-rose-300"
   }
   switch (stage) {
@@ -314,6 +328,7 @@ const VendorOrdersContent = () => {
         to_dispatch: 0,
         in_transit: 0,
         delivered: 0,
+        cancelled: 0,
       }
   )
   const [totalFiltered, setTotalFiltered] = useState(() => cachedOrders?.totalFiltered ?? 0)
@@ -375,6 +390,7 @@ const VendorOrdersContent = () => {
             to_dispatch: Number(data.counts.to_dispatch) || 0,
             in_transit: Number(data.counts.in_transit) || 0,
             delivered: Number(data.counts.delivered) || 0,
+            cancelled: Number(data.counts.cancelled) || 0,
           }
         : {
             total: 0,
@@ -383,6 +399,7 @@ const VendorOrdersContent = () => {
             to_dispatch: 0,
             in_transit: 0,
             delivered: 0,
+            cancelled: 0,
           }
       const nextTotal =
         typeof data?.count === "number" ? data.count : nextOrders.length
@@ -443,8 +460,16 @@ const VendorOrdersContent = () => {
   }, [searchParams])
 
   const counts = stageCounts
-  const pageCount = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE))
-  const visibleOrders = orders
+  const visibleOrders = useMemo(() => {
+    if (selectedStage === "total") return orders
+    if (selectedStage === "cancelled") return orders.filter((order) => isCancelledOrder(order))
+    return orders.filter((order) => !isCancelledOrder(order))
+  }, [orders, selectedStage])
+  const displayTotal =
+    selectedStage === "total"
+      ? totalFiltered
+      : Math.min(totalFiltered, visibleOrders.length)
+  const pageCount = Math.max(1, Math.ceil(displayTotal / PAGE_SIZE))
 
   const openDetails = useCallback(async (order: VendorOrder, withTracking = false) => {
     setDetailOrder(order)
@@ -657,11 +682,7 @@ const VendorOrdersContent = () => {
     const hasShipping = Boolean(workflow.shipping_method)
     const hasInvoice = Boolean(workflow.invoice_generated_at)
 
-    if (isCancelledOrder(order)) {
-      return <ActionButton icon={<Eye size={14} />} label="View" onClick={() => void openDetails(order)} />
-    }
-
-    if (selectedStage === "total") {
+    if (isCancelledOrder(order) || selectedStage === "cancelled" || selectedStage === "total") {
       return <ActionButton icon={<Eye size={14} />} label="View" onClick={() => void openDetails(order)} />
     }
 
@@ -894,7 +915,7 @@ const VendorOrdersContent = () => {
         ) : (
           <>
             <div
-              className="oweg-stagger grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6"
+              className="oweg-stagger grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7"
               style={{ animationDelay: "40ms" }}
             >
               {stageConfig.map((item) => {
@@ -965,7 +986,7 @@ const VendorOrdersContent = () => {
                     ) : null}
                   </div>
                   <Text size="small" className="mt-0.5 text-ui-fg-subtle">
-                    {totalFiltered} order{totalFiltered === 1 ? "" : "s"} in this view
+                    {displayTotal} order{displayTotal === 1 ? "" : "s"} in this view
                   </Text>
                 </div>
                 <div className="relative w-full sm:max-w-sm">
@@ -1129,7 +1150,7 @@ const VendorOrdersContent = () => {
               <div className="flex flex-col gap-2 text-ui-fg-muted sm:flex-row sm:items-center sm:justify-between">
                 <Text size="small" className="tabular-nums">
                   Showing {visibleOrders.length ? (page - 1) * PAGE_SIZE + 1 : 0}–
-                  {Math.min(page * PAGE_SIZE, totalFiltered)} of {totalFiltered}
+                  {Math.min(page * PAGE_SIZE, displayTotal)} of {displayTotal}
                 </Text>
                 <div className="flex items-center gap-2">
                   <button
@@ -1351,10 +1372,10 @@ function orderProgressSteps(stage: VendorStage) {
     in_transit: 4,
     delivered: 5,
   }
-  const current = orderIndex[stage] ?? 1
+  const current = stage === "cancelled" ? -1 : (orderIndex[stage] ?? 1)
   return steps.map((step, index) => ({
     ...step,
-    state: index < current ? "done" : index === current ? "current" : "todo",
+    state: current === -1 ? "todo" : index < current ? "done" : index === current ? "current" : "todo",
   }))
 }
 

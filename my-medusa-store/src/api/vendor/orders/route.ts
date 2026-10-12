@@ -25,6 +25,7 @@ const EMPTY_COUNTS: Record<VendorOrderStage | "total", number> = {
   to_dispatch: 0,
   in_transit: 0,
   delivered: 0,
+  cancelled: 0,
 }
 
 const LIST_FIELDS = [
@@ -92,6 +93,10 @@ function buildCounts(formattedOrders: any[]) {
     (acc: Record<VendorOrderStage | "total", number>, order: any) => {
       acc.total += 1
       const stage = order.vendor_stage as VendorOrderStage
+      if (order.cancelled || stage === "cancelled") {
+        acc.cancelled = (acc.cancelled || 0) + 1
+        return acc
+      }
       if (stage in acc) acc[stage] += 1
       return acc
     },
@@ -167,7 +172,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     let filtered = lightFormatted
     if (stageFilter && stageFilter !== "total" && stageFilter !== "all") {
       filtered = filtered.filter(
-        (o: any) => String(o.vendor_stage || "").toLowerCase() === stageFilter
+        (o: any) =>
+          stageFilter === "cancelled"
+            ? (o.cancelled === true || String(o.vendor_stage || "").toLowerCase() === "cancelled")
+            : (String(o.vendor_stage || "").toLowerCase() === stageFilter && !o.cancelled)
       )
     }
     if (q) {

@@ -19,6 +19,7 @@ export type VendorOrderStage =
   | "to_dispatch"
   | "in_transit"
   | "delivered"
+  | "cancelled"
 
 export type VendorShippingMethod = "easy" | "self"
 
@@ -306,7 +307,20 @@ export function deriveFulfillmentStatus(order: OrderLike) {
   return "processing"
 }
 
+export function isOrderCancelled(order: OrderLike): boolean {
+  if (!order) return false
+  const status = String(order.status || "").toLowerCase()
+  if (status === "canceled" || status === "cancelled") return true
+  const metadata = (order.metadata || {}) as Record<string, unknown>
+  if (metadata.is_cancelled === true || metadata.cancelled === true) return true
+  const cancellation = readCancellationInfo(order as any)
+  if (cancellation?.is_cancelled) return true
+  return false
+}
+
 export function deriveVendorStage(order: OrderLike, workflow: VendorOrderWorkflow): VendorOrderStage {
+  if (isOrderCancelled(order)) return "cancelled"
+
   const metadata = order.metadata || {}
   // Medusa fulfillment "Mark as delivered" must win over stale Shiprocket "shipped"
   if (deriveFulfillmentStatus(order) === "delivered") return "delivered"
@@ -336,6 +350,7 @@ export function deriveVendorStage(order: OrderLike, workflow: VendorOrderWorkflo
 }
 
 export function getVendorOrderStatusLabel(stage: VendorOrderStage) {
+  if (stage === "cancelled") return "Cancelled"
   if (stage === "to_accept") return "Pending"
   if (stage === "to_pack") return "Not packed"
   if (stage === "to_dispatch") return "Not shipped"
@@ -348,6 +363,7 @@ export function getAdminVendorAcceptanceLabel(
   workflow: VendorOrderWorkflow,
   stage?: VendorOrderStage
 ) {
+  if (stage === "cancelled") return "Order cancelled"
   const effective = stage || workflow.stage
   if (workflow.accepted_at || (effective && effective !== "to_accept")) {
     if (effective === "delivered") return "Delivered"
@@ -686,7 +702,8 @@ export function formatVendorOrder(
       })
     : null
   const cancellation = readCancellationInfo(order as any)
-  const statusLabel = cancellation.is_cancelled
+  const isCancelled = cancellation.is_cancelled || isOrderCancelled(order)
+  const statusLabel = isCancelled
     ? cancellation.source === "admin"
       ? "Cancelled by admin"
       : "Cancelled"
@@ -700,7 +717,7 @@ export function formatVendorOrder(
     fulfillment_status: deriveFulfillmentStatus(order),
     vendor_stage: stage,
     vendor_status_label: statusLabel,
-    cancelled: cancellation.is_cancelled,
+    cancelled: isCancelled,
     cancelled_by: cancellation.source,
     cancellation_note: cancellation.vendor_message || cancellation.note,
     cancellation_at: cancellation.cancelled_at,

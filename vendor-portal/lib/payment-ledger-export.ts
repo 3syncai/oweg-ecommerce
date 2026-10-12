@@ -23,7 +23,7 @@ const TEMPLATE_URL = "/templates/vendor-payment-ledger.xlsx"
 const TEMPLATE_WORKSHEET_PATH = "xl/worksheets/sheet1.xml"
 const TEMPLATE_DATA_START_ROW = 4 // Excel row 4; rows 1–3 are the template's grouped headers
 const TEMPLATE_DATA_END_ROW = 19
-const COLUMN_COUNT = 37 // A:AK
+const COLUMN_COUNT = 40 // A:AN
 
 function categoryLabel(row: SettlementRow) {
   const key = row.category || (row.type === "sales" ? "sale" : row.type)
@@ -104,6 +104,18 @@ export function mapPaymentLedgerExportRow(row: SettlementRow) {
   const rawDate = row.delivered_at || row.payment_date || null
   const date = formatIsoDate(rawDate)
   const orderLabel = row.order_display_id ? `#${row.order_display_id}` : row.order_id
+  const kind = row.category || row.type
+  const isReturnOrCancel = kind === "return" || kind === "cancellation"
+  const exportReturnFee = isReturnOrCancel && row.return_fee ? -Math.abs(n(row.return_fee)) : n(row.return_fee)
+  const exportReverseGst = isReturnOrCancel && row.reverse_logistic_gst ? -Math.abs(n(row.reverse_logistic_gst)) : n(row.reverse_logistic_gst)
+  const exportReverseTotal = isReturnOrCancel && row.reverse_logistic_total ? -Math.abs(n(row.reverse_logistic_total)) : n(row.reverse_logistic_total)
+  const exportCancelFee = isReturnOrCancel && row.cancellation_fee ? -Math.abs(n(row.cancellation_fee)) : n(row.cancellation_fee)
+  const exportCancelGst = isReturnOrCancel && row.cancellation_gst ? -Math.abs(n(row.cancellation_gst)) : n(row.cancellation_gst)
+  const exportCancelTotal = isReturnOrCancel && row.cancellation_total ? -Math.abs(n(row.cancellation_total)) : n(row.cancellation_total)
+  const exportPgFee = isReturnOrCancel && row.payment_gateway_fee ? -Math.abs(n(row.payment_gateway_fee)) : n(row.payment_gateway_fee)
+  const exportPgGst = isReturnOrCancel && row.payment_gateway_gst ? -Math.abs(n(row.payment_gateway_gst)) : n(row.payment_gateway_gst)
+  const exportPgTotal = isReturnOrCancel && row.payment_gateway_total ? -Math.abs(n(row.payment_gateway_total)) : n(row.payment_gateway_total)
+
   return [
     orderLabel,
     date,
@@ -131,12 +143,15 @@ export function mapPaymentLedgerExportRow(row: SettlementRow) {
     n(row.tcs),
     n(row.tds),
     n(row.bank_settlement ?? row.settlement_amount),
-    n(row.return_fee),
-    n(row.reverse_logistic_gst),
-    n(row.reverse_logistic_total),
-    n(row.cancellation_fee),
-    n(row.cancellation_gst),
-    n(row.cancellation_total),
+    exportReturnFee,
+    exportReverseGst,
+    exportReverseTotal,
+    exportCancelFee,
+    exportCancelGst,
+    exportCancelTotal,
+    exportPgFee,
+    exportPgGst,
+    exportPgTotal,
     n(row.claim_amount),
     row.transaction_id || "",
     formatIsoDate(row.payment_date),
@@ -170,7 +185,7 @@ function templateRowStyle(rowXml: string, column: string) {
 }
 
 function makeDataRow(rowNumber: number, values: Array<string | number> | null, templateRow: string) {
-  const rowAttributes = templateRow.match(/^<row\b[^>]*>/)?.[0] || '<row spans="1:37">'
+  const rowAttributes = templateRow.match(/^<row\b[^>]*>/)?.[0] || '<row spans="1:40">'
   const rowOpen = rowAttributes.replace(/\br="\d+"/, `r="${rowNumber}"`)
   const cells = Array.from({ length: COLUMN_COUNT }, (_, columnIndex) => {
     const column = columnName(columnIndex)
@@ -184,7 +199,7 @@ function makeDataRow(rowNumber: number, values: Array<string | number> | null, t
     }
     // The source template already supplies Excel date formatting for these columns.
     // Write a serial number, not a text date, so its exact d-mmm-yy presentation remains.
-    if (columnIndex === 1 || columnIndex === 3 || columnIndex === 34) {
+    if (columnIndex === 1 || columnIndex === 3 || columnIndex === 37) {
       const serial = excelDateSerial(value)
       if (serial !== null) return `<c r="${column}${rowNumber}" s="${style}"><v>${serial}</v></c>`
     }
@@ -225,7 +240,7 @@ export async function downloadPaymentLedgerExcel(rows: SettlementRow[], rangeLab
     sheetXml = sheetXml.replace("</sheetData>", `${additionalRows}</sheetData>`)
   }
   const finalRow = Math.max(TEMPLATE_DATA_END_ROW, TEMPLATE_DATA_START_ROW + data.length - 1)
-  sheetXml = sheetXml.replace(/<dimension ref="A1:AK\d+"\/>/, `<dimension ref="A1:AK${finalRow}"/>`)
+  sheetXml = sheetXml.replace(/<dimension ref="A1:AN\d+"\/>/, `<dimension ref="A1:AN${finalRow}"/>`)
   archive.file(TEMPLATE_WORKSHEET_PATH, sheetXml)
   const stamp = new Date().toISOString().slice(0, 10)
   const file = await archive.generateAsync({ type: "blob", compression: "DEFLATE" })

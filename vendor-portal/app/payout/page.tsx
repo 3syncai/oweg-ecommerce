@@ -431,15 +431,16 @@ const VendorPayoutPage = () => {
     const logisticsRateLabel = null
 
     const settlementBalance =
-      Number(payments.cards.settlement_balance) > 0
+      typeof payments.cards.settlement_balance === "number"
         ? Number(payments.cards.settlement_balance)
         : pendingPayment + withdrawn
 
     const balance =
-      typeof payments.cards.balance === "number" &&
-      (payments.cards.balance > 0 || pendingPayment === 0)
+      typeof payments.cards.balance === "number"
         ? Number(payments.cards.balance)
-        : Math.max(0, settlementBalance - withdrawn)
+        : settlementBalance - withdrawn
+
+    const isNegativeBalance = balance < 0
 
     const moneyTone = (n: number, prefer: "positive" | "negative" | "neutral" = "neutral") => {
       if (n === 0) return "neutral" as const
@@ -645,12 +646,26 @@ const VendorPayoutPage = () => {
             />
             <StatCard
               variant="hero"
-              icon={<CurrencyDollar />}
+              icon={<CurrencyDollar className={isNegativeBalance ? "text-rose-600 dark:text-rose-400" : undefined} />}
               label="Balance"
               value={formatCurrency(balance)}
+              className={
+                isNegativeBalance
+                  ? "border-rose-500/40 bg-gradient-to-br from-rose-500/[0.12] via-ui-bg-base to-rose-50/40 dark:from-rose-500/[0.18] dark:to-ui-bg-base shadow-sm shadow-rose-500/[0.08]"
+                  : undefined
+              }
               subtext={
-                <Text size="small" className="text-ui-fg-subtle">
-                  Settlement − Withdrawn
+                <Text
+                  size="small"
+                  className={
+                    isNegativeBalance
+                      ? "font-semibold text-rose-600 dark:text-rose-400"
+                      : "text-ui-fg-subtle"
+                  }
+                >
+                  {isNegativeBalance
+                    ? "Negative balance · Settlement − Withdrawn"
+                    : "Settlement − Withdrawn"}
                 </Text>
               }
             />
