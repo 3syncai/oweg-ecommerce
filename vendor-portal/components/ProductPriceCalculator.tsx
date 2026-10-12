@@ -8,6 +8,7 @@ import {
   FEE_GST_RATE,
   LOGISTICS_GST_RATE,
   PARTNER_COMMISSION_RATE,
+  PAYMENT_GATEWAY_RATE,
   PLATFORM_FEE_RATE,
   PRODUCT_GST_RATE,
   TCS_RATE,
@@ -252,9 +253,20 @@ export default function ProductPriceCalculator({
               <Text
                 id="vendor-product-price-hint"
                 size="xsmall"
-                className="text-ui-fg-muted mt-1 block text-[11px]"
+                className="text-ui-fg-muted mt-1.5 block text-[11px] leading-relaxed"
+                aria-live="polite"
+                aria-atomic="true"
               >
-                The price is GST included.
+                {hasPrice ? (
+                  <span>
+                    Product basic: <strong>{formatInr(pricing.item.basic)}</strong>
+                    {" + "}{effectiveProductGstRate}% GST (
+                    <strong>{formatInr(pricing.item.gstOrTax)}</strong>) ={" "}
+                    <strong>{formatInr(pricing.item.total)}</strong> (GST inclusive).
+                  </span>
+                ) : (
+                  `Enter a product price to see its basic price + ${effectiveProductGstRate}% GST breakdown.`
+                )}
               </Text>
             </div>
 
@@ -495,6 +507,11 @@ export default function ProductPriceCalculator({
               <MoneyTableRow
                 label={`Partner commission (${PARTNER_COMMISSION_RATE}% of listing)`}
                 row={pricing.partnerCommission}
+                muted
+              />
+              <MoneyTableRow
+                label={`Payment gateway charges (${PAYMENT_GATEWAY_RATE}% of listing)`}
+                row={pricing.paymentGatewayFee}
                 muted
               />
               <MoneyTableRow

@@ -9,7 +9,7 @@ export const DEFAULT_LOGISTICS_FEE = 90
 
 export const PRODUCT_GST_RATE = 18
 export const LOGISTICS_GST_RATE = 18
-/** GST on platform / commission / partner / logistics deduction lines */
+/** GST on platform / commission / partner / gateway / logistics deduction lines */
 export const FEE_GST_RATE = 18
 
 /** % of item price basic */
@@ -18,6 +18,7 @@ export const COMMISSION_RATE = 2
 
 /** % of total listing price (C) */
 export const PARTNER_COMMISSION_RATE = 11
+export const PAYMENT_GATEWAY_RATE = 2
 
 /** % of item price basic (shown under taxes column) */
 export const TCS_RATE = 0.5
