@@ -243,6 +243,9 @@ export default function PaymentLedgerTable({
               <Group colSpan={3} rate="GST 18%">
                 Cancellation
               </Group>
+              <Group colSpan={3} rate="2% + GST 18%">
+                Payment gateway
+              </Group>
               <Group>Claim</Group>
               <Group colSpan={2} rate={`${tcsHdr} / ${tdsHdr}`}>
                 Tax deduct
@@ -261,6 +264,9 @@ export default function PaymentLedgerTable({
               <TH className="text-right">Logistics</TH>
               <TH className="text-right">Logistics GST</TH>
               <TH className="text-right">Listing price</TH>
+              <TH className="text-right">Fee</TH>
+              <TH className="text-right">Tax</TH>
+              <TH className="text-right">Total</TH>
               <TH className="text-right">Fee</TH>
               <TH className="text-right">Tax</TH>
               <TH className="text-right">Total</TH>
@@ -363,6 +369,17 @@ export default function PaymentLedgerTable({
                     ? "cancellation"
                     : "default"
 
+              const isReturnOrCancel = category === "return" || category === "cancellation"
+              const displayReturnFee = isReturnOrCancel && row.return_fee ? -Math.abs(row.return_fee) : row.return_fee
+              const displayReverseGst = isReturnOrCancel && row.reverse_logistic_gst ? -Math.abs(row.reverse_logistic_gst) : row.reverse_logistic_gst
+              const displayReverseTotal = isReturnOrCancel && row.reverse_logistic_total ? -Math.abs(row.reverse_logistic_total) : row.reverse_logistic_total
+              const displayCancelFee = isReturnOrCancel && row.cancellation_fee ? -Math.abs(row.cancellation_fee) : row.cancellation_fee
+              const displayCancelGst = isReturnOrCancel && row.cancellation_gst ? -Math.abs(row.cancellation_gst) : row.cancellation_gst
+              const displayCancelTotal = isReturnOrCancel && row.cancellation_total ? -Math.abs(row.cancellation_total) : row.cancellation_total
+              const displayPgFee = isReturnOrCancel && row.payment_gateway_fee ? -Math.abs(row.payment_gateway_fee) : row.payment_gateway_fee
+              const displayPgGst = isReturnOrCancel && row.payment_gateway_gst ? -Math.abs(row.payment_gateway_gst) : row.payment_gateway_gst
+              const displayPgTotal = isReturnOrCancel && row.payment_gateway_total ? -Math.abs(row.payment_gateway_total) : row.payment_gateway_total
+
               return (
                 <tr
                   key={row.id}
@@ -410,12 +427,15 @@ export default function PaymentLedgerTable({
                   <Money value={row.logistic_fee} tone={moneyTone} />
                   <Money value={row.logistic_gst} tone={moneyTone} />
                   <Money value={row.logistic_total} tone={moneyTone} />
-                  <Money value={row.return_fee} tone={moneyTone} />
-                  <Money value={row.reverse_logistic_gst} tone={moneyTone} />
-                  <Money value={row.reverse_logistic_total} tone={moneyTone} />
-                  <Money value={row.cancellation_fee} tone={moneyTone} />
-                  <Money value={row.cancellation_gst} tone={moneyTone} />
-                  <Money value={row.cancellation_total} tone={moneyTone} />
+                  <Money value={displayReturnFee} tone={moneyTone} />
+                  <Money value={displayReverseGst} tone={moneyTone} />
+                  <Money value={displayReverseTotal} tone={moneyTone} />
+                  <Money value={displayCancelFee} tone={moneyTone} />
+                  <Money value={displayCancelGst} tone={moneyTone} />
+                  <Money value={displayCancelTotal} tone={moneyTone} />
+                  <Money value={displayPgFee} tone={moneyTone} />
+                  <Money value={displayPgGst} tone={moneyTone} />
+                  <Money value={displayPgTotal} tone={moneyTone} />
                   <Money value={row.claim_amount} tone={moneyTone} />
                   <Money value={row.tcs} tone={moneyTone} />
                   <Money value={row.tds} tone={moneyTone} />

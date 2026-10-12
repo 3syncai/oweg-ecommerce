@@ -40,6 +40,7 @@ export function stageFromTrackingStatus(status: string): VendorOrderStage | null
 }
 
 const STAGE_RANK: Record<VendorOrderStage, number> = {
+  cancelled: -1,
   to_accept: 0,
   to_pack: 1,
   to_dispatch: 2,
@@ -53,6 +54,7 @@ function canAdvanceStage(
   next: VendorOrderStage | null
 ): next is VendorOrderStage {
   if (!next) return false
+  if (current === "cancelled") return false
   if (!current) return true
   return STAGE_RANK[next] >= STAGE_RANK[current]
 }

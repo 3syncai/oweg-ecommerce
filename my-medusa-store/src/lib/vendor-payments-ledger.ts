@@ -4,6 +4,7 @@ import {
   buildLedgerRatesForVendor,
   calculateVendorLedgerSettlement,
   overlaySaleDeductions,
+  round2,
   type LedgerRates,
 } from "./vendor-ledger-settlement"
 import {
@@ -41,6 +42,8 @@ type HistoryRow = {
   delivered_at: string | null
   unlock_at: string | null
   product_name: string | null
+  payment_method: string | null
+  order_status: string | null
 }
 
 type PayoutRow = {
@@ -136,6 +139,8 @@ export type EarningLedgerSource = {
   net_amount?: number
   delivered_at: string | null
   unlock_at: string | null
+  payment_method?: string | null
+  order_status?: string | null
 }
 
 export type PayoutLedgerSource = {
@@ -174,6 +179,9 @@ export function buildVendorLedgerRowsFromEarning(
       logistic_fee: logisticFee,
       cancellation_fee: fee,
       rates,
+      payment_method: row.payment_method,
+      order_status: row.order_status,
+      is_delivered: Boolean(row.delivered_at),
     })
     return [
       settlementFromLedger({
@@ -236,6 +244,9 @@ export function buildVendorLedgerRowsFromEarning(
     item_price: itemPrice,
     logistic_fee: logisticFee,
     rates,
+    payment_method: row.payment_method,
+    order_status: row.order_status,
+    is_delivered: Boolean(row.delivered_at),
   })
   if (row.status !== "REVERSED") {
     saleLedger = overlaySaleDeductions(
@@ -269,7 +280,19 @@ export function buildVendorLedgerRowsFromEarning(
       reverse_logistic_fee: returnFee,
       cancellation_fee: cancellationFee,
       rates,
+      payment_method: row.payment_method,
+      order_status: row.order_status,
+      is_delivered: Boolean(row.delivered_at),
     })
+    const serviceGstRate = Number(rates.service_gst_rate) || 18
+    const logFee = Math.abs(logisticFee)
+    const logGst = round2((logFee * serviceGstRate) / 100)
+    const logTotal = round2(logFee + logGst)
+
+    const revFee = Math.abs(returnFee)
+    const revGst = round2((revFee * serviceGstRate) / 100)
+    const revTotal = round2(revFee + revGst)
+
     rows.push(
       settlementFromLedger({
         id: `${row.id}:return`,
@@ -279,7 +302,18 @@ export function buildVendorLedgerRowsFromEarning(
         status: "REVERSED",
         delivered_at: row.delivered_at,
         unlock_at: null,
-        ledger: returnLedger,
+        ledger: {
+          ...returnLedger,
+          logistic_fee: logFee > 0 ? -logFee : 0,
+          logistic_gst: logGst > 0 ? -logGst : 0,
+          logistic_total: logTotal > 0 ? -logTotal : 0,
+          reverse_logistic_fee: revFee > 0 ? -revFee : 0,
+          reverse_logistic_gst: revGst > 0 ? -revGst : 0,
+          reverse_logistic_total: revTotal > 0 ? -revTotal : 0,
+          payment_gateway_fee: returnLedger.payment_gateway_fee > 0 ? -returnLedger.payment_gateway_fee : 0,
+          payment_gateway_gst: returnLedger.payment_gateway_gst > 0 ? -returnLedger.payment_gateway_gst : 0,
+          payment_gateway_total: returnLedger.payment_gateway_total > 0 ? -returnLedger.payment_gateway_total : 0,
+        },
         tcs_rate: taxRates.tcs_rate,
         tds_rate: taxRates.tds_rate,
         gst_rate: gstRate,
@@ -338,8 +372,12 @@ export function summarizeVendorPaymentCards(
   )
   const sum = (rows: VendorPaymentSettlement[], key: keyof VendorPaymentSettlement) =>
     rows.reduce((acc, row) => acc + (Number(row[key]) || 0), 0)
-  const settlementBalance =
-    (Number(extras.available_balance) || 0) + (Number(extras.total_withdrawn) || 0)
+  const latestRunningBalance =
+    settlements.length > 0
+      ? settlements[settlements.length - 1].balance_amount
+      : Number(extras.available_balance) || 0
+  const totalWithdrawn = Number(extras.total_withdrawn) || 0
+  const settlementBalance = round2(latestRunningBalance + totalWithdrawn)
 
   return {
     // Catalog product sales only (A + GST A). Logistics stay on their own card.
@@ -358,10 +396,10 @@ export function summarizeVendorPaymentCards(
     platform_fee: Math.abs(sum(todaySales, "platform_fee")),
     partner_commission: Math.abs(sum(todaySales, "partner_commission")),
     settlement_balance: settlementBalance,
-    balance: Number(extras.available_balance) || 0,
-    pending_payment: extras.available_balance,
+    balance: latestRunningBalance,
+    pending_payment: latestRunningBalance,
     unlocking_payment: extras.unlocking_balance,
-    withdrawn: extras.total_withdrawn,
+    withdrawn: totalWithdrawn,
   }
 }
 
@@ -372,6 +410,44 @@ export async function buildVendorPaymentsView(
   await syncVendorEarningsStatuses(pool)
   await repairClaimCreditsWithoutCommission(vendorId, pool)
   await recomputeUnpaidVendorLedger(vendorId, pool)
+
+  try {
+    await pool.query(
+      `
+        UPDATE vendor_earnings_log vel
+        SET
+          logistic_fee = GREATEST(
+            COALESCE(vel.logistic_fee, 0),
+            COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'easy_courier_rate')::numeric, 0), 0)
+          ),
+          return_fee = GREATEST(
+            COALESCE(vel.return_fee, 0),
+            COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'return_courier_rate')::numeric, 0), 0),
+            CASE
+              WHEN vel.status = 'REVERSED' AND (o.metadata->'vendor_order_workflows'->vel.vendor_id->>'shipping_method' = 'easy')
+              THEN COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'easy_courier_rate')::numeric, 0), 0)
+              ELSE 0
+            END
+          ),
+          updated_at = NOW()
+        FROM "order" o
+        WHERE o.id = vel.order_id
+          AND vel.vendor_id = $1
+          AND (
+            (COALESCE(vel.logistic_fee, 0) = 0 AND o.metadata->'vendor_order_workflows'->vel.vendor_id->>'easy_courier_rate' IS NOT NULL)
+            OR
+            (COALESCE(vel.return_fee, 0) = 0 AND (
+              o.metadata->'vendor_order_workflows'->vel.vendor_id->>'return_courier_rate' IS NOT NULL
+              OR (vel.status = 'REVERSED' AND o.metadata->'vendor_order_workflows'->vel.vendor_id->>'shipping_method' = 'easy')
+            ))
+          )
+      `,
+      [vendorId]
+    )
+  } catch (syncErr) {
+    console.warn("[vendor-payments-ledger] rate sync skipped:", syncErr)
+  }
+
   const [summary, taxRates, historyResult, payoutResult] =
     await Promise.all([
       getVendorEarningsSummary(vendorId, pool),
@@ -391,12 +467,25 @@ export async function buildVendorPaymentsView(
             vel.partner_commission_rate,
             vel.tcs_rate,
             vel.tds_rate,
-            COALESCE(vel.logistic_fee, 0) AS logistic_fee,
-            COALESCE(vel.return_fee, 0) AS return_fee,
+            GREATEST(
+              COALESCE(vel.logistic_fee, 0),
+              COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'easy_courier_rate')::numeric, 0), 0)
+            ) AS logistic_fee,
+            GREATEST(
+              COALESCE(vel.return_fee, 0),
+              COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'return_courier_rate')::numeric, 0), 0),
+              CASE
+                WHEN vel.status = 'REVERSED' AND (o.metadata->'vendor_order_workflows'->vel.vendor_id->>'shipping_method' = 'easy')
+                THEN COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'easy_courier_rate')::numeric, 0), 0)
+                ELSE 0
+              END
+            ) AS return_fee,
             COALESCE(vel.cancellation_fee, 0) AS cancellation_fee,
             vel.net_amount,
             vel.delivered_at,
             vel.unlock_at,
+            COALESCE(o.metadata->>'payment_method', 'prepaid') AS payment_method,
+            o.status AS order_status,
             (
               SELECT COALESCE(oli.title, 'Order #' || COALESCE(vel.order_display_id, LEFT(vel.order_id, 8)))
               FROM order_item oi
@@ -409,6 +498,7 @@ export async function buildVendorPaymentsView(
               LIMIT 1
             ) AS product_name
           FROM vendor_earnings_log vel
+          LEFT JOIN "order" o ON o.id = vel.order_id
           WHERE vel.vendor_id = $1
             AND vel.delivered_at IS NOT NULL
           ORDER BY vel.delivered_at ASC, vel.updated_at ASC
@@ -491,6 +581,8 @@ export async function buildVendorPaymentsView(
           net_amount: Number(row.net_amount) || 0,
           delivered_at: row.delivered_at,
           unlock_at: row.unlock_at,
+          payment_method: row.payment_method,
+          order_status: row.order_status,
         },
         rates,
         taxRates

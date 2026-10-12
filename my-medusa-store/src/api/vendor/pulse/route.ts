@@ -114,7 +114,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       )
       for (const order of visible) {
         const formatted = formatVendorOrder(order, auth.vendor_id, vendorProductIds, null)
-        if (formatted.vendor_stage === "to_accept") toAccept += 1
+        if (formatted.vendor_stage === "to_accept" && !formatted.cancelled) toAccept += 1
       }
     }
 

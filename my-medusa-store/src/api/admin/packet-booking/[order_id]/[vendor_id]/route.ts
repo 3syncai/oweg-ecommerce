@@ -14,6 +14,7 @@ import {
   estimatePackageFromVendorItems,
   retrieveVendorOrThrow,
 } from "../../../../../lib/vendor-shiprocket-pickup"
+import { getSharedDbPool } from "../../../../../lib/db-pool"
 
 async function loadOrderBundle(
   req: MedusaRequest,
@@ -242,6 +243,21 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     )
 
     const metadata = await updateVendorOrderWorkflow(req, order, vendorId, booked.patch)
+
+    const courierRate = Number(booked.patch.easy_courier_rate || 0)
+    if (process.env.DATABASE_URL && courierRate > 0) {
+      try {
+        const pool = getSharedDbPool()
+        await pool.query(
+          `UPDATE vendor_earnings_log
+           SET logistic_fee = $3, updated_at = NOW()
+           WHERE vendor_id = $1 AND order_id = $2`,
+          [vendorId, orderId, courierRate]
+        )
+      } catch (poolErr) {
+        console.warn("[admin packet-booking] logistic_fee sync skipped:", poolErr)
+      }
+    }
 
     // Best-effort: refresh Medusa fulfillment labels with real AWB
     try {

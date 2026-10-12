@@ -70,7 +70,13 @@ const StatCard = ({
         <Text className="text-sm text-ui-fg-subtle">{label}</Text>
       </div>
 
-      <Heading level="h2" className={clx(isHero ? "text-3xl md:text-4xl" : "text-2xl")}>
+      <Heading
+        level="h2"
+        className={clx(
+          isHero ? "text-3xl md:text-4xl" : "text-2xl",
+          typeof value === "string" && (value.startsWith("-") || value.includes("-₹")) && "text-rose-600 dark:text-rose-400"
+        )}
+      >
         {/* Stringify so 0 isn't dropped by Heading treating children as falsy */}
         {typeof value === "number" ? String(value) : value ?? "0"}
       </Heading>

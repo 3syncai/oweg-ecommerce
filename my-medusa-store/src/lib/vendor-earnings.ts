@@ -134,6 +134,10 @@ export type VendorPaymentSettlement = {
   cancellation_fee: number;
   cancellation_gst: number;
   cancellation_total: number;
+  payment_gateway_rate?: number;
+  payment_gateway_fee?: number;
+  payment_gateway_gst?: number;
+  payment_gateway_total?: number;
   claim_amount: number;
   taxes: number;
   settlement_amount: number;
@@ -276,7 +280,13 @@ export function resolveVendorReturnFee(
   const workflows = orderMetadata?.vendor_order_workflows;
   if (!workflows || typeof workflows !== "object" || Array.isArray(workflows)) return 0;
   const wf = (workflows as Record<string, any>)[vendorId] || {};
-  return roundMoney(Math.max(0, Number(wf.return_courier_rate) || 0));
+  const explicit = roundMoney(Math.max(0, Number(wf.return_courier_rate) || 0));
+  if (explicit > 0) return explicit;
+  // If Easy Ship and return courier rate not explicitly set, default to forward courier rate
+  if (wf.shipping_method === "easy") {
+    return roundMoney(Math.max(0, Number(wf.easy_courier_rate) || 0));
+  }
+  return 0;
 }
 
 /**
@@ -319,7 +329,6 @@ export async function applyVendorReturnCourierFee(
       SET return_fee = $3, updated_at = NOW()
       WHERE vendor_id = $1
         AND order_id = $2
-        AND status IN ('UNLOCKING', 'CREDITED', 'ON_HOLD')
       RETURNING id
     `,
     [vendorId, orderId, fee]
@@ -1495,15 +1504,16 @@ export async function reverseVendorEarningsForOrder(
     const vendors = [...new Set(result.rows.map((row) => row.vendor_id))];
     for (const vendorId of vendors) {
       const returnFee = resolveVendorReturnFee(orderMetadata, vendorId);
-      if (returnFee <= 0) continue;
+      const logisticFee = resolveVendorLogisticFee(orderMetadata, vendorId);
       await pool.query(
         `
           UPDATE vendor_earnings_log
           SET return_fee = GREATEST(COALESCE(return_fee, 0), $3),
+              logistic_fee = GREATEST(COALESCE(logistic_fee, 0), $4),
               updated_at = NOW()
           WHERE order_id = $1 AND vendor_id = $2
         `,
-        [orderId, vendorId, returnFee]
+        [orderId, vendorId, returnFee, logisticFee]
       );
     }
   }
@@ -2356,6 +2366,10 @@ export function settlementFromLedger(params: {
     cancellation_fee: ledger.cancellation_fee,
     cancellation_gst: ledger.cancellation_gst,
     cancellation_total: ledger.cancellation_total,
+    payment_gateway_rate: ledger.payment_gateway_rate,
+    payment_gateway_fee: ledger.payment_gateway_fee,
+    payment_gateway_gst: ledger.payment_gateway_gst,
+    payment_gateway_total: ledger.payment_gateway_total,
     claim_amount: ledger.claim_amount,
     taxes: ledger.product_gst,
     settlement_amount: ledger.bank_settlement,

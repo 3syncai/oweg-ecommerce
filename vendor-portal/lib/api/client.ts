@@ -893,6 +893,10 @@ export type VendorPaymentsView = {
     cancellation_fee?: number
     cancellation_gst?: number
     cancellation_total?: number
+    payment_gateway_rate?: number
+    payment_gateway_fee?: number
+    payment_gateway_gst?: number
+    payment_gateway_total?: number
     claim_amount?: number
     taxes: number
     settlement_amount: number

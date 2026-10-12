@@ -170,6 +170,74 @@ const VendorProductNewPage = () => {
   const [isFetchingLogistics, setIsFetchingLogistics] = useState(false)
   const menuRefs = React.useRef<{ [key: number]: HTMLDivElement | null }>({})
 
+  const [availableDraft, setAvailableDraft] = useState<{
+    formData: ProductFormData
+    logisticsEstimate?: any
+    savedAt: string
+  } | null>(null)
+  const [draftPromptOpen, setDraftPromptOpen] = useState(false)
+
+  // Check for saved product draft on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("vendor_product_new_draft")
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed?.formData?.title?.trim()) {
+          setAvailableDraft(parsed)
+          setDraftPromptOpen(true)
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to read product draft:", err)
+    }
+  }, [])
+
+  const handleSaveDraft = () => {
+    const title = formData.title?.trim()
+    if (!title) {
+      toast.error("Product name required", {
+        description: "Please enter a product name before saving as draft.",
+      })
+      return
+    }
+
+    try {
+      const draftData = {
+        formData,
+        logisticsEstimate,
+        savedAt: new Date().toISOString(),
+      }
+      localStorage.setItem("vendor_product_new_draft", JSON.stringify(draftData))
+      setAvailableDraft(draftData)
+      toast.success("Saved in draft", {
+        description: `"${title}" has been saved as draft. You can publish it anytime.`,
+      })
+    } catch (err) {
+      console.error("Failed to save draft:", err)
+      toast.error("Failed to save draft")
+    }
+  }
+
+  const handleLoadDraft = () => {
+    if (!availableDraft?.formData) return
+    setFormData(availableDraft.formData)
+    if (availableDraft.logisticsEstimate) {
+      setLogisticsEstimate(availableDraft.logisticsEstimate)
+    }
+    setDraftPromptOpen(false)
+    toast.success("Draft loaded", {
+      description: `Loaded "${availableDraft.formData.title}". You can now review and publish it.`,
+    })
+  }
+
+  const handleDiscardDraft = () => {
+    localStorage.removeItem("vendor_product_new_draft")
+    setAvailableDraft(null)
+    setDraftPromptOpen(false)
+    toast.info("Draft discarded")
+  }
+
   // Automatically fetch ITL delivery charges when dimensions / weight are entered
   useEffect(() => {
     const h = parseFloat(formData.height)
@@ -850,6 +918,11 @@ const VendorProductNewPage = () => {
         description:
           "Product saved as draft. An admin must approve it under Vendor Requests before it appears on the store.",
       })
+      try {
+        localStorage.removeItem("vendor_product_new_draft")
+      } catch {
+        // ignore
+      }
       router.push("/products")
     } catch (e: unknown) {
       const err = e as { message?: string; data?: { message?: string; details?: string; error?: string } }
@@ -1720,6 +1793,7 @@ const VendorProductNewPage = () => {
         </div>
       </div>
 
+      {/* Shipping profile (Optional) - commented out as requested
       <div className="mb-6">
         <Label>
           Shipping profile <span className="text-ui-fg-muted">(Optional)</span>
@@ -1733,6 +1807,7 @@ const VendorProductNewPage = () => {
           placeholder="Select shipping profile"
         />
       </div>
+      */}
 
       <div>
         <div className="mb-2">
@@ -1830,6 +1905,14 @@ const VendorProductNewPage = () => {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="secondary"
+              onClick={handleSaveDraft}
+              disabled={loading || !formData.title?.trim()}
+              className="shrink-0"
+            >
+              Save in draft
+            </Button>
             {migrateReady && (
               <Button
                 variant="secondary"
@@ -1851,6 +1934,83 @@ const VendorProductNewPage = () => {
             </Button>
           </div>
         </div>
+
+        {/* Draft Notice Banner */}
+        {availableDraft && (
+          <div className="mb-6 rounded-xl border border-amber-300/80 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">📝</span>
+              <div>
+                <p className="text-sm font-semibold text-amber-950 dark:text-amber-100">
+                  There is a draft product: &ldquo;{availableDraft.formData.title}&rdquo;
+                </p>
+                <p className="text-xs text-amber-800/80 dark:text-amber-300">
+                  Do you want to publish it?
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+              <Button size="small" variant="secondary" onClick={handleDiscardDraft}>
+                Discard
+              </Button>
+              <Button size="small" variant="primary" onClick={handleLoadDraft}>
+                Review & Publish
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Prompt on Page Load if Draft Exists */}
+        {draftPromptOpen && availableDraft && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+            <div className="w-full max-w-md rounded-2xl border border-ui-border-base bg-ui-bg-base p-6 shadow-2xl">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <span className="text-2xl">📝</span>
+                </div>
+                <div>
+                  <Heading level="h2" className="text-base font-semibold">
+                    Draft product found
+                  </Heading>
+                  <Text size="small" className="text-ui-fg-muted">
+                    {availableDraft.savedAt
+                      ? `Saved on ${new Date(availableDraft.savedAt).toLocaleDateString("en-IN", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}`
+                      : "Unpublished draft"}
+                  </Text>
+                </div>
+              </div>
+
+              <div className="mb-6 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                <p className="text-sm font-semibold text-ui-fg-base mb-1 truncate">
+                  &ldquo;{availableDraft.formData.title}&rdquo;
+                </p>
+                <p className="text-xs text-ui-fg-muted">
+                  There is a draft product. Do you want to publish it?
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5">
+                <Button
+                  variant="secondary"
+                  onClick={handleDiscardDraft}
+                >
+                  Start fresh
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={handleLoadDraft}
+                >
+                  Yes, publish it
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div
           id="migrate"
@@ -1911,6 +2071,13 @@ const VendorProductNewPage = () => {
         <div className="flex justify-end gap-3 mt-4 pb-8">
           <Button variant="secondary" onClick={() => router.push("/products")} disabled={loading}>
             Cancel
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={handleSaveDraft}
+            disabled={loading || !formData.title?.trim()}
+          >
+            Save in draft
           </Button>
           {migrateReady && (
             <Button

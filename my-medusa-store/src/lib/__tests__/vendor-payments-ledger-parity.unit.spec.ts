@@ -261,8 +261,8 @@ describe("Payments table vs admin pay — same numbers", () => {
     expect(rows[0].category).toBe("sale")
     expect(rows[1].category).toBe("return")
     expect(rows[0].bank_settlement).toBe(930.58)
-    expect(rows[1].logistic_total).toBe(0)
-    expect(rows[1].reverse_logistic_total).toBe(94.4)
+    expect(rows[1].logistic_total).toBe(-59)
+    expect(rows[1].reverse_logistic_total).toBe(-94.4)
     expect(rows[1].balance_amount).toBe(r2(-(59 + 94.4)))
     expect(adminPayableNetFromLedger(
       calculateVendorLedgerSettlement({
@@ -446,8 +446,8 @@ describe("Excel export columns match on-screen ledger", () => {
     )
     expect(exportNumbers(rows[0])[3]).toBe(1239)
     expect(exportNumbers(rows[1])[3]).toBe(-1239)
-    expect(exportNumbers(rows[1])[19]).toBe(80)
-    expect(exportNumbers(rows[1])[21]).toBe(94.4)
+    expect(exportNumbers(rows[1])[19]).toBe(-80)
+    expect(exportNumbers(rows[1])[21]).toBe(-94.4)
     expect(exportNumbers(rows[1])[27]).toBe(-153.4)
   })
 })
