@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
+import { ArrowUpRight } from "lucide-react";
 import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import type { AccountHubIconName } from "@/components/ui/icons/account-hub";
 import { useAuth } from "@/contexts/AuthProvider";
@@ -24,21 +25,20 @@ function QuickStatCard({ label, href, icon, imageSrc, value, loading }: QuickSta
   return (
     <Link
       href={href}
-      className="group rounded-xl border border-gray-200 bg-white shadow-sm p-4 transition-all hover:border-[#66C940] hover:shadow-md"
+      className="group min-w-0 bg-white p-3 transition-colors hover:bg-green-50/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-green-600 sm:p-5"
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF8E7] transition-colors group-hover:bg-[#dff5d8]">
+        <div className="flex items-center gap-2 text-slate-500">
           {imageSrc ? (
-            <img src={imageSrc} alt="" className="h-7 w-7 object-contain" />
+            <img src={imageSrc} alt="" className="h-4 w-4 object-contain" />
           ) : icon ? (
-            <AccountHubIcon name={icon} size={20} className="h-5 w-5" />
+            <AccountHubIcon name={icon} size={16} className="h-4 w-4" />
           ) : null}
+          <span className="text-[11px] font-medium sm:text-xs">{label}</span>
         </div>
+        <ArrowUpRight className="hidden h-3.5 w-3.5 text-slate-300 transition-colors group-hover:text-[#326b29] sm:block" aria-hidden />
       </div>
-      <p className="mt-3 text-xs font-medium uppercase tracking-wide text-gray-400">
-        {label}
-      </p>
-      <p className="mt-1 text-xl font-semibold text-[#1F2A33]">
+      <p className="mt-2 text-xl font-semibold tabular-nums tracking-tight text-slate-900 sm:mt-3 sm:text-2xl">
         {loading ? "…" : value}
       </p>
     </Link>
@@ -91,7 +91,7 @@ export default function AccountQuickStats() {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 sm:grid-cols-4">
       {stats.map((stat) => (
         <QuickStatCard key={stat.label} {...stat} />
       ))}

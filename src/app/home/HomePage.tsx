@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ChevronLeft, ChevronRight, MapPin, UserRound } from 'lucide-react';
+import { ArrowUpRight, ChevronLeft, ChevronRight, MapPin, Pause, Play, UserRound } from 'lucide-react';
+import styles from './HomePage.module.css';
 import { useQuery } from '@tanstack/react-query';
 import { ProductCard } from '@/components/modules/ProductCard';
 import type { MedusaCategory } from '@/lib/medusa';
@@ -72,7 +73,10 @@ function ProductCarousel({
     <section className="oweg-section-tight">
       <div className="oweg-container">
         <div className="oweg-section-head">
-          <h2 className="oweg-title">{title}</h2>
+          <div className="min-w-0">
+            <p className={styles.eyebrow}>{title === 'Popular picks' ? 'Worth a look' : 'Discover more'}</p>
+            <h2 className="oweg-title">{title}</h2>
+          </div>
           <div className="hidden sm:flex gap-2 shrink-0">
             <button
               type="button"
@@ -123,6 +127,7 @@ function ProductCarousel({
                       handle={product.handle}
                       sourceTag={sourceTag}
                       inventory_quantity={product.inventory_quantity}
+                      showImageFallback
                     />
                   </div>
                 ))}
@@ -234,16 +239,27 @@ function HeroBanner() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [heroReady, setHeroReady] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchDelta, setTouchDelta] = useState(0);
 
   useEffect(() => {
-    if (isHovered || touchStart !== null) return;
+    if (isHovered || isPaused || isFocused || reducedMotion || touchStart !== null) return;
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % HERO_SLIDES.length);
     }, 4000);
     return () => clearInterval(timer);
-  }, [isHovered, touchStart]);
+  }, [isHovered, isPaused, isFocused, reducedMotion, touchStart]);
+
+  useEffect(() => {
+    const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReducedMotion(preference.matches);
+    update();
+    preference.addEventListener('change', update);
+    return () => preference.removeEventListener('change', update);
+  }, []);
 
   const prev = () =>
     setCurrentSlide((prev) => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length);
@@ -277,11 +293,15 @@ function HeroBanner() {
 
   return (
     <section
-      className="relative w-full overflow-hidden bg-[var(--oweg-surface-subtle)]"
+      className={`${styles.hero} relative w-full overflow-hidden`}
       aria-roledescription="carousel"
       aria-label="Featured offers"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onFocusCapture={() => setIsFocused(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setIsFocused(false);
+      }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -325,7 +345,7 @@ function HeroBanner() {
               }`}
               aria-hidden={!isActive}
             >
-              <Link href={slide.href} aria-label={slide.label} className="absolute inset-0 block">
+              <Link href={slide.href} aria-label={slide.label} tabIndex={isActive ? 0 : -1} className="absolute inset-0 block">
                 <Image
                   src={slide.src}
                   alt={slide.label}
@@ -340,11 +360,40 @@ function HeroBanner() {
           );
         })}
 
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-between px-4 lg:px-8">
+      </div>
+
+      <div className={styles.heroFooter}>
+        <div className={styles.heroCaption}>
+          <span className={styles.offerDot} aria-hidden="true" />
+          <span>Explore our latest offers</span>
+          <button
+            type="button"
+            className={styles.pauseButton}
+            onClick={() => setIsPaused((paused) => !paused)}
+            aria-label={isPaused ? 'Resume offer slideshow' : 'Pause offer slideshow'}
+            aria-pressed={isPaused}
+          >
+            {isPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+        <div className={`${styles.desktopDots} hidden items-center justify-center gap-0.5 md:flex`}>
+          {HERO_SLIDES.map((slide, idx) => (
+            <HeroDot
+              key={`d-dot-${slide.src}`}
+              active={currentSlide === idx}
+              index={idx}
+              onSelect={() => setCurrentSlide(idx)}
+            />
+          ))}
+        </div>
+        <div className={styles.heroControls}>
+          <span className={styles.slideCount} aria-label={`Offer ${currentSlide + 1} of ${HERO_SLIDES.length}`}>
+            {String(currentSlide + 1).padStart(2, '0')} <span>/ {HERO_SLIDES.length}</span>
+          </span>
           <button
             type="button"
             onClick={prev}
-            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-white/50 bg-white/80 text-[var(--oweg-ink)] shadow-md backdrop-blur-sm transition hover:bg-white"
+            className={`oweg-rail-btn ${styles.heroArrow}`}
             aria-label="Previous slide"
           >
             <ChevronLeft className="h-5 w-5" />
@@ -352,7 +401,7 @@ function HeroBanner() {
           <button
             type="button"
             onClick={next}
-            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-white/50 bg-white/80 text-[var(--oweg-ink)] shadow-md backdrop-blur-sm transition hover:bg-white"
+            className={`oweg-rail-btn ${styles.heroArrow}`}
             aria-label="Next slide"
           >
             <ChevronRight className="h-5 w-5" />
@@ -366,16 +415,6 @@ function HeroBanner() {
           <HeroDot
             key={`m-dot-${slide.src}`}
             active={currentSlide % MOBILE_HERO_SLIDES.length === idx}
-            index={idx}
-            onSelect={() => setCurrentSlide(idx)}
-          />
-        ))}
-      </div>
-      <div className="hidden items-center justify-center gap-0.5 md:flex">
-        {HERO_SLIDES.map((slide, idx) => (
-          <HeroDot
-            key={`d-dot-${slide.src}`}
-            active={currentSlide === idx}
             index={idx}
             onSelect={() => setCurrentSlide(idx)}
           />
@@ -414,6 +453,12 @@ function PromoBanners() {
   return (
     <section className="oweg-section-tight">
       <div className="oweg-container">
+        <div className="oweg-section-head">
+          <div>
+            <p className={styles.eyebrow}>Make room for the everyday</p>
+            <h2 className="oweg-title">A little kitchen inspiration</h2>
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           {banners.map((banner) => (
             <BannerTile
@@ -436,22 +481,23 @@ function CategoryStrip({ categories }: { categories: MobileCategory[] }) {
   if (!categories.length) return null;
 
   return (
-    <section className="oweg-section-tight">
+    <section id="home-categories" className={`oweg-section-tight ${styles.categories}`}>
       <div className="oweg-container">
         <div className="oweg-section-head">
           <div className="min-w-0">
+            <p className={styles.eyebrow}>Find your next favourite</p>
             <h2 className="oweg-title">Shop by category</h2>
-            <p className="oweg-subtle mt-1">Every department, one tap away.</p>
+            <p className="oweg-subtle mt-1">For your home, your routine, and everything in between.</p>
           </div>
         </div>
-        <div className="oweg-cat-strip oweg-rail-bleed scrollbar-hidden">
+        <div className={styles.categoryGrid}>
           {categories.map((cat) => (
             <Link
               key={cat.id}
               href={cat.handle ? `/c/${encodeURIComponent(cat.handle)}` : '/c'}
-              className="group flex flex-col items-center rounded-[var(--oweg-radius-md)] p-1 outline-none focus-visible:ring-2 focus-visible:ring-[var(--oweg-green)]"
+              className={`group ${styles.categoryTile}`}
             >
-              <CategoryIconTile handle={cat.handle} title={cat.title} size="lg" />
+              <CategoryIconTile handle={cat.handle} title={cat.title} size="lg" labelClassName={styles.categoryLabel} />
             </Link>
           ))}
         </div>
@@ -730,9 +776,20 @@ export default function HomePage({
   };
 
   return (
-    <div className="oweg-page min-h-screen">
+    <div className={`oweg-page min-h-screen ${styles.home}`}>
       <main className="w-full pb-8">
-        <HeroBanner />
+        <section className={`oweg-container ${styles.intro}`}>
+          <div className={styles.introCopy}>
+            <p className={styles.eyebrow}>A little inspiration. A lot to explore.</p>
+            <h1>Good finds.<br className="sm:hidden" /> Everyday living.</h1>
+            <p>Discover the things that make your day feel a little better.</p>
+          </div>
+          <div className={styles.introActions}>
+            <Link href="/specials" className={styles.primaryLink}>Explore offers <ArrowUpRight className="h-4 w-4" /></Link>
+            <a href="#home-categories" className={styles.secondaryLink}>Browse categories <ChevronRight className="h-4 w-4" /></a>
+          </div>
+        </section>
+        <div className="oweg-container"><HeroBanner /></div>
 
         <CategoryStrip categories={mobileCategories} />
 
@@ -740,7 +797,7 @@ export default function HomePage({
           <section className="oweg-section-tight">
             <div className="oweg-container grid gap-3 sm:gap-4 md:grid-cols-2">
               {!pincode ? (
-                <div className="oweg-surface-card p-4 sm:p-5">
+                <div className={`oweg-surface-card p-4 sm:p-5 ${styles.deliveryCard}`}>
                   <p className="text-sm font-semibold text-[var(--oweg-ink)]">
                     Share your pincode for faster delivery by local sellers
                   </p>
@@ -748,6 +805,7 @@ export default function HomePage({
                     <div className="relative flex-1">
                       <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--oweg-green)]" />
                       <input
+                        aria-label="Delivery pincode"
                         type="text"
                         inputMode="numeric"
                         value={pinInput}
@@ -759,7 +817,7 @@ export default function HomePage({
                     <button
                       type="button"
                       onClick={handlePinSubmit}
-                      className="oweg-tap whitespace-nowrap rounded-xl bg-[var(--oweg-green)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--oweg-green-dark)]"
+                      className={`oweg-tap ${styles.primaryLink}`}
                     >
                       Submit
                     </button>
@@ -776,12 +834,12 @@ export default function HomePage({
                     <UserRound className="h-6 w-6" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-[var(--oweg-ink)] sm:text-base">You are missing out</p>
+                    <p className="text-sm font-semibold text-[var(--oweg-ink)] sm:text-base">Make yourself at home</p>
                     <p className="oweg-subtle line-clamp-2">Sign in for member pricing and faster checkout.</p>
                   </div>
                   <Link
                     href="/login"
-                    className="oweg-tap flex items-center whitespace-nowrap rounded-xl bg-[var(--oweg-green)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--oweg-green-dark)]"
+                    className={`oweg-tap ${styles.primaryLink}`}
                   >
                     Sign in
                   </Link>
@@ -791,7 +849,7 @@ export default function HomePage({
           </section>
         )}
 
-        <FlashSaleSection />
+        <FlashSaleSection showImageFallback />
 
         <section className="oweg-section-tight">
           <div className="oweg-container">
@@ -900,7 +958,7 @@ export default function HomePage({
               <div className="oweg-section-head">
                 <div className="min-w-0">
                   <h2 className="oweg-title">Top brands we carry</h2>
-                  <p className="oweg-subtle mt-1">Authorised stock, straight from the makers.</p>
+                  <p className="oweg-subtle mt-1">Familiar names. Fresh possibilities.</p>
                 </div>
               </div>
               <div className="oweg-rail oweg-rail-bleed scrollbar-hidden">

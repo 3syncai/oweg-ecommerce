@@ -29,7 +29,7 @@ function PasswordField({
 }: PasswordFieldProps) {
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-gray-700">
+      <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-slate-600">
         {label}
       </label>
       <div className="relative">
@@ -39,13 +39,13 @@ function PasswordField({
           placeholder={placeholder}
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="pr-10"
+          className="h-10 rounded-lg border-slate-200 bg-slate-50/50 pr-10 text-sm shadow-none placeholder:text-slate-400 focus-visible:border-green-600 focus-visible:ring-green-600/20"
           autoComplete="off"
         />
         <button
           type="button"
           onClick={onToggle}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 transition-colors hover:text-gray-700"
+          className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-green-600"
           aria-label={visible ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
         >
           {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -130,15 +130,16 @@ export default function AccountSecurityCard() {
   };
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 md:p-6">
-      <div className="mb-5 flex items-center gap-2">
-        <AccountHubIcon name="account-security" size={22} className="h-[22px] w-[22px]" />
-        <h3 className="text-base font-semibold text-[#1F2A33] md:text-lg">
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
+        <AccountHubIcon name="account-security" size={18} className="h-[18px] w-[18px]" />
+        <h2 className="text-sm font-semibold text-slate-900">
           Account Security
-        </h3>
+        </h2>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4 p-5">
+        <p className="text-xs leading-relaxed text-slate-500">Change your password to keep your account secure.</p>
         <PasswordField
           id="current-password"
           label="Current Password"
@@ -187,17 +188,18 @@ export default function AccountSecurityCard() {
         <Button
           type="button"
           size="sm"
-          className={`w-full text-sm md:text-base ${
+          className={`h-10 w-full rounded-lg text-xs font-semibold ${
             !canSubmit
-              ? "cursor-not-allowed bg-[#EAF8E7] text-[#66C940] hover:bg-[#EAF8E7]"
-              : "bg-[#66C940] text-white hover:bg-[#5ab838]"
+              ? "cursor-not-allowed bg-slate-100 text-slate-500 hover:bg-slate-100"
+              : "bg-[#326b29] text-white hover:bg-[#285722]"
           }`}
           onClick={handlePasswordSave}
           disabled={savingPassword || !canSubmit}
         >
           {savingPassword ? "Saving..." : "Update password"}
         </Button>
+        <p className="text-[11px] leading-relaxed text-slate-400">Your new password must be at least 8 characters.</p>
       </div>
-    </div>
+    </section>
   );
 }

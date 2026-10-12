@@ -15,26 +15,28 @@ export default function AccountWelcomeBanner({
   const name = getCustomerDisplayName(customer);
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white shadow-sm px-5 py-5 md:px-6 md:py-6">
-      <div className="flex items-center justify-between gap-4">
+    <header className="rounded-2xl border border-slate-200 bg-white p-4 sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
+      <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-xl font-semibold text-[#1F2A33] md:text-2xl">
-            Welcome back, {name}
-          </h2>
-          <p className="mt-1 text-sm text-gray-500 md:text-base">{subtitle}</p>
+          <p className="mb-2 hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-[#326b29] sm:block">My account</p>
+          <h1 className="break-words text-xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+            <span className="mb-1 block text-xs font-medium tracking-normal text-slate-500 sm:mb-0 sm:inline sm:text-3xl sm:font-semibold sm:tracking-tight sm:text-slate-900">Welcome back,</span>{" "}
+            {name}
+          </h1>
+          <p className="mt-2 text-xs leading-relaxed text-slate-500 sm:text-sm">{subtitle}</p>
         </div>
 
         <div
-          className="hidden shrink-0 items-center justify-center rounded-2xl bg-[#EAF8E7] p-4 sm:flex"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-green-100 bg-green-50 sm:h-12 sm:w-12"
           aria-hidden
         >
           <AccountHubIcon
             name="profile-information"
-            size={40}
-            className="h-10 w-10"
+            size={24}
+            className="h-6 w-6"
           />
         </div>
       </div>
-    </div>
+    </header>
   );
 }

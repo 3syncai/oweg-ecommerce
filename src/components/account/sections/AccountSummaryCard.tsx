@@ -14,11 +14,11 @@ type SummaryStatProps = {
 
 function SummaryStat({ label, value, loading }: SummaryStatProps) {
   return (
-    <div className="rounded-lg border border-gray-100 bg-[#FAFAFA] px-4 py-3 text-center">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+    <div className="min-w-0 rounded-xl bg-slate-50 px-3 py-3.5">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
         {label}
       </p>
-      <p className="mt-1 text-lg font-semibold text-[#1F2A33] md:text-xl">
+      <p className="mt-2 break-words text-base font-semibold tabular-nums tracking-tight text-slate-900 sm:text-lg">
         {loading ? "…" : value}
       </p>
     </div>
@@ -38,12 +38,12 @@ export default function AccountSummaryCard() {
   const currencyCode = orders[0]?.currency_code;
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 md:p-6">
+    <section className="rounded-2xl border border-slate-200 bg-white p-5">
       <div className="mb-4 flex items-center gap-2">
-        <AccountHubIcon name="account-summary" size={22} className="h-[22px] w-[22px]" />
-        <h3 className="text-base font-semibold text-[#1F2A33] md:text-lg">
+        <AccountHubIcon name="account-summary" size={18} className="h-[18px] w-[18px]" />
+        <h2 className="text-sm font-semibold text-slate-900">
           Account Summary
-        </h3>
+        </h2>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -62,6 +62,6 @@ export default function AccountSummaryCard() {
           value={String(savedItemsCount)}
         />
       </div>
-    </div>
+    </section>
   );
 }

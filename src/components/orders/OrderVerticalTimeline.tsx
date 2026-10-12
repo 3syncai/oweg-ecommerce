@@ -37,10 +37,10 @@ export default function OrderVerticalTimeline({ steps }: OrderVerticalTimelinePr
                   step.tone === "cancelled"
                     ? "border-[#D92D20] bg-red-50"
                     : isCurrent
-                      ? "border-[#66C940] bg-[#EAF8E7]"
+                      ? "border-[#326b29] bg-green-50 ring-4 ring-green-50"
                       : isComplete
-                        ? "border-[#66C940] bg-[#66C940]"
-                        : "border-gray-200 bg-gray-50"
+                        ? "border-[#326b29] bg-[#326b29]"
+                        : "border-slate-200 bg-slate-50"
                 )}
               >
                 <OrdersUiIcon
@@ -56,7 +56,7 @@ export default function OrderVerticalTimeline({ steps }: OrderVerticalTimelinePr
                 <div
                   className={cn(
                     "my-1 w-0.5 flex-1 min-h-[32px]",
-                    isComplete || isCurrent ? "bg-[#66C940]" : "bg-gray-200"
+                    isComplete || isCurrent ? "bg-[#326b29]" : "bg-slate-200"
                   )}
                 />
               ) : null}
@@ -65,23 +65,23 @@ export default function OrderVerticalTimeline({ steps }: OrderVerticalTimelinePr
             <div className={cn("min-w-0 pb-6", isLast && "pb-0")}>
               <p
                 className={cn(
-                  "text-sm font-semibold",
+                  "text-sm font-semibold leading-relaxed",
                   step.tone === "cancelled"
                     ? "text-[#D92D20]"
                     : isCurrent
-                      ? "text-[#66C940]"
+                      ? "text-[#326b29]"
                       : step.active
-                        ? "text-[#1F2A33]"
-                        : "text-gray-400"
+                        ? "text-slate-900"
+                        : "text-slate-400"
                 )}
               >
                 {step.label}
               </p>
               {step.timestamp ? (
-                <p className="mt-0.5 text-xs text-gray-500">{formatOrderDateTime(step.timestamp)}</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{formatOrderDateTime(step.timestamp)}</p>
               ) : null}
               {step.description ? (
-                <p className="mt-1 text-xs text-gray-600">{step.description}</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-500">{step.description}</p>
               ) : null}
             </div>
           </div>

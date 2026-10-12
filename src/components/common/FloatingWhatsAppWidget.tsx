@@ -1,6 +1,7 @@
 "use client";
 
 import { FaWhatsapp } from "react-icons/fa";
+import { usePathname } from "next/navigation";
 import { useDebugControllerSettings } from "@/components/debug-controller/DebugControllerProvider";
 
 function normalizeWhatsAppNumber(value: string) {
@@ -9,6 +10,11 @@ function normalizeWhatsAppNumber(value: string) {
 
 export default function FloatingWhatsAppWidget() {
   const settings = useDebugControllerSettings();
+  const pathname = usePathname();
+  const isAccountOverview = pathname === "/account";
+  const positionClass = pathname === "/"
+    ? "right-3 sm:right-4"
+    : `left-3 sm:left-4 ${isAccountOverview ? "max-sm:left-auto max-sm:right-3" : ""}`;
 
   const rawNumber =
     settings.whatsappNumber ||
@@ -33,7 +39,7 @@ export default function FloatingWhatsAppWidget() {
       rel="noopener noreferrer"
       aria-label="Chat with us on WhatsApp"
       title="Chat with us on WhatsApp"
-      className="fixed left-3 bottom-[calc(env(safe-area-inset-bottom)+7.75rem)] sm:left-4 sm:bottom-24 md:bottom-6 z-[120] group"
+      className={`fixed bottom-[calc(env(safe-area-inset-bottom)+7.75rem)] sm:bottom-24 md:bottom-6 z-[120] group ${positionClass}`}
     >
       <span className="relative inline-flex items-center gap-2 rounded-full bg-[#25D366] text-white px-3 py-3 sm:px-3.5 shadow-[0_10px_24px_rgba(37,211,102,0.35)] border border-white/20 transition-all duration-300 ease-out group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_32px_rgba(37,211,102,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366] focus-visible:ring-offset-2">
         <FaWhatsapp className="h-5 w-5 shrink-0" aria-hidden="true" />

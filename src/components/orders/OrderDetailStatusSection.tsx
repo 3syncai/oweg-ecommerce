@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { Check } from "lucide-react";
 import OrderDetailsIcon from "@/components/ui/icons/order-details/OrderDetailsIcon";
 import type { OrderDetail, ReturnRequest, TrackerStep } from "@/lib/order-types";
@@ -34,14 +33,14 @@ export default function OrderDetailStatusSection({
   return (
     <section
       id={id}
-      className="scroll-mt-24 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6"
+      className="scroll-mt-28 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"
     >
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+      <div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-[#1F2A33]">Order Status</p>
+          <p className="text-sm font-semibold text-slate-900">Order Status</p>
 
-          <div className="mt-5 overflow-x-auto pb-2">
-            <div className="flex min-w-[600px] items-start">
+          <div className="mt-6">
+            <div className="flex flex-col md:flex-row md:items-start">
               {timelineSteps.map((step, index) => {
                 const isReturnStep = step.key === "return";
                 const isCurrent = step.current;
@@ -53,8 +52,8 @@ export default function OrderDetailStatusSection({
                 const returnTone = isReturnStep && (isCurrent || (hasActiveReturn && isComplete));
 
                 return (
-                  <div key={`${step.key}-${index}`} className="flex min-w-0 flex-1 items-start">
-                    <div className="flex min-w-0 flex-1 flex-col items-center px-1">
+                  <div key={`${step.key}-${index}`} className="relative min-w-0 flex-1">
+                    <div className="relative z-10 flex items-start gap-3 md:flex-col md:items-center md:gap-0 md:px-1">
                       <span
                         className={cn(
                           "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2",
@@ -65,10 +64,10 @@ export default function OrderDetailStatusSection({
                               : returnTone && isComplete
                                 ? "border-[#F79009] bg-[#F79009]"
                                 : isComplete
-                                  ? "border-[#66C940] bg-[#66C940]"
+                                  ? "border-[#326b29] bg-[#326b29]"
                                   : isCurrent
-                                    ? "border-[#66C940] bg-[#EAF8E7]"
-                                    : "border-gray-200 bg-gray-50"
+                                    ? "border-[#326b29] bg-green-50 ring-4 ring-green-50"
+                                    : "border-slate-200 bg-slate-50"
                         )}
                       >
                         {isComplete && step.tone !== "cancelled" && !isReturnStep ? (
@@ -88,40 +87,42 @@ export default function OrderDetailStatusSection({
                         )}
                       </span>
 
-                      <p
-                        className={cn(
-                          "mt-3 text-center text-xs font-semibold sm:text-sm",
-                          step.tone === "cancelled"
-                            ? "text-[#D92D20]"
-                            : isReturnStep && isCurrent
-                              ? "text-[#B54708]"
-                              : isCurrent
-                                ? "text-[#66C940]"
-                                : step.active
-                                  ? "text-[#1F2A33]"
-                                  : "text-gray-400"
-                        )}
-                      >
-                        {step.label}
-                      </p>
-
-                      {step.timestamp ? (
-                        <p className="mt-1 text-center text-[11px] text-gray-500">
-                          {formatOrderDateTime(step.timestamp)}
+                      <div className={cn("min-w-0 pb-6 pt-1 md:pb-0 md:pt-0", !showConnector && "pb-0")}>
+                        <p
+                          className={cn(
+                            "text-xs font-semibold leading-relaxed md:mt-3 md:text-center",
+                            step.tone === "cancelled"
+                              ? "text-[#D92D20]"
+                              : isReturnStep && isCurrent
+                                ? "text-[#B54708]"
+                                : isCurrent
+                                  ? "text-[#326b29]"
+                                  : step.active
+                                    ? "text-slate-900"
+                                    : "text-slate-400"
+                          )}
+                        >
+                          {step.label}
                         </p>
-                      ) : null}
+
+                        {step.timestamp ? (
+                          <p className="mt-1 text-[10px] leading-relaxed text-slate-500 md:text-center">
+                            {formatOrderDateTime(step.timestamp)}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
 
                     {showConnector ? (
                       <div
                         className={cn(
-                          "mt-5 h-0.5 w-full min-w-[24px] flex-1 rounded-full",
+                          "absolute left-[19px] top-10 h-[calc(100%-40px)] w-0.5 rounded-full md:left-[calc(50%+20px)] md:top-[19px] md:h-0.5 md:w-[calc(100%-40px)]",
                           connectorActive || (isComplete && index < currentIndex)
                             ? returnTone ||
                               timelineSteps[index + 1]?.key === "return"
                               ? "bg-[#F79009]"
-                              : "bg-[#66C940]"
-                            : "bg-gray-200"
+                              : "bg-[#326b29]"
+                            : "bg-slate-200"
                         )}
                       />
                     ) : null}
@@ -131,18 +132,7 @@ export default function OrderDetailStatusSection({
             </div>
           </div>
 
-          <p className="mt-4 text-sm leading-relaxed text-gray-600">{statusMessage}</p>
-        </div>
-
-        <div className="mx-auto shrink-0 lg:mx-0">
-          <Image
-            src="/images/order-details/order-status-illustration.png"
-            alt=""
-            width={180}
-            height={180}
-            className="h-36 w-36 object-contain sm:h-44 sm:w-44"
-            aria-hidden
-          />
+          <p className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">{statusMessage}</p>
         </div>
       </div>
     </section>
