@@ -4,6 +4,7 @@ import {
   FEE_GST_RATE,
   LOGISTICS_GST_RATE,
   PARTNER_COMMISSION_RATE,
+  PAYMENT_GATEWAY_RATE,
   PLATFORM_FEE_RATE,
   PRODUCT_GST_RATE,
   TCS_RATE,
@@ -24,6 +25,7 @@ export type VendorPricingResult = {
   platformFee: MoneyRow
   commissionFee: MoneyRow
   partnerCommission: MoneyRow
+  paymentGatewayFee: MoneyRow
   /** Logistics again on the deductions side (same amounts) */
   logisticsDeduction: MoneyRow
   tcs: MoneyRow
@@ -57,6 +59,7 @@ const ZERO: VendorPricingResult = {
   platformFee: zeroRow(),
   commissionFee: zeroRow(),
   partnerCommission: zeroRow(),
+  paymentGatewayFee: zeroRow(),
   logisticsDeduction: zeroRow(),
   tcs: zeroRow(),
   tds: zeroRow(),
@@ -159,6 +162,10 @@ export function calculateVendorPricing(
     (listing.total * PARTNER_COMMISSION_RATE) / 100,
     FEE_GST_RATE
   )
+  const paymentGatewayFee = rowFromBasic(
+    (listing.total * PAYMENT_GATEWAY_RATE) / 100,
+    FEE_GST_RATE
+  )
   const logisticsDeduction: MoneyRow = { ...logistics }
 
   // TCS / TDS: tax-only lines (basic 0)
@@ -172,6 +179,7 @@ export function calculateVendorPricing(
       platformFee.basic +
         commissionFee.basic +
         partnerCommission.basic +
+        paymentGatewayFee.basic +
         logisticsDeduction.basic +
         tcs.basic +
         tds.basic
@@ -180,6 +188,7 @@ export function calculateVendorPricing(
       platformFee.gstOrTax +
         commissionFee.gstOrTax +
         partnerCommission.gstOrTax +
+        paymentGatewayFee.gstOrTax +
         logisticsDeduction.gstOrTax +
         tcs.gstOrTax +
         tds.gstOrTax
@@ -188,6 +197,7 @@ export function calculateVendorPricing(
       platformFee.total +
         commissionFee.total +
         partnerCommission.total +
+        paymentGatewayFee.total +
         logisticsDeduction.total +
         tcs.total +
         tds.total
@@ -216,6 +226,7 @@ export function calculateVendorPricing(
     platformFee,
     commissionFee,
     partnerCommission,
+    paymentGatewayFee,
     logisticsDeduction,
     tcs,
     tds,
