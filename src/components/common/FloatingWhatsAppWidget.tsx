@@ -1,6 +1,7 @@
 "use client";
 
 import { FaWhatsapp } from "react-icons/fa";
+import { usePathname } from "next/navigation";
 import { useDebugControllerSettings } from "@/components/debug-controller/DebugControllerProvider";
 
 function normalizeWhatsAppNumber(value: string) {
@@ -9,6 +10,15 @@ function normalizeWhatsAppNumber(value: string) {
 
 export default function FloatingWhatsAppWidget() {
   const settings = useDebugControllerSettings();
+  const pathname = usePathname();
+  const isAccountOverview = pathname === "/account";
+  const isWishlistPage = pathname === "/wishlist" || pathname === "/account/wishlist";
+  const bottomClass = isWishlistPage
+    ? "bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] sm:bottom-24 md:bottom-6"
+    : "bottom-[calc(env(safe-area-inset-bottom)+7.75rem)] sm:bottom-24 md:bottom-6";
+  const positionClass = pathname === "/"
+    ? "right-3 sm:right-4"
+    : `left-3 sm:left-4 ${isAccountOverview ? "max-sm:left-auto max-sm:right-3" : ""}`;
 
   const rawNumber =
     settings.whatsappNumber ||
@@ -33,13 +43,10 @@ export default function FloatingWhatsAppWidget() {
       rel="noopener noreferrer"
       aria-label="Chat with us on WhatsApp"
       title="Chat with us on WhatsApp"
-      className="fixed left-3 bottom-[calc(env(safe-area-inset-bottom)+7.75rem)] sm:left-4 sm:bottom-24 md:bottom-6 z-[120] group"
+      className={`fixed ${bottomClass} z-[120] group rounded-full focus-visible:outline-2 focus-visible:outline-[#679e3e] focus-visible:outline-offset-4 ${positionClass}`}
     >
-      <span className="relative inline-flex items-center gap-2 rounded-full bg-[#25D366] text-white px-3 py-3 sm:px-3.5 shadow-[0_10px_24px_rgba(37,211,102,0.35)] border border-white/20 transition-all duration-300 ease-out group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_32px_rgba(37,211,102,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366] focus-visible:ring-offset-2">
-        <FaWhatsapp className="h-5 w-5 shrink-0" aria-hidden="true" />
-        <span className="hidden sm:inline text-sm font-semibold whitespace-nowrap">
-          Chat with us
-        </span>
+      <span className="relative inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#f4f8ef] text-[#496837] shadow-[0_3px_12px_rgba(38,57,27,0.1)] border border-[#d9e5cf] transition-colors duration-200 ease-out group-hover:bg-[#eaf3e2] group-hover:border-[#bdcfad]">
+        <FaWhatsapp className="h-6 w-6 shrink-0 text-[#557b35]" aria-hidden="true" />
       </span>
     </a>
   );

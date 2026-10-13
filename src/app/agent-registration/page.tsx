@@ -1,5 +1,6 @@
 import { ArrowRight, HandHeart, MapPin, PhoneCall, Users } from "lucide-react";
 import Link from "next/link";
+import styles from "./AgentRegistration.module.css";
 
 const highlights = [
   { title: "Hyperlocal leads", copy: "Get orders from nearby pin codes and earn on every fulfilled delivery.", icon: MapPin },
@@ -9,50 +10,70 @@ const highlights = [
 
 export default function AgentRegistrationPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/40 to-white text-gray-900">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-10 py-16 space-y-12">
-        <header className="space-y-4">
-          <div className="inline-flex items-center gap-2 rounded-full bg-emerald-100 text-emerald-700 px-4 py-1 text-xs font-semibold">
-            <Users className="w-4 h-4" />
-            Agent / Partner Track
+    <div className={styles.page}>
+      <div className={`oweg-container ${styles.container}`}>
+        <header className={styles.hero}>
+          <div className={styles.heroContent}>
+            <span className={styles.eyebrow}><Users size={16} aria-hidden="true" /> Agent / Partner Track</span>
+            <h1>Grow with OWEG as a <span>Partner.</span></h1>
+            <p className={styles.lead}>
+              Guide shoppers, collect orders, and assist with doorstep deliveries. We handle catalog, pricing, and payouts.
+            </p>
+            <div className={styles.heroActions}>
+              <Link href="mailto:partners@oweg.in?subject=Join%20OWEG%20as%20Agent" className={styles.applyLink}>
+                Apply now <ArrowRight size={18} aria-hidden="true" />
+              </Link>
+              <span className={styles.emailNote}>Apply by email · partners@oweg.in</span>
+            </div>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-semibold">Grow with OWEG as a local agent.</h1>
-          <p className="text-gray-600 max-w-3xl">
-            Guide shoppers, collect orders, and assist with doorstep deliveries. We handle catalog, pricing, and payouts.
-          </p>
-          <Link
-            href="mailto:partners@oweg.in?subject=Join%20OWEG%20as%20Agent"
-            className="inline-flex w-fit items-center gap-2 rounded-xl bg-emerald-600 text-white px-5 py-3 text-sm font-semibold shadow hover:bg-emerald-700"
-          >
-            Apply now
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+          <div className={styles.community} aria-hidden="true">
+            <div className={styles.network}>
+              <div className={styles.orbit} />
+              <span className={`${styles.networkNode} ${styles.peopleNode}`}><Users size={25} /></span>
+              <span className={styles.networkCenter}><MapPin size={46} strokeWidth={1.5} /></span>
+              <span className={`${styles.networkNode} ${styles.helpNode}`}><HandHeart size={25} /></span>
+              <span className={styles.networkLabel}>Closer to your community</span>
+            </div>
+            <div className={styles.managedLabel}>We take care of the details</div>
+            <div className={styles.managedTags}><span>Catalog</span><span>Pricing</span><span>Payouts</span></div>
+          </div>
         </header>
 
-        <section className="grid gap-5 md:grid-cols-3">
-          {highlights.map((item) => (
-            <div key={item.title} className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm space-y-3">
-              <div className="h-12 w-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-100">
-                <item.icon className="w-6 h-6" />
-              </div>
-              <h3 className="text-lg font-semibold">{item.title}</h3>
-              <p className="text-sm text-gray-600 leading-relaxed">{item.copy}</p>
-            </div>
-          ))}
+        <section aria-labelledby="benefits-heading" className={styles.benefits}>
+          <div className={styles.sectionHeading}>
+            <p className={styles.sectionEyebrow}>A partnership that works for you</p>
+            <h2 id="benefits-heading">Local connections. New opportunities.</h2>
+          </div>
+          <div className={styles.benefitGrid}>
+            {highlights.map((item) => (
+              <article key={item.title} className={styles.benefitCard}>
+                <span className={styles.benefitIcon}><item.icon size={23} strokeWidth={1.6} aria-hidden="true" /></span>
+                <div><h3>{item.title}</h3><p>{item.copy}</p></div>
+              </article>
+            ))}
+          </div>
         </section>
 
-        <section className="rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-600 via-emerald-500 to-lime-400 text-white p-8 shadow-lg space-y-6">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">
-            How it works
+        <section aria-labelledby="onboarding-heading" className={styles.onboarding}>
+          <div className={styles.sectionHeading}>
+            <p className={styles.sectionEyebrow}>How it works</p>
+            <h2 id="onboarding-heading">Your next chapter, in three steps.</h2>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3 text-sm font-semibold">
-            <div className="rounded-2xl bg-white/10 border border-white/20 px-4 py-3">1. Submit your pin codes + KYC</div>
-            <div className="rounded-2xl bg-white/10 border border-white/20 px-4 py-3">2. Join our onboarding sprint (60 mins)</div>
-            <div className="rounded-2xl bg-white/10 border border-white/20 px-4 py-3">3. Start earning on orders + support</div>
-          </div>
-          <p className="text-sm text-white/90">
+          <ol className={styles.steps}>
+            {["Submit your pin codes + KYC", "Join our onboarding sprint (60 mins)", "Start earning on orders + support"].map((step, index) => (
+              <li key={step}><span className={styles.stepNumber}>0{index + 1}</span><h3>{step}</h3></li>
+            ))}
+          </ol>
+          <p className={styles.dashboardNote}>
             You’ll get a dashboard to track referrals, delivery status, and payouts—plus scripts to help shoppers pick the right product.
           </p>
+        </section>
+
+        <section className={styles.invitation} aria-labelledby="apply-heading">
+          <div><h2 id="apply-heading">Ready to grow with OWEG?</h2><p>Get in touch with our partner team to get started.</p></div>
+          <Link href="mailto:partners@oweg.in?subject=Join%20OWEG%20as%20Agent" className={styles.applyLink}>
+            Apply now <ArrowRight size={18} aria-hidden="true" />
+          </Link>
         </section>
       </div>
     </div>

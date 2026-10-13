@@ -1,0 +1,51 @@
+.page { background: #fafbf7; color: #23352b; }
+.container { padding-top: 28px; padding-bottom: 40px; }
+.overview { display: flex; flex-direction: column; gap: 24px; }
+.heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.heading h1 { margin: 0; font-size: 28px; line-height: 1.3; font-weight: 600; letter-spacing: -.8px; }
+.heading p { margin-top: 8px; color: #6b7861; font-size: 13px; line-height: 1.7; }
+.headingActions { display: flex; align-items: center; gap: 10px; }
+.helpLink, .signOut { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 10px 14px; border: 1px solid #dce5d3; border-radius: 10px; background: #fff; color: #587346; font-size: 12px; font-weight: 500; cursor: pointer; }
+.signOut { border-color: transparent; background: transparent; color: #7c6861; }
+.helpLink:hover { background: #edf5e5; }
+.signOut:hover { background: #f4eeea; }
+.helpLink:focus-visible, .signOut:focus-visible, .shortcut:focus-visible { outline: 2px solid #679e3e; outline-offset: 3px; }
+.shortcuts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.shortcut { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 18px; border: 1px solid #dfe6d7; border-radius: 14px; background: #fff; transition: background-color 160ms ease, border-color 160ms ease; }
+.shortcut:hover { background: #f3f8ee; border-color: #c6d8b5; }
+.shortcutIcon { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px; background: #edf5e5; color: #587b3f; }
+.shortcutText { flex: 1; min-width: 0; }
+.shortcutText > span { font-size: 12px; color: #6c7a61; }
+.shortcutText p { margin-top: 3px; font-size: 22px; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; color: #263b29; }
+.shortcutArrow { flex-shrink: 0; color: #93a584; }
+.contentGrid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+.shoppingTotal { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px; border: 1px solid #e0e7d8; border-radius: 14px; background: #f2f6ec; }
+.totalLabel { display: flex; align-items: center; gap: 12px; color: #587346; }
+.totalLabel h2 { color: #3b5231; font-size: 13px; font-weight: 600; }
+.totalLabel p { margin-top: 4px; color: #77836b; font-size: 11px; }
+.totalValue { color: #354a2e; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+@media (max-width: 900px) {
+  .contentGrid { grid-template-columns: minmax(0, 1fr); }
+  .shortcut { padding: 14px; gap: 10px; }
+  .shortcutIcon { width: 34px; height: 34px; border-radius: 10px; }
+  .shortcutArrow { display: none; }
+}
+@media (max-width: 639px) {
+  .container { padding-top: 22px; padding-bottom: 28px; }
+  .overview { gap: 20px; }
+  .heading { gap: 12px; }
+  .heading h1 { font-size: 25px; }
+  .heading p { font-size: 12px; margin-top: 6px; }
+  .headingActions { gap: 6px; }
+  .helpLink, .signOut { padding: 8px 12px; font-size: 11px; }
+  .shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .shortcut { padding: 14px 12px; }
+  .shortcutText > span { font-size: 11px; }
+  .shortcutText p { font-size: 21px; }
+  .contentGrid { gap: 20px; }
+  .shoppingTotal { padding: 16px; gap: 14px; }
+  .totalValue { font-size: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shortcut { transition: none; }
+}

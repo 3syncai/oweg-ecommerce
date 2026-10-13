@@ -1,0 +1,166 @@
+.home {
+  --oweg-ink: #193c30;
+  --oweg-ink-soft: #344a40;
+  --oweg-ink-muted: #69756e;
+  --oweg-surface-subtle: #f5f6f1;
+  --oweg-border: #e4e8df;
+  --oweg-border-strong: #cdd6ca;
+  background: #fafbf7;
+  color: var(--oweg-ink);
+}
+
+.home :global(.oweg-section-tight) {
+  margin-block: clamp(2rem, 4.5vw, 4rem);
+}
+
+.home :global(.oweg-title) {
+  font-size: clamp(1.35rem, 2.4vw, 1.85rem);
+  font-weight: 650;
+  letter-spacing: -.035em;
+  line-height: 1.25;
+}
+
+.home :global(.oweg-subtle) {
+  font-size: .875rem;
+  line-height: 1.65;
+}
+
+.eyebrow {
+  margin-bottom: .55rem;
+  color: #5a725f;
+  font-size: .65rem;
+  font-weight: 600;
+  letter-spacing: .15em;
+  line-height: 1.6;
+  text-transform: uppercase;
+}
+
+.intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-top: clamp(1.5rem, 3.5vw, 3rem);
+  padding-bottom: 1.75rem;
+}
+
+.introCopy h1 {
+  font-size: clamp(1.9rem, 3.4vw, 3rem);
+  font-weight: 600;
+  letter-spacing: -.045em;
+  line-height: 1.13;
+}
+
+.introCopy > p:last-child {
+  margin-top: .75rem;
+  color: var(--oweg-ink-muted);
+  font-size: .9rem;
+  line-height: 1.65;
+}
+
+.introActions {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  flex-shrink: 0;
+}
+
+.primaryLink, .secondaryLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .65rem;
+  min-height: 46px;
+  padding: .7rem 1.1rem;
+  border-radius: 999px;
+  font-size: .8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.primaryLink { background: #7ac943; color: #203711; border: 1px solid #72bc3c; }
+.primaryLink:hover { background: #6fbc39; box-shadow: 0 3px 12px #659b3418; }
+.secondaryLink { border: 1px solid #dbe2d7; color: #4a6b32; background: #fff; }
+.secondaryLink:hover { background: #edf2e9; }
+.home :is(a, button, input):focus-visible { outline: 2px solid #5b8b35; outline-offset: 4px; }
+
+.hero { border: 1px solid #e0e6da; border-radius: 22px; background: #fff; box-shadow: 0 8px 32px #233e2710; }
+.heroFooter { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: .75rem; padding: .6rem 1.25rem; }
+.heroCaption { display: flex; align-items: center; gap: .6rem; font-size: .75rem; color: #556b5c; }
+.offerDot { width: 6px; height: 6px; border-radius: 50%; background: #74a450; }
+.heroControls { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; }
+.slideCount { margin-right: .7rem; font-size: .75rem; font-variant-numeric: tabular-nums; }
+.slideCount > span { color: #839185; }
+.heroArrow { width: 40px !important; height: 40px !important; min-height: 40px !important; }
+.desktopDots { min-width: 0; }
+.pauseButton { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; color: #556b5c; }
+.pauseButton:hover { background: #eef3e7; }
+
+.categoryGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .8rem; }
+.categoryTile {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  padding: 1rem .5rem;
+  border: 1px solid #e3e8dc;
+  border-radius: 18px;
+  background: #fff;
+  transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
+}
+.categoryTile:nth-child(3n+2) { background: #f3f5ec; }
+.categoryTile:nth-child(3n+3) { background: #f7f3ec; }
+.categoryTile:hover { border-color: #b5c8a8; background: #edf3e6; transform: translateY(-3px); }
+.categoryTile :global(.oweg-icon-tile) { background: transparent; border: 0; box-shadow: none; }
+.categoryLabel { max-width: 140px; min-height: 2.6em; display: flex !important; align-items: center; justify-content: center; color: #344a40 !important; }
+.categories { scroll-margin-top: 340px; }
+
+.deliveryCard { background: #f0f4ea; border-color: #dfe8d5; box-shadow: none; }
+.home :global(.oweg-media) { border-radius: 20px; border: 1px solid #e4e8df; }
+.home :global(.oweg-rail) { padding-top: .3rem; padding-bottom: .8rem; gap: 1rem; }
+.home :global(.oweg-rail-btn) { border: 1px solid #dce3d6; background: #fff; color: #214f3d; box-shadow: none; }
+.home :global(.oweg-rail-btn:hover) { background: #eaf1e3; border-color: #bacdaf; }
+.home :global(.oweg-rail-item) { width: clamp(170px, 42vw, 252px); }
+.home :global(.oweg-rail-item > a) { border-radius: 18px; box-shadow: 0 2px 5px #243d2705; }
+.home :global(.oweg-rail-item > a:hover) { border-color: #b8cbaa; box-shadow: 0 8px 20px #243d2710; }
+.home :global(.oweg-rail-item > a > div:first-child) { background: #f4f5f0; border-radius: 18px 18px 0 0; }
+.home :global(.oweg-rail-item > a > div:last-child) { padding: 1rem; }
+.home :global(.oweg-rail-item .bg-red-600.rounded-full) { background: #e9f0e0; color: #3c652d; }
+.home :global(.oweg-rail-item .bg-red-100.rounded-full) { background: #faf0dc; color: #81633a; }
+.home :global(.oweg-surface-card) { border-radius: 18px; box-shadow: none; }
+
+@media (min-width: 1280px) {
+  .categoryGrid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1023px) {
+  .intro { align-items: flex-start; flex-direction: column; gap: 1rem; }
+}
+
+@media (max-width: 767px) {
+  .heroFooter { display: flex; justify-content: center; padding: .25rem 1rem 0; }
+  .heroControls { display: none; }
+  .hero { border-radius: 18px; }
+  .home :global(.oweg-rail-item) { width: clamp(160px, 43vw, 252px); }
+}
+
+@media (max-width: 639px) {
+  .intro { padding-top: 1.5rem; padding-bottom: 1.25rem; }
+  .introCopy > p:last-child { max-width: 29ch; font-size: .8rem; }
+  .eyebrow { font-size: .6rem; letter-spacing: .12em; }
+  .introActions { flex-wrap: wrap; gap: .5rem; }
+  .primaryLink, .secondaryLink { font-size: .75rem; padding-inline: .9rem; gap: .35rem; }
+  .categoryGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; }
+  .categoryTile { padding: .75rem .25rem; border-radius: 14px; }
+  .categoryTile :global(.oweg-icon-tile) { width: 48px; height: 48px; }
+  .categoryTile :global(.oweg-icon-tile) svg { width: 30px; height: 30px; }
+  .categoryLabel { font-size: .67rem; line-height: 1.4; min-height: 2.8em; }
+  .home :global(.oweg-subtle) { font-size: .8rem; }
+  .home :global(.oweg-media) { border-radius: 14px; }
+  .home :global(.oweg-rail-item > a > div:last-child) { padding: .75rem; }
+  .categories { scroll-margin-top: 160px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home *, .home *::before, .home *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}

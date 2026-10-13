@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Megaphone } from 'lucide-react'
-import { Heart } from 'lucide-react'
+import { Heart, ImageOff } from 'lucide-react'
 import axios from 'axios'
 import { useAuth } from '@/contexts/AuthProvider'
 import { useAddToWishlistWithNotification } from '@/hooks/useWishlistMutations'
@@ -50,7 +50,7 @@ const inr = new Intl.NumberFormat("en-IN", {
   currency: "INR",
 })
 
-const FlashSaleSection: React.FC = () => {
+const FlashSaleSection: React.FC<{ showImageFallback?: boolean }> = ({ showImageFallback = false }) => {
   const [flashSaleData, setFlashSaleData] = useState<FlashSaleData | null>(null)
   const [loading, setLoading] = useState(true)
   const [timeRemaining, setTimeRemaining] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
@@ -185,7 +185,7 @@ const FlashSaleSection: React.FC = () => {
           aria-label="Flash Sale product carousel"
         >
           {flashSaleData.products.map((product) => (
-            <FlashSaleProductCard key={product.id} product={product} />
+            <FlashSaleProductCard key={product.id} product={product} showImageFallback={showImageFallback} />
           ))}
         </div>
       </div>
@@ -194,7 +194,8 @@ const FlashSaleSection: React.FC = () => {
 }
 
 // Flash Sale Product Card Component (matching ProductCard design)
-function FlashSaleProductCard({ product }: { product: FlashSaleProduct }) {
+function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSaleProduct; showImageFallback?: boolean }) {
+  const [failedImage, setFailedImage] = useState<string | null>(null)
   const [isHovered, setIsHovered] = useState(false)
   const { customer } = useAuth()
   const { addToWishlist, isLoading: isAddingToWishlist } = useAddToWishlistWithNotification(product.id)
@@ -286,13 +287,19 @@ function FlashSaleProductCard({ product }: { product: FlashSaleProduct }) {
       >
         <div className="relative aspect-square overflow-visible rounded-t-[var(--oweg-radius-lg)] bg-[var(--oweg-surface-subtle)]">
           <div className="absolute inset-0 overflow-hidden rounded-t-[var(--oweg-radius-lg)]">
-            <Image
+            {showImageFallback && failedImage === imageUrl ? (
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-[var(--oweg-ink-muted)]" role="img" aria-label={`${product.title}: image unavailable`}>
+                <ImageOff className="h-8 w-8 opacity-40" strokeWidth={1.25} />
+                <span className="text-[11px]">Image unavailable</span>
+              </div>
+            ) : <Image
               src={imageUrl}
               alt={product.title}
               fill
               className="object-contain p-3 transition-transform duration-300 ease-out group-hover:scale-[1.04]"
               sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 20vw"
-            />
+              onError={showImageFallback ? () => setFailedImage(imageUrl) : undefined}
+            />}
           </div>
           <ProductCardQuickActions
             variantId={variantId ?? undefined}
