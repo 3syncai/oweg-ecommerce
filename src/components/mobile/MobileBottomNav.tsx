@@ -248,7 +248,7 @@ const Overlay = ({
   panelClassName?: string;
 }) => (
   <div
-    className={`fixed inset-0 z-[130] md:hidden transition-opacity duration-200 ${
+    className={`fixed inset-0 z-[800] md:hidden transition-opacity duration-200 ${
       open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
     }`}
     onClick={onClose}
@@ -763,8 +763,8 @@ export default function MobileBottomNav() {
       </nav>
 
       {/* Category sheet */}
-      <Overlay open={categoryOpen} onClose={closeCategory} scrollable={false}>
-        <div className="pb-8 space-y-4 relative">
+      <Overlay open={categoryOpen} onClose={closeCategory} scrollable={false} panelClassName={`bg-white ${navStyles.categoryPanel}`}>
+        <div className={`${navStyles.categorySheet} relative`}>
           {!selectedSubcategory && (
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -924,16 +924,13 @@ export default function MobileBottomNav() {
           )}
 
           <div
-            className={`relative min-h-0 transition-all duration-300 ease-in-out ${selectedSubcategory ? "" : "flex gap-3"}`}
-            style={{ height: "calc(100vh - 150px)" }}
+            className={`${navStyles.categoryBody} relative min-h-0 transition-all duration-300 ease-in-out ${selectedSubcategory ? "" : "flex gap-3"}`}
           >
             {!selectedSubcategory && (
               <div
-                className="flex-shrink-0 space-y-2 overflow-y-auto h-full pr-1 min-h-0 transition-all duration-300 ease-in-out"
+                className={`${navStyles.categoryScroll} flex-shrink-0 space-y-2 overflow-y-auto h-full pr-1 min-h-0 transition-all duration-300 ease-in-out`}
                 style={{
                   width: isOpen ? 240 : 90,
-                  paddingBottom:
-                    "calc(env(safe-area-inset-bottom, 0px) + 280px)",
                 }}
               >
                 {categoriesLoading ? (
@@ -989,10 +986,7 @@ export default function MobileBottomNav() {
             )}
 
             <div
-              className={`${selectedSubcategory ? "w-full" : "flex-1 min-w-0"} h-full min-h-0 overflow-y-auto pr-1 transition-all duration-300 ease-in-out`}
-              style={{
-                paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 280px)",
-              }}
+              className={`${navStyles.categoryScroll} ${selectedSubcategory ? "w-full" : "flex-1 min-w-0"} h-full min-h-0 overflow-y-auto pr-1 transition-all duration-300 ease-in-out`}
             >
               <div className="space-y-3">
                 <>

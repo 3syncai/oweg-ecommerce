@@ -11,6 +11,7 @@
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 2px;
   width: 100%;
+  min-height: calc(69px + env(safe-area-inset-bottom, 0px));
   padding: 5px 12px calc(5px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid #e3e9db;
   border-radius: 18px 18px 0 0;
@@ -19,6 +20,12 @@
   backdrop-filter: blur(12px);
   pointer-events: auto;
 }
+
+.categoryPanel { bottom: calc(69px + env(safe-area-inset-bottom, 0px)); }
+.categoryPanel > div { padding-bottom: 0; }
+.categorySheet { display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; }
+.categoryBody { flex: 1; min-height: 0; }
+.categoryScroll { padding-bottom: 12px; scroll-padding-bottom: 12px; }
 
 .item {
   display: flex;

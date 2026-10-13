@@ -311,8 +311,8 @@ export default function MobileProfileSheet({
         <p className="font-semibold text-[var(--oweg-ink)]">Support</p>
         <p>Ascent Retechno India Pvt Ltd</p>
         <p className="leading-relaxed">
-          Shop No.04, 05, 06 &amp; 07 AV Crystal, Near Navneet Hospital, Opp.
-          Achole Talav, Nallasopara East, Palghar, Maharashtra - 401209.
+          Av Pride, B-12, Ground Floor, Opp. Rahul, International School,
+          Nilemore 4th Road, Nalasopara West, Thane, Maharashtra - 401203.
         </p>
         <a
           href="mailto:owegonline@oweg.in"

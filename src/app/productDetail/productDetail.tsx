@@ -47,6 +47,7 @@ import { useAuth } from '@/contexts/AuthProvider'
 import { useCartSummary } from '@/contexts/CartProvider'
 import { useFlashSale } from '@/hooks/useFlashSale'
 import HealthCareAgeGate from '@/components/modules/HealthCareAgeGate'
+import { categoryFromSourceTag } from './utils/source-category'
 import { productHasHealthCareCategory } from '@/lib/health-care-age-gate'
 
 type CategoryNode = Pick<MedusaCategory, 'id' | 'title' | 'name' | 'handle'> & {
@@ -119,6 +120,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const outOfStockToastRef = useRef<string | null>(null)
   const [wishlistBusy, setWishlistBusy] = useState(false)
   const sourceTagParam = searchParams?.get('sourceTag')?.trim() || undefined
+  const sourceTagCategory = useMemo(() => categoryFromSourceTag(sourceTagParam), [sourceTagParam])
   const sourceCategoryIdParam = searchParams?.get('sourceCategoryId')?.trim() || undefined
   const sourceCategoryHandleParam = searchParams?.get('sourceCategoryHandle')?.trim() || undefined
   const referralCodeParam = searchParams?.get('ref')?.trim() || undefined
@@ -469,8 +471,9 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       [sourceCategoryHandleParam],
       childCategoryHandles,
       allCategoryHandles,
+      [sourceTagCategory?.handle],
     ])
-  }, [childCategoryHandles, allCategoryHandles, sourceCategoryHandleParam])
+  }, [childCategoryHandles, allCategoryHandles, sourceCategoryHandleParam, sourceTagCategory])
 
   const primaryAwareCategoryIds = useMemo(() => {
     return buildOrderedUnique([
@@ -478,8 +481,9 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       childCategoryIds,
       categoryIds,
       [product?.primaryCategoryId],
+      [sourceTagCategory?.id],
     ])
-  }, [childCategoryIds, categoryIds, product?.primaryCategoryId, sourceCategoryIdParam])
+  }, [childCategoryIds, categoryIds, product?.primaryCategoryId, sourceCategoryIdParam, sourceTagCategory])
 
   const breadcrumbItems: BreadcrumbItem[] = useMemo(() => {
     const items: BreadcrumbItem[] = [{ label: 'Home', href: '/' }]
@@ -494,8 +498,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   }, [breadcrumbTrail, product?.title])
 
   const shouldUseSourceTag = useMemo(
-    () => Boolean(sourceTagParam && !sourceCategoryIdParam && !sourceCategoryHandleParam),
-    [sourceTagParam, sourceCategoryIdParam, sourceCategoryHandleParam]
+    () => Boolean(sourceTagParam && !sourceTagCategory && !sourceCategoryIdParam && !sourceCategoryHandleParam),
+    [sourceTagParam, sourceTagCategory, sourceCategoryIdParam, sourceCategoryHandleParam]
   )
 
   const preferredTagValues = useMemo(() => {
@@ -645,7 +649,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           : []
       const categoryPaths = [
         ...primaryAwareCategoryIds.map((id) => ({
-          url: `/api/medusa/products?categoryId=${encodeURIComponent(id)}&limit=${desiredCount}`,
+          url: `/api/medusa/products?categoryId=${encodeURIComponent(id)}&includeSubcategories=1&limit=${desiredCount}`,
           hintId: id,
           hintLabel: categoryMap[id]?.title || categoryMap[id]?.handle || 'Category',
         })),
@@ -654,7 +658,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           const label =
             (resolvedId && (categoryMap[resolvedId]?.title || categoryMap[resolvedId]?.handle)) || humanizeHandle(handle)
           return {
-            url: `/api/medusa/products?category=${encodeURIComponent(handle)}&limit=${desiredCount}`,
+            url: `/api/medusa/products?category=${encodeURIComponent(handle)}&includeSubcategories=1&limit=${desiredCount}`,
             hintId: resolvedId || `handle:${handle}`,
             hintLabel: label,
           }
@@ -734,6 +738,20 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   })
   const related = useMemo(() => relatedQuery.data || [], [relatedQuery.data])
   const loadingRelated = relatedQuery.isLoading
+
+  useEffect(() => {
+    if (!compareModalOpen) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCompareModalOpen(false)
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = originalOverflow
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [compareModalOpen])
 
 
   useEffect(() => {
@@ -1574,12 +1592,12 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
         ) : null}
       </main>
       {compareModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60 px-2 pt-20 pb-4 md:px-6 md:py-10">
-          <div className="relative w-full max-w-2xl max-h-[62vh] md:max-h-[58vh] bg-white shadow-2xl border border-slate-100 rounded-t-3xl md:rounded-3xl flex flex-col overflow-hidden">
-            <div className="flex items-start justify-between gap-4 px-4 py-4 border-b bg-white sticky top-0 z-10">
+        <div className={styles.compareOverlay}>
+          <div role="dialog" aria-modal="true" aria-labelledby="compare-dialog-title" className={`${styles.compareDialog} relative w-full max-w-2xl bg-white shadow-2xl border border-slate-100 rounded-3xl flex flex-col overflow-hidden`}>
+            <div className="flex shrink-0 items-start justify-between gap-4 px-4 py-4 border-b bg-white">
               <div>
                 <p className="text-xs uppercase tracking-[0.4em] text-slate-400 mb-1">Compare</p>
-                <h3 className="text-xl font-semibold text-slate-900">Compare similar products</h3>
+                <h3 id="compare-dialog-title" className="text-xl font-semibold text-slate-900">Compare similar products</h3>
                 <p className="text-sm text-slate-500">
                   Select items from the same category to see a quick spec comparison.
                 </p>
@@ -1589,13 +1607,14 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                 onClick={() => setCompareModalOpen(false)}
                 className="flex items-center justify-center gap-2 rounded-full border border-slate-200 px-3 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
                 aria-label="Close compare modal"
+                autoFocus
               >
                 <X className="w-4 h-4" />
                 <span className="hidden md:inline">Close</span>
               </button>
             </div>
 
-            <div className="px-4 py-4 border-b bg-white sticky top-[92px] z-10">
+            <div className="shrink-0 px-4 py-4 border-b bg-white">
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-xs sm:text-sm font-medium text-slate-600">
                   Brand
@@ -1628,9 +1647,11 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
               {filteredCompareOptions.length === 0 ? (
-                <p className="text-sm text-slate-500">No products match the selected filters.</p>
+                <p className="text-sm text-slate-500">
+                  {loadingRelated ? 'Loading similar products...' : 'No products match the selected filters.'}
+                </p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {filteredCompareOptions.map((item) => {
@@ -1678,7 +1699,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
               )}
             </div>
 
-            <div className="px-4 py-4 border-t bg-white flex flex-wrap items-center justify-between gap-3 sticky bottom-0">
+            <div className="shrink-0 px-4 py-4 border-t bg-white flex flex-wrap items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setCompareSelection([])}
