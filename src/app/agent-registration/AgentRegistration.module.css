@@ -1,0 +1,111 @@
+.page { background: #fafbf7; color: #23352b; }
+.container { padding-top: 36px; padding-bottom: 48px; }
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 36px;
+  align-items: center;
+  padding: 44px;
+  border: 1px solid #e1e8da;
+  border-radius: 24px;
+  background: #fff;
+}
+.heroContent { min-width: 0; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; color: #506c38; font-size: 12px; font-weight: 600; }
+.hero h1 {
+  max-width: 620px;
+  margin: 18px 0 16px;
+  font-size: clamp(32px, 3.7vw, 48px);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -1.5px;
+  text-wrap: balance;
+}
+.hero h1 span { color: #557b35; }
+.lead { max-width: 580px; font-size: 15px; line-height: 1.8; color: #65715f; }
+.heroActions { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin-top: 24px; }
+.applyLink {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px 22px;
+  border: 1px solid #72bc3c;
+  border-radius: 999px;
+  background: #7ac943;
+  color: #203711;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+.applyLink:hover { background: #6fbc39; border-color: #66ac33; }
+.applyLink:focus-visible { outline: 3px solid #557b35; outline-offset: 4px; }
+.emailNote { color: #6b7766; font-size: 11px; line-height: 1.6; }
+.community { align-self: stretch; display: flex; flex-direction: column; justify-content: center; padding: 22px; border-radius: 18px; background: #f3f7ec; text-align: center; }
+.network { position: relative; height: 195px; }
+.orbit { position: absolute; top: 5px; left: 50%; width: 170px; height: 170px; transform: translateX(-50%); border: 1px dashed #c3d5b0; border-radius: 50%; }
+.networkCenter { position: absolute; top: 45px; left: 50%; display: grid; place-items: center; width: 90px; height: 90px; transform: translateX(-50%); border: 1px solid #d0dfbe; border-radius: 28px; background: #e5f1d9; color: #557b35; }
+.networkNode { position: absolute; display: grid; place-items: center; width: 52px; height: 52px; border: 1px solid #e0e7d8; border-radius: 17px; background: #fff; color: #64794e; }
+.peopleNode { top: 8px; left: calc(50% - 106px); }
+.helpNode { top: 115px; left: calc(50% + 54px); }
+.networkLabel { position: absolute; left: 0; right: 0; bottom: 0; font-size: 13px; font-weight: 600; }
+.managedLabel { margin-top: 24px; color: #69785d; font-size: 11px; }
+.managedTags { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.managedTags span { padding: 6px 10px; border: 1px solid #dfe7d6; border-radius: 999px; color: #52673f; background: #fff; font-size: 11px; }
+.benefits { margin-top: 40px; }
+.sectionHeading { margin-bottom: 20px; }
+.sectionEyebrow { margin: 0 0 8px; color: #677957; font-size: 10px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; }
+.sectionHeading h2 { font-size: 24px; font-weight: 600; line-height: 1.3; letter-spacing: -.6px; }
+.benefitGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.benefitCard { padding: 24px; border: 1px solid #e2e8dc; border-radius: 18px; background: #fff; }
+.benefitIcon { display: grid; width: 44px; height: 44px; margin-bottom: 18px; place-items: center; border-radius: 14px; color: #557b35; background: #eef5e6; }
+.benefitCard h3 { margin-bottom: 8px; font-size: 16px; font-weight: 600; }
+.benefitCard p { color: #687360; font-size: 13px; line-height: 1.75; }
+.onboarding { margin-top: 32px; padding: 30px; border: 1px solid #dce6d0; border-radius: 22px; background: #eff5e8; }
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; list-style: none; margin: 26px 0 24px; padding: 0; }
+.steps li { min-width: 0; }
+.stepNumber { display: grid; place-items: center; width: 36px; height: 36px; margin-bottom: 14px; border: 1px solid #d7e3c9; border-radius: 50%; background: #fff; color: #557b35; font-size: 12px; font-weight: 600; }
+.steps h3 { max-width: 230px; font-size: 14px; font-weight: 600; line-height: 1.6; }
+.dashboardNote { border-top: 1px solid #d8e3ce; padding-top: 20px; color: #627257; font-size: 13px; line-height: 1.75; }
+.invitation { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 28px; padding: 24px 4px 0; }
+.invitation h2 { font-size: 20px; font-weight: 600; letter-spacing: -.4px; }
+.invitation p { margin-top: 6px; color: #687360; font-size: 13px; line-height: 1.7; }
+.invitation .applyLink { flex-shrink: 0; }
+
+@media (max-width: 900px) {
+  .hero { padding: 30px; gap: 24px; }
+  .hero h1 { font-size: 36px; }
+  .community { padding: 18px 10px; }
+  .benefitCard { padding: 20px; }
+}
+@media (max-width: 640px) {
+  .container { padding-top: 24px; padding-bottom: 32px; }
+  .hero { display: block; padding: 24px 20px; border-radius: 20px; }
+  .hero h1 { margin-top: 16px; font-size: clamp(28px, 6.6vw, 34px); line-height: 1.2; letter-spacing: -1px; }
+  .lead { font-size: 13px; line-height: 1.75; }
+  .heroActions { margin-top: 20px; gap: 10px; }
+  .community { display: none; }
+  .benefits { margin-top: 28px; }
+  .sectionHeading { margin-bottom: 16px; }
+  .sectionEyebrow { font-size: 9px; letter-spacing: 1px; }
+  .sectionHeading h2 { max-width: 350px; font-size: 21px; line-height: 1.35; }
+  .benefitGrid { grid-template-columns: 1fr; gap: 10px; }
+  .benefitCard { display: flex; align-items: flex-start; gap: 14px; padding: 18px; border-radius: 16px; }
+  .benefitIcon { flex-shrink: 0; width: 40px; height: 40px; margin-bottom: 0; border-radius: 12px; }
+  .benefitCard h3 { margin-bottom: 4px; font-size: 15px; }
+  .benefitCard p { font-size: 12px; line-height: 1.65; }
+  .onboarding { margin-top: 24px; padding: 22px 20px; border-radius: 18px; }
+  .steps { grid-template-columns: 1fr; gap: 0; margin: 20px 0; }
+  .steps li { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-top: 1px solid #dbe5d1; }
+  .steps li:first-child { padding-top: 0; border-top: 0; }
+  .stepNumber { flex-shrink: 0; margin-bottom: 0; }
+  .steps h3 { max-width: none; font-size: 13px; }
+  .dashboardNote { padding-top: 16px; font-size: 12px; }
+  .invitation { flex-direction: column; align-items: flex-start; gap: 16px; margin-top: 20px; padding: 8px 4px 0; }
+  .invitation h2 { font-size: 19px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .applyLink { transition: none; }
+}

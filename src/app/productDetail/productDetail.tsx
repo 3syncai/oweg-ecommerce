@@ -17,6 +17,7 @@ import DeliveryInfo from './components/DeliveryInfo'
 import DescriptionTabs from './components/DescriptionTabs'
 import ProductGallery from './components/ProductGallery'
 import ProductSummary from './components/ProductSummary'
+import styles from './ProductDetail.module.css'
 import type {
   BreadcrumbItem,
   CompareFilters,
@@ -1331,7 +1332,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const showHealthCareAgeGate = productHasHealthCareCategory(product?.categories)
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#f3f8f3] font-sans overflow-x-clip touch-pan-y">
+    <div className={`${styles.page} flex min-h-screen flex-col font-sans overflow-x-clip touch-pan-y`}>
       <HealthCareAgeGate enabled={showHealthCareAgeGate} />
       <style>{`
         :root {
@@ -1340,7 +1341,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           --detail-border: #dfe9df;
         }
       `}</style>
-      <main className="w-full max-w-7xl mx-auto px-4 py-8 lg:py-12 flex-1 scroll-smooth">
+      <main className={`${styles.container} w-full max-w-7xl mx-auto flex-1 scroll-smooth`}>
         <Breadcrumbs items={breadcrumbItems} pillClassName={breadcrumbPillClass} />
 
         {productLoading ? (
@@ -1366,9 +1367,9 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
         ) : product ? (
           <>
             {/* ====== MAIN TWO-COLUMN: LEFT = STICKY GALLERY, RIGHT = PAGE-SCROLL SUMMARY ====== */}
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 mb-10 items-start max-w-full overflow-clip">
+            <section className={styles.productLayout}>
               {/* LEFT: Sticky Image/Gallery */}
-              <div className="relative lg:sticky lg:top-10 self-start w-full max-w-full overflow-hidden">
+              <div className={styles.galleryColumn}>
                 <ProductGallery
                   images={galleryImages}
                   selectedIndex={selectedImage}
@@ -1380,20 +1381,10 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   hasStock={hasStock}
                 />
 
-                <div className="pointer-events-none absolute inset-0 flex items-start justify-end z-30">
-                  <button
-                    type="button"
-                    onClick={handleAddToWishlist}
-                    className="pointer-events-auto sm:hidden m-3 inline-flex items-center justify-center rounded-full border border-rose-200 bg-white/95 text-rose-500 p-2 shadow-lg z-30"
-                    aria-label="Add to wishlist"
-                  >
-                    <Heart className="w-6 h-6" fill={isWishlisted ? 'currentColor' : 'none'} />
-                  </button>
-                </div>
               </div>
 
               {/* RIGHT: Summary scrolls with the page (no nested scroll) */}
-              <div className="w-full min-w-0 space-y-5 lg:pl-4">
+              <div className={styles.summaryColumn}>
                 <ProductSummary
                   product={displayProduct ?? product}
                   brandName={brandName}
@@ -1426,7 +1417,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
               </div>
             </section>
 
-            <section className="mt-10">
+            <section className={styles.detailsSection}>
               <DescriptionTabs
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
@@ -1508,7 +1499,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
               <div className="space-y-5 lg:pl-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h1 className="text-xl font-bold text-slate-900">Similar items you might also like</h1>
+                    <h2 className="text-xl font-semibold text-slate-900">Similar items you might also like</h2>
                     <p className="text-sm text-slate-500">Hand-picked recommendations based on this product.</p>
                   </div>
                   {loadingRelated && <span className="text-sm text-slate-500">Loading suggestions...</span>}

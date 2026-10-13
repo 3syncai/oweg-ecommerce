@@ -9,6 +9,7 @@ import { formatPlainDescription, formatHtmlDescription } from '../utils/descript
 import { sanitizeProductHtml } from '@/lib/sanitize-product-html'
 import ReviewForm from './ReviewForm'
 import ReviewsList from './ReviewsList'
+import styles from '../ProductDetail.module.css'
 
 type DescriptionTabsProps = {
   activeTab: DescriptionTab
@@ -31,29 +32,28 @@ const DescriptionTabs = ({
   const queryClient = useQueryClient()
 
   return (
-    <div className="space-y-8 lg:pl-4">
-      <div className="flex gap-6 border-b border-slate-100 mb-6">
+    <div className={styles.tabs}>
+      <div className={styles.tabBar}>
         {(['description', 'reviews', 'compare'] as DescriptionTab[]).map((tab) => (
           <button
             key={tab}
             type="button"
             onClick={() => onTabChange(tab)}
-            className={`pb-3 text-sm font-semibold transition-all border-b-2 ${
-              activeTab === tab ? 'text-green-700 border-green-600' : 'text-slate-400 border-transparent hover:text-slate-600'
-            }`}
+            aria-pressed={activeTab === tab}
+            className={`${styles.tab} ${activeTab === tab ? styles.tabActive : ''}`}
           >
             {tab === 'description' ? 'Description' : tab === 'reviews' ? 'Reviews' : 'Compare'}
           </button>
         ))}
       </div>
       {activeTab === 'description' && (
-        <div className="space-y-8">
-          <div>
+        <div className={styles.descriptionLayout}>
+          <div className={styles.descriptionContent}>
             <h2 className="text-lg font-semibold text-slate-900 mb-3">Product Description</h2>
             {product?.description ? (
               descriptionHasHtml ? (
                 <div
-                  className="prose prose-sm max-w-none text-slate-700"
+                  className={styles.htmlDescription}
                   dangerouslySetInnerHTML={{
                     __html: sanitizeProductHtml(formatHtmlDescription(product.description)),
                   }}
@@ -77,10 +77,8 @@ const DescriptionTabs = ({
             ) : (
               <p className="text-sm text-slate-500">Detailed description will be available soon.</p>
             )}
-          </div>
-
           {highlights.length > 0 && (
-            <div>
+            <div className={styles.benefits}>
               <h3 className="text-lg font-semibold text-slate-900 mb-3">Benefits</h3>
               <div className="grid sm:grid-cols-2 gap-3">
                 {highlights.map((highlight) => (
@@ -95,18 +93,19 @@ const DescriptionTabs = ({
               </div>
             </div>
           )}
+          </div>
 
           {detailPairs.length > 0 && (
-            <div>
+            <div className={styles.specifications}>
               <h3 className="text-lg font-semibold text-slate-900 mb-4">Product Details</h3>
               <div className="space-y-3">
                 {detailPairs.map((pair) => (
                   <div
                     key={pair.label}
-                    className="flex flex-col rounded-2xl border border-slate-100 bg-[#f9fcf8] px-4 py-3 text-sm"
+                    className={styles.specRow}
                   >
-                    <span className="text-xs uppercase tracking-wide text-slate-500">{pair.label}</span>
-                    <span className="text-base font-semibold text-slate-800">{pair.value}</span>
+                    <span>{pair.label}</span>
+                    <span>{pair.value}</span>
                   </div>
                 ))}
               </div>

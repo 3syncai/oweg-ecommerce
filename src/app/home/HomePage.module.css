@@ -79,11 +79,11 @@
   transition: background-color 180ms ease, box-shadow 180ms ease;
 }
 
-.primaryLink { background: #214f3d; color: #fff; }
-.primaryLink:hover { background: #173d2e; box-shadow: 0 3px 12px #214f3d18; }
-.secondaryLink { border: 1px solid #dbe2d7; color: #214f3d; background: #fff; }
+.primaryLink { background: #7ac943; color: #203711; border: 1px solid #72bc3c; }
+.primaryLink:hover { background: #6fbc39; box-shadow: 0 3px 12px #659b3418; }
+.secondaryLink { border: 1px solid #dbe2d7; color: #4a6b32; background: #fff; }
 .secondaryLink:hover { background: #edf2e9; }
-.home :is(a, button, input):focus-visible { outline: 2px solid #376e4c; outline-offset: 4px; }
+.home :is(a, button, input):focus-visible { outline: 2px solid #5b8b35; outline-offset: 4px; }
 
 .hero { border: 1px solid #e0e6da; border-radius: 22px; background: #fff; box-shadow: 0 8px 32px #233e2710; }
 .heroFooter { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: .75rem; padding: .6rem 1.25rem; }

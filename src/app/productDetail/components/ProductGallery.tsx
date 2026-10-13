@@ -1,10 +1,25 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import Image from "next/image";
-import { ChevronLeft, ChevronRight, X, ExternalLink } from "lucide-react";
+import Image, { type ImageProps } from "next/image";
+import { ChevronLeft, ChevronRight, X, ExternalLink, ImageOff } from "lucide-react";
 import { createPortal } from "react-dom";
 import { getImageUrlForNewTab } from "@/lib/image-utils";
+import styles from "../ProductDetail.module.css";
+
+function GalleryImage({ small = false, onUnavailable, ...props }: ImageProps & { small?: boolean; onUnavailable?: () => void }) {
+  const [failedSource, setFailedSource] = useState<ImageProps['src'] | null>(null);
+  if (failedSource === props.src) {
+    return <span className={`${styles.imageFallback} ${small ? styles.imageFallbackSmall : ''} ${props.fill ? styles.imageFallbackFill : ''}`} role="img" aria-label={props.alt}>
+      <ImageOff aria-hidden="true" />
+      {!small && <span>Image unavailable</span>}
+    </span>;
+  }
+  return <Image {...props} alt={props.alt} onError={() => {
+    setFailedSource(props.src);
+    onUnavailable?.();
+  }} />;
+}
 
 type ProductGalleryProps = {
   images: string[];
@@ -31,6 +46,7 @@ const ProductGallery = ({
   hasStock = true,
 }: ProductGalleryProps) => {
   const activeImage = images[selectedIndex] || fallback;
+  const [unavailableImages, setUnavailableImages] = useState<string[]>([]);
   const hasMultiple = images.length > 1;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [lensActive, setLensActive] = useState(false);
@@ -225,9 +241,9 @@ const ProductGallery = ({
   }, [lensActive]);
 
   return (
-    <div className="space-y-3 w-full max-w-full overflow-hidden">
-      <div className="relative lg:flex lg:gap-1.5 w-full max-w-full">
-        <div className="hidden lg:flex flex-col gap-1.5 overflow-y-auto max-h-[450px] pr-1 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent hover:scrollbar-thumb-gray-400">
+    <div className={styles.gallery}>
+      <div className={styles.galleryLayout}>
+        <div className={styles.verticalThumbs}>
           {images.map((img, idx) => (
             <button
               key={`vertical-${img}-${idx}`}
@@ -244,7 +260,7 @@ const ProductGallery = ({
                   : "border border-slate-300 hover:border-slate-400"
               }`}
             >
-              <Image
+              <GalleryImage small
                 src={img}
                 alt={`${idx + 1}`}
                 width={48}
@@ -254,10 +270,10 @@ const ProductGallery = ({
             </button>
           ))}
         </div>
-        <div className="relative flex-1 w-full max-w-full lg:max-w-[490px] lg:ml-3 mx-auto min-w-0">
+        <div className={styles.imageColumn}>
           <div
             ref={containerRef}
-            className="relative w-full max-w-full aspect-[4/5] max-h-[360px] sm:max-h-[420px] lg:h-[450px] rounded-[32px] border border-[var(--detail-border)] bg-white shadow-sm overflow-hidden group mx-auto"
+            className={`${styles.imageStage} group`}
             onMouseEnter={(event) => {
               setLensActive(true);
               updateLensFromPoint(event.clientX, event.clientY);
@@ -274,7 +290,7 @@ const ProductGallery = ({
                 e.stopPropagation();
                 openImageInNewTab();
               }}
-              className="absolute top-3 right-3 z-30 hidden sm:inline-flex items-center gap-1 rounded-full bg-white/90 border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm hover:bg-white"
+              className={styles.openImage}
               aria-label="Open image in new tab"
             >
               <ExternalLink className="w-4 h-4" />
@@ -283,6 +299,15 @@ const ProductGallery = ({
 
             <div
               className="absolute inset-0 z-10 cursor-pointer lg:cursor-zoom-in"
+              role="button"
+              tabIndex={0}
+              aria-label="View product image gallery"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleOpenFullscreen();
+                }
+              }}
               onClick={(e) => {
                 // Prevent if touch was just handled
                 if (touchHandled) {
@@ -295,8 +320,9 @@ const ProductGallery = ({
                 handleOpenFullscreen();
               }}
             >
-              <Image
+              <GalleryImage
                 src={activeImage}
+                onUnavailable={() => setUnavailableImages((previous) => previous.includes(activeImage) ? previous : [...previous, activeImage])}
                 alt="Selected product image"
                 fill
                 sizes="(max-width: 1024px) 100vw, 50vw"
@@ -315,9 +341,10 @@ const ProductGallery = ({
               )}
             </div>
             {hasMultiple && (
-              <div className="absolute inset-x-0 bottom-4 flex justify-between px-4 z-20">
+              <div className={styles.galleryArrows}>
                 <button
                   type="button"
+                  aria-label="Previous product image"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleNavigate("prev");
@@ -326,8 +353,10 @@ const ProductGallery = ({
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
+                <span className={styles.galleryCount}>{selectedIndex + 1} / {images.length}</span>
                 <button
                   type="button"
+                  aria-label="Next product image"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleNavigate("next");
@@ -349,7 +378,7 @@ const ProductGallery = ({
                 boxShadow:
                   "0 0 0 1px rgba(255,255,255,0.4), 0 10px 35px rgba(0,0,0,0.2)",
                 backgroundColor: "rgba(0,0,0,0.18)",
-                opacity: lensActive ? 1 : 0,
+                opacity: lensActive && !unavailableImages.includes(activeImage) ? 1 : 0,
                 transition: "opacity 120ms ease",
                 backdropFilter: "blur(1px)",
               }}
@@ -357,7 +386,7 @@ const ProductGallery = ({
               <div className="absolute inset-3 rounded-2xl border border-white/60" />
             </div>
           </div>
-          {lensActive && zoomFrame && (
+          {lensActive && zoomFrame && !unavailableImages.includes(activeImage) && (
             <div
               className="hidden lg:block fixed h-[500px] w-[500px] rounded-[32px] border-2 border-green-500/30 bg-white shadow-2xl overflow-hidden z-[120] pointer-events-none"
               style={{
@@ -373,24 +402,22 @@ const ProductGallery = ({
         </div>
       </div>
 
-      <div className="flex gap-1.5 overflow-x-auto lg:hidden scrollbar-hide overscroll-x-contain -mx-1 px-1">
+      <div className={`${styles.horizontalThumbs} scrollbar-hide overscroll-x-contain`}>
         {images.map((img, idx) => (
           <button
             key={`${img}-${idx}`}
             type="button"
+            aria-label={`Select product image ${idx + 1}`}
+            aria-pressed={selectedIndex === idx}
             onClick={(e) => {
               e.stopPropagation();
               onSelect(idx);
             }}
             onMouseEnter={() => onSelect(idx)}
             onFocus={() => onSelect(idx)}
-            className={`flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-md border overflow-hidden bg-white transition-all ${
-              selectedIndex === idx
-                ? "border-2 border-green-500 ring-1 ring-green-100"
-                : "border border-slate-300"
-            }`}
+            className={`${styles.thumbnail} ${selectedIndex === idx ? styles.thumbnailSelected : ''}`}
           >
-            <Image
+            <GalleryImage small
               src={img}
               alt={`${idx + 1}`}
               width={56}
@@ -405,6 +432,9 @@ const ProductGallery = ({
         ? createPortal(
             <div
               className="fixed inset-0 z-[12000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Product image gallery"
               onClick={() => setFullscreenOpen(false)}
             >
               {/* Main Modal Container */}
@@ -487,7 +517,7 @@ const ProductGallery = ({
                       onTouchStart={handleModalTouchStart}
                       onTouchEnd={handleModalTouchEnd}
                     >
-                      <Image
+                      <GalleryImage
                         src={activeImage}
                         alt="Product preview"
                         fill
@@ -544,7 +574,7 @@ const ProductGallery = ({
                               : "border border-gray-300"
                           }`}
                         >
-                          <Image
+                          <GalleryImage small
                             src={img}
                             alt={`${idx + 1}`}
                             width={200}
@@ -601,11 +631,11 @@ const ProductGallery = ({
                           }}
                           className={`aspect-square rounded border overflow-hidden transition-all ${
                             selectedIndex === idx
-                              ? "border-2 border-orange-500 ring-1 ring-orange-200"
+                              ? "border-2 border-[#7ac943] ring-1 ring-[#e5f1d9]"
                               : "border border-gray-300 hover:border-gray-400"
                           }`}
                         >
-                          <Image
+                          <GalleryImage small
                             src={img}
                             alt={`${idx + 1}`}
                             width={80}

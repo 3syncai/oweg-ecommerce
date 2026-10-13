@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Heart, HeartOff, Loader2, ShoppingCart } from "lucide-react";
+import { AlertCircle, ArrowUpRight, Heart, HeartOff, ImageOff, Loader2, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import AccountLoginPrompt from "@/components/account/AccountLoginPrompt";
 import { useAuth } from "@/contexts/AuthProvider";
 import { cn } from "@/lib/utils";
+import styles from "./WishlistContent.module.css";
 
 type WishlistProduct = {
   id: string;
@@ -30,25 +31,49 @@ type WishlistContentProps = {
 
 function WishlistSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 md:gap-5">
+    <div className={styles.grid} aria-hidden="true">
       {Array.from({ length: 6 }).map((_, idx) => (
         <div
           key={`wishlist-skeleton-${idx}`}
-          className="flex min-h-[340px] animate-pulse flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
+          className={cn(styles.card, "animate-pulse")}
         >
-          <div className="relative aspect-[4/5] bg-gray-100" />
-          <div className="flex flex-1 flex-col space-y-3 p-4">
-            <div className="h-4 w-24 rounded bg-gray-100" />
-            <div className="h-4 w-full rounded bg-gray-100" />
-            <div className="h-3 w-1/2 rounded bg-gray-100" />
-            <div className="mt-auto flex gap-2">
-              <div className="h-10 flex-1 rounded-full bg-gray-100" />
-              <div className="h-10 w-10 rounded-full bg-gray-100" />
-            </div>
+          <div className={cn(styles.media, styles.skeletonBlock)} />
+          <div className={styles.details}>
+            <div className="h-3 w-16 rounded bg-[#edf0e8]" />
+            <div className="h-4 w-full rounded bg-[#edf0e8]" />
+            <div className="h-3 w-3/4 rounded bg-[#edf0e8]" />
+            <div className="h-5 w-20 rounded bg-[#edf0e8]" />
+          </div>
+          <div className={styles.actions}>
+            <div className="h-11 flex-1 rounded-xl bg-[#edf0e8]" />
+            <div className="h-11 w-24 rounded-xl bg-[#edf0e8]" />
           </div>
         </div>
       ))}
     </div>
+  );
+}
+
+function WishlistImage({ src, title, priority }: { src: string; title: string; priority: boolean }) {
+  const [failedSource, setFailedSource] = useState<string | null>(null);
+  if (failedSource === src) {
+    return (
+      <div className={styles.imageFallback} role="img" aria-label={`${title}: image unavailable`}>
+        <ImageOff className="h-7 w-7 opacity-40" strokeWidth={1.25} />
+        <span>Image unavailable</span>
+      </div>
+    );
+  }
+  return (
+    <Image
+      src={src}
+      alt={title}
+      fill
+      className={styles.productImage}
+      sizes="(max-width: 639px) 112px, (max-width: 1024px) 50vw, 33vw"
+      priority={priority}
+      onError={() => setFailedSource(src)}
+    />
   );
 }
 
@@ -172,149 +197,149 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
   }
 
   const emptyState = !showSkeleton && !products.length && !errorMessage;
-  const wrapperClass = embedded ? "space-y-5" : "container mx-auto max-w-6xl space-y-6 px-4 py-10";
-
   return (
-    <div className={wrapperClass}>
-      {!embedded ? (
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF8E7]">
-            <AccountHubIcon name="wishlist" size={22} className="h-[22px] w-[22px]" />
-          </div>
+    <div className={cn(styles.page, embedded && styles.embedded)} data-wishlist-page>
+      <div className={cn(styles.content, !embedded && "oweg-container")}>
+        <header className={styles.header}>
           <div>
-            <h1 className="text-2xl font-semibold text-[#1F2A33]">Wishlist</h1>
-            <p className="text-sm text-gray-600">
-              Save products to view later and add to cart when you&apos;re ready.
-            </p>
-          </div>
-          {refreshing ? (
-            <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Updating...
+            <div className={styles.heading}>
+              <span className={styles.headingIcon}>
+                <AccountHubIcon name="wishlist" size={22} className="h-[22px] w-[22px]" />
+              </span>
+              <div>
+                <p className={styles.eyebrow}>Saved for later</p>
+                <h1>Wishlist</h1>
+              </div>
             </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {showSkeleton ? (
-        <WishlistSkeleton />
-      ) : errorMessage ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {errorMessage}
-        </div>
-      ) : emptyState ? (
-        <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-10 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#EAF8E7]">
-            <Heart className="h-5 w-5 text-[#66C940]" />
+            <p className={styles.lead}>Keep your favourites together. Add them to your cart when you&apos;re ready.</p>
           </div>
-          <p className="text-lg font-semibold text-[#1F2A33]">Your wishlist is empty</p>
-          <p className="mt-1 text-sm text-gray-500">
-            Tap the heart icon on any product to save it here.
-          </p>
-          <Link
-            href="/"
-            className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#66C940] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#5ab838]"
-          >
-            Continue shopping
-          </Link>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 md:gap-5">
-          {products.map((product) => {
-            const image =
-              product.thumbnail ||
-              (Array.isArray(product.images) && product.images.length
-                ? product.images[0]?.url
-                : undefined) ||
-              "/oweg_logo.png";
-            const slug = encodeURIComponent(String(product.handle || product.id));
-            const href = `/productDetail/${slug}?id=${encodeURIComponent(String(product.id))}`;
-            const discount =
-              typeof product.discount === "number" && Number.isFinite(product.discount)
-                ? product.discount
-                : typeof product.price === "number" &&
-                    typeof product.mrp === "number" &&
-                    product.mrp > product.price
-                  ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
-                  : 0;
-            const limited = discount >= 20;
+          <div className={styles.headerActions}>
+            {!showSkeleton && !errorMessage ? (
+              <span className={styles.savedCount}><Heart className="h-3.5 w-3.5" />{products.length} saved {products.length === 1 ? "item" : "items"}</span>
+            ) : null}
+            {refreshing ? (
+              <span className={styles.refreshing} role="status"><Loader2 className="h-3.5 w-3.5 animate-spin" />Updating...</span>
+            ) : null}
+            {!emptyState && !showSkeleton && products.length > 0 ? (
+              <Link href="/" className={styles.shoppingLink}>Continue shopping <ArrowUpRight className="h-4 w-4" /></Link>
+            ) : null}
+          </div>
+        </header>
 
-            return (
-              <div
-                key={product.id}
-                className="flex min-h-[390px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:border-[#66C940]/30 hover:shadow-md"
-              >
-                <Link
-                  href={href}
-                  className="relative block aspect-[4/5] max-h-64 overflow-hidden bg-[#EAF8E7]/30"
+        {showSkeleton ? (
+          <WishlistSkeleton />
+        ) : errorMessage ? (
+          <div className={styles.error} role="alert">
+            <AlertCircle className="h-5 w-5 shrink-0" /><span>{errorMessage}</span>
+          </div>
+        ) : emptyState ? (
+          <div className={styles.empty}>
+            <span className={styles.emptyIcon}><Heart className="h-8 w-8" strokeWidth={1.5} /></span>
+            <h2>Your wishlist is empty</h2>
+            <p>
+              Tap the heart icon on any product to save it here.
+            </p>
+            <Link
+              href="/"
+              className={styles.primaryButton}
+            >
+              Continue shopping
+            </Link>
+          </div>
+        ) : (
+          <div className={styles.grid}>
+            {products.map((product) => {
+              const image =
+                product.thumbnail ||
+                (Array.isArray(product.images) && product.images.length
+                  ? product.images[0]?.url
+                  : undefined) ||
+                "/oweg_logo.png";
+              const slug = encodeURIComponent(String(product.handle || product.id));
+              const href = `/productDetail/${slug}?id=${encodeURIComponent(String(product.id))}`;
+              const discount =
+                typeof product.discount === "number" && Number.isFinite(product.discount)
+                  ? product.discount
+                  : typeof product.price === "number" &&
+                      typeof product.mrp === "number" &&
+                      product.mrp > product.price
+                    ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
+                    : 0;
+              const limited = discount >= 20;
+
+              return (
+                <article
+                  key={product.id}
+                  className={styles.card}
                 >
-                  <Image
-                    src={image}
-                    alt={product.title || "Product"}
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                    priority={products.length < 4}
-                  />
-                </Link>
-                <div className="flex flex-1 flex-col gap-2 p-4">
-                  <div className="flex items-start gap-2">
-                    {discount > 0 ? (
-                      <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-semibold text-white">
-                        {discount}% off
-                      </span>
-                    ) : null}
-                    {limited ? (
-                      <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-700">
-                        Limited
-                      </span>
-                    ) : null}
-                  </div>
                   <Link
                     href={href}
-                    className="line-clamp-2 text-sm font-semibold text-[#1F2A33] transition hover:text-[#66C940]"
+                    className={styles.media}
+                    aria-label={`View ${product.title || "product"}`}
                   >
-                    {product.title || "Product"}
+                    <WishlistImage
+                      src={image}
+                      title={product.title || "Product"}
+                      priority={products.length < 4}
+                    />
                   </Link>
-                  <div className="flex items-baseline gap-2 text-sm">
-                    {typeof product.price === "number" ? (
-                      <span className="text-lg font-bold text-[#1F2A33]">
-                        {currency.format(product.price)}
-                      </span>
-                    ) : null}
-                    {typeof product.mrp === "number" && product.mrp > (product.price || 0) ? (
-                      <span className="text-xs text-gray-400 line-through">
-                        {currency.format(product.mrp)}
-                      </span>
-                    ) : null}
+                  <div className={styles.details}>
+                    <div className={styles.badges}>
+                      {discount > 0 ? (
+                        <span className={styles.discount}>
+                          {discount}% off
+                        </span>
+                      ) : null}
+                      {limited ? (
+                        <span className={styles.limited}>
+                          Limited
+                        </span>
+                      ) : null}
+                    </div>
+                    <Link
+                      href={href}
+                      className={styles.title}
+                    >
+                      {product.title || "Product"}
+                    </Link>
+                    <div className={styles.prices}>
+                      {typeof product.price === "number" ? (
+                        <span className={styles.price}>
+                          {currency.format(product.price)}
+                        </span>
+                      ) : null}
+                      {typeof product.mrp === "number" && product.mrp > (product.price || 0) ? (
+                        <span className={styles.mrp}>
+                          {currency.format(product.mrp)}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="mt-auto flex items-center gap-2">
+                  <div className={styles.actions}>
                     <button
                       type="button"
-                      className={cn(
-                        "inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#66C940] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#5ab838] sm:px-4 sm:py-2.5 lg:py-3 lg:text-base"
-                      )}
+                      className={styles.primaryButton}
                       onClick={() => void handleAddToCart(product)}
                     >
                       <ShoppingCart className="h-4 w-4" />
-                      <span className="hidden sm:inline">Add to cart</span>
+                      <span>Add to cart</span>
                     </button>
                     <button
                       type="button"
-                      className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-200 px-3 py-2 text-rose-500 transition hover:border-rose-200 hover:bg-rose-50 sm:px-4 sm:py-2.5 lg:py-3"
+                      className={styles.removeButton}
                       onClick={() => void handleRemove(product.id)}
                       aria-label="Remove from wishlist"
                     >
                       <HeartOff className="h-4 w-4" />
-                      <span className="hidden sm:inline">Remove</span>
+                      <span>Remove</span>
                     </button>
                   </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
