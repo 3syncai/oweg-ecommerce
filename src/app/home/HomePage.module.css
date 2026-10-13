@@ -121,12 +121,6 @@
 .home :global(.oweg-rail-btn) { border: 1px solid #dce3d6; background: #fff; color: #214f3d; box-shadow: none; }
 .home :global(.oweg-rail-btn:hover) { background: #eaf1e3; border-color: #bacdaf; }
 .home :global(.oweg-rail-item) { width: clamp(170px, 42vw, 252px); }
-.home :global(.oweg-rail-item > a) { border-radius: 18px; box-shadow: 0 2px 5px #243d2705; }
-.home :global(.oweg-rail-item > a:hover) { border-color: #b8cbaa; box-shadow: 0 8px 20px #243d2710; }
-.home :global(.oweg-rail-item > a > div:first-child) { background: #f4f5f0; border-radius: 18px 18px 0 0; }
-.home :global(.oweg-rail-item > a > div:last-child) { padding: 1rem; }
-.home :global(.oweg-rail-item .bg-red-600.rounded-full) { background: #e9f0e0; color: #3c652d; }
-.home :global(.oweg-rail-item .bg-red-100.rounded-full) { background: #faf0dc; color: #81633a; }
 .home :global(.oweg-surface-card) { border-radius: 18px; box-shadow: none; }
 
 @media (min-width: 1280px) {
@@ -157,7 +151,6 @@
   .categoryLabel { font-size: .67rem; line-height: 1.4; min-height: 2.8em; }
   .home :global(.oweg-subtle) { font-size: .8rem; }
   .home :global(.oweg-media) { border-radius: 14px; }
-  .home :global(.oweg-rail-item > a > div:last-child) { padding: .75rem; }
   .categories { scroll-margin-top: 160px; }
 }
 

@@ -4,8 +4,9 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 import { useEffect, useMemo, useState } from "react"
-import { ChevronLeft, ChevronRight, Heart, SearchX, SlidersHorizontal, Star } from "lucide-react"
+import { ChevronLeft, ChevronRight, Heart, SearchX, SlidersHorizontal, Star, X } from "lucide-react"
 import Image from "next/image"
+import styles from "@/components/shopping/Shopping.module.css"
 
 type SearchProduct = {
   id: string
@@ -73,6 +74,7 @@ function StarRow({ count }: { count: number }) {
 
 function SearchPageContent() {
   const router = useRouter()
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const params = useSearchParams()
   const q = params.get("q")?.trim() || ""
   const category = params.get("category")?.trim() || ""
@@ -198,9 +200,9 @@ function SearchPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/20 to-white">
-      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
-        <div className="mb-5 rounded-2xl border border-emerald-100 bg-white/90 p-4 shadow-sm backdrop-blur sm:p-5">
+    <div className={`${styles.page} min-h-screen`}>
+      <div className={styles.container}>
+        <div className={styles.heading}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Search Results</p>
@@ -218,9 +220,11 @@ function SearchPageContent() {
           </div>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[260px_1fr] lg:gap-6">
-          <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-4">
-            <div className="mb-4 flex items-center justify-between">
+        <div className={styles.resultsLayout}>
+          <aside className={styles.filterRail} data-open={mobileFiltersOpen} aria-label="Search filters">
+            <button type="button" className={styles.mobileFilterToggle} onClick={() => setMobileFiltersOpen((open) => !open)} aria-expanded={mobileFiltersOpen} aria-controls="search-filter-options"><span className="inline-flex items-center gap-2"><SlidersHorizontal size={16} /> Filters {hasFilters ? `(${selectedBrands.length + (priceRange ? 1 : 0) + (minRating ? 1 : 0)})` : ''}</span><ChevronRight size={16} className={mobileFiltersOpen ? 'rotate-90' : ''} /></button>
+            <div id="search-filter-options" className={styles.filterBody}>
+            <div className="mb-4 hidden lg:flex items-center justify-between">
               <h2 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-800">
                 <SlidersHorizontal className="h-4 w-4 text-emerald-700" />
                 Filters
@@ -229,7 +233,7 @@ function SearchPageContent() {
                 <button onClick={clearFilters} className="text-xs font-semibold text-rose-600">Clear all</button>
               ) : null}
             </div>
-            <div className="space-y-5">
+            <div className={`${styles.filterOptions} space-y-5`}>
               {allBrands.length > 0 ? (
                 <section>
                   <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Brand</h3>
@@ -255,11 +259,17 @@ function SearchPageContent() {
                 </div>
               </section>
             </div>
+            </div>
           </aside>
 
-          <main>
+          <main className={styles.resultsMain}>
+            {hasFilters && <div className={styles.chips}>
+              {selectedBrands.map((brand) => <button key={brand} type="button" className={styles.chip} onClick={() => toggleBrand(brand)} aria-label={`Remove ${brand} filter`}>{brand}<X size={12} aria-hidden="true" /></button>)}
+              {priceRange && <button type="button" className={styles.chip} onClick={() => setPriceRange(null)} aria-label="Remove price filter">{PRICE_OPTIONS.find((option) => option.value === priceRange)?.label}<X size={12} aria-hidden="true" /></button>}
+              <button type="button" className={styles.clearFilters} onClick={clearFilters}>Clear filters</button>
+            </div>}
             {loading ? (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+              <div className={styles.productGrid}>
                 {Array.from({ length: 8 }).map((_, idx) => (
                   <div key={`search-skeleton-${idx}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <div className="h-48 animate-pulse bg-slate-100" />
@@ -280,7 +290,7 @@ function SearchPageContent() {
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+                  <div className={styles.productGrid}>
                     {filtered.map((product) => {
                       const price = toSafePrice(product.price)
                       const mrp = toSafeAmount(product.mrp)
@@ -289,8 +299,8 @@ function SearchPageContent() {
                         : (mrp > price && price > 0 ? Math.round(((mrp - price) / mrp) * 100) : 0)
                       const href = `/productDetail/${product.handle || product.id}?id=${encodeURIComponent(product.id)}`
                       return (
-                        <Link key={product.id} href={href} className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
-                          <div className="relative h-48 overflow-hidden bg-slate-50">
+                        <Link key={product.id} href={href} className={`group ${styles.searchCard}`}>
+                          <div className={styles.searchImage}>
                             {product.thumbnail ? (
                               <Image src={product.thumbnail} alt={product.title || "Product"} fill className="object-contain p-3" sizes="(max-width: 640px) 50vw, 25vw" />
                             ) : (

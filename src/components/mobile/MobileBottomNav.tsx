@@ -20,6 +20,8 @@ import {
   User,
   X,
   ChevronsLeft,
+  LayoutGrid,
+  ShoppingCart,
 } from "lucide-react";
 import type { MedusaCategory } from "@/lib/medusa";
 import { useAuth } from "@/contexts/AuthProvider";
@@ -29,6 +31,7 @@ import CategoryIconTile from "@/components/ui/icons/CategoryIconTile";
 import MobileProfileSheet from "@/components/mobile/MobileProfileSheet";
 import { buildLoginUrl, buildSignupUrl } from "@/lib/auth-redirect";
 import navStyles from "./MobileBottomNav.module.css";
+import { useCartSummary } from "@/contexts/CartProvider";
 
 type MobileCategory = {
   id: string;
@@ -270,6 +273,7 @@ export default function MobileBottomNav() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { customer, logout } = useAuth();
+  const { count: cartCount } = useCartSummary();
   const [storedPincode, setStoredPincode] = useState("");
   const resetPanels = useCallback(() => {
     setCategoryOpen(false);
@@ -600,6 +604,10 @@ export default function MobileBottomNav() {
   );
   const navActiveKey = profileOpen
     ? "profile"
+    : categoryOpen || pathname?.startsWith("/c/")
+      ? "categories"
+      : pathname === "/cart" || pathname === "/checkout"
+        ? "cart"
     : pathname?.startsWith("/account/wishlist") ||
         pathname?.startsWith("/wishlist")
       ? "wishlist"
@@ -616,6 +624,19 @@ export default function MobileBottomNav() {
       icon: <Home className={iconSize} />,
     },
     {
+      key: "categories",
+      label: "Categories",
+      href: undefined,
+      icon: <LayoutGrid className={iconSize} />,
+    },
+    {
+      key: "cart",
+      label: "Cart",
+      href: "/cart",
+      badge: cartCount,
+      icon: <ShoppingCart className={iconSize} />,
+    },
+    {
       key: "wishlist",
       label: "Wishlist",
       href: "/wishlist",
@@ -625,7 +646,7 @@ export default function MobileBottomNav() {
     },
     {
       key: "profile",
-      label: "Profile",
+      label: "Account",
       href: "/account",
       icon: <User className={iconSize} />,
     },
@@ -711,6 +732,11 @@ export default function MobileBottomNav() {
                 }}
                 onClick={(e) => {
                   e.preventDefault();
+                  if (item.key === "categories") {
+                    setProfileOpen(false);
+                    setCategoryOpen(true);
+                    return;
+                  }
                   if (item.key === "profile") {
                     setCategoryOpen(false);
                     setProfileOpen(true);

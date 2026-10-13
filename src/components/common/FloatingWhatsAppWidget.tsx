@@ -13,7 +13,10 @@ export default function FloatingWhatsAppWidget() {
   const pathname = usePathname();
   const isAccountOverview = pathname === "/account";
   const isWishlistPage = pathname === "/wishlist" || pathname === "/account/wishlist";
-  const bottomClass = isWishlistPage
+  const isPurchasePage = pathname === "/cart" || pathname === "/checkout";
+  const bottomClass = isPurchasePage
+    ? "bottom-[calc(env(safe-area-inset-bottom)+13rem)] md:bottom-6"
+    : isWishlistPage
     ? "bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] sm:bottom-24 md:bottom-6"
     : "bottom-[calc(env(safe-area-inset-bottom)+7.75rem)] sm:bottom-24 md:bottom-6";
   const positionClass = pathname === "/"

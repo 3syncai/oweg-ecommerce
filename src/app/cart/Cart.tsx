@@ -27,6 +27,8 @@ import {
 } from "@/lib/notifications";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 import { warmRazorpayCheckout } from "@/lib/razorpay-warmup";
+import styles from "@/components/shopping/Shopping.module.css";
+import PurchaseJourney from "@/components/shopping/PurchaseJourney";
 interface CartItemUI {
   id: string;
   name: string;
@@ -850,20 +852,20 @@ const Cart: React.FC = () => {
   }, [cartItems]);
 
   const cartCard =
-    "rounded-2xl border border-slate-200/50 bg-white/95 shadow-[0_10px_40px_-12px_rgba(44,52,47,0.12)]";
+    styles.card;
   const cartField =
     "h-11 rounded-xl border-slate-200/90 bg-white shadow-none transition-[border-color,box-shadow] placeholder:text-slate-400 focus-visible:border-[var(--oweg-green)] focus-visible:ring-[3px] focus-visible:ring-[var(--oweg-green)]/20";
   const cartCta =
-    "bg-[var(--oweg-green)] hover:bg-[var(--oweg-green-dark)] text-white font-semibold rounded-xl shadow-md shadow-[var(--oweg-green)]/20 transition-all duration-200 active:scale-[0.99]";
+    styles.primaryButton;
   const cartOutline =
     "rounded-xl border-slate-200/80 bg-white text-[#2c342f] hover:border-[var(--oweg-green)]/50 hover:bg-[#f2f9ef] hover:text-[var(--oweg-green-dark)] transition-all duration-200";
   const cartStepper =
     "cart-stepper flex items-center overflow-hidden rounded-xl border border-slate-200/80 bg-white";
 
   return (
-    <div className="cart-ui oweg-page min-h-screen flex flex-col text-[#2c342f]">
+    <div className={`${styles.page} min-h-screen flex flex-col`}>
       <main className="flex-1">
-        <div className="container mx-auto px-4 py-8 md:py-10 pb-44 md:pb-16">
+        <div className={`${styles.container} ${styles.cartContainer}`}>
           <div className="flex items-center gap-3 mb-6 md:mb-8">
             <Link href="/" className="text-sm text-slate-500 hover:text-[#2c342f] transition">
               Home
@@ -874,27 +876,18 @@ const Cart: React.FC = () => {
             </span>
           </div>
 
-          <div className="mb-7 md:mb-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--oweg-green-dark)] mb-2">
-              Your bag
-            </p>
-            <h1 className="text-3xl md:text-[2rem] font-bold text-[#2c342f]">Cart</h1>
-            <p className="mt-1.5 text-sm text-slate-500">
-              Review items, apply a coupon, then proceed to checkout.
-            </p>
+          <div className={styles.heading}>
+            <div><h1>Your cart</h1><p>Review your items before checking out.</p></div>
+            <PurchaseJourney current="cart" />
           </div>
 
-          <div className="mb-8 space-y-3">
-            <div className="hidden md:grid grid-cols-12 gap-4 px-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              <div className="col-span-6">Product</div>
-              <div className="col-span-2">Price</div>
-              <div className="col-span-2 text-center">Quantity</div>
-              <div className="col-span-2 text-right">Subtotal</div>
-            </div>
+          <div className={styles.cartLayout}>
+          <div className={`${styles.cartItems} space-y-3`}>
 
             {cartItems.length === 0 && (
-              <div className={`${cartCard} px-6 py-12 text-center text-slate-500`}>
-                Your cart is empty.
+              <div className={styles.emptyState}>
+                <h2>Your cart is empty</h2><p>Find something you love and add it to your cart.</p>
+                <Link href="/" className={styles.primaryButton}>Continue shopping</Link>
               </div>
             )}
             {cartItems.map((item) => {
@@ -904,7 +897,7 @@ const Cart: React.FC = () => {
               return (
                 <div
                   key={item.id}
-                  className={`cart-line-card ${cartCard} flex flex-col md:flex-row md:items-center gap-4 md:gap-6 p-4 md:px-5 md:py-5 transition-all transform ${
+                  className={`cart-line-card ${cartCard} ${styles.lineCard} flex flex-col md:flex-row md:items-center gap-4 md:gap-6 transition-all transform ${
                     mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
                   } ${isRemoving ? "opacity-0 scale-95" : ""}`}
                   style={{ transitionDuration: "320ms" }}
@@ -945,9 +938,6 @@ const Cart: React.FC = () => {
                     <div className="flex-1 min-w-0">
                       <div className="text-sm md:text-[15px] font-semibold text-[#2c342f] line-clamp-2">
                         {item.name}
-                      </div>
-                      <div className="text-xs text-slate-500 mt-1 hidden md:block">
-                        SKU · {item.id}
                       </div>
                       <div className="md:hidden mt-1 text-sm font-medium text-slate-600">
                         {formatCurrency(item.price, item.currency || activeCurrency)}
@@ -1048,8 +1038,9 @@ const Cart: React.FC = () => {
             })}
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6 md:gap-8 mb-12 pb-40 md:pb-0 items-start">
-            <div className="space-y-6 order-2 md:order-none">
+          <div className={styles.cartBottom}>
+            {cartItems.length > 0 && (
+            <div className={styles.cartExtras}>
               <div className="flex flex-wrap gap-3">
                 <Button variant="outline" className={`px-5 py-3 h-11 ${cartOutline}`}>
                   <Link href="/">Return to shop</Link>
@@ -1065,6 +1056,7 @@ const Cart: React.FC = () => {
 
               <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
                 <Input
+                  aria-label="Coupon code"
                   type="text"
                   placeholder="Coupon code"
                   value={couponCode}
@@ -1078,7 +1070,7 @@ const Cart: React.FC = () => {
 
               <div className={`${cartCard} p-5 md:p-6 space-y-4`}>
                 <h2 className="text-lg font-semibold text-[#2c342f]">
-                  Customers Who Brought Items in Your Recent History Also Bought
+                  You might also like
                 </h2>
                 {loadingRecommended && (
                   <div className="text-sm text-slate-500">Finding related products…</div>
@@ -1123,9 +1115,10 @@ const Cart: React.FC = () => {
                 )}
               </div>
             </div>
+            )}
 
             <div
-              className={`cart-summary-panel order-1 md:order-none fixed md:sticky md:top-28 bottom-24 md:bottom-auto left-0 right-0 md:left-auto md:right-auto md:relative z-[500] md:z-auto rounded-t-2xl md:rounded-2xl border border-slate-200/50 bg-white/95 md:bg-white/95 shadow-[0_10px_40px_-12px_rgba(44,52,47,0.16)] md:shadow-[0_10px_40px_-12px_rgba(44,52,47,0.12)]`}
+              className={`cart-summary-panel ${styles.cartSummary}`}
             >
               <div className="md:hidden">
                 <button
@@ -1196,6 +1189,7 @@ const Cart: React.FC = () => {
                 )}
               </div>
             </div>
+          </div>
           </div>
         </div>
       </main>
