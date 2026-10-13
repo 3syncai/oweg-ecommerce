@@ -23,6 +23,8 @@ import {
 } from "@/lib/checkout-redirects";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 import { findMatchingCustomerAddress } from "@/lib/customer-address-dedupe";
+import styles from "@/components/shopping/Shopping.module.css";
+import PurchaseJourney from "@/components/shopping/PurchaseJourney";
 
 type CartItem = {
   id: string;
@@ -1726,30 +1728,25 @@ function CheckoutPageInner() {
   };
 
   const checkoutCard =
-    "rounded-2xl border border-slate-200/50 bg-white/95 p-5 md:p-7 space-y-5 shadow-[0_10px_40px_-12px_rgba(44,52,47,0.12)] transition-shadow duration-300 hover:shadow-[0_16px_48px_-14px_rgba(44,52,47,0.16)]";
+    styles.checkoutCard;
   const checkoutField =
-    "h-11 rounded-xl border-slate-200/90 bg-white shadow-none transition-[border-color,box-shadow] placeholder:text-slate-400 focus-visible:border-[var(--oweg-green)] focus-visible:ring-[3px] focus-visible:ring-[var(--oweg-green)]/20";
+    `${styles.checkoutField} h-11 border-slate-200/90 bg-white shadow-none transition-[border-color,box-shadow] placeholder:text-slate-400 focus-visible:border-[var(--oweg-green)] focus-visible:ring-[3px] focus-visible:ring-[var(--oweg-green)]/20`;
   const checkoutCta =
-    "bg-[var(--oweg-green)] hover:bg-[var(--oweg-green-dark)] text-white font-semibold rounded-xl shadow-md shadow-[var(--oweg-green)]/20 transition-all duration-200 active:scale-[0.99] disabled:opacity-60";
+    styles.primaryButton;
   const paymentTabActive =
-    "border-[var(--oweg-green)] bg-[var(--oweg-green)] text-white shadow-sm shadow-[var(--oweg-green)]/25";
+    styles.paymentActive;
   const paymentTabIdle =
-    "border-slate-200/80 bg-white text-slate-700 hover:border-[var(--oweg-green)]/50 hover:bg-[#f2f9ef]";
+    styles.paymentIdle;
 
   return (
-    <div className="checkout-ui min-h-screen">
-      <div className="max-w-6xl mx-auto px-4 py-8 md:py-10 pb-44 md:pb-20">
-        <div className="mb-7 md:mb-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--oweg-green-dark)] mb-2">
-            Secure checkout
-          </p>
-          <h1 className="text-3xl md:text-[2rem] font-bold text-[#2c342f]">Checkout</h1>
-          <p className="mt-1.5 text-sm text-slate-500">
-            Confirm your address and payment — almost there.
-          </p>
+    <div className={`${styles.page} min-h-screen`}>
+      <div className={`${styles.container} ${styles.checkoutContainer}`}>
+        <div className={styles.heading}>
+          <div><h1>Checkout</h1><p>Confirm your delivery details and review your total.</p></div>
+          <PurchaseJourney current="checkout" />
         </div>
-        <form id="checkout-form" onSubmit={handleSubmit} className="grid lg:grid-cols-3 gap-5 md:gap-7">
-          <div className="lg:col-span-2 space-y-5 md:space-y-6">
+        <form id="checkout-form" onSubmit={handleSubmit} className={styles.checkoutForm}>
+          <div className={styles.checkoutFields}>
             {!customer ? (
               <section className={checkoutCard}>
                 <h2 className="text-lg font-semibold text-[#2c342f]">Login required to continue checkout</h2>
@@ -1795,6 +1792,7 @@ function CheckoutPageInner() {
               <div className="grid md:grid-cols-2 gap-3.5 md:gap-4">
                 <Input
                   required
+                  aria-label="First name"
                   placeholder="First name"
                   className={checkoutField}
                   value={shipping.firstName}
@@ -1804,6 +1802,7 @@ function CheckoutPageInner() {
                   }}
                 />
                 <Input
+                  aria-label="Last name"
                   placeholder="Last name"
                   className={checkoutField}
                   value={shipping.lastName}
@@ -1815,6 +1814,7 @@ function CheckoutPageInner() {
                 <Input
                   required
                   type="email"
+                  aria-label="Email"
                   placeholder="Email"
                   value={shipping.email}
                   onChange={(e) => setShipping({ ...shipping, email: normalizeEmail(e.target.value) })}
@@ -1832,6 +1832,7 @@ function CheckoutPageInner() {
                 <Input
                   required
                   type="tel"
+                  aria-label="Phone"
                   placeholder="Phone"
                   className={checkoutField}
                   value={shipping.phone}
@@ -1846,6 +1847,7 @@ function CheckoutPageInner() {
                 />
                 <Input
                   required
+                  aria-label="Address line 1"
                   placeholder="Address line 1"
                   className={`md:col-span-2 ${checkoutField}`}
                   value={shipping.address1}
@@ -1855,6 +1857,7 @@ function CheckoutPageInner() {
                   }}
                 />
                 <Input
+                  aria-label="Address line 2"
                   placeholder="Address line 2"
                   className={`md:col-span-2 ${checkoutField}`}
                   value={shipping.address2}
@@ -1865,6 +1868,7 @@ function CheckoutPageInner() {
                 />
                 <Input
                   required
+                  aria-label="City"
                   placeholder="City"
                   className={checkoutField}
                   value={shipping.city}
@@ -1876,6 +1880,7 @@ function CheckoutPageInner() {
                 <div className="relative">
                   <Input
                     required
+                    aria-label="State"
                     placeholder="State"
                     className={checkoutField}
                     value={shipping.state}
@@ -1915,6 +1920,7 @@ function CheckoutPageInner() {
                 </div>
                 <Input
                   required
+                  aria-label="PIN code"
                   placeholder="PIN code"
                   className={checkoutField}
                   value={shipping.postalCode}
@@ -1956,12 +1962,14 @@ function CheckoutPageInner() {
                 <div className="grid md:grid-cols-2 gap-3.5 md:gap-4">
                   <Input
                     required
+                    aria-label="First name"
                     placeholder="First name"
                     className={checkoutField}
                     value={billing.firstName}
                     onChange={(e) => setBilling({ ...billing, firstName: e.target.value })}
                   />
                   <Input
+                    aria-label="Last name"
                     placeholder="Last name"
                     className={checkoutField}
                     value={billing.lastName}
@@ -1970,6 +1978,7 @@ function CheckoutPageInner() {
                   <Input
                     required
                     type="email"
+                    aria-label="Email"
                     placeholder="Email"
                     value={billing.email}
                     onChange={(e) => setBilling({ ...billing, email: normalizeEmail(e.target.value) })}
@@ -1987,6 +1996,7 @@ function CheckoutPageInner() {
                   <Input
                     required
                     type="tel"
+                    aria-label="Phone"
                     placeholder="Phone"
                     className={checkoutField}
                     value={billing.phone}
@@ -1998,12 +2008,14 @@ function CheckoutPageInner() {
                   />
                   <Input
                     required
+                    aria-label="Address line 1"
                     placeholder="Address line 1"
                     className={`md:col-span-2 ${checkoutField}`}
                     value={billing.address1}
                     onChange={(e) => setBilling({ ...billing, address1: e.target.value })}
                   />
                   <Input
+                    aria-label="Address line 2"
                     placeholder="Address line 2"
                     className={`md:col-span-2 ${checkoutField}`}
                     value={billing.address2}
@@ -2011,6 +2023,7 @@ function CheckoutPageInner() {
                   />
                   <Input
                     required
+                    aria-label="City"
                     placeholder="City"
                     className={checkoutField}
                     value={billing.city}
@@ -2019,6 +2032,7 @@ function CheckoutPageInner() {
                   <div className="relative">
                     <Input
                       required
+                      aria-label="State"
                       placeholder="State"
                       className={checkoutField}
                       value={billing.state}
@@ -2056,6 +2070,7 @@ function CheckoutPageInner() {
                   </div>
                   <Input
                     required
+                    aria-label="PIN code"
                     placeholder="PIN code"
                     className={checkoutField}
                     value={billing.postalCode}
@@ -2141,6 +2156,7 @@ function CheckoutPageInner() {
               ) : (
                 <div className="flex gap-2">
                   <Input
+                    aria-label="Enter referral code (optional)"
                     placeholder="Enter referral code (optional)"
                     value={referralCode}
                     onChange={(e) => setReferralCode(e.target.value)}
@@ -2191,6 +2207,7 @@ function CheckoutPageInner() {
                 <>
                   <div className="flex gap-2">
                     <Input
+                      aria-label="Enter affiliate code (optional)"
                       placeholder="Enter affiliate code (optional)"
                       value={affiliateCode}
                       onChange={(e) => {
@@ -2314,8 +2331,8 @@ function CheckoutPageInner() {
             )}
           </div>
 
-          <div className="lg:col-span-1 space-y-4">
-            <section className={`${checkoutCard} sticky top-6`}>
+          <div className={styles.checkoutSummary}>
+            <section className={checkoutCard}>
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-[#2c342f]">Order summary</h2>
                 {loadingCart && <span className="text-xs text-slate-500">Loading…</span>}
@@ -2374,6 +2391,7 @@ function CheckoutPageInner() {
                   <input
                     value={promoCodeInput}
                     onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
+                    aria-label="Promo code"
                     placeholder="e.g. OWEG50"
                     className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     disabled={promoValidating}
@@ -2469,7 +2487,7 @@ function CheckoutPageInner() {
           </div>
         </form>
 
-        <div className="md:hidden fixed bottom-24 left-0 right-0 z-[500] border-t border-slate-200/80 rounded-t-2xl bg-white/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(44,52,47,0.12)]">
+        <div className={styles.mobilePayBar}>
           <div className="flex items-center justify-between gap-3 px-4 py-3.5">
             <div className="min-w-0">
               <p className="text-xs text-slate-500">Total payable</p>
