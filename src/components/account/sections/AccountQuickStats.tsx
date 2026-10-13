@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthProvider";
 import { useAccountAddresses } from "@/hooks/useAccountAddresses";
 import { useAccountOrdersSummary } from "@/hooks/useAccountOrdersSummary";
 import { useAccountWallet } from "@/hooks/useAccountWallet";
+import styles from "../AccountOverview.module.css";
 
 type QuickStatItem = {
   label: string;
@@ -25,22 +26,21 @@ function QuickStatCard({ label, href, icon, imageSrc, value, loading }: QuickSta
   return (
     <Link
       href={href}
-      className="group min-w-0 bg-white p-3 transition-colors hover:bg-green-50/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-green-600 sm:p-5"
+      className={`group ${styles.shortcut}`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 text-slate-500">
+        <span className={styles.shortcutIcon}>
           {imageSrc ? (
             <img src={imageSrc} alt="" className="h-4 w-4 object-contain" />
           ) : icon ? (
             <AccountHubIcon name={icon} size={16} className="h-4 w-4" />
           ) : null}
-          <span className="text-[11px] font-medium sm:text-xs">{label}</span>
-        </div>
-        <ArrowUpRight className="hidden h-3.5 w-3.5 text-slate-300 transition-colors group-hover:text-[#326b29] sm:block" aria-hidden />
-      </div>
-      <p className="mt-2 text-xl font-semibold tabular-nums tracking-tight text-slate-900 sm:mt-3 sm:text-2xl">
+        </span>
+        <div className={styles.shortcutText}><span>{label}</span>
+      <p>
         {loading ? "…" : value}
       </p>
+        </div>
+        <ArrowUpRight className={styles.shortcutArrow} size={15} aria-hidden />
     </Link>
   );
 }
@@ -91,10 +91,10 @@ export default function AccountQuickStats() {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 sm:grid-cols-4">
+    <nav className={styles.shortcuts} aria-label="Shopping shortcuts">
       {stats.map((stat) => (
         <QuickStatCard key={stat.label} {...stat} />
       ))}
-    </div>
+    </nav>
   );
 }

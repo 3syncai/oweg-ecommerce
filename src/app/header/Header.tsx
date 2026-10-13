@@ -221,6 +221,8 @@ const Header: React.FC = () => {
   // dropdown states for portal:
   const [activeCategoryId, setActiveCategoryId] = React.useState<string | null>(null);
   const [allOpen, setAllOpen] = React.useState(false);
+  const [allPreviewId, setAllPreviewId] = React.useState<string | null>(null);
+  const allPanelRef = React.useRef<HTMLDivElement | null>(null);
 
   const setScrollChromeVisible = React.useCallback((visible: boolean) => {
     setShowTopBarMobile(visible);
@@ -1030,7 +1032,10 @@ const Header: React.FC = () => {
   const startAllHideTimer = React.useCallback(
     (delay = 600) => {
       clearAllHideTimer();
-      allHideTimerRef.current = window.setTimeout(() => setAllOpen(false), delay);
+      allHideTimerRef.current = window.setTimeout(() => {
+        if (allPanelRef.current?.contains(document.activeElement)) return;
+        setAllOpen(false);
+      }, delay);
     },
     [clearAllHideTimer]
   );
@@ -1158,10 +1163,11 @@ const Header: React.FC = () => {
 
   // Keep the portal mounted when captured scroll events reposition the header.
   const allDepartmentsPortal = (() => {
-    if (!allOpen || !mountedRef.current) return null;
+    if (!allOpen || isMobile || !mountedRef.current) return null;
     const trigger = allTriggerRef.current ?? null;
-    const style = computeDropdownStyle(trigger, 320);
+    const style = computeDropdownStyle(trigger, 740);
     const listHeight = Math.max(120, Math.min(340, window.innerHeight - Number(style.top || 0) - 104));
+    const preview = allDesktopCategories.find((cat) => cat.id === allPreviewId) ?? allDesktopCategories[0];
 
     return createPortal(
       <div
@@ -1169,15 +1175,26 @@ const Header: React.FC = () => {
         aria-hidden={!allOpen}
       >
         <div
+          ref={allPanelRef}
           onMouseEnter={() => clearAllHideTimer()}
           onMouseLeave={() => startAllHideTimer()}
+          onFocusCapture={() => clearAllHideTimer()}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) startAllHideTimer();
+          }}
           style={{
             ...style,
             maxHeight: `${Math.min(420, Math.max(180, window.innerHeight - Number(style.top || 0) - 16))}px`,
             pointerEvents: "auto",
           }}
           className={`${navStyles.departmentsPanel} rounded-xl bg-white p-3 transition-transform duration-160`}
-          role="menu"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              setAllOpen(false);
+              allTriggerRef.current?.focus();
+            }
+          }}
+          role="navigation"
           aria-label="All departments"
         >
           <div className={navStyles.panelHeading}>
@@ -1187,8 +1204,9 @@ const Header: React.FC = () => {
               <span>Find something for every day</span>
             </div>
           </div>
+          <div className={navStyles.departmentsBody}>
           <div
-            className="min-h-0 space-y-1 pr-1 scrollbar-hide"
+            className={`${navStyles.departmentsList} min-h-0 space-y-1 pr-1 scrollbar-hide`}
             style={{
               maxHeight: `${listHeight}px`,
               overflowY: "auto",
@@ -1203,6 +1221,9 @@ const Header: React.FC = () => {
                   key={cat.id}
                   href={getCategoryHref(cat.handle)}
                   className={`group flex items-center justify-between gap-2 px-2.5 py-2 transition ${navStyles.departmentLink}`}
+                  data-preview-active={preview?.id === cat.id}
+                  onMouseEnter={() => setAllPreviewId(cat.id)}
+                  onFocus={() => setAllPreviewId(cat.id)}
                   onClick={() => setAllOpen(false)}
                 >
                   <CategoryIconTile
@@ -1210,6 +1231,7 @@ const Header: React.FC = () => {
                     title={cat.title}
                     size="sm"
                     orientation="horizontal"
+                    labelWrap
                     className="min-w-0 flex-1"
                     labelClassName="text-[13px]"
                   />
@@ -1219,6 +1241,22 @@ const Header: React.FC = () => {
             ) : navCatsEmpty ? (
               <div className="px-3 py-2 text-sm text-gray-500">No additional categories</div>
             ) : null}
+          </div>
+          {preview && (
+            <div className={navStyles.departmentPreview}>
+              <div className={navStyles.previewHeading}>
+                <div><p>{preview.title}</p><span>Explore this department</span></div>
+                <Link href={getCategoryHref(preview.handle)} onClick={() => setAllOpen(false)} className={navStyles.viewDepartment}>View all <ChevronRight size={14} aria-hidden="true" /></Link>
+              </div>
+              <div className={`${navStyles.subcategoryList} scrollbar-hide`} onWheel={handleMenuWheel}>
+                {preview.children.length ? preview.children.map((subcategory) => (
+                  <Link key={subcategory.id} href={getCategoryHref(subcategory.handle)} className={navStyles.subcategoryLink} onClick={() => setAllOpen(false)}>
+                    <CategoryIconTile handle={subcategory.handle} title={subcategory.title} kind="subcategory" size="sm" orientation="horizontal" labelWrap className="w-full" labelClassName="text-xs" />
+                  </Link>
+                )) : <p className={navStyles.previewEmpty}>Browse all products in {preview.title}.</p>}
+              </div>
+            </div>
+          )}
           </div>
         </div>
       </div>,

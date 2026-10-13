@@ -65,6 +65,19 @@
 .panelHeadingIcon { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; background: #eff5e8; color: #638346; }
 .departmentLink { border-radius: 10px; }
 .departmentLink:hover { background: #f0f5e9; }
+.departmentLink[data-preview-active="true"] { background: #edf4e6; color: #385923; }
+.departmentsBody { display: grid; grid-template-columns: minmax(200px, .85fr) minmax(0, 1.5fr); min-height: 0; }
+.departmentsList { border-right: 1px solid #e7ecdf; }
+.departmentPreview { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 6px 8px 6px 20px; }
+.previewHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.previewHeading p { font-size: 15px; font-weight: 600; }
+.previewHeading div > span { display: block; margin-top: 4px; color: #7a8770; font-size: 11px; }
+.viewDepartment { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; min-height: 36px; font-size: 11px; color: #557b35; }
+.subcategoryList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 6px; min-height: 0; overflow-y: auto; }
+.subcategoryLink { min-width: 0; padding: 8px; border-radius: 10px; }
+.subcategoryLink:hover { background: #f2f6ed; }
+.subcategoryLink:focus-visible, .viewDepartment:focus-visible { outline: 2px solid #679e3e; outline-offset: -2px; }
+.previewEmpty { grid-column: 1 / -1; padding: 16px 0; font-size: 12px; color: #6d7c62; line-height: 1.7; }
 
 @media (prefers-reduced-motion: reduce) {
   .navigation, .navigation *, .departmentsPanel * { transition: none !important; }
