@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useAddToWishlistWithNotification } from "@/hooks/useWishlistMutations";
 import { ProductCardQuickActions } from "@/components/modules/ProductCardQuickActions";
+import styles from "./ProductCard.module.css";
 
 export type ProductCardProps = {
   id: string | number;
@@ -47,7 +48,7 @@ export function ProductCard({
   sourceCategoryId,
   sourceCategoryHandle,
   inventory_quantity,
-  showImageFallback = false,
+  showImageFallback = true,
 }: ProductCardProps) {
   const [failedImage, setFailedImage] = useState<string | null>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -88,7 +89,7 @@ export function ProductCard({
     <Link
       ref={cardRef}
       href={productHref}
-      className="group relative flex h-full w-full flex-col overflow-visible rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-white shadow-[var(--oweg-shadow-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--oweg-green)] hover:shadow-[var(--oweg-shadow-md)]"
+      className={`${styles.card} group relative flex h-full w-full flex-col overflow-visible rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-white shadow-[var(--oweg-shadow-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--oweg-green)] hover:shadow-[var(--oweg-shadow-md)]`}
       onMouseEnter={() => {
         setIsHovered(true);
         prefetchRoute();
@@ -97,8 +98,8 @@ export function ProductCard({
       onTouchStart={prefetchRoute}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="relative aspect-square overflow-visible rounded-t-[var(--oweg-radius-lg)] bg-[var(--oweg-surface-subtle)]">
-        <div className="absolute inset-0 overflow-hidden rounded-t-[var(--oweg-radius-lg)]">
+      <div className={`${styles.media} relative aspect-square overflow-visible rounded-t-[var(--oweg-radius-lg)] bg-[var(--oweg-surface-subtle)]`}>
+        <div className={`${styles.imageFrame} absolute inset-0 overflow-hidden rounded-t-[var(--oweg-radius-lg)]`}>
           {showImageFallback && failedImage === image ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-[var(--oweg-ink-muted)]" role="img" aria-label={`${name}: image unavailable`}>
               <ImageOff className="h-8 w-8 opacity-40" strokeWidth={1.25} />
@@ -142,13 +143,13 @@ export function ProductCard({
           </button>
         </ProductCardQuickActions>
       </div>
-      <div className="flex flex-1 flex-col p-2.5 sm:p-3">
+      <div className={`${styles.body} flex flex-1 flex-col p-2.5 sm:p-3`}>
         <div className="mb-2 flex flex-wrap items-start gap-1.5">
-          <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+          <span className={`${styles.discount} rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white`}>
             {discount}% off
           </span>
           {limitedDeal && (
-            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">
+            <span className={`${styles.limited} rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700`}>
               Limited
             </span>
           )}
