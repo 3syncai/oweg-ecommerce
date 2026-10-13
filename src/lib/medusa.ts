@@ -183,6 +183,8 @@ const PRODUCT_LIST_FIELDS = [
   "collection.title",
   "categories.id",
   "categories.title",
+  "categories.name",
+  "categories.handle",
   "tags.id",
   "tags.value",
   "type.id",

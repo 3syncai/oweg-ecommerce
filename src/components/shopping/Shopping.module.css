@@ -92,6 +92,10 @@
   .checkoutSummary { position: static; }
 }
 @media (max-width: 767px) {
+  :global(body.category-overlay-open) .cartSummary,
+  :global(body.profile-overlay-open) .cartSummary,
+  :global(body.category-overlay-open) .mobilePayBar,
+  :global(body.profile-overlay-open) .mobilePayBar { visibility: hidden; }
   .container { padding: 22px 18px calc(110px + env(safe-area-inset-bottom, 0px)); }
   .heading { gap: 16px; margin-bottom: 22px; }
   .heading h1, .toolbar h1 { font-size: 25px; }

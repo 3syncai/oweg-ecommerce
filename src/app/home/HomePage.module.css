@@ -132,6 +132,11 @@
 }
 
 @media (max-width: 767px) {
+  .desktopBanners { display: none; }
+  .content { padding-bottom: 0; }
+  .home .brands { margin-bottom: 1rem; }
+  /* The footer already provides clearance for the fixed mobile navigation. */
+  :global(main):has(> .home) { padding-bottom: 0; }
   .heroFooter { display: flex; justify-content: center; padding: .25rem 1rem 0; }
   .heroControls { display: none; }
   .hero { border-radius: 18px; }

@@ -777,7 +777,7 @@ export default function HomePage({
 
   return (
     <div className={`oweg-page min-h-screen ${styles.home}`}>
-      <main className="w-full pb-8">
+      <main className={`w-full pb-8 ${styles.content}`}>
         <section className={`oweg-container ${styles.intro}`}>
           <div className={styles.introCopy}>
             <p className={styles.eyebrow}>A little inspiration. A lot to explore.</p>
@@ -872,7 +872,7 @@ export default function HomePage({
             />
             {idx === 1 && <PromoBanners />}
             {idx === 2 && (
-              <section className="oweg-section-tight">
+              <section className={`oweg-section-tight ${styles.desktopBanners}`}>
                 <div className="oweg-container grid gap-3 sm:gap-4 md:grid-cols-2">
                   <BannerTile
                     src="/App_Banner-5.png"
@@ -937,7 +937,7 @@ export default function HomePage({
         ) : null}
 
         {brandCollectionsQuery.isLoading ? (
-          <section className="oweg-section-tight">
+          <section className={`oweg-section-tight ${styles.brands}`}>
             <div className="oweg-container">
               <div className="oweg-section-head">
                 <h2 className="oweg-title">Top brands we carry</h2>
@@ -953,7 +953,7 @@ export default function HomePage({
             </div>
           </section>
         ) : brandCollections.length > 0 ? (
-          <section className="oweg-section-tight">
+          <section className={`oweg-section-tight ${styles.brands}`}>
             <div className="oweg-container">
               <div className="oweg-section-head">
                 <div className="min-w-0">
