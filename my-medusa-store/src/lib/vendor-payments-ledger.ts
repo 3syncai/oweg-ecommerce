@@ -254,6 +254,16 @@ export function buildVendorLedgerRowsFromEarning(
       { reverse_logistic_fee: returnFee, cancellation_fee: cancellationFee },
       rates
     )
+  } else {
+    // The product value is refunded to the customer, so a returned order must
+    // never leave its original sale as vendor earnings.  Keep the sale columns
+    // for audit visibility, but remove the payable credit; the return row
+    // below records only forward/reverse logistics and gateway costs.
+    saleLedger = {
+      ...saleLedger,
+      bank_settlement: 0,
+      balance_delta: 0,
+    }
   }
 
   const rows: VendorPaymentSettlement[] = [

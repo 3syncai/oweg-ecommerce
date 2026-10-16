@@ -375,6 +375,17 @@ export function calculateVendorLedgerSettlement(
     displayLogisticTotal = 0
   }
 
+  // A returned item is no longer vendor revenue. The product, platform,
+  // commission and tax columns remain signed so the ledger can show the
+  // reversal, but the vendor debit itself is limited to the costs we retain:
+  // forward logistics, reverse logistics and the payment-gateway charge.
+  // Keep this after the display-only logistics adjustment above so forward
+  // logistics is charged exactly once.
+  if (category === "return") {
+    const forwardLogistic = signedFeeBlock(absLogistic, serviceGst).total
+    bank = round2(-(forwardLogistic + pgTotal))
+  }
+
   return {
     category,
     item_price: A,
@@ -407,12 +418,15 @@ export function calculateVendorLedgerSettlement(
     reverse_logistic_fee: reverse.fee,
     reverse_logistic_gst: reverse.tax,
     reverse_logistic_total: reverse.total,
-    cancellation_fee: cancel.fee,
-    cancellation_gst: cancel.tax,
-    cancellation_total: cancel.total,
+    // A returned order is charged only for forward/reverse logistics and the
+    // payment gateway. Cancellation fees apply to cancellation rows, not a
+    // completed return.
+    cancellation_fee: category === "return" ? 0 : cancel.fee,
+    cancellation_gst: category === "return" ? 0 : cancel.tax,
+    cancellation_total: category === "return" ? 0 : cancel.total,
     claim_amount: 0,
     payment: 0,
-    balance_delta: round2(bank - reverse.total - cancel.total),
+    balance_delta: round2(bank - reverse.total - (category === "return" ? 0 : cancel.total)),
   }
 }
 
