@@ -24,6 +24,15 @@ function setCorsHeaders(res: MedusaResponse) {
   res.setHeader('Access-Control-Allow-Credentials', 'true')
 }
 
+function normalizePolicyWindow(value: unknown, field: string): number | null {
+  if (value === undefined || value === null || value === "") return null
+  const days = Number(value)
+  if (!Number.isInteger(days) || days < 0 || days > 365) {
+    throw new Error(`${field} must be a whole number between 0 and 365`)
+  }
+  return days
+}
+
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res)
   return res.status(200).end()
@@ -410,6 +419,19 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     // Merge user-provided metadata (MID code, HS code, country of origin, color_images, etc.)
     if (metadata && typeof metadata === "object") {
       Object.assign(baseMetadata, metadata)
+    }
+
+    try {
+      baseMetadata.return_window_days = normalizePolicyWindow(
+        baseMetadata.return_window_days,
+        "return_window_days"
+      )
+      baseMetadata.replacement_window_days = normalizePolicyWindow(
+        baseMetadata.replacement_window_days,
+        "replacement_window_days"
+      )
+    } catch (policyError: any) {
+      return res.status(400).json({ message: policyError?.message || "Invalid return policy" })
     }
 
     if (baseMetadata.color_images) {

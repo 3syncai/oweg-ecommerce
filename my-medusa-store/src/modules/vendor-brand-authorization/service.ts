@@ -18,7 +18,7 @@ class VendorBrandAuthorizationModuleService extends MedusaService({
             brand_name: normalizedBrand,
         })
 
-        return authorization.length > 0
+        return authorization.some((entry: any) => entry.verified === true)
     }
 
     /**
@@ -62,6 +62,10 @@ class VendorBrandAuthorizationModuleService extends MedusaService({
                 id: existing.id,
                 authorization_file_url: data.authorization_file_url,
                 authorization_file_key: data.authorization_file_key,
+                // A newly submitted letter must be reviewed again.
+                verified: false,
+                verified_at: null,
+                verified_by: null,
                 metadata: data.metadata,
             })
         } else {
@@ -93,11 +97,45 @@ class VendorBrandAuthorizationModuleService extends MedusaService({
         authorizationId: string,
         verifiedBy: string
     ) {
+        const [authorization] = await this.listVendorBrandAuthorizations({ id: authorizationId })
         return await this.updateVendorBrandAuthorizations({
             id: authorizationId,
             verified: true,
             verified_at: new Date(),
             verified_by: verifiedBy,
+            metadata: {
+                ...(authorization?.metadata || {}),
+                review_status: "approved",
+                reviewed_at: new Date().toISOString(),
+                reviewed_by: verifiedBy,
+                rejection_reason: null,
+            },
+        })
+    }
+
+    /** Mark a letter as rejected. A later upload resets it to pending review. */
+    async rejectBrandAuthorization(
+        authorizationId: string,
+        rejectedBy: string,
+        reason?: string
+    ) {
+        const [authorization] = await this.listVendorBrandAuthorizations({ id: authorizationId })
+        if (!authorization) {
+            throw new Error("Brand authorization not found")
+        }
+
+        return await this.updateVendorBrandAuthorizations({
+            id: authorizationId,
+            verified: false,
+            verified_at: null,
+            verified_by: null,
+            metadata: {
+                ...(authorization.metadata || {}),
+                review_status: "rejected",
+                reviewed_at: new Date().toISOString(),
+                reviewed_by: rejectedBy,
+                rejection_reason: reason?.trim() || null,
+            },
         })
     }
 

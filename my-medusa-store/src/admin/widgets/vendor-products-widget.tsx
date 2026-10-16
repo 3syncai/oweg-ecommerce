@@ -64,6 +64,134 @@ type VendorProduct = {
 
 const toTitleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
 
+type BrandAuthorizationResponse = {
+  has_authorization: boolean
+  brand_name?: string
+  message?: string
+  authorization?: {
+    id: string
+    brand_name: string
+    signed_url: string
+    verified: boolean
+    metadata?: { review_status?: string; rejection_reason?: string }
+  }
+}
+
+/** Kept in the product review itself so an admin does not need to find a sidebar widget. */
+const BrandAuthorizationReview = ({ productId }: { productId: string }) => {
+  const [data, setData] = useState<BrandAuthorizationResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [acting, setActing] = useState(false)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch(`/admin/products/${productId}/brand-authorization`, {
+        credentials: "include",
+      })
+      if (!response.ok) throw new Error("Unable to load authorization")
+      setData(await response.json())
+    } catch (error) {
+      console.error("Failed to load brand authorization:", error)
+      setData(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+  }, [productId])
+
+  const review = async (action: "verify" | "reject") => {
+    const authorization = data?.authorization
+    if (!authorization) return
+    const reason = action === "reject"
+      ? prompt(`Why is the authorization letter for "${authorization.brand_name}" being rejected?`)
+      : undefined
+    if (reason === null) return
+
+    setActing(true)
+    try {
+      const response = await fetch(
+        `/admin/brand-authorizations/${authorization.id}/${action}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            action === "reject"
+              ? { rejected_by: "admin", reason }
+              : { verified_by: "admin" }
+          ),
+        }
+      )
+      if (!response.ok) throw new Error(`Unable to ${action} authorization`)
+      await load()
+    } catch (error) {
+      console.error("Brand authorization review failed:", error)
+      alert("Unable to update the brand authorization. Please try again.")
+    } finally {
+      setActing(false)
+    }
+  }
+
+  if (loading) {
+    return <Text size="small" style={{ color: "var(--fg-muted)" }}>Loading brand authorization…</Text>
+  }
+
+  const authorization = data?.authorization
+  if (!authorization) {
+    return (
+      <Text size="small" style={{ color: "var(--fg-muted)" }}>
+        {data?.message || "No brand authorization letter was uploaded."}
+      </Text>
+    )
+  }
+
+  const rejected = authorization.metadata?.review_status === "rejected"
+  const state = authorization.verified ? "Approved" : rejected ? "Rejected" : "Pending review"
+  const color = authorization.verified ? "green" : rejected ? "red" : "orange"
+
+  return (
+    <div className="space-y-3 rounded-lg border border-ui-border-base p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <Text weight="plus">Brand authorization letter</Text>
+          <Text size="small" style={{ color: "var(--fg-muted)" }}>
+            {authorization.brand_name}
+          </Text>
+        </div>
+        <Badge color={color}>{state}</Badge>
+      </div>
+      {rejected && authorization.metadata?.rejection_reason ? (
+        <Text size="small" className="text-ui-fg-error">
+          Reason: {authorization.metadata.rejection_reason}
+        </Text>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="small"
+          variant="secondary"
+          onClick={() => window.open(authorization.signed_url, "_blank", "noopener,noreferrer")}
+        >
+          View letter
+        </Button>
+        {!authorization.verified && !rejected ? (
+          <>
+            <Button size="small" onClick={() => void review("verify")} disabled={acting}>
+              Approve
+            </Button>
+            <Button size="small" variant="danger" onClick={() => void review("reject")} disabled={acting}>
+              Reject
+            </Button>
+          </>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 const VendorProductsWidget = () => {
   const [products, setProducts] = useState<VendorProduct[]>([])
   const [loading, setLoading] = useState(true)
@@ -743,6 +871,13 @@ const VendorProductsWidget = () => {
               )}
             </div>
           </div>
+        </div>
+
+        <div style={{ marginBottom: 24 }}>
+          <Heading level="h3" style={{ marginBottom: 8 }}>
+            Brand authorization
+          </Heading>
+          <BrandAuthorizationReview productId={selectedProduct.id} />
         </div>
 
         <div style={{ display: "flex", gap: 12 }}>

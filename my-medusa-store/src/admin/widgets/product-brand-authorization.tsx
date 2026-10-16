@@ -92,6 +92,36 @@ const ProductBrandAuthorizationWidget = ({ data }: { data: { id: string } }) => 
         }
     }
 
+    const handleReject = async () => {
+        if (!authorization?.authorization?.id) return
+
+        const reason = prompt(
+            `Why is the authorization letter for "${authorization.authorization.brand_name}" being rejected?`
+        )
+        if (reason === null) return
+
+        try {
+            const response = await fetch(
+                `/admin/brand-authorizations/${authorization.authorization.id}/reject`,
+                {
+                    method: "POST",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ rejected_by: "admin", reason }),
+                }
+            )
+            if (!response.ok) throw new Error("Failed to reject authorization")
+
+            toast.success("Authorization rejected", {
+                description: "The vendor can upload a new letter for review.",
+            })
+            fetchBrandAuthorization()
+        } catch (error) {
+            console.error("Failed to reject brand authorization:", error)
+            toast.error("Error", { description: "Failed to reject brand authorization" })
+        }
+    }
+
     if (loading) {
         return (
             <Container className="p-4">
@@ -135,8 +165,12 @@ const ProductBrandAuthorizationWidget = ({ data }: { data: { id: string } }) => 
         <Container className="p-4">
             <div className="flex items-center justify-between mb-3">
                 <Heading level="h2">Brand Authorization</Heading>
-                <Badge color={auth.verified ? "green" : "orange"}>
-                    {auth.verified ? "✓ Verified" : "Pending Verification"}
+                <Badge color={auth.verified ? "green" : auth.metadata?.review_status === "rejected" ? "red" : "orange"}>
+                    {auth.verified
+                        ? "✓ Approved"
+                        : auth.metadata?.review_status === "rejected"
+                            ? "Rejected"
+                            : "Pending Review"}
                 </Badge>
             </div>
 
@@ -161,6 +195,12 @@ const ProductBrandAuthorizationWidget = ({ data }: { data: { id: string } }) => 
                         </span>
                     </div>
                 )}
+                {auth.metadata?.review_status === "rejected" && auth.metadata?.rejection_reason && (
+                    <div className="text-sm">
+                        <span className="text-gray-600">Rejection reason: </span>
+                        <span className="font-medium">{auth.metadata.rejection_reason}</span>
+                    </div>
+                )}
                 {auth.metadata?.original_filename && (
                     <div className="flex justify-between text-sm">
                         <span className="text-gray-600">File:</span>
@@ -179,14 +219,15 @@ const ProductBrandAuthorizationWidget = ({ data }: { data: { id: string } }) => 
                 📄 View Authorization Document
             </Button>
 
-            {!auth.verified && (
-                <Button
-                    variant="primary"
-                    onClick={handleApprove}
-                    className="w-full mb-2"
-                >
-                    ✓ Approve Authorization
-                </Button>
+            {!auth.verified && auth.metadata?.review_status !== "rejected" && (
+                <div className="grid grid-cols-2 gap-2">
+                    <Button variant="primary" onClick={handleApprove}>
+                        ✓ Approve
+                    </Button>
+                    <Button variant="danger" onClick={handleReject}>
+                        Reject
+                    </Button>
+                </div>
             )}
 
             <p className="text-xs text-gray-500 mt-2 text-center">

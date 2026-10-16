@@ -39,6 +39,7 @@ export type VariantMatrixEditorProps = {
   onPrimaryVisualOptionChange?: (option: string) => void
   optionsReadOnly?: boolean
   simpleProductExtras?: React.ReactNode
+  policyExtras?: React.ReactNode
   usedSkus?: Set<string>
   taxAttributesExtras?: React.ReactNode
   productGstRate?: number | string
@@ -141,6 +142,7 @@ export default function VariantMatrixEditor({
   onPrimaryVisualOptionChange,
   optionsReadOnly = false,
   simpleProductExtras,
+  policyExtras,
   usedSkus,
   taxAttributesExtras,
   productGstRate,
@@ -1172,6 +1174,8 @@ export default function VariantMatrixEditor({
           </div>
         </SectionCard>
       )}
+
+      {policyExtras}
     </div>
   )
 }
