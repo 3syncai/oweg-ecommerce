@@ -1,4 +1,4 @@
-import { defineMiddlewares } from "@medusajs/framework/http"
+import { authenticate, defineMiddlewares } from "@medusajs/framework/http"
 import type {
   MedusaRequest,
   MedusaResponse,
@@ -7,6 +7,8 @@ import type {
 import { Modules } from "@medusajs/framework/utils"
 import cors from "cors"
 import { isBlockedFromDraftConvert } from "../lib/vendor-order-visibility"
+import { enforceAdminAccess } from "../lib/admin-access/middleware"
+import { recordAdminActivity } from "../lib/admin-access/activity-middleware"
 
 /**
  * Cross-origin cookie middleware for Chrome/Safari.
@@ -225,11 +227,11 @@ export default defineMiddlewares({
   routes: [
     {
       matcher: "/auth",
-      middlewares: [crossOriginCookieMiddleware],
+      middlewares: [recordAdminActivity, crossOriginCookieMiddleware],
     },
     {
       matcher: "/admin",
-      middlewares: [crossOriginCookieMiddleware],
+      middlewares: [recordAdminActivity, crossOriginCookieMiddleware, authenticate("user", ["session", "bearer", "api-key"]), enforceAdminAccess],
     },
     {
       method: ["POST"],

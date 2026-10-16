@@ -1,4 +1,5 @@
 import en from "./json/en.json"
+import { initAdminAccessUi } from "../lib/admin-access-ui"
 
 import { initAuthPageBranding } from "../lib/auth-page-branding"
 import { initDraftPaymentStatusUi } from "../lib/draft-payment-status-ui"
@@ -16,6 +17,7 @@ initHideNotificationsUi()
 initDraftPaymentStatusUi()
 initInventoryTableLayout()
 initOrderDetailLayout()
+initAdminAccessUi()
 
 const messages = {
     en: {

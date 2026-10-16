@@ -1,6 +1,9 @@
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { useEffect, useState } from "react"
 import { Container, Heading, Text, Button, Badge, toast } from "@medusajs/ui"
+import { currentAdminAccess } from "../../lib/admin-access-client"
+import { canAccessAdminPage, type AdminAccess } from "../../../shared/admin-access"
+import { ReturnOrderPreview } from "../../components/return-order-preview"
 
 type ReturnItem = {
   id: string
@@ -58,6 +61,8 @@ const ReturnRequestsPage = () => {
   const [refundModal, setRefundModal] = useState<ReturnRequest | null>(null)
   const [refundDetails, setRefundDetails] = useState<Record<string, string> | null>(null)
   const [refundDetailsLoading, setRefundDetailsLoading] = useState(false)
+  const [access, setAccess] = useState<AdminAccess | null>(null)
+  const [previewOrderId, setPreviewOrderId] = useState<string | null>(null)
 
   const loadRequests = async () => {
     setLoading(true)
@@ -80,6 +85,7 @@ const ReturnRequestsPage = () => {
 
   useEffect(() => {
     loadRequests()
+    void currentAdminAccess().then(setAccess).catch(() => {})
   }, [])
 
   const runAction = async (
@@ -350,7 +356,8 @@ const ReturnRequestsPage = () => {
                       variant="secondary"
                       size="base"
                       onClick={() => {
-                        window.location.href = `/app/orders/${request.order_id}`
+                        if (canAccessAdminPage(access, `/orders/${request.order_id}`)) window.location.href = `/app/orders/${request.order_id}`
+                        else setPreviewOrderId(request.order_id)
                       }}
                     >
                       View Order
@@ -525,6 +532,7 @@ const ReturnRequestsPage = () => {
           </div>
         </div>
       )}
+      <ReturnOrderPreview orderId={previewOrderId} onClose={() => setPreviewOrderId(null)} />
     </Container>
   )
 }

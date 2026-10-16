@@ -1,6 +1,7 @@
+import { createRequire } from "node:module";
 import type { Config } from "tailwindcss";
 
-const medusaPreset = require("@medusajs/ui-preset");
+const medusaPreset = createRequire(import.meta.url)("@medusajs/ui-preset");
 
 const config: Config = {
   presets: [medusaPreset],
