@@ -1,6 +1,8 @@
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import { Badge, Button, Heading, Text, toast } from "@medusajs/ui"
 import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { currentAdminAccess } from "../lib/admin-access-client"
+import { canAccessAdminPage } from "../../shared/admin-access"
 
 type OrderRecord = {
   id?: string
@@ -158,7 +160,8 @@ const OrderCancellationSummaryWidget = () => {
         const hasPayout =
           typeof meta.cancel_refund_payout_encrypted === "string" ||
           typeof meta.cancel_refund_method === "string"
-        if (hasPayout) {
+        const access = hasPayout ? await currentAdminAccess() : null
+        if (hasPayout && canAccessAdminPage(access, "/vendor-payouts")) {
           const payoutRes = await fetch(`/admin/orders/${orderId}/cancel-payout`, {
             credentials: "include",
           })

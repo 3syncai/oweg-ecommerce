@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { Container, Heading, Text, Button, Badge, Avatar, Input, Label, Checkbox, toast } from "@medusajs/ui"
+import { currentAdminAccess } from "../../../lib/admin-access-client"
+import { canAccessAdminPage, type AdminAccess } from "../../../../shared/admin-access"
 import {
     CheckCircleSolid,
     XCircleSolid,
@@ -153,6 +155,8 @@ const VendorDetailPage = () => {
     const [vendor, setVendor] = useState<Vendor | null>(null)
     const [activeTab, setActiveTab] = useState<TabType>("overview")
     const [vendorId, setVendorId] = useState<string>("")
+    const [access, setAccess] = useState<AdminAccess | null>(null)
+    const canViewPayouts = canAccessAdminPage(access, "/vendor-payouts")
 
     // Payout state
     const [payouts, setPayouts] = useState<Payout[]>([])
@@ -169,6 +173,7 @@ const VendorDetailPage = () => {
     const [commissionSaving, setCommissionSaving] = useState(false)
 
     useEffect(() => {
+        void currentAdminAccess().then(setAccess).catch(() => {})
         // Extract vendor ID from URL path
         const pathParts = window.location.pathname.split('/')
         const id = pathParts[pathParts.length - 1]
@@ -554,7 +559,7 @@ const VendorDetailPage = () => {
                     { id: "banking" as TabType, label: "Banking", icon: CreditCardSolid },
                     { id: "products" as TabType, label: "Products", icon: ShoppingBag },
                     { id: "payouts" as TabType, label: "Payouts", icon: CurrencyDollar },
-                ].map((tab) => (
+                ].filter(tab => tab.id !== "payouts" || canViewPayouts).map((tab) => (
                     <Button
                         key={tab.id}
                         variant={activeTab === tab.id ? "primary" : "transparent"}
@@ -831,7 +836,7 @@ const VendorDetailPage = () => {
             )}
 
             {/* Payouts Tab */}
-            {activeTab === "payouts" && (
+            {activeTab === "payouts" && canViewPayouts && (
                 <div>
                     {/* Bank Details & Summary */}
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))", gap: 20, marginBottom: 24 }}>

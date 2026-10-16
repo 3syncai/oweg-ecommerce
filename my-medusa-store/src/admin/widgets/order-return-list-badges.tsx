@@ -1,5 +1,6 @@
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import { useEffect } from "react"
+import { withAdminPageAccess } from "../lib/with-admin-page-access"
 
 type OrderReturnIndex = Record<
   string,
@@ -76,4 +77,4 @@ export const config = defineWidgetConfig({
   zone: "order.list.before",
 })
 
-export default OrderReturnListBadgesWidget
+export default withAdminPageAccess(OrderReturnListBadgesWidget, "/return-requests")

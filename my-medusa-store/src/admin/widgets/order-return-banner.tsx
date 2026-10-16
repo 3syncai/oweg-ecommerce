@@ -1,6 +1,7 @@
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import { Badge, Text } from "@medusajs/ui"
 import { useEffect, useMemo, useState } from "react"
+import { withAdminPageAccess } from "../lib/with-admin-page-access"
 
 type ReturnRequest = {
   type: string
@@ -75,4 +76,4 @@ export const config = defineWidgetConfig({
   zone: "order.details.before",
 })
 
-export default OrderReturnBannerWidget
+export default withAdminPageAccess(OrderReturnBannerWidget, "/return-requests")
