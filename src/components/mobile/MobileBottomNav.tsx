@@ -20,6 +20,8 @@ import {
   User,
   X,
   ChevronsLeft,
+  LayoutGrid,
+  ShoppingCart,
 } from "lucide-react";
 import type { MedusaCategory } from "@/lib/medusa";
 import { useAuth } from "@/contexts/AuthProvider";
@@ -28,6 +30,8 @@ import CategoryIcon from "@/components/ui/icons/CategoryIcon";
 import CategoryIconTile from "@/components/ui/icons/CategoryIconTile";
 import MobileProfileSheet from "@/components/mobile/MobileProfileSheet";
 import { buildLoginUrl, buildSignupUrl } from "@/lib/auth-redirect";
+import navStyles from "./MobileBottomNav.module.css";
+import { useCartSummary } from "@/contexts/CartProvider";
 
 type MobileCategory = {
   id: string;
@@ -244,7 +248,7 @@ const Overlay = ({
   panelClassName?: string;
 }) => (
   <div
-    className={`fixed inset-0 z-[130] md:hidden transition-opacity duration-200 ${
+    className={`fixed inset-0 z-[800] md:hidden transition-opacity duration-200 ${
       open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
     }`}
     onClick={onClose}
@@ -269,6 +273,7 @@ export default function MobileBottomNav() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { customer, logout } = useAuth();
+  const { count: cartCount } = useCartSummary();
   const [storedPincode, setStoredPincode] = useState("");
   const resetPanels = useCallback(() => {
     setCategoryOpen(false);
@@ -599,6 +604,10 @@ export default function MobileBottomNav() {
   );
   const navActiveKey = profileOpen
     ? "profile"
+    : categoryOpen || pathname?.startsWith("/c/")
+      ? "categories"
+      : pathname === "/cart" || pathname === "/checkout"
+        ? "cart"
     : pathname?.startsWith("/account/wishlist") ||
         pathname?.startsWith("/wishlist")
       ? "wishlist"
@@ -615,10 +624,17 @@ export default function MobileBottomNav() {
       icon: <Home className={iconSize} />,
     },
     {
-      key: "profile",
-      label: "Profile",
-      href: "/account",
-      icon: <User className={iconSize} />,
+      key: "categories",
+      label: "Categories",
+      href: undefined,
+      icon: <LayoutGrid className={iconSize} />,
+    },
+    {
+      key: "cart",
+      label: "Cart",
+      href: "/cart",
+      badge: cartCount,
+      icon: <ShoppingCart className={iconSize} />,
     },
     {
       key: "wishlist",
@@ -627,6 +643,12 @@ export default function MobileBottomNav() {
       badge: wishlistCount,
       icon: <Heart className={iconSize} />,
       prefetchKey: "wishlist",
+    },
+    {
+      key: "profile",
+      label: "Account",
+      href: "/account",
+      icon: <User className={iconSize} />,
     },
   ];
 
@@ -687,109 +709,62 @@ export default function MobileBottomNav() {
     <>
       <nav
         aria-label="Primary"
-        className="pointer-events-none fixed inset-x-0 bottom-0 z-[900] md:hidden px-3 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] pt-2 animate-in slide-in-from-bottom-2 duration-300"
+        className={navStyles.bottomNav}
       >
-        <div className="pointer-events-auto relative mx-auto max-w-[360px]">
-          {/* Floating pill dock */}
-          <div className="relative h-16 rounded-full bg-white shadow-[0_10px_28px_rgba(0,0,0,0.12),0_2px_6px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04]">
-            <div className="absolute inset-0 flex items-center justify-between px-5">
-              {navItems
-                .filter((item) => item.key !== "home")
-                .map((item) => {
-                  const active = navActiveKey === item.key;
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      aria-label={item.label}
-                      aria-current={active ? "page" : undefined}
-                      className="flex flex-col items-center gap-0.5 min-w-[56px] min-h-11 justify-center transition-transform duration-200 active:scale-[0.96]"
-                      onMouseEnter={() => {
-                        if (item.prefetchKey === "wishlist") prefetchWishlist();
-                      }}
-                      onFocus={() => {
-                        if (item.prefetchKey === "wishlist") {
-                          void router.prefetch("/wishlist");
-                        }
-                      }}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        if (item.key === "profile") {
-                          setCategoryOpen(false);
-                          setProfileOpen(true);
-                          return;
-                        }
-                        if (item.href) goNav(item.href);
-                      }}
-                    >
-                      <span
-                        className={`relative flex h-11 w-11 items-center justify-center rounded-[14px] transition-all duration-200 ${
-                          active
-                            ? "bg-[#7AC943] text-white shadow-[0_8px_20px_-10px_rgba(122,201,67,0.85)]"
-                            : "bg-[#F4F7F2] text-gray-600"
-                        }`}
-                      >
-                        {item.icon}
-                        {item.badge ? (
-                          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 rounded-full bg-[#5ea82e] text-white text-[10px] font-semibold px-1.5 flex items-center justify-center border border-white shadow-sm">
-                            {item.badge > 99 ? "99+" : item.badge}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span
-                        className={`text-[10px] font-semibold tracking-[0.01em] ${
-                          active ? "text-[#326b00]" : "text-gray-500"
-                        }`}
-                      >
-                        {item.label}
-                      </span>
-                    </button>
-                  );
-                })}
-            </div>
-          </div>
-
-          {/* Raised Home orb — center focal point */}
-          {(() => {
-            const home = navItems.find((i) => i.key === "home");
-            if (!home) return null;
-            const active = navActiveKey === "home";
+        <div className={navStyles.dock}>
+          {navItems.map((item) => {
+            const active = navActiveKey === item.key;
             return (
               <button
+                key={item.key}
                 type="button"
-                aria-label={home.label}
+                aria-label={item.label}
                 aria-current={active ? "page" : undefined}
-                className="absolute left-1/2 top-0 z-10 flex -translate-x-1/2 -translate-y-[38%] flex-col items-center"
+                className={navStyles.item}
+                data-active={active}
+                onMouseEnter={() => {
+                  if (item.prefetchKey === "wishlist") prefetchWishlist();
+                }}
+                onFocus={() => {
+                  if (item.prefetchKey === "wishlist") {
+                    void router.prefetch("/wishlist");
+                  }
+                }}
                 onClick={(e) => {
                   e.preventDefault();
-                  goNav("/");
+                  if (item.key === "categories") {
+                    setProfileOpen(false);
+                    setCategoryOpen(true);
+                    return;
+                  }
+                  if (item.key === "profile") {
+                    setCategoryOpen(false);
+                    setProfileOpen(true);
+                    return;
+                  }
+                  if (item.href) goNav(item.href);
                 }}
               >
-                <span
-                  className={`flex h-16 w-16 items-center justify-center rounded-full border-[4px] border-white transition-all duration-200 active:scale-[0.96] ${
-                    active
-                      ? "bg-[#7AC943] text-white shadow-[0_10px_22px_rgba(122,201,67,0.45)]"
-                      : "bg-[#E8F3DE] text-[#3d6b14] shadow-[0_8px_18px_rgba(0,0,0,0.12)]"
-                  }`}
-                >
-                  <Home className="h-7 w-7" strokeWidth={2.25} />
+                <span className={navStyles.icon}>
+                  {item.icon}
+                  {item.badge ? (
+                    <span className={navStyles.badge}>
+                      {item.badge > 99 ? "99+" : item.badge}
+                    </span>
+                  ) : null}
                 </span>
-                <span
-                  className={`mt-0.5 text-[10px] font-bold tracking-[0.01em] ${
-                    active ? "text-[#326b00]" : "text-gray-600"
-                  }`}
-                >
-                  {home.label}
+                <span className={navStyles.label}>
+                  {item.label}
                 </span>
               </button>
             );
-          })()}
+          })}
         </div>
       </nav>
 
       {/* Category sheet */}
-      <Overlay open={categoryOpen} onClose={closeCategory} scrollable={false}>
-        <div className="pb-8 space-y-4 relative">
+      <Overlay open={categoryOpen} onClose={closeCategory} scrollable={false} panelClassName={`bg-white ${navStyles.categoryPanel}`}>
+        <div className={`${navStyles.categorySheet} relative`}>
           {!selectedSubcategory && (
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -949,16 +924,13 @@ export default function MobileBottomNav() {
           )}
 
           <div
-            className={`relative min-h-0 transition-all duration-300 ease-in-out ${selectedSubcategory ? "" : "flex gap-3"}`}
-            style={{ height: "calc(100vh - 150px)" }}
+            className={`${navStyles.categoryBody} relative min-h-0 transition-all duration-300 ease-in-out ${selectedSubcategory ? "" : "flex gap-3"}`}
           >
             {!selectedSubcategory && (
               <div
-                className="flex-shrink-0 space-y-2 overflow-y-auto h-full pr-1 min-h-0 transition-all duration-300 ease-in-out"
+                className={`${navStyles.categoryScroll} flex-shrink-0 space-y-2 overflow-y-auto h-full pr-1 min-h-0 transition-all duration-300 ease-in-out`}
                 style={{
                   width: isOpen ? 240 : 90,
-                  paddingBottom:
-                    "calc(env(safe-area-inset-bottom, 0px) + 280px)",
                 }}
               >
                 {categoriesLoading ? (
@@ -1014,10 +986,7 @@ export default function MobileBottomNav() {
             )}
 
             <div
-              className={`${selectedSubcategory ? "w-full" : "flex-1 min-w-0"} h-full min-h-0 overflow-y-auto pr-1 transition-all duration-300 ease-in-out`}
-              style={{
-                paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 280px)",
-              }}
+              className={`${navStyles.categoryScroll} ${selectedSubcategory ? "w-full" : "flex-1 min-w-0"} h-full min-h-0 overflow-y-auto pr-1 transition-all duration-300 ease-in-out`}
             >
               <div className="space-y-3">
                 <>

@@ -6,6 +6,7 @@ import type { DetailedProduct as DetailedProductType } from '@/lib/medusa'
 import { isVariantPurchasable, resolveColorImageUrls } from '@/lib/medusa'
 import { FlashSaleBadge } from '@/components/flash-sale/FlashSaleBadge'
 import type { FlashSaleInfo } from '@/hooks/useFlashSale'
+import styles from '../ProductDetail.module.css'
 
 type ProductSummaryProps = {
   product: DetailedProductType
@@ -155,18 +156,17 @@ const ProductSummary = ({
   }, [titleExpanded, product.title])
 
   return (
-    <div className="space-y-5 lg:pl-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 text-xs uppercase tracking-wide text-green-700">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="bg-green-50 text-green-700 px-3 py-1 rounded-full">OWEG Exclusive</span>
-          <span className="text-slate-400">|</span>
-          <span>{brandName}</span>
+    <div className={styles.summary}>
+      <div className={styles.summaryTop}>
+        <div className={styles.brandLine}>
+          <span className={styles.exclusive}>OWEG Exclusive</span>
+          <span className={styles.brand}>{brandName}</span>
         </div>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onOpenCompare}
-            className="flex items-center gap-1 rounded-full border border-green-200 px-3 py-1 text-[11px] font-semibold text-green-700 hover:bg-green-50 transition"
+            className={styles.utilityButton}
           >
             <GitCompare className="w-4 h-4" />
             Compare
@@ -174,7 +174,7 @@ const ProductSummary = ({
           <button
             type="button"
             onClick={onShare}
-            className="flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-green-600 transition"
+            className={styles.utilityButton}
           >
             <Share2 className="w-4 h-4" />
             Share
@@ -184,7 +184,7 @@ const ProductSummary = ({
       <div className="space-y-1">
         <h1
           ref={titleRef}
-          className={`text-2xl lg:text-3xl font-semibold text-slate-900 ${
+          className={`${styles.productTitle} ${
             titleExpanded ? '' : 'line-clamp-3'
           }`}
         >
@@ -194,15 +194,19 @@ const ProductSummary = ({
           <button
             type="button"
             onClick={() => setTitleExpanded((open) => !open)}
-            className="text-sm font-semibold text-green-700 hover:text-green-800 transition"
+            className={styles.titleToggle}
             aria-expanded={titleExpanded}
           >
             {titleExpanded ? 'Show less' : 'Show more'}
           </button>
         )}
       </div>
-      {(product.discount > 0 || flashSaleInfo?.active) && (
-        <div className="inline-flex items-center gap-2 flex-wrap">
+      <div className={styles.priceSection}>
+        <div className={styles.priceRow}>
+          <span className={styles.price}>{formatPrice(displayPrice)}</span>
+          {displayMRP > displayPrice && <span className={styles.mrp}>{formatPrice(displayMRP)}</span>}
+        </div>
+        <div className={styles.savingsRow}>
           {flashSaleInfo?.active && (
             <>
               <span className="inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
@@ -217,41 +221,22 @@ const ProductSummary = ({
             </>
           )}
           {product.discount > 0 && !flashSaleInfo?.active && (
-            <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
+            <span className={styles.discount}>
               {product.discount}% OFF
             </span>
           )}
-          <button
-            type="button"
-            onClick={onSaveForLater}
-            className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50/80 px-3 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-100 transition"
-          >
-            <Heart className="w-4 h-4" fill={isWishlisted ? 'currentColor' : 'none'} />
-            <span className="hidden sm:inline">Save to wishlist</span>
-          </button>
+          {rawSavings > 0 && <span className={styles.savings}>You save {formatPrice(rawSavings)}</span>}
         </div>
-      )}
-      {product.subtitle && <p className="text-slate-500">{product.subtitle}</p>}
-
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="text-3xl font-bold text-slate-900">{formatPrice(displayPrice)}</div>
-        {displayMRP > displayPrice && (
-          <div className="text-lg text-slate-400 line-through">{formatPrice(displayMRP)}</div>
-        )}
-        {rawSavings > 0 && (
-          <span className="save-banner inline-flex items-center rounded-full bg-emerald-100/80 px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm animate-[pulse_1.4s_ease-in-out_infinite]">
-            You are about to save {formatPrice(rawSavings)}
-          </span>
-        )}
+        <p className={styles.taxNote}>Inclusive of all taxes | Prices shown in {product.currency}</p>
       </div>
+      {product.subtitle && <p className={styles.subtitle}>{product.subtitle}</p>}
       {/* Coins earned on purchase */}
-      <div className="flex items-center gap-2 mt-1">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-xs font-semibold text-amber-700">
-          <img src="/uploads/coin/coin.png" alt="Coin" className="w-5 h-5 inline-block mr-1 object-contain" /> Earn {(displayPrice * 0.01).toFixed(0)} coins on this purchase
+      <div className={styles.rewards}>
+        <span className={styles.rewardLine}>
+          <img src="/uploads/coin/coin.png" alt="Coin" className="w-4 h-4 object-contain" /> Earn {(displayPrice * 0.01).toFixed(0)} coins on this purchase
         </span>
-        <span className="text-xs text-slate-400">1 coin = ₹1</span>
+        <span>1 coin = ₹1</span>
       </div>
-      <div className="text-sm text-slate-500">Inclusive of all taxes | Prices shown in {product.currency}</div>
       {product.options.length > 0 && (
         <div className="space-y-4">
           {product.options.map((option) => {
@@ -334,7 +319,7 @@ const ProductSummary = ({
                       onClick={() => onOptionChange(option.title, value)}
                       className={`min-w-[3rem] rounded-full border px-4 py-2 text-sm font-medium transition ${
                         isSelected
-                          ? 'border-green-600 bg-green-600 text-white shadow-sm'
+                          ? 'border-[#7ac943] bg-[#edf5e5] text-[#3c5b28]'
                           : isAvailable
                             ? isPurchasable
                               ? 'border-slate-200 bg-white text-slate-800 hover:border-green-400 hover:text-green-700'
@@ -354,49 +339,47 @@ const ProductSummary = ({
           )})}
         </div>
       )}
-      <style jsx global>{`
-      body.lens-open .save-banner {
-        display: none !important;
-      }
-    `}</style>
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600">
-        <div className={`text-sm font-medium ${hasStock ? 'text-green-600' : 'text-red-500'}`}>
+      <div className={styles.stockRow}>
+        <div className={`${styles.stock} ${hasStock ? styles.inStock : styles.outOfStock}`}>
           {hasStock ? 'In stock' : 'Out of stock'}
         </div>
+        <button type="button" onClick={onSaveForLater} className={styles.wishlistButton}>
+          <Heart className="w-4 h-4" fill={isWishlisted ? 'currentColor' : 'none'} aria-hidden="true" />
+          Save to wishlist
+        </button>
       </div>
 
-      <div className="sticky bottom-0 z-20 -mx-1 mt-4 bg-[#f3f8f3] px-1 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-          <div className="flex items-center border border-slate-200 rounded-full overflow-hidden bg-white">
+      <div className={styles.purchaseArea}>
+        <div className={styles.quantityRow}>
+          <span className={styles.quantityLabel}>Quantity</span>
+          <div className={styles.quantityControl}>
             <button
               type="button"
               onClick={() => onQuantityChange(-1)}
-              className="px-3 py-2 text-slate-600 hover:bg-slate-50"
+              className={styles.quantityButton}
               aria-label="Decrease quantity"
             >
               <Minus className="w-4 h-4" />
             </button>
-            <div className="px-4 text-base font-semibold text-slate-900">{quantity}</div>
+            <div className={styles.quantityValue} aria-live="polite">{quantity}</div>
             <button
               type="button"
               onClick={() => onQuantityChange(1)}
-              className="px-3 py-2 text-slate-600 hover:bg-slate-50"
+              className={styles.quantityButton}
               aria-label="Increase quantity"
             >
               <Plus className="w-4 h-4" />
             </button>
           </div>
-          <div className="flex gap-3 flex-wrap">
+        </div>
+          <div className={styles.purchaseButtons}>
             <button
               type="button"
               onClick={onAddToCart}
               disabled={!hasStock || cartBusy || buyNowBusy}
               aria-disabled={!hasStock || cartBusy || buyNowBusy}
               aria-busy={cartBusy || undefined}
-              className={`inline-flex items-center gap-2 rounded-full px-6 py-3 text-white font-semibold shadow transition ${hasStock && !cartBusy
-                ? 'bg-green-600 hover:bg-green-700'
-                : 'bg-slate-400 cursor-not-allowed opacity-70'
-                } ${cartBusy ? 'cursor-wait' : ''}`}
+              className={`${styles.cartButton} ${cartBusy ? 'cursor-wait' : ''}`}
             >
               {cartBusy ? (
                 <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
@@ -411,10 +394,7 @@ const ProductSummary = ({
               disabled={!hasStock || cartBusy || buyNowBusy}
               aria-disabled={!hasStock || cartBusy || buyNowBusy}
               aria-busy={buyNowBusy || undefined}
-              className={`inline-flex items-center gap-2 rounded-full border px-6 py-3 font-semibold transition ${hasStock && !buyNowBusy
-                ? 'border-green-600 text-green-700 hover:bg-green-50'
-                : 'border-slate-300 text-slate-400 cursor-not-allowed opacity-70'
-                } ${buyNowBusy ? 'cursor-wait' : ''}`}
+              className={`${styles.buyButton} ${buyNowBusy ? 'cursor-wait' : ''}`}
             >
               {buyNowBusy ? (
                 <>
@@ -426,7 +406,6 @@ const ProductSummary = ({
               )}
             </button>
           </div>
-        </div>
       </div>
 
     </div>

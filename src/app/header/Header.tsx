@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import navStyles from "./HeaderNavigation.module.css";
 import { createPortal } from "react-dom";
 import {
   Search,
@@ -220,6 +221,8 @@ const Header: React.FC = () => {
   // dropdown states for portal:
   const [activeCategoryId, setActiveCategoryId] = React.useState<string | null>(null);
   const [allOpen, setAllOpen] = React.useState(false);
+  const [allPreviewId, setAllPreviewId] = React.useState<string | null>(null);
+  const allPanelRef = React.useRef<HTMLDivElement | null>(null);
 
   const setScrollChromeVisible = React.useCallback((visible: boolean) => {
     setShowTopBarMobile(visible);
@@ -284,18 +287,18 @@ const Header: React.FC = () => {
   const mobileCategories = React.useMemo(() => [...navCategories, ...overflowCategories], [navCategories, overflowCategories]);
   const allDesktopCategories = React.useMemo(() => [...navCategories, ...overflowCategories], [navCategories, overflowCategories]);
   const desktopMinColumnWidth = React.useMemo(() => (viewportWidth >= 1280 ? 180 : 170), [viewportWidth]);
-  const desktopGridColumnGap = React.useMemo(() => 40, []);
+  const desktopGridColumnGap = React.useMemo(() => 12, []);
   const desktopMaxColumnsFit = React.useMemo(() => {
     const available = Math.max(0, desktopNavWidth || viewportWidth);
     return Math.max(1, Math.floor((available + desktopGridColumnGap) / (desktopMinColumnWidth + desktopGridColumnGap)));
   }, [desktopNavWidth, viewportWidth, desktopMinColumnWidth, desktopGridColumnGap]);
   const desktopVisibleCapacity = React.useMemo(() => {
-    const totalSlots = desktopMaxColumnsFit * 2;
+    const totalSlots = desktopMaxColumnsFit;
     return Math.max(0, totalSlots);
   }, [desktopMaxColumnsFit]);
   const desktopCategoryLimit = React.useMemo(() => {
     if (allDesktopCategories.length > desktopVisibleCapacity) {
-      return Math.max(0, desktopVisibleCapacity - 1); // reserve one slot for More
+      return Math.max(0, desktopVisibleCapacity - 1); // reserve one slot for All departments
     }
     return desktopVisibleCapacity;
   }, [allDesktopCategories.length, desktopVisibleCapacity]);
@@ -310,12 +313,12 @@ const Header: React.FC = () => {
   const desktopGridItems = React.useMemo(() => {
     const items: NavCategory[] = [...desktopVisibleCategories];
     if (desktopMoreCategories.length > 0) {
-      items.push({ id: "__more__", title: "More", handle: "" } as NavCategory);
+      items.unshift({ id: "__more__", title: "All departments", handle: "" } as NavCategory);
     }
     return items;
   }, [desktopVisibleCategories, desktopMoreCategories.length]);
   const desktopGridColumns = React.useMemo(
-    () => Math.max(1, Math.min(desktopMaxColumnsFit, Math.ceil(desktopGridItems.length / 2))),
+    () => Math.max(1, Math.min(desktopMaxColumnsFit, desktopGridItems.length)),
     [desktopGridItems.length, desktopMaxColumnsFit]
   );
   const mobileProfileRef = React.useRef<HTMLDivElement | null>(null);
@@ -1029,7 +1032,10 @@ const Header: React.FC = () => {
   const startAllHideTimer = React.useCallback(
     (delay = 600) => {
       clearAllHideTimer();
-      allHideTimerRef.current = window.setTimeout(() => setAllOpen(false), delay);
+      allHideTimerRef.current = window.setTimeout(() => {
+        if (allPanelRef.current?.contains(document.activeElement)) return;
+        setAllOpen(false);
+      }, delay);
     },
     [clearAllHideTimer]
   );
@@ -1155,11 +1161,13 @@ const Header: React.FC = () => {
     );
   })();
 
-  // Portal for "All" dropdown (overflow categories)
-  const AllPortal: React.FC = () => {
-    if (!allOpen || !mountedRef.current) return null;
+  // Keep the portal mounted when captured scroll events reposition the header.
+  const allDepartmentsPortal = (() => {
+    if (!allOpen || isMobile || !mountedRef.current) return null;
     const trigger = allTriggerRef.current ?? null;
-    const style = computeDropdownStyle(trigger, 320);
+    const style = computeDropdownStyle(trigger, 740);
+    const listHeight = Math.max(120, Math.min(340, window.innerHeight - Number(style.top || 0) - 104));
+    const preview = allDesktopCategories.find((cat) => cat.id === allPreviewId) ?? allDesktopCategories[0];
 
     return createPortal(
       <div
@@ -1167,35 +1175,55 @@ const Header: React.FC = () => {
         aria-hidden={!allOpen}
       >
         <div
+          ref={allPanelRef}
           onMouseEnter={() => clearAllHideTimer()}
           onMouseLeave={() => startAllHideTimer()}
+          onFocusCapture={() => clearAllHideTimer()}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) startAllHideTimer();
+          }}
           style={{
             ...style,
-            maxHeight: "420px",
+            maxHeight: `${Math.min(420, Math.max(180, window.innerHeight - Number(style.top || 0) - 16))}px`,
             pointerEvents: "auto",
           }}
-          className="rounded-xl bg-white shadow-2xl ring-1 ring-black/5 p-3 border border-gray-100 transition-transform duration-160"
-          role="menu"
+          className={`${navStyles.departmentsPanel} rounded-xl bg-white p-3 transition-transform duration-160`}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              setAllOpen(false);
+              allTriggerRef.current?.focus();
+            }
+          }}
+          role="navigation"
+          aria-label="All departments"
         >
-          <div style={{ padding: 8 }} className="pb-3">
-            <div className="px-2 py-1 text-xs text-gray-500 font-semibold">More Categories</div>
+          <div className={navStyles.panelHeading}>
+            <span className={navStyles.panelHeadingIcon}><Menu className="h-4 w-4" /></span>
+            <div>
+              <p>Shop by department</p>
+              <span>Find something for every day</span>
+            </div>
           </div>
+          <div className={navStyles.departmentsBody}>
           <div
-            className="divide-y divide-gray-100 pr-1 scrollbar-hide"
+            className={`${navStyles.departmentsList} min-h-0 space-y-1 pr-1 scrollbar-hide`}
             style={{
-              maxHeight: "340px",
+              maxHeight: `${listHeight}px`,
               overflowY: "auto",
             }}
             onWheel={handleMenuWheel}
           >
-            {navCatsLoading && desktopMoreCategories.length === 0 ? (
+            {navCatsLoading && allDesktopCategories.length === 0 ? (
               <div className="px-3 py-2 text-sm text-gray-500">Loading categories…</div>
-             ) : desktopMoreCategories.length ? (
-              desktopMoreCategories.map((cat) => (
+             ) : allDesktopCategories.length ? (
+              allDesktopCategories.map((cat) => (
                 <Link
                   key={cat.id}
                   href={getCategoryHref(cat.handle)}
-                  className="group flex items-center justify-between gap-2 px-2.5 py-2 transition hover:bg-[var(--oweg-surface-tint)]"
+                  className={`group flex items-center justify-between gap-2 px-2.5 py-2 transition ${navStyles.departmentLink}`}
+                  data-preview-active={preview?.id === cat.id}
+                  onMouseEnter={() => setAllPreviewId(cat.id)}
+                  onFocus={() => setAllPreviewId(cat.id)}
                   onClick={() => setAllOpen(false)}
                 >
                   <CategoryIconTile
@@ -1203,6 +1231,7 @@ const Header: React.FC = () => {
                     title={cat.title}
                     size="sm"
                     orientation="horizontal"
+                    labelWrap
                     className="min-w-0 flex-1"
                     labelClassName="text-[13px]"
                   />
@@ -1213,11 +1242,27 @@ const Header: React.FC = () => {
               <div className="px-3 py-2 text-sm text-gray-500">No additional categories</div>
             ) : null}
           </div>
+          {preview && (
+            <div className={navStyles.departmentPreview}>
+              <div className={navStyles.previewHeading}>
+                <div><p>{preview.title}</p><span>Explore this department</span></div>
+                <Link href={getCategoryHref(preview.handle)} onClick={() => setAllOpen(false)} className={navStyles.viewDepartment}>View all <ChevronRight size={14} aria-hidden="true" /></Link>
+              </div>
+              <div className={`${navStyles.subcategoryList} scrollbar-hide`} onWheel={handleMenuWheel}>
+                {preview.children.length ? preview.children.map((subcategory) => (
+                  <Link key={subcategory.id} href={getCategoryHref(subcategory.handle)} className={navStyles.subcategoryLink} onClick={() => setAllOpen(false)}>
+                    <CategoryIconTile handle={subcategory.handle} title={subcategory.title} kind="subcategory" size="sm" orientation="horizontal" labelWrap className="w-full" labelClassName="text-xs" />
+                  </Link>
+                )) : <p className={navStyles.previewEmpty}>Browse all products in {preview.title}.</p>}
+              </div>
+            </div>
+          )}
+          </div>
         </div>
       </div>,
       document.body
     );
-  };
+  })();
 
   // Portal for Cart Preview
   const CartPreviewPortal: React.FC = () => {
@@ -1713,7 +1758,7 @@ const Header: React.FC = () => {
 
           {/* Navigation Bar — collapses on scroll down to free product space */}
           <nav
-            className={`bg-header-nav-bg hidden md:block overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out ${
+            className={`${navStyles.navigation} hidden md:block overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out ${
               showDesktopCategories
                 ? "max-h-[220px] opacity-100 translate-y-0"
                 : "max-h-0 opacity-0 -translate-y-2 pointer-events-none"
@@ -1723,16 +1768,16 @@ const Header: React.FC = () => {
             data-desktop-category-nav
           >
             <div ref={desktopNavRef} className="w-full px-4 sm:px-6 lg:px-8">
-              <div className="py-1 relative" data-nav-scroll>
-                {/* Desktop categories in balanced 2-row grid */}
+              <div className="py-2 relative" data-nav-scroll>
+                {/* Compact department bar; the full catalog stays in All departments. */}
                 {navCatsLoading ? (
                   <div className="py-3 text-sm text-gray-500">Loading categories...</div>
                 ) : desktopGridItems.length > 0 ? (
                   <div className="w-full">
                     <div
-                      className="grid w-full items-center justify-items-center gap-y-1"
+                      className="grid w-full items-stretch gap-y-2"
                       style={{
-                        gridTemplateRows: "repeat(2, minmax(0, 1fr))",
+                        gridTemplateRows: "minmax(0, 1fr)",
                         gridTemplateColumns: `repeat(${desktopGridColumns}, minmax(${desktopMinColumnWidth}px, 1fr))`,
                         gridAutoFlow: "row",
                         columnGap: `${desktopGridColumnGap}px`,
@@ -1744,7 +1789,7 @@ const Header: React.FC = () => {
                             <div
                               key={cat.id}
                               ref={moreMenuRef}
-                              className="relative"
+                              className="relative min-w-0"
                               onMouseEnter={() => { clearAllHideTimer(); setAllOpen(true); }}
                               onMouseLeave={() => startAllHideTimer()}
                             >
@@ -1752,14 +1797,16 @@ const Header: React.FC = () => {
                                 ref={(el) => {
                                   allTriggerRef.current = el;
                                 }}
-                                className="flex items-center gap-2 py-3 px-2 text-header-text hover:text-header-accent transition-colors whitespace-nowrap text-sm font-medium"
+                                className={`${navStyles.categoryLink} ${navStyles.allDepartments}`}
                                 onClick={() => { setAllOpen((v) => !v); }}
                                 aria-haspopup="menu"
                                 aria-expanded={allOpen}
+                                data-open={allOpen}
                                 type="button"
                               >
-                                <CategoryIcon iconKey="more" active={allOpen} className="w-6 h-6" />
-                                <span>More</span>
+                                <span className={navStyles.categoryIcon}><Menu className="h-4 w-4" /></span>
+                                <span className={navStyles.categoryText}>All departments</span>
+                                <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${allOpen ? "rotate-180" : ""}`} />
                               </button>
                             </div>
                           );
@@ -1771,7 +1818,7 @@ const Header: React.FC = () => {
                           <div
                             key={cat.id}
                             data-nav-category
-                            className="relative group"
+                            className="relative group min-w-0"
                             onMouseEnter={() => {
                               clearHideTimer();
                               setAllOpen(false);
@@ -1786,25 +1833,22 @@ const Header: React.FC = () => {
                             <Link
                               href={categoryHref}
                               ref={(el: HTMLAnchorElement | null) => { triggersRef.current[cat.id] = el; }}
-                              className={`nav-link relative py-2.5 px-2 pr-6 md:pr-2 text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-1.5 ${
-                                categoryActive
-                                  ? "text-header-accent nav-link-active"
-                                  : "text-header-text hover:text-header-accent"
-                              }`}
+                              className={navStyles.categoryLink}
+                              data-active={categoryActive || activeCategoryId === cat.id}
                               onClick={() => {
                                 setSelectedFilter({ type: "category", title: cat.title, handle: cat.handle });
                               }}
                             >
-                              <CategoryIcon
+                              <span className={navStyles.categoryIcon}><CategoryIcon
                                 handle={cat.handle}
                                 title={cat.title}
                                 active={categoryActive || activeCategoryId === cat.id}
-                                className="w-6 h-6"
-                              />
-                              <span className="truncate">{cat.title}</span>
+                                className="w-5 h-5"
+                              /></span>
+                              <span className={navStyles.categoryText}>{cat.title}</span>
                               <ChevronDown
-                                className={`hidden md:inline-block w-3.5 h-3.5 text-header-muted transition-transform duration-200 group-hover:text-header-accent ${
-                                  activeCategoryId === cat.id ? "rotate-180 text-header-accent" : ""
+                                className={`w-3 h-3 shrink-0 text-[#819077] transition-transform duration-200 ${
+                                  activeCategoryId === cat.id ? "rotate-180" : ""
                                 }`}
                               />
                             </Link>
@@ -1953,7 +1997,7 @@ const Header: React.FC = () => {
 
       {/* Render dropdown portals (so they're never clipped by nav overflow) */}
       {categoryMegaMenuPortal}
-      <AllPortal />
+      {allDepartmentsPortal}
       <CartPreviewPortal />
 
       <PincodeModal

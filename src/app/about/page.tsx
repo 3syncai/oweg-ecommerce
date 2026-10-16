@@ -1,4 +1,4 @@
-import { Leaf, ShieldCheck, Sparkles, Truck, Users } from "lucide-react";
+import { Leaf, ShieldCheck, Truck, Users } from "lucide-react";
 
 const stats = [
   { label: "Orders Delivered", value: "2.1M+", detail: "across 450+ cities" },
@@ -44,10 +44,6 @@ export default function AboutPage() {
 
       <div className="oweg-container relative z-10 max-w-6xl space-y-12 py-12 md:space-y-16 md:py-20">
         <header className="space-y-5 md:space-y-6">
-          <p className="inline-flex items-center gap-2 rounded-full bg-[var(--oweg-surface-tint)] px-3 py-1 text-xs font-semibold tracking-wide text-[var(--oweg-green-dark)]">
-            <Sparkles className="w-4 h-4" />
-            About OWEG
-          </p>
           <h1 className="oweg-title text-[clamp(1.7rem,1.1rem+2.8vw,2.75rem)] leading-tight">
             We make premium appliances feel personal, fast, and joyful to buy.
           </h1>

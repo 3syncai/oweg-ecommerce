@@ -1,40 +1,33 @@
 "use client";
 
 import { AccountHubIcon } from "@/components/ui/icons/account-hub";
-import { useAuth } from "@/contexts/AuthProvider";
-import { getCustomerDisplayName } from "@/lib/account-utils";
+import Link from "next/link";
+import { useState } from "react";
+import LogoutConfirmModal from "@/components/account/LogoutConfirmModal";
+import styles from "../AccountOverview.module.css";
 
 type AccountWelcomeBannerProps = {
   subtitle?: string;
 };
 
 export default function AccountWelcomeBanner({
-  subtitle = "Manage your profile, orders, and rewards in one place.",
+  subtitle = "Your shopping, personal details, and account security.",
 }: AccountWelcomeBannerProps) {
-  const { customer } = useAuth();
-  const name = getCustomerDisplayName(customer);
+  const [logoutOpen, setLogoutOpen] = useState(false);
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white shadow-sm px-5 py-5 md:px-6 md:py-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <h2 className="text-xl font-semibold text-[#1F2A33] md:text-2xl">
-            Welcome back, {name}
-          </h2>
-          <p className="mt-1 text-sm text-gray-500 md:text-base">{subtitle}</p>
+    <>
+    <header className={styles.heading}>
+        <div>
+          <h1>Your account</h1>
+          <p>{subtitle}</p>
         </div>
-
-        <div
-          className="hidden shrink-0 items-center justify-center rounded-2xl bg-[#EAF8E7] p-4 sm:flex"
-          aria-hidden
-        >
-          <AccountHubIcon
-            name="profile-information"
-            size={40}
-            className="h-10 w-10"
-          />
+        <div className={styles.headingActions}>
+          <Link href="/account/help" className={styles.helpLink}><AccountHubIcon name="help-and-support" size={16} /> Help & Support</Link>
+          <button type="button" onClick={() => setLogoutOpen(true)} className={styles.signOut}><AccountHubIcon name="logout" size={16} /> Sign Out</button>
         </div>
-      </div>
-    </div>
+    </header>
+    <LogoutConfirmModal open={logoutOpen} onClose={() => setLogoutOpen(false)} />
+    </>
   );
 }

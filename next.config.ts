@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import withSerwistInit from "@serwist/next";
 import type { NextConfig } from "next";
-import { getSecurityHeaders, resolveConfiguredS3ImageHosts } from "./src/lib/security-headers";
+import { getSecurityHeaders, getAllowedImageHosts } from "./src/lib/security-headers";
 
 const revision =
   spawnSync("git", ["rev-parse", "HEAD"], {
@@ -87,7 +87,7 @@ function buildRemotePatterns(): RemotePattern[] {
   addEnvUrl(process.env.S3_FILE_URL);
   addEnvUrl(process.env.NEXT_PUBLIC_S3_FILE_URL);
 
-  for (const hostname of resolveConfiguredS3ImageHosts()) {
+  for (const hostname of getAllowedImageHosts()) {
     const signature = `https://${hostname}`;
     if (seen.has(signature)) continue;
     seen.add(signature);

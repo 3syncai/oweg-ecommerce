@@ -9,6 +9,8 @@ const IMAGE_HOSTS = [
   "oweg.in",
   "oweg-product-images.s3.ap-south-1.amazonaws.com",
   "oweg-product-images-new.s3.ap-south-1.amazonaws.com",
+  // Public marketing assets also need to work when storefront S3 env is absent at build time.
+  "oweg-s3-408760997836-ap-south-1-an.s3.ap-south-1.amazonaws.com",
   "oweg-media-mumbai-krj-2025.s3.ap-south-1.amazonaws.com",
   "via.placeholder.com",
 ];

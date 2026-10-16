@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
+import { ArrowUpRight } from "lucide-react";
 import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import type { AccountHubIconName } from "@/components/ui/icons/account-hub";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useAccountAddresses } from "@/hooks/useAccountAddresses";
 import { useAccountOrdersSummary } from "@/hooks/useAccountOrdersSummary";
 import { useAccountWallet } from "@/hooks/useAccountWallet";
+import styles from "../AccountOverview.module.css";
 
 type QuickStatItem = {
   label: string;
@@ -24,23 +26,21 @@ function QuickStatCard({ label, href, icon, imageSrc, value, loading }: QuickSta
   return (
     <Link
       href={href}
-      className="group rounded-xl border border-gray-200 bg-white shadow-sm p-4 transition-all hover:border-[#66C940] hover:shadow-md"
+      className={`group ${styles.shortcut}`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF8E7] transition-colors group-hover:bg-[#dff5d8]">
+        <span className={styles.shortcutIcon}>
           {imageSrc ? (
-            <img src={imageSrc} alt="" className="h-7 w-7 object-contain" />
+            <img src={imageSrc} alt="" className="h-4 w-4 object-contain" />
           ) : icon ? (
-            <AccountHubIcon name={icon} size={20} className="h-5 w-5" />
+            <AccountHubIcon name={icon} size={16} className="h-4 w-4" />
           ) : null}
-        </div>
-      </div>
-      <p className="mt-3 text-xs font-medium uppercase tracking-wide text-gray-400">
-        {label}
-      </p>
-      <p className="mt-1 text-xl font-semibold text-[#1F2A33]">
+        </span>
+        <div className={styles.shortcutText}><span>{label}</span>
+      <p>
         {loading ? "…" : value}
       </p>
+        </div>
+        <ArrowUpRight className={styles.shortcutArrow} size={15} aria-hidden />
     </Link>
   );
 }
@@ -91,10 +91,10 @@ export default function AccountQuickStats() {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+    <nav className={styles.shortcuts} aria-label="Shopping shortcuts">
       {stats.map((stat) => (
         <QuickStatCard key={stat.label} {...stat} />
       ))}
-    </div>
+    </nav>
   );
 }

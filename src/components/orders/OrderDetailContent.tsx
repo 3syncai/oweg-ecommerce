@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import { Loader2, Package } from "lucide-react";
 import { toast } from "sonner";
 import OrderBreadcrumbs from "@/components/orders/OrderBreadcrumbs";
 import OrderDetailStatusSection from "@/components/orders/OrderDetailStatusSection";
@@ -55,22 +55,22 @@ function SummaryCard({
   tone?: "green" | "amber";
 }) {
   const iconWell =
-    tone === "amber" ? "bg-[#FFF4E5]" : "bg-[#EAF8E7]";
+    tone === "amber" ? "bg-amber-50" : "bg-slate-50";
   const valueClass =
-    tone === "amber" ? "text-[#B54708]" : "text-[#1F2A33]";
+    tone === "amber" ? "text-amber-800" : "text-slate-900";
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-      <div className="flex items-start gap-3">
+    <div className="min-w-0 bg-white p-4 sm:p-5">
+      <div className="flex items-start gap-2.5">
         <div
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${iconWell}`}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg [&>img]:h-4 [&>img]:w-4 ${iconWell}`}
         >
           {icon}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{title}</p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">{title}</p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <p className={`text-sm font-semibold ${valueClass}`}>{value}</p>
+            <p className={`text-balance text-xs font-semibold leading-relaxed ${valueClass}`}>{value}</p>
             {badge}
           </div>
           {action ? <div className="mt-2">{action}</div> : null}
@@ -104,10 +104,10 @@ function ActionTile({
   onClick?: () => void;
 }) {
   const toneClasses = {
-    red: "border-red-100 bg-red-50/50 text-[#D92D20] hover:bg-red-50",
-    green: "border-[#66C940]/20 bg-[#EAF8E7]/60 text-[#1F2A33] hover:bg-[#EAF8E7]",
-    orange: "border-orange-100 bg-orange-50/50 text-[#F79009] hover:bg-orange-50",
-    blue: "border-blue-100 bg-blue-50/50 text-[#175CD3] hover:bg-blue-50",
+    red: "border-slate-200 bg-white text-rose-700 hover:border-rose-200 hover:bg-rose-50",
+    green: "border-slate-200 bg-white text-green-800 hover:border-green-200 hover:bg-green-50",
+    orange: "border-slate-200 bg-white text-orange-800 hover:border-orange-200 hover:bg-orange-50",
+    blue: "border-slate-200 bg-white text-slate-900 hover:border-green-200 hover:bg-green-50",
   };
 
   return (
@@ -116,15 +116,30 @@ function ActionTile({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "flex flex-col items-center gap-2 rounded-2xl border px-4 py-5 text-center transition",
+        "flex items-center gap-3 rounded-xl border px-4 py-4 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 [&>img]:h-5 [&>img]:w-5 [&>img]:shrink-0",
         toneClasses[tone],
         disabled && "cursor-not-allowed opacity-50 hover:bg-inherit"
       )}
     >
       {icon}
-      <span className="text-sm font-semibold">{label}</span>
-      {subtext ? <span className="text-xs text-gray-500">{subtext}</span> : null}
+      <span className="min-w-0">
+        <span className="block text-xs font-semibold">{label}</span>
+        {subtext ? <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">{subtext}</span> : null}
+      </span>
     </button>
+  );
+}
+
+function OrderItemThumbnail({ src, title }: { src?: string; title?: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50 sm:h-20 sm:w-20">
+      {src && !failed ? (
+        <Image src={src} alt={title || "Item"} fill sizes="80px" className="object-contain p-2" onError={() => setFailed(true)} />
+      ) : (
+        <Package className="h-7 w-7 text-slate-300" aria-label="Product image unavailable" />
+      )}
+    </div>
   );
 }
 
@@ -281,7 +296,7 @@ export default function OrderDetailContent({
   if (loading && !order) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#66C940]" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#326b29]" />
       </div>
     );
   }
@@ -297,8 +312,9 @@ export default function OrderDetailContent({
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[#1F2A33] md:text-2xl">Order Details</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#326b29]">Your purchase</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Order Details</h1>
+          <p className="mt-2 text-xs leading-relaxed text-slate-500 sm:text-sm">
             Order {displayLabel} · Placed {formatOrderDateTime(order?.created_at)}
           </p>
         </div>
@@ -307,7 +323,7 @@ export default function OrderDetailContent({
             <button
               type="button"
               onClick={() => void handleCopyId()}
-              className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-[#1F2A33] transition hover:border-[#66C940]/40"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-medium text-slate-600 transition hover:border-green-200 hover:text-green-800"
             >
               <OrderDetailsIcon name="copy-id" size={16} className="h-4 w-4" />
               Copy ID
@@ -315,7 +331,7 @@ export default function OrderDetailContent({
           ) : null}
           <Link
             href={trackHref}
-            className="inline-flex items-center gap-2 rounded-full bg-[#66C940] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#5ab838]"
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#326b29] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#285722]"
           >
             <OrderDetailsIcon name="track-order" size={16} className="h-4 w-4 brightness-0 invert" />
             Track Order
@@ -330,12 +346,12 @@ export default function OrderDetailContent({
       ) : null}
 
       {cancelMessage ? (
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-semibold text-[#1F2A33]">
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-semibold text-slate-900">
           {cancelMessage}
         </div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 lg:grid-cols-4">
         <SummaryCard
           icon={<OrderDetailsIcon name="order-placed-calendar" size={24} className="h-6 w-6" />}
           title="Order Placed"
@@ -353,7 +369,7 @@ export default function OrderDetailContent({
           value={getPaymentMethodDisplayName(order)}
           badge={
             showPaymentPending ? (
-              <span className="rounded-full bg-[#EAF8E7] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#66C940]">
+              <span className="rounded-full bg-[#EAF8E7] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#326b29]">
                 Pending
               </span>
             ) : null
@@ -367,7 +383,7 @@ export default function OrderDetailContent({
             <button
               type="button"
               onClick={handleInvoiceClick}
-              className="text-xs font-semibold text-[#66C940] hover:underline"
+              className="text-xs font-semibold text-[#326b29] hover:underline"
             >
               View Invoice
             </button>
@@ -382,7 +398,7 @@ export default function OrderDetailContent({
             <a
               href="#order-status-timeline"
               className={`text-xs font-semibold hover:underline ${
-                isActiveReturn ? "text-[#B54708]" : "text-[#66C940]"
+                isActiveReturn ? "text-[#B54708]" : "text-[#326b29]"
               }`}
             >
               View Timeline
@@ -419,30 +435,30 @@ export default function OrderDetailContent({
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <OrderDetailsIcon name="delivery-address" size={18} className="h-[18px] w-[18px]" />
-              <p className="text-sm font-semibold text-[#1F2A33]">Delivered to</p>
+              <p className="text-sm font-semibold text-slate-900">Delivery address</p>
             </div>
             <Link
               href="/account/addresses"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-[#66C940] hover:underline"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-[#326b29] hover:underline"
             >
               <OrderDetailsIcon name="change" size={14} className="h-3.5 w-3.5" />
               Change
             </Link>
           </div>
-          <p className="text-sm font-medium text-[#1F2A33]">
+          <p className="text-sm font-medium text-slate-900">
             {address?.first_name} {address?.last_name}
           </p>
-          <p className="mt-2 text-sm leading-relaxed text-gray-600">{formatShippingAddress(address)}</p>
-          {address?.phone ? <p className="mt-2 text-sm text-gray-500">{address.phone}</p> : null}
+          <p className="mt-2 text-sm leading-relaxed text-slate-500">{formatShippingAddress(address)}</p>
+          {address?.phone ? <p className="mt-2 text-sm text-slate-500">{address.phone}</p> : null}
           <a
             href={mapsUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#66C940] hover:underline"
+            className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#326b29] hover:underline"
           >
             <OrderDetailsIcon name="open-in-maps" size={14} className="h-3.5 w-3.5" />
             Open in Maps
@@ -452,7 +468,7 @@ export default function OrderDetailContent({
               <p className="text-xs font-semibold uppercase tracking-wide text-[#B54708]">
                 Refund payout on file
               </p>
-              <p className="mt-1 text-sm text-[#1F2A33]">
+              <p className="mt-1 text-sm text-slate-900">
                 {existingReturn.refund_method === "upi" ||
                 existingReturn.metadata?.payout_method === "upi"
                   ? `UPI: ${existingReturn.metadata?.upi_masked || "Submitted"}`
@@ -468,18 +484,18 @@ export default function OrderDetailContent({
           ) : null}
         </div>
 
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
           <div className="mb-3 flex items-center gap-2">
             <OrderDetailsIcon name="delivery-partner" size={18} className="h-[18px] w-[18px]" />
-            <p className="text-sm font-semibold text-[#1F2A33]">Delivery Partner</p>
+            <p className="text-sm font-semibold text-slate-900">Delivery Partner</p>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#EAF8E7]">
               <OrderDetailsIcon name="delivery-partner" size={24} className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-[#1F2A33]">{partnerLabel}</p>
-              <p className="text-xs text-gray-500">
+              <p className="text-sm font-semibold text-slate-900">{partnerLabel}</p>
+              <p className="text-xs text-slate-500">
                 {awb ? `Tracking ID: ${awb}` : "Tracking will appear once shipped"}
               </p>
             </div>
@@ -487,23 +503,23 @@ export default function OrderDetailContent({
           {awb ? (
             <Link
               href={trackHref}
-              className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-[#66C940] hover:underline"
+              className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-[#326b29] hover:underline"
             >
               View Tracking
             </Link>
           ) : null}
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-orange-100 bg-orange-50/60 p-4 shadow-sm sm:p-5">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-[#1F2A33]">Need Help with your order?</p>
-              <p className="mt-1 text-xs leading-relaxed text-gray-600">
+              <p className="text-sm font-semibold text-slate-900">Need Help with your order?</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
                 Our support team is here to assist you.
               </p>
               <Link
                 href="/account/help"
-                className="mt-4 inline-flex items-center gap-2 rounded-full border border-orange-200 bg-white px-4 py-2 text-xs font-semibold text-[#1F2A33] transition hover:border-[#66C940]/30"
+                className="mt-4 inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 transition hover:border-green-200 hover:text-green-800"
               >
                 <OrderDetailsIcon name="contact-support" size={16} className="h-4 w-4" />
                 Contact Support
@@ -521,24 +537,20 @@ export default function OrderDetailContent({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
         <div className="mb-4 flex items-center gap-2">
           <OrderDetailsIcon name="product-item" size={18} className="h-[18px] w-[18px]" />
-          <p className="text-sm font-semibold text-[#1F2A33]">Order Items ({itemCount})</p>
+          <p className="text-sm font-semibold text-slate-900">Order Items ({itemCount})</p>
         </div>
-        <div className="divide-y rounded-xl border border-gray-100">
+        <div className="divide-y divide-slate-100">
           {(order?.items || []).map((item) => (
-            <div key={item.id} className="flex gap-3 p-3 sm:p-4">
-              <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-50">
-                {item.thumbnail ? (
-                  <Image src={item.thumbnail} alt={item.title || "Item"} fill className="object-contain" />
-                ) : null}
-              </div>
+            <div key={item.id} className="flex flex-wrap items-start gap-4 py-4 sm:flex-nowrap sm:items-center">
+              <OrderItemThumbnail src={item.thumbnail} title={item.title} />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-[#1F2A33]">{item.title}</p>
-                <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
+                <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                <p className="mt-2 text-xs text-slate-500">Qty: {item.quantity}</p>
               </div>
-              <p className="text-sm font-semibold text-[#1F2A33]">
+              <p className="text-sm font-semibold text-slate-900">
                 {formatOrderCurrency(
                   item.total ?? (item.unit_price || 0) * (item.quantity || 1),
                   order?.currency_code
@@ -547,38 +559,38 @@ export default function OrderDetailContent({
             </div>
           ))}
           {!order?.items?.length ? (
-            <p className="p-4 text-sm text-gray-500">No items found.</p>
+            <p className="p-4 text-sm text-slate-500">No items found.</p>
           ) : null}
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <div className="mb-4 flex items-center gap-2">
             <OrderDetailsIcon name="price-summary" size={18} className="h-[18px] w-[18px]" />
-            <p className="text-sm font-semibold text-[#1F2A33]">Price Summary</p>
+            <p className="text-sm font-semibold text-slate-900">Price Summary</p>
           </div>
-          <div className="space-y-2 text-sm text-gray-700">
+          <div className="space-y-2 text-sm text-slate-600">
             <div className="flex justify-between gap-3">
               <span>Price ({itemCount} item{itemCount === 1 ? "" : "s"})</span>
               <span>{formatOrderCurrency(displayTotals.itemsSubtotal, order?.currency_code)}</span>
             </div>
             <div className="flex justify-between gap-3">
               <span>Shipping Fee</span>
-              <span className={displayTotals.shipping > 0 ? undefined : "font-semibold text-[#66C940]"}>
+              <span className={displayTotals.shipping > 0 ? undefined : "font-semibold text-[#326b29]"}>
                 {displayTotals.shipping > 0
                   ? formatOrderCurrency(displayTotals.shipping, order?.currency_code)
                   : "FREE"}
               </span>
             </div>
             {displayTotals.oweg10Discount > 0 ? (
-              <div className="flex justify-between gap-3 text-[#66C940]">
+              <div className="flex justify-between gap-3 text-[#326b29]">
                 <span>OWEG10 Discount</span>
                 <span>-{formatOrderCurrency(displayTotals.oweg10Discount, order?.currency_code)}</span>
               </div>
             ) : null}
             {displayTotals.promoDiscount > 0 ? (
-              <div className="flex justify-between gap-3 text-[#66C940]">
+              <div className="flex justify-between gap-3 text-[#326b29]">
                 <span>
                   {displayTotals.promoCode
                     ? `${displayTotals.promoCode} Discount`
@@ -588,26 +600,26 @@ export default function OrderDetailContent({
               </div>
             ) : null}
             {displayTotals.coinDiscount > 0 ? (
-              <div className="flex justify-between gap-3 text-[#66C940]">
+              <div className="flex justify-between gap-3 text-[#326b29]">
                 <span>Discount</span>
                 <span>-{formatOrderCurrency(displayTotals.coinDiscount, order?.currency_code)}</span>
               </div>
             ) : null}
-            <div className="border-t border-dashed border-gray-200 pt-3">
-              <div className="flex justify-between gap-3 text-base font-semibold text-[#1F2A33]">
+            <div className="border-t border-slate-200 pt-3">
+              <div className="flex justify-between gap-3 text-base font-semibold text-slate-900">
                 <span>Total Amount</span>
                 <span>{formatOrderCurrency(displayTotals.grandTotal, order?.currency_code)}</span>
               </div>
-              <p className="mt-1 text-xs text-gray-500">(Paid via {getPaymentMethodLabel(order)})</p>
+              <p className="mt-1 text-xs text-slate-500">(Paid via {getPaymentMethodLabel(order)})</p>
             </div>
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-[#66C940]/20 bg-[#EAF8E7]/40 p-4 shadow-sm sm:p-5">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
           <div className="flex flex-col items-center text-center">
             <OrderDetailsIcon name="safe-secure-shield" size={40} className="h-10 w-10" />
-            <p className="mt-3 text-sm font-semibold text-[#1F2A33]">Safe & Secure</p>
-            <p className="mt-1 text-xs leading-relaxed text-gray-600">
+            <p className="mt-3 text-sm font-semibold text-slate-900">Safe & Secure</p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">
               Your payment is safe with us.
             </p>
             <Image
@@ -615,15 +627,15 @@ export default function OrderDetailContent({
               alt=""
               width={120}
               height={120}
-              className="mt-3 h-28 w-28 object-contain"
+              className="mt-3 h-16 w-16 object-contain"
               aria-hidden
             />
           </div>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
-        <p className="mb-4 text-sm font-semibold text-[#1F2A33]">What would you like to do?</p>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+        <p className="mb-4 text-sm font-semibold text-slate-900">Manage this order</p>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <ActionTile
             icon={<OrderDetailsIcon name="cancel-order" size={28} className="h-7 w-7" />}
@@ -662,7 +674,7 @@ export default function OrderDetailContent({
         </div>
 
         {returnSuccess ? (
-          <p className="mt-4 text-sm font-semibold text-[#66C940]">{returnSuccess}</p>
+          <p className="mt-4 text-sm font-semibold text-[#326b29]">{returnSuccess}</p>
         ) : null}
         {returnError ? (
           <p className="mt-4 text-sm font-semibold text-[#D92D20]">{returnError}</p>
@@ -671,7 +683,7 @@ export default function OrderDetailContent({
 
       <Link
         href="/account/orders"
-        className="inline-flex items-center gap-2 text-sm font-semibold text-[#66C940] hover:underline"
+        className="inline-flex items-center gap-2 text-sm font-semibold text-[#326b29] hover:underline"
       >
         <OrderDetailsIcon name="back-to-orders" size={16} className="h-4 w-4" />
         Back to Orders

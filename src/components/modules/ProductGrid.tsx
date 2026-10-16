@@ -8,16 +8,18 @@ type ProductGridProps = {
   products: ProductCardProps[];
   isLoading?: boolean;
   showEmpty?: boolean;
+  className?: string;
 };
 
 export function ProductGrid({
   products,
   isLoading,
   showEmpty,
+  className,
 }: ProductGridProps) {
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+      <div className={className || "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"}>
         {Array.from({ length: 10 }).map((_, i) => (
           <div
             key={i}
@@ -50,7 +52,7 @@ export function ProductGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+    <div className={className || "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"}>
       {[...products]
         .sort((a, b) => {
           const aInStock = typeof a.inventory_quantity === "number" && a.inventory_quantity > 0;

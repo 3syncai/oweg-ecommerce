@@ -1,0 +1,129 @@
+.page { background: #fafbf7; color: #263b2b; }
+.container { width: 100%; max-width: 1280px; margin: 0 auto; padding: 28px 32px 48px; }
+.heading { margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 18px; }
+.heading h1 { font-size: 28px; font-weight: 600; letter-spacing: -.7px; line-height: 1.35; color: #263b2b; }
+.heading p { margin-top: 8px; font-size: 13px; line-height: 1.7; color: #6d7a62; }
+.eyebrow { margin-bottom: 7px; font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: #607b47; }
+.resultsLayout { display: grid; grid-template-columns: 230px minmax(0, 1fr); align-items: start; gap: 28px; }
+.resultsMain { min-width: 0; }
+.filterRail { min-width: 0; padding: 20px; border: 1px solid #e0e7d7; border-radius: 16px; background: #fff; position: sticky; top: calc(var(--app-header-height, 136px) + 16px); max-height: calc(100dvh - var(--app-header-height, 136px) - 32px); overflow-y: auto; }
+.filterRail h2 { color: #33472c; font-size: 15px; font-weight: 600; }
+.filterRail h3 { color: #516a40; font-size: 12px; }
+.filterRail label { min-height: 36px; }
+.filterRail input[type='checkbox'], .filterRail input[type='radio'] { accent-color: #6eac40; }
+.filterSidebar > div { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible; }
+.filterSidebar > div > div { padding: 0; }
+.filterSidebar h2 { font-size: 16px; font-weight: 600; }
+.filterSidebar h3 { font-size: 13px; font-weight: 600; }
+.filterSidebar label { min-height: 32px; }
+.filterSidebar button { min-height: 32px; }
+.filterSidebar input[type='number'] { min-width: 0; }
+.categoryRail { scrollbar-width: thin; }
+.categoryRail :global(.text-\[\#7AC943\]) { color: #557b35; }
+.categoryRail :global(.hover\:text-\[\#7AC943\]):hover { color: #42652d; }
+.toolbar { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
+.toolbar h1 { font-size: 27px; font-weight: 600; line-height: 1.35; letter-spacing: -.6px; }
+.toolbar p { font-size: 12px; line-height: 1.7; color: #718066; margin-top: 8px; }
+.browseCategories { padding: 18px; border: 1px solid #e2e9da; border-radius: 16px; background: #fff; margin-bottom: 24px; }
+.browseCategories h2 { font-size: 15px; font-weight: 600; margin-bottom: 14px; }
+.browseCategories > [aria-label='Browse subcategories'] { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.filterButton { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; border: 1px solid #d9e3cf; border-radius: 10px; background: #fff; color: #4e6b39; font-size: 12px; font-weight: 600; }
+.mobileFilterToggle { display: none; }
+.filterBody { display: block; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.chips:empty { display: none; }
+.chip { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 7px 10px; border: 1px solid #d8e5cb; border-radius: 8px; background: #edf5e5; color: #506d3b; font-size: 11px; }
+.clearFilters { min-height: 36px; padding: 7px 10px; color: #6d7c60; font-size: 11px; text-decoration: underline; text-underline-offset: 3px; }
+.productGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.searchCard { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid #e0e7d8; border-radius: 16px; background: #fff; transition: border-color 160ms ease; }
+.searchCard:hover { border-color: #bfceaF; }
+.searchImage { position: relative; aspect-ratio: 1 / 1; overflow: hidden; background: #f6f8f2; }
+.searchCard h3 { color: #31452c; font-size: 13px; font-weight: 500; line-height: 1.65; }
+.searchCard :global(.text-emerald-700) { color: #597643; }
+.searchCard :global(.bg-rose-500) { background: #e9f2de; color: #4b7031; }
+.emptyState { padding: 42px 24px; border: 1px dashed #d4dfca; border-radius: 16px; background: #fff; text-align: center; }
+.emptyState h2 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+.emptyState p { color: #718066; font-size: 13px; line-height: 1.7; }
+.emptyState a { margin-top: 18px; }
+.primaryButton { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 12px 18px; border: 1px solid #72bc3c; border-radius: 10px; background: #7ac943; color: #203711; font-size: 13px; font-weight: 600; box-shadow: none; }
+.primaryButton:hover:enabled { background: #6fbc39; color: #203711; }
+.primaryButton:disabled { background: #e9ede4; border-color: #dce3d4; color: #8a9580; }
+.primaryButton:focus-visible, .filterButton:focus-visible, .chip:focus-visible { outline: 2px solid #557b35; outline-offset: 3px; }
+.journey { display: flex; align-items: center; gap: 10px; color: #849077; font-size: 11px; }
+.journey > span, .journey > a { display: inline-flex; align-items: center; gap: 6px; }
+.journey b { display: grid; place-items: center; width: 23px; height: 23px; border: 1px solid #dfe7d6; border-radius: 50%; font-size: 10px; font-weight: 500; }
+.journey [aria-current='step'] { color: #4f7136; font-weight: 600; }
+.journey [aria-current='step'] b { background: #edf5e5; border-color: #cdddbd; }
+.journey i { width: 14px; height: 1px; background: #dbe4d1; }
+.cartLayout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-areas: 'items summary' 'extras summary'; gap: 24px; align-items: start; }
+.cartItems { grid-area: items; min-width: 0; }
+.cartBottom { display: contents; }
+.cartExtras { grid-area: extras; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+.cartSummary { grid-area: summary; position: sticky; top: calc(var(--app-header-height, 136px) + 16px); border: 1px solid #dfe6d6; border-radius: 16px; background: #fff; }
+.card { border: 1px solid #e0e7d8; border-radius: 16px; background: #fff; box-shadow: none; }
+.lineCard { padding: 18px; }
+.lineCard :global(.cart-stepper) button { min-width: 40px; min-height: 40px; }
+.cartExtras h2 { font-size: 16px; font-weight: 600; }
+.checkoutContainer { max-width: 1160px; }
+.checkoutForm { display: grid; grid-template-columns: minmax(0, 1fr) 350px; align-items: start; gap: 24px; }
+.checkoutFields { min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+.checkoutSummary { min-width: 0; position: sticky; top: calc(var(--app-header-height, 136px) + 16px); }
+.checkoutCard { padding: 24px; border: 1px solid #e0e7d8; border-radius: 16px; background: #fff; display: flex; flex-direction: column; gap: 18px; box-shadow: none; }
+.checkoutCard h2 { color: #33472b; font-size: 17px; font-weight: 600; }
+.checkoutField { min-height: 46px; border-radius: 10px; }
+.paymentActive { border-color: #bdD6a6; background: #edf5e5; color: #47672f; box-shadow: none; }
+.paymentIdle { border-color: #dce4d3; background: #fff; color: #6b7960; }
+.mobilePayBar { display: none; }
+@media (max-width: 1199px) {
+  .productGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cartLayout { grid-template-columns: minmax(0, 1fr) 300px; }
+}
+@media (max-width: 1023px) {
+  .resultsLayout { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .categoryRail { display: none; }
+  .filterRail { position: static; max-height: none; padding: 14px 16px; }
+  .mobileFilterToggle { display: flex; width: 100%; justify-content: space-between; align-items: center; min-height: 32px; font-size: 13px; font-weight: 600; color: #4f7136; }
+  .filterBody { display: none; padding-top: 20px; }
+  .filterRail[data-open='true'] .filterBody { display: block; }
+  .filterOptions { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .cartLayout { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'items' 'summary' 'extras'; }
+  .cartSummary { position: static; }
+  .checkoutForm { grid-template-columns: minmax(0, 1fr); }
+  .checkoutSummary { position: static; }
+}
+@media (max-width: 767px) {
+  :global(body.category-overlay-open) .cartSummary,
+  :global(body.profile-overlay-open) .cartSummary,
+  :global(body.category-overlay-open) .mobilePayBar,
+  :global(body.profile-overlay-open) .mobilePayBar { visibility: hidden; }
+  .container { padding: 22px 18px calc(110px + env(safe-area-inset-bottom, 0px)); }
+  .heading { gap: 16px; margin-bottom: 22px; }
+  .heading h1, .toolbar h1 { font-size: 25px; }
+  .heading p { font-size: 12px; }
+  .journey { gap: 6px; font-size: 10px; flex-wrap: wrap; }
+  .journey > span, .journey > a { gap: 4px; white-space: nowrap; }
+  .journey b { width: 20px; height: 20px; }
+  .journey i { width: 8px; }
+  .productGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .browseCategories { padding: 14px 10px; margin-bottom: 20px; }
+  .toolbar { gap: 12px; }
+  .filterButton { padding: 9px 12px; font-size: 11px; }
+  .searchCard h3 { font-size: 12px; }
+  .searchCard :global(.p-3\.5) { padding: 12px; }
+  .searchCard :global(.items-baseline) { flex-wrap: wrap; gap: 4px 8px; }
+  .cartLayout { display: flex; flex-direction: column; gap: 22px; }
+  .cartItems, .cartExtras { width: 100%; }
+  .cartSummary { position: fixed; top: auto; bottom: calc(68px + env(safe-area-inset-bottom, 0px)); left: 0; right: 0; z-index: 500; max-height: 65dvh; overflow-y: auto; border-radius: 16px 16px 0 0; box-shadow: 0 -4px 24px #34452712; }
+  .cartContainer { padding-bottom: calc(240px + env(safe-area-inset-bottom, 0px)); }
+  .lineCard { padding: 16px; }
+  .checkoutContainer { padding-bottom: calc(220px + env(safe-area-inset-bottom, 0px)); }
+  .checkoutCard { padding: 18px; gap: 16px; }
+  .checkoutCard h2 { font-size: 16px; }
+  .mobilePayBar { display: block; position: fixed; left: 0; right: 0; bottom: calc(68px + env(safe-area-inset-bottom, 0px)); z-index: 500; border-top: 1px solid #dfe6d6; background: #fff; box-shadow: 0 -4px 24px #34452712; }
+}
+@media (min-width: 1024px) { .categoryFilterButton { display: none; } }
+@media (min-width: 768px) {
+  .lineCard { display: grid; grid-template-columns: minmax(0, 1fr) 70px 112px 78px; gap: 14px; }
+  .lineCard > div { width: auto; }
+}
+@media (prefers-reduced-motion: reduce) { .searchCard { transition: none; } }

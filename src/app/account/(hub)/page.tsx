@@ -1,5 +1,6 @@
 "use client";
 
+import styles from "@/components/account/AccountOverview.module.css";
 import {
   AccountWelcomeBanner,
   AccountQuickStats,
@@ -11,15 +12,17 @@ import {
 
 export default function AccountDashboardPage() {
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className={styles.overview}>
       <AccountWelcomeBanner />
       <AccountQuickStats />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ProfileInformationCard />
+      <div className={styles.contentGrid}>
+        <div className="min-w-0 space-y-4 sm:space-y-6">
+          <ProfileInformationCard />
+          <RecentOrdersCard />
+          <AccountSummaryCard />
+        </div>
         <AccountSecurityCard />
       </div>
-      <RecentOrdersCard />
-      <AccountSummaryCard />
     </div>
   );
 }

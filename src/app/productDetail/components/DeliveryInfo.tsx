@@ -3,6 +3,7 @@
 import React from 'react'
 import { RotateCcw, Wallet } from 'lucide-react'
 import type { PinStatus } from '../types'
+import styles from '../ProductDetail.module.css'
 
 type DeliveryInfoProps = {
   pinCode: string
@@ -13,19 +14,19 @@ type DeliveryInfoProps = {
 }
 
 const DeliveryInfo = (_props: DeliveryInfoProps) => (
-  <div className="space-y-4 rounded-3xl border border-[var(--detail-border)] bg-[#f8fbf8] p-5">
-    <div className="flex items-start gap-3">
+  <div className={styles.delivery}>
+    <div className={styles.deliveryItem}>
       <RotateCcw className="w-6 h-6 text-green-600" />
       <div>
-        <p className="font-semibold text-slate-900">Return Delivery</p>
-        <p className="text-sm text-slate-500">7 days easy return & replacement on defects.</p>
+        <h3>Return Delivery</h3>
+        <p>7 days easy return & replacement on defects.</p>
       </div>
     </div>
-    <div className="flex items-start gap-3 border-t border-dashed border-slate-200 pt-4">
+    <div className={styles.deliveryItem}>
       <Wallet className="w-6 h-6 text-green-600" />
       <div>
-        <p className="font-semibold text-slate-900">Cash on Delivery</p>
-        <p className="text-sm text-slate-500">Pay at your doorstep via cash or card.</p>
+        <h3>Cash on Delivery</h3>
+        <p>Pay at your doorstep via cash or card.</p>
       </div>
     </div>
   </div>

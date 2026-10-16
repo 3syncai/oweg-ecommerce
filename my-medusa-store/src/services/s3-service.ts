@@ -5,6 +5,7 @@ import {
     GetObjectCommand,
 } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
+import { s3PublicObjectUrl } from "../lib/s3-access"
 
 export class S3Service {
     private s3Client: S3Client
@@ -167,10 +168,8 @@ export class S3Service {
     }
 
     private buildPublicUrl(key: string): string {
-        const base = process.env.S3_FILE_URL?.replace(/\/$/, "")
-        if (base) return `${base}/${key}`
-        const region = process.env.S3_REGION || "us-east-1"
-        return `https://${this.bucketName}.s3.${region}.amazonaws.com/${key}`
+        // Use the upload bucket when S3_FILE_URL still points at a retired bucket.
+        return s3PublicObjectUrl(key)
     }
 
     /**

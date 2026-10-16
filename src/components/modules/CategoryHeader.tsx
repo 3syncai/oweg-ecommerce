@@ -1,11 +1,11 @@
-// CategoryHeader: Horizontal scrollable subcategory circles for category navigation
+// CategoryHeader: Horizontal subcategory navigation using the shared SVG icon set.
 
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import CategoryIconTile from "@/components/ui/icons/CategoryIconTile";
 import type { MedusaCategory } from "@/services/medusa";
 
 type CategoryHeaderProps = {
@@ -17,24 +17,10 @@ type CategoryHeaderProps = {
 export function CategoryHeader({
   categoryHandle,
   subcategories,
-  initialPreviews,
 }: CategoryHeaderProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const attemptedPreviewIdsRef = useRef<Set<string>>(new Set());
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
-  const [previewImages, setPreviewImages] = useState<Record<string, string>>(() => {
-    if (!initialPreviews) return {};
-    const normalized: Record<string, string> = {};
-    Object.entries(initialPreviews).forEach(([key, value]) => {
-      if (typeof value === "string") {
-        normalized[key] = value;
-      } else if (value?.image) {
-        normalized[key] = value.image;
-      }
-    });
-    return normalized;
-  });
 
   const updateScrollState = useCallback(() => {
     const node = scrollContainerRef.current;
@@ -64,87 +50,20 @@ export function CategoryHeader({
       node.removeEventListener("scroll", updateScrollState);
       window.removeEventListener("resize", updateScrollState);
     };
-  }, [updateScrollState]);
-
-  useEffect(() => {
-    attemptedPreviewIdsRef.current = new Set();
-    if (initialPreviews) {
-      Object.keys(initialPreviews).forEach((id) =>
-        attemptedPreviewIdsRef.current.add(id)
-      );
-    }
-  }, [categoryHandle, initialPreviews]);
-
-  useEffect(() => {
-    const missingIds = subcategories
-      .map((sub) => sub.id)
-      .filter(
-        (id): id is string =>
-          typeof id === "string" &&
-          id.length > 0 &&
-          !attemptedPreviewIdsRef.current.has(id)
-      );
-
-    if (missingIds.length === 0) {
-      return;
-    }
-
-    missingIds.forEach((id) => attemptedPreviewIdsRef.current.add(id));
-
-    let cancelled = false;
-
-    async function loadPreviews(ids: string[]) {
-      try {
-        const params = new URLSearchParams({
-          categoryIds: ids.join(","),
-        });
-        const res = await fetch(`/api/medusa/category-previews?${params.toString()}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-
-        const normalized: Record<string, string> = {};
-        const previews = data.previews || {};
-        Object.entries(previews).forEach(([key, value]) => {
-          if (value && typeof value === "object" && "image" in value) {
-            const image = (value as { image?: string }).image;
-            if (image) {
-              normalized[key] = image;
-            }
-          }
-        });
-
-        if (Object.keys(normalized).length === 0) {
-          return;
-        }
-
-        setPreviewImages((prev) => ({
-          ...prev,
-          ...normalized,
-        }));
-      } catch (error) {
-        console.warn("Failed loading category preview images", error);
-      }
-    }
-
-    loadPreviews(missingIds);
-
-    return () => {
-      cancelled = true;
-    };
-  }, [subcategories, categoryHandle]);
+  }, [updateScrollState, subcategories.length]);
 
   if (subcategories.length === 0) {
     return null;
   }
 
   return (
-    <div className="relative bg-white border border-gray-200 rounded-lg p-4 overflow-hidden">
+    <div className="relative bg-white border border-[#e1e8d7] rounded-2xl p-4 overflow-hidden" role="region" aria-label="Browse subcategories">
       <button
         type="button"
         onClick={() => scroll("left")}
         aria-label="Scroll categories left"
-        className={`absolute left-3 top-1/2 -translate-y-1/2 rounded-full border border-gray-200 bg-white/90 p-2 text-gray-600 shadow transition-all duration-200 hover:text-[#7AC943] ${
+        tabIndex={canScrollLeft ? 0 : -1}
+        className={`absolute z-10 left-3 top-1/2 -translate-y-1/2 rounded-full border border-gray-200 bg-white/95 p-2 text-gray-600 shadow transition-all duration-200 hover:text-[#659c3d] ${
           canScrollLeft ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
@@ -155,7 +74,8 @@ export function CategoryHeader({
         type="button"
         onClick={() => scroll("right")}
         aria-label="Scroll categories right"
-        className={`absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-gray-200 bg-white/90 p-2 text-gray-600 shadow transition-all duration-200 hover:text-[#7AC943] ${
+        tabIndex={canScrollRight ? 0 : -1}
+        className={`absolute z-10 right-3 top-1/2 -translate-y-1/2 rounded-full border border-gray-200 bg-white/95 p-2 text-gray-600 shadow transition-all duration-200 hover:text-[#659c3d] ${
           canScrollRight ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
@@ -164,7 +84,7 @@ export function CategoryHeader({
 
       <div
         ref={scrollContainerRef}
-        className="flex gap-6 overflow-x-auto scrollbar-hide scroll-smooth py-2 flex-1 min-w-0"
+        className="flex gap-3 sm:gap-4 overflow-x-auto scrollbar-hide scroll-smooth py-2 flex-1 min-w-0"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
           {subcategories.map((subcat) => {
@@ -173,44 +93,20 @@ export function CategoryHeader({
               subcat.title || subcat.name || "Subcategory";
             const subcatHref = `/c/${categoryHandle}/${subcatHandle}`;
 
-            // Using placeholder green circle - in production you'd use subcat.metadata.image or similar
-            const metadata = (subcat.metadata || {}) as Record<string, unknown>;
-            const imageUrl =
-              (metadata?.image as string) ||
-              (metadata?.icon as string) ||
-              (subcat.id ? previewImages[subcat.id] : undefined) ||
-              "/oweg_logo.png";
-
             return (
               <Link
                 key={subcat.id}
                 href={subcatHref}
-                className="flex flex-col items-center gap-2 flex-shrink-0 group"
+                className="flex w-24 sm:w-28 flex-col items-center flex-shrink-0 group rounded-xl py-1 outline-none focus-visible:ring-2 focus-visible:ring-[#7AC943]"
+                title={subcatTitle}
               >
-                {/* Circular Image */}
-                <div className="relative w-20 h-20 rounded-full bg-[#7AC943] shadow-[inset_0_2px_6px_rgba(0,0,0,0.18)] ring-1 ring-[#66b735]/40 border border-[#7AC943] overflow-hidden transition-all duration-300 flex items-center justify-center group-hover:shadow-[inset_0_3px_8px_rgba(0,0,0,0.22)]">
-                  <div
-                    className="relative w-14 h-14 rounded-full overflow-hidden bg-transparent shadow-[inset_0_0_12px_rgba(0,0,0,0.15)]"
-                    style={{
-                      WebkitMaskImage:
-                        "radial-gradient(circle at center, #000 72%, transparent 100%)",
-                      maskImage:
-                        "radial-gradient(circle at center, #000 72%, transparent 100%)",
-                    }}
-                  >
-                    <Image
-                      src={imageUrl}
-                      alt={subcatTitle}
-                      fill
-                      className="object-contain w-full h-full mix-blend-multiply"
-                    />
-                  </div>
-                </div>
-
-                {/* Category Label */}
-                <span className="text-xs font-medium text-gray-700 text-center max-w-[80px] line-clamp-2 group-hover:text-[#7AC943] transition-colors">
-                  {subcatTitle}
-                </span>
+                <CategoryIconTile
+                  kind="subcategory"
+                  handle={subcat.handle}
+                  title={subcatTitle}
+                  size="lg"
+                  labelClassName="min-h-[2.75em] max-w-[104px]"
+                />
               </Link>
             );
           })}

@@ -109,7 +109,7 @@ export default function RootLayout({
                   <Header />
 
                   <main
-                    className="flex-1 pb-24 md:pb-0"
+                    className="flex-1 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] md:pb-0"
                     style={{ paddingTop: "var(--app-header-height, 136px)" }}
                   >
                     {/* Kept inside the header offset so the announcement banner is

@@ -17,6 +17,7 @@ import DeliveryInfo from './components/DeliveryInfo'
 import DescriptionTabs from './components/DescriptionTabs'
 import ProductGallery from './components/ProductGallery'
 import ProductSummary from './components/ProductSummary'
+import styles from './ProductDetail.module.css'
 import type {
   BreadcrumbItem,
   CompareFilters,
@@ -46,6 +47,7 @@ import { useAuth } from '@/contexts/AuthProvider'
 import { useCartSummary } from '@/contexts/CartProvider'
 import { useFlashSale } from '@/hooks/useFlashSale'
 import HealthCareAgeGate from '@/components/modules/HealthCareAgeGate'
+import { categoryFromSourceTag } from './utils/source-category'
 import { productHasHealthCareCategory } from '@/lib/health-care-age-gate'
 
 type CategoryNode = Pick<MedusaCategory, 'id' | 'title' | 'name' | 'handle'> & {
@@ -118,6 +120,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const outOfStockToastRef = useRef<string | null>(null)
   const [wishlistBusy, setWishlistBusy] = useState(false)
   const sourceTagParam = searchParams?.get('sourceTag')?.trim() || undefined
+  const sourceTagCategory = useMemo(() => categoryFromSourceTag(sourceTagParam), [sourceTagParam])
   const sourceCategoryIdParam = searchParams?.get('sourceCategoryId')?.trim() || undefined
   const sourceCategoryHandleParam = searchParams?.get('sourceCategoryHandle')?.trim() || undefined
   const referralCodeParam = searchParams?.get('ref')?.trim() || undefined
@@ -468,8 +471,9 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       [sourceCategoryHandleParam],
       childCategoryHandles,
       allCategoryHandles,
+      [sourceTagCategory?.handle],
     ])
-  }, [childCategoryHandles, allCategoryHandles, sourceCategoryHandleParam])
+  }, [childCategoryHandles, allCategoryHandles, sourceCategoryHandleParam, sourceTagCategory])
 
   const primaryAwareCategoryIds = useMemo(() => {
     return buildOrderedUnique([
@@ -477,8 +481,9 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       childCategoryIds,
       categoryIds,
       [product?.primaryCategoryId],
+      [sourceTagCategory?.id],
     ])
-  }, [childCategoryIds, categoryIds, product?.primaryCategoryId, sourceCategoryIdParam])
+  }, [childCategoryIds, categoryIds, product?.primaryCategoryId, sourceCategoryIdParam, sourceTagCategory])
 
   const breadcrumbItems: BreadcrumbItem[] = useMemo(() => {
     const items: BreadcrumbItem[] = [{ label: 'Home', href: '/' }]
@@ -493,8 +498,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   }, [breadcrumbTrail, product?.title])
 
   const shouldUseSourceTag = useMemo(
-    () => Boolean(sourceTagParam && !sourceCategoryIdParam && !sourceCategoryHandleParam),
-    [sourceTagParam, sourceCategoryIdParam, sourceCategoryHandleParam]
+    () => Boolean(sourceTagParam && !sourceTagCategory && !sourceCategoryIdParam && !sourceCategoryHandleParam),
+    [sourceTagParam, sourceTagCategory, sourceCategoryIdParam, sourceCategoryHandleParam]
   )
 
   const preferredTagValues = useMemo(() => {
@@ -644,7 +649,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           : []
       const categoryPaths = [
         ...primaryAwareCategoryIds.map((id) => ({
-          url: `/api/medusa/products?categoryId=${encodeURIComponent(id)}&limit=${desiredCount}`,
+          url: `/api/medusa/products?categoryId=${encodeURIComponent(id)}&includeSubcategories=1&limit=${desiredCount}`,
           hintId: id,
           hintLabel: categoryMap[id]?.title || categoryMap[id]?.handle || 'Category',
         })),
@@ -653,7 +658,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           const label =
             (resolvedId && (categoryMap[resolvedId]?.title || categoryMap[resolvedId]?.handle)) || humanizeHandle(handle)
           return {
-            url: `/api/medusa/products?category=${encodeURIComponent(handle)}&limit=${desiredCount}`,
+            url: `/api/medusa/products?category=${encodeURIComponent(handle)}&includeSubcategories=1&limit=${desiredCount}`,
             hintId: resolvedId || `handle:${handle}`,
             hintLabel: label,
           }
@@ -733,6 +738,20 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   })
   const related = useMemo(() => relatedQuery.data || [], [relatedQuery.data])
   const loadingRelated = relatedQuery.isLoading
+
+  useEffect(() => {
+    if (!compareModalOpen) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCompareModalOpen(false)
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = originalOverflow
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [compareModalOpen])
 
 
   useEffect(() => {
@@ -1331,7 +1350,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const showHealthCareAgeGate = productHasHealthCareCategory(product?.categories)
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#f3f8f3] font-sans overflow-x-clip touch-pan-y">
+    <div className={`${styles.page} flex min-h-screen flex-col font-sans overflow-x-clip touch-pan-y`}>
       <HealthCareAgeGate enabled={showHealthCareAgeGate} />
       <style>{`
         :root {
@@ -1340,7 +1359,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           --detail-border: #dfe9df;
         }
       `}</style>
-      <main className="w-full max-w-7xl mx-auto px-4 py-8 lg:py-12 flex-1 scroll-smooth">
+      <main className={`${styles.container} w-full max-w-7xl mx-auto flex-1 scroll-smooth`}>
         <Breadcrumbs items={breadcrumbItems} pillClassName={breadcrumbPillClass} />
 
         {productLoading ? (
@@ -1366,9 +1385,9 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
         ) : product ? (
           <>
             {/* ====== MAIN TWO-COLUMN: LEFT = STICKY GALLERY, RIGHT = PAGE-SCROLL SUMMARY ====== */}
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 mb-10 items-start max-w-full overflow-clip">
+            <section className={styles.productLayout}>
               {/* LEFT: Sticky Image/Gallery */}
-              <div className="relative lg:sticky lg:top-10 self-start w-full max-w-full overflow-hidden">
+              <div className={styles.galleryColumn}>
                 <ProductGallery
                   images={galleryImages}
                   selectedIndex={selectedImage}
@@ -1380,20 +1399,10 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   hasStock={hasStock}
                 />
 
-                <div className="pointer-events-none absolute inset-0 flex items-start justify-end z-30">
-                  <button
-                    type="button"
-                    onClick={handleAddToWishlist}
-                    className="pointer-events-auto sm:hidden m-3 inline-flex items-center justify-center rounded-full border border-rose-200 bg-white/95 text-rose-500 p-2 shadow-lg z-30"
-                    aria-label="Add to wishlist"
-                  >
-                    <Heart className="w-6 h-6" fill={isWishlisted ? 'currentColor' : 'none'} />
-                  </button>
-                </div>
               </div>
 
               {/* RIGHT: Summary scrolls with the page (no nested scroll) */}
-              <div className="w-full min-w-0 space-y-5 lg:pl-4">
+              <div className={styles.summaryColumn}>
                 <ProductSummary
                   product={displayProduct ?? product}
                   brandName={brandName}
@@ -1426,7 +1435,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
               </div>
             </section>
 
-            <section className="mt-10">
+            <section className={styles.detailsSection}>
               <DescriptionTabs
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
@@ -1508,7 +1517,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
               <div className="space-y-5 lg:pl-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h1 className="text-xl font-bold text-slate-900">Similar items you might also like</h1>
+                    <h2 className="text-xl font-semibold text-slate-900">Similar items you might also like</h2>
                     <p className="text-sm text-slate-500">Hand-picked recommendations based on this product.</p>
                   </div>
                   {loadingRelated && <span className="text-sm text-slate-500">Loading suggestions...</span>}
@@ -1583,12 +1592,12 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
         ) : null}
       </main>
       {compareModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60 px-2 pt-20 pb-4 md:px-6 md:py-10">
-          <div className="relative w-full max-w-2xl max-h-[62vh] md:max-h-[58vh] bg-white shadow-2xl border border-slate-100 rounded-t-3xl md:rounded-3xl flex flex-col overflow-hidden">
-            <div className="flex items-start justify-between gap-4 px-4 py-4 border-b bg-white sticky top-0 z-10">
+        <div className={styles.compareOverlay}>
+          <div role="dialog" aria-modal="true" aria-labelledby="compare-dialog-title" className={`${styles.compareDialog} relative w-full max-w-2xl bg-white shadow-2xl border border-slate-100 rounded-3xl flex flex-col overflow-hidden`}>
+            <div className="flex shrink-0 items-start justify-between gap-4 px-4 py-4 border-b bg-white">
               <div>
                 <p className="text-xs uppercase tracking-[0.4em] text-slate-400 mb-1">Compare</p>
-                <h3 className="text-xl font-semibold text-slate-900">Compare similar products</h3>
+                <h3 id="compare-dialog-title" className="text-xl font-semibold text-slate-900">Compare similar products</h3>
                 <p className="text-sm text-slate-500">
                   Select items from the same category to see a quick spec comparison.
                 </p>
@@ -1598,13 +1607,14 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                 onClick={() => setCompareModalOpen(false)}
                 className="flex items-center justify-center gap-2 rounded-full border border-slate-200 px-3 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
                 aria-label="Close compare modal"
+                autoFocus
               >
                 <X className="w-4 h-4" />
                 <span className="hidden md:inline">Close</span>
               </button>
             </div>
 
-            <div className="px-4 py-4 border-b bg-white sticky top-[92px] z-10">
+            <div className="shrink-0 px-4 py-4 border-b bg-white">
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-xs sm:text-sm font-medium text-slate-600">
                   Brand
@@ -1637,9 +1647,11 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
               {filteredCompareOptions.length === 0 ? (
-                <p className="text-sm text-slate-500">No products match the selected filters.</p>
+                <p className="text-sm text-slate-500">
+                  {loadingRelated ? 'Loading similar products...' : 'No products match the selected filters.'}
+                </p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {filteredCompareOptions.map((item) => {
@@ -1687,7 +1699,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
               )}
             </div>
 
-            <div className="px-4 py-4 border-t bg-white flex flex-wrap items-center justify-between gap-3 sticky bottom-0">
+            <div className="shrink-0 px-4 py-4 border-t bg-white flex flex-wrap items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setCompareSelection([])}

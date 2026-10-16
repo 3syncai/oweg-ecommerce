@@ -14,7 +14,7 @@ import { ProductGrid } from "@/components/modules/ProductGrid";
 import { useCategoryProducts } from "@/hooks/useCategoryProducts";
 import type { MedusaCategory } from "@/services/medusa";
 import type { CategoryProductsPage } from "@/services/medusa";
-import { SectionHeading } from "@/components/ui/section-heading";
+import styles from "@/components/shopping/Shopping.module.css";
 import HealthCareAgeGate from "@/components/modules/HealthCareAgeGate";
 import {
   isHealthCareCategoryHandle,
@@ -420,30 +420,19 @@ export function CategoryPageClient({
   );
 
   return (
-    <div className="oweg-page min-h-screen">
+    <div className={`${styles.page} min-h-screen`}>
       <HealthCareAgeGate enabled={showHealthCareAgeGate} />
-      <div className="oweg-container py-5 md:py-6">
-        <div className="flex gap-6 xl:gap-8">
-          <aside className="hidden lg:block flex-shrink-0 w-[clamp(240px,22vw,320px)] sticky self-start z-10 top-[calc(var(--app-header-height,136px)+1rem)] max-h-[calc(100vh-var(--app-header-height,136px)-2rem)] overflow-y-auto overscroll-contain">
-            {filterSidebar}
+      <div className={styles.container}>
+        <div className={styles.resultsLayout}>
+          <aside className={`${styles.filterRail} ${styles.categoryRail}`} aria-label="Product filters">
+            <div className={styles.filterSidebar}>{filterSidebar}</div>
           </aside>
 
-          <main className="flex-1 min-w-0">
-            {!selectedSubcategory && subcategories.length > 0 && (
-              <div className="mb-6 w-full">
-                <SectionHeading title="Categories" className="mb-4" />
-                <CategoryHeader
-                  categoryHandle={categoryHandle}
-                  subcategories={subcategories}
-                  initialPreviews={initialCategoryPreviews}
-                />
-              </div>
-            )}
+          <main className={styles.resultsMain}>
 
-            <div className="mb-5 flex flex-wrap items-end justify-between gap-3 md:mb-6">
+            <div className={styles.toolbar}>
               <div className="min-w-0">
-                <h1 className="sr-only">{categoryTitle}</h1>
-                <SectionHeading title={categoryTitle} className="mb-2" />
+                <h1>{categoryTitle}</h1>
                 <p className="mt-1 text-sm text-[var(--oweg-ink-muted)]">
                   {headingDescription}
                   {!isLoading && filteredProducts.length > 0 && (
@@ -457,7 +446,7 @@ export function CategoryPageClient({
               <button
                 type="button"
                 onClick={() => setMobileFiltersOpen(true)}
-                className="oweg-tap inline-flex shrink-0 items-center gap-2 rounded-full border border-[var(--oweg-border-strong)] bg-white px-4 py-2 text-sm font-semibold text-[var(--oweg-ink)] shadow-[var(--oweg-shadow-sm)] transition hover:border-[var(--oweg-green)] lg:hidden"
+                className={`${styles.filterButton} ${styles.categoryFilterButton}`}
                 aria-haspopup="dialog"
                 aria-expanded={mobileFiltersOpen}
               >
@@ -466,7 +455,20 @@ export function CategoryPageClient({
               </button>
             </div>
 
+            {!selectedSubcategory && subcategories.length > 0 && (
+              <section className={styles.browseCategories} aria-label="Browse subcategories">
+                <h2>Explore categories</h2>
+                <CategoryHeader categoryHandle={categoryHandle} subcategories={subcategories} initialPreviews={initialCategoryPreviews} />
+              </section>
+            )}
+            <div className={styles.chips}>
+              {filters.brands.map((brand) => <button key={brand} type="button" className={styles.chip} onClick={() => handleFilterChange({ brands: filters.brands.filter((value) => value !== brand) })} aria-label={`Remove ${brand} filter`}>{brand}<X size={12} aria-hidden="true" /></button>)}
+              {(filters.priceMin !== undefined || filters.priceMax !== undefined) && <button type="button" className={styles.chip} onClick={() => handleFilterChange({ priceMin: undefined, priceMax: undefined })} aria-label="Remove price filter">₹{filters.priceMin ?? 0} – {filters.priceMax === undefined ? 'Any' : `₹${filters.priceMax}`}<X size={12} aria-hidden="true" /></button>}
+              {filters.dealsOnly && <button type="button" className={styles.chip} onClick={() => handleFilterChange({ dealsOnly: false })}>Today&apos;s deals<X size={12} aria-hidden="true" /></button>}
+            </div>
+
             <ProductGrid
+              className={styles.productGrid}
               products={enrichedProducts}
               isLoading={isLoading}
               showEmpty={!isLoading && filteredProducts.length === 0}
