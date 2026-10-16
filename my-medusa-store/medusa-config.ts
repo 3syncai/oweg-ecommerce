@@ -84,6 +84,12 @@ export default defineConfig({
       // (chunk-XXXX.js 404) blank the whole admin. Force re-optimize on boot.
       optimizeDeps: {
         force: true,
+        // Forced rebuilds can change chunk filenames without changing Vite's
+        // browser hash. Give each dev boot its own cache key so open browsers
+        // cannot reuse imports pointing at chunks from the previous boot.
+        ...(process.env.NODE_ENV !== "production" ? {
+          esbuildOptions: { define: { __OWEG_ADMIN_DEV_SESSION__: JSON.stringify(Date.now()) } },
+        } : {}),
       },
       server: {
         allowedHosts: [

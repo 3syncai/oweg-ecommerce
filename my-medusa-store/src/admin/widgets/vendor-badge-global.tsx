@@ -1,5 +1,6 @@
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import { useEffect } from "react"
+import { withAdminPageAccess } from "../lib/with-admin-page-access"
 
 const VendorBadgeGlobal = () => {
   useEffect(() => {
@@ -65,4 +66,4 @@ export const config = defineWidgetConfig({
   zone: "product.list.before",
 })
 
-export default VendorBadgeGlobal
+export default withAdminPageAccess(VendorBadgeGlobal, "/vendors")
