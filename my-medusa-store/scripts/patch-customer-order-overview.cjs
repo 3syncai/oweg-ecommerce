@@ -82,5 +82,6 @@ module.exports = function patchCustomerOrderOverview() {
   console.log("[admin] Customer order overview patch ready")
   require("./patch-order-summary.cjs")()
   require("./patch-order-list.cjs")()
+  require("./patch-product-sidebar.cjs")()
 }
 if (require.main === module) module.exports()

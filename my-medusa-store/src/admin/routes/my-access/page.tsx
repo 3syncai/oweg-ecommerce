@@ -1,3 +1,4 @@
+import { ADMIN_RESPONSIBILITIES } from "../../../shared/admin-responsibilities"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { Container, Heading, Text, Badge } from "@medusajs/ui"
 import { useEffect, useState } from "react"
@@ -20,6 +21,7 @@ export default function MyAccessPage() {
         {access.active && ADMIN_PERMISSION_GROUPS.filter(g => access.permissions.includes(g.id)).map(group => <Link key={group.id} to={group.paths[0]} className="rounded-lg border border-ui-border-base p-4 hover:bg-ui-bg-subtle-hover">
           <Heading level="h2">{group.label}</Heading><Text size="small" className="mt-1 text-ui-fg-subtle">{group.description}</Text>
         </Link>)}
+        {access.active && ADMIN_RESPONSIBILITIES.filter(item => access.permissions.includes(item.id) && !access.permissions.includes(item.group)).map(item => <Link key={item.id} to={item.pages[0]} className="rounded-lg border border-ui-border-base p-4 hover:bg-ui-bg-subtle-hover"><Heading level="h2">{item.label}</Heading><Text size="small" className="mt-1 text-ui-fg-subtle">Assigned responsibility</Text></Link>)}
         {access.active && access.custom_permissions?.filter(permission => permission.enabled && access.permissions.includes(permission.id)).map(permission => <Link key={permission.id} to={permission.page_paths[0]} className="rounded-lg border border-ui-border-base p-4 hover:bg-ui-bg-subtle-hover">
           <Heading level="h2">{permission.name}</Heading><Text size="small" className="mt-1 text-ui-fg-subtle">{permission.description}</Text><Badge>{permission.access_mode === "view" ? "View only" : "Full management"}</Badge>
         </Link>)}

@@ -1,3 +1,4 @@
+import { ADMIN_RESPONSIBILITIES } from "../../shared/admin-responsibilities"
 import { ADMIN_PERMISSION_GROUPS, canAccessAdminPage, matchesPath, normalizeAdminPath, type AdminAccess } from "../../shared/admin-access"
 import { currentAdminAccess } from "./admin-access-client"
 
@@ -60,6 +61,11 @@ function apply() {
     if (!pending && Date.now() - lastAttempt > 5000) void refresh()
     return
   }
+  if (access.must_change_password && normalizeAdminPath(window.location.pathname) !== "/change-password") {
+    document.documentElement.dataset.owegAccessPending = "true"
+    window.location.replace("/app/change-password")
+    return
+  }
   const navItems = new Set<HTMLElement>()
   document.querySelectorAll<HTMLAnchorElement>("aside a[href]").forEach(link => {
     const url = new URL(link.href, window.location.origin)
@@ -73,14 +79,18 @@ function apply() {
     if (item) navItems.add(item)
   })
   const grantedPaths = [
+    ...ADMIN_RESPONSIBILITIES.filter(item => access!.permissions.includes(item.id)).flatMap(item => [...item.pages]),
     ...ADMIN_PERMISSION_GROUPS.filter(group => access!.permissions.includes(group.id)).flatMap(group => [...group.paths]),
     ...access.custom_permissions?.filter(permission => permission.enabled && access!.permissions.includes(permission.id)).flatMap(permission => permission.page_paths) || [],
   ]
   navItems.forEach(item => {
+    const products = item.querySelector('a[href="/app/products"]')
+    if (products) item.querySelector('button[aria-controls]')?.setAttribute("aria-label", "Toggle Products menu")
     // Medusa's compact menu has a separate collapsible trigger. Hide the whole
     // item when empty, but retain parents of explicitly granted custom pages.
     const hasChildren = !!item.querySelector("button[aria-controls]")
-    const visible = [...item.querySelectorAll<HTMLAnchorElement>('a[href^="/app/"]')].some(link => {
+    const permittedProductChildren = !!products && ["/collections", "/categories"].some(path => canAccessAdminPage(access, path))
+    const visible = permittedProductChildren || [...item.querySelectorAll<HTMLAnchorElement>('a[href^="/app/"]')].some(link => {
       const path = normalizeAdminPath(new URL(link.href).pathname)
       return canAccessAdminPage(access, path) || (hasChildren && grantedPaths.some(granted => matchesPath(granted, path)))
     })
@@ -152,6 +162,27 @@ export function initAdminAccessUi() {
   const style = document.createElement("style")
   style.id = "oweg-admin-access-ui"
   style.textContent = `
+    /* Keep Products as a link and its native Radix trigger as a separate chevron. */
+    aside nav div.px-3:has(a[href="/app/products"]) { position: relative; }
+    aside nav div.px-3:has(a[href="/app/products"]) > div:first-child a { display: flex; padding-right: 34px; }
+    aside nav div.px-3:has(a[href="/app/products"]) button[aria-controls] {
+      display: flex !important; position: absolute; top: 0; right: 12px;
+      width: 28px; height: 28px; padding: 0; align-items: center; justify-content: center;
+    }
+    aside nav div.px-3:has(a[href="/app/products"]) button[aria-controls] > * { display: none; }
+    aside nav div.px-3:has(a[href="/app/products"]) button[aria-controls]::after {
+      content: ""; width: 7px; height: 7px; border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor; transform: rotate(45deg); margin-top: -4px;
+      transition: transform 150ms ease;
+    }
+    aside nav div.px-3:has(a[href="/app/products"]) button[aria-expanded="true"]::after { transform: rotate(225deg); margin-top: 4px; }
+    aside nav div.px-3:has(a[href="/app/products"]) ul > li:first-child { display: none; }
+    /* Brand/category-only roles retain an expandable parent without gaining Products access. */
+    aside nav div.px-3:has(a[href="/app/products"][data-oweg-access-hidden]) button[aria-controls] {
+      position: relative; right: auto; width: 100%; padding: 2px 8px 2px 2px; justify-content: flex-start;
+    }
+    aside nav div.px-3:has(a[href="/app/products"][data-oweg-access-hidden]) button[aria-controls] > * { display: flex; }
+    aside nav div.px-3:has(a[href="/app/products"][data-oweg-access-hidden]) button[aria-controls]::after { margin-left: auto; margin-right: 3px; }
     aside a[data-oweg-access-hidden="true"],
     aside [data-oweg-access-empty] { display: none !important; }
     a[data-oweg-context-only] { cursor: default !important; text-decoration: none !important; }

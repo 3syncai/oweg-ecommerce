@@ -1,3 +1,4 @@
+import { ADMIN_RESPONSIBILITIES } from "./admin-responsibilities"
 /** Shared by the admin UI and API. Never trust the browser's copy of these grants. */
 export const ADMIN_PERMISSION_GROUPS = [
   { id: "customers", label: "Customers", description: "Customers and customer groups", paths: ["/customers", "/customer-groups", "/oweg-customer-groups"] },
@@ -10,7 +11,7 @@ export const ADMIN_PERMISSION_GROUPS = [
   { id: "partners", label: "Partner admins", description: "Manage the existing partner administrators and partner applications", paths: ["/affiliate-admins", "/affiliate-users"] },
 ] as const
 
-export type AdminPermission = typeof ADMIN_PERMISSION_GROUPS[number]["id"] | `custom_${string}`
+export type AdminPermission = typeof ADMIN_PERMISSION_GROUPS[number]["id"] | typeof ADMIN_RESPONSIBILITIES[number]["id"] | `custom_${string}`
 export type CustomAdminPermission = {
   id: `custom_${string}`
   name: string
@@ -21,7 +22,7 @@ export type CustomAdminPermission = {
   enabled: boolean
 }
 
-const RESERVED_ADMIN_PAGES = ["/payment-health", "/activity-log", "/admin-access", "/my-access", "/inventory", "/login", "/reset-password", "/invite", "/settings/users", "/settings/api-key-management", "/settings/developer", "/settings/profile"]
+const RESERVED_ADMIN_PAGES = ["/payment-health", "/activity-log", "/admin-access", "/my-access", "/change-password", "/inventory", "/login", "/reset-password", "/invite", "/settings/users", "/settings/api-key-management", "/settings/developer", "/settings/profile"]
 const RESERVED_ADMIN_APIS = ["/admin/payment-health", "/admin/access", "/admin/users", "/admin/invites", "/admin/api-keys", "/admin/workflows", "/admin/workflows-executions", "/admin/links", "/admin/graph", "/admin/query", "/admin/modules"]
 
 export function isReservedAdminApi(path: string): boolean {
@@ -44,6 +45,7 @@ export type AdminAccess = {
   role_name: string | null
   responsibilities: string
   permissions: AdminPermission[]
+  must_change_password?: boolean
   custom_permissions?: CustomAdminPermission[]
 }
 
@@ -59,15 +61,20 @@ export function normalizeAdminPath(input: string): string {
 export function canAccessAdminPage(access: AdminAccess | null, input: string): boolean {
   const path = normalizeAdminPath(input)
   if (!access) return false
+  if (path === "/login") return true
+  if (access.must_change_password) return access.active && path === "/change-password"
+  if (path === "/change-password") return access.active && access.kind === "subadmin"
   if (path === "/my-access") return true
   if (!access.active || access.kind === "unassigned") return false
   if (access.kind === "superadmin") return true
   if (path === "/settings/profile") return true
   if (RESERVED_ADMIN_PAGES.some(prefix => matchesPath(path, prefix))) return false
   // These native dialogs live under Orders but mutate Returns-owned APIs.
-  if (/^\/orders\/[^/]+\/(returns|claims|exchanges)(\/|$)/.test(path) && !access.permissions.includes("returns")) return false
+  const returnDialog = path.match(/^\/orders\/[^/]+\/(returns|claims|exchanges)(\/|$)/)
+  if (returnDialog && !access.permissions.includes("returns") && !access.permissions.includes(`returns.${returnDialog[1]}` as AdminPermission)) return false
   if (access.custom_permissions?.some(permission => permission.enabled && access.permissions.includes(permission.id) &&
       permission.page_paths.some(prefix => matchesPath(path, prefix)))) return true
+  if (ADMIN_RESPONSIBILITIES.some(item => access.permissions.includes(item.id) && item.pages.some(prefix => matchesPath(path, prefix)))) return true
   return ADMIN_PERMISSION_GROUPS.some(group =>
     access.permissions.includes(group.id) && group.paths.some(prefix => matchesPath(path, prefix))
   )
@@ -75,7 +82,7 @@ export function canAccessAdminPage(access: AdminAccess | null, input: string): b
 
 export function validatePermissions(value: unknown, customIds: string[] = []): AdminPermission[] {
   if (!Array.isArray(value) || value.length > 100 ||
-      value.some(item => typeof item !== "string" || (!ADMIN_PERMISSION_GROUPS.some(g => g.id === item) && !customIds.includes(item)))) {
+      value.some(item => typeof item !== "string" || (!ADMIN_PERMISSION_GROUPS.some(g => g.id === item) && !ADMIN_RESPONSIBILITIES.some(g => g.id === item) && !customIds.includes(item)))) {
     throw new Error("Select registered permissions")
   }
   return [...new Set(value)] as AdminPermission[]

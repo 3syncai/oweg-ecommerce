@@ -1,3 +1,4 @@
+import { ADMIN_RESPONSIBILITIES, hasAdminGroup } from "../../shared/admin-responsibilities"
 import { matchesPath, isReservedAdminApi, type AdminAccess, type AdminPermission } from "../../shared/admin-access"
 
 const API_GROUPS: Array<[AdminPermission, string[]]> = [
@@ -32,6 +33,7 @@ const SHARED_READS = ["stores", "feature-flags", "regions", "currencies", "count
 
 export function canAccessAdminApi(access: AdminAccess, method: string, path: string): boolean {
   if (!access.active || access.kind === "unassigned") return false
+  if (access.must_change_password) return false
   if (access.kind === "superadmin") return true
   // Unknown/admin infrastructure endpoints are denied unless explicitly allowed.
   if (path === "/admin/users/me" && ["GET", "HEAD"].includes(method)) return true
@@ -42,21 +44,26 @@ export function canAccessAdminApi(access: AdminAccess, method: string, path: str
   if (read && access.permissions.length && SHARED_READS.some(root => matchesPath(path, `/admin/${root}`))) return true
   const permission = requiredAdminPermission(path)
   if (permission && access.permissions.includes(permission)) return true
+  // Special accounting actions may never inherit an Orders/Vendors grant.
+  const specialAccounting = /^\/admin\/vendors\/[^/]+\/commission$/.test(path) || /^\/admin\/orders\/[^/]+\/cancel-payout$/.test(path)
+  if (specialAccounting) return access.permissions.includes(path.includes("cancel-payout") ? "accounting.payouts" : "accounting.commission")
+  if (ADMIN_RESPONSIBILITIES.some(item => access.permissions.includes(item.id) &&
+      item.apis.some(root => matchesPath(path, `/admin/${root}`)))) return true
   // Read-only dependencies used by editors, selectors and existing widgets.
   if (read && requiredAdminPermission(path) !== "accounting") {
     // Native order details aggregate existing returns/claims/exchanges and
     // detect installed plugin UI. This does not grant their write actions.
-    if (access.permissions.includes("orders") && ["plugins", "refund-reasons", "returns", "claims", "exchanges"].some(root => matchesPath(path, `/admin/${root}`))) return true
-    if (access.permissions.includes("orders") && ["products", "customers", "customer-groups", "inventory-items", "stock-locations", "reservation-items", "promotions"].some(root => matchesPath(path, `/admin/${root}`))) return true
-    if (access.permissions.includes("returns") && ["orders", "products", "fulfillments"].some(root => matchesPath(path, `/admin/${root}`))) return true
-    if (access.permissions.includes("accounting") && ["vendors", "orders"].some(root => matchesPath(path, `/admin/${root}`))) return true
-    if (access.permissions.includes("vendors") && matchesPath(path, "/admin/products")) return true
-    if (access.permissions.includes("marketing") && ["products", "collections", "product-categories", "product-types", "product-tags", "customer-groups"].some(root => matchesPath(path, `/admin/${root}`))) return true
-    if (access.permissions.includes("catalog") && matchesPath(path, "/admin/customer-groups")) return true
+    if (hasAdminGroup(access.permissions, "orders") && ["plugins", "refund-reasons", "returns", "claims", "exchanges"].some(root => matchesPath(path, `/admin/${root}`))) return true
+    if (hasAdminGroup(access.permissions, "orders") && ["products", "customers", "customer-groups", "inventory-items", "stock-locations", "reservation-items", "promotions"].some(root => matchesPath(path, `/admin/${root}`))) return true
+    if (hasAdminGroup(access.permissions, "returns") && ["orders", "products", "fulfillments"].some(root => matchesPath(path, `/admin/${root}`))) return true
+    if (hasAdminGroup(access.permissions, "accounting") && ["vendors", "orders"].some(root => matchesPath(path, `/admin/${root}`))) return true
+    if (hasAdminGroup(access.permissions, "vendors") && matchesPath(path, "/admin/products")) return true
+    if (hasAdminGroup(access.permissions, "marketing") && ["products", "collections", "product-categories", "product-types", "product-tags", "customer-groups"].some(root => matchesPath(path, `/admin/${root}`))) return true
+    if (hasAdminGroup(access.permissions, "catalog") && ["products", "product-variants", "product-types", "product-tags", "product-categories", "collections", "customer-groups"].some(root => matchesPath(path, `/admin/${root}`))) return true
   }
   if (access.permissions.includes("catalog") && matchesPath(path, "/admin/brand-authorizations")) return true
   // Uploads are needed for product images, authorizations and homepage banners.
-  if (matchesPath(path, "/admin/uploads") && access.permissions.some(p => ["catalog", "marketing", "vendors"].includes(p))) return true
+  if (matchesPath(path, "/admin/uploads") && ["catalog", "marketing", "vendors"].some(group => hasAdminGroup(access.permissions, group))) return true
   return false
 }
 

@@ -1,3 +1,4 @@
+import { ADMIN_RESPONSIBILITIES } from "../../../shared/admin-responsibilities"
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { Container, Heading, Text, Button, Input, Label, Badge } from "@medusajs/ui"
 import { useEffect, useState, type FormEvent, type ReactNode } from "react"
@@ -9,7 +10,7 @@ import { Link } from "react-router-dom"
 type Role = { id: string; name: string; responsibilities: string; permissions: AdminPermission[] }
 type Account = AdminAccess & { email: string; first_name: string | null; last_name: string | null }
 type AuditEvent = { id: string; actor_email: string; action: string; target_id: string; created_at: string }
-type Credentials = { email: string; password: string }
+type Credentials = { email: string; password: string; email_status?: "sent" | "failed" }
 const blankRole = { id: "", name: "", responsibilities: "", permissions: [] as AdminPermission[] }
 const blankUser = { email: "", first_name: "", last_name: "", password: "", role_id: "" }
 
@@ -88,6 +89,7 @@ export default function AdminAccessPage() {
   }
   const permissionOptions = [
     ...ADMIN_PERMISSION_GROUPS.map(group => ({ id: group.id as AdminPermission, label: group.label, description: group.description })),
+    ...ADMIN_RESPONSIBILITIES.map(item => ({ id: item.id as AdminPermission, label: item.label, description: "Specific responsibility" })),
     ...customPermissions.map(permission => ({ id: permission.id, label: `${permission.name}${permission.enabled ? "" : " (disabled)"}`, description: permission.description })),
   ]
 
@@ -120,7 +122,7 @@ export default function AdminAccessPage() {
           {accounts.map(account => <tr key={account.user_id} className="border-b border-ui-border-base">
             <td className="p-3"><div className="font-medium">{[account.first_name, account.last_name].filter(Boolean).join(" ") || account.email}</div><div className="text-ui-fg-subtle">{account.email}</div></td>
             <td className="p-3">{account.kind === "superadmin" ? "Superadmin · full access" : account.role_name || "Unassigned"}</td>
-            <td className="p-3"><Badge color={account.active ? "green" : "grey"}>{account.active ? "Active" : account.kind === "unassigned" ? "Unassigned" : "Disabled"}</Badge></td>
+            <td className="p-3"><Badge color={account.active ? "green" : "grey"}>{account.active ? "Active" : account.kind === "unassigned" ? "Unassigned" : "Disabled"}</Badge>{account.must_change_password && <Text size="small" className="mt-1 text-ui-fg-subtle">Password change required</Text>}</td>
             <td className="p-3">{account.kind === "superadmin" ? <Text size="small" className="text-ui-fg-muted">CLI managed</Text> : <div className="flex flex-wrap gap-2">
               <Button variant="secondary" size="small" disabled={busy} onClick={() => { setError(""); setEditing({ ...account, role_id: account.role_id || roles[0]?.id || "", active: account.kind === "unassigned" ? true : account.active }) }}>{account.kind === "unassigned" ? "Assign access" : "Edit access"}</Button>
               {account.kind === "subadmin" && <Button variant="secondary" size="small" disabled={busy} onClick={() => void run(async () => {
@@ -147,7 +149,7 @@ export default function AdminAccessPage() {
       <div className="grid grid-cols-2 gap-3"><div><Label htmlFor="admin-first-name">First name</Label><Input id="admin-first-name" value={userDraft.first_name} onChange={e => setUserDraft({ ...userDraft, first_name: e.target.value })} maxLength={100} /></div><div><Label htmlFor="admin-last-name">Last name</Label><Input id="admin-last-name" value={userDraft.last_name} onChange={e => setUserDraft({ ...userDraft, last_name: e.target.value })} maxLength={100} /></div></div>
       <div><Label htmlFor="admin-email">Login email</Label><Input id="admin-email" type="email" required autoComplete="off" maxLength={254} value={userDraft.email} onChange={e => setUserDraft({ ...userDraft, email: e.target.value })} /></div>
       <div><Label htmlFor="admin-role">Role</Label><select id="admin-role" required className="mt-1 w-full rounded-md border border-ui-border-base bg-ui-bg-field p-2" value={userDraft.role_id} onChange={e => setUserDraft({ ...userDraft, role_id: e.target.value })}>{roles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}</select><Text size="small" className="mt-2 text-ui-fg-subtle">{roles.find(r => r.id === userDraft.role_id)?.responsibilities}</Text></div>
-      <div><Label htmlFor="admin-password">Password (optional)</Label><Input id="admin-password" type="password" autoComplete="new-password" minLength={12} maxLength={128} value={userDraft.password} onChange={e => setUserDraft({ ...userDraft, password: e.target.value })} placeholder="Leave blank to generate a strong password" /><Text size="small" className="mt-2 text-ui-fg-muted">Credentials appear once after creation. Share them securely with the subadmin.</Text></div>
+      <div><Label htmlFor="admin-password">Password (optional)</Label><Input id="admin-password" type="password" autoComplete="new-password" minLength={12} maxLength={128} value={userDraft.password} onChange={e => setUserDraft({ ...userDraft, password: e.target.value })} placeholder="Leave blank to generate a strong password" /><Text size="small" className="mt-2 text-ui-fg-muted">A welcome email includes the admin site, creation date and temporary credentials. The subadmin must choose a new password at first sign-in.</Text></div>
       <Button type="submit" disabled={busy}>{busy ? "Creating…" : "Create subadmin"}</Button>
     </form></Dialog>}
 
@@ -163,13 +165,26 @@ export default function AdminAccessPage() {
       {error && <Text role="alert" className="text-ui-fg-error">{error}</Text>}
       <div><Label htmlFor="role-name">Role name</Label><Input id="role-name" required maxLength={100} value={roleDraft.name} onChange={e => setRoleDraft({ ...roleDraft, name: e.target.value })} /></div>
       <div><Label htmlFor="role-responsibilities">Responsibilities</Label><textarea id="role-responsibilities" maxLength={2000} className="mt-1 min-h-20 w-full rounded-md border border-ui-border-base bg-ui-bg-field p-2 text-sm" value={roleDraft.responsibilities} onChange={e => setRoleDraft({ ...roleDraft, responsibilities: e.target.value })} /></div>
-      <fieldset><legend className="mb-3 text-sm font-medium">Permissions</legend><div className="flex flex-col gap-3">{permissionOptions.map(group => <label key={group.id} className="flex items-start gap-3 rounded-lg border border-ui-border-base p-3"><input type="checkbox" className="mt-1" checked={roleDraft.permissions.includes(group.id)} onChange={e => setRoleDraft({ ...roleDraft, permissions: e.target.checked ? [...roleDraft.permissions, group.id] : roleDraft.permissions.filter(p => p !== group.id) })} /><span><span className="text-sm font-medium">{group.label}</span><span className="mt-1 block text-xs text-ui-fg-subtle">{group.description}</span></span></label>)}</div></fieldset>
+      <fieldset><legend className="mb-3 text-sm font-medium">Permissions</legend><div className="flex flex-col gap-3">{ADMIN_PERMISSION_GROUPS.map(group => {
+        const children = ADMIN_RESPONSIBILITIES.filter(item => item.group === group.id)
+        const full = roleDraft.permissions.includes(group.id)
+        return <div key={group.id} className="rounded-lg border border-ui-border-base p-4">
+          <label className="flex items-start gap-3"><input type="checkbox" checked={full || children.every(item => roleDraft.permissions.includes(item.id))} onChange={e => setRoleDraft({ ...roleDraft, permissions: [...roleDraft.permissions.filter(p => p !== group.id && !children.some(item => item.id === p)), ...(e.target.checked ? [group.id] : [])] })} /><span><span className="text-sm font-medium">{group.label} — all responsibilities</span><span className="mt-1 block text-xs text-ui-fg-subtle">{group.description}</span></span></label>
+          <div className="ml-7 mt-3 grid gap-3 sm:grid-cols-2">{children.map(item => <label className="flex items-center gap-2 text-sm" key={item.id}><input type="checkbox" checked={full || roleDraft.permissions.includes(item.id)} onChange={e => {
+            const selected = full ? [...roleDraft.permissions.filter(p => p !== group.id), ...children.map(child => child.id)] : roleDraft.permissions
+            setRoleDraft({ ...roleDraft, permissions: e.target.checked ? [...new Set([...selected, item.id])] : selected.filter(p => p !== item.id) })
+          }} />{item.label}</label>)}</div>
+        </div>
+      })}
+      {customPermissions.map(permission => <label key={permission.id} className="flex items-center gap-3 rounded-lg border border-ui-border-base p-3"><input type="checkbox" checked={roleDraft.permissions.includes(permission.id)} onChange={e => setRoleDraft({ ...roleDraft, permissions: e.target.checked ? [...roleDraft.permissions, permission.id] : roleDraft.permissions.filter(p => p !== permission.id) })} />{permission.name}{!permission.enabled && " (disabled)"}</label>)}</div></fieldset>
       <Text size="small" className="text-ui-fg-subtle">Need another permission option? Save or close this role, then use Create permission.</Text>
       <Text size="small" className="text-ui-fg-muted">Saving a role changes access for every subadmin assigned to it. Managing admins and permissions is reserved for the superadmin.</Text><Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save role"}</Button>
     </form></Dialog>}
 
     {credentials && <Dialog title="Subadmin credentials" close={() => setCredentials(null)}><div className="flex flex-col gap-4">
-      <Text size="small">Copy these credentials now. The password will not be shown again after closing this dialog.</Text>
+      {credentials.email_status === "sent" && <Text role="status" className="text-ui-fg-success">Credential email sent with the admin site and temporary credentials.</Text>}
+      {credentials.email_status === "failed" && <Text role="alert" className="text-ui-fg-error">Credentials are ready, but email delivery failed. Copy these credentials securely. After fixing SMTP, use Reset credentials to email a new temporary password; do not create the account again.</Text>}
+      <Text size="small">The subadmin must change this password at sign-in. Copy these credentials now. The password will not be shown again after closing this dialog.</Text>
       <div><Label htmlFor="credential-email">Email</Label><Input id="credential-email" readOnly value={credentials.email} /></div><div><Label htmlFor="credential-password">Password</Label><Input id="credential-password" readOnly value={credentials.password} autoComplete="off" /></div>
       <Button onClick={async () => { try { await navigator.clipboard.writeText(`Admin: ${window.location.origin}/app\nEmail: ${credentials.email}\nPassword: ${credentials.password}`); setNotice("Credentials copied.") } catch { setError("Clipboard unavailable. Copy the credentials from the fields above.") } }}>Copy credentials</Button>
       <Button variant="secondary" onClick={() => setCredentials(null)}>I have saved the credentials</Button>
