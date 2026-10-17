@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
+import { safeVendorRedirect } from '@/lib/vendor-redirect'
 import Link from 'next/link'
 import { vendorAuthApi, vendorProfileApi } from '@/lib/api/client'
 
@@ -20,7 +21,7 @@ function LoginForm() {
   useEffect(() => {
     const redirect = searchParams.get('redirect')
     if (redirect) {
-      setRedirectPath(decodeURIComponent(redirect))
+      setRedirectPath(safeVendorRedirect(redirect))
     }
   }, [searchParams])
 
@@ -354,7 +355,7 @@ function LoginForm() {
 
               <div className="text-center pt-4 border-t border-gray-200">
                 <p className="text-sm text-gray-600">
-                  Don't have an account?{' '}
+                  Don&apos;t have an account?{' '}
                   <Link href="/signup" className="text-green-600 hover:text-green-700 font-semibold hover:underline transition-colors">
                     Sign up
                   </Link>

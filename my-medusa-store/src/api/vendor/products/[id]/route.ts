@@ -1,3 +1,4 @@
+import { CatalogConflict, cleanVendorMetadata, protectCatalogEdit, publicVariantSku, withCatalogLock } from "../../../../lib/catalog-identity"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../../_lib/guards"
 import { Modules, ProductStatus } from "@medusajs/framework/utils"
@@ -114,6 +115,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       variantMatrix?.options.map((opt) => opt.title) || []
     )
 
+    if (variantSummary) variantSummary.sku = publicVariantSku(product, { sku: variantSummary.sku })
+    if (variantMatrix) for (const variant of variantMatrix.variants) variant.sku = publicVariantSku(product, variant)
     return res.json({
       product,
       variant_summary: variantSummary,
@@ -122,6 +125,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       primary_visual_option: primaryVisualOption,
     })
   } catch (error: any) {
+    if (error instanceof CatalogConflict) return res.status(409).json({ error: "catalog_sku_conflict", message: error.message })
     console.error("Vendor product retrieve error:", error)
     return res.status(500).json({ message: error?.message || "Failed to retrieve product" })
   }
@@ -131,6 +135,10 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res)
   const auth = await requireApprovedVendor(req, res)
   if (!auth) return
+  return withCatalogLock(req.scope, () => updateOffer(req, res, auth))
+}
+
+async function updateOffer(req: MedusaRequest, res: MedusaResponse, auth: { vendor_id: string }) {
 
   const productId = req.params?.id as string
   if (!productId) {
@@ -148,6 +156,11 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
     }
 
     const body = (req as any).body || {}
+    await protectCatalogEdit(req.scope, product, body)
+    if (body.metadata?.brand && body.metadata.brand !== metadata.brand) {
+      const allowed = await (req.scope.resolve("vendorBrandAuthorization") as any).checkBrandAuthorization(auth.vendor_id, body.metadata.brand)
+      if (!allowed) return res.status(400).json({ error: "brand_authorization_required", message: "Brand authorization is required for this brand." })
+    }
     const {
       title,
       description,
@@ -235,7 +248,7 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
     // Preserve vendor_id in metadata
     updateData.metadata = {
       ...metadata,
-      ...(requestMetadata && typeof requestMetadata === "object" ? requestMetadata : {}),
+      ...cleanVendorMetadata(requestMetadata),
       ...normalizedPolicyMetadata,
       vendor_id: auth.vendor_id,
       approval_status: "pending",
@@ -369,6 +382,7 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
 
     return res.json({ product: updatedProduct })
   } catch (error: any) {
+    if (error instanceof CatalogConflict) return res.status(409).json({ error: "catalog_sku_conflict", message: error.message })
     console.error("Vendor product update error:", error)
     return res.status(500).json({ message: error?.message || "Failed to update product" })
   }
@@ -430,6 +444,7 @@ export async function DELETE(req: MedusaRequest, res: MedusaResponse) {
 
     return res.json({ message: "Product deleted successfully" })
   } catch (error: any) {
+    if (error instanceof CatalogConflict) return res.status(409).json({ error: "catalog_sku_conflict", message: error.message })
     console.error("Vendor product delete error:", error)
     return res.status(500).json({ message: error?.message || "Failed to delete product" })
   }

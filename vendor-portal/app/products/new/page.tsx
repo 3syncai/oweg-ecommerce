@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect } from "react"
 import { Heading, Text, Button, Input, Textarea, Label, Switch, toast, clx } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
 import { useRouter } from "next/navigation"
@@ -11,7 +11,7 @@ import ReturnReplacementPolicyFields, {
   EMPTY_RETURN_REPLACEMENT_POLICY,
   type ReturnReplacementPolicy,
 } from "@/components/ReturnReplacementPolicyFields"
-import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorTypesApi, vendorInventoryApi, vendorShippingApi, logApiFailure } from "@/lib/api/client"
+import { apiRequest, vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorTypesApi, vendorInventoryApi, vendorShippingApi, logApiFailure } from "@/lib/api/client"
 import { DEFAULT_LOGISTICS_FEE } from "@/lib/pricingConfig"
 import {
   collectAllImageUrls,
@@ -27,6 +27,7 @@ import {
 import { buildUsedSkuSet, validateProductSkus } from "@/lib/sku-validation"
 import { stripDescriptionSectionHeadings, toProductDescriptionHtml } from "@/lib/plain-description"
 import axios from "axios"
+import Image from "next/image"
 
 type UploadedImage = {
   url: string
@@ -89,6 +90,9 @@ type ProductFormData = {
 const VendorProductNewPage = () => {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [sharedProduct, setSharedProduct] = useState<{ id: string; token: string } | null>(null)
+  const [shareLoading, setShareLoading] = useState(false)
+  const [shareError, setShareError] = useState("")
   const [categories, setCategories] = useState<any[]>([])
   const [collections, setCollections] = useState<any[]>([])
   const [productTypes, setProductTypes] = useState<any[]>([])
@@ -185,6 +189,7 @@ const VendorProductNewPage = () => {
 
   // Check for saved product draft on mount
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("shared_product")) return
     try {
       const raw = localStorage.getItem("vendor_product_new_draft")
       if (raw) {
@@ -198,6 +203,50 @@ const VendorProductNewPage = () => {
       console.warn("Failed to read product draft:", err)
     }
   }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const id = params.get("shared_product"), token = params.get("share")
+    if (!id) return
+    if (!token) { setShareError("The share link is incomplete. Ask the admin for a new link."); return }
+    if (!localStorage.getItem("vendor_token")) {
+      document.cookie = "vendor_token=; path=/; max-age=0; SameSite=Lax"
+      router.replace(`/login?${new URLSearchParams({ redirect: window.location.pathname + window.location.search })}`)
+      return
+    }
+    let cancelled = false
+    setShareLoading(true)
+    apiRequest<{ product: any }>(`/vendor/catalog/${encodeURIComponent(id)}?${new URLSearchParams({ share: token })}`)
+      .then(({ product: p }) => {
+        if (cancelled) return
+        const m = p.metadata || {}
+        setSharedProduct({ id, token })
+        setFormData(prev => ({ ...prev,
+          title: p.title || "", subtitle: p.subtitle || "", description: stripDescriptionSectionHeadings(p.description || ""),
+          brand: m.brand || "UNBRANDED", handle: "", thumbnailUrl: p.thumbnail || null,
+          uploadedImages: (p.images || []).map((image: any) => ({ url: image.url, key: "", filename: "", originalName: "Catalog image" })),
+          uploadedVideos: (m.videos || []).map((video: any) => ({ url: typeof video === "string" ? video : video.url, key: "", filename: "", originalName: "Catalog video" })),
+          height: String(p.height || ""), width: String(p.width || ""), length: String(p.length || ""), weight: String(p.weight || ""),
+          midCode: m.mid_code || "", hsCode: m.hs_code || "", taxCode: m.tax_code || "", gstRate: String(m.gst_rate ?? ""), countryOfOrigin: m.country_of_origin || "",
+          collection: p.collection_id || "", categories: (p.categories || []).map((category: any) => category.id), tags: (p.tags || []).map((tag: any) => tag.value),
+          hasVariants: (p.variants || []).length > 1 || (p.options || []).some((option: any) => !(["default", "default option"].includes(String(option.title).toLowerCase()) && option.values?.length === 1 && option.values[0] === "Default")),
+          productOptions: (p.options || []).map((option: any) => ({ ...option, valuesInput: option.values.join(", ") })),
+          variants: (p.variants || []).map((variant: any) => ({ ...createDefaultVariantRow(), title: variant.title || "Default variant", sku: variant.sku || "", optionValues: variant.options || {}, price: "", discountedPrice: "", inventoryCount: "", allowBackorder: false })),
+          colorImages: Object.fromEntries(Object.entries(m.color_images || {}).map(([key, urls]) => [key, (urls as string[]).map(url => ({ url }))])),
+          primaryVisualOption: m.primary_visual_option || "",
+          returnReplacementPolicy: { returnWindowDays: String(m.return_window_days ?? ""), replacementWindowDays: String(m.replacement_window_days ?? ""), useSameWindow: m.return_window_days === m.replacement_window_days },
+        }))
+        toast.success("Shared product loaded", { description: "Add your own price and stock. Brand authorization and admin review still apply." })
+      }).catch((error: any) => {
+        if (cancelled) return
+        if (error.status === 401) {
+          localStorage.removeItem("vendor_token")
+          document.cookie = "vendor_token=; path=/; max-age=0; SameSite=Lax"
+          router.replace(`/login?${new URLSearchParams({ redirect: window.location.pathname + window.location.search })}`)
+        } else setShareError(error.message || "Could not load shared product")
+      }).finally(() => { if (!cancelled) setShareLoading(false) })
+    return () => { cancelled = true }
+  }, [router])
 
   const handleSaveDraft = () => {
     const title = formData.title?.trim()
@@ -447,7 +496,7 @@ const VendorProductNewPage = () => {
     }
   }
 
-  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const _handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     // This is now handled by handleMediaUpload, but keeping for backward compatibility
     if (e.target.files && e.target.files.length > 0) {
       const files = Array.from(e.target.files)
@@ -675,7 +724,7 @@ const VendorProductNewPage = () => {
     }
   }
 
-  const handleVideoDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+  const _handleVideoDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     // This is now handled by handleDrop, but keeping for backward compatibility
     e.preventDefault()
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -689,6 +738,7 @@ const VendorProductNewPage = () => {
   }
 
   const handleSubmit = async () => {
+    if (shareLoading || shareError) { toast.error("Shared product is not ready", { description: shareError || "Wait for the product to load." }); return }
     // Final brand-gate so users can't bypass via direct Publish click after
     // editing form state.
     if (!formData.title) {
@@ -876,6 +926,7 @@ const VendorProductNewPage = () => {
 
       // Create product
       await vendorProductsApi.create({
+        ...(sharedProduct ? { shared_product_id: sharedProduct.id, share_token: sharedProduct.token } : {}),
         title: formData.title,
         subtitle: formData.subtitle || null,
         description: formData.description
@@ -1913,6 +1964,14 @@ const VendorProductNewPage = () => {
   return (
     <VendorShell>
       <div className="p-4 md:p-8 max-w-[1200px] mx-auto">
+        {(shareLoading || shareError || sharedProduct) && <div role="status" className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          {shareLoading ? "Loading shared product and images…" : shareError || "Shared catalog product: review the details, then enter your own price and stock. Your brand authorization is still required."}
+        </div>}
+        {sharedProduct && !shareError && formData.uploadedImages.length > 0 && <div className="mb-6 rounded-xl border border-ui-border-base p-4">
+          <Text className="mb-3 font-medium">Catalog images</Text>
+          <div className="flex flex-wrap gap-3">{formData.uploadedImages.map((image, index) => <Image key={`${image.url}-${index}`} src={image.url} alt={`Shared product image ${index + 1}`} width={96} height={96} unoptimized className="h-24 w-24 rounded-lg border object-contain" />)}</div>
+        </div>}
+
         <div className="sticky top-0 z-20 -mx-4 md:-mx-8 px-4 md:px-8 py-4 mb-6 bg-ui-bg-base/95 backdrop-blur border-b border-ui-border-base flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 min-w-0">
             <button
@@ -1943,7 +2002,7 @@ const VendorProductNewPage = () => {
                 variant="secondary"
                 onClick={handleSubmit}
                 isLoading={loading}
-                disabled={!canPublish || migrating}
+                disabled={!canPublish || migrating || shareLoading || !!shareError}
               >
                 Save now
               </Button>
@@ -1952,7 +2011,7 @@ const VendorProductNewPage = () => {
               variant="primary"
               onClick={handleSubmit}
               isLoading={loading}
-              disabled={!canPublish || migrating}
+              disabled={!canPublish || migrating || shareLoading || !!shareError}
               className="shrink-0"
             >
               Publish
@@ -2109,7 +2168,7 @@ const VendorProductNewPage = () => {
               variant="secondary"
               onClick={handleSubmit}
               isLoading={loading}
-              disabled={!canPublish || migrating}
+              disabled={!canPublish || migrating || shareLoading || !!shareError}
             >
               Save now
             </Button>
@@ -2118,7 +2177,7 @@ const VendorProductNewPage = () => {
             variant="primary"
             onClick={handleSubmit}
             isLoading={loading}
-            disabled={!canPublish || migrating}
+            disabled={!canPublish || migrating || shareLoading || !!shareError}
           >
             Publish product
           </Button>

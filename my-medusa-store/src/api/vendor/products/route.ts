@@ -1,3 +1,5 @@
+import { loadShareProduct, sharedProductDraft, validProductShare } from "../../../lib/product-share"
+import { CatalogConflict, cleanVendorMetadata, prepareCatalogOffer, publicVariantSku, withCatalogLock } from "../../../lib/catalog-identity"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
 import { Modules, ProductStatus, ContainerRegistrationKeys } from "@medusajs/framework/utils"
@@ -80,7 +82,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       },
     })
 
-    let vendorProducts = products || []
+    let vendorProducts = (products || []).map((product: any) => ({ ...product, variants: (product.variants || []).map((variant: any) => ({ ...variant, sku: publicVariantSku(product, variant) })) }))
 
     const resolveListStatus = (p: any): "published" | "pending" | "draft" => {
       const approval = String(p?.metadata?.approval_status || "").toLowerCase()
@@ -138,9 +140,20 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res)
   const auth = await requireApprovedVendor(req, res)
   if (!auth) return
+  return withCatalogLock(req.scope, () => createOffer(req, res, auth))
+}
+
+async function createOffer(req: MedusaRequest, res: MedusaResponse, auth: { vendor_id: string }) {
 
   try {
     const body = (req as any).body || {}
+    if (body.shared_product_id) {
+      const shared = await loadShareProduct(req.scope, body.shared_product_id)
+      if (!validProductShare(shared, body.share_token)) return res.status(404).json({ message: "Shared product link expired. Ask the admin for a new link." })
+      const submitted = body.variants || []
+      const allowedSkus = new Set((shared.variants || []).map((v: any) => publicVariantSku(shared, v).toUpperCase()))
+      if (!submitted.length || submitted.some((v: any) => !allowedSkus.has(String(v.sku || "").trim().toUpperCase()))) return res.status(409).json({ message: "Use only the SKUs from the shared product." })
+    }
     const {
       title,
       subtitle,
@@ -188,10 +201,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       }
     } catch (brandAuthError: any) {
       console.error("Brand authorization check error:", brandAuthError)
-      // If brand auth module is not available, log warning but continue
-      // This allows gradual rollout
-      console.warn("⚠️ Brand authorization module not available, skipping check")
+      return res.status(503).json({ message: "Brand authorization is temporarily unavailable. Please try again." })
     }
+
+    const offer = await prepareCatalogOffer(req.scope, auth.vendor_id, body)
 
     // Get default shipping profile if not provided
     let finalShippingProfileId = shipping_profile_id
@@ -206,7 +219,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     console.log("Received variants:", JSON.stringify(variants, null, 2))
     console.log("Received options:", JSON.stringify(options, null, 2))
 
-    const normalized = normalizeOptionsAndVariants(options, variants)
+    const normalized = normalizeOptionsAndVariants(options, offer.variants)
     if (normalized.error) {
       return res.status(400).json({ message: normalized.error })
     }
@@ -418,8 +431,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     // Merge user-provided metadata (MID code, HS code, country of origin, color_images, etc.)
     if (metadata && typeof metadata === "object") {
-      Object.assign(baseMetadata, metadata)
+      Object.assign(baseMetadata, cleanVendorMetadata(metadata))
     }
+
+    Object.assign(baseMetadata, offer.metadata)
 
     try {
       baseMetadata.return_window_days = normalizePolicyWindow(
@@ -499,7 +514,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           finalHandle = appendUniqueSuffix(finalHandle)
           console.log(`Handle "${handle}" already exists, using unique handle: "${finalHandle}"`)
         }
-      } catch (checkError: any) {
+      } catch {
         // If check fails, append timestamp anyway to be safe
         finalHandle = appendUniqueSuffix(finalHandle)
         console.log(`Could not check handle uniqueness, using unique handle: "${finalHandle}"`)
@@ -552,6 +567,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       status: ProductStatus.DRAFT, // Set to DRAFT, pending admin approval
       shipping_profile_id: finalShippingProfileId,
       metadata: baseMetadata,
+    }
+
+    if (offer.source) {
+      const shared = sharedProductDraft(await loadShareProduct(req.scope, offer.source.metadata?.catalog_product_id || offer.source.id))
+      Object.assign(productData, { title: shared.title, subtitle: shared.subtitle, description: shared.description, images: shared.images, thumbnail: shared.thumbnail, weight: shared.weight, height: shared.height, width: shared.width, length: shared.length })
     }
 
     // Log product data with detailed price information
@@ -869,6 +889,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     return res.json({ product })
   } catch (error: any) {
+    if (error instanceof CatalogConflict) return res.status(409).json({ error: "catalog_sku_conflict", message: error.message })
     console.error("Vendor product create error:", error)
     console.error("Error stack:", error?.stack)
     console.error("Error details:", {
