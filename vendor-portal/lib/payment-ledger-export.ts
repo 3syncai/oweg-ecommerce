@@ -1,4 +1,4 @@
-import JSZip from "jszip"
+import * as XLSX from "xlsx"
 import type { VendorPaymentsView } from "@/lib/api/client"
 
 type SettlementRow = VendorPaymentsView["settlements"][number]
@@ -19,11 +19,20 @@ const formatIsoDate = (iso: string | null | undefined) => {
 
 const n = (value: number | undefined) => Number(value) || 0
 
-const TEMPLATE_URL = "/templates/vendor-payment-ledger.xlsx"
-const TEMPLATE_WORKSHEET_PATH = "xl/worksheets/sheet1.xml"
-const TEMPLATE_DATA_START_ROW = 4 // Excel row 4; rows 1–3 are the template's grouped headers
-const TEMPLATE_DATA_END_ROW = 19
-const COLUMN_COUNT = 40 // A:AN
+const EXPORT_HEADERS = [
+  "Order ID", "Delivery date", "Category", "Invoice date", "Invoice no",
+  "Item price", "GST amount", "Logistics", "Logistics GST", "Listing price",
+  "Status", "Platform fee", "Platform GST", "Platform total",
+  "Commission", "Commission GST", "Commission total",
+  "Partner fee", "Partner GST", "Partner total",
+  "Logistics fee", "Logistics GST", "Logistics total",
+  "TCS", "TDS", "Bank settlement",
+  "Customer shipping", "Customer shipping GST", "Customer shipping total",
+  "Return fee", "Return GST", "Return total",
+  "Cancellation fee", "Cancellation GST", "Cancellation total",
+  "Payment gateway fee", "Payment gateway GST", "Payment gateway total",
+  "Claim", "Transaction ID", "Payment date", "Payout", "Running balance",
+]
 
 function categoryLabel(row: SettlementRow) {
   const key = row.category || (row.type === "sales" ? "sale" : row.type)
@@ -143,6 +152,9 @@ export function mapPaymentLedgerExportRow(row: SettlementRow) {
     n(row.tcs),
     n(row.tds),
     n(row.bank_settlement ?? row.settlement_amount),
+    n(row.customer_shipping_fee),
+    n(row.customer_shipping_gst),
+    n(row.customer_shipping_total),
     exportReturnFee,
     exportReverseGst,
     exportReverseTotal,
@@ -160,91 +172,21 @@ export function mapPaymentLedgerExportRow(row: SettlementRow) {
   ]
 }
 
-const columnName = (index: number) => {
-  let name = ""
-  let value = index + 1
-  while (value > 0) {
-    const remainder = (value - 1) % 26
-    name = String.fromCharCode(65 + remainder) + name
-    value = Math.floor((value - 1) / 26)
-  }
-  return name
-}
-
-const escapeXml = (value: string) =>
-  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;")
-
-const excelDateSerial = (value: string) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
-  const [year, month, day] = value.split("-").map(Number)
-  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000) + 25_569
-}
-
-function templateRowStyle(rowXml: string, column: string) {
-  return rowXml.match(new RegExp(`<c r="${column}4" s="(\\d+)"`))?.[1] || "0"
-}
-
-function makeDataRow(rowNumber: number, values: Array<string | number> | null, templateRow: string) {
-  const rowAttributes = templateRow.match(/^<row\b[^>]*>/)?.[0] || '<row spans="1:40">'
-  const rowOpen = rowAttributes.replace(/\br="\d+"/, `r="${rowNumber}"`)
-  const cells = Array.from({ length: COLUMN_COUNT }, (_, columnIndex) => {
-    const column = columnName(columnIndex)
-    const style = templateRowStyle(templateRow, column)
-    const value = values?.[columnIndex]
-    if (value === undefined || value === null || value === "") {
-      return `<c r="${column}${rowNumber}" s="${style}"/>`
-    }
-    if (typeof value === "number") {
-      return `<c r="${column}${rowNumber}" s="${style}"><v>${value}</v></c>`
-    }
-    // The source template already supplies Excel date formatting for these columns.
-    // Write a serial number, not a text date, so its exact d-mmm-yy presentation remains.
-    if (columnIndex === 1 || columnIndex === 3 || columnIndex === 37) {
-      const serial = excelDateSerial(value)
-      if (serial !== null) return `<c r="${column}${rowNumber}" s="${style}"><v>${serial}</v></c>`
-    }
-    return `<c r="${column}${rowNumber}" s="${style}" t="inlineStr"><is><t>${escapeXml(value)}</t></is></c>`
-  }).join("")
-  return `${rowOpen}${cells}</row>`
-}
-
-/**
- * Starts from the finance-approved workbook so downloaded reports retain its
- * exact grouped headers, colours, widths, merged cells and number formats.
- */
 export async function downloadPaymentLedgerExcel(rows: SettlementRow[], rangeLabel: string) {
   const exportRows = overlayPayoutFieldsOnOrders(rows)
-  const response = await fetch(TEMPLATE_URL)
-  if (!response.ok) throw new Error("Payment ledger template could not be loaded")
-  const archive = await JSZip.loadAsync(await response.arrayBuffer())
-  const worksheet = archive.file(TEMPLATE_WORKSHEET_PATH)
-  if (!worksheet) throw new Error("Payment ledger template is missing its Sheet4 layout")
-  let sheetXml = await worksheet.async("string")
-  const templateRow = sheetXml.match(/<row\b[^>]*\br="4"[^>]*>[\s\S]*?<\/row>/)?.[0]
-  if (!templateRow) throw new Error("Payment ledger template is missing its data-row format")
-
   const data = exportRows.length
     ? exportRows.map(mapPaymentLedgerExportRow)
     : [["No transactions in the selected period"]]
-  const templateRowCount = TEMPLATE_DATA_END_ROW - TEMPLATE_DATA_START_ROW + 1
-  for (let index = 0; index < templateRowCount; index += 1) {
-    const rowNumber = TEMPLATE_DATA_START_ROW + index
-    const replacement = makeDataRow(rowNumber, data[index] || null, templateRow)
-    sheetXml = sheetXml.replace(new RegExp(`<row\\b[^>]*\\br="${rowNumber}"[^>]*>[\\s\\S]*?<\\/row>`), replacement)
+  const worksheet = XLSX.utils.aoa_to_sheet([EXPORT_HEADERS, ...data])
+  worksheet["!cols"] = EXPORT_HEADERS.map((header) => ({ wch: Math.max(12, header.length + 2) }))
+  worksheet["!autofilter"] = {
+    ref: `A1:${XLSX.utils.encode_col(EXPORT_HEADERS.length - 1)}${data.length + 1}`,
   }
-  if (data.length > templateRowCount) {
-    const additionalRows = data
-      .slice(templateRowCount)
-      .map((values, index) => makeDataRow(TEMPLATE_DATA_END_ROW + index + 1, values, templateRow))
-      .join("")
-    sheetXml = sheetXml.replace("</sheetData>", `${additionalRows}</sheetData>`)
-  }
-  const finalRow = Math.max(TEMPLATE_DATA_END_ROW, TEMPLATE_DATA_START_ROW + data.length - 1)
-  sheetXml = sheetXml.replace(/<dimension ref="A1:AN\d+"\/>/, `<dimension ref="A1:AN${finalRow}"/>`)
-  archive.file(TEMPLATE_WORKSHEET_PATH, sheetXml)
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Payment ledger")
+  const file = XLSX.write(workbook, { bookType: "xlsx", type: "array", compression: true })
   const stamp = new Date().toISOString().slice(0, 10)
-  const file = await archive.generateAsync({ type: "blob", compression: "DEFLATE" })
-  const url = URL.createObjectURL(file)
+  const url = URL.createObjectURL(new Blob([file], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }))
   const link = document.createElement("a")
   link.href = url
   link.download = `Oweg-Vendor-Payment-Ledger-${rangeLabel}-${stamp}.xlsx`

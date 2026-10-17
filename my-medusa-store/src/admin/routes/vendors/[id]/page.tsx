@@ -14,7 +14,8 @@ import {
     CreditCardSolid,
     ShoppingBag,
     ArrowLeftMini,
-    CurrencyDollar
+    CurrencyDollar,
+    ArrowDownTray
 } from "@medusajs/icons"
 
 type Payout = {
@@ -350,6 +351,36 @@ const VendorDetailPage = () => {
         }
     }
 
+    const handleDownloadVendorReport = async () => {
+        if (!vendorId) return
+        try {
+            const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
+            const response = await fetch(`${backend}/admin/vendor-payouts/report?format=xlsx&vendor_id=${vendorId}&range=all`, {
+                credentials: "include",
+            })
+            if (!response.ok) {
+                const err = await response.json().catch(() => null)
+                throw new Error(err?.message || "Failed to download vendor report")
+            }
+            const blob = await response.blob()
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement("a")
+            a.href = url
+            const disposition = response.headers.get("content-disposition")
+            const filenameMatch = disposition && disposition.match(/filename="?([^"]+)"?/)
+            const filename = filenameMatch ? filenameMatch[1] : `Oweg-Vendor-Payments-Report-${vendor?.name || vendorId}-${new Date().toISOString().slice(0, 10)}.xlsx`
+            a.download = filename
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+            URL.revokeObjectURL(url)
+            toast.success("Vendor payment report downloaded")
+        } catch (error: any) {
+            console.error("Vendor report download error:", error)
+            toast.error(error.message || "Failed to download vendor report")
+        }
+    }
+
     const handleCalculatePayout = async () => {
         if (!vendorId) return
 
@@ -378,7 +409,7 @@ const VendorDetailPage = () => {
                     net_amount: data.net_amount ?? 0,
                     order_count: data.order_count ?? 0,
                     unlocking_count: Number(data.unlocking_count) || 0,
-                    unlock_minutes: Number(data.unlock_minutes) || 5,
+                    unlock_minutes: Number(data.unlock_minutes) || 0,
                     note: typeof data.note === "string" ? data.note : undefined,
                     orders: Array.isArray(data.orders)
                         ? data.orders
@@ -886,7 +917,7 @@ const VendorDetailPage = () => {
                     </div>
 
                     {/* Action Button */}
-                    <div style={{ marginBottom: 24 }}>
+                    <div style={{ marginBottom: 24, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                         <Button
                             variant="primary"
                             onClick={handleCalculatePayout}
@@ -894,6 +925,13 @@ const VendorDetailPage = () => {
                         >
                             <CurrencyDollar />
                             {payoutLoading ? "Calculating..." : "Calculate & Pay Now"}
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            onClick={handleDownloadVendorReport}
+                        >
+                            <ArrowDownTray />
+                            Download Payment Report
                         </Button>
                     </div>
 
@@ -973,7 +1011,7 @@ const VendorDetailPage = () => {
                                     {calculation.unlocking_count > 0 && (
                                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                                             <Text style={{ color: "var(--fg-muted)" }}>
-                                                Still unlocking ({calculation.unlock_minutes}-min timer):
+                                                Still pending (return/replacement window):
                                             </Text>
                                             <Text style={{ color: "var(--fg-muted)" }}>{calculation.unlocking_count}</Text>
                                         </div>

@@ -885,6 +885,9 @@ export type VendorPaymentsView = {
     tds_rate?: number
     tds: number
     logistic_fee: number
+    customer_shipping_fee?: number
+    customer_shipping_gst?: number
+    customer_shipping_total?: number
     logistic_gst?: number
     logistic_total?: number
     return_fee?: number
@@ -974,7 +977,11 @@ export const vendorPayoutsApi = {
   },
 
   payments: async () => {
-    return apiRequest<VendorPaymentsView>("/vendor/payouts/payments")
+    // Settlement changes are time-sensitive (delivery/unlock transitions). Do
+    // not let a browser reuse an earlier ledger response after a delivery.
+    return apiRequest<VendorPaymentsView>("/vendor/payouts/payments", {
+      params: { _ts: Date.now() },
+    })
   },
 }
 
@@ -1467,4 +1474,3 @@ export const vendorReportsApi = {
     }
   },
 }
-

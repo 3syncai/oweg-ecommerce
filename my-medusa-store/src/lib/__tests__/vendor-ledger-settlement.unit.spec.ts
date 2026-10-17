@@ -32,6 +32,7 @@ const settle = (
     claim_amount?: number
     payment_amount?: number
     payment_method?: string
+    customer_shipping_total?: number
     rates?: LedgerRates
   } = {}
 ) =>
@@ -44,11 +45,12 @@ const settle = (
     claim_amount: extra.claim_amount,
     payment_amount: extra.payment_amount,
     payment_method: extra.payment_method,
+    customer_shipping_total: extra.customer_shipping_total,
     rates: extra.rates || DEFAULT_LEDGER_RATES,
   })
 
 describe("Sheet4 sale — locked finance fixtures", () => {
-  it("₹1000 taxable + ₹50 Easy Ship @ default rates = bank 930.58", () => {
+  it("₹1000 taxable + ₹50 Easy Ship deducts logistics from product-only listing", () => {
     const row = settle("sale", {
       item_price: LOCKED_SALE_1000_50.item_price,
       logistic_fee: LOCKED_SALE_1000_50.logistic_fee,
@@ -77,6 +79,19 @@ describe("Sheet4 sale — locked finance fixtures", () => {
     expect(row.bank_settlement).toBe(LOCKED_SELF_SHIP_1000.bank_settlement)
   })
 
+  it("credits only the pre-GST share of the ₹50 low-cart shipping charge", () => {
+    const withoutShipping = settle("sale", { item_price: 400, logistic_fee: 0 })
+    const withShipping = settle("sale", {
+      item_price: 400,
+      logistic_fee: 0,
+      customer_shipping_total: 50,
+    })
+    expect(withShipping.customer_shipping_fee).toBe(42.37)
+    expect(withShipping.customer_shipping_gst).toBe(7.63)
+    expect(withShipping.customer_shipping_total).toBe(50)
+    expect(withShipping.bank_settlement).toBe(r2(withoutShipping.bank_settlement + 42.37))
+  })
+
   it("5% output GST product uses 5% on A; B stays 18%", () => {
     const row = settle("sale", {
       item_price: 1000,
@@ -94,8 +109,8 @@ describe("Sheet4 sale — locked finance fixtures", () => {
       logistic_fee: 35,
       rates: { ...DEFAULT_LEDGER_RATES, output_gst_rate: 12 },
     })
-    expect(row.listing_gst).toBe(152.01)
-    expect(row.listing_total).toBe(1401.3)
+    expect(row.listing_gst).toBe(145.71)
+    expect(row.listing_total).toBe(1360)
     expect(row.logistic_gst).toBe(6.3)
   })
 

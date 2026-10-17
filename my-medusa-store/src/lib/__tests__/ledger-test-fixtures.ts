@@ -32,8 +32,8 @@ export function expectedSheet4(input: {
   const rates = input.rates || DEFAULT_LEDGER_RATES
   const A = r2(Math.abs(input.item_price) * input.sign)
   const B = r2(Math.abs(input.logistic_fee) * input.sign)
-  const listing_gst = r2(pct(A, rates.output_gst_rate) + pct(B, rates.service_gst_rate))
-  const listing_total = r2(A + B + listing_gst)
+  const listing_gst = pct(A, rates.output_gst_rate)
+  const listing_total = r2(A + listing_gst)
   const platform_fee = pct(A, rates.platform_rate)
   const platform_gst = pct(platform_fee, rates.service_gst_rate)
   const platform_total = r2(platform_fee + platform_gst)
@@ -101,22 +101,22 @@ export function expectedSheet4(input: {
 export const LOCKED_SALE_1000_50 = {
   item_price: 1000,
   logistic_fee: 50,
-  listing_gst: 189,
-  listing_total: 1239,
+  listing_gst: 180,
+  listing_total: 1180,
   platform_fee: 50,
   platform_gst: 9,
   platform_total: 59,
   commission_fee: 20,
   commission_gst: 3.6,
   commission_total: 23.6,
-  partner_commission: 136.29,
-  partner_gst: 24.53,
-  partner_total: 160.82,
+  partner_commission: 129.8,
+  partner_gst: 23.36,
+  partner_total: 153.16,
   logistic_gst: 9,
   logistic_total: 59,
   tcs: 5,
   tds: 1,
-  bank_settlement: 930.58,
+  bank_settlement: 879.24,
 }
 
 export const LOCKED_SELF_SHIP_1000 = {

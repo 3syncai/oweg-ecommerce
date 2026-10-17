@@ -33,6 +33,20 @@ const formatDate = (dateString: string) =>
 const formatStatus = (status?: string) =>
   (status || "unknown").replace(/_/g, " ")
 
+const statusPillClass = (status?: string) => {
+  const normalized = String(status || "").toLowerCase()
+  if (normalized.includes("refund") || normalized.includes("received")) {
+    return "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+  }
+  if (normalized.includes("reject") || normalized.includes("cancel")) {
+    return "border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
+  }
+  if (normalized.includes("transit") || normalized.includes("pickup")) {
+    return "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+  }
+  return "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300"
+}
+
 type StatusFilter = "all" | "pending" | "approved" | "in_transit" | "refunded"
 
 type ReturnCounts = {
@@ -339,8 +353,8 @@ const VendorReturnsPage = () => {
   } else {
     content = (
       <Container className="mx-auto max-w-7xl p-4 md:p-6 space-y-5 md:space-y-6">
-        <div className="animate-fade-in-up flex flex-wrap items-start justify-between gap-4">
-          <div>
+        <div className="animate-fade-in-up flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-oweg-500/15 bg-gradient-to-br from-oweg-50/70 via-ui-bg-base to-ui-bg-base p-5 shadow-sm dark:from-oweg-950/15">
+          <div className="max-w-2xl">
             <Heading level="h1" className="text-2xl md:text-3xl">
               Returns
             </Heading>
@@ -350,6 +364,10 @@ const VendorReturnsPage = () => {
                 : "Return and replacement requests for your products"}
             </Text>
           </div>
+          <Button variant="secondary" size="small" onClick={() => void loadReturns()} disabled={loading}>
+            <ArrowPath className={loading ? "animate-spin" : ""} />
+            Refresh
+          </Button>
         </div>
 
         {stats.total === 0 ? (
@@ -372,12 +390,12 @@ const VendorReturnsPage = () => {
               />
               <StatCard
                 icon={<ArrowPath />}
-                label="In progress"
-                value={stats.inProgress}
+                label="Needs action"
+                value={stats.needsLogistics}
                 subtext={
                   <span className="inline-flex items-center gap-1.5 text-ui-fg-subtle">
-                    <StatusDot variant="info" />
-                    <Text size="small">Approved / pickup</Text>
+                    <StatusDot variant="warning" />
+                    <Text size="small">Courier or tracking required</Text>
                   </span>
                 }
               />
@@ -406,7 +424,7 @@ const VendorReturnsPage = () => {
               />
             </div>
 
-            <div className="animate-fade-in-up flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="animate-fade-in-up flex flex-col gap-3 rounded-2xl border border-ui-border-base/70 bg-ui-bg-base p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
               <div className="relative w-full sm:max-w-sm">
                 <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ui-fg-muted" />
                 <input
@@ -425,8 +443,8 @@ const VendorReturnsPage = () => {
                     onClick={() => setStatusFilter(option.value)}
                     className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                       statusFilter === option.value
-                        ? "border-oweg-500/40 bg-oweg-500/10 text-oweg-800 dark:text-oweg-300"
-                        : "border-ui-border-base/70 bg-ui-bg-base text-ui-fg-subtle hover:bg-ui-bg-subtle"
+                        ? "border-oweg-500/45 bg-oweg-500/10 text-oweg-800 shadow-sm dark:text-oweg-300"
+                        : "border-ui-border-base/70 bg-ui-bg-base text-ui-fg-subtle hover:border-ui-border-strong hover:bg-ui-bg-subtle"
                     }`}
                   >
                     {option.label} ({option.count})
@@ -455,8 +473,8 @@ const VendorReturnsPage = () => {
               />
             ) : (
               <>
-                <div className="animate-fade-in-up overflow-hidden rounded-xl border border-ui-border-base/70 bg-ui-bg-base">
-                  <div className="hidden lg:grid lg:grid-cols-[100px_minmax(0,1.2fr)_100px_140px_minmax(0,1.4fr)_110px] lg:gap-4 border-b border-ui-border-base/70 bg-ui-bg-subtle/30 px-4 py-3">
+                <div className="animate-fade-in-up overflow-hidden rounded-2xl border border-ui-border-base/70 bg-ui-bg-base shadow-sm">
+                  <div className="hidden lg:grid lg:grid-cols-[110px_minmax(0,1.1fr)_100px_150px_minmax(0,1.55fr)_120px] lg:gap-4 border-b border-ui-border-base/70 bg-ui-bg-subtle/70 px-5 py-3">
                     {["Order", "Customer", "Type", "Status", "Reason / items", "Requested"].map(
                       (h) => (
                         <Text key={h} size="small" weight="plus" className="text-ui-fg-subtle">
@@ -495,7 +513,7 @@ const VendorReturnsPage = () => {
                       return (
                         <div
                           key={item.id}
-                          className="grid grid-cols-1 gap-2 px-4 py-4 transition-colors hover:bg-ui-bg-subtle/60 lg:grid-cols-[100px_minmax(0,1.2fr)_100px_140px_minmax(0,1.4fr)_110px] lg:items-start lg:gap-4"
+                          className="grid grid-cols-1 gap-3 px-5 py-5 transition-colors hover:bg-oweg-50/30 dark:hover:bg-oweg-950/10 lg:grid-cols-[110px_minmax(0,1.1fr)_100px_150px_minmax(0,1.55fr)_120px] lg:items-start lg:gap-4"
                         >
                           <div>
                             <Text weight="plus">
@@ -522,7 +540,7 @@ const VendorReturnsPage = () => {
                           <Text size="small" className="capitalize">
                             {item.type || "return"}
                           </Text>
-                          <span className="inline-flex items-center gap-1.5 capitalize">
+                          <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 capitalize ${statusPillClass(item.status)}`}>
                             <StatusDot variant={returnStatusVariant(item.status)} />
                             <Text size="small">{formatStatus(item.status)}</Text>
                           </span>
@@ -564,7 +582,7 @@ const VendorReturnsPage = () => {
                             ) : null}
                             {item.shipping_method === "easy" &&
                             item.return_logistics_timeline?.length ? (
-                              <ul className="mt-1 space-y-0.5 border-l border-ui-border-base pl-2.5">
+                              <ul className="mt-1 max-h-44 space-y-1 overflow-y-auto rounded-lg border border-ui-border-base/70 bg-ui-bg-subtle/35 p-2.5">
                                 {item.return_logistics_timeline.map((step) => (
                                   <li
                                     key={step.key}

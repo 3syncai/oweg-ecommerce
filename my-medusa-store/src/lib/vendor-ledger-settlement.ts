@@ -3,8 +3,7 @@
  *
  *   GST A     = A * product GST%
  *   GST B     = B * 18% (service GST, always)
- *   GST (A+B) = GST A + GST B
- *   C         = A + B + GST(A+B)
+ *   C         = A + GST(A) (product listing only)
  *   D         = A * platform%   + 18% service GST
  *   E         = A * commission% + 18% service GST
  *   F         = C * partner%    + 18% service GST
@@ -48,10 +47,14 @@ export type LedgerSettlementInput = {
   category: LedgerCategory
   item_price: number
   logistic_fee: number
+  /** Customer-paid shipping, GST-inclusive. This is a vendor settlement credit. */
+  customer_shipping_total?: number
   reverse_logistic_fee?: number
   cancellation_fee?: number
   claim_amount?: number
   payment_amount?: number
+  /** Product taxable value used for a prepaid cancellation gateway debit. */
+  payment_gateway_base?: number
   rates: LedgerRates
   payment_method?: string | null
   order_status?: string | null
@@ -62,13 +65,16 @@ export type LedgerSettlementBreakdown = {
   category: LedgerCategory
   item_price: number
   logistic_fee: number
+  customer_shipping_fee: number
+  customer_shipping_gst: number
+  customer_shipping_total: number
   /** GST on product taxable only (A × product GST%). Not logistics. */
   product_gst: number
   /** Catalog / customer product sale = A + GST(A). Never includes Easy Ship. */
   product_total: number
   /** GST(A) + GST(B) — Sheet4 listing GST. */
   listing_gst: number
-  /** Sheet4 C = A + B + GST(A+B). Bank math only — not “Total sale”. */
+  /** Product listing total only; forward logistics is deducted separately. */
   listing_total: number
   platform_rate: number
   platform_fee: number
@@ -251,6 +257,12 @@ export function calculateVendorLedgerSettlement(
   const sign = category === "return" || category === "cancellation" ? -1 : 1
   const absItem = round2(Math.abs(Number(input.item_price) || 0))
   const absLogistic = round2(Math.abs(Number(input.logistic_fee) || 0))
+  // Checkout's ₹50 shipping price is GST-inclusive. The vendor receives only
+  // its pre-GST amount; the shipping GST is collected for tax remittance.
+  const customerShippingTotal =
+    category === "sale" ? round2(Math.max(0, Number(input.customer_shipping_total) || 0)) : 0
+  const customerShippingFee = round2(customerShippingTotal / (1 + serviceGst / 100))
+  const customerShippingGst = round2(customerShippingTotal - customerShippingFee)
 
   const pgRate = clampLedgerRate(rates.payment_gateway_rate, 0)
   const method = String(input.payment_method || "").toLowerCase().trim()
@@ -266,7 +278,10 @@ export function calculateVendorLedgerSettlement(
     if (category === "cancellation") {
       // Rule 3: if order is cancelled and it is cod then don't charge 2%
       // Rule 4: if order is cancelled and it is prepaid then charge 2%
-      shouldChargePg = !isCod
+      // A cancellation must have an explicit prepaid method before a gateway
+      // debit is created. Historical rows without payment metadata must not be
+      // silently treated as prepaid.
+      shouldChargePg = Boolean(method) && !isCod
     } else if (category === "sale" || category === "return") {
       // Rule 1: if payment is prepaid then deduct 2% payment charge
       // Rule 2: if payment is cod and it is deliverd then take 2% charge
@@ -286,7 +301,9 @@ export function calculateVendorLedgerSettlement(
       Math.abs(Number(input.reverse_logistic_fee) || 0),
       serviceGst
     )
-    const pgBase = round2(Math.abs(Number(input.item_price) || 0))
+    const pgBase = round2(
+      Math.abs(Number(input.payment_gateway_base ?? input.item_price) || 0)
+    )
     const pgFee = shouldChargePg && pgBase > 0 ? pct(pgBase, pgRate) : 0
     const pgGst = shouldChargePg && pgFee > 0 ? pct(pgFee, serviceGst) : 0
     const pgTotal = round2(pgFee + pgGst)
@@ -319,10 +336,9 @@ export function calculateVendorLedgerSettlement(
   const B = round2(absLogistic * sign)
 
   const listingGstItem = pct(A, outputGst)
-  const listingGstLogistic = pct(B, serviceGst)
-  const listingGst = round2(listingGstItem + listingGstLogistic)
+  const listingGst = listingGstItem
   const productTotal = round2(A + listingGstItem)
-  const listingTotal = round2(A + B + listingGst)
+  const listingTotal = productTotal
 
   const platformFee = pct(A, rates.platform_rate)
   const platformGst = pct(platformFee, serviceGst)
@@ -332,7 +348,8 @@ export function calculateVendorLedgerSettlement(
   const commissionGst = pct(commissionFee, serviceGst)
   const commissionTotal = round2(commissionFee + commissionGst)
 
-  const partnerCommission = pct(listingTotal, rates.partner_rate)
+  // Never calculate partner commission on delivery logistics.
+  const partnerCommission = pct(productTotal, rates.partner_rate)
   const partnerGst = pct(partnerCommission, serviceGst)
   const partnerTotal = round2(partnerCommission + partnerGst)
 
@@ -348,7 +365,7 @@ export function calculateVendorLedgerSettlement(
   const tds = pct(A, rates.tds_rate)
 
   let bank = round2(
-    listingTotal - platformTotal - commissionTotal - partnerTotal - logisticTotal - pgTotal - tcs - tds
+    listingTotal + customerShippingFee - platformTotal - commissionTotal - partnerTotal - logisticTotal - pgTotal - tcs - tds
   )
 
   const reverse = signedFeeBlock(
@@ -390,6 +407,9 @@ export function calculateVendorLedgerSettlement(
     category,
     item_price: A,
     logistic_fee: displayLogisticFee,
+    customer_shipping_fee: customerShippingFee,
+    customer_shipping_gst: customerShippingGst,
+    customer_shipping_total: customerShippingTotal,
     product_gst: listingGstItem,
     product_total: productTotal,
     listing_gst: listingGst,
@@ -442,6 +462,9 @@ function emptyBreakdown(opts: {
     category: opts.category,
     item_price: 0,
     logistic_fee: 0,
+    customer_shipping_fee: 0,
+    customer_shipping_gst: 0,
+    customer_shipping_total: 0,
     product_gst: 0,
     product_total: 0,
     listing_gst: 0,

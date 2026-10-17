@@ -1,5 +1,5 @@
 import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { CurrencyDollar, ChevronDownMini } from "@medusajs/icons"
+import { CurrencyDollar, ChevronDownMini, ArrowDownTray } from "@medusajs/icons"
 import {
   Container,
   Heading,
@@ -30,7 +30,7 @@ type PayableLineItem = {
   order_id: string
   order_display_id: string | null
   product_name: string
-  type: "sales" | "claim"
+  type: "sales" | "return" | "claim" | "cancellation" | "clawback"
   order_amount: number
   commission: number
   tcs: number
@@ -120,6 +120,16 @@ const PayableLinesDropdown = ({
                     line.type === "claim"
                       ? line.order_display_id || "Claim"
                       : `#${line.order_display_id || line.order_id.slice(0, 8)}`
+                  const lineKind =
+                    line.type === "claim"
+                      ? "Claim credit"
+                      : line.type === "return"
+                        ? "Return adjustment"
+                        : line.type === "cancellation"
+                          ? "Cancellation charge"
+                          : line.type === "clawback"
+                            ? "Clawback"
+                            : "Sale"
                   const logistic = Number(line.logistic_fee) || 0
                   return (
                     <tr
@@ -131,7 +141,7 @@ const PayableLinesDropdown = ({
                           {line.product_name}
                         </p>
                         <p className="text-xs text-ui-fg-muted">
-                          {line.type === "claim" ? "Claim credit" : "Sale"}
+                          {lineKind}
                           {line.commission > 0
                             ? ` · −${formatCurrency(line.commission)} commission`
                             : ""}
@@ -147,7 +157,9 @@ const PayableLinesDropdown = ({
                       >
                         {logistic > 0 ? `−${formatCurrency(logistic)}` : "₹0"}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold text-green-600">
+                      <td className={`whitespace-nowrap px-3 py-2.5 text-right font-semibold ${
+                        line.pay_amount < 0 ? "text-red-600" : "text-green-600"
+                      }`}>
                         {formatCurrency(line.pay_amount)}
                       </td>
                     </tr>
@@ -199,9 +211,113 @@ const VendorPayoutsPage = () => {
   const [transactionId, setTransactionId] = useState("")
   const [remark, setRemark] = useState("")
 
+  // Report modal state
+  const [reportModalOpen, setReportModalOpen] = useState(false)
+  const [reportVendorId, setReportVendorId] = useState<string>("all")
+  const [reportRange, setReportRange] = useState<string>("all")
+  const [reportCustomFrom, setReportCustomFrom] = useState("")
+  const [reportCustomTo, setReportCustomTo] = useState("")
+  const [reportPaidOnly, setReportPaidOnly] = useState(false)
+  const [reportExporting, setReportExporting] = useState(false)
+  const [reportPreview, setReportPreview] = useState<{ count: number; payouts_count: number } | null>(null)
+  const [reportPreviewLoading, setReportPreviewLoading] = useState(false)
+  const [reportError, setReportError] = useState<string | null>(null)
+
   useEffect(() => {
     loadData()
   }, [])
+
+  useEffect(() => {
+    if (!reportModalOpen) return
+    let active = true
+
+    const fetchPreview = async () => {
+      setReportPreviewLoading(true)
+      try {
+        const params = new URLSearchParams({
+          format: "json",
+          vendor_id: reportVendorId,
+          range: reportRange,
+          paid_only: reportPaidOnly ? "true" : "false",
+        })
+        if (reportRange === "custom") {
+          if (reportCustomFrom) params.set("from", reportCustomFrom)
+          if (reportCustomTo) params.set("to", reportCustomTo)
+        }
+
+        const res = await fetch(`/admin/vendor-payouts/report?${params.toString()}`, {
+          credentials: "include",
+        })
+        if (!res.ok) throw new Error("Failed to load preview")
+        const data = await res.json()
+        if (active) {
+          setReportPreview({ count: data.count || 0, payouts_count: data.payouts_count || 0 })
+        }
+      } catch (err) {
+        if (active) setReportPreview(null)
+      } finally {
+        if (active) setReportPreviewLoading(false)
+      }
+    }
+
+    const timer = setTimeout(fetchPreview, 250)
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
+  }, [reportModalOpen, reportVendorId, reportRange, reportCustomFrom, reportCustomTo, reportPaidOnly])
+
+  const handleDownloadReport = async () => {
+    if (reportRange === "custom" && (!reportCustomFrom || !reportCustomTo)) {
+      setReportError("Please select both From and To dates for a custom report")
+      return
+    }
+    setReportError(null)
+    setReportExporting(true)
+    try {
+      const params = new URLSearchParams({
+        format: "xlsx",
+        vendor_id: reportVendorId,
+        range: reportRange,
+        paid_only: reportPaidOnly ? "true" : "false",
+      })
+      if (reportRange === "custom") {
+        params.set("from", reportCustomFrom)
+        params.set("to", reportCustomTo)
+      }
+
+      const res = await fetch(`/admin/vendor-payouts/report?${params.toString()}`, {
+        credentials: "include",
+      })
+
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => null)
+        throw new Error(errorJson?.message || "Failed to download payment report")
+      }
+
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      const disposition = res.headers.get("content-disposition")
+      const filenameMatch = disposition && disposition.match(/filename="?([^"]+)"?/)
+      const filename = filenameMatch ? filenameMatch[1] : `Oweg-Vendor-Payments-Report-${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      toast.success("Payment report downloaded successfully")
+      setReportModalOpen(false)
+    } catch (e: any) {
+      console.error("Report download error:", e)
+      setReportError(e.message || "Failed to download Excel report")
+      toast.error(e.message || "Failed to download report")
+    } finally {
+      setReportExporting(false)
+    }
+  }
 
   useEffect(() => {
     if (!expandedVendorId) return
@@ -394,24 +510,45 @@ const VendorPayoutsPage = () => {
     )
   }
 
+  // This screen is only a work queue: show vendors with money to pay or an
+  // active protection hold. Settled / negative-only adjustments remain in the
+  // vendor ledger, not in the payout queue.
+  const payoutQueue = vendors.filter((vendor) => {
+    const payout = pendingPayouts[vendor.id]
+    return (payout?.net_amount || 0) > 0 || (payout?.unlocking_count || 0) > 0
+  })
+
   return (
     <Container>
       <div className="mb-2 flex items-center justify-between">
         <Heading level="h1">Vendor Payouts</Heading>
-        <Button variant="secondary" size="small" onClick={loadData}>
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={() => {
+              setReportError(null)
+              setReportModalOpen(true)
+            }}
+          >
+            <ArrowDownTray className="mr-1.5 h-4 w-4" />
+            Download report
+          </Button>
+          <Button variant="secondary" size="small" onClick={loadData}>
+            Refresh
+          </Button>
+        </div>
       </div>
       <p className="mb-6 text-sm text-ui-fg-subtle">
-        Pay only <strong>Available</strong> balance (after the 5-minute post-delivery
-        unlock). Unlocking amounts stay pending until the timer ends.{" "}
+        Pay only <strong>Available</strong> balance after the product return or replacement
+        window ends. Unlocking amounts stay pending until that protection period ends.{" "}
         <strong>Logistic fee</strong> applies for Easy Ship only (Self Ship = ₹0).
         Open <strong>Payable orders</strong> to see each product and pay amount.
       </p>
 
-      {vendors.length === 0 ? (
+      {payoutQueue.length === 0 ? (
         <div className="py-12 text-center">
-          <p className="text-gray-500">No approved vendors found</p>
+          <p className="text-gray-500">No vendor payouts are currently due</p>
         </div>
       ) : (
         <Table>
@@ -420,7 +557,7 @@ const VendorPayoutsPage = () => {
               <Table.HeaderCell>Vendor</Table.HeaderCell>
               <Table.HeaderCell>Bank Details</Table.HeaderCell>
               <Table.HeaderCell>Payable orders</Table.HeaderCell>
-              <Table.HeaderCell>Unlocking (5 min)</Table.HeaderCell>
+              <Table.HeaderCell>Pending protection window</Table.HeaderCell>
               <Table.HeaderCell>Commission</Table.HeaderCell>
               <Table.HeaderCell>Logistic fee</Table.HeaderCell>
               <Table.HeaderCell>Available to pay</Table.HeaderCell>
@@ -428,7 +565,7 @@ const VendorPayoutsPage = () => {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {vendors.map((vendor) => {
+            {payoutQueue.map((vendor) => {
               const payout = pendingPayouts[vendor.id]
               const hasPending = payout && payout.net_amount > 0
               const hasBankDetails =
@@ -656,7 +793,9 @@ const VendorPayoutsPage = () => {
                                 ? "Claim"
                                 : `#${line.order_display_id || line.order_id.slice(0, 8)}`}
                             </td>
-                            <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-green-600">
+                            <td className={`whitespace-nowrap px-3 py-2 text-right font-medium ${
+                              line.pay_amount < 0 ? "text-red-600" : "text-green-600"
+                            }`}>
                               {formatCurrency(line.pay_amount)}
                             </td>
                           </tr>
@@ -706,6 +845,172 @@ const VendorPayoutsPage = () => {
                 isLoading={!!processingVendor}
               >
                 {processingVendor ? "Saving…" : "Confirm payout"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reportModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => !reportExporting && setReportModalOpen(false)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg border border-ui-border-base bg-ui-bg-base shadow-elevation-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-ui-border-base px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-ui-bg-subtle text-ui-fg-base">
+                  <ArrowDownTray className="h-5 w-5" />
+                </div>
+                <div>
+                  <Heading level="h2">Download payment report</Heading>
+                  <Text size="small" className="text-ui-fg-subtle">
+                    Export full payment ledger & completed payouts in Excel (.xlsx) format
+                  </Text>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4 px-5 py-4">
+              {/* Vendor selector */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="report-vendor-select">Vendor</Label>
+                <select
+                  id="report-vendor-select"
+                  value={reportVendorId}
+                  onChange={(e) => setReportVendorId(e.target.value)}
+                  className="h-10 w-full rounded-md border border-ui-border-base bg-ui-bg-base px-3 text-sm text-ui-fg-base outline-none transition-colors focus:border-ui-border-interactive"
+                >
+                  <option value="all">All Vendors ({vendors.length} vendors)</option>
+                  {vendors.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name} ({v.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Range selector */}
+              <div className="flex flex-col gap-1.5">
+                <Label>Date range</Label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { key: "1d", label: "1 day" },
+                    { key: "1m", label: "1 month" },
+                    { key: "3m", label: "3 months" },
+                    { key: "6m", label: "6 months" },
+                    { key: "1y", label: "1 year" },
+                    { key: "all", label: "All time" },
+                    { key: "custom", label: "Custom" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => {
+                        setReportRange(opt.key)
+                        setReportError(null)
+                      }}
+                      className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                        reportRange === opt.key
+                          ? "border-ui-border-interactive bg-ui-bg-base text-ui-fg-base shadow-sm ring-1 ring-ui-border-interactive"
+                          : "border-ui-border-base bg-ui-bg-subtle text-ui-fg-subtle hover:bg-ui-bg-base hover:text-ui-fg-base"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom dates */}
+              {reportRange === "custom" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="custom-from">From</Label>
+                    <Input
+                      id="custom-from"
+                      type="date"
+                      value={reportCustomFrom}
+                      onChange={(e) => setReportCustomFrom(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="custom-to">To</Label>
+                    <Input
+                      id="custom-to"
+                      type="date"
+                      value={reportCustomTo}
+                      onChange={(e) => setReportCustomTo(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Payment filter */}
+              <div className="flex flex-col gap-2 rounded-md border border-ui-border-base bg-ui-bg-subtle p-3">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={reportPaidOnly}
+                    onChange={(e) => setReportPaidOnly(e.target.checked)}
+                    className="h-4 w-4 rounded border-ui-border-base text-ui-fg-interactive focus:ring-ui-border-interactive"
+                  />
+                  <Text size="small" weight="plus">
+                    Filter to completed payments only
+                  </Text>
+                </label>
+                <Text size="xsmall" className="text-ui-fg-muted pl-6">
+                  {reportPaidOnly
+                    ? "Only orders with transaction ID / completed payouts are included."
+                    : "Includes all orders, returns, claims, cancellations, and payout transactions."}
+                </Text>
+              </div>
+
+              {/* Live Preview info */}
+              <div className="flex items-center justify-between rounded-md border border-ui-border-base bg-ui-bg-subtle px-3 py-2 text-sm">
+                <span className="text-ui-fg-subtle">Period preview</span>
+                <span className="font-medium text-ui-fg-base">
+                  {reportPreviewLoading ? (
+                    "Calculating..."
+                  ) : reportPreview ? (
+                    `${reportPreview.count} settlement record${reportPreview.count === 1 ? "" : "s"} · ${reportPreview.payouts_count} payout${reportPreview.payouts_count === 1 ? "" : "s"}`
+                  ) : (
+                    "—"
+                  )}
+                </span>
+              </div>
+
+              <div className="rounded-md border border-ui-border-base/70 bg-ui-bg-subtle/50 px-3 py-2 text-xs text-ui-fg-muted">
+                Excel file includes 2 sheets: <strong>Payment ledger</strong> (same 44 finance columns as vendor side + Vendor info) and <strong>Payouts Summary</strong> (bank transfer details and UTRs).
+              </div>
+
+              {reportError && (
+                <div className="rounded-md border border-red-500/20 bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/10 dark:text-red-400">
+                  {reportError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-ui-border-base px-5 py-4">
+              <Button
+                variant="secondary"
+                size="small"
+                onClick={() => setReportModalOpen(false)}
+                disabled={reportExporting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="small"
+                onClick={handleDownloadReport}
+                disabled={reportExporting}
+                isLoading={reportExporting}
+              >
+                {reportExporting ? "Generating Excel..." : "Download Excel"}
               </Button>
             </div>
           </div>

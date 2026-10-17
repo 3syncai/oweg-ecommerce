@@ -72,10 +72,10 @@ export async function POST(
         available_balance: refreshed.available_balance,
         unlocking_balance: refreshed.unlocking_balance,
         unlocking_count: refreshed.unlocking_count,
-        unlock_minutes: 5,
+        unlock_minutes: 0,
         note:
           refreshed.unlocking_count > 0
-            ? `${refreshed.unlocking_count} order(s) still in 5-min unlock — not payable yet`
+            ? `${refreshed.unlocking_count} order(s) still in their return/replacement protection window — not payable yet`
             : undefined,
       })
     } finally {

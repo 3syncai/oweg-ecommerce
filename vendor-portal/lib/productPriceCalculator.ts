@@ -11,6 +11,10 @@ import {
   TDS_RATE,
 } from "./pricingConfig"
 
+/** Customer pays ₹50 (GST-inclusive) only when the cart/listing is below ₹500. */
+export const CUSTOMER_SHIPPING_CHARGE = 50
+export const CUSTOMER_SHIPPING_FREE_THRESHOLD = 500
+
 /** One settlement row: Basic | GST/tax | Total */
 export type MoneyRow = {
   basic: number
@@ -21,6 +25,8 @@ export type MoneyRow = {
 export type VendorPricingResult = {
   item: MoneyRow
   logistics: MoneyRow
+  /** Customer-paid low-cart shipping. GST is included in total. */
+  customerShipping: MoneyRow
   listing: MoneyRow
   platformFee: MoneyRow
   commissionFee: MoneyRow
@@ -55,6 +61,7 @@ function zeroRow(): MoneyRow {
 const ZERO: VendorPricingResult = {
   item: zeroRow(),
   logistics: zeroRow(),
+  customerShipping: zeroRow(),
   listing: zeroRow(),
   platformFee: zeroRow(),
   commissionFee: zeroRow(),
@@ -141,10 +148,14 @@ export function calculateVendorPricing(
   // --- Item pricing (inclusive of GST) ---
   const item = rowFromInclusive(itemTotal, effectiveGstRate)
   const logistics = rowFromBasic(logisticsBasic, LOGISTICS_GST_RATE)
+  const customerShipping =
+    itemTotal < CUSTOMER_SHIPPING_FREE_THRESHOLD
+      ? rowFromInclusive(CUSTOMER_SHIPPING_CHARGE, LOGISTICS_GST_RATE)
+      : zeroRow()
   const listing: MoneyRow = {
-    basic: round2(item.basic + logistics.basic),
-    gstOrTax: round2(item.gstOrTax + logistics.gstOrTax),
-    total: round2(item.total + logistics.total),
+    basic: item.basic,
+    gstOrTax: item.gstOrTax,
+    total: item.total,
   }
 
   // --- Deductions ---
@@ -157,13 +168,13 @@ export function calculateVendorPricing(
     (item.basic * COMMISSION_RATE) / 100,
     FEE_GST_RATE
   )
-  // Partner: % of total listing price (C total), then 18% input GST
+  // Partner: product listing only. Delivery logistics is never a fee base.
   const partnerCommission = rowFromBasic(
     (listing.total * PARTNER_COMMISSION_RATE) / 100,
     FEE_GST_RATE
   )
   const paymentGatewayFee = rowFromBasic(
-    (listing.total * PAYMENT_GATEWAY_RATE) / 100,
+    (item.total * PAYMENT_GATEWAY_RATE) / 100,
     FEE_GST_RATE
   )
   const logisticsDeduction: MoneyRow = { ...logistics }
@@ -206,7 +217,10 @@ export function calculateVendorPricing(
 
   const totalListingPrice = listing.total
   const totalDeductionsAmount = totalDeductions.total
-  const bankSettlement = round2(totalListingPrice - totalDeductionsAmount)
+  // Customer shipping is GST-inclusive; credit only its pre-GST amount.
+  const bankSettlement = round2(
+    totalListingPrice - totalDeductionsAmount + customerShipping.basic
+  )
 
   // Input GST & Taxes = total GST/tax on deductions lines
   const inputGstAndTaxes = totalDeductions.gstOrTax
@@ -222,6 +236,7 @@ export function calculateVendorPricing(
   return {
     item,
     logistics,
+    customerShipping,
     listing,
     platformFee,
     commissionFee,

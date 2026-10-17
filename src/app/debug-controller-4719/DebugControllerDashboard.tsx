@@ -7,6 +7,8 @@ import type {
   DebugControllerSettings,
   DebugControllerStats,
   ProductSearchResult,
+  DebugDeliverableOrder,
+  DebugPendingSettlementOrder,
   SiteStatus,
 } from "@/lib/debug-controller/types";
 
@@ -75,6 +77,11 @@ export default function DebugControllerDashboard() {
   const [products, setProducts] = useState<ProductSearchResult[]>([]);
   const [productLoading, setProductLoading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deliverableOrders, setDeliverableOrders] = useState<DebugDeliverableOrder[]>([]);
+  const [pendingSettlementOrders, setPendingSettlementOrders] = useState<DebugPendingSettlementOrder[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [deliveryConfirm, setDeliveryConfirm] = useState<string | null>(null);
+  const [settlementConfirm, setSettlementConfirm] = useState<string | null>(null);
 
   const authHeaders = useMemo(
     () => ({
@@ -93,11 +100,14 @@ export default function DebugControllerDashboard() {
     setLoading(true);
     setError("");
     try {
-      const [settingsRes, statsRes] = await Promise.all([
+      const [settingsRes, statsRes, ordersRes] = await Promise.all([
         fetch("/api/debug-controller/settings", {
           headers: { "x-debug-controller-token": activeToken },
         }),
         fetch("/api/debug-controller/stats", {
+          headers: { "x-debug-controller-token": activeToken },
+        }),
+        fetch("/api/debug-controller/orders", {
           headers: { "x-debug-controller-token": activeToken },
         }),
       ]);
@@ -111,6 +121,15 @@ export default function DebugControllerDashboard() {
       setSettings(settingsData.settings);
       setStats(statsData.stats);
       setSystem(statsData.system);
+      if (ordersRes.ok) {
+        const ordersData = await ordersRes.json();
+        setDeliverableOrders(ordersData.orders || []);
+        setPendingSettlementOrders(ordersData.pendingOrders || []);
+      } else {
+        // Keep the controller usable if the optional delivery list cannot load.
+        setDeliverableOrders([]);
+        setPendingSettlementOrders([]);
+      }
       setAuthenticated(true);
       sessionStorage.setItem(TOKEN_KEY, activeToken);
     } catch (e) {
@@ -225,6 +244,48 @@ export default function DebugControllerDashboard() {
       await runAction("remove-opensearch-product", { productId });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
+    }
+  };
+
+  const loadDeliverableOrders = async () => {
+    setOrdersLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/debug-controller/orders", { headers: { "x-debug-controller-token": token } });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load orders");
+      setDeliverableOrders(data.orders || []);
+      setPendingSettlementOrders(data.pendingOrders || []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load orders");
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+
+  const deliverOrder = async (orderId: string) => {
+    const result = await runAction("mark-order-delivered", { orderId });
+    if (result) {
+      setDeliveryConfirm(null);
+      await loadDeliverableOrders();
+      showMessage("Order marked delivered in debug mode");
+    }
+  };
+
+  const syncDeliveryLedger = async (orderId: string) => {
+    const result = await runAction("sync-debug-delivery-ledger", { orderId });
+    if (result) {
+      showMessage("Delivery ledger entry scheduled; it remains pending for the product protection window");
+      await loadDeliverableOrders();
+    }
+  };
+
+  const forceSettlePendingOrder = async (orderId: string) => {
+    const result = await runAction("force-settle-pending-order", { orderId });
+    if (result) {
+      setSettlementConfirm(null);
+      showMessage("Pending order moved to settlement for testing");
+      await loadDeliverableOrders();
     }
   };
 
@@ -375,6 +436,41 @@ export default function DebugControllerDashboard() {
           </div>
         </section>
 
+        <section className="space-y-4 rounded-xl border border-rose-900/70 bg-rose-950/20 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-rose-200">Force pending order to settlement</h2>
+              <p className="text-sm text-rose-300 mt-1">
+                Debug-only: immediately releases a pending order to the vendor settlement balance. Never use this in production.
+              </p>
+            </div>
+            <Button onClick={loadDeliverableOrders} disabled={ordersLoading} variant="outline" className="border-rose-700 text-rose-200">
+              Refresh pending orders
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {pendingSettlementOrders.map((order) => (
+              <div key={order.orderId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-900/70 bg-slate-950/30 px-4 py-3">
+                <div>
+                  <p className="font-medium">Order #{order.displayId} · ₹{order.pendingAmount.toFixed(2)} pending</p>
+                  <p className="text-xs text-slate-400">
+                    {order.email || "No email"} · {order.vendorCount} vendor{order.vendorCount === 1 ? "" : "s"} · scheduled unlock {order.unlockAt ? new Date(order.unlockAt).toLocaleString() : "not set"}
+                  </p>
+                </div>
+                {settlementConfirm === order.orderId ? (
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="destructive" onClick={() => void forceSettlePendingOrder(order.orderId)}>Confirm release</Button>
+                    <Button size="sm" variant="outline" className="border-slate-700" onClick={() => setSettlementConfirm(null)}>Cancel</Button>
+                  </div>
+                ) : (
+                  <Button size="sm" variant="destructive" onClick={() => setSettlementConfirm(order.orderId)}>Move to settlement</Button>
+                )}
+              </div>
+            ))}
+            {!ordersLoading && pendingSettlementOrders.length === 0 ? <p className="text-sm text-slate-500">No pending vendor earnings to release.</p> : null}
+          </div>
+        </section>
+
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">Protection & UX Controls</h2>
           <div className="grid md:grid-cols-2 gap-3">
@@ -491,6 +587,43 @@ export default function DebugControllerDashboard() {
               <p>OpenSearch: <span className={system.opensearchConfigured ? "text-emerald-400" : "text-amber-400"}>{system.opensearchConfigured ? "Configured" : "Not configured"}</span></p>
             </div>
           ) : null}
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Temporary delivery control</h2>
+              <p className="text-sm text-amber-300 mt-1">
+                Debug-only: manually complete dispatch and in-transit vendor orders until live carrier updates are enabled.
+              </p>
+            </div>
+            <Button onClick={loadDeliverableOrders} disabled={ordersLoading} className="bg-amber-600 hover:bg-amber-500">
+              {ordersLoading ? "Loading…" : "Load deliverable orders"}
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {deliverableOrders.map((order) => (
+              <div key={order.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-900/70 bg-amber-950/20 px-4 py-3">
+                <div>
+                  <p className="font-medium">Order #{order.displayId}</p>
+                  <p className="text-xs text-slate-400">{order.email || "No email"} · {order.stage === "in_transit" ? "In transit" : order.stage === "delivered" ? "Delivered — ledger sync available" : "Ready to dispatch"} · {order.id}</p>
+                </div>
+                {order.stage === "delivered" ? (
+                  <Button size="sm" variant="outline" className="border-amber-700 text-amber-300" onClick={() => void syncDeliveryLedger(order.id)}>
+                    Sync ledger
+                  </Button>
+                ) : deliveryConfirm === order.id ? (
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="destructive" onClick={() => void deliverOrder(order.id)}>Confirm delivered</Button>
+                    <Button size="sm" variant="outline" className="border-slate-700" onClick={() => setDeliveryConfirm(null)}>Cancel</Button>
+                  </div>
+                ) : (
+                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500" onClick={() => setDeliveryConfirm(order.id)}>Mark delivered</Button>
+                )}
+              </div>
+            ))}
+            {!ordersLoading && deliverableOrders.length === 0 ? <p className="text-sm text-slate-500">Load orders to see dispatch and in-transit orders.</p> : null}
+          </div>
         </section>
 
         <section className="space-y-4">

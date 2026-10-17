@@ -16,6 +16,7 @@ import {
   ChatBubble,
   ChartBar,
   DocumentText,
+  User,
 } from "@medusajs/icons"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { vendorProfileApi, vendorPayoutsApi } from "@/lib/api/client"
@@ -77,6 +78,13 @@ const navItems = [
     description: "",
     path: "/orders",
     icon: ShoppingCart,
+    type: "normal",
+  },
+  {
+    label: "Customers",
+    description: "",
+    path: "/customers",
+    icon: User,
     type: "normal",
   },
   {
@@ -544,4 +552,3 @@ const VendorShell = ({ children }: PropsWithChildren) => (
 )
 
 export default VendorShell
-

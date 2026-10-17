@@ -16,6 +16,7 @@ import {
   PackageCheck,
   RefreshCw,
   Search,
+  Star,
   Truck,
   XCircle,
 } from "lucide-react"
@@ -112,6 +113,9 @@ type VendorOrder = {
     commission_gst?: number
     logistic_fee?: number
     logistic_gst?: number
+    customer_shipping_fee?: number
+    customer_shipping_gst?: number
+    customer_shipping_total?: number
     return_fee?: number
     return_logistic_gst?: number
     listing_total?: number
@@ -125,6 +129,13 @@ type VendorOrder = {
   cancellation_note?: string | null
   cancellation_at?: string | null
   cancellation_label?: string | null
+  customer_reliability?: {
+    rating: number | null
+    label: string
+    eligible_orders: number
+    returns_count: number
+    replacements_count: number
+  }
 }
 
 const PAGE_SIZE = 10
@@ -253,6 +264,12 @@ const customerEmailDisplay = (order: VendorOrder) => {
     return "Hidden after delivery"
   }
   return order.email || "N/A"
+}
+
+const customerRatingLabel = (order: VendorOrder) => {
+  const reliability = order.customer_reliability
+  if (!reliability || reliability.rating == null) return "New customer"
+  return `${reliability.rating.toFixed(1)} / 5 · ${reliability.label}`
 }
 
 const addressLineSafe = (order: VendorOrder, address?: Record<string, any> | null) => {
@@ -1105,6 +1122,15 @@ const VendorOrdersContent = () => {
                                 ? ` · ${customerName(order)}`
                                 : ""}
                             </Text>
+                            <span
+                              className="mt-1 inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-300"
+                              title={order.customer_reliability?.rating == null
+                                ? "No completed order history yet"
+                                : `${order.customer_reliability.returns_count} return(s), ${order.customer_reliability.replacements_count} replacement(s) across ${order.customer_reliability.eligible_orders} resolved order(s)`}
+                            >
+                              <Star size={12} fill="currentColor" />
+                              {customerRatingLabel(order)}
+                            </span>
                           </div>
 
                           <div>
@@ -1410,6 +1436,9 @@ function DetailsModal({
   const commissionGst = Number(settlement?.commission_gst || 0)
   const logisticFee = Number(settlement?.logistic_fee ?? forwardLogistic)
   const logisticGst = Number(settlement?.logistic_gst || 0)
+  const customerShippingFee = Number(settlement?.customer_shipping_fee || 0)
+  const customerShippingGst = Number(settlement?.customer_shipping_gst || 0)
+  const customerShippingTotal = Number(settlement?.customer_shipping_total || 0)
   const returnFee = Number(settlement?.return_fee ?? returnLogistic)
   const returnGst = Number(settlement?.return_logistic_gst || 0)
   const feeLines = [
@@ -1676,6 +1705,12 @@ function DetailsModal({
                 </Text>
                 <div className="space-y-2 text-sm">
                   <SummaryRow label="Item total" value={formatCurrency(itemTotal, currency)} />
+                  {customerShippingTotal > 0 ? (
+                    <SummaryRow
+                      label={`Customer shipping collected ₹${customerShippingTotal.toFixed(2)} (GST ₹${customerShippingGst.toFixed(2)} retained)`}
+                      value={`+${formatCurrency(customerShippingFee, currency)}`}
+                    />
+                  ) : null}
                   <SummaryRow label="Taxable value" value={formatCurrency(taxable, currency)} />
                   <SummaryRow
                     label={gstRate > 0 ? `GST (${gstRate}%)` : "GST"}

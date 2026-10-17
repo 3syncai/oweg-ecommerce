@@ -17,6 +17,10 @@ import {
   type VendorOrderWorkflow,
   type VendorSettlementRatesSnapshot,
 } from "./vendor-order-workflow"
+import {
+  getPartnerReferralForCustomer,
+  isValidPartnerReferralCode,
+} from "./customer-groups"
 
 export type { VendorSettlementRatesSnapshot }
 
@@ -42,6 +46,10 @@ export function readSettlementRatesSnapshot(
     commission_rate,
     platform_fee_rate,
     cancellation_charge,
+    partner_linked:
+      typeof (raw as any).partner_linked === "boolean"
+        ? (raw as any).partner_linked
+        : undefined,
     partner_rate: asFiniteNumber((raw as any).partner_rate) ?? 0,
     service_gst_rate: asFiniteNumber((raw as any).service_gst_rate) ?? 18,
     tcs_rate: asFiniteNumber((raw as any).tcs_rate) ?? 0,
@@ -51,6 +59,39 @@ export function readSettlementRatesSnapshot(
         ? (raw as any).snapshotted_at
         : new Date(0).toISOString(),
   }
+}
+
+/**
+ * Partner commission is earned only when the customer on this order has a
+ * referral code belonging to an active partner. A store-wide partner rate is
+ * not itself a reason to deduct a partner fee.
+ */
+export async function isOrderCustomerPartnerLinked(
+  orderId: string,
+  pool: Pool
+): Promise<boolean> {
+  const result = await pool.query<{
+    customer_id: string | null
+    referral_code: string | null
+    metadata: Record<string, unknown> | null
+  }>(
+    `
+      SELECT o.customer_id, c.referral_code, c.metadata
+      FROM "order" o
+      LEFT JOIN customer c ON c.id = o.customer_id
+      WHERE o.id = $1
+      LIMIT 1
+    `,
+    [orderId]
+  )
+  const customer = result.rows[0]
+  if (!customer?.customer_id) return false
+
+  const referralCode = await getPartnerReferralForCustomer(customer.customer_id, {
+    referral_code: customer.referral_code,
+    metadata: customer.metadata,
+  })
+  return Boolean(referralCode && (await isValidPartnerReferralCode(referralCode)))
 }
 
 export function readOrderSettlementRates(
@@ -182,10 +223,11 @@ export async function ensureOrderSettlementSnapshots(params: {
 
   const snapshots: Record<string, VendorSettlementRatesSnapshot> = {}
   let changed = false
+  const partnerLinked = await isOrderCustomerPartnerLinked(orderId, pool)
 
   for (const vendorId of vendorIds) {
     const existing = readOrderSettlementRates(metadata, vendorId)
-    if (existing) {
+    if (existing?.partner_linked !== undefined) {
       snapshots[vendorId] = existing
       continue
     }
@@ -211,7 +253,13 @@ export async function ensureOrderSettlementSnapshots(params: {
     )
     const log = fromLog.rows[0]
     const live = await resolveLiveSettlementRates(vendorId, pool)
-    const frozen: VendorSettlementRatesSnapshot = {
+    const frozen: VendorSettlementRatesSnapshot = existing
+      ? {
+          ...existing,
+          partner_linked: partnerLinked,
+          partner_rate: partnerLinked ? existing.partner_rate : 0,
+        }
+      : {
       ...live,
       commission_rate:
         log?.commission_rate == null ? live.commission_rate : Number(log.commission_rate),
@@ -224,9 +272,12 @@ export async function ensureOrderSettlementSnapshots(params: {
           ? live.cancellation_charge
           : Number(log.cancellation_fee),
       partner_rate:
-        log?.partner_commission_rate == null
+        !partnerLinked
+          ? 0
+          : log?.partner_commission_rate == null
           ? live.partner_rate
           : Number(log.partner_commission_rate),
+      partner_linked: partnerLinked,
       tcs_rate: log?.tcs_rate == null ? live.tcs_rate : Number(log.tcs_rate),
       tds_rate: log?.tds_rate == null ? live.tds_rate : Number(log.tds_rate),
       snapshotted_at: new Date().toISOString(),
@@ -264,7 +315,7 @@ export async function getOrFreezeOrderSettlementRates(params: {
   metadata?: Record<string, unknown> | null
 }): Promise<VendorSettlementRatesSnapshot> {
   const fromMeta = readOrderSettlementRates(params.metadata, params.vendorId)
-  if (fromMeta) return fromMeta
+  if (fromMeta?.partner_linked !== undefined) return fromMeta
 
   const snaps = await ensureOrderSettlementSnapshots({
     orderId: params.orderId,
