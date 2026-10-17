@@ -7,10 +7,6 @@ import { useRouter } from "next/navigation"
 import { BrandAuthorizationField } from "@/components/BrandAuthorizationField"
 import GstTaxCodeField from "@/components/GstTaxCodeField"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
-import ReturnReplacementPolicyFields, {
-  EMPTY_RETURN_REPLACEMENT_POLICY,
-  type ReturnReplacementPolicy,
-} from "@/components/ReturnReplacementPolicyFields"
 import { apiRequest, vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorTypesApi, vendorInventoryApi, vendorShippingApi, logApiFailure } from "@/lib/api/client"
 import { DEFAULT_LOGISTICS_FEE } from "@/lib/pricingConfig"
 import {
@@ -84,7 +80,6 @@ type ProductFormData = {
   variants: VariantMatrixRow[]
   colorImages: Record<string, UploadedImageRef[]>
   primaryVisualOption: string
-  returnReplacementPolicy: ReturnReplacementPolicy
 }
 
 const VendorProductNewPage = () => {
@@ -147,7 +142,6 @@ const VendorProductNewPage = () => {
     variants: [createDefaultVariantRow()],
     colorImages: {},
     primaryVisualOption: "",
-    returnReplacementPolicy: EMPTY_RETURN_REPLACEMENT_POLICY,
   })
 
   const [uploadingImages, setUploadingImages] = useState(false)
@@ -157,6 +151,8 @@ const VendorProductNewPage = () => {
   const [brandNeedsAuthorization, setBrandNeedsAuthorization] = useState(false)
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null)
   const [brandAuthorizationFile, setBrandAuthorizationFile] = useState<File | null>(null)
+  const [sharedBrandAuthorizationKey, setSharedBrandAuthorizationKey] = useState<string | null>(null)
+  const [brandAuthorizationRefreshKey, setBrandAuthorizationRefreshKey] = useState(0)
   const [usedSkus, setUsedSkus] = useState<Set<string>>(new Set())
   const [migrateUrl, setMigrateUrl] = useState("")
   const [migrating, setMigrating] = useState(false)
@@ -221,6 +217,7 @@ const VendorProductNewPage = () => {
         if (cancelled) return
         const m = p.metadata || {}
         setSharedProduct({ id, token })
+        setSharedBrandAuthorizationKey(null)
         setFormData(prev => ({ ...prev,
           title: p.title || "", subtitle: p.subtitle || "", description: stripDescriptionSectionHeadings(p.description || ""),
           brand: m.brand || "UNBRANDED", handle: "", thumbnailUrl: p.thumbnail || null,
@@ -234,7 +231,6 @@ const VendorProductNewPage = () => {
           variants: (p.variants || []).map((variant: any) => ({ ...createDefaultVariantRow(), title: variant.title || "Default variant", sku: variant.sku || "", optionValues: variant.options || {}, price: "", discountedPrice: "", inventoryCount: "", allowBackorder: false })),
           colorImages: Object.fromEntries(Object.entries(m.color_images || {}).map(([key, urls]) => [key, (urls as string[]).map(url => ({ url }))])),
           primaryVisualOption: m.primary_visual_option || "",
-          returnReplacementPolicy: { returnWindowDays: String(m.return_window_days ?? ""), replacementWindowDays: String(m.replacement_window_days ?? ""), useSameWindow: m.return_window_days === m.replacement_window_days },
         }))
         toast.success("Shared product loaded", { description: "Add your own price and stock. Brand authorization and admin review still apply." })
       }).catch((error: any) => {
@@ -278,8 +274,6 @@ const VendorProductNewPage = () => {
     if (!availableDraft?.formData) return
     setFormData({
       ...availableDraft.formData,
-      returnReplacementPolicy:
-        availableDraft.formData.returnReplacementPolicy || EMPTY_RETURN_REPLACEMENT_POLICY,
     })
     if (availableDraft.logisticsEstimate) {
       setLogisticsEstimate(availableDraft.logisticsEstimate)
@@ -386,7 +380,27 @@ const VendorProductNewPage = () => {
   const handleMigrateFromOweg = async () => {
     const url = migrateUrl.trim()
     if (!url) {
-      toast.error("Error", { description: "Paste an oweg.in product URL first" })
+      toast.error("Error", { description: "Paste an oweg.in product URL or admin Share link first" })
+      return
+    }
+
+    // Admin Share links point at this form. Opening the local route runs the
+    // authenticated catalog lookup and preserves its SKU and variant options.
+    try {
+      const pasted = new URL(url)
+      const sharedId = pasted.searchParams.get("shared_product")
+      const shareToken = pasted.searchParams.get("share")
+      if (sharedId || shareToken) {
+        if (!sharedId || !shareToken || !pasted.pathname.endsWith("/products/new")) {
+          toast.error("Invalid Share link", { description: "Ask the admin for a complete product Share link." })
+          return
+        }
+        const params = new URLSearchParams({ shared_product: sharedId, share: shareToken })
+        window.location.assign(`/products/new?${params.toString()}`)
+        return
+      }
+    } catch {
+      toast.error("Invalid link", { description: "Paste the full product URL, including https://" })
       return
     }
 
@@ -749,6 +763,10 @@ const VendorProductNewPage = () => {
       toast.error("Error", { description: "Brand is required" })
       return
     }
+    if (sharedProduct && !brandAuthorizationFile && !sharedBrandAuthorizationKey) {
+      toast.error("Error", { description: "Upload your own brand authorization letter for this shared product" })
+      return
+    }
     if (!brandIsAuthorized) {
       toast.error("Error", {
         description: brandNeedsAuthorization
@@ -763,31 +781,12 @@ const VendorProductNewPage = () => {
       return
     }
 
-    const policy = formData.returnReplacementPolicy
-    const parsePolicyDays = (value: string, label: string) => {
-      if (!value.trim()) return null
-      const days = Number(value)
-      if (!Number.isInteger(days) || days < 0 || days > 365) {
-        toast.error("Invalid policy period", {
-          description: `${label} must be a whole number between 0 and 365 days.`,
-        })
-        return undefined
-      }
-      return days
-    }
-    const returnWindowDays = parsePolicyDays(policy.returnWindowDays, "Return window")
-    if (returnWindowDays === undefined) return
-    const replacementWindowDays = policy.useSameWindow
-      ? returnWindowDays
-      : parsePolicyDays(policy.replacementWindowDays, "Replacement window")
-    if (replacementWindowDays === undefined) return
-
     const hasValidPrice = formData.variants.some((v) => {
       const price = parseFloat(v.price)
       return Number.isFinite(price) && price > 0
     })
     if (!hasValidPrice) {
-      toast.error("Error", { description: "At least one variant must have a price greater than 0" })
+      toast.error("Error", { description: "At least one variant must have an MRP greater than 0" })
       return
     }
 
@@ -850,14 +849,21 @@ const VendorProductNewPage = () => {
 
     try {
       // 1. Upload Brand Authorization if pending
+      let authorizationKeyForSharedProduct = sharedBrandAuthorizationKey
       if (brandAuthorizationFile && formData.brand) {
         try {
           const API_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
           const authFormData = new FormData()
           authFormData.append("brand_name", formData.brand)
           authFormData.append("file", brandAuthorizationFile)
+          if (sharedProduct) {
+            authFormData.append("shared_product_id", sharedProduct.id)
+            authFormData.append("share_token", sharedProduct.token)
+          }
 
-          await axios.post(
+          const uploadResponse = await axios.post<{
+            authorization?: { file_key?: string }
+          }>(
             `${API_URL}/vendor/brands/upload-authorization`,
             authFormData,
             {
@@ -867,8 +873,15 @@ const VendorProductNewPage = () => {
               }
             }
           )
+          if (sharedProduct) {
+            const key = uploadResponse.data.authorization?.file_key
+            if (!key) throw new Error("Brand authorization upload did not return a file key")
+            authorizationKeyForSharedProduct = key
+            setSharedBrandAuthorizationKey(key)
+          }
           toast.success("Success", { description: "Brand authorization uploaded" })
           setBrandAuthorizationFile(null) // Prevent re-upload on retry
+          if (!sharedProduct) setBrandAuthorizationRefreshKey((key) => key + 1)
         } catch (authError: any) {
           console.error("Auth upload error:", authError)
           toast.error("Error", { description: "Failed to upload brand authorization. Please try again." })
@@ -926,7 +939,7 @@ const VendorProductNewPage = () => {
 
       // Create product
       await vendorProductsApi.create({
-        ...(sharedProduct ? { shared_product_id: sharedProduct.id, share_token: sharedProduct.token } : {}),
+        ...(sharedProduct ? { shared_product_id: sharedProduct.id, share_token: sharedProduct.token, shared_brand_authorization_key: authorizationKeyForSharedProduct || undefined } : {}),
         title: formData.title,
         subtitle: formData.subtitle || null,
         description: formData.description
@@ -964,9 +977,6 @@ const VendorProductNewPage = () => {
               ? Number(formData.gstRate)
               : null,
           country_of_origin: formData.countryOfOrigin || null,
-          return_window_days: returnWindowDays,
-          replacement_window_days: replacementWindowDays,
-          return_replacement_policy_configured: true,
           ...(migrateSourceMeta?.source_url
             ? {
                 source_url: migrateSourceMeta.source_url,
@@ -1267,12 +1277,14 @@ const VendorProductNewPage = () => {
       <div className="mb-6">
         <BrandAuthorizationField
           brand={formData.brand}
-          onBrandChange={(brand) => setFormData({ ...formData, brand })}
+          onBrandChange={(brand) => { setSharedBrandAuthorizationKey(null); setFormData({ ...formData, brand }) }}
           onAuthorizationStatusChange={(isAuthorized, needsAuthorization) => {
             setBrandIsAuthorized(isAuthorized)
             setBrandNeedsAuthorization(needsAuthorization)
           }}
-          onFileSelect={(file) => setBrandAuthorizationFile(file)}
+          onFileSelect={(file) => { setBrandAuthorizationFile(file); if (file) setSharedBrandAuthorizationKey(null) }}
+          authorizationRefreshKey={brandAuthorizationRefreshKey}
+          requireNewUpload={Boolean(sharedProduct)}
         />
       </div>
     </section>
@@ -1936,14 +1948,6 @@ const VendorProductNewPage = () => {
       }
       usedSkus={usedSkus}
       simpleProductExtras={!formData.hasVariants ? renderSimpleProductMedia() : undefined}
-      policyExtras={
-        <ReturnReplacementPolicyFields
-          value={formData.returnReplacementPolicy}
-          onChange={(returnReplacementPolicy) =>
-            setFormData((prev) => ({ ...prev, returnReplacementPolicy }))
-          }
-        />
-      }
       taxAttributesExtras={renderTaxAttributesSection()}
       productGstRate={formData.gstRate}
       taxCode={formData.taxCode}
@@ -2101,17 +2105,17 @@ const VendorProductNewPage = () => {
           className="mb-6 scroll-mt-28 rounded-lg border border-ui-border-base bg-ui-bg-subtle p-4 md:p-5"
         >
           <Heading level="h2" className="mb-1">
-            Migrate from oweg.in
+            Import product from oweg.in or Share link
           </Heading>
           <Text size="small" className="text-ui-fg-muted mb-3">
-            Paste a product link from oweg.in. We&apos;ll pull title, description, prices, variants,
-            and images (uploaded to your S3), then prefill this form so you can review before saving.
+            Paste an oweg.in product URL or an admin Share link. A Share link fills the product
+            details, images, variants, and SKUs. Add your own MRP, stock, and brand authorization letter before submitting.
           </Text>
           <div className="flex flex-col sm:flex-row gap-3">
             <Input
               value={migrateUrl}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMigrateUrl(e.target.value)}
-              placeholder="https://www.oweg.in/your-product-slug"
+              placeholder="https://www.oweg.in/product... or your admin Share link"
               className="flex-1"
               disabled={migrating}
             />

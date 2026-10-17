@@ -18,8 +18,15 @@ export function getDeliveryDate(order?: OrderDetail | null): Date | null {
 export function getReturnDeadline(order?: OrderDetail | null): Date | null {
   const deliveryDate = getDeliveryDate(order);
   if (!deliveryDate) return null;
+  const configuredReturn = Number(order?.metadata?.return_window_days);
+  const configuredReplacement = Number(order?.metadata?.replacement_window_days);
+  const valid = (days: number) => Number.isInteger(days) && days >= 0 && days <= 365;
+  const days = Math.max(
+    valid(configuredReturn) ? configuredReturn : 7,
+    valid(configuredReplacement) ? configuredReplacement : 7
+  );
   const deadline = new Date(deliveryDate);
-  deadline.setDate(deadline.getDate() + 7);
+  deadline.setDate(deadline.getDate() + days);
   return deadline;
 }
 
@@ -27,6 +34,7 @@ export function isWithinReturnWindow(order?: OrderDetail | null): boolean {
   const deliveryDate = getDeliveryDate(order);
   const returnDeadline = getReturnDeadline(order);
   if (!deliveryDate || !returnDeadline) return false;
+  if (order?.metadata?.return_window_days === 0 && order?.metadata?.replacement_window_days === 0) return false;
   return Date.now() <= returnDeadline.getTime();
 }
 

@@ -6,28 +6,26 @@ function ShareProduct({ product }: { product: any }) {
   const [busy, setBusy] = useState(false)
   const [link, setLink] = useState("")
   const share = async () => {
+    let url = link
     setBusy(true)
     try {
-      let url = link
       if (!url) {
         const response = await fetch(`/admin/products/${product.id}/share`, { method: "POST", credentials: "include" })
         const data = await response.json()
         if (!response.ok) throw new Error(data.message || "Could not create share link")
+        if (typeof data.url !== "string") throw new Error("Could not create share link")
         url = data.url
         setLink(url)
       }
-      if (navigator.share) await navigator.share({ title: product.title, url })
-      else {
-        await navigator.clipboard.writeText(url)
-        toast.success("Link copied", { description: "Send it to the vendor. The link expires in seven days." })
-      }
+      await navigator.clipboard.writeText(url)
+      toast.success("Link copied", { description: "Send it to the vendor. The link expires in seven days." })
     } catch (error: any) {
-      if (error.name !== "AbortError") toast.error(error.message || "Could not share product. Copy the link below.")
+      toast.error(url ? "Clipboard unavailable. Copy the link from the field below." : error.message || "Could not create share link")
     } finally { setBusy(false) }
   }
-  return <div className="flex flex-col gap-1 py-2" onClick={e => e.stopPropagation()}>
-    <Button size="small" variant="secondary" disabled={busy} onClick={share}>{busy ? "Preparing…" : "Share"}</Button>
-    {link && <input aria-label={`Share link for ${product.title}`} className="w-40 rounded border p-1 text-xs" readOnly value={link} onFocus={e => e.target.select()} />}
+  return <div className="flex flex-col gap-1 py-2" onClick={e => { e.preventDefault(); e.stopPropagation() }}>
+    <Button size="small" variant="secondary" disabled={busy} onClick={e => { e.preventDefault(); e.stopPropagation(); void share() }}>{busy ? "Preparing…" : link ? "Copy link" : "Share"}</Button>
+    {link && <input aria-label={`Share link for ${product.title}`} className="w-48 rounded border p-1 text-xs" readOnly value={link} onClick={e => { e.preventDefault(); e.stopPropagation(); e.currentTarget.select() }} onFocus={e => e.target.select()} />}
   </div>
 }
 

@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError, MedusaErrorTypes, Modules } from "@medusajs/framework/utils"
 import { Pool } from "pg"
+import { resolveReturnPolicyForProduct } from "../../../lib/vendor-return-policy"
 import ReturnModuleService from "../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../modules/returns"
 import { StoreCreateReturnRequest } from "./validators"
@@ -49,17 +50,6 @@ function getPaymentType(order: any) {
     return "cod"
   }
   return "online"
-}
-
-function getProductPolicyWindow(metadata: Record<string, any> | null | undefined, type: string) {
-  // Products created before this feature retain the existing 7-day policy.
-  if (metadata?.return_replacement_policy_configured !== true) return 7
-
-  const value = type === "replacement"
-    ? metadata.replacement_window_days
-    : metadata.return_window_days
-  const days = Number(value)
-  return Number.isInteger(days) && days >= 0 && days <= 365 ? days : 0
 }
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
@@ -122,9 +112,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
   }
 
-  // Apply the return/replacement policy of each selected product. An order can
-  // contain products with different vendor-configured windows, so every item
-  // must still be eligible for the requested action.
+  // Apply the admin's current category policy to every selected product.
   const variantIds = [...new Set(
     body.items
       .map((item) => itemMap.get(item.order_item_id)?.variant_id)
@@ -141,27 +129,44 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     const policyRows = await knex("product_variant as pv")
       .innerJoin("product as p", "p.id", "pv.product_id")
       .whereIn("pv.id", variantIds)
-      .select("pv.id as variant_id", "p.metadata as product_metadata")
-    const metadataByVariant = new Map<string, Record<string, any>>()
+      .select("pv.id as variant_id", "p.id as product_id")
+    const productByVariant = new Map<string, string>()
     for (const row of policyRows) {
-      metadataByVariant.set(String(row.variant_id), row.product_metadata || {})
+      productByVariant.set(String(row.variant_id), String(row.product_id))
     }
-
-    for (const variantId of variantIds) {
-      const windowDays = getProductPolicyWindow(metadataByVariant.get(variantId), body.type)
-      const label = body.type === "replacement" ? "Replacement" : "Return"
-      if (windowDays <= 0) {
-        throw new MedusaError(
-          MedusaErrorTypes.INVALID_DATA,
-          `${label} is not available for this item.`
+    const productIds = [...new Set(productByVariant.values())]
+    const categoryRows = productIds.length
+      ? await knex("product_category_product")
+          .whereIn("product_id", productIds)
+          .select("product_id", "category_id")
+      : []
+    const categoriesByProduct = new Map<string, string[]>()
+    for (const row of categoryRows) {
+      const ids = categoriesByProduct.get(String(row.product_id)) || []
+      ids.push(String(row.category_id))
+      categoriesByProduct.set(String(row.product_id), ids)
+    }
+    const policyPool = new Pool({ connectionString: process.env.DATABASE_URL })
+    try {
+      for (const variantId of variantIds) {
+        const productId = productByVariant.get(variantId)
+        const policy = await resolveReturnPolicyForProduct(
+          policyPool,
+          productId ? categoriesByProduct.get(productId) || [] : []
         )
+        const windowDays = body.type === "replacement"
+          ? policy.replacement_window_days
+          : policy.return_window_days
+        const label = body.type === "replacement" ? "Replacement" : "Return"
+        if (windowDays <= 0) {
+          throw new MedusaError(MedusaErrorTypes.INVALID_DATA, `${label} is not available for this item.`)
+        }
+        if (diffDays > windowDays) {
+          throw new MedusaError(MedusaErrorTypes.INVALID_DATA, `${label} window has expired for this item.`)
+        }
       }
-      if (diffDays > windowDays) {
-        throw new MedusaError(
-          MedusaErrorTypes.INVALID_DATA,
-          `${label} window has expired for this item.`
-        )
-      }
+    } finally {
+      await policyPool.end()
     }
   }
 

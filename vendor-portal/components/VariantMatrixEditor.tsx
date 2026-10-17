@@ -639,13 +639,13 @@ export default function VariantMatrixEditor({
 
           {colorValues.length > 0 && (
             <SectionCard
-              title="Step 3 — Sizes, price & stock"
+              title="Step 3 — Sizes, MRP & stock"
               description="For each color, add every size as its own row. Use + Add size to add 32, 33, 34, etc."
             >
               {variants.length > 1 && (
                 <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg bg-ui-bg-subtle p-3">
                   <div>
-                    <Label className="text-xs">Same price for all</Label>
+                    <Label className="text-xs">Same MRP for all</Label>
                     <Input
                       value={bulkPrice}
                       onChange={(e) => setBulkPrice(e.target.value)}
@@ -693,7 +693,7 @@ export default function VariantMatrixEditor({
                               <th className="px-3 py-2 font-medium">{primarySecondaryOption}</th>
                               <th className="px-3 py-2 font-medium">SKU</th>
                               <th className="px-3 py-2 font-medium">Stock</th>
-                              <th className="px-3 py-2 font-medium">Price ₹</th>
+                              <th className="px-3 py-2 font-medium">MRP ₹</th>
                               <th className="px-3 py-2 font-medium">Sale ₹</th>
                               <th className="px-3 py-2 font-medium">Off %</th>
                               <th className="px-3 py-2 font-medium" />
@@ -995,13 +995,13 @@ export default function VariantMatrixEditor({
 
       {hasVariants && !useColorFirstFlow && (
         <SectionCard
-          title="Price & stock"
-          description="Set price and stock for each combination."
+          title="MRP & stock"
+          description="Set MRP and stock for each combination."
         >
           {variants.length > 1 && (
             <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg bg-ui-bg-subtle p-3">
               <div>
-                <Label className="text-xs">Same price for all</Label>
+                <Label className="text-xs">Same MRP for all</Label>
                 <Input
                   value={bulkPrice}
                   onChange={(e) => setBulkPrice(e.target.value)}
@@ -1042,7 +1042,7 @@ export default function VariantMatrixEditor({
                     ))}
                     <th className="px-3 py-2 font-medium">SKU</th>
                     <th className="px-3 py-2 font-medium">Stock</th>
-                    <th className="px-3 py-2 font-medium">Price ₹</th>
+                    <th className="px-3 py-2 font-medium">MRP ₹</th>
                     <th className="px-3 py-2 font-medium">Sale ₹</th>
                     <th className="px-3 py-2 font-medium">Off %</th>
                   </tr>
@@ -1109,7 +1109,7 @@ export default function VariantMatrixEditor({
       {!hasVariants && (
         <SectionCard
           title="Pricing & inventory"
-          description="Set SKU, stock, and price for this product."
+          description="Set SKU, stock, and MRP for this product."
         >
           <div className="overflow-x-auto -mx-1">
             <table className="w-full min-w-[640px] border-collapse text-sm">
@@ -1117,7 +1117,7 @@ export default function VariantMatrixEditor({
                 <tr className="border-b border-ui-border-base text-left text-xs uppercase text-ui-fg-muted">
                   <th className="px-3 py-2 font-medium">SKU</th>
                   <th className="px-3 py-2 font-medium">Stock</th>
-                  <th className="px-3 py-2 font-medium">Price ₹</th>
+                  <th className="px-3 py-2 font-medium">MRP ₹</th>
                   <th className="px-3 py-2 font-medium">Sale ₹</th>
                   <th className="px-3 py-2 font-medium">Off %</th>
                 </tr>

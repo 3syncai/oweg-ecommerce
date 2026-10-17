@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Pool } from "pg"
 import { requireApprovedVendor } from "../../../_lib/guards"
+import { withVendorOrderAssignmentLock } from "../../../../../lib/vendor-order-assignment-lock"
 import { VENDOR_MODULE } from "../../../../../modules/vendor"
 import VendorModuleService from "../../../../../modules/vendor/service"
 import {
@@ -29,8 +30,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const orderId = req.params?.id as string
   if (!orderId) return res.status(400).json({ message: "Order id is required" })
 
+  return withVendorOrderAssignmentLock(orderId, () => acceptVendorOrder(req, res, auth.vendor_id, orderId))
+}
+
+async function acceptVendorOrder(req: MedusaRequest, res: MedusaResponse, vendorId: string, orderId: string) {
   try {
-    const result = await getVendorOrderOrRespond(req, res, auth.vendor_id, orderId)
+    const result = await getVendorOrderOrRespond(req, res, vendorId, orderId)
     if (!result) return
 
     const orderStatus = String(result.order.status || "").toLowerCase()
@@ -38,7 +43,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       return res.status(409).json({ message: "This order was cancelled by admin. Do not accept or ship it." })
     }
 
-    const workflow = getVendorWorkflow(result.order.metadata, auth.vendor_id)
+    const workflow = getVendorWorkflow(result.order.metadata, vendorId)
     if (workflow.stage && workflow.stage !== "to_accept") {
       return res.status(409).json({ message: "Order is already accepted" })
     }
@@ -48,7 +53,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     let vendorEmail: string | null = null
     try {
       const vendorService = req.scope.resolve(VENDOR_MODULE) as VendorModuleService
-      const vendor = await vendorService.retrieveVendor(auth.vendor_id)
+      const vendor = await vendorService.retrieveVendor(vendorId)
       vendorName = vendor?.name || null
       storeName = vendor?.store_name || null
       vendorEmail = vendor?.email || null
@@ -58,7 +63,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     let settlementRates = readOrderSettlementRates(
       result.order.metadata,
-      auth.vendor_id
+      vendorId
     )
     if (!settlementRates && process.env.DATABASE_URL) {
       const pool = new Pool({ connectionString: process.env.DATABASE_URL })
@@ -66,18 +71,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         const snaps = await ensureOrderSettlementSnapshots({
           orderId,
           pool,
-          vendorIds: [auth.vendor_id],
+          vendorIds: [vendorId],
           scope: req.scope,
         })
         settlementRates =
-          snaps[auth.vendor_id] ||
-          (await resolveLiveSettlementRates(auth.vendor_id, pool))
+          snaps[vendorId] ||
+          (await resolveLiveSettlementRates(vendorId, pool))
       } finally {
         await pool.end()
       }
     }
 
-    const metadata = await updateVendorOrderWorkflow(req, result.order, auth.vendor_id, {
+    const metadata = await updateVendorOrderWorkflow(req, result.order, vendorId, {
       stage: "to_pack",
       accepted_at: new Date().toISOString(),
       vendor_name: vendorName,
@@ -87,7 +92,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     })
 
     return res.json({
-      order: formatVendorOrder({ ...result.order, metadata }, auth.vendor_id, result.vendorProductIds),
+      order: formatVendorOrder({ ...result.order, metadata }, vendorId, result.vendorProductIds),
     })
   } catch (error: any) {
     console.error("Vendor order accept error:", error)

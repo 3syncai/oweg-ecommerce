@@ -50,11 +50,24 @@ export function vendorInventorySku(vendorId: string, sku: string): string {
 
 export class CatalogConflict extends Error {}
 
+function sameCatalogProduct(product: any, title: string, brand: string): boolean {
+  return sameCatalogName(title, product.title) &&
+    words(brand).join(" ") === words(product.metadata?.brand || product.collection?.title || "UNBRANDED").join(" ")
+}
+
+function requireExistingProductSku(products: any[], title: string, brand: string, sku: string, excludeId?: string): void {
+  const existing = products.filter(product => product.id !== excludeId && sameCatalogProduct(product, title, brand))
+  const knownSkus = new Set(existing.flatMap(product => (product.variants || []).map((variant: any) =>
+    normalizeCatalogSku(publicVariantSku(product, variant)))).filter(Boolean))
+  if (knownSkus.size && !knownSkus.has(normalizeCatalogSku(sku)))
+    throw new CatalogConflict(`"${title}" already exists in the catalog. Use its existing SKU${knownSkus.size > 1 ? "s" : ""}: ${[...knownSkus].join(", ")}.`)
+}
+
 export function selectCatalogMatch(products: any[], title: string, brand: string, sku: string, vendorId: string, excludeId?: string): any | undefined {
   const matches = products.filter(p => p.id !== excludeId && p.variants?.some((v: any) =>
     normalizeCatalogSku(publicVariantSku(p, v)) === normalizeCatalogSku(sku)))
   for (const product of matches) {
-    if (!sameCatalogName(title, product.title) || words(brand).join(" ") !== words(product.metadata?.brand || product.collection?.title || "UNBRANDED").join(" "))
+    if (!sameCatalogProduct(product, title, brand))
       throw new CatalogConflict(`SKU "${sku}" belongs to "${product.title}". A different product cannot use it.`)
     if (product.metadata?.vendor_id === vendorId)
       throw new CatalogConflict(`You already have an offer for SKU "${sku}". Update its price or stock instead.`)
@@ -90,13 +103,16 @@ export async function prepareCatalogOffer(scope: any, vendorId: string, body: an
   const skus: Record<string, string> = {}
   const seen = new Set<string>()
   let source: any
+  const brand = body.metadata?.brand || "UNBRANDED"
+  if (!(body.variants || []).length) requireExistingProductSku(catalog, body.title, brand, "")
   const variants = (body.variants || []).map((variant: any) => {
     const sku = normalizeCatalogSku(variant.sku)
+    requireExistingProductSku(catalog, body.title, brand, sku)
     if (!sku) return variant
     if (sku.startsWith("OWEG-OFFER-")) throw new CatalogConflict("Use the catalog SKU, not an internal inventory identifier.")
     if (seen.has(sku)) throw new CatalogConflict(`SKU "${sku}" appears on multiple variants.`)
     seen.add(sku)
-    const match = selectCatalogMatch(catalog, body.title, body.metadata?.brand || "UNBRANDED", sku, vendorId)
+    const match = selectCatalogMatch(catalog, body.title, brand, sku, vendorId)
     if (!match) return { ...variant, sku }
     const canonicalId = match.metadata?.catalog_product_id || match.id
     if (source && (source.metadata?.catalog_product_id || source.id) !== canonicalId)
@@ -125,6 +141,18 @@ export async function protectCatalogEdit(scope: any, product: any, body: any) {
   const linked = !!product.metadata?.catalog_product_id || catalog.some(p => p.id !== product.id && p.metadata?.catalog_product_id === identity)
   if (linked && ((body.title && body.title !== product.title) || (body.metadata?.brand && body.metadata.brand !== product.metadata?.brand)))
     throw new CatalogConflict("Shared catalog identity cannot be changed on an individual offer. Ask the admin to update the catalog product.")
+  if (!linked && (body.title || body.metadata?.brand || Array.isArray(body.variants))) {
+    const title = body.title || product.title
+    const brand = body.metadata?.brand || product.metadata?.brand || "UNBRANDED"
+    const updates = new Map((body.variants || []).filter((variant: any) => variant.id).map((variant: any) => [variant.id, variant]))
+    for (const stored of current.variants || []) {
+      const update: any = updates.get(stored.id)
+      requireExistingProductSku(catalog, title, brand, update?.sku ?? publicVariantSku(current, stored), product.id)
+    }
+    for (const variant of body.variants || []) {
+      if (!variant.id) requireExistingProductSku(catalog, title, brand, variant.sku || "", product.id)
+    }
+  }
   if (Array.isArray(body.variants)) {
     for (const variant of body.variants) {
       const stored = current.variants.find((v: any) => v.id === variant.id)

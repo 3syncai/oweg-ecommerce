@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg"
 import { allocateMinor, enqueuePaymentWork, lockWallet, transaction } from "./payment-reliability"
+import { matchesReassignedReturnItem } from "./vendor-reassignment-history"
 
 type Allocation={item_id:string;quantity:number;basis_minor:number;coin_minor:number;cash_minor:number}
 export type ReturnQuote={return_id:string;order_id:string;cash_minor:number;coin_minor:number;allocations:Allocation[];already_recorded:boolean;payout_reference?:string}
@@ -38,7 +39,7 @@ export async function quoteReturnSettlement(client:PoolClient, returnId:string):
  if(!requested.length)throw new Error("return_items_missing")
  const selected=new Map<string,number>()
  for(const item of requested) {
-   const line=lines.find(l=>l.id===item.order_item_id||l.order_item_id===item.order_item_id)
+   const line=lines.find(l=>matchesReassignedReturnItem(l,item.order_item_id,order.metadata))
    const qty=Number(item.quantity)
    if(!line || !Number.isSafeInteger(qty)||qty<=0)throw new Error("invalid_return_item")
    selected.set(line.id,(selected.get(line.id)||0)+qty)

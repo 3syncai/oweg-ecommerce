@@ -26,15 +26,6 @@ function setCorsHeaders(res: MedusaResponse) {
   res.setHeader('Access-Control-Allow-Credentials', 'true')
 }
 
-function normalizePolicyWindow(value: unknown, field: string): number | null {
-  if (value === undefined || value === null || value === "") return null
-  const days = Number(value)
-  if (!Number.isInteger(days) || days < 0 || days > 365) {
-    throw new Error(`${field} must be a whole number between 0 and 365`)
-  }
-  return days
-}
-
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res)
   return res.status(200).end()
@@ -147,9 +138,11 @@ async function createOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
 
   try {
     const body = (req as any).body || {}
+    let sharedProduct: any = null
     if (body.shared_product_id) {
       const shared = await loadShareProduct(req.scope, body.shared_product_id)
       if (!validProductShare(shared, body.share_token)) return res.status(404).json({ message: "Shared product link expired. Ask the admin for a new link." })
+      sharedProduct = shared
       const submitted = body.variants || []
       const allowedSkus = new Set((shared.variants || []).map((v: any) => publicVariantSku(shared, v).toUpperCase()))
       if (!submitted.length || submitted.some((v: any) => !allowedSkus.has(String(v.sku || "").trim().toUpperCase()))) return res.status(409).json({ message: "Use only the SKUs from the shared product." })
@@ -181,22 +174,33 @@ async function createOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
       return res.status(400).json({ message: "title is required" })
     }
 
-    // Check brand authorization before proceeding
-    // Extract brand from metadata (or use "UNBRANDED" if not provided)
+    // A submitted letter is enough to create a draft for admin review.
+    // Publication still requires the letter to be verified by an admin.
     const brandName = (metadata?.brand || "UNBRANDED").toString().trim()
 
     try {
       const brandAuthService = req.scope.resolve("vendorBrandAuthorization") as any
-      const hasAuthorization = await brandAuthService.checkBrandAuthorization(
+      const authorization = await brandAuthService.getBrandAuthorization(
         auth.vendor_id,
         brandName
       )
 
-      if (!hasAuthorization) {
+      if (!authorization?.authorization_file_url || authorization.metadata?.review_status === "rejected") {
         return res.status(400).json({
           error: "brand_authorization_required",
           message: `Please upload brand authorization letter for "${brandName}" before creating products`,
           brand_name: brandName,
+        })
+      }
+      if (sharedProduct && (
+        !body.shared_brand_authorization_key ||
+        body.shared_brand_authorization_key !== authorization.authorization_file_key ||
+        authorization.metadata?.shared_product_id !== sharedProduct.id ||
+        authorization.metadata?.shared_product_share_hash !== sharedProduct.metadata?.catalog_share_hash
+      )) {
+        return res.status(400).json({
+          error: "brand_authorization_required",
+          message: `Upload your own brand authorization letter for "${brandName}" before listing this shared product`,
         })
       }
     } catch (brandAuthError: any) {
@@ -435,19 +439,10 @@ async function createOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
     }
 
     Object.assign(baseMetadata, offer.metadata)
-
-    try {
-      baseMetadata.return_window_days = normalizePolicyWindow(
-        baseMetadata.return_window_days,
-        "return_window_days"
-      )
-      baseMetadata.replacement_window_days = normalizePolicyWindow(
-        baseMetadata.replacement_window_days,
-        "replacement_window_days"
-      )
-    } catch (policyError: any) {
-      return res.status(400).json({ message: policyError?.message || "Invalid return policy" })
-    }
+    // Product policies are owned by the admin category settings, never by vendors.
+    delete baseMetadata.return_window_days
+    delete baseMetadata.replacement_window_days
+    delete baseMetadata.return_replacement_policy_configured
 
     if (baseMetadata.color_images) {
       const visualValues = collectOptionValuesFromProductOptions(finalOptions)

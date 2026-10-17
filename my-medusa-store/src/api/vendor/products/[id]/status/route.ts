@@ -112,6 +112,15 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       })
     }
 
+    const brandName = String(metadata.brand || "").trim()
+    const brandAuthService = req.scope.resolve("vendorBrandAuthorization") as any
+    const authorized = brandName && await brandAuthService.checkBrandAuthorization(auth.vendor_id, brandName)
+    if (!authorized) {
+      return res.status(400).json({
+        message: `Brand authorization for "${brandName || "this product"}" must be approved before publishing`,
+      })
+    }
+
     if (currentStatus === "published") {
       return res.json({
         product,

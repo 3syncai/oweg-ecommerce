@@ -47,6 +47,8 @@ import { useAuth } from '@/contexts/AuthProvider'
 import { useCartSummary } from '@/contexts/CartProvider'
 import { useFlashSale } from '@/hooks/useFlashSale'
 import HealthCareAgeGate from '@/components/modules/HealthCareAgeGate'
+import SellerOffers from '@/components/modules/SellerOffers'
+import { useSellerOffers } from '@/hooks/useSellerOffers'
 import { categoryFromSourceTag } from './utils/source-category'
 import { productHasHealthCareCategory } from '@/lib/health-care-age-gate'
 
@@ -106,6 +108,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const [cartActionPending, setCartActionPending] = useState(false)
   const [buyNowPending, setBuyNowPending] = useState(false)
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({})
+  const [selectedSellerVariantId, setSelectedSellerVariantId] = useState<string | null>(null)
   const [selectedImage, setSelectedImage] = useState(0)
   const [activeTab, setActiveTab] = useState<DescriptionTab>('description')
   const [pinCode, setPinCode] = useState('')
@@ -162,6 +165,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     staleTime: 1000 * 60 * 3,
   })
   const product = productResponse?.product ?? null
+  const currentProductId = product?.id
+  const { flashSaleInfo } = useFlashSale(currentProductId)
 
   useEffect(() => {
     if (!product?.options?.length) {
@@ -201,18 +206,31 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     return match ?? product.variants[0]
   }, [product, selectedOptions])
 
+  const { data: sellerOffers, isLoading: sellerOffersLoading } = useSellerOffers(selectedVariant?.id)
+  const visibleSellerOffers = useMemo(() => sellerOffers?.map(offer => ({
+    ...offer,
+    price: offer.variant_id === selectedVariant?.id && flashSaleInfo?.active && typeof flashSaleInfo.flash_sale_price === 'number'
+      ? Math.min(offer.price, flashSaleInfo.flash_sale_price)
+      : offer.price,
+  })).sort((a, b) => a.price - b.price || b.available - a.available || a.variant_id.localeCompare(b.variant_id)), [sellerOffers, selectedVariant?.id, flashSaleInfo?.active, flashSaleInfo?.flash_sale_price])
+  const selectedSellerOffer = visibleSellerOffers?.find(offer => offer.variant_id === selectedSellerVariantId) ?? visibleSellerOffers?.[0]
+  const sellerChoicePinned = Boolean(selectedSellerOffer && selectedSellerOffer.variant_id === selectedSellerVariantId)
+  const purchaseVariantId = selectedSellerOffer?.variant_id ?? selectedVariant?.id ?? product?.variant_id
+  const sellerHasStock = selectedSellerOffer ? selectedSellerOffer.available > 0 : undefined
+  const sellerInventory = selectedSellerOffer?.available
+
   const displayProduct = useMemo(() => {
     if (!product) return null
     if (!selectedVariant) return product
 
     return {
       ...product,
-      variant_id: selectedVariant.id,
-      price: selectedVariant.price,
+      variant_id: purchaseVariantId,
+      price: selectedSellerOffer?.price ?? selectedVariant.price,
       mrp: selectedVariant.mrp,
-      discount: selectedVariant.discount,
+      discount: selectedSellerOffer ? Math.max(0, Math.round(((selectedVariant.mrp - selectedSellerOffer.price) / selectedVariant.mrp) * 100)) || 0 : selectedVariant.discount,
     }
-  }, [product, selectedVariant])
+  }, [product, selectedVariant, purchaseVariantId, selectedSellerOffer])
 
   const handleOptionChange = useCallback((optionTitle: string, value: string) => {
     if (!product?.variants?.length || !product.options?.length) {
@@ -268,12 +286,11 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   }, [customer?.metadata, product?.id])
   const error =
     productQueryError instanceof Error ? productQueryError.message : productQueryError ? 'Unable to load product' : null
-  const currentProductId = product?.id
-
   // Pull the live flash-sale info for this product so the price block in
   // ProductSummary shows the flash price + countdown when one is active.
   // Without this the PDP silently shows the regular catalogue price.
-  const { flashSaleInfo } = useFlashSale(currentProductId)
+  const selectedFlashSaleInfo = purchaseVariantId === selectedVariant?.id ? flashSaleInfo : undefined
+  const checkoutSellerChoicePinned = sellerChoicePinned && !selectedFlashSaleInfo?.active
   const categoryIds = useMemo(
     () => Array.from(new Set((product?.categories || []).map((cat) => cat.id).filter((id): id is string => !!id))),
     [product?.categories]
@@ -1091,7 +1108,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
   useEffect(() => {
     if (!product?.id) return
-    if (!hasStock) {
+    if (!(sellerHasStock ?? hasStock)) {
       if (outOfStockToastRef.current !== product.id) {
         notifyOutOfStock()
         outOfStockToastRef.current = product.id
@@ -1099,13 +1116,13 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     } else {
       outOfStockToastRef.current = null
     }
-  }, [product?.id, hasStock])
+  }, [product?.id, hasStock, sellerHasStock])
 
   const handleQuantityChange = (delta: number) => {
     setQuantity((prev) => Math.max(1, prev + delta))
   }
 
-  const addVariantToCart = async (variantId?: string, qty = 1, label?: string) => {
+  const addVariantToCart = async (variantId?: string, qty = 1, label?: string, sellerSelected = false) => {
     if (!variantId) {
       notifyCartUnavailable()
       return
@@ -1127,7 +1144,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           "content-type": "application/json",
           ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
         },
-        body: JSON.stringify({ variant_id: variantId, quantity: qty }),
+        body: JSON.stringify({ variant_id: variantId, quantity: qty, seller_selected: sellerSelected }),
         credentials: "include",
       });
       const payload = await res.json().catch(() => null);
@@ -1155,38 +1172,38 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   };
 
   const handleAddToCart = async () => {
-    if (cartActionPending || buyNowPending) return
-    if (!hasStock) {
+    if (cartActionPending || buyNowPending || sellerOffersLoading) return
+    if (!(sellerHasStock ?? hasStock)) {
       notifyOutOfStock()
       return
     }
-    if (typeof resolvedInventory === 'number' && quantity > resolvedInventory) {
+    if (typeof (sellerInventory ?? resolvedInventory) === 'number' && quantity > (sellerInventory ?? resolvedInventory)!) {
       notifyOutOfStock()
       return
     }
-    await addVariantToCart(selectedVariant?.id ?? product?.variant_id, quantity, product?.title)
+    await addVariantToCart(purchaseVariantId, quantity, product?.title, checkoutSellerChoicePinned)
   }
 
   const handleBuyNow = () => {
-    if (cartActionPending || buyNowPending) return
+    if (cartActionPending || buyNowPending || sellerOffersLoading) return
     if (!product) {
       notifyCartUnavailable()
       return
     }
-    const variantId = selectedVariant?.id ?? product.variant_id
+    const variantId = purchaseVariantId
     if (!variantId) {
       notifyCartUnavailable()
       return
     }
-    if (!hasStock) {
+    if (!(sellerHasStock ?? hasStock)) {
       notifyOutOfStock()
       return
     }
-    if (typeof resolvedInventory === 'number' && resolvedInventory <= 0) {
+    if (typeof (sellerInventory ?? resolvedInventory) === 'number' && (sellerInventory ?? resolvedInventory)! <= 0) {
       notifyOutOfStock()
       return
     }
-    if (typeof resolvedInventory === 'number' && quantity > resolvedInventory) {
+    if (typeof (sellerInventory ?? resolvedInventory) === 'number' && quantity > (sellerInventory ?? resolvedInventory)!) {
       notifyOutOfStock()
       return
     }
@@ -1198,8 +1215,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     // because the cart endpoints apply flash prices server-side via
     // flash-sale-cart-mapper.
     const flashPrice =
-      flashSaleInfo?.active && typeof flashSaleInfo.flash_sale_price === "number"
-        ? flashSaleInfo.flash_sale_price
+      selectedFlashSaleInfo?.active && typeof selectedFlashSaleInfo.flash_sale_price === "number"
+        ? selectedFlashSaleInfo.flash_sale_price
         : undefined
     const effectivePrice =
       flashPrice !== undefined
@@ -1219,6 +1236,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           title: product.title,
           thumbnail: product.images?.[0] || product.thumbnail,
           priceMinor: effectivePrice,
+          sellerSelected: checkoutSellerChoicePinned,
         }
         localStorage.setItem("buy_now_item", JSON.stringify(payload))
       }
@@ -1233,6 +1251,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     if (effectivePrice !== undefined) {
       params.set("price", String(effectivePrice))
     }
+    if (checkoutSellerChoicePinned) params.set("sellerSelected", "1")
     router.push(`/checkout?${params.toString()}`)
   }
 
@@ -1394,9 +1413,9 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   onSelect={setSelectedImage}
                   fallback={FALLBACK_IMAGE}
                   productTitle={product.title}
-                  productPrice={product.price}
+                  productPrice={displayProduct?.price ?? product.price}
                   productHighlights={highlights}
-                  hasStock={hasStock}
+                  hasStock={sellerHasStock ?? hasStock}
                 />
 
               </div>
@@ -1409,22 +1428,25 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   ratingValue={ratingValue}
                   reviewCount={reviewCount}
                   viewCount={viewCount}
-                  hasStock={hasStock}
+                  hasStock={sellerHasStock ?? hasStock}
                   quantity={quantity}
                   selectedOptions={selectedOptions}
                   onOptionChange={handleOptionChange}
                   onQuantityChange={handleQuantityChange}
                   onAddToCart={handleAddToCart}
                   onBuyNow={handleBuyNow}
-                  cartBusy={cartActionPending}
-                  buyNowBusy={buyNowPending}
+                  cartBusy={cartActionPending || sellerOffersLoading}
+                  buyNowBusy={buyNowPending || sellerOffersLoading}
                   onShare={shareProduct}
                   onSaveForLater={handleSaveForLater}
                   isWishlisted={isWishlisted}
                   onOpenCompare={() => setCompareModalOpen(true)}
                   formatPrice={(value) => inr.format(value)}
-                  flashSaleInfo={flashSaleInfo}
+                  flashSaleInfo={selectedFlashSaleInfo}
                 />
+                {visibleSellerOffers && visibleSellerOffers.length > 0 && purchaseVariantId && (
+                  <SellerOffers offers={visibleSellerOffers} selectedVariantId={purchaseVariantId} onSelect={id => { setSelectedSellerVariantId(id); setQuantity(1) }} formatPrice={value => inr.format(value)} />
+                )}
                 <DeliveryInfo
                   pinCode={pinCode}
                   pinStatus={pinStatus}

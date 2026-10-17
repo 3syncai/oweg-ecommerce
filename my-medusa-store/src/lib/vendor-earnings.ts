@@ -22,6 +22,7 @@ import {
   readOrderSettlementRates,
 } from "./vendor-settlement-snapshot";
 import { getVendorWorkflow } from "./vendor-order-workflow";
+import { resolveHoldDaysForProduct } from "./vendor-return-policy";
 
 export type VendorEarningStatus =
   | "UNLOCKING"
@@ -216,8 +217,8 @@ type LineQueryRow = {
   product_tax_code: string | null;
   item_gst_rate: string | null;
   item_tax_code: string | null;
-  return_window_days: string | number | null;
-  replacement_window_days: string | number | null;
+  /** Comma-separated product category IDs — used for admin return policy lookup */
+  product_category_ids: string | null;
 };
 
 let earningsTaxColumnsReady: Promise<void> | null = null;
@@ -511,8 +512,12 @@ async function fetchVendorOrderEarnings(
         p.metadata->>'tax_code' AS product_tax_code,
         oli.metadata->>'gst_rate' AS item_gst_rate,
         oli.metadata->>'tax_code' AS item_tax_code,
-        p.metadata->>'return_window_days' AS return_window_days,
-        p.metadata->>'replacement_window_days' AS replacement_window_days
+        (
+          SELECT STRING_AGG(pcp.category_id, ',' ORDER BY pc.rank NULLS LAST)
+          FROM product_category_product pcp
+          JOIN product_category pc ON pcp.category_id = pc.id
+          WHERE pcp.product_id = p.id
+        ) AS product_category_ids
       FROM order_item oi
       JOIN order_line_item oli ON oi.item_id = oli.id
       JOIN "order" o ON oi.order_id = o.id
@@ -539,10 +544,14 @@ async function fetchVendorOrderEarnings(
         row.product_gst_rate ||
         row.product_tax_code
     );
-    const payoutHoldDays = resolvePayoutHoldDays(
-      row.return_window_days,
-      row.replacement_window_days
-    );
+
+    // Admin category policy controls the payout hold; subcategories inherit from parents.
+    const categoryIds = row.product_category_ids
+      ? row.product_category_ids.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+    const payoutHoldDays = await resolveHoldDaysForProduct(pool, {
+      category_ids: categoryIds,
+    });
 
     const existing = byVendor.get(vendorId);
     if (existing) {
@@ -732,8 +741,8 @@ async function upsertVendorEarningRow(
   });
   const netAfterFees = adminPayableNetFromLedger(ledger);
 
-  // The held amount uses the longer customer-protection period selected when
-  // listing the product (for example, 4-day return + 10-day replacement = 10 days).
+  // The hold uses the longer admin category return or replacement period
+  // (for example, 4-day return + 10-day replacement = 10 days).
   const unlockAt = new Date(
     deliveredAt.getTime() + row.payout_hold_days * 24 * 60 * 60 * 1000
   );
@@ -979,39 +988,30 @@ export async function backfillVendorEarnings(
  * rows keep their frozen unlock date.
  */
 async function upgradeLegacyUnlockWindows(pool: Pool): Promise<void> {
-  await pool.query(
-    `
-      UPDATE vendor_earnings_log vel
-      SET
-        unlock_at = vel.delivered_at + (
-          COALESCE((
-            SELECT MAX(GREATEST(
-              CASE
-                WHEN COALESCE(p.metadata->>'return_window_days', '') ~ '^(?:[0-9]|[1-9][0-9]|[12][0-9]{2}|3[0-5][0-9]|36[0-5])$'
-                  THEN (p.metadata->>'return_window_days')::int
-                ELSE 0
-              END,
-              CASE
-                WHEN COALESCE(p.metadata->>'replacement_window_days', '') ~ '^(?:[0-9]|[1-9][0-9]|[12][0-9]{2}|3[0-5][0-9]|36[0-5])$'
-                  THEN (p.metadata->>'replacement_window_days')::int
-                ELSE 0
-              END
-            ))
-            FROM order_item oi
-            JOIN order_line_item oli ON oli.id = oi.item_id
-            LEFT JOIN product_variant pv ON pv.id = oli.variant_id
-            LEFT JOIN product p ON p.id = COALESCE(oli.product_id, pv.product_id)
-            WHERE oi.order_id = vel.order_id
-              AND TRIM(p.metadata->>'vendor_id') = vel.vendor_id
-          ), 7) * INTERVAL '1 day'
-        ),
-        updated_at = NOW()
-      WHERE vel.status = 'UNLOCKING'
-        AND vel.delivered_at IS NOT NULL
-        AND vel.unlock_at IS NOT NULL
-        AND vel.unlock_at <= vel.delivered_at + INTERVAL '5 minutes'
-    `
-  )
+  const legacy = await pool.query<{
+    id: string;
+    order_id: string;
+    vendor_id: string;
+    delivered_at: Date;
+  }>(`
+    SELECT id, order_id, vendor_id, delivered_at
+    FROM vendor_earnings_log
+    WHERE status = 'UNLOCKING'
+      AND delivered_at IS NOT NULL
+      AND unlock_at IS NOT NULL
+      AND unlock_at <= delivered_at + INTERVAL '5 minutes'
+  `);
+  for (const row of legacy.rows) {
+    const earnings = await fetchVendorOrderEarnings(row.order_id, pool);
+    const vendor = earnings.find((entry) => entry.vendor_id === row.vendor_id);
+    const holdDays = vendor?.payout_hold_days ?? 7;
+    await pool.query(
+      `UPDATE vendor_earnings_log
+       SET unlock_at = delivered_at + ($2::int * INTERVAL '1 day'), updated_at = NOW()
+       WHERE id = $1`,
+      [row.id, holdDays]
+    );
+  }
 }
 
 /** Promote UNLOCKING rows to CREDITED once their product-policy hold has elapsed. */

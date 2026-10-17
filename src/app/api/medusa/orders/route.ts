@@ -84,7 +84,30 @@ export async function GET(req: NextRequest) {
     const enrichedOrders = await enrichOrdersWithSummaryTotals(
       orders as Record<string, unknown>[]
     );
-    const normalizedOrders = enrichedOrders.map((order) => normalizeOrderForCustomer(order));
+    const policyOrders = await Promise.all(enrichedOrders.map(async (order) => {
+      if (typeof order.id !== "string") {
+        return order;
+      }
+      try {
+        const response = await medusaStoreFetch(
+          `/store/orders/${encodeURIComponent(order.id)}/return-policy`,
+          { method: "GET", forwardedCookie: cookie, headers: { Cookie: cookie } }
+        );
+        if (!response.ok) return order;
+        const policy = await response.json() as { return_window_days?: number; replacement_window_days?: number };
+        return {
+          ...order,
+          metadata: {
+            ...((order.metadata && typeof order.metadata === "object") ? order.metadata as Record<string, unknown> : {}),
+            return_window_days: policy.return_window_days,
+            replacement_window_days: policy.replacement_window_days,
+          },
+        };
+      } catch {
+        return order;
+      }
+    }));
+    const normalizedOrders = policyOrders.map((order) => normalizeOrderForCustomer(order));
     const count = normalizedOrders.length;
     const rawLimit = (data as { limit?: number }).limit ?? limit;
     const rawOffset = (data as { offset?: number }).offset ?? offset;

@@ -52,7 +52,7 @@ type DraftRequestBody = {
   shippingMethod?: string;
   referralCode?: string;
   paymentMethod?: "razorpay" | "cod";
-  itemsOverride?: Array<{ variant_id: string; quantity: number }>;
+  itemsOverride?: Array<{ variant_id: string; quantity: number; price_minor?: number; seller_selected?: boolean }>;
   mode?: "buy_now" | "cart";
   shippingPrice?: number;
   shippingMethodName?: string;
@@ -301,7 +301,8 @@ export async function POST(req: Request) {
           .map((it) => ({
             variant_id: it.variant_id,
             quantity: Math.max(1, Number(it.quantity)),
-            unit_price: typeof (it as any).price_minor === 'number' ? (it as any).price_minor : undefined
+            unit_price: typeof it.price_minor === 'number' ? it.price_minor : undefined,
+            seller_selected: it.seller_selected === true,
           }))
         : null;
 
@@ -382,14 +383,16 @@ export async function POST(req: Request) {
           // Apply price override if it matches an overridden item (for Buy Now)
           const override = itemsOverride?.find(it => it.variant_id === variantId)
           const unit_price = override?.unit_price
+          const seller_selected = override?.seller_selected || (record.metadata as Record<string, unknown> | undefined)?.seller_selected === true
 
           return {
             variant_id: variantId,
             quantity,
-            unit_price
+            unit_price,
+            seller_selected,
           };
         })
-        .filter((item): item is NonNullable<typeof item> => Boolean(item)) as unknown as { variant_id: string; quantity: number; unit_price?: number }[]
+        .filter((item): item is NonNullable<typeof item> => Boolean(item)) as unknown as { variant_id: string; quantity: number; unit_price?: number; seller_selected?: boolean }[]
       : [];
 
     if (!items.length) {
@@ -411,6 +414,35 @@ export async function POST(req: Request) {
     const cartItemRecords = Array.isArray(cart.items)
       ? (cart.items as Array<Record<string, unknown>>)
       : [];
+    // Select the vendor with the most free stock for the same public SKU and
+    // customer price. The cart can still display the original catalog offer.
+    const routingInput = items.map(item => {
+      const record = cartItemRecords.find(row => row.variant_id === item.variant_id || (row.variant as any)?.id === item.variant_id);
+      const price = Number(item.unit_price ?? record?.unit_price);
+      return { variant_id: item.variant_id, quantity: item.quantity, unit_price: price, seller_selected: item.seller_selected === true };
+    });
+    if (routingInput.every(item => Number.isFinite(item.unit_price) && item.unit_price >= 0)) {
+      const routingRes = await backend("/store/catalog-offers/select", {
+        method: "POST",
+        body: JSON.stringify({ items: routingInput }),
+      });
+      // During a staggered deployment the older Medusa API has no selection
+      // route; keep its existing cart behavior until that backend is updated.
+      if (routingRes.status !== 404) {
+        if (!routingRes.ok) return NextResponse.json({ error: routingRes.status === 409 ? "Your selected seller is out of stock or its price changed. Please choose another seller." : "Unable to check vendor stock. Please retry checkout." }, { status: routingRes.status === 409 ? 409 : 503 });
+        const routing = await routingRes.json() as { selections?: Array<{ original_variant_id: string; variant_id: string }> };
+        if (!Array.isArray(routing.selections) || routing.selections.length !== items.length)
+          return NextResponse.json({ error: "Unable to select a vendor. Please retry checkout." }, { status: 503 });
+        for (let i = 0; i < items.length; i++) {
+          const selection = routing.selections[i];
+          if (selection.original_variant_id !== items[i].variant_id) return NextResponse.json({ error: "Vendor selection changed. Please retry checkout." }, { status: 409 });
+          if (selection.variant_id !== items[i].variant_id) {
+            items[i].variant_id = selection.variant_id;
+            items[i].unit_price = routingInput[i].unit_price;
+          }
+        }
+      }
+    }
     const itemsTotal = cartItemRecords.reduce(
       (sum, record) => sum + cartItemLineTotalRupees(record, cartCurrency),
       0
