@@ -720,7 +720,7 @@ const VendorProductEditPage = () => {
                 Edit Product
               </Heading>
               <Text className="text-ui-fg-subtle">
-                Save field changes with a remark to send for admin approval. Use Draft / Publish to hide or show an already-approved product without re-approval.
+                Save field changes with a remark to send for admin approval. Mark Unpublished / Publish to hide or show an already-approved product without re-approval.
               </Text>
             </div>
 
@@ -746,7 +746,7 @@ const VendorProductEditPage = () => {
                     : String(product.metadata?.approval_status || "").toLowerCase() !== "approved"
                       ? "Admin must approve this product once before you can publish it to the storefront."
                       : product.status === "published"
-                        ? "Live on OWEG. Use Draft to hide it without losing approval."
+                        ? "Live on OWEG. Mark Unpublished to hide it without losing approval."
                         : "Hidden from OWEG. Publish to make it visible again (no re-approval needed)."}
                 </Text>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -760,7 +760,7 @@ const VendorProductEditPage = () => {
                       product.status !== "published"
                     }
                   >
-                    {statusUpdating ? "Updating..." : "Move to Draft"}
+                    {statusUpdating ? "Updating..." : "Mark Unpublished"}
                   </Button>
                   <Button
                     variant="secondary"
@@ -994,7 +994,7 @@ const VendorProductEditPage = () => {
               <div className="space-y-2 text-sm text-ui-fg-subtle">
                 <Text>1. Edit fields + remark → pending admin approval.</Text>
                 <Text>2. Admin approves → product goes live on OWEG.</Text>
-                <Text>3. Move to Draft anytime to hide it (low stock, pause listing).</Text>
+                <Text>3. Mark Unpublished anytime to hide it (low stock, pause listing).</Text>
                 <Text>4. Publish again later — no re-approval if it was already approved.</Text>
               </div>
             </div>
