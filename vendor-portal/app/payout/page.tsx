@@ -112,10 +112,9 @@ const filterSettlementsByRange = (rows: SettlementRow[], from: Date, to: Date) =
     return delivered >= from.getTime() && delivered <= to.getTime()
   })
 
-const isLedgerDisplayRow = (row: SettlementRow) => {
-  const category = row.category || row.type
-  return category !== "payment"
-}
+// Payments are ledger events too: the vendor must see when settlement was
+// actually paid out, alongside the sale/return rows that created the balance.
+  const isLedgerDisplayRow = () => true
 
 const resolveLedgerFilterWindow = (
   filter: LedgerFilter

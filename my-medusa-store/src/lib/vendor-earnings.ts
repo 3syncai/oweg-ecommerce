@@ -2594,6 +2594,7 @@ export function settlementFromLedger(params: {
           : ledger.category === "cancellation"
             ? "cancellation"
             : "payment"
+  const isPayment = ledger.category === "payment"
   return {
     id: params.id,
     order_id: params.order_id,
@@ -2602,7 +2603,9 @@ export function settlementFromLedger(params: {
     type,
     category: ledger.category,
     order_date: params.delivered_at,
-    invoice_no: params.order_display_id ? `INV-${params.order_display_id}` : "",
+    // A payout is a transfer batch, never a product invoice. Keep invoice
+    // details exclusively on the individual sale / return ledger entries.
+    invoice_no: !isPayment && params.order_display_id ? `INV-${params.order_display_id}` : "",
     item_status: itemStatusLabel(ledger.category, params.status),
     // Product catalog sale (A + GST A). Never fold Easy Ship into "sale".
     order_amount: ledger.product_total,
