@@ -2,6 +2,8 @@
 
 import React from "react";
 import Link from "next/link";
+import { ChevronRight, UserRound } from "lucide-react";
+import styles from "./AccountDropdown.module.css";
 import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import {
   MyAccountMenuIcon,
@@ -13,27 +15,33 @@ type AccountDropdownProps = {
   onSignOutClick?: () => void;
 };
 
-const itemClassName =
-  "flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm font-medium text-[#1F2A33] transition-colors hover:bg-[#EAF8E7] hover:text-[#66C940]";
-
 export default function AccountDropdown({ onSignOutClick }: AccountDropdownProps) {
   return (
-    <div className="w-64 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl">
-      <div className="space-y-1 p-2">
-        <Link href="/account" className={itemClassName}>
-          <MyAccountMenuIcon className="shrink-0" />
+    <div className={styles.menu}>
+      <div className={styles.header}>
+        <span className={styles.avatar}><UserRound size={21} aria-hidden="true" /></span>
+        <div><p className={styles.eyebrow}>Your space at OWEG</p><p className={styles.title}>Make yourself at home.</p><p className={styles.description}>Your orders, favourites and account.</p></div>
+      </div>
+      <div className={styles.shortcuts}>
+        <Link href="/account" className={styles.row}>
+          <span className={styles.icon}><MyAccountMenuIcon className="shrink-0" /></span>
           <span>My Account</span>
+          <ChevronRight size={14} className={styles.arrow} aria-hidden="true" />
         </Link>
-        <Link href="/account/orders" className={itemClassName}>
-          <AccountHubIcon name="orders" size={20} className="h-5 w-5 shrink-0" />
+        <Link href="/account/orders" className={styles.row}>
+          <span className={styles.icon}><AccountHubIcon name="orders" size={20} className="h-5 w-5 shrink-0" /></span>
           <span>Orders</span>
+          <ChevronRight size={14} className={styles.arrow} aria-hidden="true" />
         </Link>
-        <Link href="/account/wishlist" className={itemClassName}>
-          <MyWishlistMenuIcon className="shrink-0" />
+        <Link href="/account/wishlist" className={styles.row}>
+          <span className={styles.icon}><MyWishlistMenuIcon className="shrink-0" /></span>
           <span>Wishlist</span>
+          <ChevronRight size={14} className={styles.arrow} aria-hidden="true" />
         </Link>
-        <button type="button" onClick={() => onSignOutClick?.()} className={itemClassName}>
-          <SignOutMenuIcon className="shrink-0" />
+      </div>
+      <div className={styles.signout}>
+        <button type="button" onClick={() => onSignOutClick?.()} className={styles.row}>
+          <span className={styles.icon}><SignOutMenuIcon className="shrink-0" /></span>
           <span>Sign Out</span>
         </button>
       </div>
