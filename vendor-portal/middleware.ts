@@ -1,3 +1,4 @@
+import { safeVendorRedirect } from "./lib/vendor-redirect";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
@@ -79,12 +80,12 @@ export async function middleware(request: NextRequest) {
 
   if (isProtectedPath && !token) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("redirect", pathname);
+    loginUrl.searchParams.set("redirect", pathname + request.nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 
   if (isAuthPath && token) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL(safeVendorRedirect(request.nextUrl.searchParams.get("redirect")), request.url));
   }
 
   return NextResponse.next();

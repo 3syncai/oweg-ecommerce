@@ -1,3 +1,4 @@
+import { publicVariantSku } from "../../../lib/catalog-identity"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { requireApprovedVendor } from "../_lib/guards"
@@ -137,7 +138,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           product_thumbnail: product.thumbnail,
           variant_id: variant.id,
           variant_title: variant.title,
-          variant_sku: variant.sku,
+          variant_sku: publicVariantSku(product, variant),
           inventory_item_id: inventoryItemId,
           inventory_level_id: level?.id || null,
           stock_quantity: Math.max(0, Number(level?.stocked_quantity) || 0),

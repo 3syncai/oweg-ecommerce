@@ -1,3 +1,4 @@
+import { CatalogConflict, protectCatalogEdit, publicVariantSku, withCatalogLock } from "../../../../../lib/catalog-identity"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../../../_lib/guards"
 import { Modules, ProductStatus } from "@medusajs/framework/utils"
@@ -31,6 +32,10 @@ export async function PATCH(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res)
   const auth = await requireApprovedVendor(req, res)
   if (!auth) return
+  return withCatalogLock(req.scope, () => updateOfferVariants(req, res, auth))
+}
+
+async function updateOfferVariants(req: MedusaRequest, res: MedusaResponse, auth: { vendor_id: string }) {
 
   const productId = req.params?.id as string
   if (!productId) {
@@ -50,6 +55,7 @@ export async function PATCH(req: MedusaRequest, res: MedusaResponse) {
     }
 
     const body = (req as { body?: Record<string, unknown> }).body || {}
+    await protectCatalogEdit(req.scope, product, body)
     const {
       variants: variantUpdates,
       options: optionUpdates,
@@ -303,6 +309,7 @@ export async function PATCH(req: MedusaRequest, res: MedusaResponse) {
     }
 
     const variantMatrix = await fetchProductVariantMatrix(req, productId)
+    for (const variant of variantMatrix.variants) variant.sku = publicVariantSku(product, variant)
 
     return res.json({
       product_id: productId,
@@ -310,6 +317,7 @@ export async function PATCH(req: MedusaRequest, res: MedusaResponse) {
       metadata: nextMetadata,
     })
   } catch (error: unknown) {
+    if (error instanceof CatalogConflict) return res.status(409).json({ error: "catalog_sku_conflict", message: error.message })
     const message = error instanceof Error ? error.message : "Failed to update variants"
     console.error("Vendor variant matrix update error:", error)
     return res.status(500).json({ message })

@@ -4,7 +4,7 @@ import { Container, Heading, Text, Button, Input, Label, Badge } from "@medusajs
 import { useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { ADMIN_PERMISSION_GROUPS, type AdminAccess, type AdminPermission, type CustomAdminPermission } from "../../../shared/admin-access"
 import { accessRequest, currentAdminAccess } from "../../lib/admin-access-client"
-import { PermissionEditor } from "../../components/permission-editor"
+import { roleCompatibilityError, supportedRolePermissions, type AdminRoleCatalog } from "../../../shared/admin-role-catalog"
 import { Link } from "react-router-dom"
 
 type Role = { id: string; name: string; responsibilities: string; permissions: AdminPermission[] }
@@ -29,8 +29,8 @@ export default function AdminAccessPage() {
   const [roles, setRoles] = useState<Role[]>([])
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [customPermissions, setCustomPermissions] = useState<CustomAdminPermission[]>([])
-  const [permissionDraft, setPermissionDraft] = useState<CustomAdminPermission | "new" | null>(null)
-  const [tab, setTab] = useState<"accounts" | "roles" | "permissions" | "activity">("accounts")
+  const [roleCatalog, setRoleCatalog] = useState<AdminRoleCatalog | undefined>(undefined)
+  const [tab, setTab] = useState<"accounts" | "roles" | "activity">("accounts")
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -45,6 +45,7 @@ export default function AdminAccessPage() {
     const [usersData, rolesData, auditData, permissionsData] = await Promise.all([accessRequest("/users"), accessRequest("/roles"), accessRequest("/audit"), accessRequest("/permissions")])
     setAccounts(usersData.users); setRoles(rolesData.roles); setEvents(auditData.events)
     setCustomPermissions(permissionsData.permissions)
+    setRoleCatalog(rolesData.role_catalog)
   }
   useEffect(() => {
     currentAdminAccess().then(async value => { setAccess(value); if (value.kind === "superadmin" && value.active) await reload() })
@@ -73,6 +74,8 @@ export default function AdminAccessPage() {
   const saveRole = (event: FormEvent) => {
     event.preventDefault()
     if (!roleDraft) return
+    const incompatible = roleCompatibilityError(roleDraft.permissions, supportedPermissions)
+    if (incompatible) { setError(incompatible); return }
     void run(async () => {
       const { id, ...body } = roleDraft
       await accessRequest(id ? `/roles/${encodeURIComponent(id)}` : "/roles", body)
@@ -80,13 +83,7 @@ export default function AdminAccessPage() {
     })
   }
 
-  const savePermission = (body: Omit<CustomAdminPermission, "id">) => {
-    if (!permissionDraft) return
-    void run(async () => {
-      await accessRequest(permissionDraft === "new" ? "/permissions" : `/permissions/${encodeURIComponent(permissionDraft.id)}`, body)
-      setPermissionDraft(null); setNotice("Permission saved. Select it in a role to grant access.")
-    })
-  }
+  const supportedPermissions = supportedRolePermissions(roleCatalog, customPermissions.map(permission => permission.id))
   const permissionOptions = [
     ...ADMIN_PERMISSION_GROUPS.map(group => ({ id: group.id as AdminPermission, label: group.label, description: group.description })),
     ...ADMIN_RESPONSIBILITIES.map(item => ({ id: item.id as AdminPermission, label: item.label, description: "Specific responsibility" })),
@@ -99,23 +96,14 @@ export default function AdminAccessPage() {
   return <Container className="p-0">
     <div className="flex flex-wrap items-start justify-between gap-4 border-b border-ui-border-base p-6">
       <div><Heading level="h1">Admin Access</Heading><Text size="small" className="mt-2 text-ui-fg-subtle">Create subadmins and decide which areas each role can manage.</Text></div>
-      <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={busy} onClick={() => { setError(""); setPermissionDraft("new") }}>Create permission</Button><Button variant="secondary" disabled={busy} onClick={() => { setError(""); setRoleDraft({ ...blankRole }) }}>Create role</Button><Button disabled={busy || !roles.length} onClick={() => { setError(""); setUserDraft({ ...blankUser, role_id: roles[0]?.id || "" }); setCreating(true) }}>Create subadmin</Button></div>
+      <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={busy} onClick={() => { setError(""); setRoleDraft({ ...blankRole }) }}>Create role</Button><Button disabled={busy || !roles.length} onClick={() => { setError(""); setUserDraft({ ...blankUser, role_id: roles[0]?.id || "" }); setCreating(true) }}>Create subadmin</Button></div>
     </div>
     <div className="px-6 pt-5"><Badge color="green">One superadmin · {accounts.find(a => a.kind === "superadmin")?.email}</Badge><Text size="small" className="mt-2 text-ui-fg-muted">The superadmin is managed through the CLI. Subadmins cannot grant permissions or create other Medusa admins.</Text></div>
-    <div className="flex flex-wrap gap-2 border-b border-ui-border-base px-6 py-4">{(["accounts", "roles", "permissions", "activity"] as const).map(value => <Button key={value} variant={tab === value ? "primary" : "secondary"} size="small" onClick={() => setTab(value)}>{value === "accounts" ? "Admin accounts" : value === "roles" ? "Roles & responsibilities" : value === "permissions" ? "Permissions" : "Activity"}</Button>)}</div>
+    <div className="flex flex-wrap gap-2 border-b border-ui-border-base px-6 py-4">{(["accounts", "roles", "activity"] as const).map(value => <Button key={value} variant={tab === value ? "primary" : "secondary"} size="small" onClick={() => setTab(value)}>{value === "accounts" ? "Admin accounts" : value === "roles" ? "Roles & responsibilities" : "Activity"}</Button>)}</div>
     {error && <div role="alert" className="mx-6 mt-4 rounded-lg border border-ui-border-error p-3 text-ui-fg-error">{error}</div>}
     {notice && <div role="status" className="mx-6 mt-4 rounded-lg border border-ui-border-base p-3">{notice}</div>}
     <div className="overflow-x-auto p-6">
       {tab === "activity" && <Link to="/activity-log" className="mb-4 inline-block text-sm underline">Open the full Activity Log with actions, sign-ins and IP locations</Link>}
-      {tab === "permissions" && <>
-        <Text size="small" className="mb-4 text-ui-fg-subtle">Create additional permission options, then select them in any role. The eight preset groups remain available.</Text>
-        {!customPermissions.length && <div className="rounded-lg border border-ui-border-base p-5"><Text>No custom permissions yet.</Text><Button className="mt-3" variant="secondary" onClick={() => { setError(""); setPermissionDraft("new") }}>Create your first permission</Button></div>}
-        <div className="grid gap-4 sm:grid-cols-2">{customPermissions.map(permission => <div key={permission.id} className="rounded-lg border border-ui-border-base p-4">
-          <div className="flex items-center justify-between gap-3"><Heading level="h2">{permission.name}</Heading><Button size="small" variant="secondary" disabled={busy} onClick={() => { setError(""); setPermissionDraft(permission) }}>Edit permission</Button></div>
-          <div className="mt-2 flex gap-2"><Badge color={permission.enabled ? "green" : "grey"}>{permission.enabled ? "Enabled" : "Disabled"}</Badge><Badge>{permission.access_mode === "view" ? "View only" : "Full management"}</Badge></div>
-          <Text size="small" className="mt-3 text-ui-fg-subtle">{permission.description}</Text><Text size="small" className="mt-2">Pages: {permission.page_paths.join(", ")}</Text><Text size="small" className="mt-1 text-ui-fg-muted">APIs: {permission.api_paths.join(", ")}</Text>
-        </div>)}</div>
-      </>}
       {tab === "accounts" && <>
         <Text size="small" className="mb-4 text-ui-fg-subtle">Existing accounts marked “Unassigned” have no business access until you assign a role.</Text>
         <table className="w-full text-left text-sm"><thead className="text-ui-fg-subtle"><tr>{["Admin", "Role", "Status", "Actions"].map(label => <th key={label} className="border-b border-ui-border-base p-3 font-medium">{label}</th>)}</tr></thead><tbody>
@@ -142,7 +130,7 @@ export default function AdminAccessPage() {
       {tab === "activity" && <><Text size="small" className="mb-4 text-ui-fg-subtle">Most recent 100 access changes. Passwords are never recorded here.</Text><table className="w-full text-left text-sm"><thead><tr>{["When", "Changed by", "Action", "Account / role"].map(label => <th className="border-b border-ui-border-base p-3 font-medium" key={label}>{label}</th>)}</tr></thead><tbody>{events.map(event => <tr className="border-b border-ui-border-base" key={event.id}><td className="p-3">{new Date(event.created_at).toLocaleString()}</td><td className="p-3">{event.actor_email || "CLI"}</td><td className="p-3">{event.action}</td><td className="p-3">{accounts.find(a => a.user_id === event.target_id)?.email || roles.find(r => r.id === event.target_id)?.name || event.target_id}</td></tr>)}</tbody></table></>}
     </div>
 
-    {permissionDraft && <Dialog title={permissionDraft === "new" ? "Create permission" : "Edit permission"} close={() => { if (!busy) setPermissionDraft(null) }}><PermissionEditor key={permissionDraft === "new" ? "new" : permissionDraft.id} permission={permissionDraft === "new" ? null : permissionDraft} busy={busy} error={error} save={savePermission} /></Dialog>}
+
 
     {creating && <Dialog title="Create subadmin" close={() => { if (!busy) { setCreating(false); setUserDraft(blankUser) } }}><form className="flex flex-col gap-4" onSubmit={createUser}>
       {error && <Text role="alert" className="text-ui-fg-error">{error}</Text>}
@@ -163,6 +151,7 @@ export default function AdminAccessPage() {
 
     {roleDraft && <Dialog title={roleDraft.id ? "Edit role" : "Create role"} close={() => { if (!busy) setRoleDraft(null) }}><form className="flex flex-col gap-4" onSubmit={saveRole}>
       {error && <Text role="alert" className="text-ui-fg-error">{error}</Text>}
+      {!roleCatalog && <Text role="status" size="small" className="text-ui-fg-error">This backend needs an update and restart before individual responsibilities can be selected. Deploy Medusa and the admin app from the same revision, then refresh.</Text>}
       <div><Label htmlFor="role-name">Role name</Label><Input id="role-name" required maxLength={100} value={roleDraft.name} onChange={e => setRoleDraft({ ...roleDraft, name: e.target.value })} /></div>
       <div><Label htmlFor="role-responsibilities">Responsibilities</Label><textarea id="role-responsibilities" maxLength={2000} className="mt-1 min-h-20 w-full rounded-md border border-ui-border-base bg-ui-bg-field p-2 text-sm" value={roleDraft.responsibilities} onChange={e => setRoleDraft({ ...roleDraft, responsibilities: e.target.value })} /></div>
       <fieldset><legend className="mb-3 text-sm font-medium">Permissions</legend><div className="flex flex-col gap-3">{ADMIN_PERMISSION_GROUPS.map(group => {
@@ -170,15 +159,14 @@ export default function AdminAccessPage() {
         const full = roleDraft.permissions.includes(group.id)
         return <div key={group.id} className="rounded-lg border border-ui-border-base p-4">
           <label className="flex items-start gap-3"><input type="checkbox" checked={full || children.every(item => roleDraft.permissions.includes(item.id))} onChange={e => setRoleDraft({ ...roleDraft, permissions: [...roleDraft.permissions.filter(p => p !== group.id && !children.some(item => item.id === p)), ...(e.target.checked ? [group.id] : [])] })} /><span><span className="text-sm font-medium">{group.label} — all responsibilities</span><span className="mt-1 block text-xs text-ui-fg-subtle">{group.description}</span></span></label>
-          <div className="ml-7 mt-3 grid gap-3 sm:grid-cols-2">{children.map(item => <label className="flex items-center gap-2 text-sm" key={item.id}><input type="checkbox" checked={full || roleDraft.permissions.includes(item.id)} onChange={e => {
+          <div className="ml-7 mt-3 grid gap-3 sm:grid-cols-2">{children.map(item => <label className="flex items-center gap-2 text-sm" key={item.id}><input type="checkbox" disabled={!supportedPermissions.includes(item.id)} checked={full || roleDraft.permissions.includes(item.id)} onChange={e => {
             const selected = full ? [...roleDraft.permissions.filter(p => p !== group.id), ...children.map(child => child.id)] : roleDraft.permissions
             setRoleDraft({ ...roleDraft, permissions: e.target.checked ? [...new Set([...selected, item.id])] : selected.filter(p => p !== item.id) })
           }} />{item.label}</label>)}</div>
         </div>
       })}
       {customPermissions.map(permission => <label key={permission.id} className="flex items-center gap-3 rounded-lg border border-ui-border-base p-3"><input type="checkbox" checked={roleDraft.permissions.includes(permission.id)} onChange={e => setRoleDraft({ ...roleDraft, permissions: e.target.checked ? [...roleDraft.permissions, permission.id] : roleDraft.permissions.filter(p => p !== permission.id) })} />{permission.name}{!permission.enabled && " (disabled)"}</label>)}</div></fieldset>
-      <Text size="small" className="text-ui-fg-subtle">Need another permission option? Save or close this role, then use Create permission.</Text>
-      <Text size="small" className="text-ui-fg-muted">Saving a role changes access for every subadmin assigned to it. Managing admins and permissions is reserved for the superadmin.</Text><Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save role"}</Button>
+      <Text size="small" className="text-ui-fg-muted">Saving a role changes access for every subadmin assigned to it. Only the superadmin can create roles and subadmins.</Text><Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save role"}</Button>
     </form></Dialog>}
 
     {credentials && <Dialog title="Subadmin credentials" close={() => setCredentials(null)}><div className="flex flex-col gap-4">

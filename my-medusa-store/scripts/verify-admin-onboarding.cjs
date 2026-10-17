@@ -11,6 +11,16 @@ async function login(email,password,expected=200){return (await request('/auth/u
 (async()=>{
 const token=await login(process.env.ADMIN_QA_EMAIL,process.env.ADMIN_QA_PASSWORD);
 const stamp=Date.now(),email=`qa.dispatch.${stamp}@example.test`;
+const supported=(await request('/admin/access/roles',token)).role_catalog;
+assert.equal(supported.version,2);
+const dispatchPermissions=['orders.orders','orders.drafts','orders.booking','returns.requests','returns.booking','customers.people'];
+for(const permission of dispatchPermissions)assert.ok(supported.supported_permission_ids.includes(permission));
+const dispatch=(await request('/admin/access/roles',token,{name:`QA dispatch2 ${stamp}`,responsibilities:'Dispatch',permissions:dispatchPermissions},201)).role;
+assert.deepEqual(dispatch.permissions,dispatchPermissions);
+await request('/admin/access/roles/'+dispatch.id,token,{name:dispatch.name,responsibilities:'Dispatch updated',permissions:dispatchPermissions});
+const invalid=await request('/admin/access/roles',token,{name:`QA invalid ${stamp}`,permissions:['orders.secret']},400);
+assert.match(invalid.message,/responsibilities/);
+console.log('PASS six specific responsibilities accepted in create/edit; unsupported grants rejected clearly');
 const role=(await request('/admin/access/roles',token,{name:`QA Dispatch ${stamp}`,responsibilities:'Packet booking only; orders and payments stay restricted.',permissions:['orders.booking']} ,201)).role;
 const created=await request('/admin/access/users',token,{email,first_name:'Alex',last_name:'QA',role_id:role.id},201);
 assert.equal(created.credentials.email_status,'sent');console.log('PASS create account and deliver welcome email to local TLS capture');

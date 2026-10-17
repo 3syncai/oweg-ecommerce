@@ -30,6 +30,8 @@ export const credentialInput = z.object({ password: z.string().min(12).max(128).
 export function parseAccessInput<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer<T> {
   const result = schema.safeParse(body)
   if (!result.success) {
+    if (result.error.issues.every(issue => issue.path[0] === "permissions"))
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, "Choose only responsibilities offered by this Medusa backend. If the admin app was recently deployed, deploy and restart the matching Medusa backend revision, then refresh.")
     throw new MedusaError(MedusaError.Types.INVALID_DATA, `Invalid fields: ${[...new Set(result.error.issues.map(i => i.path.join(".") || "request"))].join(", ")}`)
   }
   return result.data

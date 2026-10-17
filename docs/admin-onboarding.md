@@ -2,6 +2,8 @@
 
 The superadmin creates roles in **Admin Access → Create role**. Select an entire section or just its individual responsibilities. Assign the role when creating a subadmin, or change it with **Edit access**. The server applies saved role changes to subsequent requests from existing sessions. Editor lookup data may be readable without permission to edit that data.
 
+The creation actions are **Create role** and **Create subadmin**. Custom permission creation and its separate management tab are not shown. Existing custom definitions and assignments are preserved.
+
 Newly provisioned subadmins and newly assigned admin accounts must change their password before using business pages or APIs. Reset credentials sends another temporary password and enables the requirement again. Existing assigned accounts keep their current password state during migration.
 
 The password screen verifies the current credential, rejects reuse and requires 12–128 characters with uppercase, lowercase, a number and a symbol. A successful change revokes existing bearer tokens and cookie sessions, blocks refresh of revoked admin tokens, and asks the user to sign in again.
@@ -24,6 +26,10 @@ npm run build
 ```
 
 Restart `medusa-api` and redeploy the Vercel **ecomm-admin** app. Configure SMTP and `ADMIN_SITE_URL` on Medusa; customer storefront and vendor apps do not need these onboarding variables. The migration preserves existing accounts and roles and can be run again safely.
+
+If role creation reports `Invalid fields: permissions.0, permissions.1, ...`, the older backend validator may be rejecting the newer editor's responsibility IDs such as `orders.booking`. Deploying only the Vercel admin app does not update the Hostinger API. Rebuild the matching backend revision and restart the PM2 process that serves it; confirm its working directory with `pm2 describe medusa-api`.
+
+`GET /admin/access/roles` now returns a `role_catalog` with version 2 and the supported IDs. The editor uses that server response to detect older backends and disables unsupported individual choices. Existing selections are retained and never replaced automatically by broader section access. Unknown or elevated grants remain rejected by the server.
 
 ## Verification
 
