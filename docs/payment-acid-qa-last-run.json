@@ -1,0 +1,64 @@
+{
+  "ranAt": "2026-10-17T07:33:48.803Z",
+  "scope": "isolated PostgreSQL schema; no application records modified",
+  "baselineEvidence": {
+    "paymentInsertFailureLeftCollections": 1,
+    "paymentInsertFailureLeftSessions": 1,
+    "paymentInsertFailureLeftLinks": 1,
+    "reproducedBeforeFix": true
+  },
+  "results": [
+    {
+      "name": "all payment records, accounting and totals commit together",
+      "result": "PASS"
+    },
+    {
+      "name": "rollback after injected payment failure",
+      "result": "PASS"
+    },
+    {
+      "name": "rollback after injected capture failure",
+      "result": "PASS"
+    },
+    {
+      "name": "rollback after injected order_transaction failure",
+      "result": "PASS"
+    },
+    {
+      "name": "rollback after injected order_summary failure",
+      "result": "PASS"
+    },
+    {
+      "name": "12 concurrent callbacks create exactly one capture and accounting entry",
+      "result": "PASS"
+    },
+    {
+      "name": "capture wins over concurrent and delayed terminal/failure callbacks",
+      "result": "PASS"
+    },
+    {
+      "name": "amount/currency/order binding tampering writes nothing",
+      "result": "PASS"
+    },
+    {
+      "name": "one captured gateway payment cannot pay a second order",
+      "result": "PASS"
+    },
+    {
+      "name": "a second payment ID cannot silently replace an already paid order",
+      "result": "PASS"
+    },
+    {
+      "name": "paise precision and committed state survive a fresh connection",
+      "result": "PASS"
+    },
+    {
+      "name": "payment failure also rolls back the exact reserved wallet debit",
+      "result": "PASS"
+    }
+  ],
+  "limits": [
+    "Database restart/power-loss durability was not fault-injected.",
+    "External gateway, order conversion and downstream effects are separate transactions."
+  ]
+}

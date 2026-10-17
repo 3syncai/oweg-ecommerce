@@ -30,6 +30,7 @@ const cookieSecret = resolveHttpSecret(process.env.COOKIE_SECRET, "COOKIE_SECRET
 export default defineConfig({
   projectConfig: {
     databaseUrl: process.env.DATABASE_URL,
+    redisUrl: process.env.REDIS_URL,
     http: {
       // CORS configuration — list every first-party origin that the browser
       // is allowed to hit /store, /admin, /auth from. Supports plain origins
@@ -106,6 +107,13 @@ export default defineConfig({
     }),
   },
   modules: [
+    ...(process.env.REDIS_URL && (process.env.NODE_ENV === "production" || process.env.MEDUSA_DURABLE_REDIS === "true") ? [
+      { resolve: "@medusajs/medusa/event-bus-redis", options: { redisUrl: process.env.REDIS_URL } },
+      { resolve: "@medusajs/medusa/workflow-engine-redis", options: { redis: { url: process.env.REDIS_URL } } },
+      { resolve: "@medusajs/medusa/locking", options: { providers: [
+        { resolve: "@medusajs/medusa/locking-redis", id: "redis", is_default: true, options: { redisUrl: process.env.REDIS_URL } },
+      ] } },
+    ] : []),
     // {
     //   resolve: "@medusajs/medusa/auth",
     //   dependencies: [Modules.CACHE, ContainerRegistrationKeys.LOGGER],

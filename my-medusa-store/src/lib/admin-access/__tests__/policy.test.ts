@@ -6,6 +6,14 @@ import { accountInput, assignmentInput, credentialInput, roleInput, customPermis
 
 const account = (permissions: AdminPermission[] = []): AdminAccess => ({ user_id: "user_sub", kind: "subadmin", active: true, role_id: "role", role_name: "Test", responsibilities: "", permissions })
 const examples: Array<[AdminPermission, string]> = [["customers", "/admin/customers"], ["catalog", "/admin/products"], ["orders", "/admin/orders"], ["returns", "/admin/return-requests"], ["vendors", "/admin/vendors"], ["marketing", "/admin/flash-sale"], ["accounting", "/admin/vendor-payouts"], ["partners", "/admin/affiliate/admins"]]
+test('payment health and retry controls are reserved for the superadmin',()=>{
+  const sub=account(ADMIN_PERMISSION_GROUPS.map(group=>group.id));
+  assert.equal(canAccessAdminPage(sub,'/payment-health'),false);
+  assert.equal(canAccessAdminApi(sub,'POST','/admin/payment-health'),false);
+  assert.equal(validCustomPermissionPath('/payment-health','page'),false);
+  assert.equal(validCustomPermissionPath('/admin/payment-health','api'),false);
+  assert.equal(canAccessAdminPage({...sub,kind:'superadmin'},'/payment-health'),true);
+});
 
 for (const [permission, endpoint] of examples) {
   test(`${permission}: may manage its own area and cannot modify the other seven`, () => {

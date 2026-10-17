@@ -77,6 +77,14 @@ const config = [
       "react-hooks/set-state-in-effect": "off",
     },
   },
+  // Node CommonJS utilities are linted, but are outside the application tsconfig.
+  {
+    files: ["scripts/**/*.cjs"],
+    languageOptions: {
+      sourceType: "commonjs",
+      parserOptions: { project: false },
+    },
+  },
 ];
 
 export default config;

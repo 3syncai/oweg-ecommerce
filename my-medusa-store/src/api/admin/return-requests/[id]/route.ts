@@ -2,7 +2,11 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError, MedusaErrorTypes } from "@medusajs/framework/utils"
 import ReturnModuleService from "../../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../../modules/returns"
-import { decryptBankDetails } from "../../../../services/return-bank-crypto"
+import { returnPayoutView } from "../../../../lib/return-payout-view"
+import { returnImageViews } from "../../../../lib/return-images"
+import { Pool } from "pg"
+import { quoteReturnSettlement } from "../../../../lib/return-financial-settlement"
+import { transaction } from "../../../../lib/payment-reliability"
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const { id } = req.params
@@ -14,16 +18,26 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const request = requests[0]
   const items = await returnService.listReturnRequestItems({ return_request_id: id })
 
-  let bank_details: Record<string, string> | null = null
-  if (request.bank_details_encrypted) {
-    bank_details = decryptBankDetails(request.bank_details_encrypted)
+  const payout = returnPayoutView(request)
+  const { bank_details_encrypted: _encrypted, ...safeRequest } = request
+  res.setHeader("Cache-Control", "no-store")
+  let refundQuote:unknown=null
+  let refundQuoteError:string|null=null
+  if(['received','picked_up','refunded'].includes(request.status)) {
+    const pool=new Pool({connectionString:process.env.DATABASE_URL})
+    try {refundQuote=await transaction(pool,client=>quoteReturnSettlement(client,id))}
+    catch(error){refundQuoteError=error instanceof Error?error.message:"refund_quote_unavailable"}
+    finally{await pool.end()}
   }
 
   return res.json({
     return_request: {
-      ...request,
+      ...safeRequest,
       items,
-      bank_details,
+      ...payout,
+      refund_quote:refundQuote,
+      refund_quote_error:refundQuoteError,
+      images: await returnImageViews(request),
     },
   })
 }

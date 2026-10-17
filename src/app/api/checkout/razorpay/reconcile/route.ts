@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { checkoutOrderAccessError } from "@/lib/checkout-order-access";
 import { getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
-import { fetchRazorpayPayment } from "@/lib/razorpay";
+import { verifyCheckoutCapture } from "@/lib/verify-checkout-capture";
+import { CaptureVerificationError } from "@/lib/payment-capture-validation";
 import {
   finalizeRazorpayOrderPayment,
-  resolveOrderPayableAmountMinor,
 } from "@/lib/medusa-payment";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +27,8 @@ export async function POST(req: Request) {
     if (!medusaOrderId) {
       return NextResponse.json({ error: "medusaOrderId required" }, { status: 400 });
     }
+    const accessError = await checkoutOrderAccessError(req, medusaOrderId);
+    if (accessError) return accessError;
 
     const orderRes = await getOrderById(medusaOrderId);
     if (!orderRes.ok || !orderRes.data) {
@@ -45,24 +48,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "no_razorpay_payment_id" }, { status: 400 });
     }
 
-    let amountMinor = await resolveOrderPayableAmountMinor(medusaOrderId);
-    if (!amountMinor || amountMinor <= 0) {
-      try {
-        const payment = await fetchRazorpayPayment(razorpayPaymentId);
-        if (payment.status === "captured" && typeof payment.amount === "number") {
-          amountMinor = payment.amount;
-        }
-      } catch (err) {
-        console.warn("razorpay reconcile: payment fetch failed", err);
-      }
-    }
-
-    if (!amountMinor || amountMinor <= 0) {
-      return NextResponse.json({ ok: false, error: "unable_to_resolve_amount" }, { status: 400 });
-    }
-
-    const currencyCode =
-      typeof metadata.currency_code === "string" ? metadata.currency_code : "inr";
+    if (!razorpayOrderId) return NextResponse.json({ error: "no_razorpay_order_id" }, { status: 409 });
+    const { amountMinor, currencyCode } = await verifyCheckoutCapture({
+      medusaOrderId, paymentId: razorpayPaymentId, gatewayOrderId: razorpayOrderId,
+    });
 
     const result = await finalizeRazorpayOrderPayment({
       orderId: medusaOrderId,
@@ -79,8 +68,9 @@ export async function POST(req: Request) {
       razorpay_reconciled_at: new Date().toISOString(),
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, { status: result.ok ? 200 : 503 });
   } catch (err) {
+    if (err instanceof CaptureVerificationError) return NextResponse.json({ error: err.code }, { status: err.status });
     console.error("razorpay reconcile failed", err);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }

@@ -1202,6 +1202,7 @@ export type VendorReturnCourier = {
 }
 
 export type VendorReturnRequest = {
+  images?: Array<{ key: string; order_item_id: string; url: string }>
   id: string
   order_id: string
   order_display_id: string | number | null

@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
     const orderId = typeof body?.order_id === "string" ? body.order_id.trim() : "";
     const reasonRaw = typeof body?.reason === "string" ? body.reason.trim() : "";
     const reason = reasonRaw ? reasonRaw : "return";
+    if(reason.includes("return"))return NextResponse.json({error:"Returns are settled through the admin refund receipt."},{status:409});
 
     if (!orderId) {
       return NextResponse.json({ error: "order_id required" }, { status: 400 });
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
     }
 
     const ledgerRefund = await refundCoinSpendForOrder({ orderId, reason });
-    if (ledgerRefund.refunded_amount) {
+    if (ledgerRefund.refunded_amount || ledgerRefund.alreadyRefunded) {
       return NextResponse.json(ledgerRefund);
     }
 

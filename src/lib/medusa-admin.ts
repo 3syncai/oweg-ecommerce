@@ -121,11 +121,11 @@ export async function adminFetch<T = unknown>(
 }
 
 export async function getOrderById(orderId: string) {
-  return adminFetch(`/admin/orders/${encodeURIComponent(orderId)}`);
+  return adminFetch(`/admin/orders/${encodeURIComponent(orderId)}?fields=+customer_id,+email,+currency_code,+is_draft_order`);
 }
 
 export async function getDraftOrderById(orderId: string) {
-  return adminFetch(`/admin/draft-orders/${encodeURIComponent(orderId)}`);
+  return adminFetch(`/admin/draft-orders/${encodeURIComponent(orderId)}?fields=+customer_id,+email,+currency_code,+is_draft_order`);
 }
 
 export async function updateOrderMetadata(orderId: string, metadata: Record<string, unknown>) {

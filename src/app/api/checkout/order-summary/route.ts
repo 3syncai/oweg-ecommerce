@@ -1,3 +1,4 @@
+import { checkoutOrderAccessError } from "@/lib/checkout-order-access";
 import { NextResponse } from "next/server";
 import { readStoreCart } from "@/lib/medusa-admin";
 import { loadCheckoutOrder } from "@/lib/checkout-order";
@@ -41,6 +42,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "orderId is required" }, { status: 400 });
   }
 
+  const accessError = await checkoutOrderAccessError(req, orderId);
+  if (accessError) return accessError;
+
   const loaded = await loadCheckoutOrder(orderId);
   const rawOrder = loaded?.order || null;
   if (!rawOrder) {
@@ -81,7 +85,8 @@ export async function GET(req: Request) {
       items: order.items,
       shipping_address: order.shipping_address,
       billing_address: order.billing_address,
-      metadata,
+      metadata: { payment_method: metadata.payment_method, mode: metadata.mode,
+        cod_status: metadata.cod_status, razorpay_payment_status: metadata.razorpay_payment_status },
     },
   });
 }

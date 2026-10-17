@@ -22,6 +22,7 @@ import {
   getCheckoutSuccessPath,
 } from "@/lib/checkout-redirects";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
+import {maxRedeemableCoins as getMaxRedeemableCoins,eligibleCoinDiscount} from "@/lib/wallet-policy";
 import { findMatchingCustomerAddress } from "@/lib/customer-address-dedupe";
 import styles from "@/components/shopping/Shopping.module.css";
 import PurchaseJourney from "@/components/shopping/PurchaseJourney";
@@ -689,14 +690,6 @@ function CheckoutPageInner() {
     fetchWallet();
   }, [customer?.id]);
 
-  // Calculate max redeemable coins based on order total (tiered limits)
-  const getMaxRedeemableCoins = (orderTotal: number): number => {
-    if (orderTotal < 200) return 20;
-    if (orderTotal < 500) return 40;
-    if (orderTotal < 1000) return 60;
-    if (orderTotal < 1500) return 100;
-    return 150; // ₹1500+
-  };
 
   const [billingSame, setBillingSame] = useState(true);
   const [shipping, setShipping] = useState({
@@ -1015,11 +1008,12 @@ function CheckoutPageInner() {
       ? calculateOweg10Discount(activeTotals.subtotal)
       : 0;
   const orderTotal = activeTotals.total;
-  const maxRedeemable = getMaxRedeemableCoins(orderTotal);
-  const maxUsableCoins = Math.max(0, Math.floor(Math.min(walletBalance, orderTotal, maxRedeemable)));
-  // Trust coinsToUse when useCoins is checked (coins are only deducted after payment succeeds).
-  const coinDiscount = useCoins ? coinsToUse : 0;
   const promoDiscount = promoApplied?.discountRupees || 0;
+  const maxRedeemable = getMaxRedeemableCoins(orderTotal);
+  const maxUsableCoins = Math.floor(eligibleCoinDiscount({subtotal:activeTotals.subtotal,shipping:activeTotals.shipping,
+    otherDiscounts:oweg10Discount+promoDiscount,balance:walletBalance}));
+  // Trust coinsToUse when useCoins is checked (coins are only deducted after payment succeeds).
+  const coinDiscount = useCoins ? Math.min(coinsToUse,maxUsableCoins) : 0;
   const payableTotal = Math.max(
     0,
     activeTotals.total - coinDiscount - oweg10Discount - promoDiscount
@@ -1156,7 +1150,7 @@ function CheckoutPageInner() {
             cartId: cart?.id,
             guestCartId,
             shippingState: shipping.state,
-            coinDiscount: useCoins ? coinsToUse : 0,
+            coinDiscount,
             itemsOverride: isBuyNow && fallbackBuyNow
               ? [
                 {
@@ -1197,6 +1191,7 @@ function CheckoutPageInner() {
     qtyFromQuery,
     priceFromQuery,
     clientTotals.total,
+    coinDiscount,
   ]);
 
   useEffect(() => {
@@ -1243,7 +1238,7 @@ function CheckoutPageInner() {
       referralCode,
       paymentMethod,
       mode: isBuyNow ? "buy_now" : "cart",
-      coinDiscount: useCoins ? coinsToUse : 0,
+      coinDiscount,
       oweg10Applied: customer?.id ? oweg10Applied && oweg10Status.canApply : false,
       promoCode: promoApplied?.code || undefined,
       itemsOverride: isBuyNow && fallbackBuyNow
@@ -1438,7 +1433,15 @@ function CheckoutPageInner() {
   // Razorpay drafts are created only when the user clicks Pay (getOrCreateCheckoutDraft),
   // not on shipping-field warmup — abandoned online attempts were flooding Draft Orders.
 
+  const rememberCheckoutItem = (orderId: string) => {
+    try {
+      const item = isBuyNow ? localStorage.getItem("buy_now_item") : null;
+      if (item) sessionStorage.setItem(`oweg_checkout_item:${orderId}`, item);
+    } catch { /* Storage is optional; leave a newer shopping selection intact. */ }
+  };
+
   const finalizeCodCheckout = (draft: DraftOrderResponse) => {
+    rememberCheckoutItem(draft.medusaOrderId);
     void fetch("/api/checkout/cod", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1472,6 +1475,7 @@ function CheckoutPageInner() {
     amountMinor: number,
     currency: string
   ) => {
+    rememberCheckoutItem(draft.medusaOrderId);
     setPaymentReceivedOverlay(true);
     setProcessing(true);
     // Hand off confirm payload to the success page so it can await the final
@@ -1514,6 +1518,8 @@ function CheckoutPageInner() {
         const finalId = data.orderId || data.medusaOrderId;
         if (finalId && finalId !== draft.medusaOrderId) {
           try {
+            const checkoutItem = sessionStorage.getItem(`oweg_checkout_item:${draft.medusaOrderId}`);
+            if (checkoutItem) sessionStorage.setItem(`oweg_checkout_item:${finalId}`, checkoutItem);
             sessionStorage.setItem(
               "oweg_pending_rzp_confirm",
               JSON.stringify({
@@ -2249,7 +2255,7 @@ function CheckoutPageInner() {
                       <div className="flex items-center justify-between bg-amber-50/90 border border-amber-200/70 rounded-xl p-3.5">
                         <div>
                           <p className="text-sm font-medium text-amber-900">Available Balance</p>
-                          <p className="text-lg font-bold text-amber-800">{Math.round(walletBalance)} coins</p>
+                          <p className="text-lg font-bold text-amber-800">{walletBalance.toLocaleString("en-IN", { maximumFractionDigits: 2 })} coins</p>
                           <p className="text-xs text-amber-700/80">1 coin = ₹1 discount</p>
                         </div>
                         {walletExpiring > 0 && (

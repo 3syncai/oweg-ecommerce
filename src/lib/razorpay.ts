@@ -213,7 +213,8 @@ export function verifyCheckoutPaymentSignature(payload: {
     .createHmac("sha256", secret)
     .update(`${payload.razorpay_order_id}|${payload.razorpay_payment_id}`)
     .digest("hex");
-  return generated === payload.razorpay_signature;
+  if (!/^[a-f0-9]{64}$/i.test(payload.razorpay_signature)) return false;
+  return crypto.timingSafeEqual(Buffer.from(generated, "hex"), Buffer.from(payload.razorpay_signature, "hex"));
 }
 
 /**

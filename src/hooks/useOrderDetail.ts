@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CANCELLATION_REASONS } from "@/components/orders/CancelOrderPanel";
 import type { ReturnItemForm } from "@/components/orders/ReturnOrderPanel";
+import type { ReturnPhoto } from "@/components/orders/ReturnPhotoPicker";
 import { useAuth } from "@/contexts/AuthProvider";
 import {
   canCancelOrder,
@@ -28,6 +29,8 @@ export function useOrderDetail(orderId?: string) {
   const [returnType, setReturnType] = useState<"return" | "replacement">("return");
   const [returnReason, setReturnReason] = useState("");
   const [returnNotes, setReturnNotes] = useState("");
+  const [returnPhotos, setReturnPhotos] = useState<ReturnPhoto[]>([]);
+  const uploadedReturnPhotos = useRef(new Map<File, { key: string; order_item_id: string }>());
   const [returnItems, setReturnItems] = useState<ReturnItemForm[]>([]);
   const [returnError, setReturnError] = useState<string | null>(null);
   const [returnSuccess, setReturnSuccess] = useState<string | null>(null);
@@ -298,6 +301,8 @@ export function useOrderDetail(orderId?: string) {
     setReturnFormOpen(false);
     setReturnReason("");
     setReturnNotes("");
+    setReturnPhotos([]);
+    uploadedReturnPhotos.current.clear();
     setReturnType("return");
     setReturnError(null);
     setBankDetails({
@@ -371,6 +376,22 @@ export function useOrderDetail(orderId?: string) {
               }
           : undefined;
 
+      const images: Array<{ key: string; order_item_id: string }> = [];
+      for (const photo of returnPhotos.filter((photo) => selected.some((item) => item.order_item_id === photo.order_item_id))) {
+        let image = uploadedReturnPhotos.current.get(photo.file);
+        if (!image) {
+          const form = new FormData();
+          form.set("file", photo.file);
+          form.set("order_id", order.id);
+          form.set("order_item_id", photo.order_item_id);
+          const upload = await fetch("/api/medusa/return-requests/images", { method: "POST", credentials: "include", body: form });
+          const uploaded = await upload.json().catch(() => ({}));
+          if (!upload.ok || !uploaded.image?.key) throw new Error(uploaded.error || "Unable to upload return photos. Please try again.");
+          image = uploaded.image;
+          uploadedReturnPhotos.current.set(photo.file, image!);
+        }
+        images.push(image!);
+      }
       const res = await fetch("/api/medusa/return-requests", {
         method: "POST",
         credentials: "include",
@@ -385,6 +406,7 @@ export function useOrderDetail(orderId?: string) {
             quantity: item.quantity,
           })),
           refund_payout,
+          images,
         }),
       });
       if (!res.ok) {
@@ -395,8 +417,8 @@ export function useOrderDetail(orderId?: string) {
       setReturnSuccess("Return request submitted. We will update you after approval.");
       resetReturnForm();
       await loadReturnRequests();
-    } catch {
-      setReturnError("Unable to submit return request.");
+    } catch (error) {
+      setReturnError(error instanceof Error ? error.message : "Unable to submit return request.");
     } finally {
       setReturnSubmitting(false);
     }
@@ -405,6 +427,7 @@ export function useOrderDetail(orderId?: string) {
     returnItems,
     returnReason,
     returnNotes,
+    returnPhotos,
     bankDetails,
     payoutMethod,
     upiId,
@@ -452,6 +475,8 @@ export function useOrderDetail(orderId?: string) {
     setReturnReason,
     returnNotes,
     setReturnNotes,
+    returnPhotos,
+    setReturnPhotos,
     returnItems,
     setReturnItems,
     returnError,

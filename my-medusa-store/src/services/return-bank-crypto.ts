@@ -2,17 +2,22 @@ import crypto from "crypto"
 
 const ALGORITHM = "aes-256-gcm"
 const IV_LENGTH = 12
+export class ReturnRefundConfigurationError extends Error {}
 
 function getKey(): Buffer {
   const raw = process.env.RETURN_BANK_ENCRYPTION_KEY
   if (!raw) {
-    throw new Error("RETURN_BANK_ENCRYPTION_KEY is required.")
+    throw new ReturnRefundConfigurationError("RETURN_BANK_ENCRYPTION_KEY is required.")
   }
   const key = Buffer.from(raw, "base64")
   if (key.length !== 32) {
-    throw new Error("RETURN_BANK_ENCRYPTION_KEY must be 32 bytes (base64).")
+    throw new ReturnRefundConfigurationError("RETURN_BANK_ENCRYPTION_KEY must be 32 bytes (base64).")
   }
   return key
+}
+
+export function returnRefundConfigurationReady() {
+  try { getKey(); return true } catch { return false }
 }
 
 export function encryptBankDetails(details: Record<string, string>) {

@@ -60,6 +60,9 @@ export async function POST(req: Request) {
     if (result.error === "not_captured") {
       return NextResponse.json(result, { status: 409 });
     }
+    if (result.error === "gateway_unavailable") {
+      return NextResponse.json(result, { status: 503 });
+    }
     if (result.error === "orphan_capture") {
       return NextResponse.json(result, { status: 502 });
     }

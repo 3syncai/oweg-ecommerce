@@ -6,7 +6,7 @@ import { RETURN_MODULE } from "../../../../../modules/returns"
 import { syncOrderReturnMetadata } from "../../../../../services/sync-order-return-metadata"
 import {
   listVendorIdsForReturnRequest,
-  reverseVendorEarningsForOrder,
+  holdVendorEarningsForReturn,
 } from "../../../../../lib/vendor-earnings"
 import {
   isVendorEasyShipOrder,
@@ -29,65 +29,15 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       created_at: request.created_at,
     })
 
-    // Approved return → reverse only vendors whose items are on this return
-    if (process.env.DATABASE_URL) {
-      const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-      try {
-        const vendorIds = await listVendorIdsForReturnRequest(pool, request.id)
-        const result = await reverseVendorEarningsForOrder(
-          request.order_id,
-          pool,
-          "return_approved",
-          { vendorIds, vendorScoped: true }
-        )
-        if (result.skipped_unscoped) {
-          console.error(
-            `[return-approve] No vendor ids on return ${request.id}; earnings not reversed`
-          )
-        }
-      } catch (err) {
-        console.error("[return-approve] Failed to reverse vendor earnings:", err)
-      } finally {
-        await pool.end().catch(() => undefined)
-      }
-    }
   }
 
-  // Trigger wallet coin reversal immediately on approval (as requested)
-  try {
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
-    const webhookSecret = process.env.MEDUSA_WEBHOOK_SECRET
-    const internalApiSecret = process.env.INTERNAL_API_SECRET
-
-    if (request?.order_id) {
-      await fetch(`${baseUrl}/api/webhooks/order-cancelled`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(webhookSecret ? { "x-webhook-secret": webhookSecret } : {}),
-        },
-        body: JSON.stringify({
-          event: "order.return_approved",
-          data: {
-            id: request.order_id,
-            status: "return_approved",
-          },
-        }),
-      })
-
-      await fetch(`${baseUrl}/api/store/wallet/refund-coin-discount-order`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(internalApiSecret ? { "x-internal-api-secret": internalApiSecret } : {}),
-        },
-        body: JSON.stringify({ order_id: request.order_id, reason: "return" }),
-      })
-    }
-  } catch (err) {
-    console.error("[return-approve] Failed to trigger coin reversal webhook:", err)
+  // Approval reserves the affected vendor balance. Cash and coins settle only
+  // when an operator acknowledges the manual payout after receipt.
+  if(request?.order_id && process.env.DATABASE_URL) {
+    const pool=new Pool({connectionString:process.env.DATABASE_URL})
+    try {const vendorIds=await listVendorIdsForReturnRequest(pool,id)
+      await holdVendorEarningsForReturn(request.order_id,pool,{vendorIds})
+    } finally {await pool.end()}
   }
 
   // Easy Ship returns: admin books reverse pickup via Return Packet Booking (no auto-book here)

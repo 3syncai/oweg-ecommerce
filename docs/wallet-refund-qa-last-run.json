@@ -1,0 +1,22 @@
+{
+  "ranAt": "2026-10-17T07:34:16.403Z",
+  "scope": "isolated PostgreSQL; reservation and original under-debit regression covered by verify-payment-reliability",
+  "results": [
+    {
+      "name": "replayed spend succeeds after balance exhaustion but mismatched replay fails",
+      "result": "PASS"
+    },
+    {
+      "name": "mixed cancellation and failure retries cannot refund twice",
+      "result": "PASS"
+    },
+    {
+      "name": "historical partial credit reduces remaining cancellation refund",
+      "result": "PASS"
+    },
+    {
+      "name": "delayed failure cannot refund a captured order",
+      "result": "PASS"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-08-31T09:26:51.323Z",
+  "ranAt": "2026-10-16T19:22:15.811Z",
   "suite": "verify-payment-matrix",
   "host": {
     "medusa": "http://localhost:9000",
@@ -9,7 +9,7 @@
     {
       "case": 7,
       "result": "PASS",
-      "notes": "soft_failed retained order_01M1BJ490KVZTQBVB3XFC0CZXC"
+      "notes": "soft_failed retained order_01M532EDMQXFRPHA03ACJPYB67"
     },
     {
       "case": 2,
@@ -24,7 +24,7 @@
     {
       "case": 4,
       "result": "PASS",
-      "notes": "tombstoned order_01M1BJ4GYKCBTQ29P1G0D17FDS; fresh RZP order_TWKIHDUn24b45w"
+      "notes": "tombstoned order_01M532EPBCPCKZ3G7ZT99NXSM0; fresh RZP order_Toh08osv3MEUP7"
     },
     {
       "case": 5,
@@ -39,7 +39,7 @@
     {
       "case": 1,
       "result": "PASS",
-      "notes": "confirm ok order_01M1BJ53W7YE1N1AG7PQ2F7SPN; signature verify + place path + payment rows=1"
+      "notes": "confirm ok order_01M532FAAHMA6BB6M02FP4V7GV; signature verify + place path + payment rows=1"
     },
     {
       "case": 16,
@@ -59,7 +59,7 @@
     {
       "case": 9,
       "result": "PASS",
-      "notes": "COD placed {\"ok\":true,\"medusaOrderId\":\"order_01M1BJ5Y71WJWEBDNR5XDYTBMM\",\"status\":\"confirmed\"}"
+      "notes": "COD placed {\"ok\":true,\"medusaOrderId\":\"order_01M532GHY112TJY6M5RM7M30WG\",\"status\":\"confirmed\"}"
     },
     {
       "case": 10,
@@ -79,7 +79,7 @@
     {
       "case": 13,
       "result": "PASS",
-      "notes": "both returned order_TWKJLZMxec384U"
+      "notes": "both returned order_Toh1Vt93DknBJF"
     },
     {
       "case": 14,
@@ -124,17 +124,17 @@
     {
       "case": "dismiss-unpaid-tombstone",
       "result": "PASS",
-      "notes": "tombstone order_01M1BJ7KDN4BRGQK5SZK7ZFHVZ kept + RZP refused"
+      "notes": "tombstone order_01M532JMVHRJGR4TV1YSDZBAV2 kept + RZP refused"
     },
     {
       "case": "confirm-after-tombstone",
       "result": "PASS",
-      "notes": "placed order_01M1BJ7QYED9QJ1VVVN2FT5CWQ paymentRows=1"
+      "notes": "placed order_01M532JRRB1EA6CEQHQPHWFHHB paymentRows=1"
     },
     {
       "case": "webhook-after-tombstone",
       "result": "PASS",
-      "notes": "webhook placed/finalized order_01M1BJ7YMA7E56779NMDMPV4C1"
+      "notes": "webhook placed/finalized order_01M532K0WGYHR4ZDX0QVFY0NCJ"
     },
     {
       "case": "success-recover-guards",
@@ -144,17 +144,17 @@
     {
       "case": "snapshot-rebuild-after-parent-delete",
       "result": "PASS",
-      "notes": "deleted order_01M1BJ8476KRZAATBPJ41T6CF6 → rebuilt order_01M1BJ89ZHR36HTBYPNZTRCH7P paymentRows=1"
+      "notes": "deleted order_01M532K8CV5MM1GMB9779MS9WQ → rebuilt order_01M532KFB8DT0G63ZR0HB76FYD paymentRows=1"
     },
     {
       "case": "concurrent-snapshot-rebuild",
       "result": "PASS",
-      "notes": "3 parallel confirms → 1 order order_01M1BJ8KHBDRBSHV6CDEDH50A2 paymentRows=1"
+      "notes": "3 parallel confirms → 1 order order_01M532KVPWVXXJ71A2GZ0WQSJG paymentRows=1"
     },
     {
       "case": "reuse-guard",
       "result": "PASS",
-      "notes": "refused mint on tombstone (was order_TWKKgGvB7duH9c)"
+      "notes": "refused mint on tombstone (was order_Toh378oXxJzDkU)"
     },
     {
       "case": 21,
@@ -178,18 +178,164 @@
     }
   ],
   "placedOrders": [
-    "order_01M1BJ53W7YE1N1AG7PQ2F7SPN",
-    "order_01M1BJ5AHJ58Q086TJ7FDQA51B",
-    "order_01M1BJ5FRBG5JRTC08R3EMNCA2",
-    "order_01M1BJ5R7D3NYHJCJ65ZJY3GD8",
-    "order_01M1BJ5Y71WJWEBDNR5XDYTBMM",
-    "order_01M1BJ63VMDBQ00EF6G1JPRQ6X",
-    "order_01M1BJ65W5QYVGP1JN1HPM0BTC",
-    "order_01M1BJ75ZFSEGF9VTCZPV0Y4EX",
-    "order_01M1BJ7B9RC019S302XS65EEP6",
-    "order_01M1BJ7QYED9QJ1VVVN2FT5CWQ",
-    "order_01M1BJ7YMA7E56779NMDMPV4C1",
-    "order_01M1BJ89ZHR36HTBYPNZTRCH7P",
-    "order_01M1BJ8KHBDRBSHV6CDEDH50A2"
-  ]
+    "order_01M532FAAHMA6BB6M02FP4V7GV",
+    "order_01M532FQPES83HDZ96VK8YZXNP",
+    "order_01M532G1JBP6ACY90KA27K1K80",
+    "order_01M532GB0VPFZE6AWX87N7DCFB",
+    "order_01M532GHY112TJY6M5RM7M30WG",
+    "order_01M532GRHZAJJCN4P5B55HMYAQ",
+    "order_01M532GTYKFG0K20RC6JJN8ZRV",
+    "order_01M532J4JBJNQ7THFG2WJRGNV2",
+    "order_01M532JB851NDV8REWQ1KZSKM2",
+    "order_01M532JRRB1EA6CEQHQPHWFHHB",
+    "order_01M532K0WGYHR4ZDX0QVFY0NCJ",
+    "order_01M532KFB8DT0G63ZR0HB76FYD",
+    "order_01M532KVPWVXXJ71A2GZ0WQSJG"
+  ],
+  "scopeNotes": [
+    "Server suite uses dedicated QA customer and simulated signed gateway events; its method-equivalence rows do not independently test each bank, card, UPI app, or wallet.",
+    "Coin-refund suite case exercises cleanup with metadata; an actual wallet coin spend/refund was not verified.",
+    "Real Razorpay test-mode browser flow was completed with the user operating the separate mock-bank Success/Failure window.",
+    "Three customer test orders were placed: #1143 card, #1168 Mobikwik wallet, #1169 netbanking. Suite test orders belong to the dedicated QA customer."
+  ],
+  "browserVerification": {
+    "orderNumber": 1143,
+    "orderId": "order_01M532FXR6PSNAYSQJ3A41000H",
+    "amountInr": 1360,
+    "mode": "test",
+    "checks": {
+      "customerLogin": "passed",
+      "closeBeforePayment": "passed - checkout re-enabled and cart retained",
+      "netbankingCancel": "passed - gateway payment_cancelled",
+      "cardFailure": "passed - retry remained available in same session",
+      "cardRetrySuccess": "passed - one captured Razorpay payment",
+      "medusaOrder": "passed - one placed order and one payment record",
+      "refreshAfterSuccess": "passed - still confirmed",
+      "customerOrderHistory": "passed - order #1143 appears",
+      "cartAfterSuccess": "passed - empty and total zero",
+      "afterRefreshDuplicateCheck": "passed - database still has one order and one payment record",
+      "customerOrderDetails": "passed - paid online and payment confirmed displayed"
+    },
+    "gatewayAttempts": [
+      {
+        "method": "netbanking",
+        "status": "failed",
+        "reason": "payment_cancelled"
+      },
+      {
+        "method": "card",
+        "status": "failed",
+        "reason": "payment_failed"
+      },
+      {
+        "method": "card",
+        "status": "captured",
+        "amountMinor": 136000
+      }
+    ],
+    "notVerified": [
+      "Actual UPI app/QR payment",
+      "Live bank/card transaction",
+      "Real external Razorpay webhook delivery to deployed URL",
+      "Actual wallet coin redemption/refund"
+    ]
+  },
+  "invalidInputChecks": [
+    "missing confirmation details: HTTP 400",
+    "invalid confirmation signature: HTTP 400",
+    "missing recovery details: HTTP 400",
+    "invalid recovery signature: HTTP 400",
+    "missing reconciliation reference: HTTP 400",
+    "invalid webhook signature: HTTP 400"
+  ],
+  "additionalBrowserVerification": [
+    {
+      "orderNumber": 1168,
+      "orderId": "order_01M5332RMTPEQBAHRBV9114HDQ",
+      "checkoutMode": "buy_now",
+      "paymentMethod": "wallet",
+      "wallet": "mobikwik",
+      "amountMinor": 136000,
+      "status": "captured",
+      "paymentRecords": 1
+    },
+    {
+      "orderNumber": 1169,
+      "orderId": "order_01M53398VE9XBK1EEX0463JTG4",
+      "checkoutMode": "buy_now",
+      "paymentMethod": "netbanking",
+      "amountMinor": 136000,
+      "attempts": [
+        {
+          "status": "failed",
+          "method": "netbanking",
+          "amountMinor": 136000,
+          "errorReason": "payment_failed"
+        },
+        {
+          "status": "captured",
+          "method": "netbanking",
+          "amountMinor": 136000,
+          "errorReason": null
+        }
+      ],
+      "status": "captured",
+      "paymentRecords": 1,
+      "duplicateOrders": 0
+    }
+  ],
+  "serverEquivalenceRowsNotIndependentMethodTests": [
+    3,
+    21,
+    22,
+    23,
+    24
+  ],
+  "typeAndChangedFileLint": "passed",
+  "minorUiFix": "Confirmation summary uses singular item for quantity one",
+  "upiObservation": "Current desktop Razorpay checkout exposes UPI QR/intent without a VPA test field; actual app/QR completion was not performed in test mode.",
+  "hardeningVerification": {
+    "ranAt": "2026-10-16T20:10:56.922Z",
+    "freshBrowserOrder": {
+      "orderNumber": 1171,
+      "orderId": "order_01M5353MJKZHNYR3H2J32XRJS9",
+      "item": "blue shoes",
+      "gatewayMode": "test",
+      "amountMinor": 136000,
+      "paymentRecords": 1,
+      "captureRecords": 1,
+      "accountingEntries": 1,
+      "paidInr": 1360,
+      "outstandingInr": 0,
+      "adminDisplay": "Razorpay Captured; correct payment entry"
+    },
+    "reports": [
+      "payment-acid-qa-last-run.json",
+      "payment-api-qa-last-run.json",
+      "wallet-refund-qa-last-run.json",
+      "manual-refund-qa-last-run.json"
+    ],
+    "checks": {
+      "rootTypes": "passed",
+      "medusaTypes": "passed",
+      "targetedRootLint": "passed",
+      "adminAccessTests": "49 passed"
+    },
+    "manualRefundScope": "Existing manual UPI/bank acknowledgement and wallet synchronization; no real payout performed",
+    "releaseRisks": [
+      "Wallet coin discounts are applied before debit and currently cap debit to available balance. Concurrent discounted checkouts need reservation/settlement redesign.",
+      "Partial returns currently invoke order-wide reward/coin settlement; proportional settlement is not certified.",
+      "Affiliate/inventory/wallet side effects are outside the payment database transaction; a durable outbox and retry reconciliation are still required for crash recovery.",
+      "Historical UUID payment records can still be mislabeled Refund in Medusa; only new payment ID generation was corrected.",
+      "Production webhook delivery, real UPI/QR completion and database restart durability were not tested."
+    ],
+    "productionCertified": false,
+    "releaseGate": "FAIL - underfunded coin discount reproduced in isolated database",
+    "reproducedFailure": {
+      "requestedCoinDiscountMinor": 1000,
+      "actualDebitMinor": 500,
+      "report": "wallet-refund-qa-last-run.json",
+      "applicationCustomerBalancesChanged": false
+    }
+  }
 }

@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
       can_redeem: actualBalance >= 0 && displayBalance > 0,
       expiring_soon: 0,
       pending_coins: 0,
-      locked_coins: 0,
+      locked_coins: snapshot.reserved_balance_minor / 100,
       next_unlock: null,
       transaction_count: snapshot.transaction_count,
       has_more_transactions: snapshot.has_more_transactions,

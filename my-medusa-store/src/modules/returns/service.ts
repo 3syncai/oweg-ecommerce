@@ -41,6 +41,7 @@ class ReturnModuleService extends MedusaService({
     refund_method?: "original" | "bank" | "upi" | null
     bank_details?: BankDetailsInput | null
     refund_payout?: RefundPayoutInput | null
+    images?: Array<{ key: string; order_item_id: string }>
     items: Array<{
       order_item_id: string
       quantity: number
@@ -113,7 +114,7 @@ class ReturnModuleService extends MedusaService({
       refund_method,
       bank_details_encrypted,
       bank_account_last4,
-      metadata,
+      metadata: { ...metadata, ...(input.images?.length ? { return_images: input.images } : {}) },
     })
 
     if (input.items?.length) {

@@ -4,6 +4,8 @@ import { Pool } from "pg"
 import ReturnModuleService from "../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../modules/returns"
 import { StoreCreateReturnRequest } from "./validators"
+import { validateReturnImages, verifyStoredReturnImages, returnImageViews } from "../../../lib/return-images"
+import { ReturnRefundConfigurationError } from "../../../services/return-bank-crypto"
 import { syncOrderReturnMetadata } from "../../../services/sync-order-return-metadata"
 import {
   holdVendorEarningsForReturn,
@@ -69,7 +71,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     throw new MedusaError(MedusaErrorTypes.UNAUTHORIZED, "Customer authentication required.")
   }
 
-  const body = StoreCreateReturnRequest.parse(req.body)
+  const parsed = StoreCreateReturnRequest.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message || "Check your return details." })
+  const body = parsed.data
   const orderModuleService = req.scope.resolve(Modules.ORDER)
   const returnService: ReturnModuleService = req.scope.resolve(RETURN_MODULE)
 
@@ -181,7 +185,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         : "bank"
       : null
 
-  const request = await returnService.createReturnRequest({
+  try {
+    validateReturnImages(body.images, authContext.actor_id, body.order_id, body.items.map((item) => item.order_item_id))
+    await verifyStoredReturnImages(body.images, authContext.actor_id, body.order_id)
+  } catch { return res.status(400).json({ message: "Return photos could not be verified. Select the correct item and upload them again." }) }
+
+  let request: Awaited<ReturnType<ReturnModuleService["createReturnRequest"]>>
+  try {
+  request = await returnService.createReturnRequest({
     order_id: body.order_id,
     customer_id: authContext.actor_id,
     type: body.type,
@@ -192,8 +203,17 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     bank_details: body.bank_details ?? null,
     refund_payout: refundPayout,
     items: body.items,
+    images: body.images,
   })
+  } catch (error) {
+    if (error instanceof ReturnRefundConfigurationError) {
+      console.error("[Return] Refund configuration error:", error.message)
+      return res.status(503).json({ code: "refund_configuration_unavailable", message: "Refund details cannot be submitted right now. Please contact support or try again later." })
+    }
+    throw error
+  }
 
+  try {
   await syncOrderReturnMetadata(req.scope, body.order_id, {
     id: request.id,
     type: request.type,
@@ -201,6 +221,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     reason: request.reason,
     created_at: request.created_at,
   })
+  } catch {
+    // The return is already saved. Do not report failure and invite a duplicate submission.
+    console.error("[Return] Saved request; order metadata synchronization failed", { return_request_id: request.id })
+  }
 
   // Pause unlock only for vendors whose items are on this return
   if (process.env.DATABASE_URL) {
@@ -222,7 +246,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
   }
 
-  return res.status(200).json({ return_request: request })
+  const { bank_details_encrypted: _encrypted, ...safeRequest } = request
+  return res.status(200).json({ return_request: safeRequest })
 }
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
@@ -252,10 +277,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     itemsByRequest.set(item.return_request_id, list)
   }
 
-  const enriched = requests.map((request: any) => ({
-    ...request,
-    items: itemsByRequest.get(request.id) || [],
+  const enriched = await Promise.all(requests.map(async (request: any) => {
+    const { bank_details_encrypted: _encrypted, ...safeRequest } = request
+    return { ...safeRequest, items: itemsByRequest.get(request.id) || [], images: await returnImageViews(request) }
   }))
 
+  res.setHeader("Cache-Control", "no-store")
   return res.json({ return_requests: enriched })
 }

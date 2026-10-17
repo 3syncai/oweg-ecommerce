@@ -1,5 +1,6 @@
+import {creditReferralCoinsForOrder} from "../../my-medusa-store/src/lib/referral-wallet-settlement";
 import type { PoolClient } from "pg"
-import { creditAdjustment, getPool } from "@/lib/wallet-ledger"
+import { getPool } from "@/lib/wallet-ledger"
 
 /**
  * Customer-Affiliate ("?ref=" / customer_referrer) coin lifecycle helpers.
@@ -153,7 +154,7 @@ export async function logPendingCoinsForOrder(orderId: string): Promise<{
         return { skipped: true, reason: "self-referral" }
     }
 
-    const alreadyUsed = await getUsedProductIdsForCustomer(customerId, ref.refer_code)
+    let alreadyUsed = await getUsedProductIdsForCustomer(customerId, ref.refer_code)
 
     let pendingTotal = 0
     let created = 0
@@ -163,6 +164,13 @@ export async function logPendingCoinsForOrder(orderId: string): Promise<{
     const client = await pool.connect()
     try {
         await client.query("BEGIN")
+        await client.query('SELECT id FROM "order" WHERE id=$1 FOR UPDATE',[orderId])
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['referral:'+customerId+':'+ref.refer_code.toUpperCase()])
+        const logged=await client.query("SELECT 1 FROM customer_referrer_coins_log WHERE order_id=$1 LIMIT 1",[orderId])
+        if(logged.rows.length){await client.query("COMMIT");return {skipped:true,reason:"already logged"}}
+        const used=await client.query("SELECT DISTINCT product_id FROM customer_referrer_coins_log WHERE referred_customer_id=$1 AND upper(refer_code)=upper($2) AND status IN('PENDING','EARNED')",[customerId,ref.refer_code])
+        alreadyUsed=new Set(used.rows.map((row:{product_id:string})=>row.product_id))
+
         for (const item of items) {
             if (item.product_id && alreadyUsed.has(item.product_id)) {
                 skippedProducts.push(item.product_id)
@@ -237,98 +245,9 @@ export async function logPendingCoinsForOrder(orderId: string): Promise<{
  * Moves PENDING coins for the order to EARNED, credits the affiliate's wallet,
  * and updates the customer_referrer balances.
  */
-export async function creditPendingCoinsForOrder(orderId: string): Promise<{
-    skipped: boolean
-    reason?: string
-    credited_total?: number
-    entries_credited?: number
-    affiliate_customer_id?: string
-}> {
-    if (!orderId) return { skipped: true, reason: "missing orderId" }
-    const pool = getPool()
-
-    const rows = await pool.query(
-        `SELECT id, affiliate_customer_id, refer_code, coins
-         FROM customer_referrer_coins_log
-         WHERE order_id = $1 AND status = 'PENDING'`,
-        [orderId]
-    )
-    if (rows.rows.length === 0) {
-        return { skipped: true, reason: "no PENDING coins for order" }
-    }
-
-    let creditedTotal = 0
-    let credited = 0
-    let affiliateCustomerId: string | undefined
-
-    for (const row of rows.rows) {
-        const coins = parseFloat(row.coins) || 0
-        if (coins <= 0) continue
-        affiliateCustomerId = row.affiliate_customer_id
-
-        try {
-            const amountMinor = Math.round(coins * 100)
-            await creditAdjustment({
-                customerId: row.affiliate_customer_id,
-                referenceId: `customer-referrer:${row.id}`,
-                idempotencyKey: `customer-referrer:${row.id}`,
-                amountMinor,
-                reason: `Affiliate coins for order ${orderId}`,
-                metadata: {
-                    source: "customer_referrer",
-                    refer_code: row.refer_code,
-                    order_id: orderId,
-                    log_id: row.id,
-                },
-            })
-
-            const upd = await pool.query(
-                `UPDATE customer_referrer_coins_log
-                 SET status = 'EARNED', unlocked_at = NOW()
-                 WHERE id = $1 AND status = 'PENDING'`,
-                [row.id]
-            )
-
-            if ((upd.rowCount || 0) > 0) {
-                creditedTotal += coins
-                credited += 1
-            }
-        } catch (err) {
-            console.error(
-                `[customer-affiliate-coins] credit failed for log ${row.id}:`,
-                err
-            )
-        }
-    }
-
-    if (creditedTotal > 0 && affiliateCustomerId) {
-        await pool.query(
-            `UPDATE customer_referrer
-             SET earned_coins  = COALESCE(earned_coins, 0)  + $1,
-                 pending_coins = GREATEST(COALESCE(pending_coins, 0) - $1, 0),
-                 updated_at    = NOW()
-             WHERE customer_id = $2`,
-            [creditedTotal, affiliateCustomerId]
-        )
-
-        await pool.query(
-            `UPDATE customer_referrer_referrals
-             SET coins_earned = COALESCE(coins_earned, 0) + $1
-             WHERE refer_code = (SELECT refer_code FROM customer_referrer WHERE customer_id = $2)
-               AND referred_customer_id = (
-                   SELECT referred_customer_id FROM customer_referrer_coins_log
-                   WHERE order_id = $3 LIMIT 1
-               )`,
-            [creditedTotal, affiliateCustomerId, orderId]
-        )
-    }
-
-    return {
-        skipped: false,
-        credited_total: creditedTotal,
-        entries_credited: credited,
-        affiliate_customer_id: affiliateCustomerId,
-    }
+export async function creditPendingCoinsForOrder(orderId:string) {
+ if(!orderId)return {skipped:true,reason:"missing orderId"};
+ return creditReferralCoinsForOrder(getPool(),orderId);
 }
 
 async function debitWalletForReversal(

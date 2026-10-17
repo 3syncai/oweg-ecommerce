@@ -1,6 +1,6 @@
 # Medusa admin access
 
-There is one superadmin, created or promoted through the CLI. Only that account can create Medusa subadmins, assign roles, change permissions, enable or disable access, or generate replacement credentials.
+There is one primary superadmin, created or promoted through the CLI. One additional testing superadmin may be explicitly provisioned through the CLI. Only superadmins can create Medusa subadmins, assign roles, change permissions, enable or disable access, or generate replacement credentials.
 
 ## Initial setup and deployment
 
@@ -11,7 +11,9 @@ $env:SUPERADMIN_EMAIL = 'rakchy@oweg.com'
 npm run admin:bootstrap
 ```
 
-The command creates the access tables, seeds the eight default roles, and creates or promotes the selected Medusa user. A database constraint prevents a second superadmin. Repeating the command for the same email retains its password and preserves edited roles. Selecting a different email after setup fails.
+The command creates the access tables, seeds the eight default roles, and creates or promotes the selected Medusa user. A database constraint prevents a second primary superadmin. Repeating the command for the same email retains its password and preserves edited roles. Selecting a different primary email after setup fails.
+
+For an explicitly requested testing account, set `SUPERADMIN_TEST_ACCOUNT=true` alongside `SUPERADMIN_EMAIL` and run the same bootstrap command. This grants full superadmin access in the configured database while preserving the primary account. At most one testing superadmin is allowed; it must be managed through the CLI, and existing passwords are preserved. Leave this flag unset for normal setup. New testing credentials use `.local-admin/test-superadmin-credentials.txt`.
 
 For a new account, the CLI generates a strong password and saves its credentials in `.local-admin/superadmin-credentials.txt`. This directory is excluded from Git. Alternatively, set `SUPERADMIN_PASSWORD` before running the command. Existing accounts keep their existing credentials; the CLI never resets them implicitly.
 

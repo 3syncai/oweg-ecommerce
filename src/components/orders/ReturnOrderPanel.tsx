@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { ReturnPhotoPicker, type ReturnPhoto } from "./ReturnPhotoPicker";
 
 export const RETURN_REASONS = [
   {
@@ -94,6 +95,8 @@ type ReturnOrderPanelProps = {
   selectedReason: string;
   onReasonChange: (reason: string) => void;
   notes: string;
+  photos: ReturnPhoto[];
+  onPhotosChange: (photos: ReturnPhoto[]) => void;
   onNotesChange: (value: string) => void;
   payoutMethod: RefundPayoutMethod;
   onPayoutMethodChange: (method: RefundPayoutMethod) => void;
@@ -172,6 +175,8 @@ export function ReturnOrderPanel({
   selectedReason,
   onReasonChange,
   notes,
+  photos,
+  onPhotosChange,
   onNotesChange,
   payoutMethod,
   onPayoutMethodChange,
@@ -452,6 +457,7 @@ export function ReturnOrderPanel({
             )}
 
             <div className="mt-5 space-y-2">
+              <ReturnPhotoPicker items={returnItems} photos={photos} onChange={onPhotosChange} disabled={submitting} />
               <Label htmlFor="return-notes" className="text-xs font-semibold text-gray-700">
                 Notes (optional)
               </Label>

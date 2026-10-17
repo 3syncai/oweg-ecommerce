@@ -1,15 +1,13 @@
+import {transaction,consumeCheckoutCoins,enqueuePaymentWork,freezePaidOrderItems} from "@/lib/payment-reliability";
+import { checkoutOrderAccessError } from "@/lib/checkout-order-access";
 import { NextResponse, after } from "next/server";
 import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
 import { loadCheckoutOrder } from "@/lib/checkout-order";
-import { applyCoinDiscountToOrder, applyMetadataDiscountsToOrderSummary, syncOrderShippingAmount, syncOrderTaxInclusivePricing } from "@/lib/order-discount";
-import { finalizeCoinSpendForOrder } from "@/lib/wallet-coin-order";
 import { OWEG10_CODE } from "@/lib/oweg10-shared";
 import { consumeOweg10Reservation, syncOweg10ConsumedCustomerMetadata } from "@/lib/oweg10";
-import { logPendingCoinsForOrder } from "@/lib/customer-affiliate-coins";
 import { getPool } from "@/lib/wallet-ledger";
 import { getCheckoutGuardResponse } from "@/lib/debug-controller/guards";
 import { ensurePlacedOrderFulfillmentReady } from "@/lib/medusa-payment";
-import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 export const dynamic = "force-dynamic";
 
@@ -94,157 +92,14 @@ function oweg10ConflictResponse(reason: string) {
   );
 }
 
-async function runCodSideEffects(finalOrderId: string, metadata: Record<string, unknown>) {
-  try {
-    const coinDiscountRupees =
-      typeof metadata.coin_discount_rupees === "number"
-        ? metadata.coin_discount_rupees
-        : typeof metadata.coins_discounted === "number"
-          ? metadata.coins_discounted
-          : 0;
-    const oweg10DiscountRupees =
-      typeof metadata.oweg10_discount_rupees === "number" ? metadata.oweg10_discount_rupees : 0;
-    const promoDiscountRupees =
-      typeof metadata.promo_discount_rupees === "number"
-        ? metadata.promo_discount_rupees
-        : typeof metadata.promo_discount_minor === "number"
-          ? metadata.promo_discount_minor / 100
-          : 0;
-    const expectedShipping =
-      typeof metadata.expected_shipping_price === "number" ? metadata.expected_shipping_price : undefined;
-
-    await syncOrderTaxInclusivePricing(finalOrderId, {
-      shippingRupees: expectedShipping,
-      coinDiscountRupees,
-      oweg10DiscountRupees,
-      promoDiscountRupees,
-    });
-
-    await applyMetadataDiscountsToOrderSummary(finalOrderId);
-  } catch (taxErr) {
-    console.error("cod post-process: tax-inclusive sync failed", taxErr);
-  }
-
-  try {
-    const coinMinor =
-      typeof metadata.coin_discount_minor === "number"
-        ? metadata.coin_discount_minor
-        : typeof metadata.coin_discount_rupees === "number"
-          ? Math.round(metadata.coin_discount_rupees * 100)
-          : 0;
-    if (coinMinor > 0) {
-      const expectedShipping =
-        typeof metadata.expected_shipping_price === "number" ? metadata.expected_shipping_price : undefined;
-      if (typeof expectedShipping === "number") {
-        await syncOrderShippingAmount(finalOrderId, expectedShipping);
-      }
-      const pool = getPool();
-      const orderRow = await pool.query(`SELECT customer_id FROM "order" WHERE id = $1`, [finalOrderId]);
-      const customerId = orderRow.rows[0]?.customer_id as string | undefined;
-      if (customerId) {
-        await finalizeCoinSpendForOrder({
-          customerId,
-          orderId: finalOrderId,
-          amountMinor: coinMinor,
-        });
-      }
-      await applyCoinDiscountToOrder({
-        orderId: finalOrderId,
-        discountMinor: coinMinor,
-      });
-    }
-  } catch (coinErr) {
-    console.error("cod post-process: coin discount update failed", coinErr);
-  }
-
-  try {
-    const pool = getPool();
-    const customerResult = await pool.query(
-      `SELECT
-          c.id,
-          c.email,
-          c.first_name || ' ' || c.last_name as name,
-          COALESCE(cr.referral_code, c.metadata->>'referral_code') as referral_code
-       FROM "order" o
-       JOIN customer c ON o.customer_id = c.id
-       LEFT JOIN customer_referral cr ON cr.customer_id = c.id
-       WHERE o.id = $1`,
-      [finalOrderId]
-    );
-
-    const customer = customerResult.rows[0];
-    const affiliateCode = customer?.referral_code;
-    const webhookUrl = process.env.AFFILIATE_WEBHOOK_URL;
-
-    if (affiliateCode && webhookUrl) {
-      const itemsResult = await pool.query(
-        `SELECT oi.id, pv.product_id, oi.quantity, oli.unit_price, p.title as product_name
-         FROM order_item oi
-         JOIN order_line_item oli ON oi.item_id = oli.id
-         LEFT JOIN product_variant pv ON oli.variant_id = pv.id
-         LEFT JOIN product p ON pv.product_id = p.id
-         WHERE oi.order_id = $1`,
-        [finalOrderId]
-      );
-
-      for (const item of itemsResult.rows) {
-        const unitPrice = parseFloat(item.unit_price || 0);
-        const payload = {
-          order_id: finalOrderId,
-          affiliate_code: affiliateCode,
-          product_id: item.product_id,
-          product_name: item.product_name,
-          quantity: item.quantity,
-          item_price: unitPrice / 100,
-          order_amount: unitPrice * (item.quantity || 1),
-          status: "PENDING",
-          customer_id: customer.id,
-          customer_name: customer.name,
-          customer_email: customer.email,
-        };
-
-        await fetchWithTimeout(
-          webhookUrl,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          },
-          5000
-        ).catch((err) => {
-          console.error("cod post-process: affiliate webhook item failed", err);
-        });
-      }
-    } else if (affiliateCode && !webhookUrl) {
-      console.warn("cod post-process: AFFILIATE_WEBHOOK_URL not set, skipping commission webhook");
-    }
-  } catch (err) {
-    console.error("cod post-process: affiliate commission failed", err);
-  }
-
-  try {
-    const result = await logPendingCoinsForOrder(finalOrderId);
-    console.log("[customer-affiliate-coins] cod post-process:", result);
-  } catch (err) {
-    console.error("[customer-affiliate-coins] cod post-process failed:", err);
-  }
-
-  try {
-    await updateOrderMetadata(finalOrderId, {
-      cod_post_process_done: true,
-      cod_post_process_at: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.warn("cod post-process: failed to mark completion metadata", err);
-  }
-}
-
-function scheduleCodSideEffects(finalOrderId: string, metadata: Record<string, unknown>) {
-  if (metadata.cod_post_process_done === true) {
-    return;
-  }
-  void runCodSideEffects(finalOrderId, metadata).catch((err) => {
-    console.error("cod post-process: unhandled failure", err);
+async function scheduleCodSideEffects(orderId: string, _metadata: Record<string,unknown>) {
+  await transaction(getPool(), async client=>{
+    const order=(await client.query('SELECT customer_id,metadata FROM "order" WHERE id=$1 FOR UPDATE',[orderId])).rows[0];
+    if(!order || order.metadata?.payment_method!=="cod")throw new Error("not_cod_order");
+    if(order.metadata.cod_post_process_done===true && order.metadata.payment_reliability_version!==1)return;
+    await consumeCheckoutCoins(client,{orderId,customerId:order.customer_id,metadata:order.metadata});
+    if(order.metadata.payment_reliability_version===1)await freezePaidOrderItems(client,{orderId,cashMinor:Number(order.metadata.medusa_total_minor),coinMinor:Number(order.metadata.coin_discount_minor||0),shippingMinor:Math.round(Number(order.metadata.expected_shipping_price||0)*100)});
+    await enqueuePaymentWork(client,"payment_paid",orderId);
   });
 }
 
@@ -256,6 +111,9 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as Body;
     let medusaOrderId = body.medusaOrderId?.trim();
     if (!medusaOrderId) return badRequest("medusaOrderId is required");
+
+    const accessError = await checkoutOrderAccessError(req, medusaOrderId);
+    if (accessError) return accessError;
 
     let order: MedusaOrder | null = null;
     const loaded = await loadCheckoutOrder(medusaOrderId);
@@ -319,7 +177,7 @@ export async function POST(req: Request) {
           console.error("cod confirm: fulfillment readiness failed (idempotent)", err);
         })
       );
-      scheduleCodSideEffects(finalOrderId, metadata);
+      await scheduleCodSideEffects(finalOrderId, metadata);
       return NextResponse.json({ ok: true, medusaOrderId: finalOrderId, status: "confirmed" });
     }
 
@@ -384,7 +242,7 @@ export async function POST(req: Request) {
       }
     }
 
-    scheduleCodSideEffects(finalOrderId, confirmedMetadata);
+    await scheduleCodSideEffects(finalOrderId, confirmedMetadata);
 
     // Allocate stock async so success UI can flip to confirmed without waiting
     after(() =>

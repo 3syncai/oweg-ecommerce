@@ -1,0 +1,54 @@
+{
+  "ranAt": "2026-10-17T07:34:18.482Z",
+  "scope": "real cookie translation and guarded cart cleanup route contracts; no customer cart records deleted",
+  "results": [
+    {
+      "name": "customer session takes precedence without forwarding the admin cookie",
+      "result": "PASS"
+    },
+    {
+      "name": "legacy and upstream-bootstrap sessions remain valid",
+      "result": "PASS"
+    },
+    {
+      "name": "explicit Cookie headers and forwarded cookies are both isolated",
+      "result": "PASS"
+    },
+    {
+      "name": "login sets a separate HttpOnly customer cookie without replacing admin session",
+      "result": "PASS"
+    },
+    {
+      "name": "production cookie retains Secure and SameSite restrictions",
+      "result": "PASS"
+    },
+    {
+      "name": "customer logout expires only its isolated browser cookie",
+      "result": "PASS"
+    },
+    {
+      "name": "completed cart comparison ignores line IDs but preserves variants and quantities",
+      "result": "PASS"
+    },
+    {
+      "name": "cart cleanup requires order ID and customer ownership",
+      "result": "PASS"
+    },
+    {
+      "name": "unpaid order cannot clear a cart",
+      "result": "PASS"
+    },
+    {
+      "name": "old confirmations and buy-now orders preserve the current shopping cart",
+      "result": "PASS"
+    },
+    {
+      "name": "additional shopping after checkout is preserved",
+      "result": "PASS"
+    },
+    {
+      "name": "confirmed unchanged checkout detaches its cookie without deleting any items",
+      "result": "PASS"
+    }
+  ]
+}

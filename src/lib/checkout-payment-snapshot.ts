@@ -1,4 +1,6 @@
 import { Pool } from "pg";
+import {watchCheckoutCapture} from "@/lib/payment-reliability";
+import {getPool} from "@/lib/wallet-ledger";
 import { getOrderById, getDraftOrderById, createDraftOrder } from "@/lib/medusa-admin";
 import { extractCheckoutOrder } from "@/lib/checkout-order";
 
@@ -319,6 +321,11 @@ export async function recreateDraftFromCheckoutSnapshot(
     "cart_id",
     "referral_code",
     "coin_discount_code",
+    "coin_reservation_id",
+    "payment_reliability_version",
+    "expected_shipping_price",
+    "medusa_total_minor",
+    "razorpay_amount_minor",
     "coin_discount_minor",
     "coin_discount_rupees",
     "coins_discounted",
@@ -440,11 +447,13 @@ export async function persistSnapshotForCheckout(
     });
     if (!snap || !snap.items.length) {
       console.warn("persistSnapshotForCheckout: empty snapshot", medusaOrderId);
-      return;
+      throw new Error("checkout_snapshot_empty");
     }
     const saved = await saveCheckoutPaymentSnapshot(snap);
-    if (!saved.ok) console.warn("persistSnapshotForCheckout save failed", saved.error);
+    if (!saved.ok) throw new Error("checkout_snapshot_persist_failed");
+    if(razorpayOrderId)await watchCheckoutCapture(getPool(),medusaOrderId,razorpayOrderId);
   } catch (err) {
     console.warn("persistSnapshotForCheckout error", err);
+    throw err;
   }
 }

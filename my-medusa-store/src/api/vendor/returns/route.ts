@@ -11,6 +11,7 @@ import {
 } from "../../../lib/vendor-return-shiprocket"
 import { findVendorOrderIds } from "../../../lib/vendor-order-ids"
 import { getSharedDbPool } from "../../../lib/db-pool"
+import { returnImageViews } from "../../../lib/return-images"
 import {
   parseVendorPagination,
   slicePage,
@@ -52,6 +53,7 @@ export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res)
+  res.setHeader("Cache-Control", "no-store")
   const auth = await requireApprovedVendor(req, res)
   if (!auth) return
 
@@ -100,9 +102,26 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       requests = (all || []).filter((r: any) => r?.order_id && idSet.has(r.order_id))
     }
 
+    const ownedReturnItems = new Map<string, Set<string>>()
+    if (requests.length) {
+      const { rows } = await pool.query(`SELECT DISTINCT rri.return_request_id, rri.order_item_id
+        FROM return_request_item rri
+        LEFT JOIN order_line_item oli ON oli.id = rri.order_item_id
+        LEFT JOIN order_item oi ON oi.id = rri.order_item_id OR oi.item_id = rri.order_item_id
+        LEFT JOIN order_line_item oli2 ON oli2.id = oi.item_id
+        LEFT JOIN product_variant pv ON pv.id = COALESCE(oli.variant_id, oli2.variant_id)
+        WHERE rri.return_request_id = ANY($1::text[]) AND rri.deleted_at IS NULL
+          AND COALESCE(oli.product_id, oli2.product_id, pv.product_id) = ANY($2::text[])`,
+        [requests.map((request: any) => request.id), vendorProductIds])
+      for (const row of rows) {
+        const items = ownedReturnItems.get(row.return_request_id) || new Set<string>()
+        items.add(row.order_item_id)
+        ownedReturnItems.set(row.return_request_id, items)
+      }
+    }
     const visibleRequests = (requests || []).filter(
       (request: any) =>
-        request?.status && VENDOR_VISIBLE_STATUSES.has(String(request.status))
+        ownedReturnItems.has(request.id) && request?.status && VENDOR_VISIBLE_STATUSES.has(String(request.status))
     )
 
     const counts = {
@@ -260,7 +279,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       itemsByRequest.set(item.return_request_id, list)
     }
 
-    const enriched = pageSlice.map((request: any) => {
+    const enriched = await Promise.all(pageSlice.map(async (request: any) => {
       const order = request.order_id ? ordersById.get(request.order_id) : null
       const customer = order?.customer || null
       const customerName = [
@@ -277,7 +296,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         return productId && vendorProductIdSet.has(productId)
       })
 
-      const returnItems = itemsByRequest.get(request.id) || []
+      const allowedItems = ownedReturnItems.get(request.id) || new Set<string>()
+      const returnItems = (itemsByRequest.get(request.id) || []).filter((item: any) => allowedItems.has(item.order_item_id))
       const orderItemById = new Map<string, any>(
         orderItems.map((item: any) => [String(item.id), item])
       )
@@ -418,6 +438,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         customer_email: order?.email || customer?.email || null,
         customer_name: customerName || null,
         items: enrichedItems,
+        images: await returnImageViews(request, allowedItems),
         vendor_items: vendorLineItems.map((item: any) => ({
           id: item.id,
           title: item.title,
@@ -473,7 +494,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           ? String(meta.returned_to_vendor_at)
           : request.received_at || null,
       }
-    })
+    }))
 
     console.log(
       `[Vendor returns] vendor=${auth.vendor_id} total=${total} page=${enriched.length} ${Date.now() - started}ms`

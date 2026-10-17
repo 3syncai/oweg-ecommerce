@@ -234,6 +234,10 @@ export async function POST(req: Request) {
     (asRecord(payloadWrapper?.entity)?.order as UnknownRecord) ||
     undefined;
 
+  if (event === "payment.authorized" || payment?.status === "authorized") {
+    return NextResponse.json({ ok: true, awaiting_capture: true });
+  }
+
   // medusa_order_id resolution
   const medusaOrderId =
     payment?.notes?.medusa_order_id ||
@@ -257,10 +261,7 @@ export async function POST(req: Request) {
     const eventLower = String(event || "").toLowerCase();
     const payStatus = String(payment?.status || "").toLowerCase();
     const looksCaptured =
-      eventLower === "payment.captured" ||
-      eventLower === "payment.authorized" ||
-      payStatus === "captured" ||
-      payStatus === "authorized";
+      (eventLower === "payment.captured" || eventLower === "order.paid") && payStatus === "captured";
     if (looksCaptured && payment?.id) {
       const { recoverRazorpayCapture } = await import("@/lib/razorpay-capture-recover");
       const recovered = await recoverRazorpayCapture({
@@ -334,9 +335,12 @@ export async function POST(req: Request) {
   const razorpayOrderId = payment?.order_id || orderEntity?.id || metadataOrderId;
   const status = (payment?.status || "").toString().toLowerCase();
 
-  const isAuthorized = event === "payment.authorized" || status === "authorized";
-  const isCaptured = event === "payment.captured" || status === "captured" || isAuthorized;
+  const isCaptured = status === "captured" && event !== "payment.failed";
   const isFailed = event === "payment.failed" || status === "failed";
+  if (!metadataOrderId || metadataOrderId !== razorpayOrderId) {
+    return NextResponse.json({ error: "payment_order_mismatch" }, { status: 409 });
+  }
+
   const paymentContext = extractPaymentContext(order);
   const prevCaptureStatus =
     typeof metadata.razorpay_capture_status === "string"
@@ -416,6 +420,13 @@ export async function POST(req: Request) {
       });
 
       const captureOk = Boolean(finalizeResult.ok);
+      if (!captureOk) {
+        await updateOrderMetadata(placedOrderId, {
+          razorpay_admin_reconcile_required: true, razorpay_capture_status: "pending_recording",
+          razorpay_payment_id: paymentIdSafe, razorpay_order_id: razorpayOrderId,
+        });
+        return NextResponse.json({ ok: false, error: "payment_recording_pending" }, { status: 503 });
+      }
       const metaWithCapture = {
         ...nextMetadata,
         payment_method: "razorpay",
@@ -478,8 +489,9 @@ export async function POST(req: Request) {
       console.error("razorpay webhook unexpected error on capture path", err);
       try {
         await updateOrderMetadata(placedOrderId, {
-          ...nextMetadata,
-          razorpay_capture_status: "error",
+          razorpay_payment_id: paymentId,
+          razorpay_order_id: razorpayOrderId,
+          razorpay_capture_status: "pending_recording",
           razorpay_capture_error: String(err),
           razorpay_admin_reconcile_required: true,
         });

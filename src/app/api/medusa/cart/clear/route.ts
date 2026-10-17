@@ -1,106 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-
-const CART_COOKIE = "cart_id";
-const GUEST_CART_HEADER = "x-guest-cart-id";
-
-const REGION_ID =
-  process.env.NEXT_PUBLIC_MEDUSA_REGION_ID || process.env.MEDUSA_REGION_ID;
-
-async function backend(path: string, init?: RequestInit) {
-  const base = (
-    process.env.MEDUSA_BACKEND_URL ||
-    process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL ||
-    "http://localhost:9000"
-  ).replace(/\/$/, "");
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-  };
-  const pk =
-    process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY ||
-    process.env.MEDUSA_PUBLISHABLE_KEY ||
-    process.env.MEDUSA_PUBLISHABLE_API_KEY;
-  const sc =
-    process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID ||
-    process.env.MEDUSA_SALES_CHANNEL_ID;
-  if (pk) headers["x-publishable-api-key"] = pk;
-  if (sc) headers["x-sales-channel-id"] = sc;
-  if (REGION_ID) headers["x-region-id"] = REGION_ID;
-  return fetch(`${base}${path}`, {
-    cache: "no-store",
-    ...init,
-    headers: { ...headers, ...(init?.headers as HeadersInit) },
-  });
-}
+import { checkoutOrderAccessError } from "@/lib/checkout-order-access";
+import { loadCheckoutOrder } from "@/lib/checkout-order";
+import { completedCheckoutCartMatches } from "@/lib/completed-checkout-cart";
 
 export const dynamic = "force-dynamic";
 
-function extractItems(payload: unknown): Array<{ id?: string }> {
-  if (!payload || typeof payload !== "object") return [];
-  const root = payload as Record<string, unknown>;
-  const cart = (root.cart && typeof root.cart === "object" ? root.cart : root) as Record<string, unknown>;
-  const items = (cart.items as unknown) ?? (cart.line_items as unknown);
-  if (!Array.isArray(items)) return [];
-  return items as Array<{ id?: string }>;
-}
-
-async function resolveCartId(req: NextRequest): Promise<string | null> {
-  const c = await cookies();
-  const cookieCartId = c.get(CART_COOKIE)?.value;
-  if (cookieCartId) return cookieCartId;
-  const guestCartId = req.headers.get(GUEST_CART_HEADER);
-  return guestCartId || null;
-}
-
+/** Detach only the unchanged cart belonging to this confirmed checkout. Never delete cart items. */
 export async function POST(req: NextRequest) {
-  const cartId = await resolveCartId(req);
-  if (!cartId) {
-    return NextResponse.json({ cleared: false, reason: "cart_id_not_found" });
+  const body = await req.json().catch(() => ({}));
+  const orderId = typeof body.orderId === "string" ? body.orderId : "";
+  if (!orderId) return NextResponse.json({ error: "orderId required" }, { status: 400 });
+  const access = await checkoutOrderAccessError(req, orderId);
+  if (access) return access;
+  const loaded = await loadCheckoutOrder(orderId);
+  const order = loaded?.order;
+  const metadata = order?.metadata || {};
+  if (loaded?.isDraft || !order || !(metadata.razorpay_payment_status === "captured" || metadata.cod_status === "confirmed")) {
+    return NextResponse.json({ error: "confirmed_checkout_required" }, { status: 409 });
   }
-
-  const cartRes = await backend(`/store/carts/${encodeURIComponent(cartId)}`);
-  if (!cartRes.ok) {
-    return NextResponse.json({
-      cleared: false,
-      reason: "cart_not_found",
-      status: cartRes.status,
-    });
+  const currentCartId = (await cookies()).get("cart_id")?.value || req.headers.get("x-guest-cart-id");
+  const purchasedCartId = typeof metadata.cart_id === "string" ? metadata.cart_id : "";
+  if (metadata.mode === "buy_now" || !purchasedCartId || currentCartId !== purchasedCartId) {
+    return NextResponse.json({ cleared: false, reason: "different_or_missing_checkout_cart" });
   }
-  const cartPayload = await cartRes.json();
-  const items = extractItems(cartPayload);
-
-  if (!items.length) {
-    return NextResponse.json({ cleared: true, cart: cartPayload.cart || cartPayload });
+  const base = (process.env.MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+  const key = process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY || process.env.MEDUSA_PUBLISHABLE_KEY || process.env.MEDUSA_PUBLISHABLE_API_KEY || "";
+  const response = await fetch(`${base}/store/carts/${encodeURIComponent(purchasedCartId)}`, { cache: "no-store", headers: { "x-publishable-api-key": key } });
+  if (!response.ok) return NextResponse.json({ cleared: false, reason: "checkout_cart_unavailable" });
+  const payload = await response.json();
+  if (!completedCheckoutCartMatches(order.items, payload.cart?.items)) {
+    return NextResponse.json({ cleared: false, reason: "cart_changed_since_checkout" });
   }
-
-  const deletions = await Promise.allSettled(
-    items.map((item) => {
-      if (!item?.id) return Promise.resolve({ ok: true, skipped: true });
-      return backend(
-        `/store/carts/${encodeURIComponent(cartId)}/line-items/${encodeURIComponent(String(item.id))}`,
-        { method: "DELETE" }
-      );
-    })
-  );
-
-  const failed: Array<{ id?: string; status?: number }> = [];
-  deletions.forEach((result, index) => {
-    if (result.status === "fulfilled") {
-      const res = result.value as Response;
-      if (!res.ok) {
-        failed.push({ id: items[index]?.id, status: res.status });
-      }
-    } else {
-      failed.push({ id: items[index]?.id });
-    }
-  });
-
-  const refreshed = await backend(`/store/carts/${encodeURIComponent(cartId)}`);
-  const refreshedPayload = refreshed.ok ? await refreshed.json() : null;
-
-  return NextResponse.json({
-    cleared: failed.length === 0,
-    failed,
-    cart: refreshedPayload?.cart || refreshedPayload || null,
-  });
+  const result = NextResponse.json({ cleared: true, clearedCartId: purchasedCartId });
+  result.cookies.set("cart_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
+  return result;
 }

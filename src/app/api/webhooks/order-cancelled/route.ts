@@ -39,6 +39,9 @@ export async function POST(req: NextRequest) {
 
         // Extract order ID
         const orderId = data.id || data.order_id
+        if(String(event||'').includes('return')||String(event||'').includes('refund')||['return_approved','refunded'].includes(data.status)) {
+            return NextResponse.json({error:"Return settlement requires an item-scoped manual refund receipt."},{status:409})
+        }
 
         if (!orderId) {
             console.error("No order ID in webhook payload")

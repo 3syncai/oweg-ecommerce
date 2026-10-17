@@ -2,6 +2,9 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import ReturnModuleService from "../../../modules/returns/service"
 import { RETURN_MODULE } from "../../../modules/returns"
 import { resolveOrderReturnShippingContext } from "../../../lib/vendor-return-shiprocket"
+import { returnImageViews } from "../../../lib/return-images"
+import { returnPayoutView } from "../../../lib/return-payout-view"
+import { returnRefundConfigurationReady } from "../../../services/return-bank-crypto"
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const returnService: ReturnModuleService = req.scope.resolve(RETURN_MODULE)
@@ -55,7 +58,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     itemsByRequest.set(item.return_request_id, list)
   }
 
-  const enriched = requests.map((request: any) => {
+  const enriched = await Promise.all(requests.map(async (request: any) => {
     const order = request.order_id ? ordersById.get(request.order_id) : null
     const metadata = order?.metadata || {}
     const summary = order?.summary || {}
@@ -99,8 +102,13 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const returnedToVendor =
       String(request.status) === "received" || Boolean(returnMeta.returned_to_vendor)
 
+    const { bank_details_encrypted: _encrypted, ...safeRequest } = request
+    const payout = returnPayoutView(request)
     return {
-      ...request,
+      ...safeRequest,
+      refund_payout: payout.bank_details?.method === "upi" ? payout.bank_details : null,
+      refund_details_error: payout.refund_details_error,
+      images: await returnImageViews(request),
       items: itemsByRequest.get(request.id) || [],
       order_display_id: order?.display_id ?? null,
       customer_id: order?.customer_id || request.customer_id || null,
@@ -123,7 +131,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         (order?.metadata as any)?.returned_to_vendor_at ||
         null,
     }
-  })
+  }))
 
   const sorted = [...enriched].sort((a, b) => {
     const aTime = new Date(a.created_at || 0).getTime()
@@ -131,5 +139,6 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     return bTime - aTime
   })
 
-  return res.json({ return_requests: sorted })
+  res.setHeader("Cache-Control", "no-store")
+  return res.json({ return_requests: sorted, refund_configuration_ready: returnRefundConfigurationReady() })
 }

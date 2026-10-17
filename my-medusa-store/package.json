@@ -25,6 +25,7 @@
     "predev": "node scripts/patch-customer-order-overview.cjs",
     "dev": "medusa develop",
     "admin:bootstrap": "medusa exec ./src/scripts/bootstrap-superadmin.ts",
+    "payment:install": "medusa exec ./src/scripts/install-payment-reliability.ts",
     "test:admin-access": "node --test --require ts-node/register/transpile-only src/lib/admin-access/__tests__/*.test.ts",
     "postinstall": "node scripts/apply-patches.js",
     "test:integration:http": "TEST_TYPE=integration:http NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",

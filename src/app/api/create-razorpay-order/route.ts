@@ -1,7 +1,9 @@
+import { checkoutOrderAccessError } from "@/lib/checkout-order-access";
 import { NextResponse } from "next/server";
 import { createRazorpayOrder, fetchRazorpayOrder, getPublicRazorpayKey } from "@/lib/razorpay";
 import { loadCheckoutOrder, updateCheckoutOrderMetadata } from "@/lib/checkout-order";
 import { getPool } from "@/lib/wallet-ledger";
+import {withPaymentCoordination} from "@/lib/payment-reliability";
 import { persistSnapshotForCheckout } from "@/lib/checkout-payment-snapshot";
 
 export const dynamic = "force-dynamic";
@@ -218,6 +220,7 @@ async function createRazorpayOrderForMedusa(
       checkoutStatus: checkout2,
     });
     if (reused2) {
+      await persistSnapshotForCheckout(medusaOrderId,reused2.orderId);
       return jsonResult(200, reused2);
     }
   }
@@ -280,6 +283,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "medusaOrderId is required" }, { status: 400 });
     }
 
+    const accessError = await checkoutOrderAccessError(req, medusaOrderId);
+    if (accessError) return accessError;
+
     if (isDev) {
       console.log("[create-razorpay-order] medusaOrderId:", medusaOrderId);
     }
@@ -288,7 +294,7 @@ export async function POST(req: Request) {
 
     let work = inFlightByOrderId.get(medusaOrderId);
     if (!work) {
-      work = createRazorpayOrderForMedusa(medusaOrderId, requestedAmount).finally(() => {
+      work = withPaymentCoordination(getPool(),'gateway-mint:'+medusaOrderId,()=>createRazorpayOrderForMedusa(medusaOrderId, requestedAmount)).finally(() => {
         inFlightByOrderId.delete(medusaOrderId);
       });
       inFlightByOrderId.set(medusaOrderId, work);

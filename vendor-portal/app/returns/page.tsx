@@ -553,6 +553,13 @@ const VendorReturnsPage = () => {
                                 Rejected: {item.rejection_reason}
                               </Text>
                             ) : null}
+                            {!!item.images?.length && <div className="flex flex-wrap gap-2" aria-label="Customer return photos">
+                              {item.images.map((image, index) => image.url ? <a key={image.key} href={image.url} target="_blank" rel="noreferrer" aria-label={`Open return photo ${index + 1}`}>
+                                {/* Signed S3 URLs are temporary and must not pass through the image optimizer. */}
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={image.url} alt={`Return photo ${index + 1}`} className="h-16 w-16 rounded-md border object-cover" />
+                              </a> : <Text key={image.key} size="xsmall">Photo temporarily unavailable</Text>)}
+                            </div>}
                             {typeof item.order_total === "number" ? (
                               <Text size="xsmall" className="text-ui-fg-muted">
                                 Order {formatCurrency(item.order_total)}

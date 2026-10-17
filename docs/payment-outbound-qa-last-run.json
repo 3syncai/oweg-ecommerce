@@ -1,0 +1,14 @@
+{
+  "ranAt": "2026-10-17T07:34:17.884Z",
+  "scope": "isolated PostgreSQL queue + simulated idempotent receiver; production receiver contract remains unverified",
+  "results": [
+    {
+      "name": "crash after receiver acceptance reuses same key and produces one external effect",
+      "result": "PASS"
+    },
+    {
+      "name": "receiver failure remains pending and retries after recovery",
+      "result": "PASS"
+    }
+  ]
+}
