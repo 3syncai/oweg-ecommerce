@@ -1,0 +1,26 @@
+{
+  "ranAt": "2026-10-17T07:33:32.750Z",
+  "scope": "route contracts; PostgreSQL settlement and concurrency covered separately; no bank payout performed",
+  "results": [
+    {
+      "name": "missing admin session cannot acknowledge payout",
+      "result": "PASS"
+    },
+    {
+      "name": "customer actor cannot acknowledge payout",
+      "result": "PASS"
+    },
+    {
+      "name": "manual acknowledgement includes admin, exact amount and payout reference",
+      "result": "PASS"
+    },
+    {
+      "name": "invalid state or changed quote returns conflict",
+      "result": "PASS"
+    },
+    {
+      "name": "database failure explains safe retry without repeating bank payout",
+      "result": "PASS"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "ranAt": "2026-10-16T22:03:57.009Z",
+  "orderId": "order_01M5353MJKZHNYR3H2J32XRJS9",
+  "scope": "test gateway; no new charge; captured order reconciled",
+  "results": [
+    {
+      "name": "invalid webhook rejected; authorized event cannot mark an order captured",
+      "result": "PASS"
+    },
+    {
+      "name": "missing confirmation fields and invalid signature rejected",
+      "result": "PASS"
+    },
+    {
+      "name": "valid signature cannot override server amount or currency",
+      "result": "PASS"
+    },
+    {
+      "name": "anonymous callers cannot read, mint, cancel or select COD for an order",
+      "result": "PASS"
+    },
+    {
+      "name": "owner can view safe order summary without signature metadata",
+      "result": "PASS"
+    },
+    {
+      "name": "a valid signed capture cannot be attached to a different checkout",
+      "result": "PASS"
+    },
+    {
+      "name": "authenticated customer cannot access another customer order",
+      "result": "PASS"
+    },
+    {
+      "name": "concurrent real-gateway reconciliation leaves one payment and accounting entry",
+      "result": "PASS"
+    }
+  ]
+}

@@ -29,6 +29,17 @@ type MedusaFetchInit = RequestInit & {
   skipContentType?: boolean
 }
 
+// Browsers share cookies across ports. Keep the storefront session separate from
+// the direct Medusa admin session, translating only at the server boundary.
+export const STORE_SESSION_COOKIE = "oweg_customer_session"
+export function storeSessionCookieHeader(cookie: string): string {
+  const pairs = cookie.split(";").map(part => part.trim()).filter(Boolean)
+  const customer = pairs.find(part => part.startsWith(`${STORE_SESSION_COOKIE}=`))
+  if (!customer) return cookie // Existing customer sessions and upstream login bootstrap.
+  return [...pairs.filter(part => !part.startsWith("connect.sid=") && !part.startsWith(`${STORE_SESSION_COOKIE}=`)),
+    `connect.sid=${customer.slice(STORE_SESSION_COOKIE.length + 1)}`].join("; ")
+}
+
 export function medusaStoreFetch(path: string, init?: MedusaFetchInit): Promise<Response> {
   const normalizedPath = path.startsWith("http")
     ? path
@@ -51,6 +62,8 @@ export function medusaStoreFetch(path: string, init?: MedusaFetchInit): Promise<
   if (init?.forwardedCookie && !headers.has("cookie")) {
     headers.set("cookie", init.forwardedCookie)
   }
+  const cookie = headers.get("cookie")
+  if (cookie) headers.set("cookie", storeSessionCookieHeader(cookie))
   if (init?.forwardedHeaders) {
     for (const [key, value] of Object.entries(init.forwardedHeaders)) {
       if (!value) continue
@@ -105,7 +118,7 @@ export function cookiesToHeader(cookies: string[]): string | undefined {
 export function appendUpstreamCookies(target: Response, upstream: Response) {
   const cookies = collectSetCookies(upstream.headers)
   const normalizeCookie = (cookie: string) => {
-    const parts = cookie.split(";").map((part) => part.trim())
+    const parts = cookie.replace(/^connect\.sid=/, `${STORE_SESSION_COOKIE}=`).split(";").map((part) => part.trim())
     const filtered = parts.filter((part) => !/^domain=/i.test(part))
 
     if (process.env.NODE_ENV !== "production") {

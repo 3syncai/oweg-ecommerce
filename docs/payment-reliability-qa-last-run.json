@@ -1,0 +1,126 @@
+{
+  "ranAt": "2026-10-17T07:34:11.286Z",
+  "scope": "isolated PostgreSQL schema; no real customer records or payouts changed",
+  "results": [
+    {
+      "name": "original ₹10 discount / ₹5 balance regression fails closed without partial debit",
+      "result": "PASS"
+    },
+    {
+      "name": "concurrent checkouts cannot reserve the same balance twice",
+      "result": "PASS"
+    },
+    {
+      "name": "ordinary wallet spend cannot consume a checkout reservation",
+      "result": "PASS"
+    },
+    {
+      "name": "reservation is consumed once despite concurrent confirmation retries",
+      "result": "PASS"
+    },
+    {
+      "name": "released reservation cannot silently underfund a late capture",
+      "result": "PASS"
+    },
+    {
+      "name": "same job is queued once and claimed once across workers",
+      "result": "PASS"
+    },
+    {
+      "name": "crashed worker lease expires; stale acknowledgement is fenced out",
+      "result": "PASS"
+    },
+    {
+      "name": "failed work backs off and exhausted work remains visible as dead",
+      "result": "PASS"
+    },
+    {
+      "name": "queue insertion and financial commit roll back together",
+      "result": "PASS"
+    },
+    {
+      "name": "paise allocations remain exact and deterministic",
+      "result": "PASS"
+    },
+    {
+      "name": "partial return refunds only its allocation and preserves sibling item",
+      "result": "PASS"
+    },
+    {
+      "name": "concurrent duplicate manual acknowledgement records one receipt and one credit",
+      "result": "PASS"
+    },
+    {
+      "name": "wrong payout amount is rejected before status or balance changes",
+      "result": "PASS"
+    },
+    {
+      "name": "refund insertion failure rolls back status, coins, receipt and outbox",
+      "result": "PASS"
+    },
+    {
+      "name": "sequential partial returns restore exactly the full original debit, including final paise",
+      "result": "PASS"
+    },
+    {
+      "name": "overlapping returns cannot refund more than ordered quantity",
+      "result": "PASS"
+    },
+    {
+      "name": "rewards credited after a partial return cover only retained items",
+      "result": "PASS"
+    },
+    {
+      "name": "partial quantity reverses only its vendor and referral share",
+      "result": "PASS"
+    },
+    {
+      "name": "replayed return earnings job cannot debit vendor or referrer twice",
+      "result": "PASS"
+    },
+    {
+      "name": "final quantity return reverses remaining earnings without touching sibling vendor",
+      "result": "PASS"
+    },
+    {
+      "name": "concurrent readiness retries cannot reserve the same line twice",
+      "result": "PASS"
+    },
+    {
+      "name": "another paid order cannot silently reserve unavailable stock",
+      "result": "PASS"
+    },
+    {
+      "name": "completed fulfillment and cancelled orders are not re-reserved on retry",
+      "result": "PASS"
+    },
+    {
+      "name": "inventory write fault rolls back reservation and level together",
+      "result": "PASS"
+    },
+    {
+      "name": "paid allocations survive price, vendor and metadata edits; shipping stays retained",
+      "result": "PASS"
+    },
+    {
+      "name": "worker attempt history records lease loss and completion",
+      "result": "PASS"
+    },
+    {
+      "name": "twelve process crashes exhaust retries visibly",
+      "result": "PASS"
+    },
+    {
+      "name": "delivery credit racing with delayed partial-return jobs has no excess referral credit",
+      "result": "PASS"
+    },
+    {
+      "name": "snapshot recovery transfers the original exact hold once to the rebuilt order",
+      "result": "PASS"
+    },
+    {
+      "name": "coin caps and cheap goods never consume delivery charges",
+      "result": "PASS"
+    }
+  ]
+}

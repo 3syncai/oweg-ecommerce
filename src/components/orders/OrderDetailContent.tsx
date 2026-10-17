@@ -187,6 +187,8 @@ export default function OrderDetailContent({
     returnReason,
     setReturnReason,
     returnNotes,
+    returnPhotos,
+    setReturnPhotos,
     setReturnNotes,
     returnItems,
     setReturnItems,
@@ -723,6 +725,8 @@ export default function OrderDetailContent({
           selectedReason={returnReason}
           onReasonChange={setReturnReason}
           notes={returnNotes}
+          photos={returnPhotos}
+          onPhotosChange={setReturnPhotos}
           onNotesChange={(value) => setReturnNotes(sanitizeTextInput(value, 1000))}
           payoutMethod={payoutMethod}
           onPayoutMethodChange={setPayoutMethod}

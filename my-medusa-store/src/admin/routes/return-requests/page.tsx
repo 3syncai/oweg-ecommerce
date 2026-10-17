@@ -24,6 +24,9 @@ type ReturnRequest = {
   reason?: string | null
   payment_type: string
   refund_method?: string | null
+  refund_payout?: { method?: string; upi_id?: string } | null
+  refund_details_error?: string | null
+  images?: Array<{ key: string; order_item_id: string; url: string }>
   bank_account_last4?: string | null
   shiprocket_awb?: string | null
   shiprocket_status?: string | null
@@ -55,12 +58,15 @@ const ReturnRequestsPage = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [requests, setRequests] = useState<ReturnRequest[]>([])
+  const [refundConfigurationReady, setRefundConfigurationReady] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [bankDetails, setBankDetails] = useState<Record<string, string> | null>(null)
   const [bankDetailsFor, setBankDetailsFor] = useState<string | null>(null)
   const [refundModal, setRefundModal] = useState<ReturnRequest | null>(null)
   const [refundDetails, setRefundDetails] = useState<Record<string, string> | null>(null)
   const [refundDetailsLoading, setRefundDetailsLoading] = useState(false)
+  const [refundQuote,setRefundQuote]=useState<{cash_minor:number;coin_minor:number;already_recorded:boolean;payout_reference?:string}|null>(null)
+  const [payoutReference,setPayoutReference]=useState("")
   const [access, setAccess] = useState<AdminAccess | null>(null)
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null)
 
@@ -74,6 +80,7 @@ const ReturnRequestsPage = () => {
       }
       const data = await res.json()
       setRequests(data?.return_requests || [])
+      setRefundConfigurationReady(data?.refund_configuration_ready !== false)
     } catch (e: any) {
       const msg = e?.message || "Failed to load return requests"
       setError(msg)
@@ -136,6 +143,7 @@ const ReturnRequestsPage = () => {
         throw new Error(`Failed to load details: ${res.status}`)
       }
       const data = await res.json()
+      if (data?.return_request?.refund_details_error) throw new Error(data.return_request.refund_details_error)
       setBankDetails(data?.return_request?.bank_details || null)
     } catch (e: any) { 
       const msg = e?.message || "Failed to load bank details"
@@ -146,11 +154,18 @@ const ReturnRequestsPage = () => {
   const openRefundModal = async (request: ReturnRequest) => {
     setRefundModal(request)
     setRefundDetails(null)
+    setRefundQuote(null)
+    setPayoutReference("")
     setRefundDetailsLoading(true)
     try {
       const res = await fetch(`/admin/return-requests/${request.id}`, { credentials: "include" })
       if (!res.ok) throw new Error(`Failed to load refund details: ${res.status}`)
       const data = await res.json()
+      if (data?.return_request?.refund_details_error) throw new Error(data.return_request.refund_details_error)
+      if(data?.return_request?.refund_quote_error)throw new Error(data.return_request.refund_quote_error)
+      if(!data?.return_request?.refund_quote)throw new Error("Refund amount could not be calculated")
+      setRefundQuote(data.return_request.refund_quote)
+      setPayoutReference(data.return_request.refund_quote.payout_reference||"")
       setRefundDetails(data?.return_request?.bank_details || null)
     } catch (e: any) {
       toast.error("Error", { description: e?.message || "Failed to load refund details" })
@@ -161,14 +176,19 @@ const ReturnRequestsPage = () => {
   }
 
   const confirmMarkRefunded = async () => {
-    if (!refundModal) return
-    await runAction(refundModal.id, `/admin/return-requests/${refundModal.id}/mark-refunded`)
+    if (!refundModal || !refundQuote || !payoutReference.trim()) return
+    await runAction(refundModal.id, `/admin/return-requests/${refundModal.id}/mark-refunded`,{
+      cash_minor:refundQuote.cash_minor,payout_reference:payoutReference.trim(),
+    })
     setRefundModal(null)
     setRefundDetails(null)
   }
 
   return (
     <Container className="p-8">
+      {!refundConfigurationReady && <Text role="alert" className="mb-4 rounded-lg border border-ui-border-error p-3 text-ui-fg-error">
+        Refund configuration needs attention: RETURN_BANK_ENCRYPTION_KEY is missing or invalid on this backend. Customers cannot submit refund details until it is configured. Use the existing key for this database.
+      </Text>}
       <div className="flex items-center justify-between mb-6">
         <div>
           <Heading level="h1" className="text-2xl font-semibold mb-1">
@@ -276,8 +296,17 @@ const ReturnRequestsPage = () => {
                       Payment: {request.payment_type}
                       {request.refund_method ? ` • Refund via ${request.refund_method}` : ""}
                       {request.bank_account_last4 ? ` (xxxx${request.bank_account_last4})` : ""}
-                      {request.metadata?.upi_masked ? ` • ${request.metadata.upi_masked}` : ""}
+                      {request.refund_payout?.upi_id ? ` • UPI: ${request.refund_payout.upi_id}` :
+                        request.metadata?.upi_masked ? ` • ${request.metadata.upi_masked}` : ""}
                     </Text>
+                    {request.refund_details_error && <Text className="text-sm text-ui-fg-error">{request.refund_details_error}</Text>}
+                    {!!request.images?.length && <div className="space-y-2">
+                      <Text className="text-sm font-medium">Customer return photos</Text>
+                      <div className="flex flex-wrap gap-2">{request.images.map((image, index) => image.url ?
+                        <a key={image.key} href={image.url} target="_blank" rel="noreferrer" aria-label={`Open return photo ${index + 1}`}>
+                          <img src={image.url} alt={`Return photo ${index + 1}`} className="h-20 w-20 rounded-md border border-ui-border-base object-cover" />
+                        </a> : <Text key={image.key} className="text-sm text-ui-fg-subtle">Photo temporarily unavailable</Text>)}</div>
+                    </div>}
                     {request.shipping_method === "easy" ? (
                       <div className="rounded-lg border border-ui-border-base bg-ui-bg-subtle/50 px-3 py-2 space-y-1">
                         <Text className="text-sm font-medium">Easy Ship reverse logistics</Text>
@@ -402,6 +431,12 @@ const ReturnRequestsPage = () => {
                     >
                       Mark Refunded
                     </Button>
+                    {request.status === "refunded" && (
+                      <Button variant="secondary" size="base" disabled={actionLoading === request.id}
+                        onClick={() => void openRefundModal(request)}>
+                        View Refund Receipt
+                      </Button>
+                    )}
                     {(request.refund_method === "bank" ||
                       request.refund_method === "upi" ||
                       request.payment_type === "cod" ||
@@ -510,6 +545,16 @@ const ReturnRequestsPage = () => {
               )}
             </div>
 
+            {refundQuote && <div className="mt-4 space-y-2 rounded-lg border border-ui-border-base p-3">
+              <Text>Manual payout: {formatCurrency(refundQuote.cash_minor/100)}</Text>
+              <Text>Coins restored: {formatCurrency(refundQuote.coin_minor/100)}</Text>
+              <Text size="small">Amount covers the returned items after discounts. Outward shipping is retained.</Text>
+              <label className="block text-sm">Bank / UPI transaction reference
+                <input aria-label="Payout transaction reference" className="mt-1 w-full rounded-md border border-ui-border-base p-2"
+                  value={payoutReference} onChange={event=>setPayoutReference(event.target.value)} readOnly={refundQuote.already_recorded}/>
+              </label>
+              <Text size="small">Record this only after the manual transfer succeeds. Recording does not send money.</Text>
+            </div>}
             <div className="mt-5 flex justify-end gap-2">
               <Button
                 variant="secondary"
@@ -522,11 +567,11 @@ const ReturnRequestsPage = () => {
               </Button>
               <Button
                 variant="primary"
-                disabled={actionLoading === refundModal.id || refundDetailsLoading}
+                disabled={actionLoading === refundModal.id || refundDetailsLoading || !refundQuote || !/^[-A-Za-z0-9_./:]{4,120}$/.test(payoutReference.trim())}
                 isLoading={actionLoading === refundModal.id}
                 onClick={() => void confirmMarkRefunded()}
               >
-                Confirm refund
+                {refundQuote?.already_recorded?"Verify receipt":"Record completed refund"}
               </Button>
             </div>
           </div>

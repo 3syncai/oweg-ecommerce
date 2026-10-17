@@ -1,6 +1,9 @@
+import { checkoutOrderAccessError } from "@/lib/checkout-order-access";
 import { NextResponse } from "next/server";
 import { markCheckoutPaymentFailed } from "@/lib/checkout-order";
 import { refundCoinSpendForOrder } from "@/lib/wallet-coin-order";
+import { releaseCheckoutCoins } from "@/lib/payment-reliability";
+import { getPool } from "@/lib/wallet-ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +20,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "medusaOrderId is required" }, { status: 400 });
     }
 
+    const accessError = await checkoutOrderAccessError(req, orderId);
+    if (accessError) return accessError;
+
     const result = await markCheckoutPaymentFailed(orderId);
 
     // Do not refund coins if we recovered a real capture.
     if (!result.recovered) {
+      await releaseCheckoutCoins(getPool(),orderId);
       try {
         await refundCoinSpendForOrder({ orderId, reason: "failed" });
       } catch {

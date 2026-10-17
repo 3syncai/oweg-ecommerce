@@ -33,7 +33,8 @@ export default function FloatingWhatsAppWidget() {
     "Hi, I need help with my order.";
   const number = normalizeWhatsAppNumber(rawNumber);
 
-  if (!number) {
+  // Keep the checkout's payment and wallet controls clear of floating overlays.
+  if (!number || pathname === "/checkout") {
     return null;
   }
 

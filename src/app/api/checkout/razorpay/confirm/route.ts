@@ -1,5 +1,7 @@
 import { NextResponse, after } from "next/server";
-import crypto from "crypto";
+import { verifyCheckoutPaymentSignature } from "@/lib/razorpay";
+import { verifyCheckoutCapture } from "@/lib/verify-checkout-capture";
+import { CaptureVerificationError } from "@/lib/payment-capture-validation";
 import {
   updateOrderMetadata,
 } from "@/lib/medusa-admin";
@@ -15,8 +17,6 @@ import {
 import { finalizeCoinSpendForOrder } from "@/lib/wallet-coin-order";
 import { OWEG10_CODE } from "@/lib/oweg10-shared";
 import { consumeOweg10Reservation, syncOweg10ConsumedCustomerMetadata } from "@/lib/oweg10";
-import { logPendingCoinsForOrder } from "@/lib/customer-affiliate-coins";
-import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { Pool } from 'pg';
 
 // Shared pool instance at module level to avoid creating multiple connections per request
@@ -56,142 +56,19 @@ function stringifyErrorDetails(error: unknown) {
   };
 }
 
-function verifyCheckoutSignature(payload: {
-  razorpay_order_id: string;
-  razorpay_payment_id: string;
-  razorpay_signature: string;
-}) {
-  const secret = process.env.RAZORPAY_KEY_SECRET;
-  if (!secret) return false;
-  const generated = crypto
-    .createHmac("sha256", secret)
-    .update(`${payload.razorpay_order_id}|${payload.razorpay_payment_id}`)
-    .digest("hex");
-  return generated === payload.razorpay_signature;
-}
-
-async function runPostPaidSideEffects(finalOrderId: string, amountMinor?: number) {
-  // AFFILIATE COMMISSION: Call the commission webhook for hierarchy support
-  if (typeof amountMinor === "number") {
-    try {
-      console.log("razorpay confirm: Triggering commission webhook for hierarchy...");
-
-      const pool = getPool();
-      if (!pool) throw new Error("Database not configured");
-
-      const customerResult = await pool.query(
-        `SELECT 
-           c.id, 
-           c.email, 
-           c.first_name || ' ' || c.last_name as name,
-           COALESCE(cr.referral_code, c.metadata->>'referral_code') as referral_code
-         FROM "order" o
-         JOIN customer c ON o.customer_id = c.id
-         LEFT JOIN customer_referral cr ON cr.customer_id = c.id
-         WHERE o.id = $1`,
-        [finalOrderId]
-      );
-
-      const customer = customerResult.rows[0];
-      const affiliateCode = customer?.referral_code;
-
-      if (affiliateCode) {
-        console.log(`razorpay confirm: Found affiliate code ${affiliateCode}, calling webhook...`);
-
-        const itemsResult = await pool.query(
-          `SELECT 
-             oi.id, 
-             pv.product_id,
-             oi.quantity,
-             oli.unit_price,
-             p.title as product_name
-           FROM order_item oi
-           JOIN order_line_item oli ON oi.item_id = oli.id
-           LEFT JOIN product_variant pv ON oli.variant_id = pv.id
-           LEFT JOIN product p ON pv.product_id = p.id
-           WHERE oi.order_id = $1`,
-          [finalOrderId]
-        );
-
-        const webhookUrl = process.env.AFFILIATE_WEBHOOK_URL;
-
-        if (!webhookUrl) {
-          console.error("razorpay confirm: ⚠️ AFFILIATE_WEBHOOK_URL not set, skipping commission webhook");
-        } else {
-          await Promise.all(
-            itemsResult.rows.map(async (item) => {
-              const unitPrice = parseFloat(item.unit_price || 0);
-              const itemAmount = unitPrice * (item.quantity || 1);
-
-              const payload = {
-                order_id: finalOrderId,
-                affiliate_code: affiliateCode,
-                product_id: item.product_id,
-                product_name: item.product_name,
-                quantity: item.quantity,
-                item_price: unitPrice / 100,
-                order_amount: itemAmount,
-                status: "PENDING",
-                customer_id: customer.id,
-                customer_name: customer.name,
-                customer_email: customer.email,
-              };
-
-              console.log(`razorpay confirm: Sending webhook for ${item.product_name}...`);
-
-              try {
-                const response = await fetchWithTimeout(
-                  webhookUrl,
-                  {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload),
-                  },
-                  5000
-                );
-
-                if (response.ok) {
-                  const result = await response.json();
-                  console.log(`✅ Webhook success for ${item.product_name}:`, result);
-                } else {
-                  const error = await response.text();
-                  console.error(`❌ Webhook failed for ${item.product_name}:`, error);
-                }
-              } catch (fetchErr) {
-                console.error(`❌ Webhook fetch error for ${item.product_name}:`, fetchErr);
-              }
-            })
-          );
-        }
-      } else {
-        console.log("razorpay confirm: No affiliate code, skipping commission");
-      }
-    } catch (affiliateErr) {
-      console.error("razorpay confirm: ⚠️ Affiliate webhook failed:", affiliateErr);
-    }
-  }
-
-  try {
-    const result = await logPendingCoinsForOrder(finalOrderId);
-    console.log("[customer-affiliate-coins] razorpay confirm:", result);
-  } catch (err) {
-    console.error("[customer-affiliate-coins] razorpay confirm failed:", err);
-  }
-}
-
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as ConfirmBody;
     const { medusaOrderId, razorpay_payment_id, razorpay_order_id, razorpay_signature } = body;
-    const amountMinor = typeof body.amount_minor === "number" ? body.amount_minor : undefined;
-    const currency = typeof body.currency === "string" ? body.currency : undefined;
-    const currencyCode = (currency || "INR").toLowerCase();
+    if ([medusaOrderId, razorpay_payment_id, razorpay_order_id, razorpay_signature].some(value => typeof value !== "string" || !value.trim()) ||
+        (body.amount_minor !== undefined && (!Number.isSafeInteger(body.amount_minor) || body.amount_minor <= 0)) ||
+        (body.currency !== undefined && typeof body.currency !== "string")) return badRequest("Invalid payment details");
 
     if (!medusaOrderId || !razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
       return badRequest("Missing payment details");
     }
 
-    const verified = verifyCheckoutSignature({
+    const verified = verifyCheckoutPaymentSignature({
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
@@ -199,6 +76,11 @@ export async function POST(req: Request) {
     if (!verified) {
       return NextResponse.json({ error: "invalid_signature" }, { status: 400 });
     }
+
+    const { amountMinor, currencyCode } = await verifyCheckoutCapture({
+      medusaOrderId, paymentId: razorpay_payment_id, gatewayOrderId: razorpay_order_id,
+      claimedAmountMinor: body.amount_minor, claimedCurrency: body.currency,
+    });
 
     let placed = await ensurePlacedCheckoutOrder(medusaOrderId);
     if (!placed) {
@@ -211,9 +93,6 @@ export async function POST(req: Request) {
         razorpaySignature: razorpay_signature,
         amountMinor,
         currencyCode,
-        // HMAC already verified. Prefer local tombstone/snapshot rebuild; skip RZP GET
-        // so QA fake pay_* ids still recover (remote lookup is for unsigned recover API).
-        skipRemotePaymentLookup: true,
       });
       if (recovered.ok) {
         return NextResponse.json({
@@ -226,6 +105,9 @@ export async function POST(req: Request) {
       }
       if (recovered.error === "orphan_capture") {
         return NextResponse.json(recovered, { status: 502 });
+      }
+      if (recovered.error === "gateway_unavailable") {
+        return NextResponse.json(recovered, { status: 503 });
       }
       return NextResponse.json(
         { error: "order_not_found", recovery: recovered },
@@ -246,21 +128,23 @@ export async function POST(req: Request) {
 
     // Store all payment data in metadata
     const metadata = {
-      razorpay_payment_status: "captured",
+      razorpay_payment_status: "pending_recording",
       razorpay_payment_id,
       razorpay_order_id,
       razorpay_signature,
       razorpay_amount_minor: amountMinor,
       razorpay_paid_total: amountMinor,
-      razorpay_payment_status_confirmed: "captured",
-      razorpay_captured_at: new Date().toISOString(),
+      razorpay_payment_status_confirmed: "pending_recording",
+      razorpay_verified_at: new Date().toISOString(),
       medusa_total_minor: amountMinor,
       medusa_amount_scale: "checkout_confirm",
       amount_reconcile_matched: true,
     };
 
     // Persist metadata
-    const metaRes = await updateOrderMetadata(finalOrderId, metadata);
+    const metaRes = orderMetadata.razorpay_payment_status === "captured"
+      ? { ok: true, status: 200, data: null }
+      : await updateOrderMetadata(finalOrderId, metadata);
     if (!metaRes.ok) {
       console.error("razorpay confirm: metadata update failed", { status: metaRes.status, data: metaRes.data });
     }
@@ -292,7 +176,6 @@ export async function POST(req: Request) {
 
           if (!consumeResult.ok) {
             await updateOrderMetadata(finalOrderId, {
-              ...orderMetadata,
               oweg10_pending: true,
               oweg10_reconcile_required: true,
               oweg10_reconcile_reason: "consume_rejected",
@@ -309,7 +192,6 @@ export async function POST(req: Request) {
           } else {
             await syncOweg10ConsumedCustomerMetadata(customerId);
             await updateOrderMetadata(finalOrderId, {
-              ...orderMetadata,
               oweg10_pending: false,
               oweg10_consumed: true,
               oweg10_consumed_at: new Date().toISOString(),
@@ -323,7 +205,6 @@ export async function POST(req: Request) {
         } catch (consumeError) {
           const errorDetails = stringifyErrorDetails(consumeError);
           await updateOrderMetadata(finalOrderId, {
-            ...orderMetadata,
             oweg10_pending: true,
             oweg10_reconcile_required: true,
             oweg10_reconcile_reason: "consume_error",
@@ -428,6 +309,11 @@ export async function POST(req: Request) {
       });
     }
 
+    if (!finalizeOk || !paymentCreated) {
+      return NextResponse.json({ ok: false, error: "payment_recording_pending", paymentReceived: true,
+        orderId: finalOrderId, adminReconcileRequired: true }, { status: 503 });
+    }
+
     // Spend wallet coins after successful payment (discount already on order from draft-order).
     try {
       const pool = getPool();
@@ -466,7 +352,7 @@ export async function POST(req: Request) {
     }
 
     // Non-blocking: affiliate webhooks + customer-affiliate coins after response
-    after(() => runPostPaidSideEffects(finalOrderId, amountMinor));
+    // Post-payment effects are committed to payment_work with the capture.
 
     return NextResponse.json({
       ok: true,
@@ -477,6 +363,7 @@ export async function POST(req: Request) {
       adminReconcileRequired: !finalizeOk || !paymentCreated,
     });
   } catch (err) {
+    if (err instanceof CaptureVerificationError) return NextResponse.json({ error: err.code }, { status: err.status });
     console.error("razorpay confirm failed", err);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }

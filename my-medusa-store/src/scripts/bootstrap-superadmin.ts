@@ -11,6 +11,8 @@ import { adminPassword, createAdminIdentity } from "../lib/admin-access/provisio
 /** Promote one existing admin, or create one with a strong initial password. CLI only. */
 export default async function bootstrapSuperadmin({ container }: ExecArgs) {
   const email = process.env.SUPERADMIN_EMAIL?.trim().toLowerCase()
+  const testing = process.env.SUPERADMIN_TEST_ACCOUNT === "true"
+  const source = testing ? "cli-testing" : "cli"
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Set SUPERADMIN_EMAIL to the intended superadmin email")
   const users = container.resolve<IUserModuleService>(Modules.USER)
   const matches = await users.listUsers({ email })
@@ -29,8 +31,15 @@ export default async function bootstrapSuperadmin({ container }: ExecArgs) {
     await client.query("COMMIT")
     await client.query("BEGIN")
     await client.query("SELECT pg_advisory_xact_lock(hashtext('oweg-superadmin-bootstrap'))")
-    const existing = await client.query("SELECT a.user_id,u.email FROM oweg_admin_account a JOIN \"user\" u ON u.id=a.user_id WHERE a.kind='superadmin'")
-    if (existing.rows.length && existing.rows[0].email.toLowerCase() !== email) throw new Error("A different superadmin already exists. A second superadmin cannot be created.")
+    const existing = await client.query("SELECT a.user_id,u.email,a.created_by FROM oweg_admin_account a JOIN \"user\" u ON u.id=a.user_id WHERE a.kind='superadmin'")
+    const sameAccount = existing.rows.find((row) => row.email.toLowerCase() === email)
+    if (sameAccount && (sameAccount.created_by === "cli-testing") !== testing)
+      throw new Error("This account already occupies a different superadmin slot. Its access was not changed.")
+    const occupiedSlot = existing.rows.find((row) => (row.created_by === "cli-testing") === testing)
+    if (occupiedSlot && occupiedSlot.email.toLowerCase() !== email)
+      throw new Error(testing ? "A testing superadmin already exists." : "A different primary superadmin already exists.")
+    if (testing && !existing.rows.some((row) => row.created_by !== "cli-testing"))
+      throw new Error("Configure the primary superadmin before adding a testing account.")
     if (!matches.length) created = await createAdminIdentity(container, { email, password: initialPassword! })
     const user = matches[0] || created!.user
     for (const group of ADMIN_PERMISSION_GROUPS) {
@@ -39,15 +48,15 @@ export default async function bootstrapSuperadmin({ container }: ExecArgs) {
         [`arole_${group.id}`, group.label, group.description, JSON.stringify([group.id]), user.id])
     }
     await client.query(`INSERT INTO oweg_admin_account (user_id,kind,active,role_id,created_by)
-      VALUES ($1,'superadmin',true,NULL,'cli')
-      ON CONFLICT (user_id) DO UPDATE SET kind='superadmin',active=true,role_id=NULL,updated_at=now()`, [user.id])
-    await audit(client, user.id, "superadmin.bootstrapped", user.id, { source: "cli" })
+      VALUES ($1,'superadmin',true,NULL,$2)
+      ON CONFLICT (user_id) DO UPDATE SET kind='superadmin',active=true,role_id=NULL,created_by=EXCLUDED.created_by,updated_at=now()`, [user.id, source])
+    await audit(client, user.id, "superadmin.bootstrapped", user.id, { source, testing })
     await client.query("COMMIT")
     committed = true
     if (created) {
       const credentialDir = join(process.cwd(), ".local-admin")
       mkdirSync(credentialDir, { recursive: true })
-      const credentialFile = join(credentialDir, "superadmin-credentials.txt")
+      const credentialFile = join(credentialDir, testing ? "test-superadmin-credentials.txt" : "superadmin-credentials.txt")
       writeFileSync(credentialFile, `Medusa Admin: http://localhost:9000/app\nEmail: ${email}\nPassword: ${initialPassword}\n\nKeep these credentials private. This file is excluded from Git.\n`, { mode: 0o600 })
       console.log(`New superadmin credentials saved locally to ${credentialFile}`)
     }

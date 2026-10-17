@@ -1,4 +1,5 @@
-import { getPool, spendCoins, creditAdjustment } from "@/lib/wallet-ledger";
+import { transaction, consumeCheckoutCoins } from "@/lib/payment-reliability";
+import { getPool, refundOrderCoinSpend } from "@/lib/wallet-ledger";
 
 type SpendRow = {
   customer_id: string;
@@ -16,6 +17,12 @@ export async function findSpendForOrder(orderId: string): Promise<SpendRow | nul
     [orderId]
   );
   return res.rows[0] || null;
+}
+
+/** Cancellation restores only the remaining debit after item-level return receipts. */
+export async function refundCoinSpendForOrder(options:{orderId:string;reason?:string}) {
+  if((options.reason||'').includes('return')) throw new Error('Return refunds require a return receipt and item allocation');
+  return refundOrderCoinSpend({orderId:options.orderId,reason:options.reason||'cancelled'});
 }
 
 export async function hasRefundForOrder(orderId: string, reason: string): Promise<boolean> {
@@ -36,101 +43,12 @@ export async function finalizeCoinSpendForOrder(options: {
   orderId: string;
   amountMinor: number;
 }) {
-  const amountMinor = Math.round(options.amountMinor);
-  if (!options.customerId || !options.orderId || amountMinor <= 0) {
-    return { applied: false, skipped: true, reason: "invalid_input" };
-  }
-
-  const existing = await findSpendForOrder(options.orderId);
-  if (existing) {
-    return { applied: false, alreadySpent: true };
-  }
-
-  const pool = getPool();
-  const balRes = await pool.query(
-    `SELECT actual_balance FROM wallet_account WHERE customer_id = $1`,
-    [options.customerId]
-  );
-  const available = Math.max(0, Number(balRes.rows[0]?.actual_balance || 0));
-  const spendMinor = Math.min(amountMinor, available);
-  if (spendMinor <= 0) {
-    return { applied: false, skipped: true, reason: "insufficient_balance" };
-  }
-
-  const result = await spendCoins({
-    customerId: options.customerId,
-    orderId: options.orderId,
-    amountMinor: spendMinor,
-    referenceId: `order:${options.orderId}`,
-    idempotencyKey: `spend:order:${options.orderId}`,
-    metadata: {
-      reason: "order_payment_confirmed",
-      requested_minor: amountMinor,
-      capped: spendMinor < amountMinor,
-    },
+  if (!Number.isSafeInteger(options.amountMinor) || options.amountMinor <= 0) throw new Error("invalid_coin_amount");
+  return transaction(getPool(), async client => {
+    const order = (await client.query('SELECT customer_id,metadata FROM "order" WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',[options.orderId])).rows[0];
+    if (!order || order.customer_id !== options.customerId) throw new Error("coin_order_owner_mismatch");
+    const metadata = order.metadata || {};
+    if (Number(metadata.coin_discount_minor ?? Math.round(Number(metadata.coin_discount_rupees||0)*100)) !== options.amountMinor) throw new Error("coin_discount_mismatch");
+    return consumeCheckoutCoins(client,{orderId:options.orderId,customerId:options.customerId,metadata});
   });
-
-  if (result.applied) {
-    const pool2 = getPool();
-    await pool2.query(
-      `UPDATE "order"
-       SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
-       WHERE id = $1`,
-      [
-        options.orderId,
-        JSON.stringify({
-          coin_discount_spent: true,
-          coins_discounted: spendMinor / 100,
-          coin_discount_capped: spendMinor < amountMinor,
-          coin_discount_requested:
-            spendMinor < amountMinor ? amountMinor / 100 : undefined,
-        }),
-      ]
-    );
-  }
-
-  return result;
-}
-
-/**
- * Credit coins back when payment failed before spend, or on cancel/return after spend.
- * Only refunds if a SPEND ledger entry exists for the order (no free credits from metadata alone).
- */
-export async function refundCoinSpendForOrder(options: {
-  orderId: string;
-  reason?: string;
-}) {
-  const reason = options.reason || "return";
-  const idempotencyKey = `refund-${reason}:${options.orderId}`;
-
-  if (await hasRefundForOrder(options.orderId, reason)) {
-    return { success: true, alreadyRefunded: true, message: "Already refunded" };
-  }
-
-  const spend = await findSpendForOrder(options.orderId);
-  if (!spend) {
-    return { success: true, message: "No coin spend to refund" };
-  }
-
-  const amountMinor = Math.abs(Number(spend.amount) || 0);
-  const customerId = spend.customer_id;
-  if (amountMinor <= 0 || !customerId) {
-    return { success: true, message: "No amount to refund" };
-  }
-
-  const credit = await creditAdjustment({
-    customerId,
-    referenceId: idempotencyKey,
-    idempotencyKey,
-    amountMinor,
-    reason: `Refund coins for ${reason} ${options.orderId}`,
-    metadata: { order_id: options.orderId, reason },
-  });
-
-  return {
-    success: true,
-    refunded_amount: amountMinor / 100,
-    applied: credit.applied,
-    actual_balance: credit.actual_balance,
-  };
 }

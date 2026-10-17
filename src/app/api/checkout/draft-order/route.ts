@@ -15,7 +15,9 @@ import { validateMedusaPromoCode } from "@/lib/medusa-promo";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 import { cartLineAmountRupees } from "@/lib/cart-helpers";
 import { applyFlashSalePricesToCart } from "@/lib/flash-sale-cart-mapper";
-import { findSpendByReference } from "@/lib/wallet-ledger";
+import { getPool } from "@/lib/wallet-ledger";
+import { reserveCheckoutCoins } from "@/lib/payment-reliability";
+import {eligibleCoinDiscount} from "@/lib/wallet-policy";
 import {
   consumeOweg10Reservation,
   releaseOweg10Reservation,
@@ -397,9 +399,7 @@ export async function POST(req: Request) {
     const billing = body.billingSameAsShipping || !body.billing ? shipping : body.billing;
 
     const paymentMethod = body.paymentMethod || "razorpay";
-    const authCustomerPromise = body.oweg10Applied
-      ? getAuthenticatedCustomer(cookieHeader)
-      : Promise.resolve(null);
+    const authCustomerPromise = getAuthenticatedCustomer(cookieHeader);
 
     // Ensure we have a valid region (env var is instant; only fetch when missing)
     const regionId =
@@ -422,6 +422,7 @@ export async function POST(req: Request) {
     if (typeof body.coinDiscount === "number" && body.coinDiscount > 0) {
       coinDiscountRupees = body.coinDiscount;
     }
+    if(body.coinDiscount !== undefined && (!Number.isFinite(body.coinDiscount) || body.coinDiscount<0 || !Number.isSafeInteger(body.coinDiscount*100))) return badRequest("Invalid coin discount");
 
     let promoCodeApplied: string | null = null;
     let promoDiscountRupees = 0;
@@ -438,6 +439,8 @@ export async function POST(req: Request) {
       promoPromotionId = promoResult.promotionId;
     }
 
+    if(coinDiscountRupees>eligibleCoinDiscount({subtotal:itemsTotal,shipping:shippingCharge,otherDiscounts:oweg10DiscountRupees+promoDiscountRupees,balance:Number.MAX_SAFE_INTEGER})) return badRequest("Coin discount exceeds eligible product value. Delivery charges must be paid separately.");
+    if(itemsTotal+shippingCharge-coinDiscountRupees-oweg10DiscountRupees-promoDiscountRupees<=0)return badRequest("Discounts leave no payable amount. Remove a promotion or reduce coins to continue.");
     const cartShippingMethods = Array.isArray((cart as Record<string, unknown>).shipping_methods)
       ? ((cart as Record<string, unknown>).shipping_methods as Array<Record<string, unknown>>)
       : [];
@@ -471,6 +474,8 @@ export async function POST(req: Request) {
         ? ((cart as Record<string, unknown>).customer_id as string)
         : undefined;
     const authCustomer = await authCustomerPromise;
+    if(!authCustomer?.id) return NextResponse.json({error:"Please sign in to checkout."},{status:401});
+    if(cartCustomerId && cartCustomerId!==authCustomer.id) return NextResponse.json({error:"Cart access denied"},{status:403});
     const resolvedCustomerId =
       (typeof authCustomer?.id === "string" ? authCustomer.id : undefined) || cartCustomerId;
 
@@ -493,6 +498,7 @@ export async function POST(req: Request) {
     }
 
     const payload = {
+      customer_id: authCustomer.id,
       region_id: regionId,
       email: shipping.email,
       currency_code: cartCurrency,
@@ -500,6 +506,8 @@ export async function POST(req: Request) {
       shipping_address: mapAddress(shipping),
       items,
       metadata: {
+        payment_reliability_version: 1,
+        medusa_total_minor: Math.round((itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees - promoDiscountRupees) * 100),
         cart_id: cartId,
         referral_code: body.referralCode || null,
         shipping_method: resolvedShippingOptionId || "statewise-rule",
@@ -555,6 +563,10 @@ export async function POST(req: Request) {
     }
 
     let medusaOrderId = draftOrder.id;
+    // Reserve before returning a COD draft or creating any gateway order.
+    if(coinDiscountRupees>0) await reserveCheckoutCoins(getPool(),{
+      orderId:medusaOrderId,customerId:String(authCustomer.id),amountMinor:Math.round(coinDiscountRupees*100),
+    });
     let medusaCurrency = draftOrder.currency_code || cartCurrency;
     let medusaTotal = draftOrder.total || 0;
 
@@ -607,20 +619,6 @@ export async function POST(req: Request) {
       converted = false;
     }
 
-    // Ledger fallback when frontend did not send coin amount
-    if (coinDiscountRupees <= 0 && body.coinDiscountCode && cartCustomerId) {
-      try {
-        const spend = await findSpendByReference({
-          customerId: cartCustomerId,
-          referenceId: body.coinDiscountCode,
-        });
-        if (spend) {
-          coinDiscountRupees = spend.amountMinor / 100;
-        }
-      } catch (err) {
-        console.error("Coin discount lookup failed:", err);
-      }
-    }
 
     const payableRupees = Math.max(
       0,
@@ -770,7 +768,7 @@ export async function POST(req: Request) {
       });
     }
     const message = err instanceof Error && err.message ? err.message : "Unable to create draft order";
-    const status = /OWEG10/i.test(message) ? 409 : 500;
+    const status = /OWEG10|coins|coin_reservation/i.test(message) ? 409 : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }

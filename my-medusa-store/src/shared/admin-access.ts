@@ -21,8 +21,8 @@ export type CustomAdminPermission = {
   enabled: boolean
 }
 
-const RESERVED_ADMIN_PAGES = ["/activity-log", "/admin-access", "/my-access", "/inventory", "/login", "/reset-password", "/invite", "/settings/users", "/settings/api-key-management", "/settings/developer", "/settings/profile"]
-const RESERVED_ADMIN_APIS = ["/admin/access", "/admin/users", "/admin/invites", "/admin/api-keys", "/admin/workflows", "/admin/workflows-executions", "/admin/links", "/admin/graph", "/admin/query", "/admin/modules"]
+const RESERVED_ADMIN_PAGES = ["/payment-health", "/activity-log", "/admin-access", "/my-access", "/inventory", "/login", "/reset-password", "/invite", "/settings/users", "/settings/api-key-management", "/settings/developer", "/settings/profile"]
+const RESERVED_ADMIN_APIS = ["/admin/payment-health", "/admin/access", "/admin/users", "/admin/invites", "/admin/api-keys", "/admin/workflows", "/admin/workflows-executions", "/admin/links", "/admin/graph", "/admin/query", "/admin/modules"]
 
 export function isReservedAdminApi(path: string): boolean {
   return RESERVED_ADMIN_APIS.some(prefix => matchesPath(path.toLowerCase(), prefix))

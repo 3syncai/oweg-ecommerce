@@ -1,3 +1,6 @@
+import {withPaymentCoordination} from "@/lib/payment-reliability";
+import { verifyCheckoutCapture } from "@/lib/verify-checkout-capture";
+import { CaptureVerificationError } from "@/lib/payment-capture-validation";
 import { Pool } from "pg";
 import {
   ensurePlacedCheckoutOrder,
@@ -50,7 +53,7 @@ export type CaptureRecoveryResult =
     }
   | {
       ok: false;
-      error: "orphan_capture" | "not_captured" | "invalid_input" | "internal_error";
+      error: "orphan_capture" | "not_captured" | "invalid_input" | "internal_error" | "gateway_unavailable";
       razorpay_payment_id?: string;
       action?: "ops_recover";
       detail?: string;
@@ -98,22 +101,38 @@ export async function getSuccessfulRazorpayPaymentForOrder(
  * Place + finalize from a verified Razorpay capture when the Medusa draft/order
  * may be tombstoned or briefly missing. Idempotent on razorpay_payment_id.
  */
-export async function recoverRazorpayCapture(input: {
+type CaptureRecoveryInput = {
   medusaOrderId?: string;
   razorpayPaymentId: string;
   razorpayOrderId?: string;
   razorpaySignature?: string;
   amountMinor?: number;
   currencyCode?: string;
-  /** When true, trust HMAC-verified caller and skip Razorpay payment GET (QA / confirm path). */
-  skipRemotePaymentLookup?: boolean;
-}): Promise<CaptureRecoveryResult> {
+};
+export async function recoverRazorpayCapture(input:CaptureRecoveryInput):Promise<CaptureRecoveryResult> {
+ const pool=createPool();if(!pool)return {ok:false,error:"internal_error",detail:"database_unavailable"};
+ try{return await withPaymentCoordination(pool,'capture-recovery:'+input.razorpayPaymentId,()=>recoverRazorpayCaptureLocked(input));}
+ catch{return {ok:false,error:"internal_error",detail:"capture_recovery_retry_required"};}
+ finally{await pool.end();}
+}
+async function recoverRazorpayCaptureLocked(input:CaptureRecoveryInput):Promise<CaptureRecoveryResult> {
   const paymentId = input.razorpayPaymentId?.trim();
   if (!paymentId) {
     return { ok: false, error: "invalid_input", detail: "razorpay_payment_id required" };
   }
 
   try {
+    if (!input.medusaOrderId || !input.razorpayOrderId) return { ok: false, error: "invalid_input" };
+    try {
+      const verified = await verifyCheckoutCapture({ medusaOrderId: input.medusaOrderId,
+        paymentId, gatewayOrderId: input.razorpayOrderId,
+        claimedAmountMinor: input.amountMinor, claimedCurrency: input.currencyCode });
+      input = { ...input, amountMinor: verified.amountMinor, currencyCode: verified.currencyCode };
+    } catch (error) {
+      return { ok: false, error: error instanceof CaptureVerificationError && error.status === 503 ? "gateway_unavailable" :
+        error instanceof CaptureVerificationError && error.code === "payment_not_captured" ? "not_captured" : "invalid_input",
+        detail: error instanceof CaptureVerificationError ? error.code : "capture_verification_failed" };
+    }
     // Idempotent: already placed under this payment id
     const existingId = await findOrderIdByRazorpayPaymentId(paymentId);
     if (existingId) {
@@ -124,7 +143,7 @@ export async function recoverRazorpayCapture(input: {
             ? input.amountMinor
             : (await resolveOrderPayableAmountMinor(existingId)) || 0;
         if (amount > 0) {
-          await finalizeRazorpayOrderPayment({
+          const recorded = await finalizeRazorpayOrderPayment({
             orderId: existingId,
             amountMinor: amount,
             currencyCode: (input.currencyCode || "inr").toLowerCase(),
@@ -132,6 +151,7 @@ export async function recoverRazorpayCapture(input: {
             razorpayOrderId: input.razorpayOrderId,
             razorpaySignature: input.razorpaySignature,
           });
+          if (!recorded.ok) return { ok: false, error: "internal_error", detail: "payment_recording_pending" };
         }
         return {
           ok: true,
@@ -158,8 +178,7 @@ export async function recoverRazorpayCapture(input: {
       }
     }
 
-    // Prefer local tombstone / draft first (HMAC-verified confirm) so we can place
-    // without depending on Razorpay payment GET (supports QA fake pay ids).
+    // The remote capture and local checkout binding were verified above.
     const localCandidates = [input.medusaOrderId].filter(
       (v): v is string => Boolean(v && String(v).trim())
     );
@@ -193,16 +212,6 @@ export async function recoverRazorpayCapture(input: {
       currencyCode: input.currencyCode,
     });
     if (rebuilt) return rebuilt;
-
-    if (input.skipRemotePaymentLookup) {
-      return {
-        ok: false,
-        error: "orphan_capture",
-        razorpay_payment_id: paymentId,
-        action: "ops_recover",
-        detail: `no local tombstone/snapshot for ${localCandidates.join(",")}`,
-      };
-    }
 
     // Verify with Razorpay when local draft is gone
     let payment: RazorpayPaymentEntity & { notes?: Record<string, string> };
@@ -485,7 +494,7 @@ async function finalizeExistingRebuildOrder(
         ? input.amountMinor
         : (await resolveOrderPayableAmountMinor(orderId)) || 0;
     if (amount > 0) {
-      await finalizeRazorpayOrderPayment({
+      const recorded = await finalizeRazorpayOrderPayment({
         orderId,
         amountMinor: amount,
         currencyCode: (input.currencyCode || "inr").toLowerCase(),
@@ -493,6 +502,7 @@ async function finalizeExistingRebuildOrder(
         razorpayOrderId: input.razorpayOrderId,
         razorpaySignature: input.razorpaySignature,
       });
+      if (!recorded.ok) return { ok: false, error: "internal_error", detail: "payment_recording_pending" };
     }
     await setCaptureClaimOrder(input.paymentId, orderId, "placed");
     return {
@@ -542,13 +552,13 @@ async function finalizePlacedCapture(input: {
 
   await updateOrderMetadata(input.orderId, {
     payment_method: "razorpay",
-    razorpay_payment_status: "captured",
+    razorpay_payment_status: meta.razorpay_payment_status === "captured" ? "captured" : "pending_recording",
     razorpay_payment_id: input.paymentId,
     razorpay_order_id: input.razorpayOrderId,
     razorpay_signature: input.razorpaySignature,
     razorpay_amount_minor: amount || undefined,
     razorpay_captured_at: new Date().toISOString(),
-    checkout_status: "paid",
+    checkout_status: "capture_recording",
     razorpay_recovered_at: input.recovered ? new Date().toISOString() : undefined,
   });
 
@@ -571,10 +581,6 @@ async function finalizePlacedCapture(input: {
     });
   }
 
-  return {
-    ok: true,
-    orderId: input.orderId,
-    recovered: input.recovered,
-    paymentCreated,
-  };
+  if (!paymentCreated) return { ok: false, error: "internal_error", detail: "payment_recording_pending" };
+  return { ok: true, orderId: input.orderId, recovered: input.recovered, paymentCreated };
 }

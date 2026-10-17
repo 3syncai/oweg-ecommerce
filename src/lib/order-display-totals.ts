@@ -40,17 +40,16 @@ export async function enrichOrderWithSummaryTotals(
   try {
     const pool = getPool();
     const summaryRes = await pool.query(
-      `SELECT totals FROM order_summary WHERE order_id = $1 LIMIT 1`,
+      `SELECT summary.totals, placed.metadata
+       FROM order_summary AS summary
+       LEFT JOIN "order" AS placed ON placed.id = summary.order_id
+       WHERE summary.order_id = $1 LIMIT 1`,
       [orderId]
     );
     const totals = summaryRes.rows[0]?.totals as Record<string, unknown> | undefined;
     if (!totals || typeof totals !== "object") return order;
 
-    const orderRes = await pool.query(
-      `SELECT metadata FROM "order" WHERE id = $1 LIMIT 1`,
-      [orderId]
-    );
-    const dbMetadata = (orderRes.rows[0]?.metadata || {}) as Record<string, unknown>;
+    const dbMetadata = (summaryRes.rows[0]?.metadata || {}) as Record<string, unknown>;
 
     return {
       ...order,

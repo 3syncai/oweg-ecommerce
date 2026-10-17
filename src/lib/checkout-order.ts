@@ -1,3 +1,6 @@
+import {withPaymentCoordination} from "@/lib/payment-reliability";
+import { stampCheckoutFailure } from "@/lib/payment-capture-transaction";
+import { getPool } from "@/lib/wallet-ledger";
 import {
   convertDraftOrder,
   getDraftOrderById,
@@ -87,7 +90,10 @@ export async function convertCheckoutDraftToPlacedOrder(draftOrderId: string): P
   return { orderId: order.id, order };
 }
 
-export async function ensurePlacedCheckoutOrder(orderId: string): Promise<{
+export async function ensurePlacedCheckoutOrder(orderId:string) {
+ return withPaymentCoordination(getPool(),'placement:'+orderId,()=>ensurePlacedCheckoutOrderLocked(orderId));
+}
+async function ensurePlacedCheckoutOrderLocked(orderId: string): Promise<{
   orderId: string;
   order: CheckoutOrderRecord;
   converted: boolean;
@@ -243,13 +249,11 @@ export async function recordCheckoutPaymentAttemptFailed(
     return { ok: true, skippedTerminal: true };
   }
 
-  await updateCheckoutOrderMetadata(orderId, loaded.isDraft, {
-    ...metadata,
-    ...extraMetadata,
-    razorpay_payment_status: "attempted_failed",
-    razorpay_last_attempt_failed_at: new Date().toISOString(),
-    checkout_status: "awaiting_payment",
+  const changed = await stampCheckoutFailure(getPool(), orderId, {
+    ...extraMetadata, razorpay_payment_status: "attempted_failed",
+    razorpay_last_attempt_failed_at: new Date().toISOString(), checkout_status: "awaiting_payment",
   });
+  if (!changed) return { ok: true, skippedTerminal: true };
 
   return { ok: true };
 }
@@ -305,6 +309,7 @@ export async function markCheckoutPaymentFailed(
       );
       const successPay = await getSuccessfulRazorpayPaymentForOrder(razorpayOrderId);
       if (successPay?.id) {
+        if (successPay.status === "authorized") return { ok: true, recovered: true, orderId };
         const recovered = await recoverRazorpayCapture({
           medusaOrderId: orderId,
           razorpayPaymentId: successPay.id,
@@ -334,15 +339,6 @@ export async function markCheckoutPaymentFailed(
         ? loaded.order.customer_id
         : undefined;
 
-  if (reservationToken && customerId) {
-    await releaseOweg10Reservation(customerId, reservationToken).catch(() => undefined);
-  }
-
-  // Free any Medusa stock holds — failed pay must not keep inventory reserved.
-  await releaseOrderInventoryReservations(orderId).catch((err) => {
-    console.warn("markCheckoutPaymentFailed: releaseOrderInventoryReservations failed", orderId, err);
-  });
-
   const failedMetadata: Record<string, unknown> = {
     ...metadata,
     ...extraMetadata,
@@ -357,7 +353,20 @@ export async function markCheckoutPaymentFailed(
     oweg10_pending: metadata.oweg10_applied ? false : metadata.oweg10_pending,
   };
 
-  await updateCheckoutOrderMetadata(orderId, loaded.isDraft, failedMetadata);
+  const terminal = await stampCheckoutFailure(getPool(), orderId, failedMetadata, true);
+  if (!terminal) return { ok: true, recovered: true, orderId };
+
+
+  if (reservationToken && customerId) {
+    await releaseOweg10Reservation(customerId, reservationToken).catch(() => undefined);
+  }
+
+  // Free any Medusa stock holds — failed pay must not keep inventory reserved.
+  await releaseOrderInventoryReservations(orderId).catch((err) => {
+    console.warn("markCheckoutPaymentFailed: releaseOrderInventoryReservations failed", orderId, err);
+  });
+
+
 
   // Keep the draft row as a tombstone so late webhook/confirm can still convert.
   // Do NOT call deleteDraftOrder — that created paid orphans after dismiss races.

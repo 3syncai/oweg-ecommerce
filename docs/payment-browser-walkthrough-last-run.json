@@ -1,0 +1,60 @@
+{
+  "checkedAt": "2026-10-17T06:55:23.914Z",
+  "environment": "localhost; Razorpay test mode",
+  "orderNumber": 1173,
+  "orderId": "order_01M54777AYF9EXXJH0J9FW90X6",
+  "checks": [
+    {
+      "name": "bank decline leaves zero recorded payments and exact coin hold",
+      "result": "PASS",
+      "heldPaise": 1900
+    },
+    {
+      "name": "successful retry records exactly one payment, capture and order transaction",
+      "result": "PASS",
+      "paidRupees": 1341
+    },
+    {
+      "name": "coin debit is exact and reservation consumed",
+      "result": "PASS",
+      "debitedPaise": 1900
+    },
+    {
+      "name": "immutable item allocation matches goods paid",
+      "result": "PASS",
+      "basisPaise": 136000,
+      "cashPaise": 134100,
+      "coinPaise": 1900
+    },
+    {
+      "name": "Medusa shows captured, paid total and zero outstanding",
+      "result": "PASS"
+    },
+    {
+      "name": "customer paid confirmation survives refresh",
+      "result": "PASS"
+    },
+    {
+      "name": "purchased cart clears after payment",
+      "result": "PASS"
+    },
+    {
+      "name": "revisiting paid confirmation preserves new shopping",
+      "result": "PASS"
+    },
+    {
+      "name": "extra cart-only test item removed",
+      "result": "PASS"
+    },
+    {
+      "name": "checkout floating chat overlay removed and exact remaining balance shown",
+      "result": "PASS",
+      "remainingCoins": 0.7
+    }
+  ],
+  "limits": [
+    "Background payment_paid job was pending when checked; worker restart approval remains pending.",
+    "No actual bank payout performed.",
+    "Live webhook delivery, production Redis and real affiliate receiver were not certified by this walkthrough."
+  ]
+}

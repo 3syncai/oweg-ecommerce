@@ -36,7 +36,12 @@ export async function migrateAdminAccess(client: PoolClient): Promise<void> {
       updated_at timestamptz NOT NULL DEFAULT now(),
       CHECK ((kind = 'superadmin' AND role_id IS NULL AND active = true) OR kind = 'subadmin')
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS oweg_single_superadmin ON oweg_admin_account(kind) WHERE kind = 'superadmin';
+    -- Keep one primary superadmin and allow one explicitly provisioned CLI test account.
+    DROP INDEX IF EXISTS oweg_single_superadmin;
+    CREATE UNIQUE INDEX oweg_single_superadmin ON oweg_admin_account(kind)
+      WHERE kind = 'superadmin' AND created_by <> 'cli-testing';
+    CREATE UNIQUE INDEX IF NOT EXISTS oweg_single_test_superadmin ON oweg_admin_account(kind)
+      WHERE kind = 'superadmin' AND created_by = 'cli-testing';
     CREATE TABLE IF NOT EXISTS oweg_admin_audit (
       id text PRIMARY KEY,
       actor_id text NOT NULL,

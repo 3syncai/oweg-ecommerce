@@ -46,6 +46,7 @@ export const StoreCreateReturnRequest = z
         })
       )
       .min(1),
+    images: z.array(z.object({ key: z.string().max(600), order_item_id: z.string().min(1) })).max(5).default([]),
     /** @deprecated Prefer refund_payout; kept for older COD clients */
     bank_details: bankDetailsSchema.optional(),
     refund_payout: z
