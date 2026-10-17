@@ -31,6 +31,8 @@ const settle = (
     cancellation_fee?: number
     claim_amount?: number
     payment_amount?: number
+    payment_method?: string
+    customer_shipping_total?: number
     rates?: LedgerRates
   } = {}
 ) =>
@@ -42,11 +44,13 @@ const settle = (
     cancellation_fee: extra.cancellation_fee,
     claim_amount: extra.claim_amount,
     payment_amount: extra.payment_amount,
+    payment_method: extra.payment_method,
+    customer_shipping_total: extra.customer_shipping_total,
     rates: extra.rates || DEFAULT_LEDGER_RATES,
   })
 
 describe("Sheet4 sale — locked finance fixtures", () => {
-  it("₹1000 taxable + ₹50 Easy Ship @ default rates = bank 930.58", () => {
+  it("₹1000 taxable + ₹50 Easy Ship deducts logistics from product-only listing", () => {
     const row = settle("sale", {
       item_price: LOCKED_SALE_1000_50.item_price,
       logistic_fee: LOCKED_SALE_1000_50.logistic_fee,
@@ -75,6 +79,19 @@ describe("Sheet4 sale — locked finance fixtures", () => {
     expect(row.bank_settlement).toBe(LOCKED_SELF_SHIP_1000.bank_settlement)
   })
 
+  it("credits only the pre-GST share of the ₹50 low-cart shipping charge", () => {
+    const withoutShipping = settle("sale", { item_price: 400, logistic_fee: 0 })
+    const withShipping = settle("sale", {
+      item_price: 400,
+      logistic_fee: 0,
+      customer_shipping_total: 50,
+    })
+    expect(withShipping.customer_shipping_fee).toBe(42.37)
+    expect(withShipping.customer_shipping_gst).toBe(7.63)
+    expect(withShipping.customer_shipping_total).toBe(50)
+    expect(withShipping.bank_settlement).toBe(r2(withoutShipping.bank_settlement + 42.37))
+  })
+
   it("5% output GST product uses 5% on A; B stays 18%", () => {
     const row = settle("sale", {
       item_price: 1000,
@@ -92,8 +109,8 @@ describe("Sheet4 sale — locked finance fixtures", () => {
       logistic_fee: 35,
       rates: { ...DEFAULT_LEDGER_RATES, output_gst_rate: 12 },
     })
-    expect(row.listing_gst).toBe(152.01)
-    expect(row.listing_total).toBe(1401.3)
+    expect(row.listing_gst).toBe(145.71)
+    expect(row.listing_total).toBe(1360)
     expect(row.logistic_gst).toBe(6.3)
   })
 
@@ -128,8 +145,6 @@ describe("Sheet4 engine matches independent expected math", () => {
     { name: "12% GST sale", category: "sale", item: 500, logistic: 40, rates: { ...DEFAULT_LEDGER_RATES, output_gst_rate: 12 } },
     { name: "0% GST sale", category: "sale", item: 200, logistic: 20, rates: { ...DEFAULT_LEDGER_RATES, output_gst_rate: 0 } },
     { name: "zero-fee rates", category: "sale", item: 1000, logistic: 50, rates: { ...DEFAULT_LEDGER_RATES, platform_rate: 0, commission_rate: 0, partner_rate: 0, tcs_rate: 0, tds_rate: 0 } },
-    { name: "full return + reverse courier", category: "return", item: 1000, logistic: 50, reverse: 80 },
-    { name: "return without reverse courier", category: "return", item: 1000, logistic: 50, reverse: 0 },
     { name: "cancellation + cancel fee", category: "cancellation", item: 1000, logistic: 50, cancel: 25 },
     { name: "cancellation + reverse + cancel", category: "cancellation", item: 400, logistic: 30, reverse: 60, cancel: 15 },
   ]
@@ -169,30 +184,39 @@ describe("Sheet4 engine matches independent expected math", () => {
 })
 
 describe("return / cancel identities", () => {
-  it("sale + matching return (no reverse) leaves vendor paying forward logistics", () => {
-    const sale = settle("sale", { item_price: 1000, logistic_fee: 50 })
+  it("return charges the vendor only forward logistics", () => {
     const ret = settle("return", { item_price: 1000, logistic_fee: 50 })
     expect(ret.logistic_total).toBe(0)
-    expect(r2(sale.bank_settlement + ret.bank_settlement)).toBe(-sale.logistic_total)
-    expect(r2(sale.platform_total + ret.platform_total)).toBe(0)
-    expect(r2(sale.tcs + ret.tcs)).toBe(0)
-    expect(r2(sale.balance_delta + ret.balance_delta)).toBe(-sale.logistic_total)
+    expect(ret.bank_settlement).toBe(-59)
+    expect(ret.balance_delta).toBe(-59)
   })
 
-  it("sale + return charges reverse courier AND keeps forward logistics on vendor", () => {
-    const sale = settle("sale", { item_price: 1000, logistic_fee: 50 })
+  it("return charges forward and reverse logistics, but not product fees", () => {
     const ret = settle("return", {
       item_price: 1000,
       logistic_fee: 50,
       reverse_logistic_fee: 80,
     })
     expect(ret.reverse_logistic_total).toBe(94.4)
-    expect(r2(sale.balance_delta + ret.balance_delta)).toBe(
-      r2(-(sale.logistic_total + 94.4))
-    )
+    expect(ret.bank_settlement).toBe(-59)
+    expect(ret.balance_delta).toBe(-153.4)
+    expect(ret.platform_total).toBe(-59)
+    expect(ret.commission_total).toBe(-23.6)
   })
 
-  it("cancelled order mirrors return for A/B and deducts cancel fee+18%", () => {
+  it("return also charges the prepaid payment gateway fee", () => {
+    const ret = settle("return", {
+      item_price: 1000,
+      logistic_fee: 50,
+      reverse_logistic_fee: 80,
+      payment_method: "prepaid",
+      rates: { ...DEFAULT_LEDGER_RATES, payment_gateway_rate: 2 },
+    })
+    expect(ret.payment_gateway_total).toBe(27.85)
+    expect(ret.balance_delta).toBe(r2(-(59 + 94.4 + 27.85)))
+  })
+
+  it("cancelled order remains a distinct settlement from a returned order", () => {
     const ret = settle("return", {
       item_price: 600,
       logistic_fee: 40,
@@ -204,9 +228,9 @@ describe("return / cancel identities", () => {
       cancellation_fee: 20,
     })
     expect(cancel.item_price).toBe(ret.item_price)
-    expect(cancel.bank_settlement).toBe(ret.bank_settlement)
+    expect(cancel.bank_settlement).not.toBe(ret.bank_settlement)
     expect(cancel.cancellation_total).toBe(23.6)
-    expect(cancel.balance_delta).toBe(ret.balance_delta)
+    expect(ret.cancellation_total).toBe(0)
   })
 
   it("booked cancel with no sale charges only shipping + cancel fee", () => {

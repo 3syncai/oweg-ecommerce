@@ -253,14 +253,14 @@ describe("Payments table vs admin pay — same numbers", () => {
     expect(rows[0].item_status).toBe("Return hold")
   })
 
-  it("REVERSED order: vendor still pays forward logistics + reverse courier", () => {
+  it("REVERSED order: sale has no payable credit; vendor pays only return costs", () => {
     const rows = applyRunningLedgerBalance(
       saleEarning({ status: "REVERSED", return_fee: 80 })
     )
     expect(rows).toHaveLength(2)
     expect(rows[0].category).toBe("sale")
     expect(rows[1].category).toBe("return")
-    expect(rows[0].bank_settlement).toBe(930.58)
+    expect(rows[0].bank_settlement).toBe(0)
     expect(rows[1].logistic_total).toBe(-59)
     expect(rows[1].reverse_logistic_total).toBe(-94.4)
     expect(rows[1].balance_amount).toBe(r2(-(59 + 94.4)))
@@ -275,7 +275,7 @@ describe("Payments table vs admin pay — same numbers", () => {
     )).toBe(0)
   })
 
-  it("cancelled-style return with cancel fee nets to −(logistics+reverse+cancel)", () => {
+  it("returned order does not add a cancellation fee", () => {
     const rows = applyRunningLedgerBalance(
       saleEarning({
         status: "REVERSED",
@@ -283,8 +283,8 @@ describe("Payments table vs admin pay — same numbers", () => {
         cancellation_fee: 20,
       })
     )
-    expect(rows[1].cancellation_total).toBe(23.6)
-    expect(rows[1].balance_amount).toBe(r2(-(59 + 94.4 + 23.6)))
+    expect(rows[1].cancellation_total).toBe(0)
+    expect(rows[1].balance_amount).toBe(r2(-(59 + 94.4)))
   })
 })
 

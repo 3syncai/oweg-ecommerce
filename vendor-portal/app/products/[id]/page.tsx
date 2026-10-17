@@ -16,6 +16,10 @@ import {
 import VendorShell from "@/components/VendorShell"
 import PageSkeleton from "@/components/PageSkeleton"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
+import ReturnReplacementPolicyFields, {
+  EMPTY_RETURN_REPLACEMENT_POLICY,
+  type ReturnReplacementPolicy,
+} from "@/components/ReturnReplacementPolicyFields"
 import GstTaxCodeField from "@/components/GstTaxCodeField"
 import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorInventoryApi } from "@/lib/api/client"
 import {
@@ -82,6 +86,7 @@ type EditFormData = {
   collectionId: string
   taxCode: string
   gstRate: string
+  returnReplacementPolicy: ReturnReplacementPolicy
   vendorRemark: string
 }
 
@@ -95,6 +100,7 @@ const EMPTY_FORM: EditFormData = {
   collectionId: "",
   taxCode: "",
   gstRate: "",
+  returnReplacementPolicy: EMPTY_RETURN_REPLACEMENT_POLICY,
   vendorRemark: "",
 }
 
@@ -214,6 +220,21 @@ const VendorProductEditPage = () => {
           collectionId: existingCollectionId,
           taxCode: existingTaxCode,
           gstRate: existingGstRate,
+          returnReplacementPolicy: {
+            returnWindowDays:
+              prod.metadata?.return_window_days != null
+                ? String(prod.metadata.return_window_days)
+                : "",
+            replacementWindowDays:
+              prod.metadata?.replacement_window_days != null
+                ? String(prod.metadata.replacement_window_days)
+                : "",
+            useSameWindow:
+              prod.metadata?.return_window_days != null &&
+              prod.metadata?.replacement_window_days != null
+                ? Number(prod.metadata.return_window_days) === Number(prod.metadata.replacement_window_days)
+                : true,
+          },
           vendorRemark: "",
         }
 
@@ -289,6 +310,12 @@ const VendorProductEditPage = () => {
     if (formData.collectionId !== initialFormData.collectionId) changes.push("collection")
     if (formData.taxCode !== initialFormData.taxCode) changes.push("tax_code")
     if (formData.gstRate !== initialFormData.gstRate) changes.push("gst_rate")
+    if (
+      JSON.stringify(formData.returnReplacementPolicy) !==
+      JSON.stringify(initialFormData.returnReplacementPolicy)
+    ) {
+      changes.push("return_replacement_policy")
+    }
 
     return changes
   }, [formData, initialFormData])
@@ -340,6 +367,25 @@ const VendorProductEditPage = () => {
       })
       return
     }
+
+    const policy = formData.returnReplacementPolicy
+    const parsePolicyDays = (value: string, label: string) => {
+      if (!value.trim()) return null
+      const days = Number(value)
+      if (!Number.isInteger(days) || days < 0 || days > 365) {
+        toast.error("Invalid policy period", {
+          description: `${label} must be a whole number between 0 and 365 days.`,
+        })
+        return undefined
+      }
+      return days
+    }
+    const returnWindowDays = parsePolicyDays(policy.returnWindowDays, "Return window")
+    if (returnWindowDays === undefined) return
+    const replacementWindowDays = policy.useSameWindow
+      ? returnWindowDays
+      : parsePolicyDays(policy.replacementWindowDays, "Replacement window")
+    if (replacementWindowDays === undefined) return
 
     const simpleRow = variantRows[0]
     const simplePriceSource = hasVariants
@@ -509,6 +555,9 @@ const VendorProductEditPage = () => {
               formData.gstRate !== "" && formData.gstRate != null
                 ? Number(formData.gstRate)
                 : null,
+            return_window_days: returnWindowDays,
+            replacement_window_days: replacementWindowDays,
+            return_replacement_policy_configured: true,
             last_vendor_changed_fields: changedFields,
           },
         }
@@ -865,6 +914,14 @@ const VendorProductEditPage = () => {
                 primaryVisualOption={primaryVisualOption}
                 onPrimaryVisualOptionChange={setPrimaryVisualOption}
                 usedSkus={usedSkus}
+                policyExtras={
+                  <ReturnReplacementPolicyFields
+                    value={formData.returnReplacementPolicy}
+                    onChange={(returnReplacementPolicy) =>
+                      setFormData((prev) => ({ ...prev, returnReplacementPolicy }))
+                    }
+                  />
+                }
               />
             </div>
 

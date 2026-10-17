@@ -91,6 +91,11 @@ export async function proxyMedusaRequest(
       responseHeaders.set(key, value);
     });
 
+    // Vendor data (especially orders and payments) must never be served from
+    // a browser/proxy cache after a vendor or admin action changes it.
+    responseHeaders.set("Cache-Control", "no-store, no-cache, max-age=0, must-revalidate");
+    responseHeaders.set("Pragma", "no-cache");
+
     const body = await upstream.arrayBuffer();
 
     return new NextResponse(body, {

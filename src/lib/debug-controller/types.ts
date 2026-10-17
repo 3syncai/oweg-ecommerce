@@ -52,7 +52,29 @@ export type DebugAction =
   | "revalidate-all"
   | "remove-opensearch-product"
   | "sync-opensearch-index"
-  | "clear-flash-sale-cache";
+  | "clear-flash-sale-cache"
+  | "mark-order-delivered"
+  | "sync-debug-delivery-ledger"
+  | "force-settle-pending-order";
+
+export type DebugDeliverableOrder = {
+  id: string;
+  displayId: string;
+  email: string | null;
+  createdAt: string;
+  stage: "to_dispatch" | "in_transit" | "delivered";
+  vendors: string[];
+};
+
+/** Debug-only view of earnings still held in the vendor protection window. */
+export type DebugPendingSettlementOrder = {
+  orderId: string;
+  displayId: string;
+  email: string | null;
+  vendorCount: number;
+  pendingAmount: number;
+  unlockAt: string | null;
+};
 
 export type ProductSearchResult = {
   id: string;

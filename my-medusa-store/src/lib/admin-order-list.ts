@@ -24,7 +24,8 @@ export function orderListOverview(
   order: any,
   products: Map<string, any>,
   vendors: Map<string, any>,
-  receivedByItem = new Map<string, number>()
+  receivedByItem = new Map<string, number>(),
+  customerReliability?: any
 ) {
   const items: any[] = order.items || []
   const workflows = getVendorWorkflows(order.metadata)
@@ -63,6 +64,7 @@ export function orderListOverview(
   return {
     id: order.id,
     payment: getPaymentType(order) === "PostPaid" ? "COD" : "Prepaid",
+    customer_reliability: customerReliability,
     quantity,
     stores,
     status: stores.length ? [...new Set(stores.map((s) => s.status))].join(" / ") : status({}),

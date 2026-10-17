@@ -49,6 +49,17 @@ function getPaymentType(order: any) {
   return "online"
 }
 
+function getProductPolicyWindow(metadata: Record<string, any> | null | undefined, type: string) {
+  // Products created before this feature retain the existing 7-day policy.
+  if (metadata?.return_replacement_policy_configured !== true) return 7
+
+  const value = type === "replacement"
+    ? metadata.replacement_window_days
+    : metadata.return_window_days
+  const days = Number(value)
+  return Number.isInteger(days) && days >= 0 && days <= 365 ? days : 0
+}
+
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const authContext = (req as MedusaRequest & {
     auth_context?: { actor_id?: string }
@@ -95,10 +106,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const now = new Date()
   const diffMs = now.getTime() - deliveredAt.getTime()
   const diffDays = diffMs / (1000 * 60 * 60 * 24)
-  if (diffDays > 7) {
-    throw new MedusaError(MedusaErrorTypes.INVALID_DATA, "Return window has expired.")
-  }
-
   const orderItems = order?.items || []
   const itemMap = new Map(orderItems.map((item: any) => [item.id, item]))
   for (const item of body.items) {
@@ -108,6 +115,49 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
     if (item.quantity > (match.quantity || 0)) {
       throw new MedusaError(MedusaErrorTypes.INVALID_DATA, "Invalid return quantity.")
+    }
+  }
+
+  // Apply the return/replacement policy of each selected product. An order can
+  // contain products with different vendor-configured windows, so every item
+  // must still be eligible for the requested action.
+  const variantIds = [...new Set(
+    body.items
+      .map((item) => itemMap.get(item.order_item_id)?.variant_id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+  )]
+  if (variantIds.length === 0) {
+    // Preserve the previous protection for legacy order items that do not
+    // expose a variant reference.
+    if (diffDays > 7) {
+      throw new MedusaError(MedusaErrorTypes.INVALID_DATA, "Return window has expired.")
+    }
+  } else {
+    const knex = req.scope.resolve("__pg_connection__") as any
+    const policyRows = await knex("product_variant as pv")
+      .innerJoin("product as p", "p.id", "pv.product_id")
+      .whereIn("pv.id", variantIds)
+      .select("pv.id as variant_id", "p.metadata as product_metadata")
+    const metadataByVariant = new Map<string, Record<string, any>>()
+    for (const row of policyRows) {
+      metadataByVariant.set(String(row.variant_id), row.product_metadata || {})
+    }
+
+    for (const variantId of variantIds) {
+      const windowDays = getProductPolicyWindow(metadataByVariant.get(variantId), body.type)
+      const label = body.type === "replacement" ? "Replacement" : "Return"
+      if (windowDays <= 0) {
+        throw new MedusaError(
+          MedusaErrorTypes.INVALID_DATA,
+          `${label} is not available for this item.`
+        )
+      }
+      if (diffDays > windowDays) {
+        throw new MedusaError(
+          MedusaErrorTypes.INVALID_DATA,
+          `${label} window has expired for this item.`
+        )
+      }
     }
   }
 

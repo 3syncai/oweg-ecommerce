@@ -7,6 +7,10 @@ import { useRouter } from "next/navigation"
 import { BrandAuthorizationField } from "@/components/BrandAuthorizationField"
 import GstTaxCodeField from "@/components/GstTaxCodeField"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
+import ReturnReplacementPolicyFields, {
+  EMPTY_RETURN_REPLACEMENT_POLICY,
+  type ReturnReplacementPolicy,
+} from "@/components/ReturnReplacementPolicyFields"
 import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorTypesApi, vendorInventoryApi, vendorShippingApi, logApiFailure } from "@/lib/api/client"
 import { DEFAULT_LOGISTICS_FEE } from "@/lib/pricingConfig"
 import {
@@ -79,6 +83,7 @@ type ProductFormData = {
   variants: VariantMatrixRow[]
   colorImages: Record<string, UploadedImageRef[]>
   primaryVisualOption: string
+  returnReplacementPolicy: ReturnReplacementPolicy
 }
 
 const VendorProductNewPage = () => {
@@ -138,6 +143,7 @@ const VendorProductNewPage = () => {
     variants: [createDefaultVariantRow()],
     colorImages: {},
     primaryVisualOption: "",
+    returnReplacementPolicy: EMPTY_RETURN_REPLACEMENT_POLICY,
   })
 
   const [uploadingImages, setUploadingImages] = useState(false)
@@ -221,7 +227,11 @@ const VendorProductNewPage = () => {
 
   const handleLoadDraft = () => {
     if (!availableDraft?.formData) return
-    setFormData(availableDraft.formData)
+    setFormData({
+      ...availableDraft.formData,
+      returnReplacementPolicy:
+        availableDraft.formData.returnReplacementPolicy || EMPTY_RETURN_REPLACEMENT_POLICY,
+    })
     if (availableDraft.logisticsEstimate) {
       setLogisticsEstimate(availableDraft.logisticsEstimate)
     }
@@ -703,6 +713,25 @@ const VendorProductNewPage = () => {
       return
     }
 
+    const policy = formData.returnReplacementPolicy
+    const parsePolicyDays = (value: string, label: string) => {
+      if (!value.trim()) return null
+      const days = Number(value)
+      if (!Number.isInteger(days) || days < 0 || days > 365) {
+        toast.error("Invalid policy period", {
+          description: `${label} must be a whole number between 0 and 365 days.`,
+        })
+        return undefined
+      }
+      return days
+    }
+    const returnWindowDays = parsePolicyDays(policy.returnWindowDays, "Return window")
+    if (returnWindowDays === undefined) return
+    const replacementWindowDays = policy.useSameWindow
+      ? returnWindowDays
+      : parsePolicyDays(policy.replacementWindowDays, "Replacement window")
+    if (replacementWindowDays === undefined) return
+
     const hasValidPrice = formData.variants.some((v) => {
       const price = parseFloat(v.price)
       return Number.isFinite(price) && price > 0
@@ -884,6 +913,9 @@ const VendorProductNewPage = () => {
               ? Number(formData.gstRate)
               : null,
           country_of_origin: formData.countryOfOrigin || null,
+          return_window_days: returnWindowDays,
+          replacement_window_days: replacementWindowDays,
+          return_replacement_policy_configured: true,
           ...(migrateSourceMeta?.source_url
             ? {
                 source_url: migrateSourceMeta.source_url,
@@ -1215,9 +1247,14 @@ const VendorProductNewPage = () => {
       {/* Attributes Section */}
       <div className="mt-8">
         <div className="flex items-center justify-between mb-4">
-          <Label>
-            Attributes <span className="text-ui-fg-muted">(Optional)</span>
-          </Label>
+          <div>
+            <Label>
+              Attributes <span className="text-ui-fg-muted">(Optional)</span>
+            </Label>
+            <Text size="xsmall" className="mt-1 text-ui-fg-muted">
+              Enter height, width, and length in centimetres (cm). Weight is in kilograms (kg).
+            </Text>
+          </div>
           <button
             className="text-ui-fg-muted p-1 hover:text-ui-fg-base transition-colors"
             title="Options"
@@ -1230,7 +1267,7 @@ const VendorProductNewPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-ui-border-base">
             {/* Height */}
             <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3">
-              <Text size="small" className="min-w-[120px] text-ui-fg-muted">Height</Text>
+              <Text size="small" className="min-w-[120px] text-ui-fg-muted">Height (cm)</Text>
               <Input
                 value={formData.height}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, height: e.target.value })}
@@ -1241,7 +1278,7 @@ const VendorProductNewPage = () => {
 
             {/* Width */}
             <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3">
-              <Text size="small" className="min-w-[120px] text-ui-fg-muted">Width</Text>
+              <Text size="small" className="min-w-[120px] text-ui-fg-muted">Width (cm)</Text>
               <Input
                 value={formData.width}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, width: e.target.value })}
@@ -1252,7 +1289,7 @@ const VendorProductNewPage = () => {
 
             {/* Length */}
             <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3">
-              <Text size="small" className="min-w-[120px] text-ui-fg-muted">Length</Text>
+              <Text size="small" className="min-w-[120px] text-ui-fg-muted">Length (cm)</Text>
               <Input
                 value={formData.length}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, length: e.target.value })}
@@ -1263,7 +1300,7 @@ const VendorProductNewPage = () => {
 
             {/* Weight */}
             <div className="p-3 md:p-4 bg-ui-bg-base flex items-center gap-3">
-              <Text size="small" className="min-w-[120px] text-ui-fg-muted">Weight</Text>
+              <Text size="small" className="min-w-[120px] text-ui-fg-muted">Weight (kg)</Text>
               <Input
                 value={formData.weight}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, weight: e.target.value })}
@@ -1809,26 +1846,6 @@ const VendorProductNewPage = () => {
       </div>
       */}
 
-      <div>
-        <div className="mb-2">
-          <Label>
-            Sales channels <span className="text-ui-fg-muted">(Fixed)</span>
-          </Label>
-          <Text size="small" className="text-ui-fg-muted">
-            Sales channel is automatically set and cannot be modified. Products are assigned to the default sales channel.
-          </Text>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {formData.salesChannels.map((channel, idx) => (
-            <div
-              key={idx}
-              className="px-3 py-1.5 bg-ui-bg-subtle-hover border border-ui-border-base rounded-md flex items-center gap-2 opacity-70 cursor-not-allowed"
-            >
-              <Text size="small">{channel}</Text>
-            </div>
-          ))}
-        </div>
-      </div>
     </section>
   )
 
@@ -1868,6 +1885,14 @@ const VendorProductNewPage = () => {
       }
       usedSkus={usedSkus}
       simpleProductExtras={!formData.hasVariants ? renderSimpleProductMedia() : undefined}
+      policyExtras={
+        <ReturnReplacementPolicyFields
+          value={formData.returnReplacementPolicy}
+          onChange={(returnReplacementPolicy) =>
+            setFormData((prev) => ({ ...prev, returnReplacementPolicy }))
+          }
+        />
+      }
       taxAttributesExtras={renderTaxAttributesSection()}
       productGstRate={formData.gstRate}
       taxCode={formData.taxCode}

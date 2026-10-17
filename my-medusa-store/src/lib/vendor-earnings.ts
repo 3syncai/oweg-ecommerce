@@ -12,6 +12,7 @@ import {
   adminPayableNetFromLedger,
   buildLedgerRatesForVendor,
   calculateVendorLedgerSettlement,
+  DEFAULT_PAYMENT_GATEWAY_RATE,
   overlaySaleDeductions,
   type LedgerCategory,
   type LedgerSettlementBreakdown,
@@ -21,8 +22,6 @@ import {
   readOrderSettlementRates,
 } from "./vendor-settlement-snapshot";
 import { getVendorWorkflow } from "./vendor-order-workflow";
-
-export const VENDOR_EARNINGS_UNLOCK_MINUTES = 5;
 
 export type VendorEarningStatus =
   | "UNLOCKING"
@@ -126,6 +125,9 @@ export type VendorPaymentSettlement = {
   tds_rate: number;
   tds: number;
   logistic_fee: number;
+  customer_shipping_fee: number;
+  customer_shipping_gst: number;
+  customer_shipping_total: number;
   logistic_gst: number;
   logistic_total: number;
   return_fee: number;
@@ -194,6 +196,7 @@ export type VendorPaymentsView = {
 type VendorOrderLine = {
   inclusive_amount: number;
   gst_rate: number;
+  payout_hold_days: number;
 };
 
 type VendorOrderEarning = {
@@ -201,6 +204,8 @@ type VendorOrderEarning = {
   order_display_id: string | null;
   gross_amount: number;
   lines: VendorOrderLine[];
+  /** Longest of return/replacement windows across this vendor's order lines. */
+  payout_hold_days: number;
 };
 
 type LineQueryRow = {
@@ -211,6 +216,8 @@ type LineQueryRow = {
   product_tax_code: string | null;
   item_gst_rate: string | null;
   item_tax_code: string | null;
+  return_window_days: string | number | null;
+  replacement_window_days: string | number | null;
 };
 
 let earningsTaxColumnsReady: Promise<void> | null = null;
@@ -230,6 +237,9 @@ export async function ensureVendorEarningsTaxColumns(pool: Pool): Promise<void> 
             ADD COLUMN IF NOT EXISTS tds_rate numeric NOT NULL DEFAULT 0.1,
             ADD COLUMN IF NOT EXISTS tds_amount numeric NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS logistic_fee numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS customer_shipping_fee numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS customer_shipping_gst numeric NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS customer_shipping_total numeric NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS return_fee numeric NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS platform_fee numeric NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS platform_gst numeric NOT NULL DEFAULT 0,
@@ -356,6 +366,7 @@ export async function recomputeUnpaidVendorLedger(
     taxable_amount: string | number;
     gst_rate: string | number;
     logistic_fee: string | number;
+    customer_shipping_total: string | number;
     return_fee: string | number;
     cancellation_fee: string | number | null;
     commission_rate: string | number | null;
@@ -364,6 +375,7 @@ export async function recomputeUnpaidVendorLedger(
     `
       SELECT id, order_id, taxable_amount, gst_rate,
              COALESCE(logistic_fee, 0) AS logistic_fee,
+             COALESCE(customer_shipping_total, 0) AS customer_shipping_total,
              COALESCE(return_fee, 0) AS return_fee,
              COALESCE(cancellation_fee, 0) AS cancellation_fee,
              commission_rate,
@@ -394,27 +406,33 @@ export async function recomputeUnpaidVendorLedger(
   let updated = 0;
   for (const row of rows.rows) {
     let orderMeta = orderMetaById.get(row.order_id) || null;
-    let snap = readOrderSettlementRates(orderMeta, vendorId);
-    if (!snap) {
-      snap = await getOrFreezeOrderSettlementRates({
-        orderId: row.order_id,
-        vendorId,
-        pool,
-        metadata: orderMeta,
-      });
-      const refreshed = await pool.query<{ metadata: Record<string, unknown> | null }>(
-        `SELECT metadata FROM "order" WHERE id = $1 LIMIT 1`,
-        [row.order_id]
-      );
-      orderMeta = refreshed.rows[0]?.metadata || null;
-      orderMetaById.set(row.order_id, orderMeta);
-    }
+    // This also repairs legacy snapshots that predate partner attribution.
+    // A global partner rate must never be applied to a direct customer.
+    const snap = await getOrFreezeOrderSettlementRates({
+      orderId: row.order_id,
+      vendorId,
+      pool,
+      metadata: orderMeta,
+    });
+    const refreshed = await pool.query<{ metadata: Record<string, unknown> | null }>(
+      `SELECT metadata FROM "order" WHERE id = $1 LIMIT 1`,
+      [row.order_id]
+    );
+    orderMeta = refreshed.rows[0]?.metadata || null;
+    orderMetaById.set(row.order_id, orderMeta);
+
+    const customerShippingTotal = resolveCustomerShippingTotal(
+      orderMeta,
+      vendorId,
+      Number(row.customer_shipping_total) || 0
+    );
 
     // Frozen order snapshot only — admin rate changes never rewrite these rows.
     const ledger = await ledgerForSaleRow({
       vendorId,
       itemPrice: Number(row.taxable_amount) || 0,
       logisticFee: Number(row.logistic_fee) || 0,
+      customerShippingTotal,
       returnFee: Number(row.return_fee) || 0,
       cancellationFee: Number(row.cancellation_fee) || 0,
       gstRate: Number(row.gst_rate) || 18,
@@ -443,7 +461,10 @@ export async function recomputeUnpaidVendorLedger(
           listing_total = $14,
           platform_fee_rate = $15,
           partner_commission_rate = $16,
-          net_amount = $17,
+          customer_shipping_fee = $17,
+          customer_shipping_gst = $18,
+          customer_shipping_total = $19,
+          net_amount = $20,
           updated_at = NOW()
         WHERE id = $1 AND vendor_id = $2
           AND status IN ('UNLOCKING', 'CREDITED', 'ON_HOLD')
@@ -465,6 +486,9 @@ export async function recomputeUnpaidVendorLedger(
         Math.abs(ledger.listing_total),
         ledger.platform_rate,
         ledger.partner_rate,
+        ledger.customer_shipping_fee,
+        ledger.customer_shipping_gst,
+        ledger.customer_shipping_total,
         adminPayableNetFromLedger(ledger),
       ]
     );
@@ -486,7 +510,9 @@ async function fetchVendorOrderEarnings(
         p.metadata->>'gst_rate' AS product_gst_rate,
         p.metadata->>'tax_code' AS product_tax_code,
         oli.metadata->>'gst_rate' AS item_gst_rate,
-        oli.metadata->>'tax_code' AS item_tax_code
+        oli.metadata->>'tax_code' AS item_tax_code,
+        p.metadata->>'return_window_days' AS return_window_days,
+        p.metadata->>'replacement_window_days' AS replacement_window_days
       FROM order_item oi
       JOIN order_line_item oli ON oi.item_id = oli.id
       JOIN "order" o ON oi.order_id = o.id
@@ -513,17 +539,31 @@ async function fetchVendorOrderEarnings(
         row.product_gst_rate ||
         row.product_tax_code
     );
+    const payoutHoldDays = resolvePayoutHoldDays(
+      row.return_window_days,
+      row.replacement_window_days
+    );
 
     const existing = byVendor.get(vendorId);
     if (existing) {
       existing.gross_amount += lineTotal;
-      existing.lines.push({ inclusive_amount: lineTotal, gst_rate: gstRate });
+      existing.lines.push({
+        inclusive_amount: lineTotal,
+        gst_rate: gstRate,
+        payout_hold_days: payoutHoldDays,
+      });
+      existing.payout_hold_days = Math.max(existing.payout_hold_days, payoutHoldDays);
     } else {
       byVendor.set(vendorId, {
         vendor_id: vendorId,
         order_display_id: row.order_display_id,
         gross_amount: lineTotal,
-        lines: [{ inclusive_amount: lineTotal, gst_rate: gstRate }],
+        lines: [{
+          inclusive_amount: lineTotal,
+          gst_rate: gstRate,
+          payout_hold_days: payoutHoldDays,
+        }],
+        payout_hold_days: payoutHoldDays,
       });
     }
   }
@@ -532,6 +572,27 @@ async function fetchVendorOrderEarnings(
     ...entry,
     gross_amount: Math.round(entry.gross_amount * 100) / 100,
   }));
+}
+
+/**
+ * A delivered sale remains pending for the longer of its return and replacement
+ * policy windows. If neither is configured, the marketplace default is 7 days.
+ */
+export function resolvePayoutHoldDays(
+  returnWindowDays: unknown,
+  replacementWindowDays: unknown
+): number {
+  const normalise = (value: unknown): number | null => {
+    if (value === null || value === undefined || String(value).trim() === "") return null
+    const days = Number(value)
+    return Number.isInteger(days) && days >= 0 && days <= 365 ? days : null
+  }
+  const returnDays = normalise(returnWindowDays)
+  const replacementDays = normalise(replacementWindowDays)
+  // Vendors who have not configured either policy receive the marketplace's
+  // conservative default hold, rather than immediate settlement.
+  if (returnDays === null && replacementDays === null) return 7
+  return Math.max(returnDays ?? 0, replacementDays ?? 0)
 }
 
 export async function fetchVendorCommissionRate(
@@ -561,6 +622,7 @@ async function ledgerForSaleRow(params: {
   vendorId: string;
   itemPrice: number;
   logisticFee: number;
+  customerShippingTotal?: number;
   returnFee?: number;
   cancellationFee?: number;
   gstRate: number;
@@ -587,6 +649,7 @@ async function ledgerForSaleRow(params: {
     category,
     item_price: params.itemPrice,
     logistic_fee: params.logisticFee,
+    customer_shipping_total: params.customerShippingTotal,
     reverse_logistic_fee: params.returnFee,
     cancellation_fee: params.cancellationFee,
     rates,
@@ -602,6 +665,25 @@ async function ledgerForSaleRow(params: {
     );
   }
   return sale;
+}
+
+/**
+ * Shipping is charged once per cart. Store/credit it on one vendor row only,
+ * while retaining an already-booked credit for legacy rows that lack metadata.
+ */
+function resolveCustomerShippingTotal(
+  orderMetadata: Record<string, unknown> | null,
+  vendorId: string,
+  existingTotal = 0
+): number {
+  const chargedShipping = Number(orderMetadata?.expected_shipping_price) || 0
+  if (chargedShipping <= 0) return Math.max(0, existingTotal)
+
+  const workflowVendors = Object.keys(
+    (orderMetadata?.vendor_order_workflows as Record<string, unknown> | undefined) || {}
+  ).sort()
+  if (workflowVendors.length > 1 && workflowVendors[0] !== vendorId) return 0
+  return chargedShipping
 }
 
 async function upsertVendorEarningRow(
@@ -631,11 +713,13 @@ async function upsertVendorEarningRow(
   });
 
   const logisticFee = resolveVendorLogisticFee(orderMetadata, row.vendor_id);
+  const customerShippingTotal = resolveCustomerShippingTotal(orderMetadata, row.vendor_id);
   const returnFee = resolveVendorReturnFee(orderMetadata, row.vendor_id);
   const ledger = await ledgerForSaleRow({
     vendorId: row.vendor_id,
     itemPrice: settlement.taxable_amount,
     logisticFee,
+    customerShippingTotal,
     returnFee,
     gstRate: settlement.gst_rate || 18,
     commissionRate: snap.commission_rate,
@@ -648,8 +732,10 @@ async function upsertVendorEarningRow(
   });
   const netAfterFees = adminPayableNetFromLedger(ledger);
 
+  // The held amount uses the longer customer-protection period selected when
+  // listing the product (for example, 4-day return + 10-day replacement = 10 days).
   const unlockAt = new Date(
-    deliveredAt.getTime() + VENDOR_EARNINGS_UNLOCK_MINUTES * 60 * 1000
+    deliveredAt.getTime() + row.payout_hold_days * 24 * 60 * 60 * 1000
   );
 
   await pool.query(
@@ -670,6 +756,9 @@ async function upsertVendorEarningRow(
         tds_rate,
         tds_amount,
         logistic_fee,
+        customer_shipping_fee,
+        customer_shipping_gst,
+        customer_shipping_total,
         return_fee,
         platform_fee,
         platform_gst,
@@ -693,11 +782,11 @@ async function upsertVendorEarningRow(
         've_' || substr(md5($1 || ':' || $2), 1, 24),
         $2, $1, $3,
         $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-        $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27,
+        $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
         'inr',
         'UNLOCKING',
-        $28,
-        $29,
+        $31,
+        $32,
         NOW(),
         NOW()
       )
@@ -713,6 +802,9 @@ async function upsertVendorEarningRow(
         tds_rate = EXCLUDED.tds_rate,
         tds_amount = EXCLUDED.tds_amount,
         logistic_fee = GREATEST(COALESCE(vendor_earnings_log.logistic_fee, 0), EXCLUDED.logistic_fee),
+        customer_shipping_fee = EXCLUDED.customer_shipping_fee,
+        customer_shipping_gst = EXCLUDED.customer_shipping_gst,
+        customer_shipping_total = EXCLUDED.customer_shipping_total,
         return_fee = GREATEST(COALESCE(vendor_earnings_log.return_fee, 0), EXCLUDED.return_fee),
         platform_fee = EXCLUDED.platform_fee,
         platform_gst = EXCLUDED.platform_gst,
@@ -751,6 +843,9 @@ async function upsertVendorEarningRow(
       settlement.tds_rate,
       Math.abs(ledger.tds),
       logisticFee,
+      ledger.customer_shipping_fee,
+      ledger.customer_shipping_gst,
+      ledger.customer_shipping_total,
       returnFee,
       Math.abs(ledger.platform_fee),
       Math.abs(ledger.platform_gst),
@@ -786,7 +881,7 @@ export function normalizeDeliveryVendorScope(options?: {
 
 /**
  * When a vendor's shipment is delivered, create (or refresh) that vendor's
- * earnings row with a 5-minute unlock timer.
+ * earnings row held until the product's return/replacement protection period ends.
  *
  * IMPORTANT: Always pass `vendorId` / `vendorIds`. Without a vendor scope this
  * refuses to credit anyone — multi-vendor carts must not unlock sibling vendors
@@ -878,8 +973,51 @@ export async function backfillVendorEarnings(
   return created;
 }
 
-/** Promote UNLOCKING rows to CREDITED once the 5-minute timer has elapsed. */
+/**
+ * Upgrade active rows created by the former five-minute test rule. Only rows
+ * whose release date is still within that old window are changed; policy-based
+ * rows keep their frozen unlock date.
+ */
+async function upgradeLegacyUnlockWindows(pool: Pool): Promise<void> {
+  await pool.query(
+    `
+      UPDATE vendor_earnings_log vel
+      SET
+        unlock_at = vel.delivered_at + (
+          COALESCE((
+            SELECT MAX(GREATEST(
+              CASE
+                WHEN COALESCE(p.metadata->>'return_window_days', '') ~ '^(?:[0-9]|[1-9][0-9]|[12][0-9]{2}|3[0-5][0-9]|36[0-5])$'
+                  THEN (p.metadata->>'return_window_days')::int
+                ELSE 0
+              END,
+              CASE
+                WHEN COALESCE(p.metadata->>'replacement_window_days', '') ~ '^(?:[0-9]|[1-9][0-9]|[12][0-9]{2}|3[0-5][0-9]|36[0-5])$'
+                  THEN (p.metadata->>'replacement_window_days')::int
+                ELSE 0
+              END
+            ))
+            FROM order_item oi
+            JOIN order_line_item oli ON oli.id = oi.item_id
+            LEFT JOIN product_variant pv ON pv.id = oli.variant_id
+            LEFT JOIN product p ON p.id = COALESCE(oli.product_id, pv.product_id)
+            WHERE oi.order_id = vel.order_id
+              AND TRIM(p.metadata->>'vendor_id') = vel.vendor_id
+          ), 7) * INTERVAL '1 day'
+        ),
+        updated_at = NOW()
+      WHERE vel.status = 'UNLOCKING'
+        AND vel.delivered_at IS NOT NULL
+        AND vel.unlock_at IS NOT NULL
+        AND vel.unlock_at <= vel.delivered_at + INTERVAL '5 minutes'
+    `
+  )
+}
+
+/** Promote UNLOCKING rows to CREDITED once their product-policy hold has elapsed. */
 export async function syncVendorEarningsStatuses(pool: Pool): Promise<number> {
+  await upgradeLegacyUnlockWindows(pool)
+
   // Cancel/return used to store negative nets — normalize so available balance never goes negative.
   await pool.query(
     `
@@ -995,7 +1133,7 @@ function normalizeVendorScope(options?: {
 }
 
 /**
- * Pause the 5-minute unlock (and pull out of Pending Payment) while a return
+ * Pause the product-policy unlock (and pull out of Pending Payment) while a return
  * waits for admin confirmation. Always pass vendorIds for the returned items.
  */
 export async function holdVendorEarningsForReturn(
@@ -1097,6 +1235,8 @@ async function insertCancelFeeDebitsForOrder(
     /** Vendors already known from reverse/paid rows */
     knownVendors?: Array<{ vendor_id: string; order_display_id?: string | null }>;
     orderMetadata?: Record<string, unknown> | null;
+    /** Admin cancellation applies the configured charge even before booking. */
+    forceCancellationCharge?: boolean;
   }
 ): Promise<number> {
   await ensureVendorEarningsTaxColumns(pool);
@@ -1119,6 +1259,12 @@ async function insertCancelFeeDebitsForOrder(
       if (!vendorIds.includes(id)) known.delete(id);
     }
   }
+
+  // Payment gateway deductions use the vendor's product taxable value, never
+  // the cancellation fee or shipping amount.
+  const earningsByVendor = new Map(
+    (await fetchVendorOrderEarnings(orderId, pool)).map((row) => [row.vendor_id, row])
+  );
 
   if (known.size === 0) return 0;
 
@@ -1145,7 +1291,7 @@ async function insertCancelFeeDebitsForOrder(
   const now = new Date().toISOString();
 
   for (const [vendorId, displayId] of known) {
-    if (!isVendorPacketBooked(orderMetadata, vendorId)) {
+    if (!options?.forceCancellationCharge && !isVendorPacketBooked(orderMetadata, vendorId)) {
       console.log(
         `[vendor-earnings] skip cancel charges for ${vendorId} order ${orderId}: packet not booked`
       );
@@ -1159,19 +1305,27 @@ async function insertCancelFeeDebitsForOrder(
       metadata: orderMetadata,
     });
     const fee = roundMoney(Number(snap.cancellation_charge) || 0);
+    const paymentGatewayBase = roundMoney(
+      (earningsByVendor.get(vendorId)?.lines || []).reduce(
+        (sum, line) => sum + (line.inclusive_amount / (1 + Math.max(0, line.gst_rate) / 100)),
+        0
+      )
+    );
     const saleAlreadyHasLogistics = options?.knownVendors?.some(
       (row) => row.vendor_id === vendorId
     );
     const logistic = saleAlreadyHasLogistics
       ? 0
       : resolveVendorLogisticFee(orderMetadata, vendorId);
-    if (fee <= 0 && logistic <= 0) continue;
+    if (fee <= 0 && logistic <= 0 && paymentGatewayBase <= 0) continue;
 
     const ledger = calculateVendorLedgerSettlement({
       category: "cancellation",
       item_price: 0,
       logistic_fee: logistic,
       cancellation_fee: fee,
+      payment_gateway_base: paymentGatewayBase,
+      payment_method: String(orderMetadata?.payment_method || ""),
       rates: {
         platform_rate: snap.platform_fee_rate,
         commission_rate: snap.commission_rate,
@@ -1180,6 +1334,7 @@ async function insertCancelFeeDebitsForOrder(
         service_gst_rate: snap.service_gst_rate,
         tcs_rate: snap.tcs_rate,
         tds_rate: snap.tds_rate,
+        payment_gateway_rate: DEFAULT_PAYMENT_GATEWAY_RATE,
       },
     });
     const debit = roundMoney(Number(ledger.balance_delta) || 0);
@@ -1222,9 +1377,9 @@ async function insertCancelFeeDebitsForOrder(
           $1,
           $3,
           $4,
-          0,
           $5,
           $6,
+          $7,
           0,
           0,
           0,
@@ -1233,13 +1388,13 @@ async function insertCancelFeeDebitsForOrder(
           0,
           $8,
           0,
-          $7,
+          $9,
           $4,
           'inr',
           'CREDITED',
-          $9,
+          $10,
           NULL,
-          $9,
+          $10,
           NOW(),
           NOW()
         )
@@ -1251,10 +1406,11 @@ async function insertCancelFeeDebitsForOrder(
         vendorId,
         label,
         debit,
+        paymentGatewayBase,
         Math.abs(Number(ledger.cancellation_gst) || 0),
         snap.service_gst_rate,
-        fee,
         logistic,
+        fee,
         now,
       ]
     );
@@ -1417,6 +1573,8 @@ export async function reverseVendorEarningsForOrder(
     vendorIds?: string[] | null;
     /** When true, do nothing if vendor scope is empty (return flows). */
     vendorScoped?: boolean;
+    /** Admin cancellations apply the vendor's configured cancellation fee. */
+    applyCancellationCharge?: boolean;
   }
 ): Promise<{
   reversed: number;
@@ -1443,7 +1601,9 @@ export async function reverseVendorEarningsForOrder(
     };
   }
 
-  const applyCancelCharge = /cancel/i.test(reason);
+  // Booked cancellations already carry a fee. Admin cancellations additionally
+  // force the configured charge even before a packet is booked.
+  const applyCancelCharge = /cancel/i.test(reason) || options?.applyCancellationCharge === true;
   const result =
     vendorIds.length > 0
       ? await pool.query<{
@@ -1572,6 +1732,7 @@ export async function reverseVendorEarningsForOrder(
     cancelFees = await insertCancelFeeDebitsForOrder(orderId, pool, vendorIds, {
       knownVendors,
       orderMetadata,
+      forceCancellationCharge: options?.applyCancellationCharge === true,
     });
   }
 
@@ -1591,7 +1752,7 @@ export async function reverseVendorEarningsForOrder(
 /**
  * Credit vendor pending payment for an approved claim (partial settlement).
  * Uses synthetic order_id `claim:<reportId>` so it doesn't collide with order earnings.
- * Amount is CREDITED immediately (no 5-min unlock).
+ * Amount is CREDITED immediately (no product-policy hold).
  */
 export async function upsertVendorClaimCredit(
   vendorId: string,
@@ -1842,7 +2003,7 @@ export type VendorPayableLineItem = {
   order_id: string;
   order_display_id: string | null;
   product_name: string;
-  type: "sales" | "claim" | "cancellation" | "clawback";
+  type: "sales" | "return" | "claim" | "cancellation" | "clawback";
   order_amount: number;
   commission: number;
   tcs: number;
@@ -1885,6 +2046,7 @@ export async function getVendorPayableSnapshot(
     order_display_id: string | null;
     gross_amount: string | number;
     taxable_amount: string | number;
+    gst_amount: string | number;
     commission_amount: string | number;
     tcs_amount: string | number;
     tds_amount: string | number;
@@ -1892,6 +2054,7 @@ export async function getVendorPayableSnapshot(
     tds_rate: string | number;
     logistic_fee: string | number;
     return_fee: string | number;
+    cancellation_fee: string | number;
     net_amount: string | number;
     commission_rate: string | number;
     product_name: string | null;
@@ -1904,6 +2067,7 @@ export async function getVendorPayableSnapshot(
         vel.order_display_id,
         vel.gross_amount,
         vel.taxable_amount,
+        vel.gst_amount,
         vel.commission_amount,
         vel.tcs_amount,
         vel.tds_amount,
@@ -1911,6 +2075,7 @@ export async function getVendorPayableSnapshot(
         vel.tds_rate,
         COALESCE(vel.logistic_fee, 0) AS logistic_fee,
         COALESCE(vel.return_fee, 0) AS return_fee,
+        COALESCE(vel.cancellation_fee, 0) AS cancellation_fee,
         vel.net_amount,
         vel.commission_rate,
         CASE
@@ -1971,6 +2136,55 @@ export async function getVendorPayableSnapshot(
     [vendorId]
   );
 
+  // Returned orders are kept as REVERSED audit rows (net_amount = 0), while
+  // their retained shipping / gateway costs are generated in the payments
+  // ledger. Calculate the same debit here so the admin payout always matches
+  // the vendor's Settlement balance.
+  const reversed = await pool.query<{
+    id: string;
+    order_id: string;
+    order_display_id: string | null;
+    taxable_amount: string | number;
+    gst_rate: string | number;
+    logistic_fee: string | number;
+    return_fee: string | number;
+    cancellation_fee: string | number;
+    metadata: Record<string, unknown> | null;
+    product_name: string | null;
+  }>(
+    `
+      SELECT
+        vel.id,
+        vel.order_id,
+        vel.order_display_id,
+        vel.taxable_amount,
+        vel.gst_rate,
+        COALESCE(vel.logistic_fee, 0) AS logistic_fee,
+        COALESCE(vel.return_fee, 0) AS return_fee,
+        COALESCE(vel.cancellation_fee, 0) AS cancellation_fee,
+        o.metadata,
+        (
+          SELECT COALESCE(oli.title, 'Order #' || COALESCE(vel.order_display_id, LEFT(vel.order_id, 8)))
+          FROM order_item oi
+          JOIN order_line_item oli ON oi.item_id = oli.id
+          LEFT JOIN product_variant pv ON oli.variant_id = pv.id
+          LEFT JOIN product p ON COALESCE(oli.product_id, pv.product_id) = p.id
+          WHERE oi.order_id = vel.order_id
+            AND p.metadata->>'vendor_id' = $1
+          ORDER BY oli.id
+          LIMIT 1
+        ) AS product_name
+      FROM vendor_earnings_log vel
+      LEFT JOIN "order" o ON o.id = vel.order_id
+      WHERE vel.vendor_id = $1
+        AND vel.status = 'REVERSED'
+        AND vel.order_id NOT LIKE 'claim:%'
+        AND vel.order_id NOT LIKE 'cancel-fee:%'
+      ORDER BY vel.updated_at ASC
+    `,
+    [vendorId]
+  );
+
   let totalRevenue = 0;
   let commission = 0;
   let tcs = 0;
@@ -1992,7 +2206,16 @@ export async function getVendorPayableSnapshot(
     // Debit rows (cancel fee / PAID clawback) reduce payable net.
     if (isCancelFee || isClawback) {
       if (rowNetRaw === 0) continue;
-      netAmount += rowNetRaw;
+      // The Payments running balance treats a cancellation row as the
+      // configured cancellation fee plus its GST. Gateway fields are shown in
+      // the ledger for transparency but must not be deducted a second time.
+      const cancellationDebit = isCancelFee
+        ? -Math.abs((Number(row.cancellation_fee) || 0) + (Number(row.gst_amount) || 0))
+        : rowNetRaw;
+      const payableDebit = isCancelFee && cancellationDebit !== 0
+        ? cancellationDebit
+        : rowNetRaw;
+      netAmount += payableDebit;
       if (row.order_id) orderIds.push(row.order_id);
       lineItems.push({
         id: row.id,
@@ -2002,12 +2225,12 @@ export async function getVendorPayableSnapshot(
           ? "Cancellation charge"
           : "Paid clawback (return/cancel)",
         type: isCancelFee ? "cancellation" : "clawback",
-        order_amount: rowNetRaw,
+        order_amount: payableDebit,
         commission: 0,
         tcs: 0,
         tds: 0,
         logistic_fee: 0,
-        pay_amount: rowNetRaw,
+        pay_amount: payableDebit,
       });
       continue;
     }
@@ -2058,6 +2281,53 @@ export async function getVendorPayableSnapshot(
       tds: isClaim ? 0 : rowTds,
       logistic_fee: rowLogistic,
       pay_amount: rowNet,
+    });
+  }
+
+  for (const row of reversed.rows) {
+    const itemPrice = Number(row.taxable_amount) || 0;
+    if (itemPrice <= 0) continue;
+    const snap = await getOrFreezeOrderSettlementRates({
+      orderId: row.order_id,
+      vendorId,
+      pool,
+      metadata: row.metadata,
+    });
+    const ledger = calculateVendorLedgerSettlement({
+      category: "return",
+      item_price: itemPrice,
+      logistic_fee: Number(row.logistic_fee) || 0,
+      reverse_logistic_fee: Number(row.return_fee) || 0,
+      cancellation_fee: Number(row.cancellation_fee) || 0,
+      payment_method: String(row.metadata?.payment_method || ""),
+      is_delivered: true,
+      rates: {
+        platform_rate: snap.platform_fee_rate,
+        commission_rate: snap.commission_rate,
+        partner_rate: snap.partner_rate,
+        output_gst_rate: Number(row.gst_rate) || 18,
+        service_gst_rate: snap.service_gst_rate,
+        tcs_rate: snap.tcs_rate,
+        tds_rate: snap.tds_rate,
+        payment_gateway_rate: DEFAULT_PAYMENT_GATEWAY_RATE,
+      },
+    });
+    const returnDebit = roundMoney(Number(ledger.balance_delta) || 0);
+    if (returnDebit === 0) continue;
+    netAmount += returnDebit;
+    if (row.order_id) orderIds.push(row.order_id);
+    lineItems.push({
+      id: `${row.id}:return`,
+      order_id: row.order_id,
+      order_display_id: row.order_display_id,
+      product_name: row.product_name?.trim() || formatOrderFallback(row.order_display_id, row.order_id),
+      type: "return",
+      order_amount: -Math.abs(itemPrice),
+      commission: 0,
+      tcs: 0,
+      tds: 0,
+      logistic_fee: Math.abs(Number(row.logistic_fee) || 0) + Math.abs(Number(row.return_fee) || 0),
+      pay_amount: returnDebit,
     });
   }
 
@@ -2358,6 +2628,9 @@ export function settlementFromLedger(params: {
     tds_rate: params.tds_rate,
     tds: ledger.tds,
     logistic_fee: ledger.logistic_fee,
+    customer_shipping_fee: ledger.customer_shipping_fee,
+    customer_shipping_gst: ledger.customer_shipping_gst,
+    customer_shipping_total: ledger.customer_shipping_total,
     logistic_gst: ledger.logistic_gst,
     logistic_total: ledger.logistic_total,
     return_fee: ledger.reverse_logistic_fee,

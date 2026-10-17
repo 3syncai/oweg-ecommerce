@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from "react"
 import { Button, Heading, Input, Label, Text } from "@medusajs/ui"
+import { InformationCircleSolid } from "@medusajs/icons"
 import {
   COMMISSION_RATE,
   DEFAULT_LOGISTICS_FEE,
@@ -144,6 +145,7 @@ export default function ProductPriceCalculator({
     logisticsFee != null ? String(logisticsFee) : String(DEFAULT_LOGISTICS_FEE)
   )
   const [expanded, setExpanded] = useState(false)
+  const [showShippingCreditInfo, setShowShippingCreditInfo] = useState(false)
 
   // Sync logisticsInput when logisticsFee prop updates (e.g. from ITL API fetch)
   useEffect(() => {
@@ -362,6 +364,45 @@ export default function ProductPriceCalculator({
                 )}
               </Text>
             </div>
+
+            {hasPrice && pricing.customerShipping.total > 0 ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3.5 py-2.5 flex items-center justify-between gap-3 dark:border-emerald-900/70 dark:bg-emerald-950/20">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <Text size="xsmall" className="text-emerald-800 dark:text-emerald-300 block font-semibold">
+                    Customer shipping collected
+                    </Text>
+                    <button
+                      type="button"
+                      className="relative inline-flex text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 dark:hover:text-emerald-100"
+                      aria-label="Customer shipping credit information"
+                      aria-expanded={showShippingCreditInfo}
+                      onClick={() => setShowShippingCreditInfo((visible) => !visible)}
+                      onMouseEnter={() => setShowShippingCreditInfo(true)}
+                      onMouseLeave={() => setShowShippingCreditInfo(false)}
+                      onFocus={() => setShowShippingCreditInfo(true)}
+                      onBlur={() => setShowShippingCreditInfo(false)}
+                    >
+                      <InformationCircleSolid className="h-4 w-4" />
+                      {showShippingCreditInfo ? (
+                        <span
+                          role="tooltip"
+                          className="absolute bottom-full left-0 z-30 mb-2 w-52 rounded-lg bg-zinc-900 px-3 py-2 text-left text-xs font-normal text-white shadow-lg"
+                        >
+                          This will be adjusted in payment.
+                        </span>
+                      ) : null}
+                    </button>
+                  </div>
+                  <span className="text-[11px] text-emerald-700/80 dark:text-emerald-300/80">
+                    Below ₹500 · ₹{pricing.customerShipping.basic.toFixed(2)} + GST ₹{pricing.customerShipping.gstOrTax.toFixed(2)}
+                  </span>
+                </div>
+                <Text size="base" weight="plus" className="tabular-nums text-lg font-semibold text-emerald-700 dark:text-emerald-300">
+                  {formatInr(pricing.customerShipping.total, 0)}
+                </Text>
+              </div>
+            ) : null}
           </div>
 
           {/* Right: Settlement Summary Card */}
@@ -380,7 +421,7 @@ export default function ProductPriceCalculator({
                     Bank Settlement
                   </Text>
                   <span className="text-[11px] text-ui-fg-muted tabular-nums">
-                    Total Listing Price - Total Deductions
+                    Total Listing Price - Total Deductions + Shipping (excl. GST)
                   </span>
                 </div>
                 <p
@@ -403,7 +444,7 @@ export default function ProductPriceCalculator({
                       Final Settlement
                     </Text>
                     <Text size="xsmall" className="text-sky-800/90 dark:text-sky-300/80 mt-0.5 block text-[11px]">
-                      Total Listing Price - Total Deductions + INPUT GST &amp; TAXES
+                      Total Listing Price - Total Deductions + Shipping (excl. GST) + INPUT GST &amp; TAXES
                     </Text>
                   </div>
                   <p className="text-xl sm:text-2xl font-bold tabular-nums text-sky-950 dark:text-sky-100 shrink-0">
@@ -483,6 +524,11 @@ export default function ProductPriceCalculator({
                 muted
               />
               <MoneyTableRow
+                label="Customer shipping (₹42.37 credited; ₹7.63 GST retained)"
+                row={pricing.customerShipping}
+                strong
+              />
+              <MoneyTableRow
                 label="Total Listing Price"
                 row={pricing.listing}
                 strong
@@ -544,7 +590,7 @@ export default function ProductPriceCalculator({
                     Bank Settlement
                   </Text>
                   <Text size="xsmall" className="text-ui-fg-muted mt-0.5 block text-[11px]">
-                    Total Listing Price - Total Deductions
+                    Total Listing Price - Total Deductions + Shipping (excl. GST)
                   </Text>
                 </div>
                 <Text
@@ -568,7 +614,7 @@ export default function ProductPriceCalculator({
                     Final Settlement
                   </Text>
                   <Text size="xsmall" className="text-sky-800/90 mt-0.5 block dark:text-sky-300/90 font-medium text-[11px]">
-                    Total Listing Price - Total Deductions + INPUT GST &amp; TAXES
+                    Total Listing Price - Total Deductions + Shipping (excl. GST) + INPUT GST &amp; TAXES
                   </Text>
                 </div>
                 <Text

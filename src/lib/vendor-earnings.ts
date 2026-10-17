@@ -294,9 +294,15 @@ async function upsertVendorEarningRow(
 export async function scheduleVendorEarningsOnDelivery(
   orderId: string,
   pool: Pool,
-  options?: { deliveredAt?: Date }
+  options?: { deliveredAt?: Date; vendorIds?: string[] }
 ): Promise<{ scheduled: number; vendors: string[] }> {
-  const rows = await fetchVendorOrderEarnings(orderId, pool);
+  const allRows = await fetchVendorOrderEarnings(orderId, pool);
+  const allowedVendorIds = options?.vendorIds?.length
+    ? new Set(options.vendorIds)
+    : null;
+  const rows = allowedVendorIds
+    ? allRows.filter((row) => allowedVendorIds.has(row.vendor_id))
+    : allRows;
   if (rows.length === 0) {
     return { scheduled: 0, vendors: [] };
   }

@@ -68,7 +68,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
 
     if (orderIds.length > 0) {
       const earnings = await getVendorEarningsByOrderIds(auth.vendor_id, orderIds, pool)
-      res.json({ earnings, unlock_minutes: 5 })
+      res.json({ earnings, unlock_minutes: 0 })
       return
     }
 
@@ -101,7 +101,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
         commission_source: resolved.source,
       },
       summary,
-      unlock_minutes: 5,
+      unlock_minutes: 0,
     })
   } catch (error: any) {
     console.error("Pending payout calculation error:", error)
@@ -130,7 +130,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     res.json({
       promoted,
       summary,
-      unlock_minutes: 5,
+      unlock_minutes: 0,
     })
   } catch (error: any) {
     console.error("Pending payout sync error:", error)

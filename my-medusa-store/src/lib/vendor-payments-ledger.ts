@@ -17,7 +17,6 @@ import {
   recomputeUnpaidVendorLedger,
   settlementFromLedger,
   syncVendorEarningsStatuses,
-  VENDOR_EARNINGS_UNLOCK_MINUTES,
   type VendorPaymentsView,
   type VendorPaymentSettlement,
 } from "./vendor-earnings"
@@ -36,6 +35,7 @@ type HistoryRow = {
   tcs_rate: string | number
   tds_rate: string | number
   logistic_fee: string | number
+  customer_shipping_total: string | number
   return_fee: string | number
   cancellation_fee: string | number
   net_amount: string | number
@@ -132,6 +132,7 @@ export type EarningLedgerSource = {
   status: VendorPaymentSettlement["status"]
   taxable_amount: number
   logistic_fee: number
+  customer_shipping_total?: number
   return_fee?: number
   cancellation_fee?: number
   gst_rate: number
@@ -168,6 +169,7 @@ export function buildVendorLedgerRowsFromEarning(
   const gstRate = Number(row.gst_rate) || 18
   const itemPrice = Number(row.taxable_amount) || 0
   const logisticFee = Number(row.logistic_fee) || 0
+  const customerShippingTotal = Number(row.customer_shipping_total) || 0
   const returnFee = Number(row.return_fee) || 0
   const cancellationFee = Number(row.cancellation_fee) || 0
 
@@ -177,6 +179,7 @@ export function buildVendorLedgerRowsFromEarning(
       category: "cancellation",
       item_price: 0,
       logistic_fee: logisticFee,
+      payment_gateway_base: itemPrice,
       cancellation_fee: fee,
       rates,
       payment_method: row.payment_method,
@@ -243,6 +246,7 @@ export function buildVendorLedgerRowsFromEarning(
     category: "sale",
     item_price: itemPrice,
     logistic_fee: logisticFee,
+    customer_shipping_total: customerShippingTotal,
     rates,
     payment_method: row.payment_method,
     order_status: row.order_status,
@@ -254,6 +258,16 @@ export function buildVendorLedgerRowsFromEarning(
       { reverse_logistic_fee: returnFee, cancellation_fee: cancellationFee },
       rates
     )
+  } else {
+    // The product value is refunded to the customer, so a returned order must
+    // never leave its original sale as vendor earnings.  Keep the sale columns
+    // for audit visibility, but remove the payable credit; the return row
+    // below records only forward/reverse logistics and gateway costs.
+    saleLedger = {
+      ...saleLedger,
+      bank_settlement: 0,
+      balance_delta: 0,
+    }
   }
 
   const rows: VendorPaymentSettlement[] = [
@@ -471,6 +485,7 @@ export async function buildVendorPaymentsView(
               COALESCE(vel.logistic_fee, 0),
               COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'easy_courier_rate')::numeric, 0), 0)
             ) AS logistic_fee,
+            COALESCE(vel.customer_shipping_total, 0) AS customer_shipping_total,
             GREATEST(
               COALESCE(vel.return_fee, 0),
               COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'return_courier_rate')::numeric, 0), 0),
@@ -498,7 +513,11 @@ export async function buildVendorPaymentsView(
               LIMIT 1
             ) AS product_name
           FROM vendor_earnings_log vel
-          LEFT JOIN "order" o ON o.id = vel.order_id
+          LEFT JOIN "order" o ON o.id = CASE
+            WHEN vel.order_id LIKE 'cancel-fee:%'
+              THEN replace(vel.order_id, 'cancel-fee:', '')
+            ELSE vel.order_id
+          END
           WHERE vel.vendor_id = $1
             AND vel.delivered_at IS NOT NULL
           ORDER BY vel.delivered_at ASC, vel.updated_at ASC
@@ -574,6 +593,7 @@ export async function buildVendorPaymentsView(
           status: row.status,
           taxable_amount: Number(row.taxable_amount) || 0,
           logistic_fee: Number(row.logistic_fee) || 0,
+          customer_shipping_total: Number(row.customer_shipping_total) || 0,
           return_fee: Number(row.return_fee) || 0,
           cancellation_fee: Number(row.cancellation_fee) || 0,
           gst_rate: gstRate,
@@ -631,7 +651,8 @@ export async function buildVendorPaymentsView(
     }),
     settlements,
     timezone: "Asia/Kolkata",
-    unlock_minutes: VENDOR_EARNINGS_UNLOCK_MINUTES,
+    // Unlock dates are per-product policy windows; there is no shared minute timer.
+    unlock_minutes: 0,
     as_of: new Date().toISOString(),
   }
 }

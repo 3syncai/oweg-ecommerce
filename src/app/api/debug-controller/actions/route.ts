@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { Pool } from "pg";
 import client from "@/lib/opensearch";
+import { scheduleVendorEarningsOnDelivery } from "@/lib/vendor-earnings";
 import {
   extractDebugAuthToken,
   verifyDebugControllerToken,
@@ -107,6 +108,127 @@ async function syncOpenSearchIndex() {
   };
 }
 
+async function markOrderDelivered(orderId: string) {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    const result = await pool.query<{
+      metadata: Record<string, unknown> | null;
+      status: string | null;
+    }>(`SELECT metadata, status FROM "order" WHERE id = $1 AND deleted_at IS NULL LIMIT 1`, [orderId]);
+    const order = result.rows[0];
+    if (!order) throw new Error("Order not found");
+    if (["canceled", "cancelled"].includes(String(order.status || "").toLowerCase())) {
+      throw new Error("Cancelled orders cannot be marked delivered");
+    }
+
+    const metadata = { ...(order.metadata || {}) } as Record<string, any>;
+    const workflows = { ...(metadata.vendor_order_workflows || {}) } as Record<string, any>;
+    const eligibleVendors = Object.entries(workflows).filter(([, workflow]) => {
+      const stage = String(workflow?.stage || "").toLowerCase();
+      const tracking = String(workflow?.shiprocket_status || "").toLowerCase();
+      return stage === "to_dispatch" || stage === "in_transit" || tracking.includes("transit") || tracking.includes("dispatch");
+    });
+    const rootStatus = String(metadata.shiprocket_status || "").toLowerCase();
+    if (!eligibleVendors.length && !rootStatus.includes("transit") && !rootStatus.includes("dispatch")) {
+      throw new Error("Only dispatch or in-transit orders can be marked delivered");
+    }
+
+    const deliveredAt = new Date().toISOString();
+    for (const [vendorId, workflow] of eligibleVendors) {
+      workflows[vendorId] = {
+        ...workflow,
+        stage: "delivered",
+        shiprocket_status: "delivered",
+        shiprocket_delivered_at: deliveredAt,
+        debug_marked_delivered_at: deliveredAt,
+        updated_at: deliveredAt,
+      };
+    }
+    metadata.vendor_order_workflows = workflows;
+    // Do not mark the whole order as delivered while another vendor's slice
+    // is still moving through dispatch/in-transit.
+    const allVendorWorkflowsDelivered = Object.values(workflows).every((workflow: any) => {
+      const stage = String(workflow?.stage || "").toLowerCase();
+      const tracking = String(workflow?.shiprocket_status || "").toLowerCase();
+      return stage === "delivered" || tracking === "delivered";
+    });
+    if (!Object.keys(workflows).length || allVendorWorkflowsDelivered) {
+      metadata.shiprocket_status = "delivered";
+      metadata.shiprocket_delivered_at = deliveredAt;
+    }
+    metadata.debug_marked_delivered_at = deliveredAt;
+
+    await pool.query(
+      `UPDATE "order" SET metadata = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(metadata), orderId]
+    );
+    const vendorIds = eligibleVendors.map(([vendorId]) => vendorId);
+    const earnings = await scheduleVendorEarningsOnDelivery(orderId, pool, {
+      deliveredAt: new Date(deliveredAt),
+      ...(vendorIds.length ? { vendorIds } : {}),
+    });
+    return { orderId, deliveredAt, vendorIds, earnings };
+  } finally {
+    await pool.end();
+  }
+}
+
+async function syncDebugDeliveryLedger(orderId: string) {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    const result = await pool.query<{ metadata: Record<string, unknown> | null }>(
+      `SELECT metadata FROM "order" WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+      [orderId]
+    );
+    const metadata = result.rows[0]?.metadata || {};
+    const deliveredAt = typeof metadata.debug_marked_delivered_at === "string"
+      ? new Date(metadata.debug_marked_delivered_at)
+      : null;
+    if (!deliveredAt || Number.isNaN(deliveredAt.getTime())) {
+      throw new Error("This order was not delivered through the debug controller");
+    }
+    const workflows = metadata.vendor_order_workflows as Record<string, unknown> | undefined;
+    const earnings = await scheduleVendorEarningsOnDelivery(orderId, pool, {
+      deliveredAt,
+      vendorIds: Object.keys(workflows || {}),
+    });
+    return { orderId, earnings };
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Test-only: promote every pending vendor earning on an order immediately. */
+async function forceSettlePendingOrder(orderId: string) {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    const result = await pool.query<{ id: string; vendor_id: string; net_amount: string }>(
+      `
+        UPDATE vendor_earnings_log
+        SET
+          status = 'CREDITED',
+          credited_at = COALESCE(credited_at, NOW()),
+          unlock_at = NULL,
+          updated_at = NOW()
+        WHERE order_id = $1
+          AND status = 'UNLOCKING'
+        RETURNING id, vendor_id, net_amount
+      `,
+      [orderId]
+    );
+    if (!result.rowCount) {
+      throw new Error("No pending earnings found for this order")
+    }
+    return {
+      orderId,
+      promoted: result.rowCount,
+      vendorIds: [...new Set(result.rows.map((row) => row.vendor_id))],
+    };
+  } finally {
+    await pool.end();
+  }
+}
+
 export async function POST(req: NextRequest) {
   const token = extractDebugAuthToken(req);
   if (!verifyDebugControllerToken(token)) {
@@ -114,7 +236,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => null)) as
-    | { action?: DebugAction; productId?: string; days?: number }
+    | { action?: DebugAction; productId?: string; orderId?: string; days?: number }
     | null;
 
   const action = body?.action;
@@ -154,6 +276,27 @@ export async function POST(req: NextRequest) {
         revalidatePath("/flash-sale");
         revalidatePath("/");
         return NextResponse.json({ success: true, message: "Flash sale cache cleared" });
+      }
+      case "mark-order-delivered": {
+        if (!body?.orderId) {
+          return NextResponse.json({ error: "orderId required" }, { status: 400 });
+        }
+        const result = await markOrderDelivered(body.orderId);
+        return NextResponse.json({ success: true, ...result });
+      }
+      case "sync-debug-delivery-ledger": {
+        if (!body?.orderId) {
+          return NextResponse.json({ error: "orderId required" }, { status: 400 });
+        }
+        const result = await syncDebugDeliveryLedger(body.orderId);
+        return NextResponse.json({ success: true, ...result });
+      }
+      case "force-settle-pending-order": {
+        if (!body?.orderId) {
+          return NextResponse.json({ error: "orderId required" }, { status: 400 });
+        }
+        const result = await forceSettlePendingOrder(body.orderId);
+        return NextResponse.json({ success: true, ...result });
       }
       default:
         return NextResponse.json({ error: "Unknown action" }, { status: 400 });

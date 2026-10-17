@@ -8,6 +8,7 @@ type Overview = {
   quantity: number | null
   status: string
   stores: { name: string; status: string }[]
+  customer_reliability?: { rating: number | null; label: string; eligible_orders: number }
 }
 
 export function useOwegOrderListColumns(nativeColumns: any[], orders: any[] = []) {
@@ -43,6 +44,14 @@ export function useOwegOrderListColumns(nativeColumns: any[], orders: any[] = []
       native("display_id", "Order No."),
       native("created_at", "Date"),
       native("customer", "Customer Name"),
+      { id: "oweg_customer_rating", header: () => "Customer rating", cell: ({ row }: any) => {
+        const reliability = byId.get(row.original.id)?.customer_reliability
+        if (!reliability) return pending
+        if (reliability.rating == null) return <span className="text-ui-fg-muted">New customer</span>
+        return <span title={`${reliability.eligible_orders} resolved order(s)`} className="font-medium text-amber-700">
+          ★ {reliability.rating.toFixed(1)} / 5
+        </span>
+      } },
       { id: "oweg_payment", header: () => "Payment", cell: ({ row }: any) =>
         byId.get(row.original.id)?.payment || pending },
       { id: "oweg_status", header: () => "Status", cell: ({ row }: any) => {

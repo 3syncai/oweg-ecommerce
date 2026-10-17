@@ -850,7 +850,7 @@ const VendorDashboardPage = () => {
                 icon={<Clock />}
                 label="Pending"
                 value={formatCurrency(data.payout.pending)}
-                subtitle="Moves to settlement after 5 min"
+                subtitle="Held until the return/replacement window ends"
                 footer="View payouts"
                 metrics={[
                   {

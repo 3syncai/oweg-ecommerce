@@ -12,6 +12,9 @@ type PayoutUnlockTimerProps = {
 
 function formatRemaining(ms: number) {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000))
+  const days = Math.floor(totalSeconds / 86_400)
+  const hours = Math.floor((totalSeconds % 86_400) / 3_600)
+  if (days > 0) return `${days}d ${hours}h`
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return `${minutes}:${seconds.toString().padStart(2, "0")}`
@@ -55,7 +58,7 @@ export default function PayoutUnlockTimer({
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-amber-700 ${className}`}
-      title="Amount unlocks to your payout balance after delivery"
+      title="Amount unlocks after the product return/replacement protection window"
     >
       <Clock className="h-3.5 w-3.5 shrink-0" />
       <Text size="small" weight="plus" className="tabular-nums text-amber-700">

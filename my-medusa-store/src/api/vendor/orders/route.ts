@@ -17,6 +17,13 @@ import {
 } from "../../../lib/vendor-order-workflow"
 import { fetchVendorCommissionRate } from "../../../lib/vendor-earnings"
 import { getMarketplaceTaxRates } from "../../../lib/vendor-marketplace-tax"
+import { RETURN_MODULE } from "../../../modules/returns"
+import type ReturnModuleService from "../../../modules/returns/service"
+import {
+  buildCustomerReliability,
+  customerReliabilityKey,
+  newCustomerReliability,
+} from "../../../lib/customer-reliability"
 
 const EMPTY_COUNTS: Record<VendorOrderStage | "total", number> = {
   total: 0,
@@ -158,6 +165,23 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     )
     const counts = buildCounts(lightFormatted)
 
+    // Rating is calculated from this vendor's completed history only. A
+    // vendor never receives another store's customer history.
+    const formattedById = new Map(lightFormatted.map((order: any) => [order.id, order]))
+    const returnService = req.scope.resolve(RETURN_MODULE) as ReturnModuleService
+    const returnRequests = orderIds.length
+      ? await returnService.listReturnRequests({ order_id: orderIds })
+      : []
+    const reliabilityByCustomer = buildCustomerReliability(
+      visibleLight.map((order: any) => ({
+        id: order.id,
+        customer_id: order.customer_id,
+        email: order.email,
+        delivered: formattedById.get(order.id)?.vendor_stage === "delivered",
+      })),
+      returnRequests as any[]
+    )
+
     if (countsOnly) {
       console.log(
         `[Orders API] vendor=${auth.vendor_id} counts_only visible=${lightFormatted.length} ${Date.now() - started}ms`
@@ -247,7 +271,16 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         formatVendorOrder(order, auth.vendor_id, vendorProductIds, settlementRates),
       ])
     )
-    const pageOrders = pageIds.map((id) => byId.get(id)).filter(Boolean)
+    const pageOrders = pageIds.map((id) => {
+      const order = byId.get(id)
+      if (!order) return null
+      const source = visibleLight.find((candidate: any) => candidate.id === id)
+      const key = customerReliabilityKey(source || order)
+      return {
+        ...order,
+        customer_reliability: reliabilityByCustomer.get(key) || newCustomerReliability(),
+      }
+    }).filter(Boolean)
 
     console.log(
       `[Orders API] vendor=${auth.vendor_id} scoped=${orderIds.length} total=${total} page=${pageOrders.length} ${Date.now() - started}ms`

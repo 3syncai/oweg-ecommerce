@@ -48,7 +48,7 @@ export async function OPTIONS(_req: MedusaRequest, res: MedusaResponse) {
 /**
  * GET /vendor/payouts
  *
- * Default: earnings summary + 5-minute unlock timers (pending → available).
+ * Default: earnings summary + per-product policy unlock dates (pending → available).
  * Optional: ?order_ids=id1,id2 → per-order earnings map (orders page timers).
  * Legacy payouts list is included when available for older UIs.
  */
@@ -65,7 +65,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
 
     if (orderIds.length > 0) {
       const earnings = await getVendorEarningsByOrderIds(auth.vendor_id, orderIds, pool)
-      res.json({ earnings, unlock_minutes: 5 })
+      res.json({ earnings, unlock_minutes: 0 })
       return
     }
 
@@ -120,7 +120,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
 
     res.json({
       summary,
-      unlock_minutes: 5,
+      unlock_minutes: 0,
       payouts,
       totals,
       count: payouts.length,
@@ -138,7 +138,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse): Promise<void
 
 /**
  * POST /vendor/payouts
- * Force-sync UNLOCKING → CREDITED after the 5-minute timer, then return summary.
+ * Force-sync UNLOCKING → CREDITED after each product-policy hold, then return summary.
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
   setCorsHeaders(res)
@@ -153,7 +153,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     res.json({
       promoted,
       summary,
-      unlock_minutes: 5,
+      unlock_minutes: 0,
     })
   } catch (error: any) {
     console.error("Vendor payouts sync error:", error)

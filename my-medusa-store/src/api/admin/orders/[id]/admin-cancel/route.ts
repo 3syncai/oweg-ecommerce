@@ -214,7 +214,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
 
   try {
-    await reverseVendorEarningsForOrder(order.id, getSharedDbPool(), "cancelled")
+    await reverseVendorEarningsForOrder(order.id, getSharedDbPool(), "admin-cancelled", {
+      applyCancellationCharge: true,
+    })
   } catch (error) {
     console.warn("[admin-cancel] earnings reverse skipped:", error)
   }

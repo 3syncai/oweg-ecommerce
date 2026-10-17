@@ -62,6 +62,15 @@ const CategoryBadge = ({ category }: { category: Row["category"] | Row["type"] }
   )
 }
 
+function owegCharges(row: Row) {
+  return [
+    { label: "Logistics", amount: row.logistic_total },
+    { label: "Reverse logistics", amount: row.reverse_logistic_total },
+    { label: "Cancellation", amount: row.cancellation_total },
+    { label: "Payment gateway", amount: row.payment_gateway_total },
+  ].filter((charge) => Math.abs(Number(charge.amount) || 0) > 0)
+}
+
 const StatusPill = ({ children, tone }: { children: ReactNode; tone: string }) => (
   <span
     className={clx(
@@ -127,10 +136,13 @@ const Money = ({
   value,
   strong,
   tone = "default",
+  neutral = false,
 }: {
   value: number | undefined
   strong?: boolean
   tone?: "default" | "return" | "cancellation"
+  /** Keep OWEG fee cells neutral inside a red return/cancellation row. */
+  neutral?: boolean
 }) => {
   const v = Number(value) || 0
   return (
@@ -138,6 +150,7 @@ const Money = ({
       align="right"
       className={clx(
         strong && "font-semibold",
+        neutral && "!text-ui-fg-base dark:!text-ui-fg-base",
         tone === "return" && "text-red-600 dark:text-red-400",
         tone === "cancellation" && "text-orange-600 dark:text-orange-400"
       )}
@@ -193,6 +206,7 @@ export default function PaymentLedgerTable({
   const platformHdr = sharedRateLabel(saleLike, (r) => r.platform_rate)
   const commissionHdr = sharedRateLabel(saleLike, (r) => r.commission_rate)
   const partnerHdr = sharedRateLabel(saleLike, (r) => r.partner_rate)
+  const partnerLabel = partnerHdr ? `${partnerHdr} · linked only` : "Linked only"
   const tcsHdr = sharedRateLabel(saleLike, (r) => r.tcs_rate) || "0.5%"
   const tdsHdr = sharedRateLabel(saleLike, (r) => r.tds_rate) || "0.1%"
 
@@ -225,13 +239,16 @@ export default function PaymentLedgerTable({
             <tr>
               <Group colSpan={5}>Order</Group>
               <Group colSpan={6}>Listing</Group>
+              <Group colSpan={3} rate="GST 18%">
+                Shipping
+              </Group>
               <Group colSpan={3} rate={platformHdr}>
                 Platform
               </Group>
               <Group colSpan={3} rate={commissionHdr}>
                 Commission
               </Group>
-              <Group colSpan={3} rate={partnerHdr}>
+              <Group colSpan={3} rate={partnerLabel}>
                 Partner
               </Group>
               <Group colSpan={3} rate="GST 18%">
@@ -264,6 +281,9 @@ export default function PaymentLedgerTable({
               <TH className="text-right">Logistics</TH>
               <TH className="text-right">Logistics GST</TH>
               <TH className="text-right">Listing price</TH>
+              <TH className="text-right">Customer shipping</TH>
+              <TH className="text-right">Shipping GST</TH>
+              <TH className="text-right">Shipping total</TH>
               <TH className="text-right">Fee</TH>
               <TH className="text-right">Tax</TH>
               <TH className="text-right">Total</TH>
@@ -362,14 +382,21 @@ export default function PaymentLedgerTable({
                 )
               }
 
+              // Return/cancellation reversals stay red. Fees charged by OWEG
+              // (shipping, reverse shipping, cancellation and gateway) remain
+              // neutral so they are not mistaken for an error.
               const moneyTone =
                 category === "return"
                   ? "return"
                   : category === "cancellation"
                     ? "cancellation"
                     : "default"
-
-              const isReturnOrCancel = category === "return" || category === "cancellation"
+              const owegChargeTone = "default"
+              const isReturnOrCancel =
+                category === "return" ||
+                category === "cancellation" ||
+                /replace/i.test(String(row.type || row.item_status || ""))
+              const charges = owegCharges(row)
               const displayReturnFee = isReturnOrCancel && row.return_fee ? -Math.abs(row.return_fee) : row.return_fee
               const displayReverseGst = isReturnOrCancel && row.reverse_logistic_gst ? -Math.abs(row.reverse_logistic_gst) : row.reverse_logistic_gst
               const displayReverseTotal = isReturnOrCancel && row.reverse_logistic_total ? -Math.abs(row.reverse_logistic_total) : row.reverse_logistic_total
@@ -385,21 +412,58 @@ export default function PaymentLedgerTable({
                   key={row.id}
                   className={clx(
                     "transition-colors duration-150",
-                    index % 2 === 1 ? "bg-ui-bg-subtle/30" : "bg-ui-bg-base",
-                    "hover:bg-oweg-500/[0.04] dark:hover:bg-oweg-500/[0.06]"
+                    isReturnOrCancel
+                      ? "bg-ui-bg-base text-red-700 hover:bg-ui-bg-subtle/60 [&>td]:text-red-700 dark:bg-ui-bg-base dark:text-red-300 dark:hover:bg-ui-bg-subtle/60 dark:[&>td]:text-red-300"
+                      : index % 2 === 1
+                        ? "bg-ui-bg-subtle/30"
+                        : "bg-ui-bg-base",
+                    !isReturnOrCancel && "hover:bg-oweg-500/[0.04] dark:hover:bg-oweg-500/[0.06]"
                   )}
                 >
                   <TD className="font-medium">
-                    {category === "claim" ? (
-                      <span className="text-ui-fg-muted">{orderLabel}</span>
-                    ) : (
-                      <Link
-                        href={`/orders?order=${encodeURIComponent(row.order_id)}`}
-                        className="text-oweg-700 underline-offset-2 hover:underline dark:text-oweg-400 font-semibold"
-                      >
-                        #{orderLabel}
-                      </Link>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      {category === "claim" ? (
+                        <span className="text-ui-fg-muted">{orderLabel}</span>
+                      ) : (
+                        <Link
+                          href={`/orders?order=${encodeURIComponent(row.order_id)}`}
+                          className={clx(
+                            "underline-offset-2 hover:underline font-semibold",
+                            isReturnOrCancel
+                              ? "text-red-700 dark:text-red-300"
+                              : "text-oweg-700 dark:text-oweg-400"
+                          )}
+                        >
+                          #{orderLabel}
+                        </Link>
+                      )}
+                      {isReturnOrCancel ? (
+                        <div className="group/info relative">
+                          <button
+                            type="button"
+                            aria-label={`View OWEG charges for order ${orderLabel}`}
+                            className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-current/25 text-[10px] font-bold leading-none opacity-75 transition-opacity hover:opacity-100 focus:opacity-100"
+                          >
+                            i
+                          </button>
+                          <div className="pointer-events-none absolute left-0 top-6 z-20 hidden w-64 rounded-xl border border-ui-border-base bg-ui-bg-base p-3 text-xs text-ui-fg-base shadow-xl group-hover/info:block group-focus-within/info:block">
+                          <p className="font-semibold">OWEG charges</p>
+                          {charges.length ? (
+                            <div className="mt-2 space-y-1.5">
+                              {charges.map((charge) => (
+                                <div key={charge.label} className="flex items-center justify-between gap-3">
+                                  <span className="text-ui-fg-subtle">{charge.label}</span>
+                                  <span className="font-semibold">{formatCurrency(Math.abs(Number(charge.amount) || 0))}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-1 text-ui-fg-subtle">No OWEG charges on this order.</p>
+                          )}
+                        </div>
+                        </div>
+                      ) : null}
+                    </div>
                   </TD>
                   <TD muted>{dateLabel}</TD>
                   <TD>
@@ -412,9 +476,12 @@ export default function PaymentLedgerTable({
                     {formatGstRate(row.gst_rate)}
                   </TD>
                   <Money value={row.gst_amount} tone={moneyTone} />
-                  <Money value={row.logistic_fee} tone={moneyTone} />
-                  <Money value={row.logistic_gst} tone={moneyTone} />
+                  <Money value={row.logistic_fee} tone={owegChargeTone} neutral={isReturnOrCancel} />
+                  <Money value={row.logistic_gst} tone={owegChargeTone} neutral={isReturnOrCancel} />
                   <Money value={productListingTotal(row)} strong tone={moneyTone} />
+                  <Money value={row.customer_shipping_fee} tone={moneyTone} />
+                  <Money value={row.customer_shipping_gst} tone={moneyTone} />
+                  <Money value={row.customer_shipping_total} strong tone={moneyTone} />
                   <Money value={row.platform_fee} tone={moneyTone} />
                   <Money value={row.platform_gst} tone={moneyTone} />
                   <Money value={row.platform_total} tone={moneyTone} />
@@ -424,18 +491,18 @@ export default function PaymentLedgerTable({
                   <Money value={row.partner_commission} tone={moneyTone} />
                   <Money value={row.partner_gst} tone={moneyTone} />
                   <Money value={row.partner_total} tone={moneyTone} />
-                  <Money value={row.logistic_fee} tone={moneyTone} />
-                  <Money value={row.logistic_gst} tone={moneyTone} />
-                  <Money value={row.logistic_total} tone={moneyTone} />
-                  <Money value={displayReturnFee} tone={moneyTone} />
-                  <Money value={displayReverseGst} tone={moneyTone} />
-                  <Money value={displayReverseTotal} tone={moneyTone} />
-                  <Money value={displayCancelFee} tone={moneyTone} />
-                  <Money value={displayCancelGst} tone={moneyTone} />
-                  <Money value={displayCancelTotal} tone={moneyTone} />
-                  <Money value={displayPgFee} tone={moneyTone} />
-                  <Money value={displayPgGst} tone={moneyTone} />
-                  <Money value={displayPgTotal} tone={moneyTone} />
+                  <Money value={row.logistic_fee} tone={owegChargeTone} neutral={isReturnOrCancel} />
+                  <Money value={row.logistic_gst} tone={owegChargeTone} neutral={isReturnOrCancel} />
+                  <Money value={row.logistic_total} tone={owegChargeTone} neutral={isReturnOrCancel} />
+                  <Money value={displayReturnFee} tone={owegChargeTone} neutral={isReturnOrCancel} />
+                  <Money value={displayReverseGst} tone={owegChargeTone} neutral={isReturnOrCancel} />
+                  <Money value={displayReverseTotal} tone={owegChargeTone} neutral={isReturnOrCancel} />
+                  <Money value={displayCancelFee} tone={owegChargeTone} neutral={isReturnOrCancel} />
+                  <Money value={displayCancelGst} tone={owegChargeTone} neutral={isReturnOrCancel} />
+                  <Money value={displayCancelTotal} tone={owegChargeTone} neutral={isReturnOrCancel} />
+                  <Money value={displayPgFee} tone={owegChargeTone} neutral={isReturnOrCancel} />
+                  <Money value={displayPgGst} tone={owegChargeTone} neutral={isReturnOrCancel} />
+                  <Money value={displayPgTotal} tone={owegChargeTone} neutral={isReturnOrCancel} />
                   <Money value={row.claim_amount} tone={moneyTone} />
                   <Money value={row.tcs} tone={moneyTone} />
                   <Money value={row.tds} tone={moneyTone} />

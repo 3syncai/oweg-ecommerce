@@ -1,3 +1,4 @@
+import { calculateVendorLedgerSettlement } from "../vendor-ledger-settlement"
 import { reverseVendorEarningsForOrder } from "../vendor-earnings"
 
 /**
@@ -174,8 +175,36 @@ describe("cancellation fee CREDITED debit", () => {
     expect(insert!.params[1]).toBe("ven_pre")
     // 25+18% GST = 29.5 plus 50+18% logistics = 59 → -88.5
     expect(insert!.params[3]).toBe(-88.5)
-    expect(insert!.params[6]).toBe(25)
+    // The synthetic row retains product taxable value at $5; cancellation fee
+    // and logistics stay in their matching columns for ledger reconstruction.
+    expect(insert!.params[8]).toBe(25)
     expect(insert!.params[7]).toBe(50)
+  })
+
+  it("charges the gateway fee for an explicitly prepaid admin cancellation", () => {
+    const ledger = calculateVendorLedgerSettlement({
+      category: "cancellation",
+      item_price: 0,
+      payment_gateway_base: 420.34,
+      logistic_fee: 0,
+      cancellation_fee: 20,
+      payment_method: "razorpay",
+      rates: {
+        platform_rate: 5,
+        commission_rate: 2,
+        partner_rate: 11,
+        output_gst_rate: 18,
+        service_gst_rate: 18,
+        tcs_rate: 0.5,
+        tds_rate: 0.1,
+        payment_gateway_rate: 2,
+      },
+    })
+
+    expect(ledger.cancellation_total).toBe(23.6)
+    expect(ledger.payment_gateway_fee).toBe(8.41)
+    expect(ledger.payment_gateway_gst).toBe(1.51)
+    expect(ledger.balance_delta).toBe(-33.52)
   })
 
   it("does not stamp cancellation_fee onto REVERSED rows", async () => {

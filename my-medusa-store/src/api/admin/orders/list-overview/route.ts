@@ -5,6 +5,11 @@ import type VendorModuleService from "../../../../modules/vendor/service"
 import type ReturnModuleService from "../../../../modules/returns/service"
 import { getVendorWorkflows } from "../../../../lib/vendor-order-workflow"
 import { orderListOverview } from "../../../../lib/admin-order-list"
+import {
+  buildCustomerReliability,
+  customerReliabilityKey,
+  newCustomerReliability,
+} from "../../../../lib/customer-reliability"
 
 // One bounded batch for the visible order page; existing Orders RBAC applies.
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
@@ -14,7 +19,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const query = req.scope.resolve("query")
   const { data: orders } = await query.graph({
     entity: "order",
-    fields: ["id", "status", "metadata", "items.id", "items.quantity", "items.detail.quantity",
+    fields: ["id", "customer_id", "email", "status", "metadata", "items.id", "items.quantity", "items.detail.quantity",
       "items.product_id", "items.variant.product_id", "items.detail.return_received_quantity",
       "fulfillments.id", "fulfillments.shipped_at", "fulfillments.delivered_at", "fulfillments.canceled_at"],
     filters: { id: ids },
@@ -43,6 +48,27 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   }
   const returns = req.scope.resolve(RETURN_MODULE) as ReturnModuleService
   const requests = await returns.listReturnRequests({ order_id: ids })
+  const customerIds = [...new Set(orders.map((order: any) => order.customer_id).filter(Boolean))]
+  const customerHistory = customerIds.length
+    ? (await query.graph({
+        entity: "order",
+        fields: ["id", "customer_id", "email", "fulfillments.delivered_at"],
+        filters: { customer_id: customerIds },
+      })).data
+    : orders
+  const customerHistoryIds = customerHistory.map((order: any) => order.id)
+  const customerRequests = customerHistoryIds.length
+    ? await returns.listReturnRequests({ order_id: customerHistoryIds })
+    : requests
+  const reliabilityByCustomer = buildCustomerReliability(
+    customerHistory.map((order: any) => ({
+      id: order.id,
+      customer_id: order.customer_id,
+      email: order.email,
+      delivered: (order.fulfillments || []).some((fulfillment: any) => fulfillment.delivered_at),
+    })),
+    customerRequests as any[]
+  )
   const received = requests.filter((r: any) => r.status === "received" || r.received_at || r.metadata?.returned_to_vendor)
   const receivedByItem = new Map<string, number>()
   if (received.length) {
@@ -54,6 +80,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   }
   res.setHeader("Cache-Control", "no-store")
   return res.json({ orders: orders.map((order: any) => orderListOverview(
-    order, products, vendors, receivedByItem
+    order, products, vendors, receivedByItem,
+    reliabilityByCustomer.get(customerReliabilityKey(order)) || newCustomerReliability()
   )) })
 }

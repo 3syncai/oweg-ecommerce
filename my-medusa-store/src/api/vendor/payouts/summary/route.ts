@@ -44,7 +44,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const summary = await getVendorEarningsSummary(auth.vendor_id, pool)
     res.json({
       summary,
-      unlock_minutes: 5,
+      unlock_minutes: 0,
     })
   } catch (error: any) {
     console.error("[Vendor Payout Summary] error:", error)
@@ -74,7 +74,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     res.json({
       promoted,
       summary,
-      unlock_minutes: 5,
+      unlock_minutes: 0,
     })
   } catch (error: any) {
     console.error("[Vendor Payout Sync] error:", error)

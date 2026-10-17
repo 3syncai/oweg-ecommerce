@@ -3,6 +3,13 @@ import { Pool } from "pg"
 import { requireApprovedVendor } from "../_lib/guards"
 import { filterVendorVisibleOrders } from "../../../lib/vendor-order-visibility"
 import { getVendorEarningsByOrderIds } from "../../../lib/vendor-earnings"
+import { RETURN_MODULE } from "../../../modules/returns"
+import type ReturnModuleService from "../../../modules/returns/service"
+import {
+    buildCustomerReliability,
+    customerReliabilityKey,
+    newCustomerReliability,
+} from "../../../lib/customer-reliability"
 
 function getPool() {
   const url = process.env.DATABASE_URL
@@ -98,6 +105,24 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         console.log(`[Customers API] Found ${vendorOrders.length} orders with vendor products`)
 
         const orderIds = vendorOrders.map((order: any) => order.id)
+        const returnService = req.scope.resolve(RETURN_MODULE) as ReturnModuleService
+        const returnRequests = orderIds.length
+          ? await returnService.listReturnRequests({ order_id: orderIds })
+          : []
+        const reliabilityByCustomer = buildCustomerReliability(
+          vendorOrders.map((order: any) => {
+            const meta = order.metadata || {}
+            const workflow = meta.vendor_order_workflows?.[auth.vendor_id] || {}
+            return {
+              id: order.id,
+              customer_id: order.customer_id,
+              email: order.email,
+              delivered: (order.fulfillments || []).some((f: any) => f?.delivered_at) ||
+                String(workflow.stage || "").toLowerCase() === "delivered",
+            }
+          }),
+          returnRequests as any[]
+        )
         const pool = getPool()
         const earningsByOrder = pool
           ? await getVendorEarningsByOrderIds(auth.vendor_id, orderIds, pool).finally(() =>
@@ -118,7 +143,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
             order_value: number
             first_order_date: string
             last_order_date: string
-            details_hidden: boolean
+                details_hidden: boolean
+                customer_reliability: ReturnType<typeof newCustomerReliability>
         }>()
 
         for (const order of vendorOrders) {
@@ -183,6 +209,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
                     first_order_date: orderDate,
                     last_order_date: orderDate,
                     details_hidden: false,
+                    customer_reliability: reliabilityByCustomer.get(customerReliabilityKey(order)) || newCustomerReliability(),
                 })
             }
         }

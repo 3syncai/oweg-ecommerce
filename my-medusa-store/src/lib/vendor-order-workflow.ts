@@ -27,6 +27,8 @@ export type VendorSettlementRatesSnapshot = {
   commission_rate: number
   platform_fee_rate: number
   cancellation_charge: number
+  /** Partner fee applies only when this order's customer has a valid partner referral. */
+  partner_linked?: boolean
   partner_rate: number
   service_gst_rate: number
   tcs_rate: number
@@ -482,6 +484,9 @@ export type VendorOrderSettlement = {
   commission_gst: number
   logistic_fee: number
   logistic_gst: number
+  customer_shipping_fee: number
+  customer_shipping_gst: number
+  customer_shipping_total: number
   return_fee: number
   return_logistic_gst: number
   listing_total: number
@@ -530,7 +535,7 @@ function pickPreferredGstMeta(
 export function buildVendorOrderSettlement(
   vendorItems: any[],
   rates: VendorOrderSettlementRates,
-  fees?: { logistic_fee?: number; return_fee?: number }
+  fees?: { logistic_fee?: number; return_fee?: number; customer_shipping_total?: number }
 ): VendorOrderSettlement {
   const lines = vendorItems.map((item) => {
     const qty = getItemUnits(item)
@@ -555,6 +560,7 @@ export function buildVendorOrderSettlement(
     category: "sale",
     item_price: settlement.taxable_amount,
     logistic_fee: Math.max(0, Number(fees?.logistic_fee) || 0),
+    customer_shipping_total: Math.max(0, Number(fees?.customer_shipping_total) || 0),
     rates: ledgerRates,
   })
   const ledger = overlaySaleDeductions(
@@ -580,6 +586,9 @@ export function buildVendorOrderSettlement(
     commission_gst: Math.abs(ledger.commission_gst),
     logistic_fee: Math.abs(ledger.logistic_fee),
     logistic_gst: Math.abs(ledger.logistic_gst),
+    customer_shipping_fee: Math.abs(ledger.customer_shipping_fee),
+    customer_shipping_gst: Math.abs(ledger.customer_shipping_gst),
+    customer_shipping_total: Math.abs(ledger.customer_shipping_total),
     return_fee: Math.abs(ledger.reverse_logistic_fee),
     return_logistic_gst: Math.abs(ledger.reverse_logistic_gst),
     listing_total: ledger.listing_total,
@@ -678,6 +687,10 @@ export function formatVendorOrder(
     (sum, item) => sum + Number(item.unit_price || 0) * getItemUnits(item),
     0
   )
+  const cartItemsTotal = (order.items || []).reduce(
+    (sum, item) => sum + Number(item.unit_price || 0) * getItemUnits(item),
+    0
+  )
 
   // Prefer frozen order rates for preview so UI matches ledger after admin changes.
   const snap = workflow.settlement_rates
@@ -699,6 +712,7 @@ export function formatVendorOrder(
             ? Math.max(0, Number(workflow.easy_courier_rate) || 0)
             : 0,
         return_fee: Math.max(0, Number(workflow.return_courier_rate) || 0),
+        customer_shipping_total: cartItemsTotal > 0 && cartItemsTotal < 500 ? 50 : 0,
       })
     : null
   const cancellation = readCancellationInfo(order as any)

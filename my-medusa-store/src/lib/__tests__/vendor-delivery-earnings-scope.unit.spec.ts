@@ -1,4 +1,4 @@
-import { normalizeDeliveryVendorScope } from "../vendor-earnings"
+import { normalizeDeliveryVendorScope, resolvePayoutHoldDays } from "../vendor-earnings"
 import { resolveVendorIdFromShipmentMetadata } from "../vendor-order-workflow"
 
 describe("normalizeDeliveryVendorScope", () => {
@@ -15,6 +15,23 @@ describe("normalizeDeliveryVendorScope", () => {
         vendorIds: ["vendor_a", "vendor_b", "", "vendor_b"],
       })
     ).toEqual(["vendor_a", "vendor_b"])
+  })
+})
+
+describe("resolvePayoutHoldDays", () => {
+  it("uses the longer of the selected return and replacement windows", () => {
+    expect(resolvePayoutHoldDays(4, 10)).toBe(10)
+    expect(resolvePayoutHoldDays(14, 7)).toBe(14)
+  })
+
+  it("defaults to seven days when neither policy duration is set", () => {
+    expect(resolvePayoutHoldDays(null, undefined)).toBe(7)
+    expect(resolvePayoutHoldDays("", "")).toBe(7)
+  })
+
+  it("uses a valid configured duration when the other value is invalid", () => {
+    expect(resolvePayoutHoldDays("four", 5)).toBe(5)
+    expect(resolvePayoutHoldDays(366, 3)).toBe(3)
   })
 })
 

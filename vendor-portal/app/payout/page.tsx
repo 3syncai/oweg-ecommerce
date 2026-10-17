@@ -334,8 +334,6 @@ const VendorPayoutPage = () => {
     }
   }
 
-  const unlockMinutes = payments?.unlock_minutes ?? 5
-
   let content
 
   if (loading && !payments) {
@@ -462,7 +460,7 @@ const VendorPayoutPage = () => {
             </div>
             <Text size="small" className="mt-2 max-w-xl text-ui-fg-subtle leading-relaxed">
               Settlement breakdown: listing total minus platform, commission, partner, logistics, TCS and TDS.
-              Earnings unlock {unlockMinutes} minutes after delivery.
+              Earnings unlock after the longer of the product's return or replacement window.
             </Text>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -620,7 +618,7 @@ const VendorPayoutPage = () => {
               value={formatCurrency(unlockingPayment)}
               subtext={
                 <Text size="small" className="text-ui-fg-subtle">
-                  Moves to settlement after {unlockMinutes} min
+                  Unlocks after the return/replacement window
                 </Text>
               }
             />
@@ -674,7 +672,7 @@ const VendorPayoutPage = () => {
           <div className="rounded-xl border border-ui-border-base/40 bg-ui-bg-subtle/30 px-4 py-2.5">
             <Text size="xsmall" className="text-ui-fg-muted leading-relaxed">
               <span className="font-medium text-ui-fg-subtle">Formula:</span>{" "}
-              Pending unlocks into Settlement after {unlockMinutes} min. Balance = Settlement −
+              Pending unlocks after the product return/replacement window. Balance = Settlement −
               Withdrawn. Bank settlement = C − (D + E + F + B + TCS + TDS).
             </Text>
           </div>
