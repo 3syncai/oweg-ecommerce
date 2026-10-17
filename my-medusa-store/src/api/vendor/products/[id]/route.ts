@@ -19,16 +19,6 @@ function setCorsHeaders(res: MedusaResponse) {
   res.setHeader('Access-Control-Allow-Credentials', 'true')
 }
 
-function normalizePolicyWindow(value: unknown, field: string): number | null | undefined {
-  if (value === undefined) return undefined
-  if (value === null || value === "") return null
-  const days = Number(value)
-  if (!Number.isInteger(days) || days < 0 || days > 365) {
-    throw new Error(`${field} must be a whole number between 0 and 365`)
-  }
-  return days
-}
-
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res)
   return res.status(200).end()
@@ -175,26 +165,6 @@ async function updateOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
       metadata: requestMetadata,
     } = body
 
-    let normalizedPolicyMetadata: Record<string, number | null> = {}
-    if (requestMetadata && typeof requestMetadata === "object") {
-      try {
-        const returnWindow = normalizePolicyWindow(
-          requestMetadata.return_window_days,
-          "return_window_days"
-        )
-        const replacementWindow = normalizePolicyWindow(
-          requestMetadata.replacement_window_days,
-          "replacement_window_days"
-        )
-        if (returnWindow !== undefined) normalizedPolicyMetadata.return_window_days = returnWindow
-        if (replacementWindow !== undefined) {
-          normalizedPolicyMetadata.replacement_window_days = replacementWindow
-        }
-      } catch (policyError: any) {
-        return res.status(400).json({ message: policyError?.message || "Invalid return policy" })
-      }
-    }
-
     const hasPriceUpdate = price !== undefined && price !== null && `${price}`.toString().trim() !== ""
     const hasDiscountedPriceUpdate =
       discounted_price !== undefined &&
@@ -249,7 +219,6 @@ async function updateOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
     updateData.metadata = {
       ...metadata,
       ...cleanVendorMetadata(requestMetadata),
-      ...normalizedPolicyMetadata,
       vendor_id: auth.vendor_id,
       approval_status: "pending",
       submitted_at: nowIso,
@@ -262,6 +231,9 @@ async function updateOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
       vendor_edit_remark: cleanRemark || null,
       vendor_edit_history: nextHistory,
     }
+    delete updateData.metadata.return_window_days
+    delete updateData.metadata.replacement_window_days
+    delete updateData.metadata.return_replacement_policy_configured
     updateData.status = ProductStatus.DRAFT
 
     const updatedProduct = await productModuleService.updateProducts(productId, updateData)

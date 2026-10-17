@@ -85,9 +85,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     }
 
     const workflows = getVendorWorkflows(order.metadata as Record<string, unknown>)
-    const vendorIds = Array.from(
-      new Set([...Object.keys(workflows), ...vendorProductIds.keys()])
-    )
+    // A reassigned vendor remains in audit history but has no current item.
+    const vendorIds = Array.from(vendorProductIds.keys())
 
     const vendorService = req.scope.resolve(VENDOR_MODULE) as VendorModuleService
     const vendors: Array<Record<string, unknown>> = []

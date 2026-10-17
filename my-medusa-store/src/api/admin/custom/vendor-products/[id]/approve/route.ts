@@ -12,6 +12,19 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     const existingProduct = await productModuleService.retrieveProduct(id)
     const existingMetadata = (existingProduct as any).metadata || {}
 
+    const brandName = String(existingMetadata.brand || "").trim()
+    const vendorId = String(existingMetadata.vendor_id || "").trim()
+    if (!brandName || !vendorId) {
+      return res.status(400).json({ message: "Product brand or vendor is missing" })
+    }
+    const brandAuthService = req.scope.resolve("vendorBrandAuthorization") as any
+    const authorized = await brandAuthService.checkBrandAuthorization(vendorId, brandName)
+    if (!authorized) {
+      return res.status(400).json({
+        message: `Approve the brand authorization letter for "${brandName}" before publishing this product`,
+      })
+    }
+
     // Update product to approved status, merging with existing metadata
     const updatedProduct = await productModuleService.updateProducts(id, {
       status: ProductStatus.PUBLISHED,

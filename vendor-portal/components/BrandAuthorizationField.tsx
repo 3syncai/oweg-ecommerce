@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { Input, Text, toast } from "@medusajs/ui"
 import { vendorBrandsApi } from "@/lib/api/client"
 
@@ -9,6 +9,8 @@ interface BrandAuthorizationProps {
     onBrandChange: (brand: string) => void
     onAuthorizationStatusChange: (isAuthorized: boolean, needsAuthorization: boolean) => void
     onFileSelect: (file: File | null) => void
+    authorizationRefreshKey?: number
+    requireNewUpload?: boolean
 }
 
 type AuthStatus = "idle" | "checking" | "authorized" | "pending" | "needs_upload" | "file_selected"
@@ -18,10 +20,15 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
     onBrandChange,
     onAuthorizationStatusChange,
     onFileSelect,
+    authorizationRefreshKey,
+    requireNewUpload = false,
 }) => {
     const [authStatus, setAuthStatus] = useState<AuthStatus>("idle")
     const [authorizationFile, setAuthorizationFile] = useState<File | null>(null)
     const [checkDebounceTimer, setCheckDebounceTimer] = useState<NodeJS.Timeout | null>(null)
+    const selectedFileRef = useRef<File | null>(null)
+    const currentBrandRef = useRef(brand)
+    currentBrandRef.current = brand
 
     // Debounced brand authorization check
     useEffect(() => {
@@ -35,6 +42,17 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
             onAuthorizationStatusChange(false, false)
             onFileSelect(null)
             setAuthorizationFile(null)
+            selectedFileRef.current = null
+            return
+        }
+
+        selectedFileRef.current = null
+        setAuthorizationFile(null)
+        onFileSelect(null)
+
+        if (requireNewUpload) {
+            setAuthStatus("needs_upload")
+            onAuthorizationStatusChange(false, true)
             return
         }
 
@@ -51,7 +69,7 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
         return () => {
             if (timer) clearTimeout(timer)
         }
-    }, [brand])
+    }, [brand, authorizationRefreshKey, requireNewUpload])
 
     const checkBrandAuthorization = async (brandName: string) => {
         try {
@@ -59,6 +77,7 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
             if (!token) return
 
             const data = await vendorBrandsApi.checkAuthorization(brandName)
+            if (currentBrandRef.current !== brandName || selectedFileRef.current) return
             const status =
                 data.status || (data.requires_authorization ? "missing" : "authorized")
 
@@ -66,7 +85,7 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
                 setAuthStatus("pending")
                 onFileSelect(null)
                 setAuthorizationFile(null)
-                onAuthorizationStatusChange(false, true)
+                onAuthorizationStatusChange(true, true)
             } else if (status === "authorized") {
                 setAuthStatus("authorized")
                 setAuthorizationFile(null)
@@ -80,6 +99,7 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
             }
         } catch (error) {
             console.error("Brand authorization check error:", error)
+            if (currentBrandRef.current !== brandName || selectedFileRef.current) return
             setAuthStatus("idle")
             onAuthorizationStatusChange(false, false)
             toast.error("Error", {
@@ -92,6 +112,7 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0]
+            selectedFileRef.current = file
             setAuthorizationFile(file)
             onFileSelect(file)
             setAuthStatus("file_selected")
@@ -135,7 +156,7 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
                             <span>Authorization Pending Approval</span>
                         </Text>
                         <Text size="small" style={{ color: "var(--fg-muted)", marginTop: 4 }}>
-                            You have already uploaded an authorization letter for this brand. Please wait for admin approval before adding products.
+                            Letter uploaded. You can submit products for review; they will go live after an admin approves the letter and products.
                         </Text>
                     </div>
                 )
@@ -144,7 +165,7 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
                 return (
                     <div style={{ marginTop: 8, padding: 12, background: "var(--bg-warning-subtle)", borderRadius: 6, border: "1px solid var(--border-warning)" }}>
                         <Text size="small" weight="plus" style={{ color: "var(--fg-warning)", marginBottom: 8 }}>
-                            ⚠️ Required: Upload brand authorization letter for "{brand}" to continue
+                            ⚠️ Required: Upload your brand authorization letter for "{brand}" to continue
                         </Text>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <input

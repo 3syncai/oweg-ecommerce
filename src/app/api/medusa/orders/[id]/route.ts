@@ -128,6 +128,22 @@ export async function GET(req: NextRequest, ctx: { params: { id: string } | Prom
 
     order = await enrichOrderWithSummaryTotals(order);
 
+    const policyRes = await medusaStoreFetch(
+      `/store/orders/${encodeURIComponent(orderId)}/return-policy`,
+      { method: "GET", forwardedCookie, headers: { Cookie: forwardedCookie } }
+    );
+    if (policyRes.ok) {
+      const policy = await policyRes.json() as { return_window_days?: number; replacement_window_days?: number };
+      order = {
+        ...order,
+        metadata: {
+          ...((order.metadata && typeof order.metadata === "object") ? order.metadata as Record<string, unknown> : {}),
+          return_window_days: policy.return_window_days,
+          replacement_window_days: policy.replacement_window_days,
+        },
+      };
+    }
+
     return NextResponse.json({ order: normalizeOrderForCustomer(order) });
   } catch {
     return NextResponse.json({ error: "Unexpected error loading order" }, { status: 500 });

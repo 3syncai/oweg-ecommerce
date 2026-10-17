@@ -124,11 +124,26 @@ async function createFreshCart(): Promise<string> {
   return cartId
 }
 
-async function addLineItemRequest(cartId: string, body: { variant_id: string; quantity: number }) {
+async function addLineItemRequest(cartId: string, body: { variant_id: string; quantity: number; metadata?: Record<string, unknown> }) {
   return backend(`/store/carts/${encodeURIComponent(cartId)}/line-items`, {
     method: "POST",
     body: JSON.stringify(body),
   })
+}
+
+async function cheapestAvailableVariant(variantId: string, quantity: number): Promise<string> {
+  try {
+    const res = await backend(`/store/catalog-offers?variant_id=${encodeURIComponent(variantId)}`)
+    if (!res.ok) return variantId
+    const data = await res.json() as { offers?: Array<{ variant_id: string; available: number; price: number }> }
+    const flash = await getFlashSaleData() as { active?: boolean; products?: Array<{ variant_id?: string; flash_sale_price?: number }> } | null
+    const flashPrices = new Map(flash?.active ? flash.products?.map(product => [product.variant_id, product.flash_sale_price] as const) : [])
+    return data.offers
+      ?.filter(offer => offer.available >= quantity)
+      .sort((a, b) => Math.min(flashPrices.get(a.variant_id) ?? a.price, a.price) - Math.min(flashPrices.get(b.variant_id) ?? b.price, b.price) || b.available - a.available)[0]?.variant_id || variantId
+  } catch {
+    return variantId
+  }
 }
 
 async function readErrorPayload(res: Response) {
@@ -149,15 +164,17 @@ export async function POST(req: NextRequest) {
     const variant_id: string = body.variant_id
     const quantity: number = Number(body.quantity || 1)
     if (!variant_id) return NextResponse.json({ error: "variant_id required" }, { status: 400 })
+    const selectedVariantId = body.seller_selected === true ? variant_id : await cheapestAvailableVariant(variant_id, quantity)
+    const itemBody = { variant_id: selectedVariantId, quantity, ...(body.seller_selected === true ? { metadata: { seller_selected: true } } : {}) }
     let { cartId } = await ensureCartId(req)
-    let res = await addLineItemRequest(cartId, { variant_id, quantity })
+    let res = await addLineItemRequest(cartId, itemBody)
     let attempts = 0
 
     // If cart was stale (deleted upstream), create a fresh one and retry once.
     while (!res.ok && res.status === 404 && attempts < 1) {
       try {
         cartId = await createFreshCart()
-        res = await addLineItemRequest(cartId, { variant_id, quantity })
+        res = await addLineItemRequest(cartId, itemBody)
         attempts += 1
       } catch (err) {
         const msg = err instanceof Error ? err.message : "failed to refresh cart"

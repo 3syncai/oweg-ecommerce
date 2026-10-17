@@ -21,6 +21,25 @@ module.exports = function patchProductList() {
     text = text.replace(before, after)
     fs.writeFileSync(file, text + (dependency ? `\n${dependency}\n` : ""))
   }
+  // The dashboard normally wraps every non-select cell in a product-detail
+  // link. A nested Share button then follows that link instead of copying it.
+  const tableChunk = fs.readdirSync(path.join(dashboard, "dist"))
+    .filter(name => /^chunk-.*\.mjs$/.test(name))
+    .find(name => fs.readFileSync(path.join(dashboard, "dist", name), "utf8").includes("const shouldRenderAsLink = !!to && !isSelectCell"))
+  if (!tableChunk) throw new Error("Product table dashboard bundle not found")
+  for (const file of [
+    path.join(dashboard, "dist", tableChunk),
+    path.join(dashboard, "dist", "app.js"),
+    path.join(dashboard, "src/components/table/data-table/data-table-root/data-table-root.tsx"),
+  ]) {
+    if (!fs.existsSync(file)) throw new Error(`Product table file missing: ${file}`)
+    const source = fs.readFileSync(file, "utf8")
+    const before = "const shouldRenderAsLink = !!to && !isSelectCell"
+    const after = 'const shouldRenderAsLink = !!to && !isSelectCell && cell.column.id !== "oweg_share"'
+    if (source.includes(after)) continue
+    if (source.split(before).length !== 2) throw new Error(`Product share cell patch no longer matches ${file}; review dashboard upgrade`)
+    fs.writeFileSync(file, source.replace(before, after))
+  }
   console.log("[admin] Product SKU and share columns ready")
 }
 if (require.main === module) module.exports()

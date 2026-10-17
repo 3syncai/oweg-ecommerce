@@ -12,6 +12,8 @@ import { getImageUrlForNewTab } from "@/lib/image-utils";
 import { sanitizeProductHtml } from "@/lib/sanitize-product-html";
 import HealthCareAgeGate from "@/components/modules/HealthCareAgeGate";
 import { productHasHealthCareCategory } from "@/lib/health-care-age-gate";
+import SellerOffers from "@/components/modules/SellerOffers";
+import { useSellerOffers } from "@/hooks/useSellerOffers";
 
 type ProductDetailClientProps = {
   product: DetailedProduct;
@@ -26,10 +28,16 @@ const inr = new Intl.NumberFormat("en-IN", {
 export function ProductDetailClient({ product }: ProductDetailClientProps) {
   const [selectedImage, setSelectedImage] = useState(0);
   const [isAdding, setIsAdding] = useState(false);
+  const [selectedSellerVariantId, setSelectedSellerVariantId] = useState<string | null>(null);
+  const { data: sellerOffers, isLoading: sellerOffersLoading } = useSellerOffers(product.variant_id);
+  const selectedSellerOffer = sellerOffers?.find(offer => offer.variant_id === selectedSellerVariantId) ?? sellerOffers?.[0];
+  const purchaseVariantId = selectedSellerOffer?.variant_id ?? product.variant_id;
+  const displayPrice = selectedSellerOffer?.price ?? product.price;
+  const sellerChoicePinned = Boolean(selectedSellerOffer && selectedSellerOffer.variant_id === selectedSellerVariantId);
   const showHealthCareAgeGate = productHasHealthCareCategory(product.categories);
 
   const handleAddToCart = async () => {
-    if (!product.variant_id) {
+    if (!purchaseVariantId || sellerOffersLoading) {
       alert("This product is not available for purchase");
       return;
     }
@@ -41,8 +49,9 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          variant_id: product.variant_id,
+          variant_id: purchaseVariantId,
           quantity: 1,
+          seller_selected: sellerChoicePinned,
         }),
       });
 
@@ -150,15 +159,15 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
             <div className="bg-gray-50 p-6 rounded-lg mb-6">
               <div className="flex items-baseline gap-3 mb-2">
                 <span className="text-4xl font-bold text-[#7AC943]">
-                  {inr.format(product.price)}
+                  {inr.format(displayPrice)}
                 </span>
-                {product.mrp > product.price && (
+                {product.mrp > displayPrice && (
                   <>
                     <span className="text-xl text-gray-500 line-through">
                       {inr.format(product.mrp)}
                     </span>
                     <span className="text-lg font-semibold text-red-600">
-                      ({product.discount}% off)
+                      ({Math.round((product.mrp - displayPrice) / product.mrp * 100)}% off)
                     </span>
                   </>
                 )}
@@ -166,11 +175,15 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
               <p className="text-sm text-gray-600">Inclusive of all taxes</p>
             </div>
 
+            {sellerOffers && sellerOffers.length > 0 && purchaseVariantId && (
+              <div className="mb-6"><SellerOffers offers={sellerOffers} selectedVariantId={purchaseVariantId} onSelect={setSelectedSellerVariantId} formatPrice={value => inr.format(value)} /></div>
+            )}
+
             {/* Action Buttons */}
             <div className="flex gap-3 mb-6">
               <Button
                 onClick={handleAddToCart}
-                disabled={isAdding || !product.variant_id}
+                disabled={isAdding || sellerOffersLoading || !purchaseVariantId}
                 className="flex-1 bg-[#7AC943] hover:bg-[#6BB832] text-white text-lg py-6"
               >
                 <ShoppingCart className="w-5 h-5 mr-2" />

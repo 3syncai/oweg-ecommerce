@@ -37,8 +37,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
         if (authorization) {
             return res.json({
-                requires_authorization: false, // File already uploaded
-                status: authorization.verified ? "authorized" : "pending",
+                requires_authorization: !authorization.verified,
+                status: authorization.verified
+                    ? "authorized"
+                    : authorization.metadata?.review_status === "rejected"
+                        ? "rejected"
+                        : "pending",
                 authorization: {
                     brand_name: authorization.brand_name,
                     uploaded_at: authorization.created_at,

@@ -1,5 +1,6 @@
 import type {Pool,PoolClient} from "pg"
 import {lockWallet,transaction} from "./payment-reliability"
+import { latestReassignment } from "./vendor-reassignment-history"
 
 async function adjustment(client:PoolClient,input:{returnId:string;kind:string;targetId:string;base:number;returned:number;prior:number;total:number}) {
  const previous=(await client.query("SELECT return_id,base_minor,amount_minor FROM return_target_adjustment WHERE target_kind=$1 AND target_id=$2",[input.kind,input.targetId])).rows
@@ -18,7 +19,12 @@ export async function settleReturnEarnings(pool:Pool,returnId:string) {
    if(!receipt)throw new Error("return_receipt_missing")
    await client.query('SELECT id FROM "order" WHERE id=$1 FOR UPDATE',[receipt.order_id])
    const frozen=(await client.query('SELECT item_id AS id,product_id,vendor_id,basis_minor AS basis FROM payment_order_item_snapshot WHERE order_id=$1',[receipt.order_id])).rows
-   const lines=frozen.length?frozen:(await client.query(`SELECT DISTINCT ON(oli.id) oli.id,COALESCE(oli.product_id,pv.product_id) AS product_id,
+   const metadata=(await client.query('SELECT metadata FROM "order" WHERE id=$1',[receipt.order_id])).rows[0]?.metadata || {}
+   // Preserve the captured customer/referral basis while attributing vendor
+   // clawbacks to the vendor who fulfilled the reassigned item.
+   const lines=frozen.length?frozen.map(line=>({ ...line,
+     vendor_id: latestReassignment(metadata,line.id)?.to_vendor_id || line.vendor_id,
+   })):(await client.query(`SELECT DISTINCT ON(oli.id) oli.id,COALESCE(oli.product_id,pv.product_id) AS product_id,
      p.metadata->>'vendor_id' AS vendor_id,round(oli.unit_price::numeric*100)*oi.quantity AS basis
      FROM order_item oi JOIN order_line_item oli ON oli.id=oi.item_id
      LEFT JOIN product_variant pv ON pv.id=oli.variant_id LEFT JOIN product p ON p.id=COALESCE(oli.product_id,pv.product_id)

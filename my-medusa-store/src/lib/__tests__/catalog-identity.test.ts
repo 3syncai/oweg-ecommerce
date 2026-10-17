@@ -32,6 +32,26 @@ test("another vendor receives catalog link and independent deterministic invento
   assert.equal(result.variants[0].inventory_quantity, 7)
   assert.equal(source.variants[0].inventory_quantity, 19)
 })
+test("same product must use its catalog SKU, including when the vendor leaves SKU blank", async () => {
+  for (const sku of ["DIFFERENT-SKU", ""]) {
+    await assert.rejects(
+      prepareCatalogOffer(scope([source]), "vendor_b", { title: source.title, metadata: { brand: "Bajaj" }, variants: [{ sku }] }),
+      /Use its existing SKU.*BAJ-123/
+    )
+  }
+  await assert.rejects(
+    prepareCatalogOffer(scope([source]), "vendor_b", { title: source.title, metadata: { brand: "Bajaj" }, variants: [] }),
+    /Use its existing SKU.*BAJ-123/
+  )
+})
+test("a different product can have a different SKU but cannot reuse the catalog SKU", async () => {
+  const distinct = await prepareCatalogOffer(scope([source]), "vendor_b", { title: "Bajaj Electric Toaster", metadata: { brand: "Bajaj" }, variants: [{ sku: "TOAST-123" }] })
+  assert.equal(distinct.variants[0].sku, "TOAST-123")
+  await assert.rejects(
+    prepareCatalogOffer(scope([source]), "vendor_b", { title: "Bajaj Electric Toaster", metadata: { brand: "Bajaj" }, variants: [{ sku: "BAJ-123" }] }),
+    /A different product cannot use it/
+  )
+})
 test("duplicate form SKUs and different variant choices are rejected", async () => {
   await assert.rejects(prepareCatalogOffer(scope([]), "b", { title: "Test", variants: [{ sku: "a" }, { sku: "A" }] }))
   await assert.rejects(prepareCatalogOffer(scope([source]), "b", { title: source.title, metadata: { brand: "Bajaj" }, variants: [{ sku: "BAJ-123", options: { Color: "Red" } }] }))
@@ -56,6 +76,11 @@ test("offer edit preserves inventory identifier and prevents identity reassignme
   assert.equal(body.variants[0].sku, internal)
   await assert.rejects(protectCatalogEdit(scope([source, offer]), offer, { title: "Different product" }))
   await assert.rejects(protectCatalogEdit(scope([source, offer]), source, { title: "Different product" }))
+})
+test("editing an unshared product cannot rename it to an existing product with a different SKU", async () => {
+  const toaster = { ...source, id: "toaster", title: "Bajaj Electric Toaster", variants: [{ id: "variant_toaster", sku: "TOAST-123", options: [] }] }
+  await assert.rejects(protectCatalogEdit(scope([source, toaster]), toaster, { title: source.title }), /Use its existing SKU.*BAJ-123/)
+  await assert.rejects(protectCatalogEdit(scope([source, toaster]), toaster, { variants: [{ id: "variant_toaster", sku: "BAJ-123" }] }), /A different product cannot use it/)
 })
 test("share tokens expire, reject tampering and drafts expose only catalog data", () => {
   const share = issueProductShare()

@@ -107,6 +107,7 @@ const OrderVendorAcceptanceWidget = () => {
   const [error, setError] = useState("")
   const [markingVendorId, setMarkingVendorId] = useState<string | null>(null)
   const [markingAll, setMarkingAll] = useState(false)
+  const [reassigningItemId, setReassigningItemId] = useState<string | null>(null)
 
   const orderId = useMemo(() => {
     if (typeof window === "undefined") return null
@@ -165,6 +166,25 @@ const OrderVendorAcceptanceWidget = () => {
     } finally {
       setMarkingVendorId(null)
       setMarkingAll(false)
+    }
+  }
+
+  const reassignItem = async (itemId: string) => {
+    if (!orderId || !window.confirm("Reassign this item to another vendor with the same SKU and price? The customer order stays open.")) return
+    setReassigningItemId(itemId)
+    try {
+      const res = await fetch(`/admin/orders/${orderId}/reshuffle`, {
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: itemId }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.message || `Reassignment failed (${res.status})`)
+      toast.success("Item reassigned to another vendor")
+      await load()
+    } catch (error: any) {
+      toast.error(error?.message || "Unable to reassign item")
+    } finally {
+      setReassigningItemId(null)
     }
   }
 
@@ -370,12 +390,15 @@ const OrderVendorAcceptanceWidget = () => {
                   Items · {vendor.item_count}
                 </Text>
                 {vendor.items.map((item) => (
-                  <Text key={item.id} size="small" className="text-ui-fg-subtle leading-snug">
-                    {item.title}
-                    {item.variant_title ? ` · ${item.variant_title}` : ""}
-                    {item.sku ? ` · ${item.sku}` : ""}
-                    {` × ${item.quantity ?? 1}`}
-                  </Text>
+                  <div key={item.id} className="flex items-center justify-between gap-2">
+                    <Text size="small" className="text-ui-fg-subtle leading-snug">
+                      {item.title}{item.variant_title ? ` · ${item.variant_title}` : ""}
+                      {item.sku ? ` · ${item.sku}` : ""}{` × ${item.quantity ?? 1}`}
+                    </Text>
+                    {!orderCancelled && !vendor.accepted && <Button size="small" variant="secondary"
+                      isLoading={reassigningItemId === item.id} disabled={Boolean(reassigningItemId)}
+                      onClick={() => void reassignItem(item.id)}>Reassign</Button>}
+                  </div>
                 ))}
               </div>
             ) : null}

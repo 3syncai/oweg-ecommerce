@@ -226,6 +226,7 @@ function CheckoutPageInner() {
     undefined;
   const qtyFromQuery = searchParams?.get("qty") || searchParams?.get("quantity") || undefined;
   const priceFromQuery = searchParams?.get("price");
+  const sellerSelectedFromQuery = searchParams?.get("sellerSelected") === "1";
   const [guestCartId, setGuestCartId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartResponse["cart"] | null>(null);
   const [buyNowItem, setBuyNowItem] = useState<{
@@ -234,6 +235,7 @@ function CheckoutPageInner() {
     title?: string;
     thumbnail?: string;
     priceMinor?: number;
+    sellerSelected?: boolean;
   } | null>(null);
   const [loadingCart, setLoadingCart] = useState(true);
   const [processing, setProcessing] = useState(false);
@@ -910,6 +912,7 @@ function CheckoutPageInner() {
             title: parsed.title,
             thumbnail: parsed.thumbnail,
             priceMinor: typeof parsed.priceMinor === "number" ? parsed.priceMinor : undefined,
+            sellerSelected: parsed.sellerSelected === true,
           });
           return;
         }
@@ -925,9 +928,10 @@ function CheckoutPageInner() {
         variantId: variantFromQuery,
         quantity: Math.max(1, Number(qtyFromQuery) || 1),
         priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
+        sellerSelected: sellerSelectedFromQuery,
       });
     }
-  }, [isBuyNow, variantFromQuery, qtyFromQuery, priceFromQuery]);
+  }, [isBuyNow, variantFromQuery, qtyFromQuery, priceFromQuery, sellerSelectedFromQuery]);
 
   useEffect(() => {
     const loadCart = async () => {
@@ -941,6 +945,7 @@ function CheckoutPageInner() {
               quantity: Math.max(1, Number(qtyFromQuery) || 1),
               title: "Selected item",
               priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
+              sellerSelected: sellerSelectedFromQuery,
             }
             : null);
 
@@ -1133,6 +1138,7 @@ function CheckoutPageInner() {
             variantId: variantFromQuery,
             quantity: Math.max(1, Number(qtyFromQuery) || 1),
             priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
+              sellerSelected: sellerSelectedFromQuery,
           }
           : null);
 
@@ -1157,6 +1163,7 @@ function CheckoutPageInner() {
                   variant_id: fallbackBuyNow.variantId,
                   quantity: fallbackBuyNow.quantity,
                   price_minor: fallbackBuyNow.priceMinor,
+                  seller_selected: fallbackBuyNow.sellerSelected,
                 },
               ]
               : undefined,
@@ -1208,6 +1215,7 @@ function CheckoutPageInner() {
           variantId: variantFromQuery,
           quantity: Math.max(1, Number(qtyFromQuery) || 1),
           priceMinor: priceFromQuery ? Number(priceFromQuery) : undefined,
+          sellerSelected: sellerSelectedFromQuery,
         }
         : null);
 
@@ -1247,6 +1255,7 @@ function CheckoutPageInner() {
             variant_id: fallbackBuyNow.variantId,
             quantity: fallbackBuyNow.quantity,
             price_minor: fallbackBuyNow.priceMinor,
+            seller_selected: fallbackBuyNow.sellerSelected,
           },
         ]
         : undefined,

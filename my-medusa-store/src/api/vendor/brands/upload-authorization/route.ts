@@ -2,6 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../../_lib/guards"
 import multer from "multer"
 import s3Service from "../../../../services/s3-service"
+import { loadShareProduct, validProductShare } from "../../../../lib/product-share"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
@@ -76,6 +77,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
             })
         }
 
+        const sharedProductId = String((req.body as any).shared_product_id || "")
+        let sharedProduct: any = null
+        if (sharedProductId) {
+            sharedProduct = await loadShareProduct(req.scope, sharedProductId)
+            if (!validProductShare(sharedProduct, (req.body as any).share_token)) {
+                return res.status(404).json({ message: "Shared product link expired. Ask the admin for a new link." })
+            }
+            if (String(sharedProduct.metadata?.brand || "UNBRANDED").trim().toLowerCase() !== String(brandName).trim().toLowerCase()) {
+                return res.status(409).json({ message: "The uploaded letter must match the shared product brand." })
+            }
+        }
+
         // Upload to S3
         const { url, key } = await s3Service.uploadBrandAuthorization(
             auth.vendor_id,
@@ -97,6 +110,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
                 original_filename: file.originalname,
                 file_size: file.size,
                 mime_type: file.mimetype,
+                ...(sharedProduct ? {
+                    shared_product_id: sharedProduct.id,
+                    shared_product_share_hash: sharedProduct.metadata.catalog_share_hash,
+                } : {}),
             }
         })
 
@@ -106,6 +123,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
                 id: authorization.id,
                 brand_name: authorization.brand_name,
                 file_url: authorization.authorization_file_url,
+                file_key: authorization.authorization_file_key,
                 uploaded_at: authorization.created_at,
             }
         })

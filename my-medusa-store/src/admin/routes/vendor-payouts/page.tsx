@@ -542,6 +542,8 @@ const VendorPayoutsPage = () => {
       <p className="mb-6 text-sm text-ui-fg-subtle">
         Pay only <strong>Available</strong> balance after the product return or replacement
         window ends. Unlocking amounts stay pending until that protection period ends.{" "}
+        Hold duration is driven by the{" "}
+        <strong>category return policy</strong> (subcategory overrides parent category).{" "}
         <strong>Logistic fee</strong> applies for Easy Ship only (Self Ship = ₹0).
         Open <strong>Payable orders</strong> to see each product and pay amount.
       </p>
