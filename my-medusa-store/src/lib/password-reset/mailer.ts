@@ -132,8 +132,12 @@ async function sendCommand(
   command: string,
   expectedCodes: number[]
 ) {
-  await writeLine(socket, `${command}\r\n`)
-  const response = await waitForResponse(socket)
+  // Install the response listener before writing: a fast relay can reply before
+  // the TLS write callback fires, otherwise its response can be missed.
+  const [response] = await Promise.all([
+    waitForResponse(socket),
+    writeLine(socket, `${command}\r\n`),
+  ])
 
   if (!expectedCodes.includes(response.code)) {
     throw new Error(`SMTP command failed: ${response.message}`)
@@ -468,9 +472,10 @@ async function deliverMimeMessage(input: {
     await sendCommand(socket, `MAIL FROM:<${input.fromEmail}>`, [250])
     await sendCommand(socket, `RCPT TO:<${input.to}>`, [250, 251])
     await sendCommand(socket, "DATA", [354])
-    await writeLine(socket, `${message}\r\n.\r\n`)
-
-    const delivery = await waitForResponse(socket)
+    const [delivery] = await Promise.all([
+      waitForResponse(socket),
+      writeLine(socket, `${message}\r\n.\r\n`),
+    ])
     if (delivery.code !== 250) {
       throw new Error(`SMTP delivery failed: ${delivery.message}`)
     }

@@ -11,7 +11,7 @@ export type AdminAccountRow = AdminAccess & { email: string; first_name: string 
 export async function getAdminAccess(userId: string): Promise<AdminAccountRow | null> {
   const { rows } = await getSharedDbPool().query(`
     SELECT u.id AS user_id, u.email, u.first_name, u.last_name,
-      COALESCE(a.kind, 'unassigned') AS kind, COALESCE(a.active, false) AS active,
+      COALESCE(a.must_change_password, false) AS must_change_password, COALESCE(a.kind, 'unassigned') AS kind, COALESCE(a.active, false) AS active,
       a.role_id, r.name AS role_name, COALESCE(r.responsibilities, '') AS responsibilities,
       COALESCE(r.permissions, '[]'::jsonb) AS permissions, COALESCE(a.token_valid_after, 0) AS token_valid_after
     FROM "user" u
@@ -28,8 +28,8 @@ export async function getAdminAccess(userId: string): Promise<AdminAccountRow | 
 }
 
 export function publicAccess(account: AdminAccountRow): AdminAccess {
-  const { user_id, kind, active, role_id, role_name, responsibilities, permissions, custom_permissions } = account
-  return { user_id, kind, active, role_id, role_name, responsibilities, permissions, custom_permissions }
+  const { user_id, kind, active, role_id, role_name, responsibilities, permissions, custom_permissions, must_change_password } = account
+  return { user_id, kind, active, role_id, role_name, responsibilities, permissions, custom_permissions, must_change_password }
 }
 
 export async function requireSuperadmin(userId: string): Promise<AdminAccountRow> {
@@ -67,7 +67,7 @@ export async function listRoles(): Promise<AdminRole[]> {
 export async function listAccounts() {
   return (await getSharedDbPool().query(`
     SELECT u.id AS user_id, u.email, u.first_name, u.last_name,
-      COALESCE(a.kind, 'unassigned') AS kind, COALESCE(a.active, false) AS active,
+      COALESCE(a.must_change_password, false) AS must_change_password, COALESCE(a.kind, 'unassigned') AS kind, COALESCE(a.active, false) AS active,
       a.role_id, r.name AS role_name, COALESCE(r.responsibilities, '') AS responsibilities,
       COALESCE(r.permissions, '[]'::jsonb) AS permissions
     FROM "user" u LEFT JOIN oweg_admin_account a ON a.user_id = u.id
@@ -118,7 +118,7 @@ export async function saveCustomPermission(actor: string, id: `custom_${string}`
   })
 }
 
-export async function assignAccount(actor: string, userId: string, roleId: string, active: boolean) {
+export async function assignAccount(actor: string, userId: string, roleId: string, active: boolean, mustChangePassword = false) {
   await requireSuperadmin(actor)
   return accessTransaction(async client => {
     // Serializes account changes, including concurrent password resets/provisioning.
@@ -130,10 +130,11 @@ export async function assignAccount(actor: string, userId: string, roleId: strin
     const { rows: existing } = await client.query("SELECT kind,active FROM oweg_admin_account WHERE user_id=$1 FOR UPDATE", [userId])
     if (existing[0]?.kind === "superadmin") throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "The superadmin is managed only through the CLI")
     await client.query(`
-      INSERT INTO oweg_admin_account (user_id,kind,active,role_id,created_by) VALUES ($1,'subadmin',$2,$3,$4)
+      INSERT INTO oweg_admin_account (user_id,kind,active,role_id,created_by,must_change_password) VALUES ($1,'subadmin',$2,$3,$4,true)
       ON CONFLICT (user_id) DO UPDATE SET active=$2,role_id=$3,updated_at=now(),
+        must_change_password=oweg_admin_account.must_change_password OR $6,
         token_valid_after=CASE WHEN oweg_admin_account.active=false AND $2=true THEN $5::bigint ELSE oweg_admin_account.token_valid_after END
-    `, [userId, active, roleId, actor, Math.floor(Date.now() / 1000)])
+    `, [userId, active, roleId, actor, Math.floor(Date.now() / 1000), mustChangePassword])
     await audit(client, actor, existing.length ? "account.updated" : "account.assigned", userId, { role_id: roleId, active })
   })
 }

@@ -7,7 +7,7 @@ import type {
 import { Modules } from "@medusajs/framework/utils"
 import cors from "cors"
 import { isBlockedFromDraftConvert } from "../lib/vendor-order-visibility"
-import { enforceAdminAccess } from "../lib/admin-access/middleware"
+import { enforceAdminAccess, enforceAdminTokenRefresh } from "../lib/admin-access/middleware"
 import { recordAdminActivity } from "../lib/admin-access/activity-middleware"
 
 /**
@@ -234,6 +234,11 @@ export default defineMiddlewares({
     {
       matcher: "/auth",
       middlewares: [recordAdminActivity, crossOriginCookieMiddleware],
+    },
+    {
+      matcher: "/auth/token/refresh",
+      method: ["POST"],
+      middlewares: [enforceAdminTokenRefresh],
     },
     {
       matcher: "/admin",

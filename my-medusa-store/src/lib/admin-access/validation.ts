@@ -1,8 +1,9 @@
+import { ADMIN_RESPONSIBILITIES } from "../../shared/admin-responsibilities"
 import { z } from "zod"
 import { MedusaError } from "@medusajs/framework/utils"
 import { ADMIN_PERMISSION_GROUPS, validCustomPermissionPath } from "../../shared/admin-access"
 
-const permission = z.string().refine(value => ADMIN_PERMISSION_GROUPS.some(group => group.id === value) || /^custom_[0-9a-f-]{36}$/.test(value), "Choose a registered permission")
+const permission = z.string().refine(value => ADMIN_PERMISSION_GROUPS.some(group => group.id === value) || ADMIN_RESPONSIBILITIES.some(item => item.id === value) || /^custom_[0-9a-f-]{36}$/.test(value), "Choose a registered permission")
 export const roleInput = z.object({
   name: z.string().trim().min(1).max(100),
   responsibilities: z.string().trim().max(2000).default(""),
@@ -33,3 +34,5 @@ export function parseAccessInput<T extends z.ZodTypeAny>(schema: T, body: unknow
   }
   return result.data
 }
+
+export const changePasswordInput = z.object({ current_password: z.string().min(1).max(128), new_password: z.string().min(12).max(128) }).strict()
