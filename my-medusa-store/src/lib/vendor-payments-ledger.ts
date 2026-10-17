@@ -351,11 +351,14 @@ export function buildVendorLedgerRowFromPayout(
     payment_amount: amount,
     rates,
   })
-  const linkedOrders = parsePayoutOrderIds(payout.order_ids)
-  const firstOrder = linkedOrders[0] || `payout:${payout.id}`
+  // A payout can settle many orders. It is its own ledger event, so never
+  // assign it to the first linked order (which made exports falsely show one
+  // order as the payment row). Order references are attached to sale rows by
+  // attachPayoutReferencesToOrders instead.
+  const payoutReference = `payout:${payout.id}`
   return settlementFromLedger({
     id: `payout:${payout.id}`,
-    order_id: firstOrder,
+    order_id: payoutReference,
     order_display_id: null,
     product_name: "Payout",
     status: "PAYMENT",

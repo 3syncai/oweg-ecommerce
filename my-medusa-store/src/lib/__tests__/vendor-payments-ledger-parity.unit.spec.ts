@@ -342,6 +342,24 @@ describe("running balance + payout + claim", () => {
     ).toBeNull()
   })
 
+  it("keeps a multi-order payout independent from its linked sale orders", () => {
+    const payout = buildVendorLedgerRowFromPayout(
+      {
+        id: "po_many",
+        net_amount: 920.58,
+        transaction_id: "bank-utr-123",
+        created_at: TODAY_ISO,
+        order_ids: ["ord_1170", "ord_1171", "ord_1168"],
+      },
+      DEFAULT_LEDGER_RATES
+    )!
+    expect(payout.category).toBe("payment")
+    expect(payout.order_id).toBe("payout:po_many")
+    expect(payout.order_display_id).toBeNull()
+    expect(payout.transaction_id).toBe("bank-utr-123")
+    expect(payout.payment).toBe(-920.58)
+  })
+
   it("two sales then one payout: withdrawn card matches payout, running ends at leftover", () => {
     const a = saleEarning({ id: "ve_a", order_id: "ord_a", order_display_id: "10" })[0]
     const b = saleEarning({

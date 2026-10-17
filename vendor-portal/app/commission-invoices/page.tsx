@@ -62,13 +62,13 @@ function shiftCalendarMonth(year: number, month: number, delta: number) {
 }
 
 /**
- * Auto invoice month = previous calendar month (IST).
- * Example: in October → September. Snapshot is finalized on the 7th;
- * before that the page still loads September (may be empty / live).
+ * Auto invoice month = current calendar billing cycle (IST).
+ * This advances at the start of every new month, including Dec → Jan, while
+ * prior months stay available through the history controls.
  */
 function getAutoInvoiceMonth(d = new Date()) {
   const { year, month } = getIstYearMonthDay(d)
-  return shiftCalendarMonth(year, month, -1)
+  return { year, month }
 }
 
 function buildYearOptions(selectedYear: number) {
@@ -325,8 +325,8 @@ const CommissionInvoicesPage = () => {
               Commission Invoice
             </Heading>
             <Text className="mt-1 max-w-2xl text-ui-fg-subtle">
-              Invoice month updates automatically after each month ends (ready on the 7th). Download
-              the PDF below — no need to set month every time.
+              Invoice month updates automatically for the current billing cycle. Download
+              the PDF below — no need to set month or year every time.
             </Text>
           </div>
           <Button variant="secondary" disabled={refreshing} onClick={() => void loadInvoice({ background: true })}>

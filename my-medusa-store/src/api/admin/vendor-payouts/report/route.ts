@@ -217,8 +217,10 @@ function overlayPayoutFieldsOnOrders(rows: SettlementRow[]) {
 
     return {
       ...row,
-      order_display_id: row.order_display_id || sharedDisplayId || null,
-      invoice_no: row.invoice_no || sharedInvoice || undefined,
+      // A payment covers a payout batch, not one order. Never inherit an
+      // order's display ID or invoice on this independent payment row.
+      order_display_id: isPayment ? null : row.order_display_id || sharedDisplayId || null,
+      invoice_no: isPayment ? undefined : row.invoice_no || sharedInvoice || undefined,
       transaction_id: txnId,
       payment_date: payDate,
       item_status:
@@ -231,8 +233,12 @@ function overlayPayoutFieldsOnOrders(rows: SettlementRow[]) {
 function mapPaymentLedgerExportRow(row: SettlementRow) {
   const rawDate = row.delivered_at || row.payment_date || null
   const date = formatIsoDate(rawDate)
-  const orderLabel = row.order_display_id ? `#${row.order_display_id}` : row.order_id
   const kind = row.category || row.type
+  const orderLabel = kind === "payment"
+    ? "Payout"
+    : row.order_display_id
+      ? `#${row.order_display_id}`
+      : row.order_id
   const isReturnOrCancel = kind === "return" || kind === "cancellation"
   const exportReturnFee = isReturnOrCancel && row.return_fee ? -Math.abs(n(row.return_fee)) : n(row.return_fee)
   const exportReverseGst = isReturnOrCancel && row.reverse_logistic_gst ? -Math.abs(n(row.reverse_logistic_gst)) : n(row.reverse_logistic_gst)

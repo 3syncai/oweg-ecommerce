@@ -46,7 +46,7 @@ function categoryLabel(row: SettlementRow) {
 function overlayPayoutFieldsOnOrders(rows: SettlementRow[]) {
   // Build lookup maps keyed by order_id:
   // - payout (transaction_id / payment_date) from payment rows
-  // - order_display_id + invoice_no from sale rows (so payment rows can inherit them)
+  // - order_display_id + invoice_no from sale rows
   const payoutInfo = new Map<string, { transaction_id: string; payment_date: string }>()
   const displayIdByOrder = new Map<string, string>()
   const invoiceByOrder = new Map<string, string>()
@@ -79,9 +79,10 @@ function overlayPayoutFieldsOnOrders(rows: SettlementRow[]) {
 
     return {
       ...row,
-      // Payment rows inherit the display ID and invoice from the matching sale row
-      order_display_id: row.order_display_id || sharedDisplayId || null,
-      invoice_no: row.invoice_no || sharedInvoice || undefined,
+      // A payout can cover several orders, so it must stay an independent
+      // payment row rather than inheriting the first order's ID/invoice.
+      order_display_id: isPayment ? null : row.order_display_id || sharedDisplayId || null,
+      invoice_no: isPayment ? undefined : row.invoice_no || sharedInvoice || undefined,
       // transaction_id and payment_date ONLY appear on payment rows
       transaction_id: isPayment ? (row.transaction_id || ref?.transaction_id || null) : null,
       payment_date: isPayment ? (row.payment_date || ref?.payment_date || null) : null,
@@ -112,8 +113,13 @@ export function mapPaymentLedgerExportRow(row: SettlementRow) {
   // Use delivered_at for sale/return rows; fall back to payment_date for payment rows
   const rawDate = row.delivered_at || row.payment_date || null
   const date = formatIsoDate(rawDate)
-  const orderLabel = row.order_display_id ? `#${row.order_display_id}` : row.order_id
   const kind = row.category || row.type
+  const orderLabel =
+    kind === "payment"
+      ? "Payout"
+      : row.order_display_id
+        ? `#${row.order_display_id}`
+        : row.order_id
   const isReturnOrCancel = kind === "return" || kind === "cancellation"
   const exportReturnFee = isReturnOrCancel && row.return_fee ? -Math.abs(n(row.return_fee)) : n(row.return_fee)
   const exportReverseGst = isReturnOrCancel && row.reverse_logistic_gst ? -Math.abs(n(row.reverse_logistic_gst)) : n(row.reverse_logistic_gst)

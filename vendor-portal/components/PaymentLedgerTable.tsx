@@ -194,10 +194,9 @@ export default function PaymentLedgerTable({
   rows: Row[]
   onUnlock: () => void
 }) {
-  const visible = rows.filter((row) => {
-    const category = row.category || row.type
-    return category !== "payment"
-  })
+  // Payouts are first-class ledger events. Keep them visible so a vendor can
+  // verify the exact bank transfer and UTR recorded by admin.
+  const visible = rows
 
   const saleLike = visible.filter((row) => {
     const c = row.category || row.type
@@ -267,6 +266,7 @@ export default function PaymentLedgerTable({
               <Group colSpan={2} rate={`${tcsHdr} / ${tdsHdr}`}>
                 Tax deduct
               </Group>
+              <Group colSpan={3}>Payment</Group>
               <Group colSpan={2}>Settlement</Group>
             </tr>
             <tr>
@@ -308,6 +308,9 @@ export default function PaymentLedgerTable({
               <TH className="text-right">Amount</TH>
               <TH className="text-right">TCS</TH>
               <TH className="text-right">TDS</TH>
+              <TH>Transaction ID</TH>
+              <TH>Payment date</TH>
+              <TH className="text-right">Payout</TH>
               <TH>Status</TH>
               <TH className="text-right">Balance</TH>
             </tr>
@@ -315,7 +318,10 @@ export default function PaymentLedgerTable({
           <tbody>
             {visible.map((row, index) => {
               const category = row.category || (row.type === "sales" ? "sale" : row.type)
-              const orderLabel = row.order_display_id || row.order_id.slice(0, 8)
+              const isPayout = category === "payment"
+              const orderLabel = isPayout
+                ? "Payout"
+                : row.order_display_id || row.order_id.slice(0, 8)
               // Use delivered_at for delivered rows; fall back to order created date if available
               const dateSource = row.delivered_at
               const dateLabel = dateSource
@@ -350,6 +356,12 @@ export default function PaymentLedgerTable({
                 statusNode = (
                   <StatusPill tone="bg-amber-50 text-amber-700 ring-1 ring-amber-500/15 dark:bg-amber-900/20 dark:text-amber-300">
                     Claim
+                  </StatusPill>
+                )
+              } else if (isPayout) {
+                statusNode = (
+                  <StatusPill tone="bg-slate-100 text-slate-700 ring-1 ring-slate-500/15 dark:bg-slate-800 dark:text-slate-200">
+                    Paid out
                   </StatusPill>
                 )
               } else if (row.status === "ON_HOLD") {
@@ -422,7 +434,7 @@ export default function PaymentLedgerTable({
                 >
                   <TD className="font-medium">
                     <div className="flex items-center gap-1.5">
-                      {category === "claim" ? (
+                      {category === "claim" || isPayout ? (
                         <span className="text-ui-fg-muted">{orderLabel}</span>
                       ) : (
                         <Link
@@ -506,6 +518,13 @@ export default function PaymentLedgerTable({
                   <Money value={row.claim_amount} tone={moneyTone} />
                   <Money value={row.tcs} tone={moneyTone} />
                   <Money value={row.tds} tone={moneyTone} />
+                  <TD muted>{row.transaction_id || "—"}</TD>
+                  <TD muted>{row.payment_date
+                    ? new Date(row.payment_date).toLocaleDateString("en-IN", {
+                        day: "numeric", month: "short", year: "numeric",
+                      })
+                    : "—"}</TD>
+                  <Money value={row.payment} tone={isPayout ? "default" : moneyTone} />
                   <TD>{statusNode}</TD>
                   <Money value={row.balance_amount} strong tone={moneyTone} />
                 </tr>
