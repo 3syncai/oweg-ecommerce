@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-10-17T07:34:17.884Z",
+  "ranAt": "2026-10-17T12:40:48.280Z",
   "scope": "isolated PostgreSQL queue + simulated idempotent receiver; production receiver contract remains unverified",
   "results": [
     {

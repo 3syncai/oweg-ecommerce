@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-10-17T07:34:16.403Z",
+  "ranAt": "2026-10-17T12:40:47.772Z",
   "scope": "isolated PostgreSQL; reservation and original under-debit regression covered by verify-payment-reliability",
   "results": [
     {

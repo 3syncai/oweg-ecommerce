@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-10-17T07:33:48.803Z",
+  "ranAt": "2026-10-17T12:40:45.829Z",
   "scope": "isolated PostgreSQL schema; no application records modified",
   "baselineEvidence": {
     "paymentInsertFailureLeftCollections": 1,

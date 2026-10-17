@@ -14,7 +14,7 @@
     "type-check": "tsc --noEmit",
     "payment:worker": "node scripts/payment-worker.cjs",
     "payment:status": "node scripts/payment-worker.cjs --status",
-    "test:payment": "node scripts/verify-payment-validation.cjs && node scripts/verify-manual-refund.cjs && node scripts/verify-payment-acid.cjs && node scripts/verify-payment-reliability.cjs && node scripts/verify-wallet-refund-acid.cjs && node scripts/verify-payment-outbound.cjs && node scripts/verify-payment-browser-regressions.cjs",
+    "test:payment": "node scripts/verify-payment-validation.cjs && node scripts/verify-manual-refund.cjs && node scripts/verify-payment-acid.cjs && node scripts/verify-payment-reliability.cjs && node scripts/verify-wallet-refund-acid.cjs && node scripts/verify-payment-outbound.cjs && node scripts/verify-payment-browser-regressions.cjs && node scripts/verify-payment-performance.cjs",
     "generate:pwa-assets": "python3 scripts/generate-pwa-assets.py",
     "test:search-normalize": "node --experimental-strip-types --test src/lib/search-query-normalize.test.ts",
     "test:search-typos-live": "node --experimental-strip-types scripts/verify-search-typos.ts"
