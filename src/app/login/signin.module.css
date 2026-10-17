@@ -1,0 +1,53 @@
+.page { background: #fafbf7; color: #203529; }
+.shell { max-width: 1160px; margin: auto; padding: 28px 28px 54px; }
+.backLink { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #667362; margin-bottom: 20px; transition: color .15s; }
+.backLink:hover { color: #315c25; }
+.backLink:focus-visible, .help a:focus-visible { outline: 2px solid #497f2f; outline-offset: 5px; border-radius: 4px; }
+.card { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; border: 1px solid #e1e7d9; border-radius: 28px; background: white; box-shadow: 0 12px 44px -32px #24421f40; }
+.story { position: relative; padding: 38px 42px 28px; background: #edf3e3; overflow: hidden; }
+.eyebrow { display: flex; align-items: center; gap: 8px; color: #5b714c; font-size: 10px; letter-spacing: .17em; font-weight: 700; text-transform: uppercase; }
+.eyebrow > span { width: 6px; height: 6px; border-radius: 50%; background: #6eb83c; }
+.story h2 { margin: 26px 0 16px; color: #25482b; font: 600 clamp(32px,3.7vw,46px)/1.14 var(--font-plus-jakarta),sans-serif; letter-spacing: -.055em; }
+.story h2 > span { color: #60963a; }
+.brandWord { display: inline-flex; align-items: baseline; white-space: nowrap; margin-inline-start: .04em; }
+.brandO { display: inline-block; width: .8em; height: .83em; margin-right: -.025em; position: relative; bottom: -.035em; background: currentColor; -webkit-mask: url('/icons/brand/oweg-o.svg') center / contain no-repeat; mask: url('/icons/brand/oweg-o.svg') center / contain no-repeat; }
+.intro { max-width: 345px; font-size: 13px; line-height: 1.8; color: #637159; }
+.illustration { height: 238px; position: relative; margin-top: 8px; }
+.orbit { position: absolute; height: 222px; width: 222px; border: 1px solid #dbe6cc; border-radius: 50%; top: 8px; left: 50%; transform: translateX(-50%); background: #e5eed7; box-shadow: 0 0 0 24px #e8f0dd; }
+.bag { position: absolute; width: 292px; height: 241px; top: 2px; left: 50%; transform: translateX(-50%) rotate(-7deg); }
+.savedTag { position: absolute; left: -5px; top: 37px; display: flex; gap: 9px; align-items: center; padding: 11px 13px; background: #ffffffed; border: 1px solid #e5ebdc; border-radius: 12px; font-size: 10px; font-weight: 600; box-shadow: 0 8px 22px -16px #2d4f29; transform: rotate(-5deg); }
+.savedTag > span { display: grid; place-items: center; height: 31px; width: 31px; border-radius: 9px; background: #eff5e8; color: #5c8d3b; }
+.savedTag small { display: block; margin-top: 3px; font-size: 8px; font-weight: 400; color: #75806b; }
+.deliveryTag { position: absolute; bottom: 17px; right: -5px; display: flex; align-items: center; gap: 8px; padding: 11px 13px; background: #fcfff4; border: 1px solid #d4e4bd; border-radius: 10px; color: #416b30; font-size: 10px; font-weight: 500; transform: rotate(4deg); }
+.sparkle { position: absolute; top: 21px; right: 31px; color: #83b75d; }
+.benefits { display: flex; flex-wrap: wrap; gap: 18px; border-top: 1px solid #d9e3cb; padding-top: 20px; margin-top: 10px; }
+.benefits > span { display: inline-flex; align-items: center; gap: 7px; color: #5e7350; font-size: 10px; }
+.formPanel { padding: 40px 48px 28px; display: flex; flex-direction: column; justify-content: center; }
+.formTop { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 34px; color: #86917d; font-size: 9px; font-weight: 600; letter-spacing: .14em; }
+.brandDot { height: 12px; width: 12px; border-radius: 50%; background: #7ac943; box-shadow: 0 0 0 5px #f1f7e9; }
+.loginForm { border: 0; padding: 0; background: transparent; border-radius: 0; box-shadow: none; backdrop-filter: none; min-width: 0; }
+.loginForm :global(h1) { font-family: var(--font-plus-jakarta),sans-serif; font-size: 30px; letter-spacing: -.05em; line-height: 1.25; margin-bottom: 10px; }
+.loginForm :global(input) { border-radius: 10px; background: #fdfefb; }
+.loginForm :global(button[type="submit"]) { border-radius: 10px; min-height: 50px; box-shadow: 0 3px 0 #5fa331; letter-spacing: -.01em; }
+.loginForm :global(button[type="submit"]:hover:not(:disabled)) { background: #87d451 !important; transform: none; box-shadow: 0 3px 0 #5fa331; }
+.loginForm :global(button:focus-visible), .loginForm :global(a:focus-visible) { outline: 2px solid #4e8033; outline-offset: 4px; }
+.help { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 5px 9px; padding-top: 25px; margin-top: 28px; border-top: 1px solid #edf0e8; font-size: 10px; color: #7d8775; }
+.help a { display: inline-flex; align-items: center; gap: 3px; color: #3d6d2d; font-weight: 600; }
+.loading { min-height: 500px; display: grid; place-items: center; background: #fafbf7; color: #496b38; font-size: 14px; }
+@media (min-width: 900px) { .card { min-height: 610px; } }
+@media (max-width: 1000px) { .story { padding: 32px 28px 24px; } .formPanel { padding: 32px; } .savedTag { left: -12px; } .deliveryTag { right: -12px; } }
+@media (max-width: 899px) {
+  .shell { max-width: 520px; padding: 22px 18px 34px; }
+  .backLink { font-size: 12px; margin-bottom: 17px; }
+  .card { grid-template-columns: minmax(0,1fr); border-radius: 22px; }
+  .formPanel { grid-row: 1; padding: 28px 25px; }
+  .formTop { margin-bottom: 26px; }
+  .loginForm :global(h1) { font-size: 28px; }
+  .story { padding: 23px 25px; border-top: 1px solid #e1e7d9; }
+  .story h2 { font-size: 25px; margin: 13px 0 0; line-height: 1.25; letter-spacing: -.04em; }
+  .story h2 br { display: none; }
+  .story h2 > span::before { content: " "; }
+  .intro, .illustration, .benefits { display: none; }
+  .help { margin-top: 25px; padding-top: 20px; }
+}
+@media (max-width: 360px) { .shell { padding-inline: 12px; } .formPanel { padding: 25px 20px; } }

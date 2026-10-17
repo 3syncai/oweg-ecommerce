@@ -1,0 +1,23 @@
+.menu { width: 300px; max-width: calc(100vw - 32px); overflow: hidden; border: 1px solid #e1e8d9; border-radius: 18px; background: #fff; box-shadow: 0 18px 50px -18px #18362345, 0 3px 10px #18362308; color: #24372a; font-family: var(--font-manrope), sans-serif; text-align: left; }
+.header { display: flex; align-items: center; gap: 12px; padding: 20px 20px 17px; background: #f2f6eb; border-bottom: 1px solid #e6ecdf; }
+.avatar { display: grid; place-items: center; flex-shrink: 0; height: 42px; width: 42px; border-radius: 14px; border: 1px solid #d9e7ca; background: #e6f0d9; color: #527c37; }
+.eyebrow { color: #6f8063; font-size: 9px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+.title { margin-top: 3px; font-size: 17px; font-weight: 700; letter-spacing: -.035em; line-height: 1.4; }
+.description { margin-top: 2px; color: #71806a; font-size: 10px; line-height: 1.6; }
+.auth { padding: 16px 16px 12px; }
+.signin { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; padding: 11px 15px; border: 1px solid #72bb3d; border-radius: 10px; background: #7ac943; color: #203b27; font-size: 13px; font-weight: 700; transition: background .15s; }
+.signin:hover { background: #8bd656; }
+.signup { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; margin-top: 5px; color: #526c43; font-size: 11px; font-weight: 500; }
+.signup:hover { text-decoration: underline; text-underline-offset: 3px; }
+.shortcuts { padding: 8px 9px 10px; }
+.sectionLabel { margin: 0 11px 6px; color: #8a9482; font-size: 9px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+.row { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 46px; border-radius: 10px; padding: 8px 11px; font-size: 12px; font-weight: 500; color: #334431; transition: background .15s, color .15s; text-align: left; }
+.row:hover { background: #f1f6e9; color: #345a28; }
+.icon { display: grid; place-items: center; width: 31px; height: 31px; flex-shrink: 0; border-radius: 9px; background: #f5f7f0; color: #64834b; }
+.arrow { margin-left: auto; flex-shrink: 0; color: #a0ac96; }
+.divider { margin: 0 20px; border: 0; border-top: 1px solid #edf0e7; }
+.signout { padding: 8px 9px; border-top: 1px solid #edf0e7; }
+.signout .row { color: #7d5147; cursor: pointer; }
+.signout .row:hover { background: #faf2ee; }
+.signout .icon { color: #916b5b; background: #f8f3ee; }
+.menu a:focus-visible, .menu button:focus-visible { outline: 2px solid #527f37; outline-offset: -2px; }

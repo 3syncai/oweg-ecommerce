@@ -3,12 +3,10 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogIn, UserPlus } from "lucide-react";
+import { ArrowRight, ChevronRight, LogIn, Package, UserPlus, UserRound } from "lucide-react";
 import { buildLoginUrl, buildSignupUrl } from "@/lib/auth-redirect";
 import { MyWishlistMenuIcon } from "@/components/ui/icons/account";
-
-const itemClassName =
-  "flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm font-medium text-[#1F2A33] transition-colors hover:bg-[#EAF8E7] hover:text-[#66C940]";
+import styles from "./AccountDropdown.module.css";
 
 export default function GuestAccountDropdown() {
   const pathname = usePathname();
@@ -16,36 +14,45 @@ export default function GuestAccountDropdown() {
   const signupHref = buildSignupUrl(pathname);
 
   return (
-    <div className="w-64 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl">
-      <div className="border-b border-gray-200 p-4">
-        <p className="mb-1 text-sm font-semibold text-[#1F2A33]">Welcome</p>
-        <p className="text-xs text-gray-600">Sign in to access your account</p>
+    <div className={styles.menu}>
+      <div className={styles.header}>
+        <span className={styles.avatar}><UserRound size={21} aria-hidden="true" /></span>
+        <div>
+          <p className={styles.eyebrow}>Your space at OWEG</p>
+          <p className={styles.title}>Welcome, good to see you.</p>
+          <p className={styles.description}>Sign in to access your account.</p>
+        </div>
       </div>
 
-      <div className="space-y-1 p-2">
-        <Link href={loginHref} className={itemClassName}>
-          <LogIn className="h-5 w-5 shrink-0" />
+      <div className={styles.auth}>
+        <Link href={loginHref} className={styles.signin}>
+          <LogIn size={17} aria-hidden="true" />
           <span>Sign in</span>
+          <ArrowRight size={16} className={styles.arrow} style={{ color: "inherit" }} aria-hidden="true" />
         </Link>
-        <Link href={signupHref} className={itemClassName}>
-          <UserPlus className="h-5 w-5 shrink-0" />
+        <Link href={signupHref} className={styles.signup}>
+          <UserPlus size={15} aria-hidden="true" />
           <span>New customer? Start here</span>
         </Link>
       </div>
 
-      <div className="border-t border-gray-200 p-2">
-        <Link href="/wishlist" className={itemClassName}>
-          <MyWishlistMenuIcon className="shrink-0" />
+      <hr className={styles.divider} />
+      <div className={styles.shortcuts}>
+        <p className={styles.sectionLabel}>Your shortcuts</p>
+        <Link href="/wishlist" className={styles.row}>
+          <span className={styles.icon}><MyWishlistMenuIcon className="shrink-0" /></span>
           <span>Your Wish List</span>
+          <ChevronRight size={14} className={styles.arrow} aria-hidden="true" />
         </Link>
-      </div>
-
-      <div className="space-y-1 border-t border-gray-200 p-2">
-        <Link href="/account" className={itemClassName}>
+        <Link href="/account" className={styles.row}>
+          <span className={styles.icon}><UserRound size={17} aria-hidden="true" /></span>
           <span>Your Account</span>
+          <ChevronRight size={14} className={styles.arrow} aria-hidden="true" />
         </Link>
-        <Link href="/orders" className={itemClassName}>
+        <Link href="/orders" className={styles.row}>
+          <span className={styles.icon}><Package size={17} aria-hidden="true" /></span>
           <span>Your Orders</span>
+          <ChevronRight size={14} className={styles.arrow} aria-hidden="true" />
         </Link>
       </div>
     </div>

@@ -406,6 +406,7 @@ export default function CustomerLoginFlow({
       : "/signup";
 
   const isModal = variant === "modal";
+  const linkColor = isModal ? BRAND : "#3d6d2d";
 
   return (
     <section
@@ -413,7 +414,7 @@ export default function CustomerLoginFlow({
         isModal ? "p-6 md:p-7" : "p-8 md:p-10"
       } ${className}`.trim()}
       style={{
-        fontFamily: 'OPTIHandelGothic-Light, "Inter", "Arial", sans-serif',
+        fontFamily: isModal ? 'OPTIHandelGothic-Light, "Inter", "Arial", sans-serif' : "inherit",
       }}
     >
       {mounted && !isOnline && (
@@ -427,14 +428,14 @@ export default function CustomerLoginFlow({
           <h1
             id="customer-login-title"
             className={`font-bold mb-1 ${isModal ? "text-2xl" : "text-3xl"}`}
-            style={{ color: BRAND }}
+            style={{ color: isModal ? BRAND : "#203b27" }}
           >
-            {step === 1 ? "Welcome Back" : "Sign In"}
+            {step === 1 ? (isModal ? "Welcome Back" : "Welcome back.") : "Sign in to OWEG"}
           </h1>
           <p className="text-slate-600 text-sm">
             {step === 1
-              ? "Enter your details to continue"
-              : "Choose how you'd like to sign in"}
+              ? "Sign in to your account with your email or mobile number."
+              : "One more step. Choose how you’d like to sign in."}
           </p>
         </div>
         {isModal && onClose ? (
@@ -524,7 +525,7 @@ export default function CustomerLoginFlow({
                 {inputType === "phone" ? (
                   <Phone className="h-5 w-5 text-green-600" />
                 ) : inputType === "email" ? (
-                  <Mail className="h-5 w-5 text-blue-600" />
+                  <Mail className="h-5 w-5 text-[#4e7e35]" />
                 ) : (
                   <Mail className="h-5 w-5 text-slate-400" />
                 )}
@@ -533,7 +534,7 @@ export default function CustomerLoginFlow({
           </div>
 
           {error && (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
               {error}
             </div>
           )}
@@ -542,7 +543,7 @@ export default function CustomerLoginFlow({
             type="submit"
             disabled={!identifier || busy || !isOnline}
             className="w-full rounded-lg px-6 py-3.5 font-semibold text-white transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 cursor-pointer"
-            style={{ backgroundColor: BRAND }}
+            style={{ backgroundColor: BRAND, color: isModal ? "white" : "#203b27" }}
           >
             {busy ? (
               <span className="flex items-center justify-center gap-2">
@@ -560,7 +561,7 @@ export default function CustomerLoginFlow({
               <Link
                 href={signupHref}
                 className="font-semibold hover:underline cursor-pointer"
-                style={{ color: BRAND }}
+                style={{ color: linkColor }}
               >
                 Create an account
               </Link>
@@ -589,7 +590,7 @@ export default function CustomerLoginFlow({
               {inputType === "phone" ? (
                 <Phone className="h-5 w-5 text-green-600 shrink-0" />
               ) : (
-                <Mail className="h-5 w-5 text-blue-600 shrink-0" />
+                <Mail className="h-5 w-5 text-[#4e7e35] shrink-0" />
               )}
               <div className="min-w-0">
                 <p className="text-xs text-slate-500">Signing in as:</p>
@@ -604,7 +605,7 @@ export default function CustomerLoginFlow({
               type="button"
               onClick={handleBack}
               className="text-sm font-medium hover:underline cursor-pointer shrink-0"
-              style={{ color: BRAND }}
+              style={{ color: linkColor }}
             >
               Edit
             </button>
@@ -618,12 +619,13 @@ export default function CustomerLoginFlow({
               <button
                 type="button"
                 onClick={() => setAuthMethod("password")}
+                aria-pressed={authMethod === "password"}
                 className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all cursor-pointer flex items-center justify-center gap-2 ${
                   authMethod === "password"
                     ? "bg-white shadow-sm"
                     : "text-slate-600 hover:text-slate-800"
                 }`}
-                style={authMethod === "password" ? { color: BRAND } : undefined}
+                style={authMethod === "password" ? { color: linkColor } : undefined}
               >
                 <Lock className="h-4 w-4" />
                 Password
@@ -631,12 +633,13 @@ export default function CustomerLoginFlow({
               <button
                 type="button"
                 onClick={() => setAuthMethod("otp")}
+                aria-pressed={authMethod === "otp"}
                 className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all cursor-pointer flex items-center justify-center gap-2 ${
                   authMethod === "otp"
                     ? "bg-white shadow-sm"
                     : "text-slate-600 hover:text-slate-800"
                 }`}
-                style={authMethod === "otp" ? { color: BRAND } : undefined}
+                style={authMethod === "otp" ? { color: linkColor } : undefined}
               >
                 <KeyRound className="h-4 w-4" />
                 OTP
@@ -656,7 +659,7 @@ export default function CustomerLoginFlow({
                 <Link
                   href={forgotHref}
                   className="text-xs font-medium hover:underline cursor-pointer"
-                  style={{ color: BRAND }}
+                  style={{ color: linkColor }}
                 >
                   Forgot password?
                 </Link>
@@ -704,7 +707,7 @@ export default function CustomerLoginFlow({
                 disabled={busy || cooldown > 0 || !isOnline}
                 onClick={handleSendOtp}
                 className="w-full rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all hover:bg-green-50 disabled:opacity-50 cursor-pointer"
-                style={{ borderColor: BRAND, color: BRAND }}
+                style={{ borderColor: BRAND, color: linkColor }}
               >
                 {busy ? (
                   <span className="flex items-center justify-center gap-2">
@@ -769,7 +772,7 @@ export default function CustomerLoginFlow({
           )}
 
           {error && (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
               {error}
             </div>
           )}
@@ -780,7 +783,7 @@ export default function CustomerLoginFlow({
               disabled={sendingResetLink || busy || !isOnline}
               onClick={handleSendPasswordResetLink}
               className="w-full rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all hover:bg-green-50 disabled:opacity-50 cursor-pointer"
-              style={{ borderColor: BRAND, color: BRAND }}
+              style={{ borderColor: BRAND, color: linkColor }}
             >
               {sendingResetLink ? (
                 <span className="flex items-center justify-center gap-2">
@@ -803,7 +806,7 @@ export default function CustomerLoginFlow({
                 (authMethod === "otp" && !otp)
               }
               className="w-full rounded-lg px-6 py-3.5 font-semibold text-white transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 cursor-pointer"
-              style={{ backgroundColor: BRAND }}
+              style={{ backgroundColor: BRAND, color: isModal ? "white" : "#203b27" }}
             >
               {busy ? (
                 <span className="flex items-center justify-center gap-2">
