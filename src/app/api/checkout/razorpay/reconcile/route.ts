@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { checkoutOrderAccessError } from "@/lib/checkout-order-access";
-import { getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
+import { loadAuthorizedCheckoutOrder } from "@/lib/checkout-order-access";
 import { verifyCheckoutCapture } from "@/lib/verify-checkout-capture";
 import { CaptureVerificationError } from "@/lib/payment-capture-validation";
 import {
@@ -13,30 +12,26 @@ type ReconcileBody = {
   medusaOrderId?: string;
 };
 
-function extractOrder(data: unknown): { id?: string; metadata?: Record<string, unknown> } | null {
-  if (!data || typeof data !== "object") return null;
-  const root = data as Record<string, unknown>;
-  if (root.order && typeof root.order === "object") return root.order as { id?: string; metadata?: Record<string, unknown> };
-  return root as { id?: string; metadata?: Record<string, unknown> };
-}
-
 export async function POST(req: Request) {
+  const timings: string[] = [];
+  let phaseStarted = performance.now();
+  const markPhase = (name: string) => {
+    const now = performance.now();
+    timings.push(`${name};dur=${(now - phaseStarted).toFixed(1)}`);
+    phaseStarted = now;
+  };
   try {
     const body = (await req.json().catch(() => ({}))) as ReconcileBody;
     const medusaOrderId = body.medusaOrderId?.trim();
     if (!medusaOrderId) {
       return NextResponse.json({ error: "medusaOrderId required" }, { status: 400 });
     }
-    const accessError = await checkoutOrderAccessError(req, medusaOrderId);
-    if (accessError) return accessError;
-
-    const orderRes = await getOrderById(medusaOrderId);
-    if (!orderRes.ok || !orderRes.data) {
-      return NextResponse.json({ error: "order not found" }, { status: 404 });
-    }
-
-    const order = extractOrder(orderRes.data);
-    const metadata = (order?.metadata || {}) as Record<string, unknown>;
+    const access = await loadAuthorizedCheckoutOrder(req, medusaOrderId);
+    markPhase("ownership");
+    if (access.error) return access.error;
+    const loaded = access.loaded;
+    if (!loaded) return NextResponse.json({ error: "order_not_found" }, { status: 404 });
+    const metadata = loaded.order.metadata || {};
     const razorpayPaymentId =
       typeof metadata.razorpay_payment_id === "string" ? metadata.razorpay_payment_id : "";
     const razorpayOrderId =
@@ -51,7 +46,8 @@ export async function POST(req: Request) {
     if (!razorpayOrderId) return NextResponse.json({ error: "no_razorpay_order_id" }, { status: 409 });
     const { amountMinor, currencyCode } = await verifyCheckoutCapture({
       medusaOrderId, paymentId: razorpayPaymentId, gatewayOrderId: razorpayOrderId,
-    });
+    }, loaded);
+    markPhase("gateway");
 
     const result = await finalizeRazorpayOrderPayment({
       orderId: medusaOrderId,
@@ -60,15 +56,11 @@ export async function POST(req: Request) {
       razorpayPaymentId,
       razorpayOrderId,
       razorpaySignature,
+      reconciledAt: new Date().toISOString(),
     });
+    markPhase("accounting");
 
-    await updateOrderMetadata(medusaOrderId, {
-      payment_method: "razorpay",
-      razorpay_capture_status: result.ok ? "captured" : "failed",
-      razorpay_reconciled_at: new Date().toISOString(),
-    });
-
-    return NextResponse.json(result, { status: result.ok ? 200 : 503 });
+    return NextResponse.json(result, { status: result.ok ? 200 : 503, headers: { "Server-Timing": timings.join(", ") } });
   } catch (err) {
     if (err instanceof CaptureVerificationError) return NextResponse.json({ error: err.code }, { status: err.status });
     console.error("razorpay reconcile failed", err);

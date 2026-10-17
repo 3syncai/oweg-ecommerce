@@ -1,0 +1,50 @@
+{
+  "ranAt": "2026-10-17T12:40:49.011Z",
+  "scope": "request-scoped call budget and safety; isolated adapters; deployed latency requires redeployment",
+  "results": [
+    {
+      "name": "anonymous reconciliation performs no order, gateway or accounting work",
+      "result": "PASS"
+    },
+    {
+      "name": "foreign owner is rejected before gateway verification or accounting",
+      "result": "PASS"
+    },
+    {
+      "name": "authorized reconciliation loads order once and still verifies gateway capture",
+      "result": "PASS"
+    },
+    {
+      "name": "unrelated preloaded order is rejected without gateway calls",
+      "result": "PASS"
+    },
+    {
+      "name": "authorized-only payment cannot enter accounting through optimized path",
+      "result": "PASS"
+    },
+    {
+      "name": "preloaded order does not bypass amount and currency tampering checks",
+      "result": "PASS"
+    },
+    {
+      "name": "parallel requests each authenticate and load once without sharing customer data",
+      "result": "PASS"
+    },
+    {
+      "name": "trusted metadata avoids redundant order query and reuses bounded capture connection pool",
+      "result": "PASS"
+    },
+    {
+      "name": "missing preloaded amount falls back to authoritative order summary",
+      "result": "PASS"
+    },
+    {
+      "name": "legacy amount callers still read authoritative metadata",
+      "result": "PASS"
+    },
+    {
+      "name": "atomic recording failure returns 503 and does not issue a separate metadata write",
+      "result": "PASS"
+    }
+  ]
+}

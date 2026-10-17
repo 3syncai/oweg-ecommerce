@@ -8,6 +8,7 @@ export type CaptureInput = {
   razorpayPaymentId: string;
   razorpayOrderId?: string;
   razorpaySignature?: string;
+  reconciledAt?: string;
 };
 
 /** A conditional row update re-checks paid state after a concurrent capture releases its lock. */
@@ -150,7 +151,8 @@ export async function recordCaptureAtomically(pool: Pool, input: CaptureInput) {
       checkout_tombstone: false, checkout_failed_at: null,
       razorpay_payment_id: input.razorpayPaymentId, razorpay_order_id: input.razorpayOrderId,
       razorpay_signature: input.razorpaySignature, razorpay_amount_minor: input.amountMinor,
-      medusa_total_minor: input.amountMinor, razorpay_capture_status: "captured", razorpay_admin_reconcile_required: false
+      medusa_total_minor: input.amountMinor, razorpay_capture_status: "captured", razorpay_admin_reconcile_required: false,
+      ...(input.reconciledAt ? { razorpay_reconciled_at: input.reconciledAt } : {})
     })]);
     // Historic captures may already have dispatched commissions before the outbox existed.
     if(!existingPayment || metadata.payment_reliability_version===1) {

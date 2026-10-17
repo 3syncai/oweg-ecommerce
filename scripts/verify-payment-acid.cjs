@@ -73,7 +73,8 @@ async function main() {
   }
   const { recordCaptureAtomically, stampCheckoutFailure } = load('src/lib/payment-capture-transaction.ts');
   await test('all payment records, accounting and totals commit together', async () => {
-    await fixture('success'); await recordCaptureAtomically(pool, input('success'));
+    await fixture('success'); await recordCaptureAtomically(pool, { ...input('success'), reconciledAt: '2026-10-17T12:00:00.000Z' });
+    assert.equal((await pool.query('SELECT metadata FROM "order" WHERE id=$1', ['success'])).rows[0].metadata.razorpay_reconciled_at, '2026-10-17T12:00:00.000Z');
     assert.match((await pool.query('SELECT id FROM payment')).rows[0].id,/^pay_/);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM capture')).rows[0].n,1);
     assert.equal(await count('payment', 'success'), 1); assert.equal(await count('order_transaction', 'success'), 1);
@@ -83,11 +84,12 @@ async function main() {
     await test('rollback after injected ' + table + ' failure', async () => {
       const id = 'rollback_' + table; await fixture(id);
       await pool.query(`CREATE FUNCTION fail_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected failure'; END $$; CREATE TRIGGER fail_write BEFORE ${table === 'order_summary' ? 'UPDATE' : 'INSERT'} ON ${table} FOR EACH ROW EXECUTE FUNCTION fail_write();`);
-      try { await assert.rejects(() => recordCaptureAtomically(pool, input(id))); }
+      try { await assert.rejects(() => recordCaptureAtomically(pool, { ...input(id), reconciledAt: '2026-10-17T12:00:00.000Z' })); }
       finally { await pool.query(`DROP TRIGGER fail_write ON ${table}; DROP FUNCTION fail_write();`); }
       assert.equal(await count('order_payment_collection', id), 0); assert.equal(await count('order_transaction', id), 0);
       const state = (await pool.query('SELECT o.metadata,s.totals FROM "order" o JOIN order_summary s ON s.order_id=o.id WHERE o.id=$1', [id])).rows[0];
       assert.equal(state.metadata.razorpay_payment_status, undefined); assert.equal(state.totals.paid_total, 0);
+      assert.equal(state.metadata.razorpay_reconciled_at, undefined);
     });
   }
   await test('12 concurrent callbacks create exactly one capture and accounting entry', async () => {

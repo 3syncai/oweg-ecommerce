@@ -17,6 +17,12 @@ function createPaymentPool(): Pool {
     });
 }
 
+let sharedCapturePool: Pool | null = null;
+function capturePool(): Pool {
+    sharedCapturePool ??= createPaymentPool();
+    return sharedCapturePool;
+}
+
 async function withOrderRepairLock(orderId:string, task:(client:PoolClient)=>Promise<{success:boolean;error?:string}>) {
  const pool=createPaymentPool(),client=await pool.connect();
  try {await client.query("BEGIN");await client.query("SET LOCAL lock_timeout='10s'");
@@ -292,13 +298,14 @@ export type FinalizeRazorpayPaymentInput = {
     razorpayPaymentId: string;
     razorpayOrderId?: string;
     razorpaySignature?: string;
+    reconciledAt?: string;
 };
 
 /**
  * Record Razorpay capture in Medusa payment tables + order_transaction + admin payment status.
  */
 export async function finalizeRazorpayOrderPayment(input: FinalizeRazorpayPaymentInput) {
-    const pool = createPaymentPool();
+    const pool = capturePool();
     try {
         return await recordCaptureAtomically(pool, input);
     } catch (error) {
@@ -306,39 +313,31 @@ export async function finalizeRazorpayOrderPayment(input: FinalizeRazorpayPaymen
           await enqueuePaymentWork(pool,"capture_repair",input.orderId,{payment_id:input.razorpayPaymentId,gateway_order_id:input.razorpayOrderId||null}).catch(()=>undefined);
         return { ok: false, paymentCreated: false, transactionCreated: false, skipped: false,
             error: error instanceof Error ? error.message : "capture_recording_failed" };
-    } finally {
-        await pool.end();
     }
 }
 
-export async function resolveOrderPayableAmountMinor(orderId: string): Promise<number | null> {
+export async function resolveOrderPayableAmountMinor(orderId: string, loadedMetadata?: Record<string, unknown>): Promise<number | null> {
     if (!process.env.DATABASE_URL) return null;
 
-    const pool = createPaymentPool();
+    const pool = capturePool();
 
-    try {
-        const orderRes = await pool.query(`SELECT metadata FROM "order" WHERE id = $1`, [orderId]);
-        const metadata = (orderRes.rows[0]?.metadata || {}) as Record<string, unknown>;
+    const metadata = loadedMetadata ?? ((await pool.query(`SELECT metadata FROM "order" WHERE id = $1`, [orderId])).rows[0]?.metadata || {}) as Record<string, unknown>;
 
-        if (typeof metadata.razorpay_amount_minor === "number" && metadata.razorpay_amount_minor > 0) {
-            return Math.round(metadata.razorpay_amount_minor);
-        }
-        if (typeof metadata.medusa_total_minor === "number" && metadata.medusa_total_minor > 0) {
-            return Math.round(metadata.medusa_total_minor);
-        }
-
-        const summaryRes = await pool.query(
-            `SELECT totals FROM order_summary WHERE order_id = $1 LIMIT 1`,
-            [orderId]
-        );
-        const totals = (summaryRes.rows[0]?.totals || {}) as Record<string, unknown>;
-        const orderTotal = Number(totals.current_order_total ?? totals.original_order_total ?? 0);
-        if (orderTotal > 0) {
-            return Math.round(orderTotal * 100);
-        }
-    } finally {
-        await pool.end();
+    if (typeof metadata.razorpay_amount_minor === "number" && metadata.razorpay_amount_minor > 0) {
+        return Math.round(metadata.razorpay_amount_minor);
+    }
+    if (typeof metadata.medusa_total_minor === "number" && metadata.medusa_total_minor > 0) {
+        return Math.round(metadata.medusa_total_minor);
     }
 
+    const summaryRes = await pool.query(
+        `SELECT totals FROM order_summary WHERE order_id = $1 LIMIT 1`,
+        [orderId]
+    );
+    const totals = (summaryRes.rows[0]?.totals || {}) as Record<string, unknown>;
+    const orderTotal = Number(totals.current_order_total ?? totals.original_order_total ?? 0);
+    if (orderTotal > 0) {
+        return Math.round(orderTotal * 100);
+    }
     return null;
 }
