@@ -258,7 +258,12 @@ const OrderCancellationSummaryWidget = () => {
       })
       const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
       if (!res.ok) throw new Error(parseError(data, "Could not cancel order"))
-      toast.success("Order cancelled. Customer reason emailed.")
+      if ((data.vendor_charges as { status?: string } | undefined)?.status === "pending")
+        toast.error("Order cancelled. Vendor charges are pending reconciliation.")
+      else if ((data.vendor_charges as { status?: string } | undefined)?.status === "none")
+        toast.success("Order cancelled. Customer reason emailed.")
+      else
+        toast.success("Order cancelled. Customer reason emailed; vendor charges recorded.")
       await load()
     } catch (error: any) {
       toast.error(error?.message || "Could not cancel order")

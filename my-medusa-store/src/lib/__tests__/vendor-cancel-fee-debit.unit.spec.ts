@@ -1,11 +1,65 @@
 import { calculateVendorLedgerSettlement } from "../vendor-ledger-settlement"
-import { reverseVendorEarningsForOrder } from "../vendor-earnings"
+import { chargeVendorRelocationCancellation, reverseVendorEarningsForOrder } from "../vendor-earnings"
 
 /**
  * M4: cancel charge must be a CREDITED debit (hits payable), not a stamp on REVERSED net=0.
  * Unbooked customer cancel is ₹0. Booked cancel charges shipping + cancel fee.
  */
 describe("cancellation fee CREDITED debit", () => {
+  it("charges the outgoing vendor once for reassignment without a gateway fee", async () => {
+    const inserts: unknown[][] = []
+    const pool = { query: jest.fn(async (sql: string, params: unknown[] = []) => {
+      if (sql.includes("INSERT INTO vendor_earnings_log")) {
+        inserts.push(params)
+        return { rowCount: inserts.length === 1 ? 1 : 0, rows: [] }
+      }
+      return { rowCount: 0, rows: [] }
+    }) } as any
+    const rates = { commission_rate: 2, platform_fee_rate: 5, cancellation_charge: 20,
+      partner_rate: 0, service_gst_rate: 18, tcs_rate: 0, tds_rate: 0,
+      snapshotted_at: "2026-10-18T00:00:00.000Z" }
+    await chargeVendorRelocationCancellation("order_move", "vendor_a", pool, {
+      orderMetadata: { payment_method: "razorpay" }, frozenRates: rates,
+    })
+    await chargeVendorRelocationCancellation("order_move", "vendor_a", pool, {
+      orderMetadata: { payment_method: "razorpay" }, frozenRates: rates,
+    })
+    expect(inserts).toHaveLength(2)
+    expect(inserts[0][0]).toBe("cancel-fee:order_move")
+    expect(inserts[0][1]).toBe("vendor_a")
+    expect(inserts[0][3]).toBe(-23.6)
+    expect(inserts[0][4]).toBe(0)
+  })
+
+  it("charges only the current vendor for full prepaid cancellation", async () => {
+    const inserts: unknown[][] = []
+    const pool = { query: jest.fn(async (sql: string, params: unknown[] = []) => {
+      if (sql.includes("SELECT DISTINCT ON (oli.id)")) return { rowCount: 2, rows: [
+        { vendor_id: "vendor_a", order_display_id: "1181", line_total: 496, product_gst_rate: "18" },
+        { vendor_id: "vendor_b", order_display_id: "1181", line_total: 496, product_gst_rate: "18" },
+      ] }
+      if (sql.includes("SELECT metadata") && sql.includes('"order"')) return { rowCount: 1, rows: [{ metadata: {
+        payment_method: "razorpay", vendor_order_workflows: { vendor_b: { settlement_rates: {
+          commission_rate: 2, platform_fee_rate: 5, cancellation_charge: 20,
+          partner_rate: 0, partner_linked: false, service_gst_rate: 18,
+          tcs_rate: 0, tds_rate: 0, snapshotted_at: "2026-10-18T00:00:00.000Z",
+        } } },
+      } }] }
+      if (sql.includes("INSERT INTO vendor_earnings_log")) {
+        inserts.push(params)
+        return { rowCount: 1, rows: [{ id: "fee_b" }] }
+      }
+      return { rowCount: 0, rows: [] }
+    }) } as any
+    await reverseVendorEarningsForOrder("order_cancel", pool, "admin-cancelled", {
+      vendorIds: ["vendor_b"], vendorScoped: true, applyCancellationCharge: true,
+    })
+    expect(inserts).toHaveLength(1)
+    expect(inserts[0][1]).toBe("vendor_b")
+    expect(inserts[0][3]).toBe(-33.52)
+    expect(inserts[0][4]).toBe(420.34)
+  })
+
   it("charges nothing when customer cancels before packet is booked", async () => {
     const calls: { sql: string; params: unknown[] }[] = []
     const pool = {

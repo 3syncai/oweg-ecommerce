@@ -47,6 +47,7 @@ export type MedusaProduct = {
 // UI-friendly product type
 export type UIProduct = {
   id: string | number;
+  catalog_product_id?: string;
   name: string;
   image: string;
   price: number;

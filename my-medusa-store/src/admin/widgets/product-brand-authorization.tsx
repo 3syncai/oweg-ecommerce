@@ -1,5 +1,6 @@
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
-import { Container, Heading, Badge, Button, toast } from "@medusajs/ui"
+import { Container, Heading, StatusBadge, Button, toast } from "@medusajs/ui"
+import { Check, DocumentText, LockClosedSolid, XMark } from "@medusajs/icons"
 import { useEffect, useState } from "react"
 
 type BrandAuthorization = {
@@ -138,7 +139,7 @@ const ProductBrandAuthorizationWidget = ({ data }: { data: { id: string } }) => 
             <Container className="p-4">
                 <div className="flex items-center justify-between mb-3">
                     <Heading level="h2">Brand Authorization</Heading>
-                    <Badge color="orange">Not Found</Badge>
+                    <StatusBadge color="orange">Not Found</StatusBadge>
                 </div>
                 <p className="text-sm text-gray-600">
                     {authorization?.message || "No brand authorization on file"}
@@ -161,32 +162,39 @@ const ProductBrandAuthorizationWidget = ({ data }: { data: { id: string } }) => 
         minute: '2-digit'
     })
 
+    const statusBadgeColor = auth.verified
+        ? "green"
+        : auth.metadata?.review_status === "rejected"
+            ? "red"
+            : "orange"
+    const statusText = auth.verified
+        ? "Approved"
+        : auth.metadata?.review_status === "rejected"
+            ? "Rejected"
+            : "Pending Review"
+
     return (
         <Container className="p-4">
             <div className="flex items-center justify-between mb-3">
                 <Heading level="h2">Brand Authorization</Heading>
-                <Badge color={auth.verified ? "green" : auth.metadata?.review_status === "rejected" ? "red" : "orange"}>
-                    {auth.verified
-                        ? "✓ Approved"
-                        : auth.metadata?.review_status === "rejected"
-                            ? "Rejected"
-                            : "Pending Review"}
-                </Badge>
+                <StatusBadge color={statusBadgeColor}>
+                    {statusText}
+                </StatusBadge>
             </div>
 
-            <div className="space-y-2 mb-4">
-                <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Brand:</span>
-                    <span className="font-medium">{auth.brand_name}</span>
+            <div className="space-y-2.5 mb-4">
+                <div className="flex justify-between text-sm items-center">
+                    <span className="text-ui-fg-subtle">Brand:</span>
+                    <span className="font-medium text-ui-fg-base">{auth.brand_name}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Uploaded:</span>
-                    <span className="font-medium">{uploadDate}</span>
+                <div className="flex justify-between text-sm items-center">
+                    <span className="text-ui-fg-subtle">Uploaded:</span>
+                    <span className="font-medium text-ui-fg-base">{uploadDate}</span>
                 </div>
                 {auth.verified && auth.verified_at && (
-                    <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Verified:</span>
-                        <span className="font-medium">
+                    <div className="flex justify-between text-sm items-center">
+                        <span className="text-ui-fg-subtle">Verified:</span>
+                        <span className="font-medium text-ui-fg-base">
                             {new Date(auth.verified_at).toLocaleDateString('en-US', {
                                 year: 'numeric',
                                 month: 'short',
@@ -196,15 +204,15 @@ const ProductBrandAuthorizationWidget = ({ data }: { data: { id: string } }) => 
                     </div>
                 )}
                 {auth.metadata?.review_status === "rejected" && auth.metadata?.rejection_reason && (
-                    <div className="text-sm">
-                        <span className="text-gray-600">Rejection reason: </span>
-                        <span className="font-medium">{auth.metadata.rejection_reason}</span>
+                    <div className="text-sm bg-rose-500/10 p-2 rounded border border-rose-500/20">
+                        <span className="text-rose-700 font-medium">Rejection reason: </span>
+                        <span className="text-rose-600">{auth.metadata.rejection_reason}</span>
                     </div>
                 )}
                 {auth.metadata?.original_filename && (
-                    <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">File:</span>
-                        <span className="font-medium truncate ml-2" title={auth.metadata.original_filename}>
+                    <div className="flex justify-between text-sm items-center gap-2">
+                        <span className="text-ui-fg-subtle">File:</span>
+                        <span className="font-mono text-xs text-ui-fg-subtle truncate max-w-[180px] bg-ui-bg-subtle px-1.5 py-0.5 rounded border border-ui-border-base" title={auth.metadata.original_filename}>
                             {auth.metadata.original_filename}
                         </span>
                     </div>
@@ -214,24 +222,28 @@ const ProductBrandAuthorizationWidget = ({ data }: { data: { id: string } }) => 
             <Button
                 variant="secondary"
                 onClick={handleViewDocument}
-                className="w-full mb-2"
+                className="w-full mb-2.5 justify-center"
             >
-                📄 View Authorization Document
+                <DocumentText className="w-4 h-4 mr-1.5 text-ui-fg-subtle" />
+                View Authorization Document
             </Button>
 
             {!auth.verified && auth.metadata?.review_status !== "rejected" && (
                 <div className="grid grid-cols-2 gap-2">
-                    <Button variant="primary" onClick={handleApprove}>
-                        ✓ Approve
+                    <Button variant="primary" onClick={handleApprove} className="justify-center">
+                        <Check className="w-3.5 h-3.5 mr-1" />
+                        Approve
                     </Button>
-                    <Button variant="danger" onClick={handleReject}>
+                    <Button variant="danger" onClick={handleReject} className="justify-center">
+                        <XMark className="w-3.5 h-3.5 mr-1" />
                         Reject
                     </Button>
                 </div>
             )}
 
-            <p className="text-xs text-gray-500 mt-2 text-center">
-                Secure link expires in 1 hour
+            <p className="text-xs text-ui-fg-muted mt-2.5 text-center flex items-center justify-center gap-1">
+                <LockClosedSolid className="w-3 h-3 text-ui-fg-muted" />
+                <span>Secure link expires in 1 hour</span>
             </p>
         </Container>
     )

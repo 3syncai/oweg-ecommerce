@@ -1,10 +1,13 @@
 import {
   fetchProductsByCategoryId,
+  fetchCatalogCategoryProducts,
+  applySpecialPricesToProduct,
   isMedusaProductInStock,
   toUiProduct,
   type MedusaProduct,
 } from "@/lib/medusa";
 import { getPriceListPrices } from "@/lib/price-lists";
+import { groupCatalogProductCards } from "@/lib/catalog-product-group";
 import {
   MEDUSA_LIST_MAX_LIMIT,
   overfetchLimit,
@@ -33,24 +36,8 @@ function applyPriceList(
   products: MedusaProduct[],
   priceListPrices: Map<string, number>
 ) {
-  return products.map((product: MedusaProduct) => {
-    const variantId = product.variants?.[0]?.id;
-    if (variantId && priceListPrices.has(variantId) && product.variants?.[0]) {
-      const discountedPrice = priceListPrices.get(variantId)!;
-      const originalPrice =
-        product.price?.original_price ||
-        product.variants[0].prices?.[0]?.amount ||
-        discountedPrice;
-      return toUiProduct({
-        ...product,
-        price: {
-          calculated_price: discountedPrice,
-          original_price: originalPrice,
-        },
-      });
-    }
-    return toUiProduct(product);
-  });
+  return products.map((product: MedusaProduct) =>
+    toUiProduct(applySpecialPricesToProduct(product, priceListPrices)));
 }
 
 function applyClientFilters(
@@ -95,26 +82,23 @@ export async function buildCategoryProductsPage(options: {
   // When price/deal filters are active, fetch a stable window from offset 0,
   // filter, then slice — avoids duplicate/skip across pages.
   if (hasClientFilters) {
-    const listResult = await fetchProductsByCategoryId(
-      options.categoryId,
-      MEDUSA_LIST_MAX_LIMIT,
-      {
-        includeSubcategories: options.includeSubcategories,
-        offset: 0,
-      }
-    );
+    const listResult = await fetchCatalogCategoryProducts(options.categoryId, {
+      includeSubcategories: options.includeSubcategories,
+      offset: 0,
+      fallbackLimit: MEDUSA_LIST_MAX_LIMIT,
+    });
     const inStockProducts = (listResult.products || []).filter(isMedusaProductInStock);
     const filtered = applyClientFilters(
-      applyPriceList(inStockProducts, priceListPrices),
+      groupCatalogProductCards(applyPriceList(inStockProducts, priceListPrices)),
       options
     );
     const pageProducts = filtered.slice(offset, offset + limit);
     return {
       products: pageProducts,
-      count: filtered.length,
+      count: listResult.complete ? filtered.length : listResult.count,
       limit,
       offset,
-      hasMore: offset + limit < filtered.length,
+      hasMore: listResult.complete ? offset + limit < filtered.length : offset + limit < listResult.count,
       appliedPriceMin: options.priceMin,
       appliedPriceMax: options.priceMax,
       appliedDealsOnly: Boolean(options.dealsOnly),
@@ -122,18 +106,32 @@ export async function buildCategoryProductsPage(options: {
   }
 
   const fetchLimit = overfetchLimit(limit, MEDUSA_LIST_MAX_LIMIT);
-  const listResult = await fetchProductsByCategoryId(options.categoryId, fetchLimit, {
+  const listResult = await fetchCatalogCategoryProducts(options.categoryId, {
     includeSubcategories: options.includeSubcategories,
     offset,
+    fallbackLimit: fetchLimit,
   });
 
   const products = listResult.products;
   const medusaCount = listResult.count;
   const inStockProducts = products.filter(isMedusaProductInStock);
   const ui = applyClientFilters(
-    applyPriceList(inStockProducts, priceListPrices),
+    groupCatalogProductCards(applyPriceList(inStockProducts, priceListPrices)),
     options
   );
+
+  if (listResult.complete) {
+    return {
+      products: ui.slice(offset, offset + limit),
+      count: ui.length,
+      limit,
+      offset,
+      hasMore: offset + limit < ui.length,
+      appliedPriceMin: options.priceMin,
+      appliedPriceMax: options.priceMax,
+      appliedDealsOnly: Boolean(options.dealsOnly),
+    };
+  }
 
   const page = sliceFilteredPage({
     filtered: ui,

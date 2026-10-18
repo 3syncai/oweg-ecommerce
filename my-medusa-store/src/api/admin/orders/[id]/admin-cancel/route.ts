@@ -4,6 +4,8 @@ import { Modules } from "@medusajs/framework/utils"
 import ShiprocketService from "../../../../../services/shiprocket"
 import { getSharedDbPool } from "../../../../../lib/db-pool"
 import { reverseVendorEarningsForOrder } from "../../../../../lib/vendor-earnings"
+import { listCurrentOrderVendorIds } from "../../../../../lib/vendor-cancellation-scope"
+import { withVendorOrderAssignmentLock } from "../../../../../lib/vendor-order-assignment-lock"
 import { VENDOR_MODULE } from "../../../../../modules/vendor"
 import VendorModuleService from "../../../../../modules/vendor/service"
 import {
@@ -112,6 +114,17 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const orderId = req.params?.id as string
   if (!orderId) return res.status(400).json({ message: "Order id is required" })
 
+  try {
+    return await withVendorOrderAssignmentLock(orderId, () => performAdminCancellation(req, res))
+  } catch (error: any) {
+    console.error("[admin-cancel] assignment lock failed:", error)
+    return res.status(500).json({ message: error?.message || "Could not cancel order" })
+  }
+}
+
+async function performAdminCancellation(req: MedusaRequest, res: MedusaResponse) {
+  const orderId = req.params?.id as string
+
   const body = (req.body || {}) as {
     customer_reason?: unknown
     vendor_message?: unknown
@@ -149,10 +162,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     })
   }
 
+  const currentVendorIds = await listCurrentOrderVendorIds(orderId, getSharedDbPool())
+
   const metadata = applyAdminCancellationMetadata(
     { ...((order.metadata || {}) as Record<string, unknown>) },
     { customerReason, vendorMessage, adminId, forceAdminSource: true }
   )
+  metadata.admin_cancel_vendor_ids = currentVendorIds
+  metadata.admin_cancel_charge_status = currentVendorIds.length ? "pending" : "none"
 
   const shiprocketOrderId = metadata.shiprocket_order_id
   if (shiprocketOrderId) {
@@ -213,12 +230,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     console.warn("[admin-cancel] post-cancel metadata refresh skipped:", error)
   }
 
-  try {
-    await reverseVendorEarningsForOrder(order.id, getSharedDbPool(), "admin-cancelled", {
-      applyCancellationCharge: true,
-    })
-  } catch (error) {
-    console.warn("[admin-cancel] earnings reverse skipped:", error)
+  let chargeStatus = String(metadata.admin_cancel_charge_status)
+  if (currentVendorIds.length) {
+    try {
+      await reverseVendorEarningsForOrder(order.id, getSharedDbPool(), "admin-cancelled", {
+        vendorIds: currentVendorIds, vendorScoped: true, applyCancellationCharge: true,
+      })
+      chargeStatus = "recorded"
+      metadata.admin_cancel_charge_status = chargeStatus
+      await orderModuleService.updateOrders(order.id, { metadata })
+    } catch (error) {
+      console.warn("[admin-cancel] vendor charges pending reconciliation:", error)
+    }
   }
 
   void notifyStorefrontCancel(order.id)
@@ -242,6 +265,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     display_id: orderAny.display_id,
     status: updated.status,
     cancellation: readCancellationInfo(updated as any),
+    vendor_charges: { status: chargeStatus, vendor_ids: currentVendorIds },
     mail: mailResults,
   })
 }

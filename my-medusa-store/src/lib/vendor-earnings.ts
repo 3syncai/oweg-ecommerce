@@ -21,6 +21,7 @@ import {
   getOrFreezeOrderSettlementRates,
   readOrderSettlementRates,
 } from "./vendor-settlement-snapshot";
+import type { VendorSettlementRatesSnapshot } from "./vendor-order-workflow";
 import { getVendorWorkflow } from "./vendor-order-workflow";
 import { resolveHoldDaysForProduct } from "./vendor-return-policy";
 
@@ -1237,6 +1238,10 @@ async function insertCancelFeeDebitsForOrder(
     orderMetadata?: Record<string, unknown> | null;
     /** Admin cancellation applies the configured charge even before booking. */
     forceCancellationCharge?: boolean;
+    /** A vendor transfer keeps the customer payment open, so no gateway fee applies. */
+    chargePaymentGateway?: boolean;
+    chargeLogistics?: boolean;
+    frozenRates?: VendorSettlementRatesSnapshot;
   }
 ): Promise<number> {
   await ensureVendorEarningsTaxColumns(pool);
@@ -1262,9 +1267,9 @@ async function insertCancelFeeDebitsForOrder(
 
   // Payment gateway deductions use the vendor's product taxable value, never
   // the cancellation fee or shipping amount.
-  const earningsByVendor = new Map(
-    (await fetchVendorOrderEarnings(orderId, pool)).map((row) => [row.vendor_id, row])
-  );
+  const earningsByVendor = options?.chargePaymentGateway === false
+    ? new Map<string, VendorOrderEarning>()
+    : new Map((await fetchVendorOrderEarnings(orderId, pool)).map((row) => [row.vendor_id, row]));
 
   if (known.size === 0) return 0;
 
@@ -1298,7 +1303,7 @@ async function insertCancelFeeDebitsForOrder(
       continue;
     }
 
-    const snap = await getOrFreezeOrderSettlementRates({
+    const snap = options?.frozenRates || await getOrFreezeOrderSettlementRates({
       orderId,
       vendorId,
       pool,
@@ -1314,7 +1319,7 @@ async function insertCancelFeeDebitsForOrder(
     const saleAlreadyHasLogistics = options?.knownVendors?.some(
       (row) => row.vendor_id === vendorId
     );
-    const logistic = saleAlreadyHasLogistics
+    const logistic = options?.chargeLogistics === false || saleAlreadyHasLogistics
       ? 0
       : resolveVendorLogisticFee(orderMetadata, vendorId);
     if (fee <= 0 && logistic <= 0 && paymentGatewayBase <= 0) continue;
@@ -1325,7 +1330,7 @@ async function insertCancelFeeDebitsForOrder(
       logistic_fee: logistic,
       cancellation_fee: fee,
       payment_gateway_base: paymentGatewayBase,
-      payment_method: String(orderMetadata?.payment_method || ""),
+      payment_method: options?.chargePaymentGateway === false ? "" : String(orderMetadata?.payment_method || ""),
       rates: {
         platform_rate: snap.platform_fee_rate,
         commission_rate: snap.commission_rate,
@@ -1424,6 +1429,27 @@ async function insertCancelFeeDebitsForOrder(
   }
 
   return insertedCount;
+}
+
+/** One debit for the vendor whose item an admin moved to another seller. */
+export async function chargeVendorRelocationCancellation(
+  orderId: string,
+  vendorId: string,
+  pool: Pool,
+  options?: {
+    orderMetadata?: Record<string, unknown> | null;
+    frozenRates?: VendorSettlementRatesSnapshot;
+  }
+): Promise<number> {
+  if (!orderId || !vendorId) return 0;
+  return insertCancelFeeDebitsForOrder(orderId, pool, [vendorId], {
+    knownVendors: [{ vendor_id: vendorId }],
+    orderMetadata: options?.orderMetadata,
+    frozenRates: options?.frozenRates,
+    forceCancellationCharge: true,
+    chargePaymentGateway: false,
+    chargeLogistics: false,
+  });
 }
 
 /**
@@ -2206,15 +2232,9 @@ export async function getVendorPayableSnapshot(
     // Debit rows (cancel fee / PAID clawback) reduce payable net.
     if (isCancelFee || isClawback) {
       if (rowNetRaw === 0) continue;
-      // The Payments running balance treats a cancellation row as the
-      // configured cancellation fee plus its GST. Gateway fields are shown in
-      // the ledger for transparency but must not be deducted a second time.
-      const cancellationDebit = isCancelFee
-        ? -Math.abs((Number(row.cancellation_fee) || 0) + (Number(row.gst_amount) || 0))
-        : rowNetRaw;
-      const payableDebit = isCancelFee && cancellationDebit !== 0
-        ? cancellationDebit
-        : rowNetRaw;
+      // The row already contains the complete cancellation, logistics, and
+      // gateway debit. Use it once in the payable balance.
+      const payableDebit = rowNetRaw;
       netAmount += payableDebit;
       if (row.order_id) orderIds.push(row.order_id);
       lineItems.push({

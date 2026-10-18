@@ -217,7 +217,7 @@ describe("settlementFromLedger is a 1:1 projection of the engine", () => {
 })
 
 describe("Payments table vs admin pay — same numbers", () => {
-  it("normal credited sale: table bank = admin pay = 930.58", () => {
+  it("normal credited sale: table bank equals admin pay", () => {
     const rows = saleEarning()
     expect(rows).toHaveLength(1)
     expect(rows[0].bank_settlement).toBe(LOCKED_SALE_1000_50.bank_settlement)
@@ -228,16 +228,16 @@ describe("Payments table vs admin pay — same numbers", () => {
       rates: DEFAULT_LEDGER_RATES,
     })
     expect(adminPayableNetFromLedger(ledger)).toBe(rows[0].bank_settlement)
-    expect(adminPayableNetFromLedger(ledger)).toBe(930.58)
+    expect(adminPayableNetFromLedger(ledger)).toBe(LOCKED_SALE_1000_50.bank_settlement)
   })
 
   it("ON_HOLD with return courier: table reverse + running delta = admin net", () => {
     const rows = saleEarning({ status: "ON_HOLD", return_fee: 80 })
     expect(rows).toHaveLength(1)
-    expect(rows[0].bank_settlement).toBe(930.58)
+    expect(rows[0].bank_settlement).toBe(LOCKED_SALE_1000_50.bank_settlement)
     expect(rows[0].reverse_logistic_total).toBe(94.4)
     const delta = ledgerRowBalanceDelta(rows[0])
-    expect(delta).toBe(r2(930.58 - 94.4))
+    expect(delta).toBe(r2(LOCKED_SALE_1000_50.bank_settlement - 94.4))
     const sale = calculateVendorLedgerSettlement({
       category: "sale",
       item_price: 1000,
@@ -321,10 +321,10 @@ describe("running balance + payout + claim", () => {
     )
     expect(payout).not.toBeNull()
     const ledger = applyRunningLedgerBalance([sale, claim, payout!])
-    expect(ledger[0].balance_amount).toBe(930.58)
-    expect(ledger[1].balance_amount).toBe(r2(930.58 + 150))
+    expect(ledger[0].balance_amount).toBe(LOCKED_SALE_1000_50.bank_settlement)
+    expect(ledger[1].balance_amount).toBe(r2(LOCKED_SALE_1000_50.bank_settlement + 150))
     expect(ledger[2].payment).toBe(-400)
-    expect(ledger[2].balance_amount).toBe(r2(930.58 + 150 - 400))
+    expect(ledger[2].balance_amount).toBe(r2(LOCKED_SALE_1000_50.bank_settlement + 150 - 400))
   })
 
   it("skips zero / negative payouts so a bad row cannot wipe the table", () => {
@@ -444,26 +444,26 @@ describe("Excel export columns match on-screen ledger", () => {
     const exported = exportNumbers(row)
     expect(exported[0]).toBe(1000)
     expect(exported[1]).toBe(50)
-    expect(exported[2]).toBe(189)
-    expect(exported[3]).toBe(1239)
+    expect(exported[2]).toBe(LOCKED_SALE_1000_50.listing_gst)
+    expect(exported[3]).toBe(LOCKED_SALE_1000_50.listing_total)
     expect(exported[4]).toBe(50)
     expect(exported[6]).toBe(59)
     expect(exported[9]).toBe(23.6)
-    expect(exported[12]).toBe(160.82)
+    expect(exported[12]).toBe(LOCKED_SALE_1000_50.partner_total)
     expect(exported[15]).toBe(59)
     expect(exported[16]).toBe(5)
     expect(exported[17]).toBe(1)
-    expect(exported[18]).toBe(930.58)
+    expect(exported[18]).toBe(LOCKED_SALE_1000_50.bank_settlement)
     expect(exported[26]).toBe(0)
-    expect(exported[27]).toBe(930.58)
+    expect(exported[27]).toBe(LOCKED_SALE_1000_50.bank_settlement)
   })
 
   it("returned order export keeps sale C and return −C on separate rows", () => {
     const rows = applyRunningLedgerBalance(
       saleEarning({ status: "REVERSED", return_fee: 80 })
     )
-    expect(exportNumbers(rows[0])[3]).toBe(1239)
-    expect(exportNumbers(rows[1])[3]).toBe(-1239)
+    expect(exportNumbers(rows[0])[3]).toBe(LOCKED_SALE_1000_50.listing_total)
+    expect(exportNumbers(rows[1])[3]).toBe(-LOCKED_SALE_1000_50.listing_total)
     expect(exportNumbers(rows[1])[19]).toBe(-80)
     expect(exportNumbers(rows[1])[21]).toBe(-94.4)
     expect(exportNumbers(rows[1])[27]).toBe(-153.4)

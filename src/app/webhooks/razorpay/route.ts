@@ -234,6 +234,12 @@ export async function POST(req: Request) {
     (asRecord(payloadWrapper?.entity)?.order as UnknownRecord) ||
     undefined;
 
+  // Replacement top-ups are reconciled against the captured gateway payment by
+  // the Medusa replacement job. They must not enter the checkout order handler.
+  if (payment?.notes?.replacement_request_id || asRecord(orderEntity?.notes)?.replacement_request_id) {
+    return NextResponse.json({ ok: true, replacement_payment: true });
+  }
+
   if (event === "payment.authorized" || payment?.status === "authorized") {
     return NextResponse.json({ ok: true, awaiting_capture: true });
   }

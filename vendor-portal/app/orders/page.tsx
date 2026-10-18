@@ -84,6 +84,10 @@ type VendorOrder = {
   status?: string
   fulfillment_status?: string
   vendor_stage: VendorStage
+  acceptance_deadline_at?: string | null
+  acceptance_timed_out_at?: string | null
+  order_update_notice?: { at?: string; previous_variant_title?: string | null; new_variant_title?: string | null;
+    previous_unit_price?: number | null; unit_price?: number | null } | null
   vendor_status_label: string
   payment_type?: "Prepaid" | "PostPaid" | string
   total: number
@@ -554,6 +558,17 @@ const VendorOrdersContent = () => {
     void openDetails(focusedOrder)
   }, [focusOrderId, loading, openDetails, orders])
 
+  useEffect(() => {
+    if (loading || detailOrder || focusOrderId || typeof window === "undefined") return
+    const updated = orders.find((order) => {
+      const at = order.order_update_notice?.at
+      return at && !window.localStorage.getItem(`vendor-order-update:${order.id}:${at}`)
+    })
+    if (!updated?.order_update_notice?.at) return
+    window.localStorage.setItem(`vendor-order-update:${updated.id}:${updated.order_update_notice.at}`, "seen")
+    void openDetails(updated)
+  }, [orders, loading, detailOrder, focusOrderId, openDetails])
+
   const acceptOrder = async (order: VendorOrder) => {
     setProcessing(`accept:${order.id}`)
     try {
@@ -704,6 +719,8 @@ const VendorOrdersContent = () => {
     }
 
     if (selectedStage === "to_accept") {
+      if (order.acceptance_deadline_at && new Date(order.acceptance_deadline_at).getTime() <= Date.now())
+        return <ActionButton icon={<Eye size={14} />} label="Overdue · View" onClick={() => void openDetails(order)} />
       return (
         <ActionButton
           icon={<CheckCircle2 size={14} />}
@@ -1162,6 +1179,11 @@ const VendorOrdersContent = () => {
                             >
                               {order.vendor_status_label}
                             </span>
+                            {order.vendor_stage === "to_accept" && order.acceptance_deadline_at ? (
+                              <Text size="xsmall" className="mt-1 text-ui-fg-muted">
+                                Accept by {new Date(order.acceptance_deadline_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST
+                              </Text>
+                            ) : null}
                           </div>
 
                           <div className="min-w-0">{renderAction(order)}</div>
@@ -1461,7 +1483,8 @@ function DetailsModal({
         className: "bg-rose-100 text-rose-900 border-rose-200",
       }
     : order.vendor_stage === "to_accept"
-      ? { label: "Need vendor acceptance", className: "bg-amber-100 text-amber-900 border-amber-200" }
+      ? { label: order.acceptance_timed_out_at || (order.acceptance_deadline_at && new Date(order.acceptance_deadline_at).getTime() <= Date.now())
+          ? "Acceptance overdue" : "Accept by deadline", className: "bg-amber-100 text-amber-900 border-amber-200" }
       : order.vendor_stage === "delivered"
         ? { label: "Delivered", className: "bg-emerald-100 text-emerald-900 border-emerald-200" }
         : { label: order.vendor_status_label || order.vendor_stage, className: "bg-ui-bg-subtle text-ui-fg-base border-ui-border-base" }
@@ -1478,6 +1501,16 @@ function DetailsModal({
               <span className={clx("rounded-full border px-2.5 py-0.5 text-xs font-medium", stageBadge.className)}>
                 {stageBadge.label}
               </span>
+              {order.vendor_stage === "to_accept" && order.acceptance_deadline_at ? (
+                <Text size="small" className="text-ui-fg-subtle">
+                  Accept by {new Date(order.acceptance_deadline_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST
+                </Text>
+              ) : null}
+              {order.order_update_notice ? (
+                <span className="rounded-full border border-blue-300 bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-800">
+                  Order updated
+                </span>
+              ) : null}
             </div>
             <Text size="small" className="text-ui-fg-subtle">
               {formatDate(order.created_at)} · {order.payment_type || "Prepaid"} · {customerEmailDisplay(order)}
@@ -1489,6 +1522,15 @@ function DetailsModal({
         </div>
 
         <div className="space-y-5 p-5">
+          {order.order_update_notice ? (
+            <div className="rounded-xl border border-blue-300 bg-blue-50 p-4 text-blue-950">
+              <Text weight="plus">Order updated by OWEG admin</Text>
+              <Text size="small" className="mt-1">
+                {order.order_update_notice.previous_variant_title || "Previous variant"} → {order.order_update_notice.new_variant_title || order.items?.[0]?.variant_title || "Updated variant"}
+                {order.order_update_notice.unit_price != null ? ` · ${formatCurrency(order.order_update_notice.unit_price, order.currency_code || "INR")} per item` : ""}
+              </Text>
+            </div>
+          ) : null}
           {cancelled ? (
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
               <Text weight="plus" className="text-sm text-rose-900">

@@ -1,5 +1,6 @@
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
-import { Container, Heading, Badge, Button, Text, toast } from "@medusajs/ui"
+import { Container, Heading, StatusBadge, Button, Text, toast } from "@medusajs/ui"
+import { ArrowPath, ArrowUpRightOnBox, ChatBubble, Check, CheckCircleSolid, ClockSolid, Plus } from "@medusajs/icons"
 import { useEffect, useState } from "react"
 
 /**
@@ -411,15 +412,15 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
         return (
           <div key={kind} className={i > 0 ? "border-t" : ""}>
             <div className="px-6 py-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <Heading level="h2">
                   {kind === "category"
                     ? "Category request from vendor"
                     : "Collection request from vendor"}
                 </Heading>
-                <Badge color={isResolved ? "green" : "orange"}>
+                <StatusBadge color={isResolved ? "green" : "orange"}>
                   {isResolved ? "Resolved" : "Pending"}
-                </Badge>
+                </StatusBadge>
               </div>
               {!isResolved && (
                 <Button
@@ -428,6 +429,7 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
                   onClick={() => window.open(cfg.sectionUrl, "_blank")}
                 >
                   Open {kind === "category" ? "Categories" : "Collections"}
+                  <ArrowUpRightOnBox className="ml-1 h-3.5 w-3.5" />
                 </Button>
               )}
             </div>
@@ -436,11 +438,12 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
               <div>
                 <Text
                   size="xsmall"
-                  className="text-ui-fg-subtle uppercase tracking-wide font-medium"
+                  className="text-ui-fg-subtle uppercase tracking-wide font-medium flex items-center gap-1.5"
                 >
+                  <ChatBubble className="h-3.5 w-3.5 text-ui-fg-muted" />
                   Vendor's remark
                 </Text>
-                <div className="mt-1 rounded-md border border-ui-border-base bg-ui-bg-subtle px-3 py-2 text-sm whitespace-pre-wrap">
+                <div className="mt-1.5 rounded-lg border border-ui-border-base bg-ui-bg-subtle/80 px-3.5 py-2.5 text-sm whitespace-pre-wrap font-normal leading-relaxed text-ui-fg-base shadow-sm">
                   {remark}
                 </div>
               </div>
@@ -453,23 +456,25 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
                   >
                     Original Excel value
                   </Text>
-                  <div className="mt-1 font-mono text-xs text-ui-fg-base">
+                  <div className="mt-1 font-mono text-xs text-ui-fg-subtle bg-ui-bg-subtle px-2.5 py-1 rounded border border-ui-border-base inline-block">
                     {excelValue}
                   </div>
                 </div>
               )}
 
-              <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-ui-fg-subtle">
+              <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-xs text-ui-fg-subtle">
                 {submittedAt && (
-                  <div>
-                    <span className="font-medium">Submitted:</span>{" "}
-                    {submittedAt}
+                  <div className="flex items-center gap-1.5">
+                    <ClockSolid className="h-3 w-3 text-ui-fg-muted" />
+                    <span className="font-medium text-ui-fg-muted">Submitted:</span>{" "}
+                    <span>{submittedAt}</span>
                   </div>
                 )}
                 {isResolved && resolvedAt && (
-                  <div>
-                    <span className="font-medium">Resolved:</span>{" "}
-                    {resolvedAt}
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircleSolid className="h-3 w-3 text-emerald-500" />
+                    <span className="font-medium text-ui-fg-muted">Resolved:</span>{" "}
+                    <span>{resolvedAt}</span>
                   </div>
                 )}
               </div>
@@ -488,11 +493,12 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
                           : handleCreateCollection
                       }
                     >
+                      <Plus className="mr-1 h-3.5 w-3.5" />
                       {creating
                         ? "Creating…"
                         : kind === "category"
-                        ? "✚ Create & Assign Category"
-                        : "✚ Create & Assign Collection"}
+                        ? "Create & Assign Category"
+                        : "Create & Assign Collection"}
                     </Button>
 
                     {/* Secondary: manual resolve (e.g. if admin handled it elsewhere) */}
@@ -502,6 +508,7 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
                       onClick={() => updateRequestStatus(kind, "resolved")}
                       disabled={updating || creating}
                     >
+                      <Check className="mr-1 h-3.5 w-3.5" />
                       {updating ? "Saving…" : "Mark as resolved"}
                     </Button>
                   </>
@@ -512,6 +519,7 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
                     onClick={() => updateRequestStatus(kind, "pending")}
                     disabled={updating}
                   >
+                    <ArrowPath className="mr-1 h-3.5 w-3.5" />
                     {updating ? "Saving…" : "Reopen"}
                   </Button>
                 )}

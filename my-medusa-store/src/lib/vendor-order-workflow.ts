@@ -12,6 +12,7 @@ import {
   DEFAULT_SERVICE_GST_RATE,
 } from "./vendor-ledger-settlement"
 import { readCancellationInfo } from "./order-cancel/metadata"
+import { isAcceptanceOverdue } from "./vendor-acceptance-deadline"
 
 export type VendorOrderStage =
   | "to_accept"
@@ -38,6 +39,11 @@ export type VendorSettlementRatesSnapshot = {
 
 export type VendorOrderWorkflow = {
   stage?: VendorOrderStage
+  assigned_at?: string
+  acceptance_deadline_at?: string
+  acceptance_timed_out_at?: string
+  acceptance_alert_sent_at?: string
+  acceptance_alert_unavailable_at?: string
   accepted_at?: string
   vendor_name?: string | null
   store_name?: string | null
@@ -366,6 +372,7 @@ export function getAdminVendorAcceptanceLabel(
   stage?: VendorOrderStage
 ) {
   if (stage === "cancelled") return "Order cancelled"
+  if (isAcceptanceOverdue(workflow)) return "Acceptance overdue — admin action needed"
   const effective = stage || workflow.stage
   if (workflow.accepted_at || (effective && effective !== "to_accept")) {
     if (effective === "delivered") return "Delivered"
@@ -717,11 +724,16 @@ export function formatVendorOrder(
     : null
   const cancellation = readCancellationInfo(order as any)
   const isCancelled = cancellation.is_cancelled || isOrderCancelled(order)
+  const reassignmentHistory = Array.isArray(order.metadata?.vendor_reassignment_history)
+    ? order.metadata.vendor_reassignment_history as Array<Record<string, any>> : []
+  const latestUpdate = [...reassignmentHistory].reverse().find(entry => entry.to_vendor_id === vendorId)
   const statusLabel = isCancelled
     ? cancellation.source === "admin"
       ? "Cancelled by admin"
       : "Cancelled"
-    : getVendorOrderStatusLabel(stage)
+    : isAcceptanceOverdue(workflow)
+      ? "Acceptance overdue"
+      : getVendorOrderStatusLabel(stage)
 
   const formatted: Record<string, any> = {
     ...order,
@@ -730,6 +742,15 @@ export function formatVendorOrder(
     total: total || (order.summary as any)?.current_order_total || 0,
     fulfillment_status: deriveFulfillmentStatus(order),
     vendor_stage: stage,
+    acceptance_deadline_at: workflow.acceptance_deadline_at || null,
+    acceptance_timed_out_at: workflow.acceptance_timed_out_at || null,
+    order_update_notice: latestUpdate ? {
+      at: latestUpdate.at, from_vendor_id: latestUpdate.from_vendor_id,
+      previous_variant_title: latestUpdate.previous_variant_title || null,
+      new_variant_title: latestUpdate.new_variant_title || null,
+      previous_unit_price: latestUpdate.previous_unit_price ?? null,
+      unit_price: latestUpdate.unit_price ?? null,
+    } : null,
     vendor_status_label: statusLabel,
     cancelled: isCancelled,
     cancelled_by: cancellation.source,

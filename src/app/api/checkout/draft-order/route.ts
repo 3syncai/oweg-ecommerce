@@ -414,23 +414,22 @@ export async function POST(req: Request) {
     const cartItemRecords = Array.isArray(cart.items)
       ? (cart.items as Array<Record<string, unknown>>)
       : [];
-    // Select the vendor with the most free stock for the same public SKU and
-    // customer price. The cart can still display the original catalog offer.
+    // Select an in-stock vendor at the customer's price using the delivery postcode.
     const routingInput = items.map(item => {
       const record = cartItemRecords.find(row => row.variant_id === item.variant_id || (row.variant as any)?.id === item.variant_id);
       const price = Number(item.unit_price ?? record?.unit_price);
       return { variant_id: item.variant_id, quantity: item.quantity, unit_price: price, seller_selected: item.seller_selected === true };
     });
-    if (routingInput.every(item => Number.isFinite(item.unit_price) && item.unit_price >= 0)) {
+    let assignmentDecisions: Array<Record<string, unknown> | null> = [];
+    if (!routingInput.every(item => Number.isFinite(item.unit_price) && item.unit_price >= 0))
+      return NextResponse.json({ error: "Unable to verify item prices. Please refresh your cart." }, { status: 409 });
+    {
       const routingRes = await backend("/store/catalog-offers/select", {
         method: "POST",
-        body: JSON.stringify({ items: routingInput }),
+        body: JSON.stringify({ items: routingInput, delivery_postal_code: shipping.postalCode }),
       });
-      // During a staggered deployment the older Medusa API has no selection
-      // route; keep its existing cart behavior until that backend is updated.
-      if (routingRes.status !== 404) {
         if (!routingRes.ok) return NextResponse.json({ error: routingRes.status === 409 ? "Your selected seller is out of stock or its price changed. Please choose another seller." : "Unable to check vendor stock. Please retry checkout." }, { status: routingRes.status === 409 ? 409 : 503 });
-        const routing = await routingRes.json() as { selections?: Array<{ original_variant_id: string; variant_id: string }> };
+        const routing = await routingRes.json() as { selections?: Array<{ original_variant_id: string; variant_id: string; assignment?: Record<string, unknown> }> };
         if (!Array.isArray(routing.selections) || routing.selections.length !== items.length)
           return NextResponse.json({ error: "Unable to select a vendor. Please retry checkout." }, { status: 503 });
         for (let i = 0; i < items.length; i++) {
@@ -441,7 +440,7 @@ export async function POST(req: Request) {
             items[i].unit_price = routingInput[i].unit_price;
           }
         }
-      }
+        assignmentDecisions = routing.selections.map(selection => selection.assignment || null);
     }
     const itemsTotal = cartItemRecords.reduce(
       (sum, record) => sum + cartItemLineTotalRupees(record, cartCurrency),
@@ -538,6 +537,7 @@ export async function POST(req: Request) {
       shipping_address: mapAddress(shipping),
       items,
       metadata: {
+        vendor_assignment_decisions: assignmentDecisions,
         payment_reliability_version: 1,
         medusa_total_minor: Math.round((itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees - promoDiscountRupees) * 100),
         cart_id: cartId,

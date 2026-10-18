@@ -1,6 +1,7 @@
 // Removed OpenCart MySQL dependency - now using Medusa prices only
 
 import { getPriceListPrices } from "./price-lists";
+import { mergeCatalogProductDetails } from "./catalog-product-group";
 
 export type MedusaCategory = {
   id: string;
@@ -713,6 +714,23 @@ export async function fetchProductsByCategoryId(
   throw lastError ?? new Error("Failed products");
 }
 
+/** Read a bounded category in full so vendor duplicates cannot reappear on another page. */
+export async function fetchCatalogCategoryProducts(
+  categoryId: string,
+  options: { includeSubcategories?: boolean; offset: number; fallbackLimit: number },
+): Promise<MedusaProductListResult & { complete: boolean }> {
+  const first = await fetchProductsByCategoryId(categoryId, 60, { includeSubcategories: options.includeSubcategories, offset: 0 });
+  if (first.count > 600) {
+    const page = options.offset === 0 && options.fallbackLimit <= 60
+      ? { products: first.products.slice(0, options.fallbackLimit), count: first.count }
+      : await fetchProductsByCategoryId(categoryId, options.fallbackLimit, { includeSubcategories: options.includeSubcategories, offset: options.offset });
+    return { ...page, complete: false };
+  }
+  const offsets = Array.from({ length: Math.max(0, Math.ceil(first.count / 60) - 1) }, (_, index) => (index + 1) * 60);
+  const rest = await Promise.all(offsets.map(offset => fetchProductsByCategoryId(categoryId, 60, { includeSubcategories: options.includeSubcategories, offset })));
+  return { products: dedupeMedusaProducts([first, ...rest].flatMap(page => page.products)), count: first.count, complete: true };
+}
+
 export async function fetchProductsByCollectionId(
   collectionId: string,
   limit = 20,
@@ -1306,6 +1324,28 @@ export function isMedusaProductInStock(p: MedusaProduct): boolean {
   return p.variants.some(isVariantPurchasable);
 }
 
+export function applySpecialPricesToProduct(
+  product: MedusaProduct,
+  prices: Map<string, number>,
+): MedusaProduct {
+  return {
+    ...product,
+    variants: product.variants?.map((variant) => {
+      const discountedPrice = prices.get(variant.id);
+      if (discountedPrice === undefined) return variant;
+      const originalPrice = variant.prices?.[0]?.amount || discountedPrice;
+      return {
+        ...variant,
+        calculated_price: {
+          calculated_amount: discountedPrice,
+          original_amount: originalPrice,
+          currency_code: DEFAULT_CURRENCY_CODE,
+        },
+      };
+    }),
+  };
+}
+
 function firstTokenBrandFallback(title?: string | null): string | undefined {
   if (!title) return undefined;
   const first = title
@@ -1349,10 +1389,11 @@ export function toUiProduct(p: MedusaProduct) {
   const image = collectProductImages(p)[0] || "/oweg_logo.png";
   const metadata = (p.metadata || {}) as Record<string, unknown>;
 
-  // Pick the best purchasable variant: prefer one that is explicitly purchasable;
-  // fall back to the first variant so we always have a variant_id to show
-  const purchasableVariant =
-    p?.variants?.find(isVariantPurchasable) ?? p?.variants?.[0];
+  // The card represents the cheapest purchasable size/colour of this listing.
+  const purchasableVariant = [...(p?.variants || [])]
+    .filter(isVariantPurchasable)
+    .sort((a, b) => (computeUiPriceForVariant(p, a).amountMajor || Infinity) - (computeUiPriceForVariant(p, b).amountMajor || Infinity))[0]
+    ?? p?.variants?.[0];
 
   // Compute price from the chosen variant so price and variant_id always match
   const { amountMajor, originalMajor, discount } = computeUiPriceForVariant(
@@ -1362,6 +1403,7 @@ export function toUiProduct(p: MedusaProduct) {
 
   return {
     id: p?.id || "unknown",
+    catalog_product_id: typeof metadata["catalog_product_id"] === "string" ? metadata["catalog_product_id"] as string : p?.id,
     name: p?.title || "Unnamed Product",
     image,
     price: amountMajor ?? 0,
@@ -1380,12 +1422,12 @@ export function toUiProduct(p: MedusaProduct) {
 
 export async function fetchProductDetail(
   idOrHandle: string,
-  options?: { bypassCache?: boolean },
+  options?: { bypassCache?: boolean; skipGroup?: boolean },
 ): Promise<DetailedProduct | null> {
   const target = idOrHandle?.trim();
   if (!target) return null;
 
-  const cacheKey = target.toLowerCase();
+  const cacheKey = `${options?.skipGroup ? "raw:" : ""}${target.toLowerCase()}`;
   if (!options?.bypassCache) {
     const cached = PRODUCT_DETAIL_CACHE.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
@@ -1485,12 +1527,29 @@ export async function fetchProductDetail(
 
         // Admin price is only used if Medusa has no price data at all
         // Prices are taken from Medusa Admin, not OpenCart
-        const detailed = toDetailedProduct(product);
+        let detailed = toDetailedProduct(product);
 
         // If Medusa has no price and admin API returned a price, use it
         if (adminPrice !== undefined && detailed.price === 0) {
           detailed.price = adminPrice;
           detailed.mrp = adminPrice;
+        }
+
+        if (!options?.skipGroup) {
+          try {
+            const groupRes = await api(`/store/catalog-offers/product?product_id=${encodeURIComponent(product.id)}`);
+            if (groupRes.ok) {
+              const group = await groupRes.json() as { catalog_product_id?: string; product_ids?: string[] };
+              if (Array.isArray(group.product_ids) && group.product_ids.length > 1) {
+                const siblings = await Promise.all(group.product_ids.map(async (id) => id === product.id
+                  ? detailed
+                  : fetchProductDetail(id, { ...options, skipGroup: true })));
+                detailed = mergeCatalogProductDetails(siblings.filter((item): item is DetailedProduct => Boolean(item)), group.catalog_product_id || product.id);
+              }
+            }
+          } catch (error) {
+            console.warn("Could not load shared catalog variants", error);
+          }
         }
 
         if (!options?.bypassCache) {

@@ -7,6 +7,7 @@ import { Loader2, Package } from "lucide-react";
 import { toast } from "sonner";
 import OrderBreadcrumbs from "@/components/orders/OrderBreadcrumbs";
 import OrderDetailStatusSection from "@/components/orders/OrderDetailStatusSection";
+import OrderReplacementChoices from "@/components/orders/OrderReplacementChoices";
 import { CancelOrderPanel } from "@/components/orders/CancelOrderPanel";
 import { ReturnOrderPanel } from "@/components/orders/ReturnOrderPanel";
 import OrderDetailsIcon, {
@@ -352,6 +353,8 @@ export default function OrderDetailContent({
           {cancelMessage}
         </div>
       ) : null}
+
+      <OrderReplacementChoices orderId={orderId} onOrderChanged={() => void detail.refreshOrder()} />
 
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 lg:grid-cols-4">
         <SummaryCard
