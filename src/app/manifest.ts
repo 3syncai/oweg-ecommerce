@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "OWEG PWA",
+    name: "OWEG",
     short_name: "OWEG",
     description:
       "Shop home appliances, kitchen utensils, and electronics at OWEG.",
@@ -13,7 +13,7 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#ffffff",
+    background_color: "#fafbf7",
     theme_color: "#7AC943",
     categories: ["shopping"],
     icons: [

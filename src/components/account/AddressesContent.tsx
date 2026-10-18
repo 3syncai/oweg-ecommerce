@@ -1,5 +1,6 @@
 "use client";
 
+import BrandLoader from "@/components/ui/BrandLoader";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, MapPin, Plus, Trash2 } from "lucide-react";
@@ -268,24 +269,7 @@ function AddressModal({
 }
 
 function AddressSkeleton() {
-  return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      {Array.from({ length: 2 }).map((_, idx) => (
-        <div
-          key={`address-skeleton-${idx}`}
-          className="animate-pulse rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
-        >
-          <div className="h-4 w-32 rounded bg-gray-100" />
-          <div className="mt-3 h-3 w-full rounded bg-gray-100" />
-          <div className="mt-2 h-3 w-2/3 rounded bg-gray-100" />
-          <div className="mt-4 flex gap-2">
-            <div className="h-8 w-20 rounded-full bg-gray-100" />
-            <div className="h-8 w-20 rounded-full bg-gray-100" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  return <BrandLoader compact label="Loading your addresses…" />;
 }
 
 export default function AddressesContent({ embedded = false }: AddressesContentProps) {

@@ -1,5 +1,6 @@
 "use client";
 
+import BrandLoader from "@/components/ui/BrandLoader";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -2573,9 +2574,7 @@ export default function CheckoutPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center text-slate-600">
-          Loading checkoutΓÇª
-        </div>
+        <BrandLoader label="Getting checkout ready…" />
       }
     >
       <CheckoutPageInner />

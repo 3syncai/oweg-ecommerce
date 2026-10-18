@@ -1,5 +1,6 @@
 "use client";
 
+import BrandLoader from "@/components/ui/BrandLoader";
 import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -30,28 +31,7 @@ type WishlistContentProps = {
 };
 
 function WishlistSkeleton() {
-  return (
-    <div className={styles.grid} aria-hidden="true">
-      {Array.from({ length: 6 }).map((_, idx) => (
-        <div
-          key={`wishlist-skeleton-${idx}`}
-          className={cn(styles.card, "animate-pulse")}
-        >
-          <div className={cn(styles.media, styles.skeletonBlock)} />
-          <div className={styles.details}>
-            <div className="h-3 w-16 rounded bg-[#edf0e8]" />
-            <div className="h-4 w-full rounded bg-[#edf0e8]" />
-            <div className="h-3 w-3/4 rounded bg-[#edf0e8]" />
-            <div className="h-5 w-20 rounded bg-[#edf0e8]" />
-          </div>
-          <div className={styles.actions}>
-            <div className="h-11 flex-1 rounded-xl bg-[#edf0e8]" />
-            <div className="h-11 w-24 rounded-xl bg-[#edf0e8]" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  return <BrandLoader compact label="Loading your saved favourites…" />;
 }
 
 function WishlistImage({ src, title, priority }: { src: string; title: string; priority: boolean }) {
@@ -78,7 +58,7 @@ function WishlistImage({ src, title, priority }: { src: string; title: string; p
 }
 
 export default function WishlistContent({ embedded = false }: WishlistContentProps) {
-  const { customer, setCustomer } = useAuth();
+  const { customer, setCustomer, initializing } = useAuth();
   const queryClient = useQueryClient();
 
   const currency = useMemo(
@@ -185,6 +165,8 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
       toast.error(message);
     }
   };
+
+  if (initializing) return <BrandLoader label="Getting your wishlist ready…" />;
 
   if (!customer) {
     return (

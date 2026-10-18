@@ -1,5 +1,6 @@
 "use client";
 
+import BrandLoader from "@/components/ui/BrandLoader";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { SlidersHorizontal, X } from "lucide-react";
@@ -467,6 +468,7 @@ export function CategoryPageClient({
               {filters.dealsOnly && <button type="button" className={styles.chip} onClick={() => handleFilterChange({ dealsOnly: false })}>Today&apos;s deals<X size={12} aria-hidden="true" /></button>}
             </div>
 
+            {isLoading && <BrandLoader compact label="Finding your products…" />}
             <ProductGrid
               className={styles.productGrid}
               products={enrichedProducts}

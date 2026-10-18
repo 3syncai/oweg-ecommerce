@@ -1,9 +1,10 @@
 "use client";
 
+import BrandLoader from "@/components/ui/BrandLoader";
 import { useEffect, useState } from "react";
 
 import Link from "next/link";
-import { Filter, Loader2 } from "lucide-react";
+import { Filter, } from "lucide-react";
 import {
   getCollectionLogoScale,
   getCollectionLogoUrl,
@@ -81,10 +82,7 @@ export default function BrandsPage() {
           ) : null}
 
           {loadingCollections ? (
-            <div className="inline-flex items-center gap-2 text-sm text-emerald-700">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading brands...
-            </div>
+            <BrandLoader compact label="Finding your favourite brands…" />
           ) : collections.length === 0 ? (
             <div className="text-sm text-gray-600">No brands found.</div>
           ) : (

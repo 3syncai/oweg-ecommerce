@@ -1,5 +1,6 @@
 "use client";
 
+import BrandLoader from "@/components/ui/BrandLoader";
 import React, { Suspense, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowUpRight, Heart, PackageCheck, Sparkles } from "lucide-react";
@@ -84,7 +85,7 @@ function LoginPageInner() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className={styles.loading} role="status">Getting your sign-in ready…</div>}>
+    <Suspense fallback={<BrandLoader label="Getting your sign-in ready…" />}>
       <LoginPageInner />
     </Suspense>
   );

@@ -1,8 +1,9 @@
 "use client";
 
+import BrandLoader from "@/components/ui/BrandLoader";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2, Mail } from "lucide-react";
+import { Mail } from "lucide-react";
 import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import AccountLoginPrompt from "@/components/account/AccountLoginPrompt";
 import { useAuth } from "@/contexts/AuthProvider";
@@ -212,10 +213,7 @@ export default function HelpSupportContent({ embedded = false }: HelpSupportCont
         </div>
 
         {ticketsLoading ? (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading your tickets…
-          </div>
+          <BrandLoader compact label="Finding your support tickets…" />
         ) : tickets.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-200 bg-[#FAFAFA] px-4 py-8 text-center">
             <AccountHubIcon name="chat-support" size={32} className="mx-auto h-8 w-8 opacity-60" />
