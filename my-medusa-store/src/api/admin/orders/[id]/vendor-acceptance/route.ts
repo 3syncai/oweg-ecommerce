@@ -12,6 +12,8 @@ import {
   type VendorOrderStage,
 } from "../../../../../lib/vendor-order-workflow"
 import { readCancellationInfo } from "../../../../../lib/order-cancel/metadata"
+import { getSharedDbPool } from "../../../../../lib/db-pool"
+import { isAcceptanceOverdue } from "../../../../../lib/vendor-acceptance-deadline"
 
 /**
  * GET /admin/orders/:id/vendor-acceptance
@@ -85,6 +87,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     }
 
     const workflows = getVendorWorkflows(order.metadata as Record<string, unknown>)
+    const hasActiveFulfillment = (order.fulfillments || []).some((fulfillment: any) => !fulfillment.canceled_at)
+    const earnings = hasActiveFulfillment ? true : Boolean((await getSharedDbPool().query(
+      "SELECT 1 FROM vendor_earnings_log WHERE order_id=$1 LIMIT 1", [orderId]
+    )).rows.length)
     // A reassigned vendor remains in audit history but has no current item.
     const vendorIds = Array.from(vendorProductIds.keys())
 
@@ -125,7 +131,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         stage,
         stage_label: getVendorOrderStatusLabel(stage),
         can_mark_delivered: stage !== "delivered",
+        can_relocate: !hasActiveFulfillment && !earnings && ["to_accept", "to_pack"].includes(stage)
+          && !workflow.rtd_at && !workflow.dispatched_at && !workflow.shiprocket_order_id
+          && !workflow.shiprocket_awb && !workflow.self_awb && !workflow.tracking_number
+          && !workflow.medusa_fulfillment_id
+          && workflow.easy_booking_status !== "booked",
         accepted_at: workflow.accepted_at || null,
+        assigned_at: workflow.assigned_at || null,
+        acceptance_deadline_at: workflow.acceptance_deadline_at || null,
+        acceptance_overdue: isAcceptanceOverdue(workflow),
         shipping_method: workflow.shipping_method || null,
         shipping_provider: workflow.shipping_provider || null,
         easy_courier_partner: workflow.easy_courier_partner || null,

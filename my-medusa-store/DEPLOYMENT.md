@@ -143,6 +143,7 @@ Railway is the easiest way to deploy Medusa with automatic PostgreSQL setup.
 | `JWT_SECRET` | JWT signing secret (32+ chars) | Generate random string |
 | `COOKIE_SECRET` | Cookie encryption secret (32+ chars) | Generate random string |
 | `NODE_ENV` | Environment | `production` |
+| `VENDOR_REPLACEMENT_CONSENT_SECRET` | Signs short-lived customer confirmation codes for admin-assisted replacement acceptance (32+ chars) | Generate a separate random string |
 
 ### Optional Variables
 
@@ -152,6 +153,8 @@ Railway is the easiest way to deploy Medusa with automatic PostgreSQL setup.
 | `AWS_SECRET_ACCESS_KEY` | AWS secret key | If using S3 file storage |
 | `AWS_REGION` | AWS region | If using S3 |
 | `AWS_BUCKET` | S3 bucket name | If using S3 |
+| `VENDOR_ASSIGNMENT_ALERT_EMAIL` | Admin inbox for overdue vendor acceptance and expired customer choices | Required to receive exception alerts |
+| `VENDOR_REPLACEMENT_RESPONSE_HOURS` | Customer offer response period, 1–168 hours (default 48) | To change the default |
 
 ### Generating Secrets
 
@@ -160,6 +163,9 @@ Railway is the easiest way to deploy Medusa with automatic PostgreSQL setup.
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 # Generate COOKIE_SECRET
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# Generate VENDOR_REPLACEMENT_CONSENT_SECRET
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
@@ -181,6 +187,8 @@ Or using the platform's CLI/shell:
 ---
 
 ## Post-Deployment Checklist
+
+Run the Medusa scheduled job worker alongside the API. The vendor acceptance, replacement expiry, cancellation debit reconciliation, and replacement settlement jobs are defined in `src/jobs/` and run every ten minutes when the worker is active. Verify those jobs execute in the deployment logs. Import verified PIN centroids into `postal_location_cache` before relying on distance ranking; checkout falls back to same-PIN or random selection while coverage is incomplete.
 
 - [ ] Backend URL is accessible (returns 200 OK)
 - [ ] Database migrations completed

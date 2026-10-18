@@ -237,6 +237,11 @@ export default defineMiddlewares({
       middlewares: [authenticate("customer", ["session", "bearer"])],
     },
     {
+      matcher: "/store/orders/*/replacement-requests",
+      method: ["GET", "POST"],
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
       matcher: "/auth",
       middlewares: [recordAdminActivity, crossOriginCookieMiddleware],
     },

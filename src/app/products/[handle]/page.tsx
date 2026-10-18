@@ -1,10 +1,8 @@
-// Basic Product Detail Page: Shows product information (basic UI as requested)
-
 import { cache } from "react";
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { fetchProductDetail } from "@/lib/medusa";
-import { ProductDetailClient } from "./ProductDetailClient";
+import ProductDetailPageContent from "@/app/productDetail/productDetail";
 
 type PageProps = {
   params: Promise<{
@@ -58,5 +56,5 @@ export default async function ProductDetailPage({
     notFound();
   }
 
-  return <ProductDetailClient product={product} />;
+  return <ProductDetailPageContent productId={product.id} initialProduct={product} />;
 }

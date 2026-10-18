@@ -32,13 +32,9 @@ describe("Payment Gateway 2% Charge Conditions", () => {
     expect(res.payment_gateway_gst).toBe(4.9)
     expect(res.payment_gateway_total).toBe(32.1)
     // Bank settlement should reflect the 32.10 deduction
-    // Listing total: 1360 + 93.22 = 1453.22
-    // Deductions: platform 68.00 + comm 27.20 + partner 188.62 + log 93.22 + tcs 5.76 + tds 1.15 + pg 32.10
-    expect(res.bank_settlement).toBe(
-      Math.round(
-        (1453.22 - 68.0 - 27.2 - 188.62 - 93.22 - 5.76 - 1.15 - 32.1) * 100
-      ) / 100
-    )
+    // Current sale formula includes GST on service fees and partner commission
+    // on the product total. Shipping is a vendor cost, not extra vendor revenue.
+    expect(res.bank_settlement).toBe(956.04)
   })
 
   it("Condition 2: if payment is cod and it is delivered then take 2% charge", () => {

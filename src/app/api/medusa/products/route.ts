@@ -3,6 +3,8 @@ import {
   findCategoryByTitleOrHandle,
   findCollectionByTitleOrHandle,
   fetchProductsByCategoryId,
+  fetchCatalogCategoryProducts,
+  applySpecialPricesToProduct,
   fetchProductsByCollectionId,
   fetchProductsByTag,
   fetchProductsByType,
@@ -12,6 +14,7 @@ import {
   type MedusaProductListResult,
 } from "@/lib/medusa"
 import { getPriceListPrices } from "@/lib/price-lists"
+import { groupCatalogProductCards } from "@/lib/catalog-product-group"
 import {
   MEDUSA_LIST_MAX_LIMIT,
   overfetchLimit,
@@ -113,6 +116,7 @@ export async function GET(req: NextRequest) {
     }
 
     let listResult: MedusaProductListResult = EMPTY_LIST
+    let catalogListComplete = false
     if (type) {
       listResult = await fetchProductsByType(type, fetchLimit, normalizedOffset)
       if (!listResult.products.length) {
@@ -178,10 +182,13 @@ export async function GET(req: NextRequest) {
           countIsApproximate: false,
         })
       }
-      listResult = await fetchProductsByCategoryId(catId, fetchLimit, {
+      const catalogList = await fetchCatalogCategoryProducts(catId, {
         includeSubcategories,
         offset: normalizedOffset,
+        fallbackLimit: fetchLimit,
       })
+      listResult = catalogList
+      catalogListComplete = catalogList.complete
     }
 
     const products = listResult.products
@@ -205,25 +212,10 @@ export async function GET(req: NextRequest) {
     const priceListPrices = await getPriceListPrices()
     const inStockProducts = products.filter(isMedusaProductInStock)
 
-    let ui: ReturnType<typeof toUiProduct>[] = inStockProducts.map((product: MedusaProduct) => {
-      const variantId = product.variants?.[0]?.id
-      if (variantId && priceListPrices.has(variantId) && product.variants?.[0]) {
-        const discountedPrice = priceListPrices.get(variantId)!
-        const originalPrice =
-          product.price?.original_price ||
-          product.variants[0].prices?.[0]?.amount ||
-          discountedPrice
-        const productWithDiscount: typeof product = {
-          ...product,
-          price: {
-            calculated_price: discountedPrice,
-            original_price: originalPrice,
-          },
-        }
-        return toUiProduct(productWithDiscount)
-      }
-      return toUiProduct(product)
-    })
+    let ui: ReturnType<typeof toUiProduct>[] = inStockProducts.map((product: MedusaProduct) =>
+      toUiProduct(applySpecialPricesToProduct(product, priceListPrices)))
+
+    ui = groupCatalogProductCards(ui)
 
     if (normalizedPriceMin !== undefined) {
       ui = ui.filter((product) => product.price >= normalizedPriceMin)
@@ -235,7 +227,12 @@ export async function GET(req: NextRequest) {
       ui = ui.filter((product) => product.limitedDeal)
     }
 
-    const page = sliceFilteredPage({
+    const page = catalogListComplete ? {
+      products: ui.slice(normalizedOffset, normalizedOffset + normalizedLimit),
+      count: ui.length,
+      hasMore: normalizedOffset + normalizedLimit < ui.length,
+      countIsApproximate: false,
+    } : sliceFilteredPage({
       filtered: ui,
       fetchedCount: products.length,
       pageLimit: normalizedLimit,

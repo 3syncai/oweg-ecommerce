@@ -6,7 +6,7 @@
  * Subcategory note is shown if the category has a parent.
  */
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
-import { Container, Heading, Text, Button, Badge, Input, Label, toast } from "@medusajs/ui"
+import { Container, Heading, Text, Button, StatusBadge, Input, Label, toast } from "@medusajs/ui"
 import { useEffect, useState } from "react"
 
 type CategoryReturnPolicy = {
@@ -261,9 +261,9 @@ const CategoryReturnPolicyWidget = ({
           /* ── Policy Summary ── */
           <div className="space-y-3">
             {parentCategoryId && (
-              <Badge color="blue" size="xsmall">
+              <StatusBadge color="blue">
                 Subcategory — overrides parent policy
-              </Badge>
+              </StatusBadge>
             )}
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-md border border-ui-border-base bg-ui-bg-subtle p-3 text-center">

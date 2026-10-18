@@ -186,6 +186,9 @@ export function buildVendorLedgerRowsFromEarning(
       order_status: row.order_status,
       is_delivered: Boolean(row.delivered_at),
     })
+    // The debit was recorded using the rates frozen at cancellation time.
+    // Preserve that booked balance if live settings later change.
+    const bookedDebit = Number(row.net_amount)
     return [
       settlementFromLedger({
         id: row.id,
@@ -195,7 +198,9 @@ export function buildVendorLedgerRowsFromEarning(
         status: row.status,
         delivered_at: row.delivered_at,
         unlock_at: row.unlock_at,
-        ledger,
+        ledger: Number.isFinite(bookedDebit) && bookedDebit < 0
+          ? { ...ledger, balance_delta: bookedDebit, bank_settlement: 0 }
+          : ledger,
         tcs_rate: taxRates.tcs_rate,
         tds_rate: taxRates.tds_rate,
         gst_rate: 0,
@@ -484,20 +489,24 @@ export async function buildVendorPaymentsView(
             vel.partner_commission_rate,
             vel.tcs_rate,
             vel.tds_rate,
-            GREATEST(
-              COALESCE(vel.logistic_fee, 0),
-              COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'easy_courier_rate')::numeric, 0), 0)
-            ) AS logistic_fee,
+            CASE WHEN vel.order_id LIKE 'cancel-fee:%'
+              THEN COALESCE(vel.logistic_fee, 0)
+              ELSE GREATEST(
+                COALESCE(vel.logistic_fee, 0),
+                COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'easy_courier_rate')::numeric, 0), 0)
+              ) END AS logistic_fee,
             COALESCE(vel.customer_shipping_total, 0) AS customer_shipping_total,
-            GREATEST(
-              COALESCE(vel.return_fee, 0),
-              COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'return_courier_rate')::numeric, 0), 0),
-              CASE
-                WHEN vel.status = 'REVERSED' AND (o.metadata->'vendor_order_workflows'->vel.vendor_id->>'shipping_method' = 'easy')
-                THEN COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'easy_courier_rate')::numeric, 0), 0)
-                ELSE 0
-              END
-            ) AS return_fee,
+            CASE WHEN vel.order_id LIKE 'cancel-fee:%'
+              THEN COALESCE(vel.return_fee, 0)
+              ELSE GREATEST(
+                COALESCE(vel.return_fee, 0),
+                COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'return_courier_rate')::numeric, 0), 0),
+                CASE
+                  WHEN vel.status = 'REVERSED' AND (o.metadata->'vendor_order_workflows'->vel.vendor_id->>'shipping_method' = 'easy')
+                  THEN COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'easy_courier_rate')::numeric, 0), 0)
+                  ELSE 0
+                END
+              ) END AS return_fee,
             COALESCE(vel.cancellation_fee, 0) AS cancellation_fee,
             vel.net_amount,
             vel.delivered_at,

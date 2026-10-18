@@ -3,6 +3,12 @@ import { Modules } from "@medusajs/framework/utils"
 import { Pool } from "pg"
 import { generateInvoice } from "../services/invoice-generator"
 import { ensureOrderSettlementSnapshots } from "../lib/vendor-settlement-snapshot"
+import { getSharedDbPool } from "../lib/db-pool"
+import { listCurrentOrderVendorIds } from "../lib/vendor-cancellation-scope"
+import { getVendorWorkflow, mergeVendorWorkflowMetadata } from "../lib/vendor-order-workflow"
+import { acceptanceDeadline } from "../lib/vendor-acceptance-deadline"
+import { withVendorOrderAssignmentLock } from "../lib/vendor-order-assignment-lock"
+import { isVendorVisibleOrder } from "../lib/vendor-order-visibility"
 
 export default async function orderPlacedSubscriber({
   event: { data },
@@ -21,6 +27,35 @@ export default async function orderPlacedSubscriber({
       "billing_address"
     ],
   })
+
+  // Both order.placed and order.created can fire. Keep the first assignment time.
+  try {
+    await withVendorOrderAssignmentLock(orderId, async () => {
+      const latest = await orderModuleService.retrieveOrder(orderId)
+      if (!isVendorVisibleOrder(latest)) return
+      const vendorIds = await listCurrentOrderVendorIds(orderId, getSharedDbPool())
+      let metadata = { ...(latest.metadata || {}) }
+      let changed = false
+      for (const vendorId of vendorIds) {
+        const workflow = getVendorWorkflow(metadata, vendorId)
+        if (workflow.assigned_at || workflow.accepted_at || (workflow.stage && workflow.stage !== "to_accept")) continue
+        const start = (latest.metadata as any)?.checkout_convert_authorized_at
+          || (latest.metadata as any)?.cod_paid_at || latest.created_at || Date.now()
+        const assignedAt = new Date(start).toISOString()
+        metadata = mergeVendorWorkflowMetadata(metadata, vendorId, {
+          stage: "to_accept", assigned_at: assignedAt,
+          acceptance_deadline_at: acceptanceDeadline(assignedAt),
+        })
+        changed = true
+      }
+      if (vendorIds.length && (changed || metadata.vendor_acceptance_initialized !== true))
+        await orderModuleService.updateOrders(orderId, {
+          metadata: { ...metadata, vendor_acceptance_initialized: true },
+        })
+    })
+  } catch (error) {
+    console.error(`[order-placed] acceptance deadline initialization failed for ${orderId}:`, error)
+  }
 
   // 1b. Freeze commission / platform / cancel rates on the order at place time
   // so later admin rate changes never rewrite historical or in-progress orders.
