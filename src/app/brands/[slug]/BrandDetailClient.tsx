@@ -1,10 +1,11 @@
 "use client";
 
+import BrandLoader from "@/components/ui/BrandLoader";
 import { useEffect, useMemo, useState } from "react";
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, } from "lucide-react";
 import { ProductCard } from "@/components/modules/ProductCard";
 import {
   getCollectionLogoScale,
@@ -193,10 +194,7 @@ export default function BrandDetailPage() {
             </div>
           </div>
           {loadingProducts && (
-            <div className="inline-flex items-center gap-2 text-sm text-emerald-700">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading products...
-            </div>
+            <BrandLoader compact label="Finding this brand’s products…" />
           )}
         </header>
 

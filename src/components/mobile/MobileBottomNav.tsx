@@ -8,6 +8,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
+import BrandLoader from "@/components/ui/BrandLoader";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -21,6 +22,8 @@ import {
   X,
   ChevronsLeft,
   LayoutGrid,
+  SlidersHorizontal,
+  ImageOff,
   ShoppingCart,
 } from "lucide-react";
 import type { MedusaCategory } from "@/lib/medusa";
@@ -32,6 +35,30 @@ import MobileProfileSheet from "@/components/mobile/MobileProfileSheet";
 import { buildLoginUrl, buildSignupUrl } from "@/lib/auth-redirect";
 import navStyles from "./MobileBottomNav.module.css";
 import { useCartSummary } from "@/contexts/CartProvider";
+
+function CategoryProductImage({ src, name }: { src?: string; name: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className={navStyles.productImage}>
+      {src && !failed ? (
+        <Image
+          src={src}
+          alt={name}
+          fill
+          sizes="(max-width: 480px) 45vw, 240px"
+          className="object-contain p-3"
+          unoptimized
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <div className={navStyles.imagePlaceholder}>
+          <ImageOff size={28} strokeWidth={1.3} aria-hidden="true" />
+          <span>Image unavailable</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 type MobileCategory = {
   id: string;
@@ -1031,8 +1058,8 @@ export default function MobileBottomNav() {
                       )}
 
                     {selectedSubcategory && (
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between gap-2">
+                      <div className={navStyles.resultsHeader}>
+                        <div className={navStyles.resultsToolbar}>
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -1042,7 +1069,7 @@ export default function MobileBottomNav() {
                                 setSidebarOverlayOpen(true);
                                 lastCategoryIdRef.current = selectedCategoryId;
                               }}
-                              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-800 shadow-sm text-base font-bold"
+                              className={navStyles.categorySwitch}
                             >
                               <ChevronsLeft className="w-5 h-5" />
                             </button>
@@ -1053,7 +1080,7 @@ export default function MobileBottomNav() {
                                 setIsOpen(false);
                                 setSidebarOverlayOpen(false);
                               }}
-                              className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700"
+                              className={navStyles.backLink}
                             >
                               <ChevronRight className="w-3 h-3 rotate-180" />
                               All subcategories
@@ -1062,9 +1089,12 @@ export default function MobileBottomNav() {
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700"
+                              className={navStyles.filterToggle}
+                              aria-expanded={filtersOpen}
+                              aria-controls="mobile-category-filters"
                               onClick={() => setFiltersOpen((v) => !v)}
                             >
+                              <SlidersHorizontal className="h-4 w-4" />
                               Filters
                               <ChevronRight
                                 className={`w-3 h-3 text-gray-400 transition-transform ${filtersOpen ? "rotate-90" : ""}`}
@@ -1072,29 +1102,25 @@ export default function MobileBottomNav() {
                             </button>
                           </div>
                         </div>
-                        <div className="flex items-center justify-between gap-2 text-sm text-gray-700">
-                          <div className="flex items-center gap-2">
-                            {activeCategory ? (
-                              <span className="font-semibold text-gray-900">
-                                {activeCategory.title}
-                              </span>
-                            ) : null}
-                            <ChevronRight className="w-3 h-3 text-gray-400" />
-                            <span className="font-semibold text-gray-900">
-                              {selectedSubcategory.title}
+                        <div className={navStyles.categoryHeading}>
+                          {activeCategory ? (
+                            <p className={navStyles.categoryEyebrow}>{activeCategory.title}</p>
+                          ) : null}
+                          <div className={navStyles.categoryTitleRow}>
+                            <h3>{selectedSubcategory.title}</h3>
+                            <span className={navStyles.resultCount} aria-live="polite">
+                              {productsLoading ? "Loading…" : `${filteredProducts.length} products`}
                             </span>
                           </div>
-                          <span className="text-xs text-gray-500">
-                            {filteredProducts.length} products available
-                          </span>
                         </div>
                         {filtersOpen && (
-                          <div className="flex flex-wrap gap-2 items-center text-xs text-gray-600 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                          <div id="mobile-category-filters" className={navStyles.filterPanel}>
                             <div className="flex items-center gap-1">
                               <span className="text-gray-700 font-semibold">
                                 Sort:
                               </span>
                               <select
+                                aria-label="Sort products"
                                 value={priceSort}
                                 onChange={(e) =>
                                   setPriceSort(
@@ -1113,6 +1139,7 @@ export default function MobileBottomNav() {
                                 Brand:
                               </span>
                               <select
+                                aria-label="Filter by brand"
                                 value={brandFilter}
                                 onChange={(e) => setBrandFilter(e.target.value)}
                                 className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs min-w-[120px]"
@@ -1132,15 +1159,17 @@ export default function MobileBottomNav() {
                               <input
                                 type="number"
                                 inputMode="numeric"
+                                aria-label="Minimum price"
                                 placeholder="Min"
                                 value={priceMin}
                                 onChange={(e) => setPriceMin(e.target.value)}
                                 className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-xs"
                               />
-                              <span>â€“</span>
+                              <span aria-hidden="true">&ndash;</span>
                               <input
                                 type="number"
                                 inputMode="numeric"
+                                aria-label="Maximum price"
                                 placeholder="Max"
                                 value={priceMax}
                                 onChange={(e) => setPriceMax(e.target.value)}
@@ -1170,49 +1199,37 @@ export default function MobileBottomNav() {
                     )}
 
                     {selectedSubcategory ? (
-                      <div className="grid grid-cols-2 gap-4 pb-3">
+                      <div className={navStyles.productGrid} aria-busy={productsLoading}>
                         {productsLoading ? (
-                          <div className="col-span-2 text-sm text-gray-500">
-                            Loading products...
+                          <div className="col-span-2">
+                            <BrandLoader compact label="Finding your products…" />
                           </div>
                         ) : filteredProducts.length === 0 ? (
-                          <div className="col-span-2 text-sm text-gray-500">
-                            No products found.
+                          <div className={navStyles.resultMessage}>
+                            <SlidersHorizontal size={24} aria-hidden="true" />
+                            <strong>No products found</strong>
+                            <span>Try another brand or price range.</span>
                           </div>
                         ) : (
                           filteredProducts.map((p) => (
                             <Link
                               key={p.id}
                               href={`/productDetail/${encodeURIComponent(p.id)}?id=${encodeURIComponent(p.id)}`}
-                              className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm flex flex-col items-center gap-3"
+                              className={navStyles.productCard}
                               onClick={closeCategory}
                             >
-                              <div className="relative w-full h-44 rounded-xl bg-white border border-gray-100 overflow-hidden shadow-sm">
-                                {p.image ? (
-                                  <Image
-                                    src={p.image}
-                                    alt={p.name}
-                                    fill
-                                    sizes="(max-width: 768px) 60vw, 240px"
-                                    className="object-contain p-3"
-                                    unoptimized
-                                  />
-                                ) : (
-                                  <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400">
-                                    No image
-                                  </div>
-                                )}
-                              </div>
-                              <p className="text-sm text-center text-gray-800 line-clamp-2">
-                                {p.name}
-                              </p>
-                              <div className="flex items-center gap-2 text-sm">
-                                <span className="text-emerald-700 font-semibold">
-                                  {formatCurrency(p.price)}
-                                </span>
+                              <CategoryProductImage key={p.image} src={p.image} name={p.name} />
+                              <div className={navStyles.productInfo}>
+                                <p className={navStyles.productName}>{p.name}</p>
+                                <div className={navStyles.productPrice}>
+                                  <strong>{formatCurrency(p.price)}</strong>
+                                  {p.mrp && p.mrp > (p.price || 0) ? (
+                                    <del>{formatCurrency(p.mrp)}</del>
+                                  ) : null}
+                                </div>
                                 {p.mrp && p.mrp > (p.price || 0) ? (
-                                  <span className="text-gray-400 line-through">
-                                    {formatCurrency(p.mrp)}
+                                  <span className={navStyles.productSaving}>
+                                    Save {formatCurrency(p.mrp - (p.price || 0))}
                                   </span>
                                 ) : null}
                               </div>

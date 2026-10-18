@@ -1,5 +1,6 @@
 "use client";
 
+import BrandLoader from "@/components/ui/BrandLoader";
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -145,10 +146,7 @@ export default function NotificationsContent({ embedded = false }: Notifications
 
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
         {loading ? (
-          <div className="flex items-center gap-2 px-5 py-8 text-sm text-gray-500">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading notification settings…
-          </div>
+          <BrandLoader compact label="Loading notification settings…" />
         ) : (
           <>
             <div className="grid grid-cols-[minmax(0,1.4fr)_repeat(3,56px)] items-center gap-2 border-b border-gray-100 bg-[#FAFAFA] px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500 sm:grid-cols-[minmax(0,1.4fr)_repeat(3,72px)] sm:px-6 sm:text-xs">

@@ -1,5 +1,6 @@
 "use client";
 
+import BrandLoader from "@/components/ui/BrandLoader";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -25,7 +26,7 @@ export default function AccountHubRouteLayout({
 
   if (isPreferencesRoute) return null;
 
-  if (initializing) return null;
+  if (initializing) return <BrandLoader label="Getting your account ready…" />;
 
   if (!customer) {
     return <AccountLoginPrompt redirect={pathname} />;

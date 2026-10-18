@@ -1,5 +1,6 @@
 ﻿"use client"
 
+import BrandLoader from "@/components/ui/BrandLoader";
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense } from "react"
@@ -269,16 +270,7 @@ function SearchPageContent() {
               <button type="button" className={styles.clearFilters} onClick={clearFilters}>Clear filters</button>
             </div>}
             {loading ? (
-              <div className={styles.productGrid}>
-                {Array.from({ length: 8 }).map((_, idx) => (
-                  <div key={`search-skeleton-${idx}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                    <div className="h-48 animate-pulse bg-slate-100" />
-                    <div className="space-y-3 p-4">
-                      <div className="h-4 w-5/6 animate-pulse rounded bg-slate-100" />
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <BrandLoader label="Finding your next good find…" />
             ) : (
               <>
                 {filtered.length === 0 ? (
@@ -352,7 +344,7 @@ function SearchPageFallback() {
     <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/20 to-white">
       <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
         <div className="mb-5 rounded-2xl border border-emerald-100 bg-white/90 p-4 shadow-sm backdrop-blur sm:p-5">
-          <p className="text-sm text-slate-600">Loading search...</p>
+          <BrandLoader label="Getting search ready…" />
         </div>
       </div>
     </div>

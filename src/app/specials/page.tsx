@@ -1,9 +1,10 @@
 'use client';
 
+import BrandLoader from "@/components/ui/BrandLoader";
 import React, { Suspense } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, } from 'lucide-react';
 import { ProductCard } from '@/components/modules/ProductCard';
 
 type UIProduct = {
@@ -85,10 +86,7 @@ function SpecialsPageContent() {
         </header>
 
         {loading ? (
-          <div className="flex items-center gap-2 text-emerald-700 text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Loading Specials…
-          </div>
+          <BrandLoader label="Finding today’s specials…" />
         ) : hasError ? (
           <div className="text-sm text-red-500">Unable to load Specials right now. Please try again.</div>
         ) : products.length === 0 ? (
@@ -157,10 +155,7 @@ export default function SpecialsPage() {
   return (
     <Suspense
       fallback={
-        <div className="oweg-page flex min-h-screen items-center justify-center gap-2 text-sm text-[var(--oweg-green-dark)]">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Loading Specials…
-        </div>
+        <BrandLoader label="Finding today’s specials…" />
       }
     >
       <SpecialsPageContent />

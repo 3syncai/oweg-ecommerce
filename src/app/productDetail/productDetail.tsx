@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import BrandLoader from "@/components/ui/BrandLoader";
 import Link from 'next/link'
 import Image from 'next/image'
 import { ChevronRight, Heart, Plus, X } from 'lucide-react'
@@ -1382,17 +1383,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
         <Breadcrumbs items={breadcrumbItems} pillClassName={breadcrumbPillClass} />
 
         {productLoading ? (
-          <div className="animate-pulse space-y-6">
-            <div className="h-64 rounded-2xl bg-white/70" />
-            <div className="grid lg:grid-cols-2 gap-8">
-              <div className="h-96 rounded-2xl bg-white/70" />
-              <div className="space-y-4">
-                <div className="h-6 bg-white/70 rounded w-1/2" />
-                <div className="h-6 bg-white/70 rounded w-1/3" />
-                <div className="h-32 bg-white/70 rounded" />
-              </div>
-            </div>
-          </div>
+          <BrandLoader label="Getting your product ready…" />
         ) : error ? (
           <div className="bg-white border border-red-100 text-red-600 rounded-2xl p-8 text-center">
             <p className="text-lg font-semibold mb-2">We couldn&apos;t load this product</p>
