@@ -12,11 +12,19 @@ The password screen verifies the current credential, rejects reuse and requires 
 
 Credential emails use the Medusa backend's existing SMTP transport: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` and optionally `SMTP_FROM_NAME`.
 
-Set `ADMIN_SITE_URL` on the **Medusa backend** to the public admin app URL. The production default is `https://ecomm-admin-ecru.vercel.app/app`. Local development defaults to `http://localhost:9000/app`. HTTPS is required outside loopback. Do not use a request-supplied origin to build credential links.
+Set `ADMIN_SITE_URL` on the **Medusa backend** to the public admin app URL. Credential emails default to `https://ecomm-admin-ecru.vercel.app/app` in every environment. A localhost/loopback setting also falls back to that public address so recipients never receive an unusable developer URL. Other explicitly configured admin addresses must use HTTPS. Do not use a request-supplied origin to build credential links.
 
 Emails contain a greeting, login address, temporary password, role, creation/reset date in India time and instructions to change the password. Passwords are not saved in custom access/audit tables or logged. If SMTP delivery fails, the account remains created and the dialog explicitly reports failure. Copy the temporary credentials securely; after fixing SMTP, use **Reset credentials** to generate and email a fresh password. Do not create the same user again.
 
+Welcome and credential-reset messages use an OWEG-branded responsive HTML layout with a sign-in button, credential card, role/date details and first-login steps. A plain-text MIME alternative includes the same credentials and public login URL. The PNG logo uses the storefront's public asset URL; if images are blocked, the OWEG alternative text and all instructions remain available.
+
 ## Deployment
+
+Customer and admin accounts may use the same public email with independent passwords. Admin emailpass credentials use an internal `oweg-admin:` provider key; the dashboard still accepts the normal email. Admin creation, first-login change, credential reset, and forgot-password all use the admin key, while customer credentials retain the ordinary email key. Admin-only legacy provider identities move to that key on admin sign-in/reset (or before customer registration) without changing the password hash. Customer/vendor identities are never moved or linked to an admin. Deploy the backend changes together; no password or database schema migration is required.
+
+The Admin accounts table includes a Delete column. An active superadmin must enter the exact uppercase `CONFIRM` in the deletion dialog. Both the API and UI prevent self-deletion and protect all CLI-managed superadmin accounts. Subadmin and unassigned accounts are soft-deleted atomically with access revocation and an `account.deleted` audit event; audit history and login identities are retained. The deleted user is excluded from access lookups, blocking existing sessions and token refresh. Native Medusa user deletion is blocked so it cannot bypass this confirmation flow.
+
+The optional password field shows the current backend requirement of 12–128 characters and marks each requirement as met or missing while typing. Leaving it blank generates a strong temporary password. These hints do not introduce additional composition rules.
 
 Deploy the Medusa backend and the admin app from the same revision. Before starting the updated backend, run the additive schema migration from `my-medusa-store`:
 

@@ -5,6 +5,7 @@ import { getSharedDbPool } from "../db-pool"
 import { activityContext, activityResourceId, changedActivityFields, cleanActivityText, requestActivityContext, safeActivityPath } from "./activity-context"
 import { insertAdminActivity } from "./activity-store"
 import { getAdminAccess } from "./repository"
+import { adminLoginEmail } from "./admin-auth"
 
 /** Observe completion without changing authentication, response bodies or status. */
 export function recordAdminActivity(req: MedusaRequest, res: MedusaResponse, next: MedusaNextFunction) {
@@ -43,7 +44,7 @@ export function recordAdminActivity(req: MedusaRequest, res: MedusaResponse, nex
       let actorId = auth?.actor_id || "anonymous"
       if (!context.actor && auth?.actor_id) context.actor = await getAdminAccess(auth.actor_id) || undefined
       if (authentication && path.startsWith("/auth/user/") && !auth?.actor_id) {
-        const email = cleanActivityText((req.body as { email?: unknown })?.email, 254).toLowerCase()
+        const email = adminLoginEmail(cleanActivityText((req.body as { email?: unknown })?.email, 280)).toLowerCase()
         if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
           const { rows } = await getSharedDbPool().query('SELECT id FROM "user" WHERE lower(email)=$1 AND deleted_at IS NULL LIMIT 1', [email])
           if (rows[0]) {

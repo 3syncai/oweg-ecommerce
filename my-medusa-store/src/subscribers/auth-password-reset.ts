@@ -4,6 +4,7 @@ import { buildAdminResetUrl } from "../lib/admin-password-reset/config"
 import { sendAdminPasswordResetEmail } from "../lib/admin-password-reset/mailer"
 import { hasPasswordResetMailerConfig } from "../lib/password-reset/config"
 import { normalizeEmail } from "../lib/password-reset/crypto"
+import { adminLoginEmail } from "../lib/admin-access/admin-auth"
 
 type AuthPasswordResetPayload = {
   entity_id: string
@@ -18,7 +19,7 @@ export default async function authPasswordResetSubscriber({
     return
   }
 
-  const email = normalizeEmail(data.entity_id)
+  const email = normalizeEmail(adminLoginEmail(data.entity_id))
   if (!email || !data.token) {
     return
   }

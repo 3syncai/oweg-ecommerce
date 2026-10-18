@@ -4,6 +4,7 @@ import type { MedusaContainer, IAuthModuleService, IUserModuleService } from "@m
 import { Modules, MedusaError } from "@medusajs/framework/utils"
 import { getSharedDbPool } from "../db-pool"
 import { accessTransaction, assignAccount, audit, getAdminAccess, requireSuperadmin } from "./repository"
+import { resolveAdminLoginId } from "./admin-auth"
 
 export function adminPassword(input?: unknown): string {
   if (input === undefined || input === "") return randomBytes(24).toString("base64url")
@@ -18,7 +19,18 @@ export async function createAdminIdentity(container: MedusaContainer, input: { e
   const auth = container.resolve<IAuthModuleService>(Modules.AUTH)
   const existing = await users.listUsers({ email: input.email })
   if (existing.length) throw new MedusaError(MedusaError.Types.DUPLICATE_ERROR, "This admin already exists. Assign their role from the accounts list.")
-  const registration = await auth.register("emailpass", { body: { email: input.email, password: input.password } })
+  const identifier = await resolveAdminLoginId(container, input.email)
+  const providers = await auth.listProviderIdentities({ provider: "emailpass", entity_id: identifier })
+  if (providers.length === 1 && providers[0].auth_identity_id) {
+    const identity = await auth.retrieveAuthIdentity(providers[0].auth_identity_id)
+    if (identity.app_metadata?.user_id && !identity.app_metadata.customer_id && !identity.app_metadata.vendor_id) {
+      const linked = await users.listUsers({ id: String(identity.app_metadata.user_id) })
+      if (linked.length) throw new MedusaError(MedusaError.Types.DUPLICATE_ERROR, "This login already belongs to an admin account")
+      // A deleted admin can be recreated without touching a customer identity.
+      await auth.deleteAuthIdentities([identity.id])
+    }
+  }
+  const registration = await auth.register("emailpass", { body: { email: identifier, password: input.password } })
   if (!registration.success || !registration.authIdentity) {
     throw new MedusaError(MedusaError.Types.INVALID_DATA, "This email cannot be provisioned. It may already have a login identity; choose another email or assign its existing admin account.")
   }
@@ -64,7 +76,8 @@ export async function resetSubadminPassword(container: MedusaContainer, actor: s
     // Revoke existing sessions before changing the credential; failure leaves old sessions revoked.
     // JWT issue times come from the application clock, not the remote database clock.
     await getSharedDbPool().query("UPDATE oweg_admin_account SET must_change_password=true,token_valid_after=$2,updated_at=now() WHERE user_id=$1 AND kind='subadmin'", [userId, Math.ceil(Date.now() / 1000)])
-    const result = await container.resolve<IAuthModuleService>(Modules.AUTH).updateProvider("emailpass", { entity_id: target.email, password })
+    const identifier = await resolveAdminLoginId(container, target.email)
+    const result = await container.resolve<IAuthModuleService>(Modules.AUTH).updateProvider("emailpass", { entity_id: identifier, password })
     if (!result.success) throw new MedusaError(MedusaError.Types.INVALID_DATA, "Unable to reset this account's login identity")
     await audit(client, actor, "credentials.reset", userId)
   })

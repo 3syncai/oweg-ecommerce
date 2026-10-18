@@ -2,6 +2,7 @@ import type { IAuthModuleService, MedusaContainer } from "@medusajs/types"
 import { MedusaError, Modules } from "@medusajs/framework/utils"
 import { getSharedDbPool } from "../db-pool"
 import { accessTransaction, audit, getAdminAccess } from "./repository"
+import { resolveAdminLoginId } from "./admin-auth"
 
 export async function changeOwnAdminPassword(container: MedusaContainer, actor: string, currentPassword: string, newPassword: string) {
   if (newPassword.length < 12 || newPassword.length > 128 || !/[a-z]/.test(newPassword) ||
@@ -14,7 +15,8 @@ export async function changeOwnAdminPassword(container: MedusaContainer, actor: 
     const access = await getAdminAccess(actor)
     if (!access?.active || access.kind !== "subadmin") throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "Active subadmin account required")
     const auth = container.resolve<IAuthModuleService>(Modules.AUTH)
-    const verified = await auth.authenticate("emailpass", { body: { email: access.email, password: currentPassword } })
+    const identifier = await resolveAdminLoginId(container, access.email)
+    const verified = await auth.authenticate("emailpass", { body: { email: identifier, password: currentPassword } })
     if (!verified.success || verified.authIdentity?.app_metadata?.user_id !== actor) {
       throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "Your current password is incorrect")
     }
@@ -22,7 +24,7 @@ export async function changeOwnAdminPassword(container: MedusaContainer, actor: 
     const cutoff = Math.ceil(Date.now() / 1000)
     // This independent update persists even if provider update succeeds and COMMIT later fails.
     await getSharedDbPool().query("UPDATE oweg_admin_account SET token_valid_after=$2 WHERE user_id=$1", [actor, cutoff])
-    const result = await auth.updateProvider("emailpass", { entity_id: access.email, password: newPassword })
+    const result = await auth.updateProvider("emailpass", { entity_id: identifier, password: newPassword })
     if (!result.success) throw new MedusaError(MedusaError.Types.INVALID_DATA, "Unable to update your password. Try again or contact your superadmin.")
     await client.query("UPDATE oweg_admin_account SET must_change_password=false,updated_at=now() WHERE user_id=$1", [actor])
     await audit(client, actor, "credentials.changed", actor)

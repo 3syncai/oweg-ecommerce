@@ -233,6 +233,10 @@ function buildMimeMessage(input: {
 }) {
   const domain = input.fromEmail.split("@")[1] || "localhost"
   const boundary = `oweg-reset-${randomUUID()}`
+  const preheader = `<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">${escapeHtml(input.previewText)}</div>`
+  const html = /<body\b[^>]*>/i.test(input.html)
+    ? input.html.replace(/<body\b[^>]*>/i, opening => opening + preheader)
+    : preheader + input.html
 
   return [
     `From: ${formatDisplayAddress(input.fromName, input.fromEmail)}`,
@@ -256,14 +260,7 @@ function buildMimeMessage(input: {
     'Content-Type: text/html; charset="UTF-8"',
     "Content-Transfer-Encoding: base64",
     "",
-    toBase64Lines(
-      [
-        `<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">${escapeHtml(
-          input.previewText
-        )}</div>`,
-        input.html,
-      ].join("")
-    ),
+    toBase64Lines(html),
     "",
     `--${boundary}--`,
     "",
@@ -364,6 +361,8 @@ type TransactionalEmailInput = {
   intro: string
   paragraphs?: string[]
   previewText?: string
+  /** Trusted server-rendered email template; callers must escape dynamic values. */
+  htmlBody?: string
 }
 
 export async function sendTransactionalEmail(input: TransactionalEmailInput) {
@@ -395,7 +394,7 @@ export async function sendTransactionalEmail(input: TransactionalEmailInput) {
     )
     .join("")
 
-  const html = `
+  const html = input.htmlBody || `
     <div style="margin:0;padding:24px;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a">
       <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;overflow:hidden">
         <div style="padding:28px 28px 16px;border-bottom:1px solid #ecf0f4">

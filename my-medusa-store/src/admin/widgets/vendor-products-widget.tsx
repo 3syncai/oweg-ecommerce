@@ -1,5 +1,7 @@
 "use client"
 
+import { resolveRequestedCollection } from "../lib/resolve-requested-collection"
+
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import { Container, Heading, Text, Badge, Button, Table } from "@medusajs/ui"
 import { useEffect, useState } from "react"
@@ -411,20 +413,9 @@ const VendorProductsWidget = () => {
     setCreatingCollection(true)
     try {
       const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
-      const toHandle = (s: string) =>
-        s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-
-      // Create the collection
-      const createRes = await fetch(`${backend}/admin/collections`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: request, handle: toHandle(request) }),
-      })
-      if (!createRes.ok) throw new Error("Failed to create collection")
-      const createData = await createRes.json()
-      const newColId = createData.collection?.id
-      if (!newColId) throw new Error("No collection id returned")
+      // Reuse an existing brand, or create it once when missing.
+      const resolved = await resolveRequestedCollection(backend, request)
+      const newColId = resolved.collection.id
 
       // Assign the new collection to the product
       const updateRes = await fetch(`${backend}/admin/products/${product.id}`, {

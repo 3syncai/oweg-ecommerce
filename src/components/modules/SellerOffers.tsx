@@ -1,7 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useId, useState } from "react"
+import { Check, ChevronDown, Store } from "lucide-react"
 import type { SellerOffer } from "@/hooks/useSellerOffers"
+import styles from "@/app/productDetail/ProductDetail.module.css"
 
 type Props = {
   offers: SellerOffer[]
@@ -12,28 +14,42 @@ type Props = {
 
 export default function SellerOffers({ offers, selectedVariantId, onSelect, formatPrice }: Props) {
   const [open, setOpen] = useState(false)
+  const listId = useId()
   if (!offers.length) return null
   const selected = offers.find(offer => offer.variant_id === selectedVariantId) || offers[0]
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4" aria-label="Seller offers">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-sm text-slate-500">Sold by <span className="font-semibold text-slate-900">{selected.store_name}</span></p>
-          <p className="text-sm text-slate-600">{formatPrice(selected.price)} · {selected.available} available</p>
-        </div>
+    <section className={styles.sellerOffers} aria-label="Seller offers">
+      <div className={styles.sellerHeading}>
+        <h2>Seller offers <span>{offers.length}</span></h2>
         {offers.length > 1 && (
-          <button type="button" className="text-sm font-semibold text-green-700 underline" aria-expanded={open} onClick={() => setOpen(value => !value)}>
-            {open ? "Hide other sellers" : `See ${offers.length - 1} other seller${offers.length === 2 ? "" : "s"}`}
+          <button type="button" className={styles.sellerToggle} aria-controls={listId} aria-expanded={open} onClick={() => setOpen(value => !value)}>
+            {open ? "Hide sellers" : "Compare sellers"}
+            <ChevronDown size={15} className={open ? styles.chevronOpen : undefined} aria-hidden="true" />
           </button>
         )}
       </div>
+      <div className={styles.selectedSeller}>
+        <span className={styles.sellerIcon}><Store size={20} aria-hidden="true" /></span>
+        <div className={styles.sellerIdentity}>
+          <span className={styles.sellerEyebrow}>Sold by</span>
+          <strong>{selected.store_name}</strong>
+          <span className={styles.sellerAvailability}>{selected.available} available</span>
+        </div>
+        <div className={styles.sellerPrice}>
+          <strong>{formatPrice(selected.price)}</strong>
+          <span><Check size={12} aria-hidden="true" /> Selected</span>
+        </div>
+      </div>
       {open && offers.length > 1 && (
-        <div className="mt-3 space-y-2">
+        <div id={listId} className={styles.sellerList}>
+          <p>Choose a seller for this product</p>
           {offers.map((offer, index) => (
             <button key={offer.variant_id} type="button" onClick={() => { onSelect(offer.variant_id); setOpen(false) }}
-              className={`flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left text-sm ${selected.variant_id === offer.variant_id ? "border-green-600 bg-green-50" : "border-slate-200 hover:border-green-500"}`}>
-              <span><span className="block font-semibold">{offer.store_name}</span><span className="text-slate-500">{index === 0 ? "Lowest price · " : ""}{offer.available} available</span></span>
-              <span className="font-bold">{formatPrice(offer.price)}</span>
+              aria-pressed={selected.variant_id === offer.variant_id}
+              className={`${styles.sellerOption} ${selected.variant_id === offer.variant_id ? styles.sellerOptionSelected : ""}`}>
+              <span className={styles.sellerRadio}>{selected.variant_id === offer.variant_id && <Check size={12} aria-hidden="true" />}</span>
+              <span className={styles.sellerIdentity}><strong>{offer.store_name}</strong><span>{index === 0 ? "Lowest price · " : ""}{offer.available} available</span></span>
+              <strong className={styles.offerPrice}>{formatPrice(offer.price)}</strong>
             </button>
           ))}
         </div>
