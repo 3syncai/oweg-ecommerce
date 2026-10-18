@@ -109,6 +109,7 @@ export default function RootLayout({
                   <Header />
 
                   <main
+                    data-storefront-content
                     className="flex-1 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] md:pb-0"
                     style={{ paddingTop: "var(--app-header-height, 136px)" }}
                   >

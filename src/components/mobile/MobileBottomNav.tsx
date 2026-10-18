@@ -857,26 +857,26 @@ export default function MobileBottomNav() {
 
           {selectedSubcategory && sidebarOverlayOpen && (
             <div
-              className="absolute inset-0 z-30 bg-black/20"
+              className={navStyles.drawerBackdrop}
               onClick={() => setSidebarOverlayOpen(false)}
             >
               <div
-                className="absolute top-0 left-0 h-full w-64 bg-white shadow-2xl border-r border-gray-100 overflow-y-auto"
+                className={navStyles.categoryDrawer}
+                aria-label="Browse categories"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex items-center justify-between px-3 py-3 border-b border-gray-100">
-                  <h4 className="text-sm font-semibold text-gray-900">
-                    Categories
-                  </h4>
+                <div className={navStyles.drawerHeader}>
+                  <div><p className={navStyles.drawerEyebrow}>FIND YOUR NEXT FAVOURITE</p><h4>Shop by category</h4></div>
                   <button
                     type="button"
                     onClick={() => setSidebarOverlayOpen(false)}
-                    className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 text-gray-600"
+                    className={navStyles.drawerClose}
+                    aria-label="Close category browser"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="space-y-2 px-3 py-3">
+                <div className={navStyles.drawerList}>
                   {filteredCategories.map((cat) => {
                     const active = displayedCategory?.id === cat.id;
                     const isExpanded = expandedCatId === cat.id;
@@ -885,7 +885,8 @@ export default function MobileBottomNav() {
                     return (
                       <div
                         key={cat.id}
-                        className={`rounded-2xl border ${active ? "border-emerald-400 bg-emerald-50 shadow-sm" : "border-gray-200 bg-white"}`}
+                        className={navStyles.drawerGroup}
+                        data-active={active || undefined}
                       >
                         <button
                           type="button"
@@ -903,18 +904,19 @@ export default function MobileBottomNav() {
                               setSidebarOverlayOpen(false);
                             }
                           }}
-                          className="w-full px-2.5 py-2 flex items-center justify-between gap-2"
+                          className={navStyles.drawerCategory}
+                          aria-expanded={hasChildren ? isExpanded : undefined}
                           title={cat.title}
                         >
                           <CategoryIconTile
                             handle={cat.handle}
                             title={cat.title}
                             active={active}
-                            size="md"
+                            size="sm"
                             orientation="horizontal"
                             labelWrap
                             className="min-w-0 flex-1"
-                            labelClassName="text-sm font-semibold"
+                            labelClassName={navStyles.drawerCategoryLabel}
                           />
                           {hasChildren ? (
                             <ChevronRight
@@ -923,7 +925,7 @@ export default function MobileBottomNav() {
                           ) : null}
                         </button>
                         {hasChildren && isExpanded ? (
-                          <div className="pb-2 px-3 space-y-2">
+                          <div className={navStyles.drawerChildren}>
                             {cat.children!.map((child) => (
                               <button
                                 key={child.id}
@@ -935,7 +937,8 @@ export default function MobileBottomNav() {
                                   setIsOpen(false);
                                   setSidebarOverlayOpen(false);
                                 }}
-                                className="w-full rounded-xl border border-emerald-100 bg-white px-3 py-2 text-left text-sm font-semibold text-gray-800 hover:border-emerald-300"
+                                className={navStyles.drawerChild}
+                                aria-current={selectedSubcategory.id === child.id ? "true" : undefined}
                               >
                                 {child.title}
                               </button>

@@ -11,7 +11,7 @@ export default function BrandLoader({
   compact = false,
 }: BrandLoaderProps) {
   return (
-    <div className={`${styles.loader} ${compact ? styles.compact : styles.page}`} role="status" aria-live="polite" aria-label={label}>
+    <div data-brand-loading className={`${styles.loader} ${compact ? styles.compact : styles.page}`} role="status" aria-live="polite" aria-label={label}>
       <div className={styles.visual} aria-hidden="true">
         <span className={styles.perspective}><span className={styles.mark} /></span>
         <span className={styles.shadow} />

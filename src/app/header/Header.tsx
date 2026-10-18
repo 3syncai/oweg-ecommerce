@@ -1385,12 +1385,12 @@ const Header: React.FC = () => {
         {/* Main Header */}
         <div className="bg-header-bg">
           <div className="w-full px-4 sm:px-6 lg:px-8 py-2">
-            <div className="hidden md:flex items-center justify-between gap-2 w-full">
+            <div className="hidden md:flex min-h-14 items-center justify-between gap-2 w-full">
               {/* Left Section: Logo + Location */}
               <div className="flex items-center gap-2 flex-shrink-0">
                 {/* Logo */}
                 <Link href="/" className="flex items-center logo-link">
-                  <Image src="/oweg_logo.png" alt="OWEG" width={100} height={32} className="h-10 w-auto" />
+                  <Image src="/oweg_logo.png" alt="OWEG" width={189} height={50} className="h-[50px] w-auto" />
                 </Link>
 
                 {/* Delivery Location - Hidden on category pages */}
@@ -1768,7 +1768,7 @@ const Header: React.FC = () => {
             data-desktop-category-nav
           >
             <div ref={desktopNavRef} className="w-full px-4 sm:px-6 lg:px-8">
-              <div className="py-2 relative" data-nav-scroll>
+              <div className="py-1 relative" data-nav-scroll>
                 {/* Compact department bar; the full catalog stays in All departments. */}
                 {navCatsLoading ? (
                   <div className="py-3 text-sm text-gray-500">Loading categories...</div>
@@ -1778,7 +1778,9 @@ const Header: React.FC = () => {
                       className="grid w-full items-stretch gap-y-2"
                       style={{
                         gridTemplateRows: "minmax(0, 1fr)",
-                        gridTemplateColumns: `repeat(${desktopGridColumns}, minmax(${desktopMinColumnWidth}px, 1fr))`,
+                        gridTemplateColumns: desktopGridColumns > 1
+                          ? `144px repeat(${desktopGridColumns - 1}, minmax(0, 1fr))`
+                          : "minmax(0, 144px)",
                         gridAutoFlow: "row",
                         columnGap: `${desktopGridColumnGap}px`,
                       }}

@@ -126,3 +126,23 @@
   .backLink { font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) { .productCard { transition: none; } }
+
+
+/* Compact department browser above product results. */
+.drawerBackdrop { position: absolute; inset: 0; z-index: 30; background: #24351c38; backdrop-filter: blur(3px); }
+.categoryDrawer { position: absolute; inset: 0 auto 0 0; display: flex; flex-direction: column; width: min(340px, calc(100% - 28px)); max-width: 100%; min-height: 0; overflow: hidden; background: #fff; border: 1px solid #e6ecdf; border-radius: 20px; box-shadow: 12px 0 40px #20351c1a; }
+.drawerHeader { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; gap: 8px; padding: 20px 16px 16px; border-bottom: 1px solid #edf0e7; }
+.drawerEyebrow { margin-bottom: 6px; font-size: 8px; font-weight: 600; letter-spacing: .12em; color: #839076; }
+.drawerHeader h4 { color: #2d4325; font-size: 18px; font-weight: 650; letter-spacing: -.035em; }
+.drawerClose { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 36px; height: 36px; border: 1px solid #e5eadf; border-radius: 11px; background: #f8faf5; color: #697961; }
+.drawerList { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 10px; scrollbar-width: thin; scrollbar-color: #dce5d4 transparent; }
+.drawerGroup { margin-bottom: 4px; border-radius: 14px; }
+.drawerGroup[data-active="true"] { background: #f2f7ec; }
+.drawerCategory { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 60px; padding: 9px; border-radius: 12px; color: #5b7050; text-align: left; }
+.drawerCategory:hover { background: #f3f7ed; }
+.drawerCategory > svg { flex-shrink: 0; }
+.drawerCategoryLabel { font-size: 12px; font-weight: 600; line-height: 1.45; text-align: left; }
+.drawerChildren { display: flex; flex-direction: column; gap: 2px; margin: 0 10px 10px 28px; padding: 0 0 8px 15px; border-left: 1px solid #d5e2c9; }
+.drawerChild { min-height: 42px; width: 100%; padding: 10px 12px; border-radius: 9px; color: #526549; font-size: 12px; line-height: 1.45; text-align: left; overflow-wrap: anywhere; }
+.drawerChild:hover, .drawerChild[aria-current="true"] { background: #e4efda; color: #365822; }
+.drawerClose:focus-visible, .drawerCategory:focus-visible, .drawerChild:focus-visible { outline: 2px solid #75a953; outline-offset: -2px; }
