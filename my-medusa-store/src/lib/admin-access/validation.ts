@@ -1,4 +1,5 @@
 import { ADMIN_RESPONSIBILITIES } from "../../shared/admin-responsibilities"
+import { ADMIN_DELETE_CONFIRMATION, ADMIN_PASSWORD_MIN_LENGTH, ADMIN_PASSWORD_MAX_LENGTH } from "../../shared/admin-account-controls"
 import { z } from "zod"
 import { MedusaError } from "@medusajs/framework/utils"
 import { ADMIN_PERMISSION_GROUPS, validCustomPermissionPath } from "../../shared/admin-access"
@@ -21,10 +22,11 @@ export const accountInput = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   first_name: z.string().trim().max(100).default(""),
   last_name: z.string().trim().max(100).default(""),
-  password: z.string().min(12).max(128).optional(),
+  password: z.string().min(ADMIN_PASSWORD_MIN_LENGTH).max(ADMIN_PASSWORD_MAX_LENGTH).optional(),
   role_id: z.string().min(1).max(100),
 }).strict()
 export const assignmentInput = z.object({ role_id: z.string().min(1).max(100), active: z.boolean() }).strict()
+export const deleteAccountInput = z.object({ confirmation: z.literal(ADMIN_DELETE_CONFIRMATION) }).strict()
 export const credentialInput = z.object({ password: z.string().min(12).max(128).optional() }).strict()
 
 export function parseAccessInput<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer<T> {

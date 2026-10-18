@@ -24,7 +24,7 @@ export default function ChangePasswordPage() {
   return <Container className="mx-auto my-8 max-w-lg p-8">
     <Text size="small" className="mb-3 text-ui-fg-subtle">OWEG ADMIN · ACCOUNT SECURITY</Text>
     <Heading level="h1">Set your own password</Heading>
-    <Text className="mt-3 text-ui-fg-subtle">Welcome to the team. Replace your temporary password to unlock your assigned responsibilities.</Text>
+    <Text className="mt-3 text-ui-fg-subtle">Welcome to the team. Replace your temporary admin password to unlock your assigned responsibilities. Your customer password is separate and will stay unchanged.</Text>
     {done ? <Text role="status" className="mt-6">Password changed. Taking you back to sign in…</Text> : <form onSubmit={submit} className="mt-6 flex flex-col gap-4">
       {error && <Text role="alert" className="text-ui-fg-error">{error}</Text>}
       <div><Label htmlFor="current-password">Temporary / current password</Label><Input id="current-password" type="password" autoComplete="current-password" required maxLength={128} value={current} onChange={e => setCurrent(e.target.value)} /></div>

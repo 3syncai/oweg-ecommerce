@@ -1443,10 +1443,10 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   onOpenCompare={() => setCompareModalOpen(true)}
                   formatPrice={(value) => inr.format(value)}
                   flashSaleInfo={selectedFlashSaleInfo}
+                  sellerOffers={visibleSellerOffers && visibleSellerOffers.length > 0 && purchaseVariantId ? (
+                    <SellerOffers offers={visibleSellerOffers} selectedVariantId={purchaseVariantId} onSelect={id => { setSelectedSellerVariantId(id); setQuantity(1) }} formatPrice={value => inr.format(value)} />
+                  ) : null}
                 />
-                {visibleSellerOffers && visibleSellerOffers.length > 0 && purchaseVariantId && (
-                  <SellerOffers offers={visibleSellerOffers} selectedVariantId={purchaseVariantId} onSelect={id => { setSelectedSellerVariantId(id); setQuantity(1) }} formatPrice={value => inr.format(value)} />
-                )}
                 <DeliveryInfo
                   pinCode={pinCode}
                   pinStatus={pinStatus}

@@ -9,6 +9,7 @@ import cors from "cors"
 import { isBlockedFromDraftConvert } from "../lib/vendor-order-visibility"
 import { enforceAdminAccess, enforceAdminTokenRefresh } from "../lib/admin-access/middleware"
 import { recordAdminActivity } from "../lib/admin-access/activity-middleware"
+import { scopeAdminLogin } from "../lib/admin-access/admin-auth"
 
 /**
  * Cross-origin cookie middleware for Chrome/Safari.
@@ -243,7 +244,7 @@ export default defineMiddlewares({
     },
     {
       matcher: "/auth",
-      middlewares: [recordAdminActivity, crossOriginCookieMiddleware],
+      middlewares: [recordAdminActivity, crossOriginCookieMiddleware, scopeAdminLogin],
     },
     {
       matcher: "/auth/token/refresh",

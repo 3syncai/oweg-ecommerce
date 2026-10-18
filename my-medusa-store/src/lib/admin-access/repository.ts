@@ -2,8 +2,9 @@ import type { PoolClient } from "pg"
 import { MedusaError } from "@medusajs/framework/utils"
 import { getSharedDbPool } from "../db-pool"
 import { ADMIN_PERMISSION_GROUPS, validatePermissions, type AdminAccess, type AdminPermission, type CustomAdminPermission } from "../../shared/admin-access"
-import { customPermissionInput, parseAccessInput } from "./validation"
+import { customPermissionInput, deleteAccountInput, parseAccessInput } from "./validation"
 import { insertAdminActivity } from "./activity-store"
+import { canDeleteAdminAccount } from "../../shared/admin-account-controls"
 
 export type AdminRole = { id: string; name: string; responsibilities: string; permissions: AdminPermission[] }
 export type AdminAccountRow = AdminAccess & { email: string; first_name: string | null; last_name: string | null; token_valid_after: string }
@@ -136,5 +137,26 @@ export async function assignAccount(actor: string, userId: string, roleId: strin
         token_valid_after=CASE WHEN oweg_admin_account.active=false AND $2=true THEN $5::bigint ELSE oweg_admin_account.token_valid_after END
     `, [userId, active, roleId, actor, Math.floor(Date.now() / 1000), mustChangePassword])
     await audit(client, actor, existing.length ? "account.updated" : "account.assigned", userId, { role_id: roleId, active })
+  })
+}
+
+export async function deleteAdminAccount(actor: string, userId: string, body: unknown) {
+  const administrator = await requireSuperadmin(actor)
+  parseAccessInput(deleteAccountInput, body)
+  if (actor === userId) throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "You cannot delete your own account")
+  return accessTransaction(async client => {
+    // Match assignment/reset locking so deletion cannot race an access change.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`oweg-admin:${userId}`])
+    const { rows: users } = await client.query('SELECT id FROM "user" WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [userId])
+    if (!users.length) throw new MedusaError(MedusaError.Types.NOT_FOUND, "Admin user not found")
+    const { rows: accounts } = await client.query("SELECT kind FROM oweg_admin_account WHERE user_id=$1 FOR UPDATE", [userId])
+    if (!canDeleteAdminAccount(administrator, { user_id: userId, kind: accounts[0]?.kind || "unassigned" })) {
+      throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "Superadmin accounts cannot be deleted through the dashboard")
+    }
+    // Retain account/audit records. All admin requests and token refreshes check
+    // user.deleted_at in getAdminAccess, blocking existing sessions immediately.
+    await client.query('UPDATE "user" SET deleted_at=now(),updated_at=now() WHERE id=$1', [userId])
+    await client.query("UPDATE oweg_admin_account SET active=false,token_valid_after=$2,updated_at=now() WHERE user_id=$1", [userId, Math.ceil(Date.now() / 1000)])
+    await audit(client, actor, "account.deleted", userId)
   })
 }

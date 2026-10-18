@@ -1,4 +1,4 @@
-.page { background: #fafbf7; color: #23352b; }
+.page { background: #f6f8f4; color: #23352b; }
 .compareOverlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; background: #0009; }
 .compareDialog { max-height: calc(100dvh - 32px); }
 .container { padding: 24px 32px 48px; }
@@ -6,21 +6,21 @@
 .breadcrumbs svg { flex-shrink: 0; width: 13px; height: 13px; color: #8a967f; }
 .breadcrumbs a { flex-shrink: 0; color: #526d3e; padding: 4px 0; background: transparent; border: 0; }
 .breadcrumbCurrent { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.productLayout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: start; }
-.galleryColumn { min-width: 0; position: sticky; top: 112px; }
-.summaryColumn { min-width: 0; padding: 4px 0 0; }
-.summary { display: flex; flex-direction: column; gap: 18px; }
+.productLayout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+.galleryColumn { min-width: 0; position: sticky; top: 190px; }
+.summaryColumn { min-width: 0; padding: 26px; border: 1px solid #e2e8dd; border-radius: 24px; background: #fff; box-shadow: 0 8px 32px #23352b04; }
+.summary { display: flex; flex-direction: column; gap: 20px; }
 .summaryTop { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
 .brandLine { display: flex; align-items: center; gap: 10px; font-size: 11px; }
 .exclusive { color: #526d3e; background: #edf5e5; border-radius: 6px; padding: 5px 8px; }
 .brand { color: #6c7765; font-size: 11px; letter-spacing: .8px; text-transform: uppercase; }
 .utilityButton { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; color: #697460; font-size: 12px; border-radius: 8px; padding: 0 4px; cursor: pointer; }
 .utilityButton:hover { color: #42642d; background: #edf5e5; }
-.productTitle { font-size: clamp(23px, 2.2vw, 29px); line-height: 1.4; font-weight: 600; letter-spacing: -.7px; color: #23352b; }
+.productTitle { font-size: clamp(25px, 2.4vw, 34px); line-height: 1.22; font-weight: 600; letter-spacing: -1px; color: #23352b; overflow-wrap: anywhere; }
 .titleToggle { min-height: 36px; font-size: 12px; font-weight: 600; color: #557b35; cursor: pointer; }
-.priceSection { padding: 18px 0; border-top: 1px solid #e3e9dd; border-bottom: 1px solid #e3e9dd; }
+.priceSection { padding: 20px; border: 1px solid #e7eedf; border-radius: 16px; background: #f6f9f1; }
 .priceRow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; }
-.price { color: #23352b; font-weight: 600; font-size: 31px; line-height: 1.3; letter-spacing: -.8px; }
+.price { color: #23352b; font-weight: 600; font-size: 36px; line-height: 1.2; letter-spacing: -1.2px; font-variant-numeric: tabular-nums; }
 .mrp { color: #77816e; font-size: 15px; text-decoration: line-through; }
 .savingsRow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
 .savingsRow:empty { display: none; }
@@ -28,7 +28,7 @@
 .savings { color: #557b35; font-size: 12px; }
 .taxNote { color: #74806a; font-size: 11px; margin-top: 10px; line-height: 1.5; }
 .subtitle { color: #6a765f; font-size: 13px; line-height: 1.7; }
-.rewards { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; color: #6f7c64; font-size: 11px; }
+.rewards { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; padding: 11px 13px; border: 1px solid #f0e8c9; border-radius: 10px; background: #fffcf1; color: #7d7051; font-size: 11px; }
 .rewardLine { display: inline-flex; align-items: center; gap: 6px; color: #526d3e; }
 .stockRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .stock { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; }
@@ -37,8 +37,8 @@
 .outOfStock { color: #ab4646; }
 .wishlistButton { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 0 8px; border-radius: 8px; color: #5b7050; font-size: 12px; cursor: pointer; }
 .wishlistButton:hover { background: #edf5e5; }
-.purchaseArea { padding-top: 4px; }
-.quantityRow { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.purchaseArea { padding-top: 0; }
+.quantityRow { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
 .quantityLabel { color: #6b7661; font-size: 12px; }
 .quantityControl { display: flex; align-items: center; border: 1px solid #dce4d3; border-radius: 10px; overflow: hidden; background: #fff; }
 .quantityButton { display: grid; place-items: center; width: 44px; height: 44px; color: #5b7050; cursor: pointer; }
@@ -61,14 +61,14 @@
 .galleryLayout { display: flex; flex-direction: column; gap: 14px; }
 .verticalThumbs { display: none; }
 .imageColumn { position: relative; min-width: 0; width: 100%; }
-.imageStage { position: relative; width: 100%; aspect-ratio: 1 / 1; border: 1px solid #e0e7d8; border-radius: 20px; background: #fff; overflow: hidden; }
-.imageStage img { padding: 35px; }
+.imageStage { position: relative; width: 100%; aspect-ratio: 1 / 1.06; border: 1px solid #e0e7d8; border-radius: 24px; background: #fff; overflow: hidden; }
+.imageStage img { padding: 28px; }
 .openImage { position: absolute; top: 14px; right: 14px; z-index: 30; display: inline-flex; align-items: center; gap: 5px; min-height: 36px; padding: 0 10px; border: 1px solid #e1e7da; border-radius: 8px; background: #fff; color: #627754; font-size: 11px; cursor: pointer; }
 .galleryArrows { position: absolute; bottom: 14px; left: 14px; right: 14px; display: flex; align-items: center; justify-content: space-between; z-index: 20; pointer-events: none; }
 .galleryArrows button { display: grid; place-items: center; width: 44px; height: 44px; pointer-events: auto; border: 1px solid #e1e7da; border-radius: 50%; background: #fff; color: #61764e; cursor: pointer; }
 .galleryCount { padding: 5px 10px; border-radius: 999px; background: #f5f7f0; color: #718065; font-size: 11px; }
 .horizontalThumbs { display: flex; gap: 10px; overflow-x: auto; padding: 4px 0; margin-top: 12px; }
-.thumbnail { flex-shrink: 0; position: relative; width: 64px; height: 64px; overflow: hidden; border: 1px solid #dfe6d7; border-radius: 10px; background: #fff; cursor: pointer; }
+.thumbnail { flex-shrink: 0; position: relative; width: 76px; height: 76px; overflow: hidden; border: 1px solid #dfe6d7; border-radius: 14px; background: #fff; cursor: pointer; }
 .thumbnail img { padding: 5px; }
 .thumbnailSelected { border-color: #7ac943; background: #f3f8ee; box-shadow: inset 0 0 0 1px #7ac943; }
 .imageFallback { display: flex; height: 100%; width: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #95a48a; background: #f6f8f2; font-size: 12px; }
@@ -110,14 +110,14 @@
   .imageStage img { padding: 25px; }
   .thumbnail { width: 54px; height: 54px; border-radius: 8px; }
   .horizontalThumbs { gap: 8px; margin-top: 8px; }
-  .summaryColumn { padding: 0; }
+  .summaryColumn { padding: 20px 16px; border-radius: 18px; }
   .summary { gap: 14px; }
   .summaryTop { gap: 4px; }
   .brandLine { gap: 8px; font-size: 11px; }
   .brand { font-size: 11px; }
   .utilityButton { font-size: 11px; gap: 4px; }
   .productTitle { font-size: 22px; line-height: 1.45; letter-spacing: -.5px; }
-  .priceSection { padding: 16px 0; }
+  .priceSection { padding: 16px; }
   .price { font-size: 29px; }
   .purchaseButtons { gap: 10px; }
   .cartButton, .buyButton { min-height: 48px; font-size: 13px; padding: 12px 10px; }
@@ -129,4 +129,41 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .cartButton, .buyButton { transition: none; }
+}
+
+/* Seller choice sits beside the purchase controls, with the active offer visible. */
+.sellerOffers { border: 1px solid #dfe7d9; border-radius: 16px; overflow: hidden; background: #fff; }
+.sellerHeading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; padding: 12px 16px; border-bottom: 1px solid #e9eee5; }
+.sellerHeading h2 { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.sellerHeading h2 span { display: grid; place-items: center; min-width: 20px; height: 20px; border-radius: 6px; background: #edf3e7; color: #53723e; font-size: 11px; }
+.sellerToggle { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; color: #466e2f; font-size: 12px; font-weight: 600; cursor: pointer; }
+.sellerToggle:hover { text-decoration: underline; text-underline-offset: 4px; }
+.chevronOpen { transform: rotate(180deg); }
+.selectedSeller { display: flex; align-items: center; gap: 12px; padding: 16px; background: #fafcf7; }
+.sellerIcon { display: grid; flex-shrink: 0; place-items: center; width: 42px; height: 42px; border: 1px solid #dce7d3; border-radius: 12px; background: #edf5e5; color: #5c7f43; }
+.sellerIdentity { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; font-size: 13px; }
+.sellerIdentity strong { font-weight: 600; color: #263c2d; overflow-wrap: anywhere; }
+.sellerIdentity > span { color: #6c7965; font-size: 11px; }
+.sellerIdentity .sellerEyebrow { font-size: 10px; text-transform: uppercase; letter-spacing: .8px; }
+.sellerPrice { display: flex; flex-shrink: 0; flex-direction: column; align-items: flex-end; gap: 5px; font-size: 17px; font-variant-numeric: tabular-nums; }
+.sellerPrice > span { display: flex; align-items: center; gap: 3px; color: #587b3e; font-size: 10px; }
+.sellerList { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-top: 1px solid #e4eadf; }
+.sellerList > p { margin-bottom: 3px; color: #728069; font-size: 11px; }
+.sellerOption { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 66px; padding: 12px; text-align: left; border: 1px solid #e4eadf; border-radius: 10px; cursor: pointer; }
+.sellerOption:hover { border-color: #9ab782; background: #fafcf7; }
+.sellerOptionSelected { border-color: #9ab782; background: #f3f8ed; }
+.sellerRadio { display: grid; flex-shrink: 0; place-items: center; width: 18px; height: 18px; border: 1px solid #bdcdb0; border-radius: 50%; color: #466e2f; }
+.sellerOptionSelected .sellerRadio { border-color: #7b9c60; background: #e2efd6; }
+.offerPrice { flex-shrink: 0; color: #263c2d; font-size: 14px; font-variant-numeric: tabular-nums; }
+@media (max-width: 1023px) and (min-width: 768px) {
+  .summaryColumn { padding: 20px; }
+  .selectedSeller { gap: 9px; padding: 13px; }
+  .sellerIcon { width: 34px; height: 34px; }
+}
+@media (max-width: 420px) {
+  .sellerHeading { padding: 10px 12px; }
+  .selectedSeller { gap: 9px; padding: 13px 12px; }
+  .sellerIcon { width: 32px; height: 36px; }
+  .sellerPrice { font-size: 15px; }
+  .delivery { grid-template-columns: 1fr; }
 }

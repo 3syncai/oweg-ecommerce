@@ -6,6 +6,7 @@ import { ADMIN_PERMISSION_GROUPS, type AdminAccess, type AdminPermission, type C
 import { accessRequest, currentAdminAccess } from "../../lib/admin-access-client"
 import { roleCompatibilityError, supportedRolePermissions, type AdminRoleCatalog } from "../../../shared/admin-role-catalog"
 import { Link } from "react-router-dom"
+import { ADMIN_DELETE_CONFIRMATION, ADMIN_PASSWORD_MIN_LENGTH, ADMIN_PASSWORD_MAX_LENGTH, adminPasswordRequirements, canDeleteAdminAccount } from "../../../shared/admin-account-controls"
 
 type Role = { id: string; name: string; responsibilities: string; permissions: AdminPermission[] }
 type Account = AdminAccess & { email: string; first_name: string | null; last_name: string | null }
@@ -40,6 +41,8 @@ export default function AdminAccessPage() {
   const [roleDraft, setRoleDraft] = useState<Role | null>(null)
   const [editing, setEditing] = useState<Account | null>(null)
   const [credentials, setCredentials] = useState<Credentials | null>(null)
+  const [deleting, setDeleting] = useState<Account | null>(null)
+  const [deleteConfirmation, setDeleteConfirmation] = useState("")
 
   const reload = async () => {
     const [usersData, rolesData, auditData, permissionsData] = await Promise.all([accessRequest("/users"), accessRequest("/roles"), accessRequest("/audit"), accessRequest("/permissions")])
@@ -58,9 +61,20 @@ export default function AdminAccessPage() {
   }
   const createUser = (event: FormEvent) => {
     event.preventDefault()
+    if (userDraft.password && adminPasswordRequirements(userDraft.password).some(rule => !rule.met)) {
+      setError("Password must contain 12 to 128 characters, or leave it blank to generate one."); return
+    }
     void run(async () => {
       const data = await accessRequest("/users", { ...userDraft, password: userDraft.password || undefined })
       setCredentials(data.credentials); setUserDraft(blankUser); setCreating(false)
+    })
+  }
+  const deleteUser = (event: FormEvent) => {
+    event.preventDefault()
+    if (!deleting || !access || deleteConfirmation !== ADMIN_DELETE_CONFIRMATION || !canDeleteAdminAccount(access, deleting)) return
+    void run(async () => {
+      await accessRequest(`/users/${encodeURIComponent(deleting.user_id)}`, { confirmation: deleteConfirmation }, "DELETE")
+      setDeleting(null); setDeleteConfirmation(""); setNotice("Admin account deleted. Existing sessions can no longer access the admin site.")
     })
   }
   const saveAssignment = (event: FormEvent) => {
@@ -106,7 +120,7 @@ export default function AdminAccessPage() {
       {tab === "activity" && <Link to="/activity-log" className="mb-4 inline-block text-sm underline">Open the full Activity Log with actions, sign-ins and IP locations</Link>}
       {tab === "accounts" && <>
         <Text size="small" className="mb-4 text-ui-fg-subtle">Existing accounts marked “Unassigned” have no business access until you assign a role.</Text>
-        <table className="w-full text-left text-sm"><thead className="text-ui-fg-subtle"><tr>{["Admin", "Role", "Status", "Actions"].map(label => <th key={label} className="border-b border-ui-border-base p-3 font-medium">{label}</th>)}</tr></thead><tbody>
+        <table className="w-full text-left text-sm"><thead className="text-ui-fg-subtle"><tr>{["Admin", "Role", "Status", "Actions", "Delete"].map(label => <th key={label} className="border-b border-ui-border-base p-3 font-medium">{label}</th>)}</tr></thead><tbody>
           {accounts.map(account => <tr key={account.user_id} className="border-b border-ui-border-base">
             <td className="p-3"><div className="font-medium">{[account.first_name, account.last_name].filter(Boolean).join(" ") || account.email}</div><div className="text-ui-fg-subtle">{account.email}</div></td>
             <td className="p-3">{account.kind === "superadmin" ? "Superadmin · full access" : account.role_name || "Unassigned"}</td>
@@ -118,6 +132,7 @@ export default function AdminAccessPage() {
                 setCredentials(data.credentials)
               })}>Reset credentials</Button>}
             </div>}</td>
+            <td className="p-3">{canDeleteAdminAccount(access, account) ? <Button variant="danger" size="small" disabled={busy} aria-label={`Delete ${account.email}`} onClick={() => { setError(""); setDeleteConfirmation(""); setDeleting(account) }}>Delete</Button> : <Text size="small" className="text-ui-fg-muted">{account.user_id === access.user_id ? "Your account" : "Protected"}</Text>}</td>
           </tr>)}
         </tbody></table>
       </>}
@@ -137,8 +152,20 @@ export default function AdminAccessPage() {
       <div className="grid grid-cols-2 gap-3"><div><Label htmlFor="admin-first-name">First name</Label><Input id="admin-first-name" value={userDraft.first_name} onChange={e => setUserDraft({ ...userDraft, first_name: e.target.value })} maxLength={100} /></div><div><Label htmlFor="admin-last-name">Last name</Label><Input id="admin-last-name" value={userDraft.last_name} onChange={e => setUserDraft({ ...userDraft, last_name: e.target.value })} maxLength={100} /></div></div>
       <div><Label htmlFor="admin-email">Login email</Label><Input id="admin-email" type="email" required autoComplete="off" maxLength={254} value={userDraft.email} onChange={e => setUserDraft({ ...userDraft, email: e.target.value })} /></div>
       <div><Label htmlFor="admin-role">Role</Label><select id="admin-role" required className="mt-1 w-full rounded-md border border-ui-border-base bg-ui-bg-field p-2" value={userDraft.role_id} onChange={e => setUserDraft({ ...userDraft, role_id: e.target.value })}>{roles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}</select><Text size="small" className="mt-2 text-ui-fg-subtle">{roles.find(r => r.id === userDraft.role_id)?.responsibilities}</Text></div>
-      <div><Label htmlFor="admin-password">Password (optional)</Label><Input id="admin-password" type="password" autoComplete="new-password" minLength={12} maxLength={128} value={userDraft.password} onChange={e => setUserDraft({ ...userDraft, password: e.target.value })} placeholder="Leave blank to generate a strong password" /><Text size="small" className="mt-2 text-ui-fg-muted">A welcome email includes the admin site, creation date and temporary credentials. The subadmin must choose a new password at first sign-in.</Text></div>
+      <div><Label htmlFor="admin-password">Password (optional)</Label><Input id="admin-password" type="password" autoComplete="new-password" minLength={ADMIN_PASSWORD_MIN_LENGTH} maxLength={ADMIN_PASSWORD_MAX_LENGTH} aria-describedby="admin-password-requirements" aria-invalid={userDraft.password !== "" && adminPasswordRequirements(userDraft.password).some(rule => !rule.met)} value={userDraft.password} onChange={e => setUserDraft({ ...userDraft, password: e.target.value })} placeholder="Leave blank to generate a strong password" />
+        <div id="admin-password-requirements" className="mt-2 rounded-lg border border-ui-border-base bg-ui-bg-subtle p-3" aria-live="polite" aria-atomic="true">
+          <Text size="small" className="font-medium">{userDraft.password ? `${userDraft.password.length} / ${ADMIN_PASSWORD_MAX_LENGTH} characters` : "Leave blank to generate a strong password automatically."}</Text>
+          <ul className="mt-2 space-y-1 text-xs">{adminPasswordRequirements(userDraft.password).map(rule => <li key={rule.label} className={userDraft.password ? rule.met ? "text-ui-fg-success" : "text-ui-fg-error" : "text-ui-fg-subtle"}>{userDraft.password ? rule.met ? "✓ Met: " : "○ Missing: " : "• "}{rule.label}</li>)}</ul>
+        </div>
+        <Text size="small" className="mt-2 text-ui-fg-muted">A welcome email includes the admin site, creation date and temporary admin credentials. The subadmin must choose a new admin password at first sign-in. Customer and admin passwords are separate, even when the email is the same.</Text></div>
       <Button type="submit" disabled={busy}>{busy ? "Creating…" : "Create subadmin"}</Button>
+    </form></Dialog>}
+
+    {deleting && <Dialog title="Delete admin account" close={() => { if (!busy) { setDeleting(null); setDeleteConfirmation("") } }}><form className="flex flex-col gap-4" onSubmit={deleteUser}>
+      {error && <Text role="alert" className="text-ui-fg-error">{error}</Text>}
+      <Text>Delete the admin account for <strong>{deleting.email}</strong>? They will lose admin access and their existing sessions will be blocked. Audit history is retained.</Text>
+      <div><Label htmlFor="delete-admin-confirmation">Type {ADMIN_DELETE_CONFIRMATION} to delete this account</Label><Input id="delete-admin-confirmation" required autoComplete="off" spellCheck={false} value={deleteConfirmation} onChange={event => setDeleteConfirmation(event.target.value)} /></div>
+      <div className="flex justify-end gap-2"><Button type="button" variant="secondary" disabled={busy} onClick={() => { setDeleting(null); setDeleteConfirmation("") }}>Cancel</Button><Button type="submit" variant="danger" disabled={busy || deleteConfirmation !== ADMIN_DELETE_CONFIRMATION}>{busy ? "Deleting…" : "Delete account"}</Button></div>
     </form></Dialog>}
 
     {editing && <Dialog title={`Access for ${editing.email}`} close={() => { if (!busy) setEditing(null) }}><form className="flex flex-col gap-4" onSubmit={saveAssignment}>
@@ -172,7 +199,7 @@ export default function AdminAccessPage() {
     {credentials && <Dialog title="Subadmin credentials" close={() => setCredentials(null)}><div className="flex flex-col gap-4">
       {credentials.email_status === "sent" && <Text role="status" className="text-ui-fg-success">Credential email sent with the admin site and temporary credentials.</Text>}
       {credentials.email_status === "failed" && <Text role="alert" className="text-ui-fg-error">Credentials are ready, but email delivery failed. Copy these credentials securely. After fixing SMTP, use Reset credentials to email a new temporary password; do not create the account again.</Text>}
-      <Text size="small">The subadmin must change this password at sign-in. Copy these credentials now. The password will not be shown again after closing this dialog.</Text>
+      <Text size="small">The subadmin must change this admin password at sign-in. Customer passwords are separate. Copy these credentials now; the password will not be shown again after closing.</Text>
       <div><Label htmlFor="credential-email">Email</Label><Input id="credential-email" readOnly value={credentials.email} /></div><div><Label htmlFor="credential-password">Password</Label><Input id="credential-password" readOnly value={credentials.password} autoComplete="off" /></div>
       <Button onClick={async () => { try { await navigator.clipboard.writeText(`Admin: ${window.location.origin}/app\nEmail: ${credentials.email}\nPassword: ${credentials.password}`); setNotice("Credentials copied.") } catch { setError("Clipboard unavailable. Copy the credentials from the fields above.") } }}>Copy credentials</Button>
       <Button variant="secondary" onClick={() => setCredentials(null)}>I have saved the credentials</Button>

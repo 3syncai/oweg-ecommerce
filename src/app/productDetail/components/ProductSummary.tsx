@@ -29,6 +29,7 @@ type ProductSummaryProps = {
   isWishlisted: boolean
   formatPrice: (value: number) => string
   flashSaleInfo?: FlashSaleInfo
+  sellerOffers?: React.ReactNode
 }
 
 function isOptionValueAvailable(
@@ -99,6 +100,7 @@ const ProductSummary = ({
   isWishlisted,
   formatPrice,
   flashSaleInfo,
+  sellerOffers,
 }: ProductSummaryProps) => {
   // Use flash sale price if available, otherwise use product price
   const displayPrice = flashSaleInfo?.active && flashSaleInfo.flash_sale_price !== undefined
@@ -339,6 +341,7 @@ const ProductSummary = ({
           )})}
         </div>
       )}
+      {sellerOffers}
       <div className={styles.stockRow}>
         <div className={`${styles.stock} ${hasStock ? styles.inStock : styles.outOfStock}`}>
           {hasStock ? 'In stock' : 'Out of stock'}

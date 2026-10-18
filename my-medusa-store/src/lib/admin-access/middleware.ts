@@ -68,6 +68,7 @@ export async function enforceAdminAccess(req: AuthenticatedMedusaRequest, res: M
     if (req.method === "DELETE" && path.startsWith("/admin/users/")) {
       const target = await getAdminAccess(path.split("/")[3])
       if (target?.kind === "superadmin") return res.status(403).json({ message: "The superadmin cannot be deleted through the dashboard" })
+      return res.status(403).json({ message: "Delete admin accounts from Admin Access with the required CONFIRM entry" })
     }
     return next()
   } catch (error) {

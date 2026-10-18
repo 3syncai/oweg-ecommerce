@@ -1,3 +1,4 @@
+import { resolveRequestedCollection } from "../lib/resolve-requested-collection"
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import { Container, Heading, StatusBadge, Button, Text, toast } from "@medusajs/ui"
 import { ArrowPath, ArrowUpRightOnBox, ChatBubble, Check, CheckCircleSolid, ClockSolid, Plus } from "@medusajs/icons"
@@ -288,16 +289,8 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
     if (!request) return
     setCreatingKind("collection")
     try {
-      const createRes = await fetch(`${backend}/admin/collections`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: request, handle: toHandle(request) }),
-      })
-      if (!createRes.ok) throw new Error("Failed to create collection")
-      const createData = await createRes.json()
-      const newColId = createData.collection?.id
-      if (!newColId) throw new Error("No collection id returned")
+      const resolved = await resolveRequestedCollection(backend, request)
+      const newColId = resolved.collection.id
 
       const updateRes = await fetch(`${backend}/admin/products/${product.id}`, {
         method: "POST",
@@ -314,8 +307,8 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
       })
       if (!updateRes.ok) throw new Error("Failed to assign collection to product")
 
-      toast.success("Collection created & assigned", {
-        description: `"${request}" created and assigned to this product.`,
+      toast.success(resolved.created ? "Brand created & assigned" : "Existing brand assigned", {
+        description: `"${request}" assigned to this product.`,
       })
       fetchProduct()
     } catch (err: any) {
@@ -441,7 +434,7 @@ const ProductCategoryRequestWidget = ({ data }: { data: { id: string } }) => {
                   className="text-ui-fg-subtle uppercase tracking-wide font-medium flex items-center gap-1.5"
                 >
                   <ChatBubble className="h-3.5 w-3.5 text-ui-fg-muted" />
-                  Vendor's remark
+                  Vendor&apos;s remark
                 </Text>
                 <div className="mt-1.5 rounded-lg border border-ui-border-base bg-ui-bg-subtle/80 px-3.5 py-2.5 text-sm whitespace-pre-wrap font-normal leading-relaxed text-ui-fg-base shadow-sm">
                   {remark}
