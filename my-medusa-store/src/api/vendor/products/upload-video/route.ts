@@ -4,8 +4,9 @@ import Busboy from "busboy"
 import * as path from "path"
 import * as fs from "fs"
 import { randomUUID } from "node:crypto"
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
+import { S3Client } from "@aws-sdk/client-s3"
 import { Upload } from "@aws-sdk/lib-storage"
+import { s3PublicBaseUrl } from "../../../../lib/s3-access"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse, req?: MedusaRequest) {
@@ -150,12 +151,11 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
       },
     })
 
-    const s3FileUrl = process.env.S3_FILE_URL || `https://${s3Bucket}.s3.${s3Region}.amazonaws.com`
+    const s3FileUrl = s3PublicBaseUrl(s3Bucket, s3Region)
 
     const headers = (req as any).headers || {}
     const bb = Busboy({ headers })
     const results: Array<{ url: string; key: string; filename: string; originalName: string }> = []
-    let fileCount = 0
     let pendingUploads = 0
     let busboyFinished = false
     
@@ -245,7 +245,6 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
         
         // Now that all fields are parsed, process files with correct S3 keys
         for (const pendingFile of pendingFiles) {
-          fileCount++
           pendingUploads++
           
           const filename = (pendingFile.info.filename || "file").replace(/[^a-zA-Z0-9._-]/g, "_")
@@ -342,7 +341,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
             console.log("⚠️ Stream found but already consumed")
           }
         }
-      } catch (e) {
+      } catch {
         // Continue to next path
       }
     }

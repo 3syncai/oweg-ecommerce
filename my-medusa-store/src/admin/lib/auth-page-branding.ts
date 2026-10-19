@@ -1,646 +1,161 @@
+// Presentation only: Medusa owns the form, validation, session and reset links.
 const STYLE_ID = "oweg-auth-redesign"
-const BRAND_PANEL_ID = "oweg-auth-brand-panel"
-const CARD_WRAPPER_ID = "oweg-auth-card-wrapper"
+const PANEL_ID = "oweg-auth-brand-panel"
+const WRAPPER_ID = "oweg-auth-card-wrapper"
 const LOGO_ID = "oweg-auth-logo"
-const THEME_KEY = "medusa_admin_theme"
-
-type ResolvedTheme = "light" | "dark"
-
 let logoSrc: string | null = null
 let initialized = false
-let applyTimer: number | null = null
+let timer: number | null = null
+let observer: MutationObserver | null = null
 
-function resolveTheme(): ResolvedTheme {
-  const persisted = localStorage.getItem(THEME_KEY) ?? "system"
-
-  if (persisted === "dark") {
-    return "dark"
-  }
-
-  if (persisted === "light") {
-    return "light"
-  }
-
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light"
+const icons = {
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.87M16 3a4 4 0 0 1 0 8"/><circle cx="9" cy="7" r="4"/>',
+  sales: '<path d="M4 20V13h4v7m2 0V8h4v12m2 0V3h4v17"/>',
+  card: '<rect x="2" y="4" width="20" height="16" rx="3"/><path d="M2 9h20M6 15h4"/>',
+  truck: '<path d="M1 3h14v14H1zM15 8h4l3 4v5h-7"/><circle cx="5.5" cy="18" r="2.5"/><circle cx="18.5" cy="18" r="2.5"/>',
+  shield: '<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/>',
 }
-
-function syncHtmlTheme() {
-  const theme = resolveTheme()
-  const html = document.documentElement
-
-  html.classList.remove("light", "dark")
-  html.classList.add(theme)
-  html.style.colorScheme = theme
+function icon(paths: string) {
+  return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`
 }
-
-function isAuthRoute() {
-  const path = window.location.pathname
-  return path.endsWith("/login") || path.includes("/reset-password")
+function brand(src: string, className: string) {
+  const block = document.createElement("div")
+  block.className = className
+  const image = document.createElement("img")
+  image.src = src
+  image.alt = "OWEG"
+  const caption = document.createElement("p")
+  caption.textContent = "ADMIN CONTROL"
+  block.append(image,caption)
+  return block
 }
-
-function getAuthStyles() {
+function styles() {
   return `
-  .oweg-auth-page {
-    position: relative;
-    overflow: hidden;
+  .oweg-auth-page { position:relative; isolation:isolate; overflow:hidden; width:100%; min-height:100dvh; background:#fcfdfb!important; color:#101827; color-scheme:light; font-family:Inter,system-ui,sans-serif; }
+  .oweg-auth-page::before,.oweg-auth-page::after { content:""; position:absolute; z-index:-1; pointer-events:none; border-radius:50%; }
+  .oweg-auth-page::before { width:440px; height:440px; top:-340px; left:40%; border:48px solid #89c74610; }
+  .oweg-auth-page::after { width:300px; height:300px; right:-200px; bottom:-210px; border:42px solid #8ac94b55; }
+  #${WRAPPER_ID} { display:flex; align-items:center; justify-content:center; width:100%; min-height:100dvh; padding:32px 24px; position:relative; }
+  #${PANEL_ID} { display:none; }
+  .oweg-auth-card { box-sizing:border-box; width:100%!important; max-width:440px!important; margin:0!important; padding:38px 32px 26px; border:1px solid #dcebcf; border-radius:18px; background:#ffffffed; box-shadow:0 18px 60px #4269230b,0 4px 18px #5b962315; color:#101827; }
+  .oweg-auth-page .oweg-default-logo { display:none!important; }
+  #${LOGO_ID} { width:100%; display:flex; align-items:center; flex-direction:column; margin:0 0 30px; }
+  #${LOGO_ID} img { width:196px; height:auto; object-fit:contain; }
+  #${LOGO_ID} p { margin:9px 0 0; padding-left:5px; letter-spacing:5px; font-size:12px; color:#41464c; }
+  .oweg-auth-card h1 { font-size:25px!important; font-weight:750!important; line-height:1.25; letter-spacing:-.8px; color:#111827!important; text-align:center; }
+  .oweg-auth-card h1 + p { max-width:310px; margin-top:8px; color:#777e8d!important; font-size:13px; line-height:1.6; }
+  .oweg-auth-card > div.mb-4,.oweg-auth-card > div.mb-6 { margin-bottom:26px; }
+  .oweg-auth-card form { gap:20px; }
+  .oweg-auth-card form > div:first-child { gap:14px; }
+  .oweg-auth-card input { height:46px!important; border:1px solid #e2e5e9!important; border-radius:8px!important; background:#fff!important; color:#17202d!important; box-shadow:0 1px 2px #192c1704!important; padding-left:14px; font-size:13px; }
+  .oweg-auth-card input::placeholder { color:#8b919d!important; }
+  .oweg-auth-card input:focus { outline:2px solid #7aba3b55!important; outline-offset:2px; border-color:#79b936!important; }
+  .oweg-auth-card input[aria-invalid="true"] { border-color:#dc2626!important; }
+  .oweg-auth-card button[type="submit"] { height:46px!important; border:0!important; border-radius:8px!important; background:linear-gradient(100deg,#78b915,#5e9f0c)!important; box-shadow:0 6px 16px #75b53130!important; color:#fff!important; font-size:14px; font-weight:600; transition:filter .18s; }
+  .oweg-auth-card button[type="submit"]:hover:not(:disabled) { filter:brightness(.96); }
+  .oweg-auth-card button[type="submit"]:focus-visible,.oweg-auth-card a:focus-visible { outline:2px solid #539414; outline-offset:4px; }
+  .oweg-auth-card button[type="submit"]:disabled { opacity:.65; }
+  .oweg-auth-card > span { color:#727b87!important; margin:20px 0 0!important; font-size:12px; text-align:center; }
+  .oweg-auth-card a { color:#5e9b25!important; text-underline-offset:3px; }
+  .oweg-auth-card .oweg-auth-security { width:100%; display:flex; align-items:center; justify-content:center; gap:8px; margin:24px 0 0; padding-top:18px; border-top:1px solid #ecf0e8; font-size:11px; color:#747c86; }
+  .oweg-auth-security svg { color:#73b72b; width:17px; height:17px; flex-shrink:0; }
+  .oweg-brand-logo img { width:min(100%,360px); height:auto; }
+  .oweg-brand-logo p { margin:13px 0 0; color:#303a39; font-size:18px; letter-spacing:8px; }
+  .oweg-brand-panel h2 { margin:36px 0 12px; font-size:clamp(30px,3.3vw,48px); font-weight:760; letter-spacing:-1.9px; line-height:1.15; color:#111827; }
+  .oweg-brand-copy { max-width:490px; margin:0; color:#7a8190; font-size:16px; line-height:1.65; }
+  .oweg-brand-panel h2 span { color:#72b431; }
+  .oweg-brand-features { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-top:28px; }
+  .oweg-brand-feature { min-height:128px; border:1px solid #e4eddb; border-radius:10px; background:#ffffffa6; padding:16px 8px; display:flex; align-items:center; flex-direction:column; gap:12px; text-align:center; color:#283140; font-size:12px; line-height:1.45; }
+  .oweg-brand-feature > span { width:44px; height:44px; display:grid; place-items:center; border-radius:50%; background:#edf6e2; color:#6bad28; }
+  .oweg-auth-dots { position:absolute; left:28px; bottom:28px; width:64px; height:48px; background:radial-gradient(circle,#bddf9f 1.5px,transparent 2px) 0 0/13px 13px; }
+  @media(min-width:900px) {
+    .oweg-auth-page { display:flex!important; align-items:center!important; justify-content:center!important; gap:clamp(32px,5vw,90px); padding:56px clamp(32px,5vw,88px); }
+    #${PANEL_ID} { display:block; flex:1 1 520px; max-width:600px; position:relative; }
+    #${WRAPPER_ID} { width:auto; flex:0 1 440px; min-height:0; padding:0; }
   }
-
-  .oweg-auth-page::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background-size: 48px 48px;
+  @media(max-width:480px) {
+    #${WRAPPER_ID} { padding:24px 16px; }
+    .oweg-auth-card { padding:32px 23px 24px; border-radius:16px; }
+    .oweg-auth-card h1 { font-size:23px!important; }
+    #${LOGO_ID} img { width:180px; }
+    .oweg-auth-dots { display:none; }
   }
-
-  html.light .oweg-auth-page {
-    background:
-      radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.08), transparent 45%),
-      radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.06), transparent 40%),
-      #f4f4f5 !important;
-  }
-
-  html.light .oweg-auth-page::before {
-    opacity: 0.35;
-    background-image:
-      linear-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0, 0, 0, 0.04) 1px, transparent 1px);
-  }
-
-  html.dark .oweg-auth-page {
-    background:
-      radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.12), transparent 45%),
-      radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.08), transparent 40%),
-      #09090b !important;
-  }
-
-  html.dark .oweg-auth-page::before {
-    opacity: 0.04;
-    background-image:
-      linear-gradient(rgba(255, 255, 255, 0.5) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.5) 1px, transparent 1px);
-  }
-
-  #${BRAND_PANEL_ID} {
-    display: none;
-  }
-
-  #${CARD_WRAPPER_ID} {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    width: 100%;
-    min-height: 100dvh;
-    align-items: center;
-    justify-content: center;
-    padding: 1.5rem;
-  }
-
-  .oweg-auth-page .oweg-auth-card,
-  #${CARD_WRAPPER_ID} > .max-w-\\[280px\\],
-  #${CARD_WRAPPER_ID} > .max-w-\\[300px\\] {
-    width: 100%;
-    max-width: 26rem !important;
-    margin: 0 !important;
-    padding: 2rem;
-    border-radius: 1.25rem;
-    backdrop-filter: blur(16px);
-  }
-
-  html.light .oweg-auth-page .oweg-auth-card,
-  html.light #${CARD_WRAPPER_ID} > .max-w-\\[280px\\],
-  html.light #${CARD_WRAPPER_ID} > .max-w-\\[300px\\] {
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.8) inset,
-      0 24px 48px rgba(15, 23, 42, 0.08);
-  }
-
-  html.dark .oweg-auth-page .oweg-auth-card,
-  html.dark #${CARD_WRAPPER_ID} > .max-w-\\[280px\\],
-  html.dark #${CARD_WRAPPER_ID} > .max-w-\\[300px\\] {
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(24, 24, 27, 0.92);
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.03) inset,
-      0 24px 48px rgba(0, 0, 0, 0.45);
-  }
-
-  .oweg-auth-page .oweg-default-logo {
-    display: none !important;
-  }
-
-  #${LOGO_ID} {
-    width: 4.5rem;
-    height: 4.5rem;
-    margin-bottom: 1.25rem;
-    object-fit: contain;
-  }
-
-  html.light #${LOGO_ID} {
-    filter: drop-shadow(0 10px 20px rgba(34, 197, 94, 0.18));
-  }
-
-  html.dark #${LOGO_ID} {
-    filter: drop-shadow(0 12px 24px rgba(34, 197, 94, 0.25));
-  }
-
-  .oweg-auth-page h1 {
-    font-size: 1.5rem !important;
-    font-weight: 700 !important;
-    letter-spacing: -0.02em;
-  }
-
-  html.light .oweg-auth-page h1 {
-    color: #18181b !important;
-  }
-
-  html.dark .oweg-auth-page h1 {
-    color: #fafafa !important;
-  }
-
-  html.light .oweg-auth-page .text-ui-fg-subtle {
-    color: #52525b !important;
-    line-height: 1.5;
-  }
-
-  html.dark .oweg-auth-page .text-ui-fg-subtle {
-    color: rgba(161, 161, 170, 0.95) !important;
-    line-height: 1.5;
-  }
-
-  .oweg-auth-page input {
-    height: 2.75rem !important;
-    border-radius: 0.75rem !important;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  }
-
-  html.light .oweg-auth-page input {
-    border: 1px solid #e4e4e7 !important;
-    background: #ffffff !important;
-    color: #18181b !important;
-  }
-
-  html.dark .oweg-auth-page input {
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    background: rgba(9, 9, 11, 0.85) !important;
-    color: #fafafa !important;
-  }
-
-  html.light .oweg-auth-page input::placeholder {
-    color: #a1a1aa !important;
-  }
-
-  html.dark .oweg-auth-page input::placeholder {
-    color: rgba(161, 161, 170, 0.8) !important;
-  }
-
-  .oweg-auth-page input:focus {
-    border-color: rgba(34, 197, 94, 0.65) !important;
-    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18) !important;
-    outline: none !important;
-  }
-
-  .oweg-auth-page button[type="submit"],
-  .oweg-auth-page button.w-full {
-    height: 2.75rem !important;
-    border-radius: 0.75rem !important;
-    border: none !important;
-    background: linear-gradient(135deg, #22c55e 0%, #059669 100%) !important;
-    color: #fff !important;
-    font-weight: 600 !important;
-    box-shadow: 0 10px 24px rgba(34, 197, 94, 0.28);
-    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
-  }
-
-  .oweg-auth-page button[type="submit"]:hover:not(:disabled),
-  .oweg-auth-page button.w-full:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 14px 28px rgba(34, 197, 94, 0.34);
-  }
-
-  html.light .oweg-auth-page .text-ui-fg-muted,
-  html.light .oweg-auth-page .txt-small {
-    color: #71717a !important;
-  }
-
-  html.dark .oweg-auth-page .text-ui-fg-muted,
-  html.dark .oweg-auth-page .txt-small {
-    color: rgba(161, 161, 170, 0.9) !important;
-  }
-
-  html.light .oweg-auth-page a {
-    color: #16a34a !important;
-  }
-
-  html.light .oweg-auth-page a:hover {
-    color: #15803d !important;
-  }
-
-  html.dark .oweg-auth-page a {
-    color: #4ade80 !important;
-  }
-
-  html.dark .oweg-auth-page a:hover {
-    color: #86efac !important;
-  }
-
-  .oweg-brand-panel {
-    position: relative;
-    display: flex;
-    flex: 1 1 50%;
-    flex-direction: column;
-    justify-content: space-between;
-    overflow: hidden;
-    padding: 3rem;
-    background: linear-gradient(145deg, #15803d 0%, #047857 45%, #064e3b 100%);
-  }
-
-  .oweg-brand-panel::before,
-  .oweg-brand-panel::after {
-    content: "";
-    position: absolute;
-    border-radius: 9999px;
-    pointer-events: none;
-    filter: blur(60px);
-    opacity: 0.35;
-  }
-
-  .oweg-brand-panel::before {
-    top: -6rem;
-    left: -6rem;
-    width: 18rem;
-    height: 18rem;
-    background: #86efac;
-  }
-
-  .oweg-brand-panel::after {
-    right: -4rem;
-    bottom: -4rem;
-    width: 20rem;
-    height: 20rem;
-    background: #34d399;
-  }
-
-  .oweg-brand-panel__content,
-  .oweg-brand-panel__footer {
-    position: relative;
-    z-index: 1;
-  }
-
-  .oweg-brand-panel__badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 1.25rem;
-    padding: 0.35rem 0.75rem;
-    border-radius: 9999px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.92);
-    font-size: 0.75rem;
-    font-weight: 500;
-  }
-
-  .oweg-brand-panel__badge-dot {
-    width: 0.4rem;
-    height: 0.4rem;
-    border-radius: 9999px;
-    background: #bbf7d0;
-  }
-
-  .oweg-brand-panel__title {
-    margin: 0;
-    color: #fff;
-    font-size: clamp(2rem, 4vw, 3rem);
-    font-weight: 700;
-    line-height: 1.1;
-    letter-spacing: -0.03em;
-  }
-
-  .oweg-brand-panel__title span {
-    background: linear-gradient(90deg, #fff 0%, #d9f99d 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  .oweg-brand-panel__copy {
-    margin: 1.25rem 0 0;
-    max-width: 28rem;
-    color: rgba(236, 253, 245, 0.88);
-    font-size: 1.05rem;
-    line-height: 1.65;
-  }
-
-  .oweg-brand-panel__logo-wrap {
-    position: absolute;
-    top: 50%;
-    right: -4rem;
-    width: min(28rem, 55vw);
-    height: min(28rem, 55vw);
-    transform: translateY(-50%);
-    pointer-events: none;
-    opacity: 0.9;
-  }
-
-  .oweg-brand-panel__logo-wrap img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    filter: drop-shadow(0 30px 60px rgba(0, 0, 0, 0.35));
-  }
-
-  .oweg-brand-panel__header {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .oweg-brand-panel__header-icon {
-    display: flex;
-    width: 3rem;
-    height: 3rem;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    border-radius: 0.85rem;
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    background: rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(8px);
-  }
-
-  .oweg-brand-panel__header-icon img {
-    width: 2rem;
-    height: 2rem;
-    object-fit: contain;
-  }
-
-  .oweg-brand-panel__header-title {
-    margin: 0;
-    color: #fff;
-    font-size: 1.35rem;
-    font-weight: 700;
-    line-height: 1;
-  }
-
-  .oweg-brand-panel__header-subtitle {
-    margin: 0.25rem 0 0;
-    color: rgba(209, 250, 229, 0.75);
-    font-size: 0.7rem;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-  }
-
-  .oweg-brand-panel__pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.65rem;
-  }
-
-  .oweg-brand-panel__pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.45rem 0.8rem;
-    border-radius: 9999px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.92);
-    font-size: 0.8rem;
-  }
-
-  @media (min-width: 1024px) {
-    .oweg-auth-page {
-      display: flex !important;
-      align-items: stretch !important;
-      justify-content: stretch !important;
-    }
-
-    #${BRAND_PANEL_ID} {
-      display: flex;
-    }
-
-    #${CARD_WRAPPER_ID} {
-      flex: 1 1 50%;
-      min-height: auto;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .oweg-auth-page button[type="submit"]:hover:not(:disabled),
-    .oweg-auth-page button.w-full:hover:not(:disabled) {
-      transform: none;
-    }
-  }
-`
+  @media(prefers-reduced-motion:reduce) { .oweg-auth-card button { transition:none; } }
+  `
 }
-
 function createBrandPanel(src: string) {
   const panel = document.createElement("aside")
-  panel.id = BRAND_PANEL_ID
+  panel.id = PANEL_ID
   panel.className = "oweg-brand-panel"
-  panel.setAttribute("aria-hidden", "true")
-
-  panel.innerHTML = `
-    <div class="oweg-brand-panel__content">
-      <div class="oweg-brand-panel__header">
-        <div class="oweg-brand-panel__header-icon">
-          <img src="${src}" alt="" />
-        </div>
-        <div>
-          <p class="oweg-brand-panel__header-title">OWEG</p>
-          <p class="oweg-brand-panel__header-subtitle">Admin Dashboard</p>
-        </div>
-      </div>
-
-      <div style="margin-top: 5rem; max-width: 32rem;">
-        <span class="oweg-brand-panel__badge">
-          <span class="oweg-brand-panel__badge-dot"></span>
-          Commerce operations hub
-        </span>
-        <h2 class="oweg-brand-panel__title">
-          Manage your<br />
-          <span>marketplace</span>
-        </h2>
-        <p class="oweg-brand-panel__copy">
-          Orders, products, vendors, payouts, and customer support — all in one secure admin workspace.
-        </p>
-      </div>
-    </div>
-
-    <div class="oweg-brand-panel__logo-wrap">
-      <img src="${src}" alt="" />
-    </div>
-
-    <div class="oweg-brand-panel__footer">
-      <div class="oweg-brand-panel__pills">
-        <span class="oweg-brand-panel__pill">Secure access</span>
-        <span class="oweg-brand-panel__pill">Real-time ops</span>
-        <span class="oweg-brand-panel__pill">Vendor control</span>
-      </div>
-    </div>
-  `
-
+  panel.setAttribute("aria-label", "OWEG admin workspace")
+  panel.append(brand(src, "oweg-brand-logo"))
+  const content = document.createElement("div")
+  content.innerHTML = `<h2>Manage. Monitor. <span>Grow.</span></h2><p class="oweg-brand-copy">One workspace for operations, sales performance, payments and dispatch tracking.</p><div class="oweg-brand-features">${[
+    [icons.users,"User<br>Management"], [icons.sales,"Sales<br>Performance"],
+    [icons.card,"Payments &amp;<br>Settlements"], [icons.truck,"Dispatch<br>Monitoring"],
+  ].map(([paths,label])=>`<div class="oweg-brand-feature"><span>${icon(paths)}</span><p>${label}</p></div>`).join("")}</div>`
+  panel.append(content)
   return panel
 }
-
-function findAuthPageRoot() {
-  return document.querySelector<HTMLElement>(
-    ".bg-ui-bg-subtle.flex.min-h-dvh.w-dvw.items-center.justify-center"
-  ) || document.querySelector<HTMLElement>(
-    ".bg-ui-bg-base.flex.min-h-dvh.w-dvw.items-center.justify-center"
-  )
-}
-
-function findAuthCard(pageRoot: HTMLElement) {
-  return pageRoot.querySelector<HTMLElement>(
-    ".max-w-\\[280px\\].flex-col.items-center"
-  ) || pageRoot.querySelector<HTMLElement>(
-    ".max-w-\\[300px\\].flex-col.items-center"
-  )
-}
-
-function hideDefaultLogo(card: HTMLElement) {
-  card
-    .querySelector<HTMLElement>(".mb-4.h-\\[50px\\].w-\\[50px\\]")
-    ?.classList.add("oweg-default-logo")
-  card
-    .querySelector<HTMLElement>(".size-14.bg-ui-button-neutral")
-    ?.classList.add("oweg-default-logo")
-}
-
-function teardownAuthPage() {
-  const pageRoot = document.querySelector<HTMLElement>(".oweg-auth-page")
-  const card = document.getElementById(LOGO_ID)?.parentElement
-
-  pageRoot?.classList.remove("oweg-auth-page")
-  document.getElementById(BRAND_PANEL_ID)?.remove()
-  document.getElementById(LOGO_ID)?.remove()
-
-  const wrapper = document.getElementById(CARD_WRAPPER_ID)
-  if (wrapper && card && card.parentElement === wrapper) {
-    pageRoot?.insertBefore(card, wrapper)
-    wrapper.remove()
-  }
-}
-
-function applyAuthPageBranding() {
-  if (!logoSrc) {
-    return
-  }
-
-  if (!isAuthRoute()) {
-    if (document.querySelector(".oweg-auth-page")) {
-      teardownAuthPage()
-    }
-    return
-  }
-
-  const pageRoot = findAuthPageRoot()
-  const card = pageRoot ? findAuthCard(pageRoot) : null
-
-  if (!pageRoot || !card) {
-    return
-  }
-
-  syncHtmlTheme()
-  pageRoot.classList.add("oweg-auth-page")
-
-  let wrapper = document.getElementById(CARD_WRAPPER_ID)
+function applyBranding() {
+  if (!logoSrc || !/\/(login|reset-password)(\/|$)/.test(window.location.pathname)) return
+  const root = document.querySelector<HTMLElement>(".min-h-dvh.w-dvw.items-center.justify-center")
+  const card = root?.querySelector<HTMLElement>(".max-w-\\[280px\\].flex-col.items-center, .max-w-\\[300px\\].flex-col.items-center")
+  if (!root || !card) return
+  root.classList.add("oweg-auth-page")
+  card.classList.add("oweg-auth-card")
+  let wrapper = document.getElementById(WRAPPER_ID)
   if (!wrapper) {
     wrapper = document.createElement("div")
-    wrapper.id = CARD_WRAPPER_ID
-    pageRoot.insertBefore(wrapper, card)
-    wrapper.appendChild(card)
+    wrapper.id = WRAPPER_ID
+    root.insertBefore(wrapper,card)
+    wrapper.append(card)
   }
-
-  if (!document.getElementById(BRAND_PANEL_ID)) {
-    pageRoot.insertBefore(createBrandPanel(logoSrc), wrapper)
-  }
-
-  hideDefaultLogo(card)
-
-  let logo = document.getElementById(LOGO_ID) as HTMLImageElement | null
-  if (!logo) {
-    logo = document.createElement("img")
+  if (!document.getElementById(PANEL_ID)) root.insertBefore(createBrandPanel(logoSrc),wrapper)
+  card.querySelector<HTMLElement>(".h-\\[50px\\].w-\\[50px\\], .size-14.bg-ui-button-neutral")?.classList.add("oweg-default-logo")
+  if (!card.querySelector(`#${LOGO_ID}`)) {
+    const logo = brand(logoSrc,"oweg-auth-wordmark")
     logo.id = LOGO_ID
-    logo.alt = "OWEG"
-    card.insertBefore(logo, card.firstChild)
+    card.insertBefore(logo,card.firstChild)
   }
-
-  logo.src = logoSrc
-
-  let styleEl = document.getElementById(STYLE_ID) as HTMLStyleElement | null
-  if (!styleEl) {
-    styleEl = document.createElement("style")
-    styleEl.id = STYLE_ID
-    document.head.appendChild(styleEl)
+  if (!card.querySelector(".oweg-auth-security")) {
+    const footer = document.createElement("p")
+    footer.className = "oweg-auth-security"
+    footer.innerHTML = `${icon(icons.shield)}<span>Secure access for authorized users</span>`
+    card.append(footer)
   }
-
-  styleEl.textContent = getAuthStyles()
+  if (!root.querySelector(".oweg-auth-dots")) {
+    const dots = document.createElement("div")
+    dots.className = "oweg-auth-dots"
+    dots.setAttribute("aria-hidden","true")
+    root.append(dots)
+  }
+  if (!document.getElementById(STYLE_ID)) {
+    const style = document.createElement("style")
+    style.id = STYLE_ID
+    style.textContent = styles()
+    document.head.append(style)
+  }
 }
-
 function scheduleApply() {
-  if (applyTimer !== null) {
-    window.clearTimeout(applyTimer)
-  }
-
-  applyTimer = window.setTimeout(() => {
-    applyTimer = null
-    applyAuthPageBranding()
-  }, 0)
+  if (timer !== null) window.clearTimeout(timer)
+  timer = window.setTimeout(()=>{
+    timer = null
+    // Decorative DOM changes must not schedule an observer loop.
+    observer?.disconnect()
+    try { applyBranding() } finally { observer?.observe(document.body,{childList:true,subtree:true}) }
+  },0)
 }
-
-function setupRouteWatcher() {
-  const observer = new MutationObserver(scheduleApply)
-  observer.observe(document.body, { childList: true, subtree: true })
-
-  window.addEventListener("popstate", scheduleApply)
-
-  const originalPushState = history.pushState.bind(history)
-  const originalReplaceState = history.replaceState.bind(history)
-
-  history.pushState = (...args) => {
-    originalPushState(...args)
-    scheduleApply()
-  }
-
-  history.replaceState = (...args) => {
-    originalReplaceState(...args)
-    scheduleApply()
-  }
-}
-
-function setupThemeSync() {
-  const onStorage = (event: StorageEvent) => {
-    if (event.key === THEME_KEY || event.key === null) {
-      syncHtmlTheme()
-    }
-  }
-
-  const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
-  const onSystemThemeChange = () => {
-    if ((localStorage.getItem(THEME_KEY) ?? "system") === "system") {
-      syncHtmlTheme()
-    }
-  }
-
-  window.addEventListener("storage", onStorage)
-  mediaQuery.addEventListener("change", onSystemThemeChange)
-}
-
 export function initAuthPageBranding(src: string) {
   logoSrc = src
-
   if (!initialized) {
     initialized = true
-    setupRouteWatcher()
-    setupThemeSync()
+    observer = new MutationObserver(scheduleApply)
+    observer.observe(document.body,{childList:true,subtree:true})
+    window.addEventListener("popstate",scheduleApply)
+    const push = history.pushState.bind(history), replace = history.replaceState.bind(history)
+    history.pushState = (...args)=>{ push(...args); scheduleApply() }
+    history.replaceState = (...args)=>{ replace(...args); scheduleApply() }
   }
-
   scheduleApply()
 }

@@ -5,6 +5,7 @@ import * as path from "path"
 import * as fs from "fs"
 import { randomUUID } from "node:crypto"
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
+import { s3PublicBaseUrl } from "../../../../lib/s3-access"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
@@ -131,7 +132,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
       },
     })
 
-    const s3FileUrl = process.env.S3_FILE_URL || `https://${s3Bucket}.s3.${s3Region}.amazonaws.com`
+    const s3FileUrl = s3PublicBaseUrl(s3Bucket, s3Region)
 
     const headers = (req as any).headers || {}
     const bb = Busboy({ headers })
@@ -304,7 +305,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
             console.log("⚠️ Stream found but already consumed")
           }
         }
-      } catch (e) {
+      } catch {
         // Continue to next path
       }
     }

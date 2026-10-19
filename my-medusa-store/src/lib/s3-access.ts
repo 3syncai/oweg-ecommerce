@@ -38,11 +38,13 @@ function getS3Client(): { client: S3Client; bucket: string; region: string } | n
 }
 
 /** Public URL host must match the upload bucket — stale S3_FILE_URL is ignored. */
-export function s3PublicBaseUrl(): string {
+export function s3PublicBaseUrl(bucket?: string, region?: string): string {
   const env = readS3Env()
+  const uploadBucket = bucket || env?.bucket
+  const uploadRegion = region || env?.region
   const configured = (process.env.S3_FILE_URL || "").replace(/\/$/, "").trim()
-  if (env && configured && configured.includes(env.bucket)) return configured
-  if (env) return `https://${env.bucket}.s3.${env.region}.amazonaws.com`
+  if (uploadBucket && configured && configured.includes(uploadBucket)) return configured
+  if (uploadBucket && uploadRegion) return `https://${uploadBucket}.s3.${uploadRegion}.amazonaws.com`
   return configured
 }
 
