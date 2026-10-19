@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import { getSharedDbPool } from "./db-pool"
 
 export const normalizeCatalogSku = (value: unknown): string => String(value || "").trim().toUpperCase()
+export const isInternalVendorSku = (value: unknown): boolean => normalizeCatalogSku(value).startsWith("OWEG-OFFER-")
 const words = (value: unknown): string[] => String(value || "").normalize("NFKC").toLowerCase().match(/[a-z0-9]+/g) || []
 
 function distance(a: string, b: string): number {
@@ -41,7 +42,8 @@ export function sameCatalogName(a: unknown, b: unknown): boolean {
 }
 
 export function publicVariantSku(product: any, variant: any): string {
-  return product.metadata?.catalog_skus?.[variant.sku] || variant.sku || ""
+  const storedSku = String(variant?.sku || "")
+  return product?.metadata?.catalog_skus?.[storedSku] || (isInternalVendorSku(storedSku) ? "" : storedSku)
 }
 
 export function vendorInventorySku(vendorId: string, sku: string): string {

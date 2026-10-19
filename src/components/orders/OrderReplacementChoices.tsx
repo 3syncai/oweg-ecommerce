@@ -23,6 +23,7 @@ type Request = {
   options: Choice[];
   selected_variant_id?: string | null;
   adjustment_amount?: number | null;
+  payment_method?: string;
 };
 
 const money = (value: number) => new Intl.NumberFormat("en-IN", {
@@ -152,7 +153,9 @@ export default function OrderReplacementChoices({ orderId, onOrderChanged }: {
                     );
                   })}
                 </div>
-                <p className="mt-3 text-xs text-slate-500">A different price may require a payment adjustment before the item can be reassigned.</p>
+                <p className="mt-3 text-xs text-slate-500">{request.payment_method === "cod"
+                  ? "For cash on delivery, the updated total is due on delivery. No online payment is needed."
+                  : "For prepaid orders, you pay only a higher price difference; a lower price is refunded before reassignment."}</p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button type="button" disabled={!selected[request.id] || busy === request.id}
                     onClick={() => void respond(request.id, "accept")}
@@ -168,11 +171,13 @@ export default function OrderReplacementChoices({ orderId, onOrderChanged }: {
               </>
             ) : (
               <p className="mt-3 text-sm text-slate-600">
-                {request.status === "applied" ? "Your chosen item has been assigned to the new vendor."
+                {request.status === "applied" ? request.payment_method === "cod"
+                  ? "Your chosen item has been assigned to the new vendor. Pay the updated total on delivery."
+                  : "Your chosen item has been assigned to the new vendor. Your payment adjustment is complete."
                   : request.status === "awaiting_payment" ? `You accepted the replacement. Pay ${money(request.adjustment_amount || 0)} to assign it to the new vendor.`
                     : request.status === "awaiting_refund" || request.status === "settling_refund" ? `Your ${money(Math.abs(request.adjustment_amount || 0))} refund is being arranged before reassignment.`
                       : request.status === "settlement_failed" ? "The payment adjustment was recorded, but assignment needs support review. Please contact us."
-                    : request.status === "rejected" ? "You declined these alternatives. OWEG support can help with another option."
+                    : request.status === "rejected" ? "You declined the replacement, so this order has been cancelled."
                       : "OWEG is reviewing this request."}
               </p>
             )}

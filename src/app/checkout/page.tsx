@@ -78,12 +78,26 @@ function buildCheckoutWarmupFingerprint(input: {
   shipping: {
     email?: string;
     firstName?: string;
+    lastName?: string;
     address1?: string;
+    address2?: string;
+    city?: string;
     postalCode?: string;
     phone?: string;
     state?: string;
   };
   billingSame: boolean;
+  billing: {
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    address1?: string;
+    address2?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    phone?: string;
+  };
   referralCode: string;
   coinDiscount: number;
   oweg10Applied: boolean;
@@ -92,22 +106,28 @@ function buildCheckoutWarmupFingerprint(input: {
   promoDiscount: number;
   payableTotal: number;
   cartId?: string;
+  cartItems?: Array<{ id?: string; quantity?: number; unit_price?: number }>;
   isBuyNow: boolean;
   buyNowVariantId?: string;
   buyNowQty?: number;
   buyNowPrice?: string;
+  buyNowSellerSelected?: boolean;
 }): string {
   return JSON.stringify({
     pm: input.paymentMethod,
     sh: {
       email: input.shipping.email?.trim(),
       firstName: input.shipping.firstName?.trim(),
+      lastName: input.shipping.lastName?.trim(),
       address1: input.shipping.address1?.trim(),
+      address2: input.shipping.address2?.trim(),
+      city: input.shipping.city?.trim(),
       postalCode: input.shipping.postalCode?.trim(),
       phone: input.shipping.phone?.trim(),
       state: input.shipping.state?.trim(),
     },
     bs: input.billingSame,
+    bi: input.billingSame ? null : input.billing,
     ref: input.referralCode.trim(),
     coin: input.coinDiscount,
     o10: input.oweg10Applied && input.oweg10CanApply,
@@ -115,10 +135,12 @@ function buildCheckoutWarmupFingerprint(input: {
     promoAmt: Math.round(input.promoDiscount * 100) / 100,
     pay: Math.round(input.payableTotal * 100) / 100,
     cart: input.cartId,
+    cartItems: input.cartItems?.map((item) => [item.id, item.quantity, item.unit_price]),
     bn: input.isBuyNow,
     bv: input.buyNowVariantId,
     bq: input.buyNowQty,
     bp: input.buyNowPrice,
+    bSeller: input.buyNowSellerSelected,
   });
 }
 
@@ -139,15 +161,6 @@ type CustomerAddress = {
 
 const RAZORPAY_SUCCESS = getCheckoutSuccessPath();
 const RAZORPAY_FAILED = getCheckoutFailedPath();
-
-function razorpayAmountToMinor(amount: number, fallbackRupees: number): number {
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return Math.round(Math.max(0, fallbackRupees) * 100);
-  }
-  // Razorpay API returns paise; draft-order embeds rupees when amount < 10000
-  if (amount >= 10000) return Math.round(amount);
-  return Math.round(amount * 100);
-}
 
 const INR = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -270,6 +283,8 @@ function CheckoutPageInner() {
   const performCheckoutRef = useRef<(() => Promise<void>) | null>(null);
   const draftWarmupRef = useRef<DraftWarmupEntry | null>(null);
   const draftWarmupInFlightRef = useRef<Promise<DraftOrderResponse | null> | null>(null);
+  const onlineWarmupStartedRef = useRef(false);
+  const checkoutFingerprintRef = useRef("");
   const createDraftOrderRef = useRef<(() => Promise<DraftOrderResponse>) | null>(null);
   const pendingPromoHydratedRef = useRef(false);
 
@@ -1298,6 +1313,7 @@ function CheckoutPageInner() {
       paymentMethod,
       shipping,
       billingSame,
+      billing,
       referralCode,
       coinDiscount,
       oweg10Applied,
@@ -1306,11 +1322,14 @@ function CheckoutPageInner() {
       promoDiscount,
       payableTotal,
       cartId: cart?.id,
+      cartItems: cart?.items,
       isBuyNow,
-      buyNowVariantId: variantFromQuery,
-      buyNowQty: qtyFromQuery ? Number(qtyFromQuery) : undefined,
-      buyNowPrice: priceFromQuery || undefined,
+      buyNowVariantId: buyNowItem?.variantId || variantFromQuery,
+      buyNowQty: buyNowItem?.quantity || (qtyFromQuery ? Number(qtyFromQuery) : undefined),
+      buyNowPrice: buyNowItem?.priceMinor?.toString() || priceFromQuery || undefined,
+      buyNowSellerSelected: buyNowItem?.sellerSelected ?? sellerSelectedFromQuery,
     });
+  checkoutFingerprintRef.current = getCheckoutWarmupFingerprint();
 
   const resolveDraftOrderForCheckout = async (): Promise<DraftOrderResponse> => {
     const fingerprint = getCheckoutWarmupFingerprint();
@@ -1346,23 +1365,25 @@ function CheckoutPageInner() {
     return draft;
   };
 
-  // COD-only: warm draft in background so Pay is near-instant.
-  // Razorpay drafts stay click-only to avoid abandoned-order flood.
+  // Prepare at most one online draft per checkout visit once all details are
+  // entered. A later edit invalidates its fingerprint and falls back to click.
   useEffect(() => {
-    if (paymentMethod !== "cod") {
-      draftWarmupRef.current = null;
-      draftWarmupInFlightRef.current = null;
-      return;
-    }
     if (!customer?.id) return;
+    if (processing || totalsLoading || !isOweg10StatusReady || payableTotal <= 0) return;
+    if (paymentMethod === "razorpay" && onlineWarmupStartedRef.current) return;
+    if (draftWarmupInFlightRef.current) return;
 
     const shippingReady =
       !!shipping.email?.trim() &&
       !!shipping.firstName?.trim() &&
       !!shipping.address1?.trim() &&
-      !!shipping.postalCode?.trim() &&
-      !!shipping.phone?.trim();
+      !!shipping.city?.trim() && !!shipping.state?.trim() &&
+      shipping.postalCode?.trim().length === 6 &&
+      shipping.phone?.trim().length === 10;
     if (!shippingReady) return;
+    if (!billingSame && (!billing.email?.trim() || !billing.firstName?.trim() ||
+      !billing.address1?.trim() || !billing.city?.trim() || !billing.state?.trim() ||
+      billing.postalCode?.trim().length !== 6 || billing.phone?.trim().length !== 10)) return;
 
     const hasCartItems = (cart?.items?.length || 0) > 0;
     const hasBuyNowItem = isBuyNow && !!(buyNowItem || variantFromQuery);
@@ -1383,11 +1404,11 @@ function CheckoutPageInner() {
       if (cancelled) return;
       const create = createDraftOrderRef.current;
       if (!create) return;
+      if (paymentMethod === "razorpay") onlineWarmupStartedRef.current = true;
 
       const warmPromise = create()
         .then((draft) => {
-          if (cancelled) return null;
-          const stillCurrent = getCheckoutWarmupFingerprint() === fingerprint;
+          const stillCurrent = checkoutFingerprintRef.current === fingerprint;
           if (!stillCurrent) return null;
           draftWarmupRef.current = {
             fingerprint,
@@ -1408,7 +1429,7 @@ function CheckoutPageInner() {
         });
 
       draftWarmupInFlightRef.current = warmPromise;
-    }, 700);
+    }, paymentMethod === "razorpay" ? 1200 : 700);
 
     return () => {
       cancelled = true;
@@ -1417,14 +1438,29 @@ function CheckoutPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fingerprint deps listed explicitly
   }, [
     paymentMethod,
+    processing,
+    totalsLoading,
+    isOweg10StatusReady,
     customer?.id,
     shipping.email,
     shipping.firstName,
+    shipping.lastName,
     shipping.address1,
+    shipping.address2,
+    shipping.city,
     shipping.postalCode,
     shipping.phone,
     shipping.state,
     billingSame,
+    billing.email,
+    billing.firstName,
+    billing.lastName,
+    billing.address1,
+    billing.address2,
+    billing.city,
+    billing.state,
+    billing.postalCode,
+    billing.phone,
     referralCode,
     coinDiscount,
     oweg10Applied,
@@ -1433,15 +1469,14 @@ function CheckoutPageInner() {
     promoDiscount,
     payableTotal,
     cart?.id,
+    cart?.items,
     isBuyNow,
     buyNowItem,
     variantFromQuery,
     qtyFromQuery,
     priceFromQuery,
+    sellerSelectedFromQuery,
   ]);
-
-  // Razorpay drafts are created only when the user clicks Pay (getOrCreateCheckoutDraft),
-  // not on shipping-field warmup — abandoned online attempts were flooding Draft Orders.
 
   const rememberCheckoutItem = (orderId: string) => {
     try {
@@ -1552,37 +1587,45 @@ function CheckoutPageInner() {
   };
 
   const handleStandardRazorpay = async (draft: DraftOrderResponse, payableRupees: number) => {
-    // Always mint/validate via create-razorpay-order so terminal-failed sessions
-    // never reuse a dead Razorpay order (draft.razorpay alone can be stale).
-    const createRes = await fetch("/api/create-razorpay-order", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        medusaOrderId: draft.medusaOrderId,
-        amount: payableRupees > 0 ? payableRupees : draft.total,
-      }),
-    });
-    if (!createRes.ok) {
-      const err = await createRes.json().catch(() => ({}));
-      if (createRes.status === 404 || err.error === "order_not_found" || err.error === "Order not found") {
-        draftWarmupRef.current = null;
-        draftWarmupInFlightRef.current = null;
-      }
-      throw new Error(err.error || "Unable to create payment");
-    }
-    const createData = (await createRes.json()) as {
+    // The draft endpoint already created and saved a Razorpay order. Reuse it
+    // when the server quote matches the amount shown to the customer.
+    const draftPayment = draft.razorpay;
+    const targetRupees = payableRupees > 0 ? payableRupees : draft.total;
+    let createData: {
       key: string;
       amount: number;
       currency: string;
       orderId: string;
     };
-
-    const amountMinor = razorpayAmountToMinor(
-      createData.amount,
-      payableRupees > 0 ? payableRupees : draft.total
-    );
-    if (amountMinor <= 0) {
-      throw new Error("Invalid payment amount. Please refresh and try again.");
+    let amountMinor: number;
+    if (draftPayment?.key && draftPayment.orderId &&
+      draftPayment.currency?.toUpperCase() === "INR" &&
+      Number.isFinite(draftPayment.amount) && draftPayment.amount > 0 &&
+      Math.abs(draftPayment.amount - draft.total) <= 0.01 &&
+      Math.abs(draftPayment.amount - targetRupees) <= 1) {
+      createData = draftPayment;
+      amountMinor = Math.round(draftPayment.amount * 100);
+    } else {
+      const createRes = await fetch("/api/create-razorpay-order", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ medusaOrderId: draft.medusaOrderId, amount: targetRupees }),
+      });
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({}));
+        if (createRes.status === 404 || err.error === "order_not_found" || err.error === "Order not found") {
+          draftWarmupRef.current = null;
+          draftWarmupInFlightRef.current = null;
+        }
+        throw new Error(err.error || "Unable to create payment");
+      }
+      createData = (await createRes.json()) as typeof createData;
+      // create-razorpay-order returns Razorpay's amount in paise.
+      amountMinor = Math.round(createData.amount);
+    }
+    if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0 ||
+      Math.abs(amountMinor - Math.round(targetRupees * 100)) > 100) {
+      throw new Error("Payment amount changed. Please refresh your checkout and try again.");
     }
 
     const email = shipping.email || billing.email;

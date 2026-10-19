@@ -2,7 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Pool } from "pg"
 import { requireApprovedVendor } from "../../../_lib/guards"
 import { withVendorOrderAssignmentLock } from "../../../../../lib/vendor-order-assignment-lock"
-import { isAcceptanceOverdue } from "../../../../../lib/vendor-acceptance-deadline"
+import { isAcceptanceOverdue, withRecoveredAcceptanceDeadline } from "../../../../../lib/vendor-acceptance-deadline"
 import { VENDOR_MODULE } from "../../../../../modules/vendor"
 import VendorModuleService from "../../../../../modules/vendor/service"
 import {
@@ -44,7 +44,10 @@ async function acceptVendorOrder(req: MedusaRequest, res: MedusaResponse, vendor
       return res.status(409).json({ message: "This order was cancelled by admin. Do not accept or ship it." })
     }
 
-    const workflow = getVendorWorkflow(result.order.metadata, vendorId)
+    const workflow = withRecoveredAcceptanceDeadline(
+      getVendorWorkflow(result.order.metadata, vendorId), result.order.metadata, vendorId,
+      result.order.created_at
+    )
     if (isAcceptanceOverdue(workflow)) {
       return res.status(409).json({ message: "The 48 hour acceptance window has ended. Contact OWEG support." })
     }

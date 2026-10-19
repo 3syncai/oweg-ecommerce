@@ -43,7 +43,7 @@ const CategoryBadge = ({ category }: { category: Row["category"] | Row["type"] }
         key === "return" && "bg-gradient-to-r from-red-500/10 to-red-500/5 text-red-600 ring-1 ring-red-500/15 dark:text-red-400",
         key === "claim" && "bg-gradient-to-r from-amber-500/10 to-amber-500/5 text-amber-700 ring-1 ring-amber-500/15 dark:text-amber-300",
         key === "payment" && "bg-gradient-to-r from-slate-500/10 to-slate-500/5 text-slate-600 ring-1 ring-slate-500/15 dark:text-slate-300",
-        key === "cancellation" && "bg-gradient-to-r from-orange-500/10 to-orange-500/5 text-orange-700 ring-1 ring-orange-500/15",
+        key === "cancellation" && "bg-gradient-to-r from-red-500/10 to-red-500/5 text-red-700 ring-1 ring-red-500/15 dark:text-red-300",
         (key === "sale" || !key) && "bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 text-emerald-700 ring-1 ring-emerald-500/15 dark:text-emerald-300"
       )}
     >
@@ -53,7 +53,7 @@ const CategoryBadge = ({ category }: { category: Row["category"] | Row["type"] }
           key === "return" && "bg-red-500",
           key === "claim" && "bg-amber-500",
           key === "payment" && "bg-slate-500",
-          key === "cancellation" && "bg-orange-500",
+          key === "cancellation" && "bg-red-500",
           (key === "sale" || !key) && "bg-emerald-500"
         )}
       />
@@ -136,13 +136,10 @@ const Money = ({
   value,
   strong,
   tone = "default",
-  neutral = false,
 }: {
   value: number | undefined
   strong?: boolean
   tone?: "default" | "return" | "cancellation"
-  /** Keep OWEG fee cells neutral inside a red return/cancellation row. */
-  neutral?: boolean
 }) => {
   const v = Number(value) || 0
   return (
@@ -150,9 +147,8 @@ const Money = ({
       align="right"
       className={clx(
         strong && "font-semibold",
-        neutral && "!text-ui-fg-base dark:!text-ui-fg-base",
         tone === "return" && "text-red-600 dark:text-red-400",
-        tone === "cancellation" && "text-orange-600 dark:text-orange-400"
+        tone === "cancellation" && "text-red-600 dark:text-red-400"
       )}
       muted={!strong && v === 0 && tone === "default"}
     >
@@ -348,7 +344,7 @@ export default function PaymentLedgerTable({
                 )
               } else if (category === "cancellation" || rawStatus.includes("cancel")) {
                 statusNode = (
-                  <StatusPill tone="bg-orange-50 text-orange-700 ring-1 ring-orange-500/15 dark:bg-orange-900/20 dark:text-orange-400">
+                  <StatusPill tone="bg-red-50 text-red-700 ring-1 ring-red-500/15 dark:bg-red-900/20 dark:text-red-300">
                     Cancelled
                   </StatusPill>
                 )
@@ -394,16 +390,13 @@ export default function PaymentLedgerTable({
                 )
               }
 
-              // Return/cancellation reversals stay red. Fees charged by OWEG
-              // (shipping, reverse shipping, cancellation and gateway) remain
-              // neutral so they are not mistaken for an error.
+              // Keep every figure in return and cancellation rows red, including fees and zeros.
               const moneyTone =
                 category === "return"
                   ? "return"
                   : category === "cancellation"
                     ? "cancellation"
                     : "default"
-              const owegChargeTone = "default"
               const isReturnOrCancel =
                 category === "return" ||
                 category === "cancellation" ||
@@ -425,7 +418,7 @@ export default function PaymentLedgerTable({
                   className={clx(
                     "transition-colors duration-150",
                     isReturnOrCancel
-                      ? "bg-ui-bg-base text-red-700 hover:bg-ui-bg-subtle/60 [&>td]:text-red-700 dark:bg-ui-bg-base dark:text-red-300 dark:hover:bg-ui-bg-subtle/60 dark:[&>td]:text-red-300"
+                      ? "bg-ui-bg-base text-red-700 hover:bg-ui-bg-subtle/60 [&>td]:!text-red-700 [&>td_*]:!text-red-700 dark:bg-ui-bg-base dark:text-red-300 dark:hover:bg-ui-bg-subtle/60 dark:[&>td]:!text-red-300 dark:[&>td_*]:!text-red-300"
                       : index % 2 === 1
                         ? "bg-ui-bg-subtle/30"
                         : "bg-ui-bg-base",
@@ -488,8 +481,8 @@ export default function PaymentLedgerTable({
                     {formatGstRate(row.gst_rate)}
                   </TD>
                   <Money value={row.gst_amount} tone={moneyTone} />
-                  <Money value={row.logistic_fee} tone={owegChargeTone} neutral={isReturnOrCancel} />
-                  <Money value={row.logistic_gst} tone={owegChargeTone} neutral={isReturnOrCancel} />
+                  <Money value={row.logistic_fee} tone={moneyTone} />
+                  <Money value={row.logistic_gst} tone={moneyTone} />
                   <Money value={productListingTotal(row)} strong tone={moneyTone} />
                   <Money value={row.customer_shipping_fee} tone={moneyTone} />
                   <Money value={row.customer_shipping_gst} tone={moneyTone} />
@@ -503,18 +496,18 @@ export default function PaymentLedgerTable({
                   <Money value={row.partner_commission} tone={moneyTone} />
                   <Money value={row.partner_gst} tone={moneyTone} />
                   <Money value={row.partner_total} tone={moneyTone} />
-                  <Money value={row.logistic_fee} tone={owegChargeTone} neutral={isReturnOrCancel} />
-                  <Money value={row.logistic_gst} tone={owegChargeTone} neutral={isReturnOrCancel} />
-                  <Money value={row.logistic_total} tone={owegChargeTone} neutral={isReturnOrCancel} />
-                  <Money value={displayReturnFee} tone={owegChargeTone} neutral={isReturnOrCancel} />
-                  <Money value={displayReverseGst} tone={owegChargeTone} neutral={isReturnOrCancel} />
-                  <Money value={displayReverseTotal} tone={owegChargeTone} neutral={isReturnOrCancel} />
-                  <Money value={displayCancelFee} tone={owegChargeTone} neutral={isReturnOrCancel} />
-                  <Money value={displayCancelGst} tone={owegChargeTone} neutral={isReturnOrCancel} />
-                  <Money value={displayCancelTotal} tone={owegChargeTone} neutral={isReturnOrCancel} />
-                  <Money value={displayPgFee} tone={owegChargeTone} neutral={isReturnOrCancel} />
-                  <Money value={displayPgGst} tone={owegChargeTone} neutral={isReturnOrCancel} />
-                  <Money value={displayPgTotal} tone={owegChargeTone} neutral={isReturnOrCancel} />
+                  <Money value={row.logistic_fee} tone={moneyTone} />
+                  <Money value={row.logistic_gst} tone={moneyTone} />
+                  <Money value={row.logistic_total} tone={moneyTone} />
+                  <Money value={displayReturnFee} tone={moneyTone} />
+                  <Money value={displayReverseGst} tone={moneyTone} />
+                  <Money value={displayReverseTotal} tone={moneyTone} />
+                  <Money value={displayCancelFee} tone={moneyTone} />
+                  <Money value={displayCancelGst} tone={moneyTone} />
+                  <Money value={displayCancelTotal} tone={moneyTone} />
+                  <Money value={displayPgFee} tone={moneyTone} />
+                  <Money value={displayPgGst} tone={moneyTone} />
+                  <Money value={displayPgTotal} tone={moneyTone} />
                   <Money value={row.claim_amount} tone={moneyTone} />
                   <Money value={row.tcs} tone={moneyTone} />
                   <Money value={row.tds} tone={moneyTone} />

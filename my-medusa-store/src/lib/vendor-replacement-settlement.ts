@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto"
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto"
 import type { MedusaRequest } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { getSharedDbPool } from "./db-pool"
@@ -34,6 +34,69 @@ async function gateway<T>(path: string, method: "GET" | "POST" = "GET", body?: o
 }
 
 function minor(amount: number) { return Math.round(amount * 100) }
+
+/** Mirror a verified Razorpay adjustment in Medusa's payment collection.
+ * Order transactions alone update paid_total but not the admin capture badge.
+ */
+export async function recordCapturedReplacementPayment(orderId: string, requestId: string) {
+  const request = await getReplacementRequest(orderId, requestId)
+  if (!request?.razorpay_payment_id || !request.razorpay_order_id ||
+    !request.adjustment_amount || request.adjustment_amount <= 0)
+    throw new Error("Captured replacement payment reference is missing")
+  const gatewayPayment = await gateway<GatewayPayment>(`payments/${encodeURIComponent(request.razorpay_payment_id)}`)
+  if (gatewayPayment.id !== request.razorpay_payment_id ||
+    gatewayPayment.order_id !== request.razorpay_order_id ||
+    gatewayPayment.status !== "captured" || gatewayPayment.currency !== "INR" ||
+    gatewayPayment.amount !== minor(request.adjustment_amount))
+    throw new Error("Replacement payment is not captured at the quoted amount")
+
+  const amount = request.adjustment_amount
+  const raw = JSON.stringify({ value: amount.toFixed(2), precision: 20 })
+  const pool = getSharedDbPool()
+  const client = await pool.connect()
+  try {
+    await client.query("BEGIN")
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [gatewayPayment.id])
+    const existing = await client.query(`SELECT p.id FROM payment p
+      JOIN order_payment_collection opc ON opc.payment_collection_id=p.payment_collection_id
+      WHERE opc.order_id=$1 AND opc.deleted_at IS NULL AND p.deleted_at IS NULL
+        AND p.data->>'razorpay_payment_id'=$2 LIMIT 1`, [orderId, gatewayPayment.id])
+    if (existing.rows.length) { await client.query("COMMIT"); return }
+    const collections = await client.query<{ id: string }>(`SELECT pc.id FROM payment_collection pc
+      JOIN order_payment_collection opc ON opc.payment_collection_id=pc.id
+      WHERE opc.order_id=$1 AND opc.deleted_at IS NULL AND pc.deleted_at IS NULL
+        AND pc.currency_code='inr' AND pc.amount=$2 AND pc.status='not_paid'
+        AND NOT EXISTS (SELECT 1 FROM payment p WHERE p.payment_collection_id=pc.id AND p.deleted_at IS NULL)
+      FOR UPDATE OF pc`, [orderId, amount])
+    if (collections.rows.length !== 1)
+      throw new Error("Replacement payment collection is missing or ambiguous")
+    const collectionId = collections.rows[0].id
+    const sessionId = `payses_${randomUUID().replace(/-/g, "")}`
+    const paymentId = `pay_${randomUUID().replace(/-/g, "")}`
+    const data = JSON.stringify({ status: "captured", captured: true,
+      amount_in_paise: gatewayPayment.amount, razorpay_order_id: gatewayPayment.order_id,
+      razorpay_payment_id: gatewayPayment.id, replacement_request_id: requestId })
+    await client.query(`INSERT INTO payment_session
+      (id,currency_code,amount,raw_amount,provider_id,data,context,status,payment_collection_id,created_at,updated_at)
+      VALUES($1,'inr',$2,$3::jsonb,'razorpay',$4::jsonb,'{}'::jsonb,'captured',$5,now(),now())`,
+      [sessionId, amount, raw, data, collectionId])
+    await client.query(`INSERT INTO payment
+      (id,amount,raw_amount,currency_code,provider_id,data,payment_collection_id,payment_session_id,captured_at,created_at,updated_at)
+      VALUES($1,$2,$3::jsonb,'inr','razorpay',$4::jsonb,$5,$6,now(),now(),now())`,
+      [paymentId, amount, raw, data, collectionId, sessionId])
+    await client.query(`INSERT INTO capture(id,amount,raw_amount,payment_id,metadata,created_at,updated_at)
+      VALUES($1,$2,$3::jsonb,$4,$5::jsonb,now(),now())`,
+      [`capt_${randomUUID().replace(/-/g, "")}`, amount, raw, paymentId,
+        JSON.stringify({ razorpay_payment_id: gatewayPayment.id, replacement_request_id: requestId })])
+    await client.query(`UPDATE payment_collection SET captured_amount=$2,
+      raw_captured_amount=$3::jsonb,status='completed',updated_at=now() WHERE id=$1`,
+      [collectionId, amount, raw])
+    await client.query("COMMIT")
+  } catch (error) {
+    await client.query("ROLLBACK")
+    throw error
+  } finally { client.release() }
+}
 
 export async function createReplacementPaymentOrder(orderId: string, requestId: string) {
   const request = await getReplacementRequest(orderId, requestId)
@@ -81,6 +144,8 @@ async function applySettledReplacement(req: MedusaRequest, orderId: string, requ
       order_id: orderId, amount: request.adjustment_amount,
       currency_code: "inr", reference, reference_id: referenceId,
     })
+    if (reference === "vendor_replacement_payment")
+      await recordCapturedReplacementPayment(orderId, requestId)
     await getSharedDbPool().query(`UPDATE vendor_replacement_request SET status='applied',updated_at=now()
       WHERE id=$1`, [request.id])
     return { status: "applied" as const, reassigned }
@@ -168,6 +233,56 @@ export async function recoverReplacementPayment(req: MedusaRequest, orderId: str
   await getSharedDbPool().query(`UPDATE vendor_replacement_request SET razorpay_payment_id=$2,updated_at=now()
     WHERE id=$1 AND status='awaiting_payment'`, [request.id, captured.id])
   return applySettledReplacement(req, orderId, request.id, captured.id, "vendor_replacement_payment")
+}
+
+/** Refund the original captured Razorpay payment before cancelling a rejected order.
+ * The recorded refund lets Medusa's cancel workflow skip a second gateway refund.
+ */
+export async function refundRejectedReplacementOrder(orderId: string, requestId: string,
+  metadata: Record<string, any>) {
+  const gatewayPaymentId = String(metadata.razorpay_payment_id || "")
+  const gatewayOrderId = String(metadata.razorpay_order_id || "")
+  if (!gatewayPaymentId || !gatewayOrderId || metadata.razorpay_payment_status !== "captured")
+    throw new Error("Original payment must be verified before cancellation")
+  const payment = await gateway<GatewayPayment>(`payments/${encodeURIComponent(gatewayPaymentId)}`)
+  if (payment.id !== gatewayPaymentId || payment.order_id !== gatewayOrderId ||
+    payment.status !== "captured" || payment.currency !== "INR" ||
+    payment.amount !== Number(metadata.razorpay_amount_minor))
+    throw new Error("Original payment does not match the captured order amount")
+
+  const pool = getSharedDbPool()
+  const stored = await pool.query<{ id: string; refunded: string }>(`
+    SELECT p.id, COALESCE((SELECT SUM(r.amount) FROM refund r
+      WHERE r.payment_id=p.id AND r.deleted_at IS NULL),0)::text AS refunded
+    FROM payment p JOIN order_payment_collection opc ON opc.payment_collection_id=p.payment_collection_id
+    WHERE opc.order_id=$1 AND opc.deleted_at IS NULL AND p.deleted_at IS NULL
+      AND p.data->>'razorpay_payment_id'=$2 LIMIT 1`, [orderId, gatewayPaymentId])
+  const medusaPayment = stored.rows[0]
+  if (!medusaPayment) throw new Error("Captured payment record is missing; contact support")
+  const amount = payment.amount / 100
+  if (Number(medusaPayment.refunded) >= amount - 0.005) return
+  if (Number(medusaPayment.refunded) > 0) throw new Error("A partial refund exists; contact support")
+
+  const request = await getReplacementRequest(orderId, requestId)
+  let refund: GatewayRefund
+  if (request?.razorpay_refund_id) {
+    refund = await gateway<GatewayRefund>(`refunds/${encodeURIComponent(request.razorpay_refund_id)}`)
+  } else {
+    refund = await gateway<GatewayRefund>(`payments/${encodeURIComponent(gatewayPaymentId)}/refund`, "POST",
+      { amount: payment.amount, speed: "normal", notes: { order_id: orderId, replacement_request_id: requestId,
+        reason: "customer_declined_replacement" } }, `replacement-reject:${requestId}`)
+    await pool.query(`UPDATE vendor_replacement_request SET razorpay_refund_id=$2,updated_at=now()
+      WHERE id=$1 AND razorpay_refund_id IS NULL`, [requestId, refund.id])
+  }
+  if (refund.payment_id !== gatewayPaymentId || refund.amount !== payment.amount ||
+    !["processed", "pending", "created"].includes(refund.status))
+    throw new Error("The cancellation refund needs support review")
+  await pool.query(`INSERT INTO refund(id,amount,raw_amount,payment_id,metadata,note,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,now(),now())`, [
+    `refund_${randomUUID()}`, amount, JSON.stringify({ value: amount.toFixed(2), precision: 20 }),
+    medusaPayment.id, JSON.stringify({ razorpay_refund_id: refund.id, replacement_request_id: requestId,
+      gateway_status: refund.status }), "Customer declined replacement",
+  ])
 }
 
 export async function settleReplacementRefund(req: MedusaRequest, orderId: string, requestId: string) {

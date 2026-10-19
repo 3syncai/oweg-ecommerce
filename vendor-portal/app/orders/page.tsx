@@ -133,6 +133,8 @@ type VendorOrder = {
   cancellation_note?: string | null
   cancellation_at?: string | null
   cancellation_label?: string | null
+  vendor_assignment_cancelled?: boolean
+  assignment_cancellations?: Array<{ item_id: string; title: string; reason: string; at: string }>
   customer_reliability?: {
     rating: number | null
     label: string
@@ -1542,8 +1544,20 @@ function DetailsModal({
                 </Text>
               ) : null}
               <Text size="small" className="mt-1 text-rose-700">
-                Do not pack or ship this order. The customer has been notified.
+                {order.vendor_assignment_cancelled
+                  ? "Do not pack or ship this item. The customer order continues with another seller."
+                  : "Do not pack or ship this order. The customer has been notified."}
               </Text>
+            </div>
+          ) : null}
+          {!cancelled && order.assignment_cancellations?.length ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-900">
+              <Text weight="plus">Admin cancelled an item assignment</Text>
+              {order.assignment_cancellations.map(item => (
+                <Text key={item.item_id} size="small" className="mt-1">
+                  {item.title}{item.reason ? ` — ${item.reason}` : ""}
+                </Text>
+              ))}
             </div>
           ) : null}
           <div className="rounded-xl border border-ui-border-base/70 bg-ui-bg-subtle/20 p-4">

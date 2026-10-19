@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Medusa POST /line-items ADDS quantity — only send guest qty
-    const mergePromises = guestLineItems.map(async (item: { variant_id?: string; quantity?: number }) => {
+    const mergePromises = guestLineItems.map(async (item: { variant_id?: string; quantity?: number; metadata?: { seller_selected?: boolean } }) => {
       if (!item.variant_id) return null
 
       const guestQty = item.quantity || 0
@@ -157,6 +157,7 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           variant_id: item.variant_id,
           quantity: guestQty,
+          ...(item.metadata?.seller_selected === true ? { metadata: { seller_selected: true } } : {}),
         }),
       })
     })

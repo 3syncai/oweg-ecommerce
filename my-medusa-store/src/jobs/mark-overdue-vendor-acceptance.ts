@@ -3,8 +3,7 @@ import { getSharedDbPool } from "../lib/db-pool"
 import { listCurrentOrderVendorIds } from "../lib/vendor-cancellation-scope"
 import { withVendorOrderAssignmentLock } from "../lib/vendor-order-assignment-lock"
 import { getVendorWorkflow, mergeVendorWorkflowMetadata } from "../lib/vendor-order-workflow"
-import { isAcceptanceOverdue } from "../lib/vendor-acceptance-deadline"
-import { acceptanceDeadline } from "../lib/vendor-acceptance-deadline"
+import { acceptanceDeadline, isAcceptanceOverdue, reassignmentAcceptanceDeadline } from "../lib/vendor-acceptance-deadline"
 import { isVendorVisibleOrder } from "../lib/vendor-order-visibility"
 import { hasPasswordResetMailerConfig } from "../lib/password-reset/config"
 import { sendTransactionalEmail } from "../lib/password-reset/mailer"
@@ -36,8 +35,9 @@ export default async function markOverdueVendorAcceptance(container: any) {
           const workflow = getVendorWorkflow(metadata, vendorId)
           if (workflow.accepted_at || (workflow.stage && workflow.stage !== "to_accept")
             || workflow.acceptance_deadline_at) continue
-          const start = metadata.checkout_convert_authorized_at || metadata.cod_paid_at
-            || order.created_at || new Date().toISOString()
+          const reassigned = reassignmentAcceptanceDeadline(metadata, vendorId)
+          const start = reassigned?.assigned_at || workflow.assigned_at || metadata.checkout_convert_authorized_at
+            || metadata.cod_paid_at || order.created_at || new Date().toISOString()
           const assignedAt = new Date(start).toISOString()
           metadata = mergeVendorWorkflowMetadata(metadata, vendorId, {
             stage: "to_accept", assigned_at: assignedAt,
@@ -50,6 +50,50 @@ export default async function markOverdueVendorAcceptance(container: any) {
       })
     } catch (error: any) {
       logger.warn(`[vendor-acceptance-init] order=${orderId}: ${error?.message}`)
+    }
+  }
+  // Order edits can leave the reassignment history intact while losing the
+  // replacement vendor's workflow. Recover it even when initial setup ran.
+  const missingReassignments = await pool.query<{ id: string }>(`
+    SELECT DISTINCT o.id FROM "order" o
+    JOIN order_item oi ON oi.order_id=o.id AND oi.version=o.version AND oi.deleted_at IS NULL
+    JOIN order_line_item oli ON oli.id=oi.item_id AND oli.deleted_at IS NULL
+    LEFT JOIN product_variant pv ON pv.id=oli.variant_id
+    JOIN product p ON p.id=COALESCE(oli.product_id,pv.product_id)
+    JOIN LATERAL jsonb_array_elements(
+      CASE WHEN jsonb_typeof(o.metadata->'vendor_reassignment_history')='array'
+        THEN o.metadata->'vendor_reassignment_history' ELSE '[]'::jsonb END
+    ) history ON history->>'to_vendor_id'=p.metadata->>'vendor_id'
+    WHERE o.status NOT IN ('canceled','cancelled') AND COALESCE(oi.quantity,0)>0
+      AND NULLIF(history->>'at','') IS NOT NULL
+      AND (o.metadata->'vendor_order_workflows'->(history->>'to_vendor_id')->>'acceptance_deadline_at') IS NULL
+      AND (o.metadata->'vendor_order_workflows'->(history->>'to_vendor_id')->>'accepted_at') IS NULL
+      AND COALESCE(o.metadata->'vendor_order_workflows'->(history->>'to_vendor_id')->>'stage','to_accept')='to_accept'
+    ORDER BY o.id LIMIT 50`)
+  for (const { id: orderId } of missingReassignments.rows) {
+    try {
+      await withVendorOrderAssignmentLock(orderId, async () => {
+        const orderModule = container.resolve(Modules.ORDER)
+        const order: any = await orderModule.retrieveOrder(orderId)
+        if (!isVendorVisibleOrder(order)) return
+        const vendorIds = await listCurrentOrderVendorIds(orderId, pool)
+        let metadata = { ...(order.metadata || {}) }
+        let changed = false
+        for (const vendorId of vendorIds) {
+          const workflow = getVendorWorkflow(metadata, vendorId)
+          if (workflow.acceptance_deadline_at || workflow.accepted_at ||
+            (workflow.stage && workflow.stage !== "to_accept")) continue
+          const recovered = reassignmentAcceptanceDeadline(metadata, vendorId)
+          if (!recovered) continue
+          metadata = mergeVendorWorkflowMetadata(metadata, vendorId, {
+            stage: "to_accept", ...recovered,
+          })
+          changed = true
+        }
+        if (changed) await orderModule.updateOrders(orderId, { metadata })
+      })
+    } catch (error: any) {
+      logger.warn(`[vendor-acceptance-reassignment-recovery] order=${orderId}: ${error?.message}`)
     }
   }
   const pending = await pool.query<{ id: string }>(`

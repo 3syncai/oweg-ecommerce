@@ -23,7 +23,7 @@
     "start": "medusa start",
     "migrate": "TS_NODE_TRANSPILE_ONLY=true npx medusa db:migrate",
     "predev": "node scripts/patch-customer-order-overview.cjs",
-    "dev": "medusa develop",
+    "dev": "node scripts/dev-with-local-razorpay.cjs",
     "admin:bootstrap": "medusa exec ./src/scripts/bootstrap-superadmin.ts",
     "payment:install": "medusa exec ./src/scripts/install-payment-reliability.ts",
     "test:admin-access": "node --test --require ts-node/register/transpile-only src/lib/admin-access/__tests__/*.test.ts",

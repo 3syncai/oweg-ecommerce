@@ -19,7 +19,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const query = req.scope.resolve("query")
   const { data: orders } = await query.graph({
     entity: "order",
-    fields: ["id", "customer_id", "email", "status", "metadata", "items.id", "items.quantity", "items.detail.quantity",
+    fields: ["id", "customer_id", "email", "status", "created_at", "metadata", "items.id", "items.quantity", "items.detail.quantity",
       "items.product_id", "items.variant.product_id", "items.detail.return_received_quantity",
       "fulfillments.id", "fulfillments.shipped_at", "fulfillments.delivered_at", "fulfillments.canceled_at"],
     filters: { id: ids },

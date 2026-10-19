@@ -13,7 +13,7 @@ import {
 } from "../../../../../lib/vendor-order-workflow"
 import { readCancellationInfo } from "../../../../../lib/order-cancel/metadata"
 import { getSharedDbPool } from "../../../../../lib/db-pool"
-import { isAcceptanceOverdue } from "../../../../../lib/vendor-acceptance-deadline"
+import { isAcceptanceOverdue, withRecoveredAcceptanceDeadline } from "../../../../../lib/vendor-acceptance-deadline"
 
 /**
  * GET /admin/orders/:id/vendor-acceptance
@@ -99,7 +99,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     for (const vendorId of vendorIds) {
       const productIdsForVendor = vendorProductIds.get(vendorId) || []
-      const workflow = getVendorWorkflow(order.metadata as Record<string, unknown>, vendorId)
+      const workflow = withRecoveredAcceptanceDeadline(
+        getVendorWorkflow(order.metadata as Record<string, unknown>, vendorId),
+        order.metadata as Record<string, unknown>, vendorId, order.created_at
+      )
       const stage = deriveVendorStage(order as any, workflow) as VendorOrderStage
       const vendorItems = pickVendorItems(order as any, productIdsForVendor)
 

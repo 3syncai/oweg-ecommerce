@@ -1,5 +1,15 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { listSameSkuOffers, selectSameSkuOfferWithDecision } from "../../../../lib/vendor-offer-routing"
+import { FLASH_SALE_MODULE } from "../../../../modules/flash-sale"
+import type FlashSaleModuleService from "../../../../modules/flash-sale/service"
+
+async function matchesActiveFlashPrice(req: MedusaRequest, variantId: string, price: number) {
+  const service = req.scope.resolve(FLASH_SALE_MODULE) as FlashSaleModuleService
+  const items = await service.listFlashSaleItems({ variant_id: variantId })
+  const now = Date.now()
+  return items.some(item => !item.deleted_at && new Date(item.expires_at).getTime() > now
+    && Math.abs(Number(item.flash_sale_price) - price) < 0.005)
+}
 
 /** Checkout replaces only the vendor variant. The customer's unit price stays fixed. */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
@@ -16,9 +26,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         throw new Error("Invalid checkout item")
       const decision = item?.seller_selected ? null
         : await selectSameSkuOfferWithDecision(variantId, quantity, price, postalCode)
-      const selected = item?.seller_selected
-        ? (await listSameSkuOffers(variantId)).find(offer => offer.variant_id === variantId && offer.available >= quantity && offer.prices.some(amount => Math.abs(amount - price) < 0.005))
-        : decision?.selected
+      let selected = decision?.selected
+      if (item?.seller_selected) {
+        const offer = (await listSameSkuOffers(variantId)).find(offer => offer.variant_id === variantId && offer.available >= quantity)
+        selected = offer && (offer.prices.some(amount => Math.abs(amount - price) < 0.005)
+          || await matchesActiveFlashPrice(req, variantId, price)) ? offer : null
+      }
       if (item?.seller_selected && !selected) throw new Error("Selected seller is out of stock or its price changed")
       if (!selected) throw new Error("No approved vendor has this exact variant in stock at the checkout price")
       return { original_variant_id: variantId, variant_id: selected.variant_id,

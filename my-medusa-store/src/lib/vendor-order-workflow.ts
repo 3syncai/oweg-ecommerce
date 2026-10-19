@@ -12,7 +12,7 @@ import {
   DEFAULT_SERVICE_GST_RATE,
 } from "./vendor-ledger-settlement"
 import { readCancellationInfo } from "./order-cancel/metadata"
-import { isAcceptanceOverdue } from "./vendor-acceptance-deadline"
+import { isAcceptanceOverdue, withRecoveredAcceptanceDeadline } from "./vendor-acceptance-deadline"
 
 export type VendorOrderStage =
   | "to_accept"
@@ -688,7 +688,9 @@ export function formatVendorOrder(
   rates?: VendorOrderSettlementRates | null
 ) {
   const vendorItems = pickVendorItems(order, vendorProductIds)
-  const workflow = getVendorWorkflow(order.metadata, vendorId)
+  const workflow = withRecoveredAcceptanceDeadline(
+    getVendorWorkflow(order.metadata, vendorId), order.metadata, vendorId, order.created_at
+  )
   const stage = deriveVendorStage(order, workflow)
   const total = vendorItems.reduce(
     (sum, item) => sum + Number(item.unit_price || 0) * getItemUnits(item),
@@ -817,7 +819,8 @@ export async function getVendorOrderOrRespond(
   req: MedusaRequest,
   res: MedusaResponse,
   vendorId: string,
-  orderId: string
+  orderId: string,
+  allowCancelledAssignment = false
 ) {
   const vendorProductIds = await getVendorProductIds(req, vendorId)
   if (!vendorProductIds.length) {
@@ -866,7 +869,10 @@ export async function getVendorOrderOrRespond(
   })
 
   const order = data?.[0]
-  if (!order || pickVendorItems(order, vendorProductIds).length === 0) {
+  const history = (order?.metadata as any)?.vendor_reassignment_history
+  const wasCancelledByAdmin = allowCancelledAssignment && Array.isArray(history) &&
+    history.some((entry: any) => entry?.from_vendor_id === vendorId && entry.action === "admin_cancel_and_relocate")
+  if (!order || (pickVendorItems(order, vendorProductIds).length === 0 && !wasCancelledByAdmin)) {
     res.status(404).json({ message: "Order not found for this vendor" })
     return null
   }

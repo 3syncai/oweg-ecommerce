@@ -21,7 +21,7 @@ test("unaccepted COD order resolves store before vendor acceptance and sums unit
   const result = orderListOverview(order, products, vendors)
   assert.equal(result.payment, "COD")
   assert.equal(result.quantity, 3)
-  assert.deepEqual(result.stores, [{ name: "Store One", status: "To Accept" }])
+  assert.deepEqual(result.stores, [{ name: "Store One", status: "To Accept", acceptance_deadline_at: null }])
 })
 
 test("vendor stages retain their distinct client-facing labels", () => {
@@ -65,4 +65,18 @@ test("graph item detail quantities and missing quantities do not become zero", (
   assert.equal(orderListOverview(order, products, vendors).quantity, 3)
   order.items = [{ id: "i1", product_id: "p1" }]
   assert.equal(orderListOverview(order, products, vendors).quantity, null)
+})
+
+test("acceptance timer follows the current vendor reassignment time and stops after acceptance", () => {
+  const order: any = base()
+  order.created_at = "2026-10-17T10:00:00.000Z"
+  order.metadata = {
+    payment_method: "razorpay", razorpay_payment_status: "captured",
+    vendor_order_workflows: { v1: { stage: "to_accept" } },
+    vendor_reassignment_history: [{ to_vendor_id: "v1", at: "2026-10-19T10:00:00.000Z" }],
+  }
+  assert.equal(orderListOverview(order, products, vendors).stores[0].acceptance_deadline_at,
+    "2026-10-21T10:00:00.000Z")
+  order.metadata.vendor_order_workflows.v1 = { stage: "to_pack", accepted_at: "2026-10-19T11:00:00.000Z" }
+  assert.equal(orderListOverview(order, products, vendors).stores[0].acceptance_deadline_at, null)
 })

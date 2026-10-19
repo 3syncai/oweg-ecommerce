@@ -104,12 +104,18 @@ function formatDate(value?: string | null) {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return value
   return d.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    timeZoneName: "short",
     day: "2-digit",
     month: "short",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   })
+}
+
+function visibleSku(value?: string | null) {
+  return value?.trim().toUpperCase().startsWith("OWEG-OFFER-") ? "" : value
 }
 
 const Detail = ({ label, value }: { label: string; value: ReactNode }) => {
@@ -140,7 +146,6 @@ const OrderVendorAcceptanceWidget = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [relocatingItemId, setRelocatingItemId] = useState<string | null>(null)
-  const [relocationMode, setRelocationMode] = useState<"reassign" | "cancel">("reassign")
   const [replacementOffers, setReplacementOffers] = useState<ReplacementOffer[]>([])
   const [alternativeOffers, setAlternativeOffers] = useState<ReplacementOffer[]>([])
   const [selectedAlternatives, setSelectedAlternatives] = useState<string[]>([])
@@ -193,10 +198,9 @@ const OrderVendorAcceptanceWidget = () => {
     return () => window.clearInterval(intervalId)
   }, [orderId, load])
 
-  const openRelocation = async (itemId: string, mode: "reassign" | "cancel") => {
+  const openRelocation = async (itemId: string) => {
     if (!orderId) return
     setRelocatingItemId(itemId)
-    setRelocationMode(mode)
     setReplacementOffers([])
     setAlternativeOffers([])
     setSelectedAlternatives([])
@@ -225,25 +229,23 @@ const OrderVendorAcceptanceWidget = () => {
   }
 
   const submitRelocation = async () => {
-    if (!orderId || !relocatingItemId || !targetVendorId ||
-      (relocationMode === "cancel" && relocationReason.trim().length < 3)) return
+    if (!orderId || !relocatingItemId || !targetVendorId || relocationReason.trim().length < 3) return
     setRelocationLoading(true)
     setRelocationError("")
     try {
       const res = await fetch(`/admin/orders/${orderId}/reshuffle`, {
         method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ item_id: relocatingItemId, target_vendor_id: targetVendorId,
-          cancel_vendor_assignment: relocationMode === "cancel",
-          ...(relocationMode === "cancel" ? { reason: relocationReason.trim() } : {}) }),
+          cancel_vendor_assignment: true, reason: relocationReason.trim() }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.message || `Relocation failed (${res.status})`)
       if (json.vendor_cancellation_charge_status === "pending")
-        toast.error("Item relocated. The outgoing vendor charge is pending reconciliation.")
+        toast.error("Item shuffled. The outgoing vendor charge is pending reconciliation.")
       else if (json.vendor_cancellation_charge_status === "waived")
-        toast.success("Item reassigned; no cancellation fee is configured for the outgoing vendor")
+        toast.success("Item shuffled; no cancellation fee is configured for the outgoing vendor")
       else
-        toast.success(relocationMode === "cancel" ? "Vendor assignment cancelled, fee charged, and item relocated" : "Item reassigned; outgoing vendor fee charged")
+        toast.success("Item shuffled; outgoing vendor cancellation fee charged")
       window.location.reload()
     } catch (error: any) {
       setRelocationError(error?.message || "Could not relocate item")
@@ -641,16 +643,11 @@ const OrderVendorAcceptanceWidget = () => {
                   <div key={item.id} className="flex flex-wrap items-start justify-between gap-2">
                     <Text size="small" className="min-w-0 flex-1 text-ui-fg-subtle leading-snug">
                       {item.title}{item.variant_title ? ` · ${item.variant_title}` : ""}
-                      {item.sku ? ` · ${item.sku}` : ""}{` × ${item.quantity ?? 1}`}
+                      {visibleSku(item.sku) ? ` · ${visibleSku(item.sku)}` : ""}{` × ${item.quantity ?? 1}`}
                     </Text>
                     {!orderCancelled && vendor.can_relocate ? (
-                      <div className="flex flex-wrap gap-2">
-                        {!vendor.accepted && <Button size="small" variant="secondary"
-                          disabled={relocationLoading}
-                          onClick={() => void openRelocation(item.id, "reassign")}>Reassign</Button>}
-                        <Button size="small" variant="secondary" disabled={relocationLoading}
-                          onClick={() => void openRelocation(item.id, "cancel")}>Cancel & relocate</Button>
-                      </div>
+                      <Button size="small" variant="secondary" disabled={relocationLoading}
+                        onClick={() => void openRelocation(item.id)}>Shuffling</Button>
                     ) : null}
                   </div>
                 ))}
@@ -659,7 +656,7 @@ const OrderVendorAcceptanceWidget = () => {
                     <div className="flex items-start justify-between gap-3 border-b border-ui-border-base px-4 py-3">
                       <div>
                         <Text size="small" weight="plus">
-                          {relocationMode === "cancel" ? "Cancel assignment & relocate" : "Reassign item"}
+                          Shuffling
                         </Text>
                         <Text size="xsmall" className="mt-0.5 text-ui-fg-muted">
                           Select a vendor for the same SKU and price. The customer order stays open.
@@ -769,10 +766,10 @@ const OrderVendorAcceptanceWidget = () => {
                         </div>
                       ) : null}
 
-                      {relocationMode === "cancel" && replacementOffers.length > 0 ? (
+                      {replacementOffers.length > 0 ? (
                         <div className="space-y-1.5">
                           <label className="block text-xs font-medium text-ui-fg-subtle" htmlFor={`reason-${relocatingItemId}`}>
-                            Reason for cancelling current vendor assignment
+                            Reason for shuffling this item
                           </label>
                           <textarea id={`reason-${relocatingItemId}`} value={relocationReason} maxLength={500}
                             onChange={(event) => setRelocationReason(event.target.value)} disabled={relocationLoading}
@@ -784,8 +781,8 @@ const OrderVendorAcceptanceWidget = () => {
                       {replacementOffers.length > 0 ? (
                         <Button size="small" className="w-full" onClick={() => void submitRelocation()}
                           isLoading={relocationLoading}
-                          disabled={relocationLoading || !targetVendorId || (relocationMode === "cancel" && relocationReason.trim().length < 3)}>
-                          {relocationMode === "cancel" ? "Confirm cancel & relocate" : "Confirm reassignment"}
+                          disabled={relocationLoading || !targetVendorId || relocationReason.trim().length < 3}>
+                          Confirm shuffling
                         </Button>
                       ) : null}
                     </div>

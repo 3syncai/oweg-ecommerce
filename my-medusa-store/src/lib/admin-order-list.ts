@@ -4,6 +4,7 @@ import {
   getVendorWorkflows,
   isOrderCancelled,
 } from "./vendor-order-workflow"
+import { withRecoveredAcceptanceDeadline } from "./vendor-acceptance-deadline"
 
 const stageLabels: Record<string, string> = {
   to_accept: "To Accept",
@@ -48,7 +49,7 @@ export function orderListOverview(
     return stageLabels[deriveVendorStage(scopedOrder, workflow)] || "To Accept"
   }
   const stores = vendorIds.map((id) => {
-    const workflow = workflows[id] || {}
+    const workflow = withRecoveredAcceptanceDeadline(workflows[id] || {}, order.metadata, id, order.created_at)
     // An order's delivered fulfillment must not mark another store delivered.
     const scoped = vendorIds.length > 1
       ? { ...order, items: items.filter((item) => productVendor(item) === id), fulfillments: (order.fulfillments || []).filter(
@@ -59,6 +60,9 @@ export function orderListOverview(
       name: workflow.store_name || vendors.get(id)?.store_name ||
         workflow.vendor_name || vendors.get(id)?.name || "Store unavailable",
       status: status(workflow, scoped),
+      acceptance_deadline_at: scoped.items.length > 0 && !isOrderCancelled(order) && !workflow.accepted_at
+        && deriveVendorStage(scoped, workflow) === "to_accept"
+        ? workflow.acceptance_deadline_at || null : null,
     }
   })
   return {

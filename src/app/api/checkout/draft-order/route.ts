@@ -293,6 +293,7 @@ export async function POST(req: Request) {
     const headerList = await headers();
     const cookieStore = await cookies();
     const cookieHeader = headerList.get("cookie") || undefined;
+    const authCustomerPromise = getAuthenticatedCustomer(cookieHeader);
 
     const itemsOverride =
       Array.isArray(body.itemsOverride) && body.itemsOverride.length
@@ -314,18 +315,27 @@ export async function POST(req: Request) {
       try {
         const temp = await createTempCart();
         cartId = temp.id;
+        let updatedCart: Record<string, unknown> | null = null;
         for (const item of itemsOverride) {
           // addItemToCart only supports standard variant add. Prices are overriden later in createDraftOrder
-          await addItemToCart(temp.id, { variant_id: item.variant_id, quantity: item.quantity });
+          const updated = await addItemToCart(temp.id, { variant_id: item.variant_id, quantity: item.quantity });
+          updatedCart = (updated?.cart || updated) as Record<string, unknown>;
         }
-        const refreshed = await backend(`/store/carts/${encodeURIComponent(temp.id)}`);
-        if (refreshed.ok) {
-          const data = await refreshed.json();
-          cart = await enrichCartWithFlashSale(
-            (data.cart as Record<string, unknown>) || (data as Record<string, unknown>)
-          );
+        const completeCart = Array.isArray(updatedCart?.items) && updatedCart.items.length === itemsOverride.length
+          && updatedCart.items.every((item: any) => item?.variant_id && item?.unit_price != null
+            && Number.isFinite(Number(item.unit_price)));
+        if (completeCart) {
+          cart = await enrichCartWithFlashSale(updatedCart!);
         } else {
-          cart = temp.cart ? await enrichCartWithFlashSale(temp.cart as Record<string, unknown>) : null;
+          const refreshed = await backend(`/store/carts/${encodeURIComponent(temp.id)}`);
+          if (refreshed.ok) {
+            const data = await refreshed.json();
+            cart = await enrichCartWithFlashSale(
+              (data.cart as Record<string, unknown>) || (data as Record<string, unknown>)
+            );
+          } else {
+            cart = temp.cart ? await enrichCartWithFlashSale(temp.cart as Record<string, unknown>) : null;
+          }
         }
       } catch (err) {
         console.error("buy-now cart build failed", err);
@@ -402,7 +412,6 @@ export async function POST(req: Request) {
     const billing = body.billingSameAsShipping || !body.billing ? shipping : body.billing;
 
     const paymentMethod = body.paymentMethod || "razorpay";
-    const authCustomerPromise = getAuthenticatedCustomer(cookieHeader);
 
     // Ensure we have a valid region (env var is instant; only fetch when missing)
     const regionId =
@@ -414,6 +423,13 @@ export async function POST(req: Request) {
     const cartItemRecords = Array.isArray(cart.items)
       ? (cart.items as Array<Record<string, unknown>>)
       : [];
+    const cartShippingMethods = Array.isArray((cart as Record<string, unknown>).shipping_methods)
+      ? ((cart as Record<string, unknown>).shipping_methods as Array<Record<string, unknown>>)
+      : [];
+    const shippingOptionFromCart = cartShippingMethods.find(
+      (method) => typeof method.shipping_option_id === "string"
+    )?.shipping_option_id as string | undefined;
+    const shippingOptionPromise = resolveShippingOptionId(cartId, shippingOptionFromCart);
     // Select an in-stock vendor at the customer's price using the delivery postcode.
     const routingInput = items.map(item => {
       const record = cartItemRecords.find(row => row.variant_id === item.variant_id || (row.variant as any)?.id === item.variant_id);
@@ -472,13 +488,7 @@ export async function POST(req: Request) {
 
     if(coinDiscountRupees>eligibleCoinDiscount({subtotal:itemsTotal,shipping:shippingCharge,otherDiscounts:oweg10DiscountRupees+promoDiscountRupees,balance:Number.MAX_SAFE_INTEGER})) return badRequest("Coin discount exceeds eligible product value. Delivery charges must be paid separately.");
     if(itemsTotal+shippingCharge-coinDiscountRupees-oweg10DiscountRupees-promoDiscountRupees<=0)return badRequest("Discounts leave no payable amount. Remove a promotion or reduce coins to continue.");
-    const cartShippingMethods = Array.isArray((cart as Record<string, unknown>).shipping_methods)
-      ? ((cart as Record<string, unknown>).shipping_methods as Array<Record<string, unknown>>)
-      : [];
-    const shippingOptionFromCart = cartShippingMethods.find(
-      (method) => typeof method.shipping_option_id === "string"
-    )?.shipping_option_id as string | undefined;
-    const resolvedShippingOptionId = await resolveShippingOptionId(cartId, shippingOptionFromCart);
+    const resolvedShippingOptionId = await shippingOptionPromise;
 
     if (!resolvedShippingOptionId) {
       return badRequest(
@@ -613,6 +623,20 @@ export async function POST(req: Request) {
       0,
       itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees - promoDiscountRupees
     );
+
+    // Gateway order creation depends on the validated quote, not on the tax
+    // summary write. Run both while the draft already exists.
+    const pendingRazorpayOrder = paymentMethod === "razorpay" && finalTotal > 0
+      ? createRazorpayOrder({
+          amount: finalTotal,
+          currency: (medusaCurrency || "inr").toString().toUpperCase(),
+          receipt: medusaOrderId,
+          notes: { medusa_order_id: medusaOrderId },
+        }, { amountIsPaise: false }).then(
+          (order) => ({ order, error: null as unknown }),
+          (error: unknown) => ({ order: null, error })
+        )
+      : null;
 
     // COD fast path: return after draft creation.
     // Tax sync is owned solely by /api/checkout/cod (runCodSideEffects) to avoid races.
@@ -749,15 +773,9 @@ export async function POST(req: Request) {
     if (paymentMethod === "razorpay" && medusaOrderId && finalTotalAfterLookup > 0) {
       try {
         const currency = (medusaCurrency || "inr").toString().toUpperCase();
-        const rzpOrder = await createRazorpayOrder(
-          {
-            amount: finalTotalAfterLookup,
-            currency,
-            receipt: medusaOrderId,
-            notes: { medusa_order_id: medusaOrderId },
-          },
-          { amountIsPaise: false }
-        );
+        const prepared = await pendingRazorpayOrder;
+        if (!prepared?.order) throw prepared?.error || new Error("Payment order was not prepared");
+        const rzpOrder = prepared.order;
 
         await updateCheckoutOrderMetadata(medusaOrderId, !converted, {
           razorpay_order_id: rzpOrder.id,

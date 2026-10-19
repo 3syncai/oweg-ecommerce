@@ -7,6 +7,13 @@ import { getReplacementRequest } from "../../../../../../lib/vendor-replacement-
 import { sendVendorReplacementRequestEmail, sendVendorReplacementDecisionEmail } from "../../../../../../lib/vendor-replacement-mailer"
 import { Modules } from "@medusajs/framework/utils"
 import { sendReplacementConsentCode } from "../../../../../../lib/vendor-replacement-consent"
+import { notifyReplacementOutcome } from "../../../../../../lib/vendor-replacement-outcome"
+
+async function notifyIfFinal(req: MedusaRequest, orderId: string, requestId: string, status: string) {
+  if (status !== "applied" && status !== "rejected") return
+  try { await notifyReplacementOutcome(req, orderId, requestId) }
+  catch (error) { console.error("[replacement] outcome email failed", { orderId, requestId, error }) }
+}
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const actorId = String((req as any).auth_context?.actor_id || "")
@@ -30,6 +37,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     try {
       const result = await withVendorOrderAssignmentLock(orderId, () => recordManualReplacementRefund(
         req, orderId, requestId, String(body.reference_id || ""), note, actorId))
+      await notifyIfFinal(req, orderId, requestId, result.status)
       return res.json(result)
     } catch (error: any) {
       return res.status(409).json({ message: error?.message || "Could not record completed refund" })
@@ -74,10 +82,26 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       return res.status(409).json({ message: error?.message || "Could not confirm customer decision" })
     }
   }
+  if (body.action === "resend_outcome_email") {
+    try {
+      const request = await getReplacementRequest(orderId, requestId)
+      if (!request || !["applied", "rejected"].includes(request.status))
+        throw new Error("The replacement has no completed outcome to confirm")
+      await notifyReplacementOutcome(req, orderId, requestId)
+      const updated = await getReplacementRequest(orderId, requestId)
+      return res.json({ customer_email_sent: Boolean(updated?.outcome_customer_email_sent_at),
+        vendor_email_sent: Boolean(updated?.outcome_vendor_email_sent_at),
+        customer_email_error: updated?.outcome_customer_email_error,
+        vendor_email_error: updated?.outcome_vendor_email_error })
+    } catch (error: any) {
+      return res.status(409).json({ message: error?.message || "Could not resend outcome emails" })
+    }
+  }
   if (body.action === "retry_assignment") {
     try {
       const result = await withVendorOrderAssignmentLock(orderId,
         () => retrySettledReplacement(req, orderId, requestId))
+      await notifyIfFinal(req, orderId, requestId, result.status)
       return res.json(result)
     } catch (error: any) {
       return res.status(409).json({ message: error?.message || "Assignment needs review" })
@@ -96,6 +120,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         }
         return settleReplacementRefund(req, orderId, requestId)
       })
+      await notifyIfFinal(req, orderId, requestId, result.status)
       return res.json(result)
     } catch (error: any) {
       return res.status(409).json({ message: error?.message || "Refund is not ready" })
@@ -111,6 +136,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       contactMethod: contactMethod as "phone" | "whatsapp" | "email" | "in_person",
       consentCode: String(body.consent_code || "").trim(),
     })
+    await notifyIfFinal(req, orderId, requestId, result.status)
     let customerConfirmation: "sent" | "pending" = "pending"
     try {
       const request = await getReplacementRequest(orderId, requestId)

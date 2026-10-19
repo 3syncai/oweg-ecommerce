@@ -163,6 +163,7 @@ function normalizePhone(raw?: string | null): string {
 function shortSku(raw: string): string {
   const s = String(raw || "").trim()
   if (!s || s === "—") return "—"
+  if (s.toUpperCase().startsWith("OWEG-OFFER-")) return "—"
   if (s.length <= 18) return s
   return `…${s.slice(-14)}`
 }
