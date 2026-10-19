@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 import {
   Heading,
   Text,
@@ -30,70 +31,17 @@ import {
   vendorTagsApi,
   vendorTypesApi,
 } from "@/lib/api/client"
-import { generateSku, isValidSkuFormat } from "@/lib/sku"
+import { buildBulkPayload } from "@/lib/bulk-payload"
+import { parseRows, applyGroupValidation, productGroupKey, rowOptionValues, normalizeImageKey, IMAGE_COLUMN_PATTERN, LEGACY_IMAGES_COLUMN, isMediaUrl, brandReady, type Category, type Collection, type RawRow, type ParsedRow } from "@/lib/bulk-upload"
+import { buildBulkTemplate, readBulkWorkbook, loadAllReferences } from "@/lib/bulk-workbook"
 import {
   extractEmbeddedImages,
   indexToColumnLetter,
   splitCellAddress,
 } from "@/lib/xlsx-embedded-images"
 
-type RawRow = Record<string, unknown>
-
-type ParsedRow = {
-  rowNumber: number
-  title: string
-  subtitle: string
-  handle: string
-  description: string
-  brand: string
-  category: string
-  subcategory: string
-  collection: string
-  tags: string[]
-  type: string
-  discountable: boolean
-  height: string
-  width: string
-  length: string
-  weight: string
-  midCode: string
-  hsCode: string
-  countryOfOrigin: string
-  variantTitle: string
-  sku: string
-  managedInventory: boolean
-  allowBackorder: boolean
-  inventoryCount: string
-  price: string
-  discountedPrice: string
-  discountPercent: number | null
-  thumbnailRef: string
-  imageRefs: string[]
-  brandLetterRef: string
-  // User can override the parsed category by picking from the existing
-  // category list, or request a brand-new one via a free-text remark that
-  // gets surfaced to admins on the resulting product. Both can coexist —
-  // selectedCategoryId wins for the actual category assignment, the remark
-  // is stored in product.metadata.category_request for admin review.
-  selectedCategoryId?: string
-  resolvedParentCategoryId?: string
-  categoryRequest?: string
-  // Same dual-track pattern for collection: pick one of the existing
-  // collections from the dropdown, or leave a remark requesting a new one.
-  selectedCollectionId?: string
-  collectionRequest?: string
-  option1Name: string
-  option1Value: string
-  option2Name: string
-  option2Value: string
-  visualOptionName: string
-  visualOptionValue: string
-  visualImageRefs: string[]
-  errors: string[]
-  warnings: string[]
-  status: "pending" | "uploading" | "success" | "failed"
-  errorMessage?: string
-}
+type UploadError = { status?: number; message?: string; data?: { message?: string }; response?: { data?: { message?: string; error?: string } } }
+const uploadError = (error: unknown): UploadError => error && typeof error === "object" ? error as UploadError : { message: String(error) }
 
 type ImageState =
   | { status: "missing" }
@@ -122,246 +70,24 @@ const normalizeBrandKey = (brand: string): string => {
   return t === "" ? "UNBRANDED" : t.toLowerCase()
 }
 
-const brandReady = (s: BrandAuthState | undefined): boolean => {
-  if (!s) return false
-  return (
-    s.status === "authorized" ||
-    s.status === "pending" ||
-    s.status === "uploaded"
-  )
-}
-
-const TEMPLATE_HEADERS: Array<{ key: string; example: string; required?: boolean }> = [
-  { key: "Title", example: "Winter jacket", required: true },
-  { key: "Subtitle", example: "Warm and cozy" },
-  { key: "Handle", example: "winter-jacket" },
-  { key: "Description", example: "A warm and cozy jacket" },
-  { key: "Brand", example: "Nike", required: true },
-  { key: "Category", example: "Clothing" },
-  { key: "Subcategory", example: "Jackets" },
-  { key: "Collection", example: "Winter Collection" },
-  { key: "Tags", example: "winter, jacket, outdoor" },
-  { key: "Type", example: "" },
-  { key: "Discountable", example: "Yes" },
-  { key: "Height", example: "" },
-  { key: "Width", example: "" },
-  { key: "Length", example: "" },
-  { key: "Weight", example: "" },
-  { key: "MID Code", example: "" },
-  { key: "HS Code", example: "" },
-  { key: "Country of Origin", example: "" },
-  { key: "Option 1 Name", example: "Size" },
-  { key: "Option 1 Value", example: "M" },
-  { key: "Option 2 Name", example: "" },
-  { key: "Option 2 Value", example: "" },
-  { key: "Visual Option Name", example: "Color" },
-  { key: "Visual Option Value", example: "Black" },
-  { key: "Visual Image Refs", example: "black-1.jpg, black-2.jpg" },
-  { key: "Variant Title", example: "Default variant" },
-  { key: "SKU", example: "(auto)" },
-  { key: "Managed Inventory", example: "Yes" },
-  { key: "Allow Backorder", example: "No" },
-  { key: "Inventory Count", example: "10" },
-  { key: "Price INR", example: "1999", required: true },
-  { key: "Discounted Price INR", example: "1499" },
-  { key: "Discount %", example: "(auto)" },
-  // Image columns — one image per cell.
-  // You can either:
-  //   (a) Use Excel's Insert → Picture in Cell (Excel 2021 / M365) — the
-  //       portal extracts the binary directly from the .xlsx and uploads it.
-  //   (b) Type a filename and drop the matching file in the portal's image
-  //       dropzone — filenames are matched case-insensitively.
-  // The Image 1..Image 5 columns each hold ONE image; add more by editing
-  // TEMPLATE_HEADERS and IMAGE_COLUMN_PATTERN.
-  { key: "Thumbnail", example: "winter-jacket-1.jpg" },
-  { key: "Image 1", example: "winter-jacket-2.jpg" },
-  { key: "Image 2", example: "winter-jacket-3.jpg" },
-  { key: "Image 3", example: "" },
-  { key: "Image 4", example: "" },
-  { key: "Image 5", example: "" },
-  { key: "Brand Letter", example: "nike-letter.pdf" },
-]
-
-// Matches "Image 1", "Image 2", ..., "Image10", "image_1", etc. Used by both
-// the row parser (legacy filename-based flow) and the embedded-image cell
-// resolver. Keeping this in one place means adding/removing image columns is
-// a one-line edit above. We also accept the legacy "Images" (plural) column
-// as a synonym for backwards compatibility with templates the user already
-// downloaded — that one holds comma-separated filenames.
-const IMAGE_COLUMN_PATTERN = /^image\s*\d*$/i
-const LEGACY_IMAGES_COLUMN = "Images"
-
-const normalizeImageKey = (name: string): string =>
-  name.trim().toLowerCase()
-
-const truthy = (v: unknown): boolean => {
-  if (typeof v === "boolean") return v
-  if (typeof v === "number") return v !== 0
-  const s = String(v ?? "").trim().toLowerCase()
-  return ["yes", "y", "true", "1", "on"].includes(s)
-}
-
-const falsy = (v: unknown): boolean => {
-  const s = String(v ?? "").trim().toLowerCase()
-  return ["no", "n", "false", "0", "off"].includes(s)
-}
-
-const toStr = (v: unknown): string => {
-  if (v === undefined || v === null) return ""
-  return String(v).trim()
-}
-
-const toNumStr = (v: unknown): string => {
-  const s = toStr(v).replace(/[^0-9.\-]/g, "")
-  return s
-}
-
-const computeDiscountPercent = (
-  price: string,
-  discountedPrice: string
-): number | null => {
-  const p = parseFloat(price)
-  const d = parseFloat(discountedPrice)
-  if (!Number.isFinite(p) || !Number.isFinite(d)) return null
-  if (p <= 0 || d <= 0) return null
-  if (d >= p) return 0
-  return Math.round(((p - d) / p) * 1000) / 10
-}
-
-const productGroupKey = (row: Pick<ParsedRow, "title" | "handle" | "rowNumber">): string => {
-  const title = row.title.trim().toLowerCase()
-  const handle = row.handle.trim().toLowerCase()
-  if (title) return `title:${title}`
-  if (handle) return `handle:${handle}`
-  return `row:${row.rowNumber}`
-}
-
-const rowOptionValues = (row: Pick<ParsedRow, "option1Name" | "option1Value" | "option2Name" | "option2Value">): Record<string, string> => {
-  const map: Record<string, string> = {}
-  if (row.option1Name.trim() && row.option1Value.trim()) {
-    map[row.option1Name.trim()] = row.option1Value.trim()
-  }
-  if (row.option2Name.trim() && row.option2Value.trim()) {
-    map[row.option2Name.trim()] = row.option2Value.trim()
-  }
-  return map
-}
-
-const buildOptionsFromGroup = (groupRows: ParsedRow[]): Array<{ title: string; values: string[] }> => {
-  const optionValuesMap = new Map<string, Set<string>>()
-  groupRows.forEach((row) => {
-    Object.entries(rowOptionValues(row)).forEach(([name, value]) => {
-      if (!optionValuesMap.has(name)) optionValuesMap.set(name, new Set())
-      optionValuesMap.get(name)!.add(value)
-    })
-  })
-  return Array.from(optionValuesMap.entries()).map(([title, values]) => ({
-    title,
-    values: Array.from(values),
-  }))
-}
-
-const applyGroupValidation = (rows: ParsedRow[]): ParsedRow[] => {
-  const groups = new Map<string, ParsedRow[]>()
-  rows.forEach((row) => {
-    const key = productGroupKey(row)
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(row)
-  })
-
-  const rowExtraErrors = new Map<number, string[]>()
-  const rowExtraWarnings = new Map<number, string[]>()
-
-  groups.forEach((groupRows) => {
-    if (groupRows.length <= 1) return
-
-    const optionNamesByRow = groupRows.map((row) => {
-      const names: string[] = []
-      if (row.option1Name.trim()) names.push(row.option1Name.trim())
-      if (row.option2Name.trim()) names.push(row.option2Name.trim())
-      return names.sort().join("|")
-    })
-
-    const firstNames = optionNamesByRow[0]
-    if (optionNamesByRow.some((n) => n !== firstNames)) {
-      groupRows.forEach((row) => {
-        rowExtraErrors.set(row.rowNumber, [
-          ...(rowExtraErrors.get(row.rowNumber) || []),
-          "Rows with the same title must use the same option names",
-        ])
-      })
-    }
-
-    const combos = new Set<string>()
-    groupRows.forEach((row) => {
-      const optionMap = rowOptionValues(row)
-      const keys = Object.keys(optionMap).sort()
-      if (keys.length === 0) {
-        rowExtraErrors.set(row.rowNumber, [
-          ...(rowExtraErrors.get(row.rowNumber) || []),
-          "Multi-variant products need option values on each row",
-        ])
-        return
-      }
-      const comboKey = keys.map((k) => `${k}=${optionMap[k]}`).join("|")
-      if (combos.has(comboKey)) {
-        rowExtraErrors.set(row.rowNumber, [
-          ...(rowExtraErrors.get(row.rowNumber) || []),
-          `Duplicate variant option combination in this product group`,
-        ])
-      }
-      combos.add(comboKey)
-    })
-
-    const first = groupRows[0]
-    groupRows.slice(1).forEach((row) => {
-      if (
-        row.brand !== first.brand ||
-        row.description !== first.description ||
-        row.subtitle !== first.subtitle
-      ) {
-        rowExtraWarnings.set(row.rowNumber, [
-          ...(rowExtraWarnings.get(row.rowNumber) || []),
-          "Product-level fields differ within group — first row will be used",
-        ])
-      }
-    })
-  })
-
-  return rows.map((row) => {
-    const extraErrors = rowExtraErrors.get(row.rowNumber) || []
-    const extraWarnings = rowExtraWarnings.get(row.rowNumber) || []
-    const errors = [...row.errors]
-    extraErrors.forEach((err) => {
-      if (!errors.includes(err)) errors.push(err)
-    })
-    const warnings = [...row.warnings]
-    extraWarnings.forEach((warn) => {
-      if (!warnings.includes(warn)) warnings.push(warn)
-    })
-    return {
-      ...row,
-      errors,
-      warnings,
-      status: errors.length > 0 ? ("failed" as const) : row.status,
-      errorMessage: errors[0],
-    }
-  })
-}
-
 const VendorProductsBulkUploadPage = () => {
   const router = useRouter()
   const [phase, setPhase] = useState<Phase>("intro")
   const [rows, setRows] = useState<ParsedRow[]>([])
   const [fileName, setFileName] = useState<string>("")
-  const [categories, setCategories] = useState<any[]>([])
-  const [collections, setCollections] = useState<any[]>([])
-  const [productTypes, setProductTypes] = useState<any[]>([])
-  const [productTags, setProductTags] = useState<any[]>([])
-  const [uploadingIndex, setUploadingIndex] = useState<number | null>(null)
+  const [referencesReady, setReferencesReady] = useState(false)
+  const [referenceError, setReferenceError] = useState("")
+  const [referenceAttempt, setReferenceAttempt] = useState(0)
+  const [categories, setCategories] = useState<Category[]>([])
+  const [collections, setCollections] = useState<Collection[]>([])
+  const [productTypes, setProductTypes] = useState<Array<{ id: string; value: string }>>([])
+  const [productTags, setProductTags] = useState<Array<{ id: string; value: string }>>([])
+  const [, setUploadingIndex] = useState<number | null>(null)
   const [imageMap, setImageMap] = useState<ImageMap>({})
   const [uploadingImages, setUploadingImages] = useState(false)
   const [brandAuthMap, setBrandAuthMap] = useState<BrandAuthMap>({})
+  const submittingRef = useRef(false)
+  const [readingFile, setReadingFile] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const brandInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
@@ -398,30 +124,40 @@ const VendorProductsBulkUploadPage = () => {
         // We don't await all four in lockstep — types & tags are nice-to-have
         // and shouldn't block category/collection loading on their failures.
         const [catData, colData, typesRes, tagsRes] = await Promise.all([
-          vendorCategoriesApi.list({ limit: 200 }),
-          vendorCollectionsApi.list({ limit: 200 }),
+          loadAllReferences(async offset => {
+            const data = await vendorCategoriesApi.list({ limit: 200, offset })
+            return { items: data.product_categories, count: data.count }
+          }),
+          loadAllReferences(async offset => {
+            const data = await vendorCollectionsApi.list({ limit: 200, offset })
+            return { items: data.collections, count: data.count }
+          }),
           vendorTypesApi.list({ limit: 200 }).catch((e) => {
             console.warn("Failed to load product types", e)
-            return { product_types: [] as any[] }
+            return { product_types: [] as Array<{ id: string; value: string }> }
           }),
           vendorTagsApi.list({ limit: 500 }).catch((e) => {
             console.warn("Failed to load product tags", e)
-            return { product_tags: [] as any[] }
+            return { product_tags: [] as Array<{ id: string; value: string }> }
           }),
         ])
-        setCategories(catData.product_categories || [])
-        setCollections(colData.collections || [])
-        setProductTypes((typesRes as any).product_types || [])
-        setProductTags((tagsRes as any).product_tags || [])
-      } catch (err: any) {
+        setCategories(catData)
+        setCollections(colData)
+        setProductTypes(typesRes.product_types || [])
+        setProductTags(tagsRes.product_tags || [])
+        setReferencesReady(true)
+        setReferenceError("")
+      } catch (cause: unknown) {
+        const err = uploadError(cause)
         if (err?.status === 403) {
           router.push("/pending")
           return
         }
-        console.error("Failed to load reference data", err)
+        setReferenceError("Could not load categories and collections. Retry before downloading or uploading a template.")
+        console.warn("Failed to load reference data:", err.message)
       }
     })()
-  }, [router])
+  }, [router, referenceAttempt])
 
   const categoryByName = useMemo(() => {
     const map = new Map<string, string>()
@@ -443,7 +179,7 @@ const VendorProductsBulkUploadPage = () => {
     const set = new Set<string>()
     rows.forEach((r) => {
       if (r.thumbnailRef) set.add(normalizeImageKey(r.thumbnailRef))
-      r.imageRefs.forEach((name) => set.add(normalizeImageKey(name)))
+      ;[...r.imageRefs, ...r.visualImageRefs].forEach((name) => set.add(normalizeImageKey(name)))
     })
     return Array.from(set)
   }, [rows])
@@ -541,7 +277,8 @@ const VendorProductsBulkUploadPage = () => {
         } else {
           setBrandAuthMap((prev) => ({ ...prev, [key]: { status: "missing" } }))
         }
-      } catch (err: any) {
+      } catch (cause: unknown) {
+        const err = uploadError(cause)
         const message =
           err?.response?.data?.message ||
           err?.message ||
@@ -610,7 +347,8 @@ const VendorProductsBulkUploadPage = () => {
       toast.success("Letter uploaded", {
         description: `Brand letter saved for "${brandDisplay}". It will be applied to every row using this brand.`,
       })
-    } catch (err: any) {
+    } catch (cause: unknown) {
+      const err = uploadError(cause)
       const message =
         err?.response?.data?.error ||
         err?.response?.data?.message ||
@@ -624,434 +362,17 @@ const VendorProductsBulkUploadPage = () => {
     }
   }
 
-  const buildTemplateExampleRow = (
-    overrides: Record<string, string> = {}
-  ): Record<string, string> => {
-    const row: Record<string, string> = {}
-    TEMPLATE_HEADERS.forEach((h) => {
-      row[h.key] = h.example
-    })
-    return { ...row, ...overrides }
-  }
-
   const handleDownloadTemplate = () => {
-    // Row 1: single-variant product. Rows 2–4: same title grouped into one
-    // product with Size + Color variants (each row = one SKU / inventory / price).
-    const exampleRows = [
-      buildTemplateExampleRow(),
-      buildTemplateExampleRow({
-        Title: "Winter jacket",
-        Subtitle: "Warm and cozy",
-        Handle: "winter-jacket",
-        Description: "A warm and cozy jacket",
-        Brand: "Nike",
-        Category: "Clothing",
-        Subcategory: "Jackets",
-        Collection: "Winter Collection",
-        Tags: "winter, jacket, outdoor",
-        "Option 1 Name": "Size",
-        "Option 1 Value": "M",
-        "Option 2 Name": "Color",
-        "Option 2 Value": "Black",
-        "Visual Option Name": "Color",
-        "Visual Option Value": "Black",
-        "Visual Image Refs": "winter-jacket-black-1.jpg, winter-jacket-black-2.jpg",
-        "Variant Title": "M / Black",
-        SKU: "(auto)",
-        "Inventory Count": "10",
-        "Price INR": "1999",
-        "Discounted Price INR": "1499",
-        Thumbnail: "winter-jacket-black-1.jpg",
-        "Image 1": "winter-jacket-black-2.jpg",
-        "Image 2": "",
-        "Image 3": "",
-        "Image 4": "",
-        "Image 5": "",
-        "Brand Letter": "nike-letter.pdf",
-      }),
-      buildTemplateExampleRow({
-        Title: "Winter jacket",
-        Brand: "Nike",
-        Category: "Clothing",
-        Subcategory: "Jackets",
-        Collection: "Winter Collection",
-        Tags: "winter, jacket, outdoor",
-        "Option 1 Name": "Size",
-        "Option 1 Value": "L",
-        "Option 2 Name": "Color",
-        "Option 2 Value": "Black",
-        "Visual Option Name": "Color",
-        "Visual Option Value": "Black",
-        "Visual Image Refs": "winter-jacket-black-1.jpg, winter-jacket-black-2.jpg",
-        "Variant Title": "L / Black",
-        SKU: "(auto)",
-        "Inventory Count": "15",
-        "Price INR": "1999",
-        "Discounted Price INR": "1499",
-        Thumbnail: "winter-jacket-black-1.jpg",
-        "Image 1": "winter-jacket-black-2.jpg",
-        "Brand Letter": "nike-letter.pdf",
-      }),
-      buildTemplateExampleRow({
-        Title: "Winter jacket",
-        Brand: "Nike",
-        Category: "Clothing",
-        Subcategory: "Jackets",
-        Collection: "Winter Collection",
-        Tags: "winter, jacket, outdoor",
-        "Option 1 Name": "Size",
-        "Option 1 Value": "M",
-        "Option 2 Name": "Color",
-        "Option 2 Value": "Red",
-        "Visual Option Name": "Color",
-        "Visual Option Value": "Red",
-        "Visual Image Refs": "winter-jacket-red-1.jpg",
-        "Variant Title": "M / Red",
-        SKU: "(auto)",
-        "Inventory Count": "8",
-        "Price INR": "2099",
-        "Discounted Price INR": "1599",
-        Thumbnail: "winter-jacket-red-1.jpg",
-        "Brand Letter": "nike-letter.pdf",
-      }),
-    ]
-
-    const ws = XLSX.utils.json_to_sheet(exampleRows, {
-      header: TEMPLATE_HEADERS.map((h) => h.key),
-    })
-
-    const range = XLSX.utils.decode_range(ws["!ref"] || "A1")
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const cellRef = XLSX.utils.encode_cell({ r: 0, c })
-      const cell = ws[cellRef]
-      if (cell) {
-        cell.v = `${cell.v}${TEMPLATE_HEADERS[c]?.required ? " *" : ""}`
-      }
-    }
-    ws["!cols"] = TEMPLATE_HEADERS.map(() => ({ wch: 22 }))
-
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Products")
-
-    const instructions = [
-      ["Bulk Product Upload — Instructions"],
-      [],
-      ["1. One Excel row = one variant (SKU). For a single product with no options,"],
-      ["   use one row. For sizes/colors, repeat the same Title on multiple rows —"],
-      ["   each row gets its own Option values, Price, and Inventory Count."],
-      ["2. Required columns are marked with an asterisk (*)."],
-      ["3. Brand and Title are used to auto-generate the SKU when SKU is left blank."],
-      ["   SKU format: <FIRST 3 LETTERS OF BRAND>-<FIRST 2 LETTERS OF TITLE><6 RANDOM DIGITS>"],
-      ["   Example: brand 'Nike' + title 'Winter Jacket' → 'NIK-WI348215'."],
-      ["4. Discount % is auto-calculated from Price INR and Discounted Price INR."],
-      ["   You can leave the Discount % column blank — the system will compute it."],
-      ["5. Boolean columns accept Yes/No, True/False, 1/0."],
-      ["6. Tags should be comma-separated (e.g. 'winter, jacket, outdoor')."],
-      ["7. Category and Subcategory: use Category for the top-level category name"],
-      ["   (e.g. 'Home Appliances') and Subcategory for the child category"],
-      ["   (e.g. 'Kettles'). Both must match existing entries by name."],
-      ["   You can leave Subcategory blank — the product will be placed in"],
-      ["   the parent category. If a value doesn't match you can fix it"],
-      ["   directly in the portal without re-uploading."],
-      ["   Collection must also match an existing entry by name."],
-      ["8. Type and Tags don't need to pre-exist — leaving a brand-new value"],
-      ["   in those columns will auto-create the matching entry in Medusa"],
-      ["   on publish."],
-      ["9. Brand authorization must be approved by admin before products can be created."],
-      [],
-      ["Multi-variant products (size, color, etc.):"],
-      ["• Rows with the same Title are grouped into ONE product with multiple variants."],
-      ["• Set Option 1 Name + Option 1 Value on every row (e.g. Size = M, L, XL)."],
-      ["• Optionally add Option 2 Name + Option 2 Value (e.g. Color = Black, Red)."],
-      ["• Each variant row can have its own SKU, Inventory Count, Price INR, and images."],
-      ["• Use Visual Option Name / Visual Option Value / Visual Image Refs when each"],
-      ["  color needs its own gallery (e.g. Color = Black → black-1.jpg, black-2.jpg)."],
-      ["• Option names must match across all rows of the same product."],
-      ["• See rows 2–4 in the Products sheet for a Size + Color example."],
-      [],
-      ["Images — two ways to add them:"],
-      [""],
-      ["  Method A — Embed images directly in cells (recommended, Excel 2021 / M365 only):"],
-      ["  • Click the cell (Thumbnail, Image 1, Image 2, ...), then Insert → Picture in Cell."],
-      ["  • One image per cell. Use as many Image columns as you have photos."],
-      ["  • Need more than 5 images per product? Duplicate columns Image 6, Image 7, ..."],
-      ["  • The portal extracts the image bytes from the .xlsx and uploads them to S3."],
-      ["  • No separate dropzone step needed."],
-      [""],
-      ["  Method B — Type filenames + drop files separately (works in any Excel version):"],
-      ["  • Type the filename of each image in its cell (e.g. winter-jacket-1.jpg)."],
-      ["  • After uploading the .xlsx, the portal shows an image dropzone — drop all the"],
-      ["    matching image files there. Filenames are matched case-insensitively."],
-      [""],
-      ["  You can mix and match — some cells embedded, some by filename, in the same row."],
-      [""],
-      ["  Legacy: the old single 'Images' column with comma-separated filenames is still"],
-      ["  supported, so templates downloaded earlier keep working."],
-      [],
-      ["Brand authorization letters:"],
-      ["• Use the 'Brand Letter' column to reference the letter file for that"],
-      ["  brand by filename (e.g. nike-letter.pdf). It's optional — you can also"],
-      ["  pick the file directly in the portal."],
-      ["• You only need ONE letter per unique brand. If 10 rows share the same"],
-      ["  brand, they all share the same letter — write the same filename in"],
-      ["  every row, or leave the column blank and pick it once in the portal."],
-      ["• Supported formats: PDF, DOC, DOCX, JPG, PNG."],
-      ["• After uploading the Excel, the portal lists every distinct brand"],
-      ["  found across the rows. Brands with an already-approved or pending"],
-      ["  letter need no action; new brands get a single drop-zone where you"],
-      ["  drop the actual file. The file is saved to S3 and applied to every"],
-      ["  row that uses that brand."],
-    ]
-    const wsInfo = XLSX.utils.aoa_to_sheet(instructions)
-    wsInfo["!cols"] = [{ wch: 110 }]
-    XLSX.utils.book_append_sheet(wb, wsInfo, "Instructions")
-
-    XLSX.writeFile(wb, "vendor-products-template.xlsx")
-    toast.success("Template downloaded", {
-      description: "Fill in the Products sheet and upload it back here.",
-    })
-  }
-
-  const parseRows = (raw: RawRow[]): ParsedRow[] => {
-    const usedSkus = new Set<string>()
-    return raw.map((r, idx) => {
-      const rowNumber = idx + 2 // +1 for header, +1 for 1-based
-      const errors: string[] = []
-      const warnings: string[] = []
-
-      const get = (k: string): unknown => {
-        const direct = r[k]
-        if (direct !== undefined) return direct
-        const wantedKey = k.toLowerCase().replace(/\s+|\*/g, "")
-        for (const key of Object.keys(r)) {
-          const norm = key.toLowerCase().replace(/\s+|\*/g, "")
-          if (norm === wantedKey) return r[key]
-        }
-        return undefined
-      }
-
-      const title = toStr(get("Title"))
-      const brand = toStr(get("Brand"))
-      const price = toNumStr(get("Price INR"))
-      const discountedPrice = toNumStr(get("Discounted Price INR"))
-
-      if (!title) errors.push("Title is required")
-      if (!brand) errors.push("Brand is required (used to generate SKU)")
-      if (!price) errors.push("Price INR is required")
-
-      const numPrice = parseFloat(price)
-      const numDiscount = parseFloat(discountedPrice)
-      if (price && (!Number.isFinite(numPrice) || numPrice < 0)) {
-        errors.push("Price INR must be a positive number")
-      }
-      if (discountedPrice && (!Number.isFinite(numDiscount) || numDiscount < 0)) {
-        errors.push("Discounted Price INR must be a positive number")
-      }
-      if (
-        Number.isFinite(numPrice) &&
-        Number.isFinite(numDiscount) &&
-        numDiscount > numPrice
-      ) {
-        warnings.push("Discounted price is higher than base price — discount % will be 0")
-      }
-
-      const categoryName = toStr(get("Category"))
-      const subcategoryName = toStr(get("Subcategory"))
-      const collectionName = toStr(get("Collection"))
-
-      // Resolve parent category (Category column)
-      const matchedParentId = categoryName
-        ? categoryByName.get(categoryName.toLowerCase())
-        : undefined
-      if (categoryName && !matchedParentId) {
-        warnings.push(`Category "${categoryName}" not found — request auto-submitted for admin review`)
-      }
-
-      // Resolve subcategory, then determine the final category ID to assign
-      let finalCategoryId: string | undefined = matchedParentId
-      let resolvedParentCategoryId: string | undefined = matchedParentId
-      // Tracks what to pre-fill in the "Request new category" remark
-      let autoCategoryRequest = ""
-
-      if (!matchedParentId && categoryName) {
-        // The whole parent category is new — request it
-        autoCategoryRequest = categoryName
-      }
-
-      if (subcategoryName) {
-        if (matchedParentId) {
-          // Look for a subcategory whose parent is the matched parent
-          const subcat = categories.find(
-            (c) =>
-              (c.name || "").toLowerCase().trim() === subcategoryName.toLowerCase().trim() &&
-              c.parent_category_id === matchedParentId
-          )
-          if (subcat) {
-            finalCategoryId = subcat.id
-          } else {
-            warnings.push(
-              `Subcategory "${subcategoryName}" not found under "${categoryName}" — request auto-submitted for admin review`
-            )
-            // Request the subcategory under the known parent
-            autoCategoryRequest = `${subcategoryName} (under ${categoryName})`
-          }
-        } else {
-          // No parent given — try to find subcategory anywhere in the tree
-          const subcat = categories.find(
-            (c) =>
-              (c.name || "").toLowerCase().trim() === subcategoryName.toLowerCase().trim() &&
-              !!c.parent_category_id
-          )
-          if (subcat) {
-            finalCategoryId = subcat.id
-            resolvedParentCategoryId = subcat.parent_category_id || undefined
-          } else {
-            warnings.push(`Subcategory "${subcategoryName}" not found — request auto-submitted for admin review`)
-            autoCategoryRequest = autoCategoryRequest
-              ? `${autoCategoryRequest} > ${subcategoryName}`
-              : subcategoryName
-          }
-        }
-      }
-
-      const matchedCollectionId = collectionName
-        ? collectionByName.get(collectionName.toLowerCase())
-        : undefined
-      const autoCollectionRequest = collectionName && !matchedCollectionId ? collectionName : ""
-      if (collectionName && !matchedCollectionId) {
-        warnings.push(`Collection "${collectionName}" not found — request auto-submitted for admin review`)
-      }
-
-      let sku = toStr(get("SKU"))
-      if (!sku || sku.toLowerCase() === "(auto)") {
-        sku = brand && title ? generateSku(brand, title, usedSkus) : ""
-      } else if (!isValidSkuFormat(sku)) {
-        warnings.push(
-          `Provided SKU "${sku}" doesn't match BRAND-PRODUCTNNNNNN format — kept as-is`
-        )
-        if (usedSkus.has(sku)) errors.push("Duplicate SKU within this file")
-        usedSkus.add(sku)
-      } else {
-        if (usedSkus.has(sku)) errors.push("Duplicate SKU within this file")
-        usedSkus.add(sku)
-      }
-
-      const discountableRaw = get("Discountable")
-      const discountable = discountableRaw === undefined || discountableRaw === ""
-        ? true
-        : !falsy(discountableRaw)
-
-      const managedInventoryRaw = get("Managed Inventory")
-      const managedInventory =
-        managedInventoryRaw === undefined || managedInventoryRaw === ""
-          ? true
-          : !falsy(managedInventoryRaw)
-
-      const allowBackorder = truthy(get("Allow Backorder"))
-
-      const tagsRaw = toStr(get("Tags"))
-      const tags = tagsRaw
-        ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean)
-        : []
-
-      const thumbnailRef = toStr(get("Thumbnail"))
-
-      // Collect image filenames from:
-      //   - Image 1, Image 2, ... Image N columns (one filename each)
-      //   - Legacy "Images" column (comma-separated, kept for older templates)
-      // Both produce strings of filenames the user is expected to upload via
-      // the dropzone unless they used embedded images (handled separately).
-      const imageRefs: string[] = []
-      for (const headerKey of Object.keys(r)) {
-        if (!IMAGE_COLUMN_PATTERN.test(headerKey)) continue
-        const v = toStr(get(headerKey))
-        if (v) imageRefs.push(v)
-      }
-      const legacyImagesRaw = toStr(get(LEGACY_IMAGES_COLUMN))
-      if (legacyImagesRaw) {
-        for (const piece of legacyImagesRaw.split(",")) {
-          const t = piece.trim()
-          if (t) imageRefs.push(t)
-        }
-      }
-      const brandLetterRef = toStr(get("Brand Letter"))
-
-      return {
-        rowNumber,
-        title,
-        subtitle: toStr(get("Subtitle")),
-        handle: toStr(get("Handle")),
-        description: toStr(get("Description")),
-        brand,
-        category: categoryName,
-        subcategory: subcategoryName,
-        collection: collectionName,
-        tags,
-        type: toStr(get("Type")),
-        discountable,
-        height: toNumStr(get("Height")),
-        width: toNumStr(get("Width")),
-        length: toNumStr(get("Length")),
-        weight: toNumStr(get("Weight")),
-        midCode: toStr(get("MID Code")),
-        hsCode: toStr(get("HS Code")),
-        countryOfOrigin: toStr(get("Country of Origin")),
-        option1Name: toStr(get("Option 1 Name")),
-        option1Value: toStr(get("Option 1 Value")),
-        option2Name: toStr(get("Option 2 Name")),
-        option2Value: toStr(get("Option 2 Value")),
-        visualOptionName: toStr(get("Visual Option Name")),
-        visualOptionValue: toStr(get("Visual Option Value")),
-        visualImageRefs: toStr(get("Visual Image Refs"))
-          .split(",")
-          .map((piece) => piece.trim())
-          .filter(Boolean),
-        variantTitle: toStr(get("Variant Title")) || "Default variant",
-        sku,
-        managedInventory,
-        allowBackorder,
-        inventoryCount: toNumStr(get("Inventory Count")),
-        price,
-        discountedPrice,
-        discountPercent: computeDiscountPercent(price, discountedPrice),
-        thumbnailRef,
-        imageRefs,
-        brandLetterRef,
-        selectedCategoryId: finalCategoryId,
-        resolvedParentCategoryId,
-        categoryRequest: autoCategoryRequest,
-        selectedCollectionId: matchedCollectionId,
-        collectionRequest: autoCollectionRequest,
-        errors,
-        warnings,
-        status: errors.length > 0 ? "failed" : "pending",
-        errorMessage: errors[0],
-      }
-    })
+    XLSX.writeFile(buildBulkTemplate(categories, collections), "vendor-products-template-v2.xlsx")
+    toast.success("Template downloaded", { description: "Fill the blank Products sheet. Examples and field instructions are in separate sheets." })
   }
 
   const handleFile = async (file: File) => {
-    setFileName(file.name)
+    if (!referencesReady || readingFile || submittingRef.current) return
+    setReadingFile(true)
     try {
-      const buffer = await file.arrayBuffer()
-      const workbook = XLSX.read(buffer, { type: "array" })
-      const sheetName =
-        workbook.SheetNames.find((n) => n.toLowerCase().includes("product")) ||
-        workbook.SheetNames[0]
-      if (!sheetName) {
-        toast.error("Empty file", { description: "No sheets were found in this Excel file" })
-        return
-      }
-      const sheet = workbook.Sheets[sheetName]
-      const json = XLSX.utils.sheet_to_json<RawRow>(sheet, {
-        defval: "",
-        raw: false,
-      })
-      if (!json.length) {
-        toast.error("Empty sheet", { description: "No product rows found in the sheet" })
-        return
-      }
-      const parsed = applyGroupValidation(parseRows(json))
+      const { sheet, sheetName, json } = await readBulkWorkbook(file)
+      const parsed = applyGroupValidation(parseRows(json, categories, collections))
 
       // -------- Embedded "Images in Cells" support (Excel 2021+ / M365) --------
       //
@@ -1070,7 +391,7 @@ const VendorProductsBulkUploadPage = () => {
       //
       // Synthetic filename format keeps embedded images isolated from any
       // filename-based refs in the same row, so we never collide.
-      let embeddedImageSeed: ImageMap = {}
+      const embeddedImageSeed: ImageMap = {}
       let embeddedCount = 0
       try {
         const embedded = await extractEmbeddedImages(file)
@@ -1193,13 +514,16 @@ const VendorProductsBulkUploadPage = () => {
 
       const seeded: ImageMap = { ...embeddedImageSeed }
       parsed.forEach((r) => {
-        const allRefs = [r.thumbnailRef, ...r.imageRefs].filter(Boolean)
+        const allRefs = [r.thumbnailRef, ...r.imageRefs, ...r.visualImageRefs].filter(Boolean)
         allRefs.forEach((name) => {
           const key = normalizeImageKey(name)
           // Don't downgrade an already-seeded embedded image to "missing".
-          if (!seeded[key]) seeded[key] = { status: "missing" }
+          if (!seeded[key]) seeded[key] = isMediaUrl(name) ? { status: "uploaded", url: name, key: "", originalName: name } : { status: "missing" }
         })
       })
+      setFileName(file.name)
+      brandsCheckedRef.current = new Set()
+      setBrandAuthMap({})
       setImageMap(seeded)
       setPhase("preview")
       toast.success("File parsed", {
@@ -1231,11 +555,14 @@ const VendorProductsBulkUploadPage = () => {
           })
         }
       }
-    } catch (err: any) {
-      console.error("Excel parse error", err)
+    } catch (cause: unknown) {
+      const err = uploadError(cause)
+      console.warn("Excel parse failed:", err.message)
       toast.error("Failed to read Excel", {
         description: err?.message || "Could not parse the uploaded file",
       })
+    } finally {
+      setReadingFile(false)
     }
   }
 
@@ -1293,44 +620,47 @@ const VendorProductsBulkUploadPage = () => {
     let okCount = 0
     let failedCount = 0
 
-    await Promise.all(
-      matched.map(async ({ key, file }) => {
-        try {
-          const fd = new FormData()
-          fd.append("productName", "bulk-upload")
-          fd.append("files", file)
+    for (let start = 0; start < matched.length; start += 4) {
+      await Promise.all(
+        matched.slice(start, start + 4).map(async ({ key, file }) => {
+          try {
+            const fd = new FormData()
+            fd.append("productName", "bulk-upload")
+            fd.append("files", file)
 
-          const res = await axios.post(
-            `${API_URL}/vendor/products/upload-image`,
-            fd,
-            { headers: { Authorization: `Bearer ${token}` } }
-          )
-          const uploaded = res.data?.files?.[0]
-          if (!uploaded?.url) throw new Error("Upload returned no URL")
+            const res = await axios.post(
+              `${API_URL}/vendor/products/upload-image`,
+              fd,
+              { headers: { Authorization: `Bearer ${token}` } }
+            )
+            const uploaded = res.data?.files?.[0]
+            if (!uploaded?.url) throw new Error("Upload returned no URL")
 
-          setImageMap((prev) => ({
-            ...prev,
-            [key]: {
-              status: "uploaded",
-              url: uploaded.url,
-              key: uploaded.key,
-              originalName: uploaded.originalName || file.name,
-            },
-          }))
-          okCount++
-        } catch (err: any) {
-          const message =
-            err?.response?.data?.message ||
-            err?.message ||
-            "Failed to upload image"
-          setImageMap((prev) => ({
-            ...prev,
-            [key]: { status: "error", file, message },
-          }))
-          failedCount++
-        }
-      })
-    )
+            setImageMap((prev) => ({
+              ...prev,
+              [key]: {
+                status: "uploaded",
+                url: uploaded.url,
+                key: uploaded.key,
+                originalName: uploaded.originalName || file.name,
+              },
+            }))
+            okCount++
+          } catch (cause: unknown) {
+            const err = uploadError(cause)
+            const message =
+              err?.response?.data?.message ||
+              err?.message ||
+              "Failed to upload image"
+            setImageMap((prev) => ({
+              ...prev,
+              [key]: { status: "error", file, message },
+            }))
+            failedCount++
+          }
+        })
+      )
+    }
 
     setUploadingImages(false)
     return { ok: okCount, failed: failedCount }
@@ -1471,7 +801,7 @@ const VendorProductsBulkUploadPage = () => {
         }
       })
       next[rowIdx] = r
-      return next
+      return applyGroupValidation(next)
     })
 
     setImageMap((prev) => {
@@ -1514,7 +844,7 @@ const VendorProductsBulkUploadPage = () => {
         )
       }
       next[rowIdx] = row
-      return next
+      return applyGroupValidation(next)
     })
   }
 
@@ -1538,7 +868,7 @@ const VendorProductsBulkUploadPage = () => {
         )
       }
       next[rowIdx] = row
-      return next
+      return applyGroupValidation(next)
     })
   }
 
@@ -1558,7 +888,7 @@ const VendorProductsBulkUploadPage = () => {
         )
       }
       next[rowIdx] = row
-      return next
+      return applyGroupValidation(next)
     })
   }
 
@@ -1573,7 +903,7 @@ const VendorProductsBulkUploadPage = () => {
         )
       }
       next[rowIdx] = row
-      return next
+      return applyGroupValidation(next)
     })
   }
 
@@ -1589,7 +919,7 @@ const VendorProductsBulkUploadPage = () => {
       const row = { ...next[rowIdx] }
       row.type = value
       next[rowIdx] = row
-      return next
+      return applyGroupValidation(next)
     })
   }
 
@@ -1605,7 +935,7 @@ const VendorProductsBulkUploadPage = () => {
       const row = { ...next[rowIdx] }
       row.tags = tags
       next[rowIdx] = row
-      return next
+      return applyGroupValidation(next)
     })
   }
 
@@ -1621,12 +951,13 @@ const VendorProductsBulkUploadPage = () => {
     if (files.length) await handleImagesPicked(files)
   }
 
-  const validRows = rows.filter((r) => r.errors.length === 0)
-  const invalidRows = rows.filter((r) => r.errors.length > 0)
-  const successCount = rows.filter((r) => r.status === "success").length
-  const failedAfterUpload = rows.filter(
+  const validatedRows = applyGroupValidation(rows)
+  const validRows = validatedRows.filter((r) => r.errors.length === 0)
+  const invalidRows = validatedRows.filter((r) => r.errors.length > 0)
+  const successCount = new Set(rows.filter((r) => r.status === "success").map(productGroupKey)).size
+  const failedAfterUpload = new Set(rows.filter(
     (r) => r.status === "failed" && r.errorMessage && r.errors.length === 0
-  ).length
+  ).map(productGroupKey)).size
 
   const rowGroupCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -1643,167 +974,25 @@ const VendorProductsBulkUploadPage = () => {
     return keys.size
   }, [validRows])
 
-  const buildProductPayloadFromGroup = (groupRows: ParsedRow[]) => {
-    const row = groupRows[0]
-
-    const collectionId =
-      row.selectedCollectionId ||
-      (row.collection ? collectionByName.get(row.collection.toLowerCase()) : undefined) ||
-      null
-    const collectionRequest = (row.collectionRequest || "").trim()
-    const categoryId =
-      row.selectedCategoryId ||
-      (row.category ? categoryByName.get(row.category.toLowerCase()) : undefined)
-    const categoryRequest = (row.categoryRequest || "").trim()
-
-    const parseNumber = (value: string): number | null => {
-      if (!value) return null
-      const num = parseFloat(value)
-      return Number.isFinite(num) ? num : null
-    }
-
-    const lookupUrl = (name: string): string | null => {
-      if (!name) return null
-      const s = imageMap[normalizeImageKey(name)]
-      return s && s.status === "uploaded" ? s.url : null
-    }
-
-    const allImageUrls: string[] = []
-    groupRows.forEach((groupRow) => {
-      const thumbnailUrl = lookupUrl(groupRow.thumbnailRef)
-      if (thumbnailUrl && !allImageUrls.includes(thumbnailUrl)) {
-        allImageUrls.push(thumbnailUrl)
-      }
-      groupRow.imageRefs.forEach((name) => {
-        const url = lookupUrl(name)
-        if (url && !allImageUrls.includes(url)) allImageUrls.push(url)
-      })
-    })
-
-    const thumbnailUrl = lookupUrl(row.thumbnailRef) || allImageUrls[0] || null
-    const optionMap = rowOptionValues(row)
-    const hasOptions = Object.keys(optionMap).length > 0 || groupRows.some((r) => Object.keys(rowOptionValues(r)).length > 0)
-
-    const variantsPayload = groupRows.map((groupRow) => {
-      const inventoryQuantity = Math.max(
-        0,
-        Math.floor(Number.parseInt(groupRow.inventoryCount, 10)) || 0
-      )
-
-      const numPrice = parseFloat(groupRow.price)
-      const numDiscount = parseFloat(groupRow.discountedPrice)
-      const prices: any[] = []
-      if (Number.isFinite(numPrice)) {
-        prices.push({ amount: numPrice, currency_code: "inr" })
-      }
-      if (Number.isFinite(numDiscount) && numDiscount > 0 && numDiscount < numPrice) {
-        prices.push({
-          amount: numDiscount,
-          currency_code: "inr",
-          price_list_id: "pl_1765232034558",
-        })
-      }
-
-      const variantOptions = rowOptionValues(groupRow)
-      const variantTitle =
-        groupRow.variantTitle ||
-        (Object.keys(variantOptions).length > 0
-          ? Object.values(variantOptions).join(" / ")
-          : "Default variant")
-
-      return {
-        title: variantTitle,
-        sku: groupRow.sku || undefined,
-        manage_inventory: groupRow.managedInventory,
-        allow_backorder: groupRow.allowBackorder,
-        inventory_quantity: inventoryQuantity,
-        prices,
-        ...(Object.keys(variantOptions).length > 0 ? { options: variantOptions } : {}),
-      }
-    })
-
-    const productOptions = hasOptions ? buildOptionsFromGroup(groupRows) : []
-
-    const colorImages: Record<string, string[]> = {}
-    let primaryVisualOption = ""
-    groupRows.forEach((groupRow) => {
-      const visualName = groupRow.visualOptionName.trim()
-      const visualValue = groupRow.visualOptionValue.trim()
-      if (!visualName || !visualValue) return
-      if (!primaryVisualOption) primaryVisualOption = visualName
-      const refs = groupRow.visualImageRefs.length
-        ? groupRow.visualImageRefs
-        : groupRow.imageRefs
-      const urls = refs
-        .map((name) => lookupUrl(name))
-        .filter((url): url is string => Boolean(url))
-      if (!urls.length) return
-      colorImages[visualValue] = Array.from(new Set([...(colorImages[visualValue] || []), ...urls]))
-    })
-
-    return {
-      title: row.title,
-      subtitle: row.subtitle || null,
-      description: row.description || null,
-      handle: row.handle || null,
-      is_giftcard: false,
-      discountable: row.discountable,
-      category_ids: categoryId ? [categoryId] : [],
-      collection_id: collectionId,
-      type: row.type ? row.type.trim() : undefined,
-      tags: row.tags.map((value) => ({ value })),
-      images: allImageUrls.map((url) => ({ url })),
-      thumbnail: thumbnailUrl,
-      options: productOptions,
-      variants: variantsPayload,
-      height: parseNumber(row.height),
-      width: parseNumber(row.width),
-      length: parseNumber(row.length),
-      weight: parseNumber(row.weight),
-      metadata: {
-        categories: categoryId ? [categoryId] : [],
-        tags: row.tags,
-        brand: row.brand || null,
-        mid_code: row.midCode || null,
-        hs_code: row.hsCode || null,
-        country_of_origin: row.countryOfOrigin || null,
-        videos: null,
-        ...(Object.keys(colorImages).length > 0
-          ? {
-              color_images: colorImages,
-              primary_visual_option: primaryVisualOption || null,
-            }
-          : {}),
-        ...(categoryRequest
-          ? {
-              category_request: categoryRequest,
-              category_request_excel_value: row.category || null,
-              category_request_status: "pending",
-              category_request_submitted_at: new Date().toISOString(),
-            }
-          : {}),
-        ...(collectionRequest
-          ? {
-              collection_request: collectionRequest,
-              collection_request_excel_value: row.collection || null,
-              collection_request_status: "pending",
-              collection_request_submitted_at: new Date().toISOString(),
-            }
-          : {}),
-      },
-    }
-  }
+  const pendingProductGroupCount = new Set(validRows.filter(row => row.status !== "success").map(productGroupKey)).size
+  const pendingRowCount = validRows.filter(row => row.status !== "success").length
 
   const handlePublish = async () => {
+    if (submittingRef.current) return
+    if (validatedRows.some(row => row.errors.length) || uploadingImages || requiredImages.some(key => imageMap[key]?.status !== "uploaded") || !allBrandsReady) {
+      toast.error("Upload not ready", { description: "Fix all row errors, upload every referenced image and verify each brand before submitting." })
+      return
+    }
     if (!validRows.length) {
       toast.error("Nothing to upload", {
         description: "Fix the errors in your Excel file and re-upload",
       })
       return
     }
+    submittingRef.current = true
     setPhase("uploading")
 
-    const updated = [...rows]
+    const updated = [...validatedRows]
     const groups = new Map<string, { rowIndices: number[]; rows: ParsedRow[] }>()
 
     updated.forEach((row, index) => {
@@ -1831,11 +1020,12 @@ const VendorProductsBulkUploadPage = () => {
       setRows([...updated])
 
       try {
-        await vendorProductsApi.create(buildProductPayloadFromGroup(group.rows))
+        await vendorProductsApi.create(buildBulkPayload(group.rows, imageMap))
         group.rowIndices.forEach((index) => {
           updated[index] = { ...updated[index], status: "success" }
         })
-      } catch (err: any) {
+      } catch (cause: unknown) {
+        const err = uploadError(cause)
         const message =
           err?.data?.message || err?.message || "Failed to create product"
         group.rowIndices.forEach((index) => {
@@ -1850,6 +1040,7 @@ const VendorProductsBulkUploadPage = () => {
     }
 
     setUploadingIndex(null)
+    submittingRef.current = false
     setPhase("done")
 
     const createdProducts = new Set<string>()
@@ -1914,13 +1105,17 @@ const VendorProductsBulkUploadPage = () => {
               <ArrowUpRightMini />
             </Button>
             {phase !== "intro" && (
-              <Button variant="secondary" onClick={handleReset}>
+              <Button variant="secondary" disabled={phase === "uploading" || readingFile || uploadingImages || Object.values(brandAuthMap).some(state => state.status === "uploading")} onClick={handleReset}>
                 Start over
               </Button>
             )}
           </div>
         </div>
 
+        {!referencesReady && <div role="status" className="rounded-xl border p-4 text-sm">
+          {referenceError || "Loading categories and collections…"}
+          {referenceError && <Button variant="secondary" onClick={() => setReferenceAttempt(attempt => attempt + 1)}>Retry</Button>}
+        </div>}
         {phase === "intro" && (
           <div className="space-y-5 md:space-y-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
@@ -1930,11 +1125,11 @@ const VendorProductsBulkUploadPage = () => {
                 style={{ animationDelay: "40ms" }}
               >
                 <Text size="small" className="text-ui-fg-subtle">
-                  The template lists every supported column with one example row.
+                  Template v2 includes a blank Products sheet, separate examples, a field guide, GST codes, categories and collections.
                   Required columns are marked with <span className="font-mono">*</span>.
                   Leave SKU and Discount % blank — they are generated automatically.
                 </Text>
-                <Button variant="secondary" onClick={handleDownloadTemplate}>
+                <Button variant="secondary" disabled={!referencesReady} onClick={handleDownloadTemplate}>
                   <ArrowDownTray />
                   Download Excel template
                 </Button>
@@ -1959,12 +1154,13 @@ const VendorProductsBulkUploadPage = () => {
                 </Text>
                 <Button
                   variant="primary"
+                  disabled={readingFile || !referencesReady}
                   onClick={(e) => {
                     e.stopPropagation()
                     fileInputRef.current?.click()
                   }}
                 >
-                  Choose file
+                  {readingFile ? "Reading file…" : "Choose file"}
                 </Button>
                 <input
                   ref={fileInputRef}
@@ -2007,7 +1203,7 @@ const VendorProductsBulkUploadPage = () => {
                 <Text size="small" className="text-ui-fg-subtle">
                   One Excel row = one variant. Rows with the same{" "}
                   <code className="font-mono text-xs">Title</code> become one product with
-                  multiple variants. Use Option 1 / Option 2 columns for size, color, etc.
+                  multiple variants. Use Option 1 / Option 2 / Option 3, or add numbered Option Name / Value pairs. A Handle separates products with the same title.
                 </Text>
                 <Text size="small" className="text-ui-fg-subtle">
                   For color galleries, use Visual Option Name, Visual Option Value, and
@@ -2083,17 +1279,22 @@ const VendorProductsBulkUploadPage = () => {
                     variant="primary"
                     onClick={handlePublish}
                     disabled={
-                      validRows.length === 0 ||
+                      pendingRowCount === 0 ||
+                      invalidRows.length > 0 ||
+                      requiredImages.some(key => imageMap[key]?.status !== "uploaded") ||
                       uploadingImages ||
                       !allBrandsReady
                     }
                   >
-                    Publish {productGroupCount} product
-                    {productGroupCount === 1 ? "" : "s"}
-                    {productGroupCount !== validRows.length && (
-                      <span className="opacity-80"> ({validRows.length} rows)</span>
+                    Submit {pendingProductGroupCount} product
+                    {pendingProductGroupCount === 1 ? "" : "s"}
+                    {pendingProductGroupCount !== pendingRowCount && (
+                      <span className="opacity-80"> ({pendingRowCount} rows)</span>
                     )}
                   </Button>
+                )}
+                {phase === "done" && failedAfterUpload > 0 && (
+                  <Button variant="secondary" onClick={() => setPhase("preview")}>Review failed products</Button>
                 )}
                 {phase === "done" && (
                   <Button variant="primary" onClick={() => router.push("/products")}>
@@ -2102,6 +1303,15 @@ const VendorProductsBulkUploadPage = () => {
                 )}
               </div>
             </div>
+
+            {phase === "preview" && (invalidRows.length > 0 || uploadedImages < totalImages || !allBrandsReady) && (
+              <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                Before submitting: {invalidRows.length > 0 ? `fix ${invalidRows.length} row(s) with errors; ` : ""}
+                {uploadedImages < totalImages ? `upload ${totalImages - uploadedImages} referenced image(s); ` : ""}
+                {!allBrandsReady ? "complete the brand authorization checks." : ""}
+                <p className="mt-1">Fix spreadsheet values and upload the file again for fields that cannot be edited here. No partial product variants will be submitted.</p>
+              </div>
+            )}
 
             {uniqueBrands.length > 0 && phase !== "uploading" && (
               <div className="space-y-3 rounded-xl border border-ui-border-base/70 bg-ui-bg-base p-4 md:p-5">
@@ -2428,6 +1638,9 @@ const VendorProductsBulkUploadPage = () => {
                             )}
                             aria-label={`Title for row ${row.rowNumber}`}
                           />
+                          <div className="text-xs text-ui-fg-subtle">{row.taxCode} · {row.gstRate}% GST</div>
+                          {row.shippingProfile && <div className="text-xs text-ui-fg-subtle">Shipping: {row.shippingProfile}</div>}
+                          {row.videoUrls.length > 0 && <div className="text-xs text-ui-fg-subtle">{row.videoUrls.length} video(s)</div>}
                           {row.handle && (
                             <div className="text-xs text-ui-fg-subtle">/{row.handle}</div>
                           )}
@@ -2992,9 +2205,12 @@ const VendorProductsBulkUploadPage = () => {
                                     className="relative w-12 h-12 rounded overflow-hidden border border-ui-border-base group disabled:cursor-not-allowed"
                                     title={canEdit ? "Add another image" : ""}
                                   >
-                                    <img
+                                    <Image
                                       src={thumbUrl}
                                       alt={row.thumbnailRef}
+                                      width={48}
+                                      height={48}
+                                      unoptimized
                                       className="w-full h-full object-cover"
                                     />
                                     {canEdit && (

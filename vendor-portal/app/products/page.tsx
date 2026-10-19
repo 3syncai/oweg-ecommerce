@@ -9,7 +9,7 @@ import EmptyState from "@/components/EmptyState"
 import StatCard from "@/components/dashboard/StatCard"
 import ProductStatus, { resolveProductStatus } from "@/components/dashboard/ProductStatus"
 import StatusDot from "@/components/dashboard/StatusDot"
-import { vendorProductsApi } from "@/lib/api/client"
+import { ApiError, vendorProductsApi } from "@/lib/api/client"
 import { useVendorLive } from "@/lib/useVendorLive"
 import { hasPageCache, pageCacheKey, peekPageCache, writePageCache } from "@/lib/page-cache"
 import { useRouter } from "next/navigation"
@@ -157,13 +157,14 @@ const VendorProductsPage = () => {
         counts: nextCounts,
       } satisfies ProductsCachePayload)
       setError(null)
-    } catch (e: any) {
-      if (e.status === 403) {
+    } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 403) {
         router.push("/pending")
         return
       }
-      setError(e?.message || "Failed to load products")
-      console.error("Products error:", e)
+      const message = e instanceof Error ? e.message : "Failed to load products"
+      setError(message)
+      console.warn("Products error:", message)
     } finally {
       setLoading(false)
     }
@@ -263,7 +264,9 @@ const VendorProductsPage = () => {
                 onClick={() => {
                   try {
                     localStorage.removeItem("vendor_product_new_draft")
-                  } catch {}
+                  } catch {
+                    // Storage may be unavailable; the in-memory draft can still be dismissed.
+                  }
                   setDraftProduct(null)
                 }}
               >
@@ -402,7 +405,7 @@ const VendorProductsPage = () => {
                 </div>
               ) : (
                 <>
-                  <div className="hidden md:grid md:grid-cols-[minmax(0,1fr)_110px_140px_120px_80px] gap-4 border-b border-ui-border-base/70 bg-ui-bg-subtle/30 px-4 py-3">
+                  <div className="hidden xl:grid xl:grid-cols-[minmax(280px,1fr)_90px_140px_120px_80px] gap-4 border-b border-ui-border-base/70 bg-ui-bg-subtle/30 px-4 py-3">
                     <Text size="small" weight="plus" className="text-ui-fg-subtle">
                       Product
                     </Text>
@@ -441,7 +444,7 @@ const VendorProductsPage = () => {
                               router.push(`/products/${product.id}`)
                             }
                           }}
-                          className="group grid grid-cols-1 gap-3 px-4 py-4 transition-all duration-200 hover:bg-ui-bg-subtle/70 md:grid-cols-[minmax(0,1fr)_110px_140px_120px_80px] md:items-center md:gap-4 cursor-pointer"
+                          className="group grid grid-cols-1 gap-3 px-4 py-4 transition-all duration-200 hover:bg-ui-bg-subtle/70 xl:grid-cols-[minmax(280px,1fr)_90px_140px_120px_80px] xl:items-center xl:gap-4 cursor-pointer"
                         >
                           <div className="flex min-w-0 items-center gap-3">
                             <ProductThumbnail product={product} />
@@ -457,9 +460,9 @@ const VendorProductsPage = () => {
                             </div>
                           </div>
 
-                          <div className="md:contents">
-                            <div className="flex items-center gap-2 md:block">
-                              <Text size="xsmall" className="text-ui-fg-muted md:hidden">
+                          <div className="grid grid-cols-2 gap-3 xl:contents">
+                            <div className="flex items-center gap-2 xl:block">
+                              <Text size="xsmall" className="text-ui-fg-muted xl:hidden">
                                 GST
                               </Text>
                               <Text size="small" className="text-ui-fg-base">
@@ -467,15 +470,15 @@ const VendorProductsPage = () => {
                               </Text>
                             </div>
 
-                            <div className="flex items-center gap-2 md:block">
-                              <Text size="xsmall" className="text-ui-fg-muted md:hidden">
+                            <div className="flex items-center gap-2 xl:block">
+                              <Text size="xsmall" className="text-ui-fg-muted xl:hidden">
                                 Status
                               </Text>
                               <ProductStatus status={status} />
                             </div>
 
-                            <div className="flex items-center gap-2 md:block">
-                              <Text size="xsmall" className="text-ui-fg-muted md:hidden">
+                            <div className="flex items-center gap-2 xl:block">
+                              <Text size="xsmall" className="text-ui-fg-muted xl:hidden">
                                 Created
                               </Text>
                               <Text size="small" className="text-ui-fg-subtle">

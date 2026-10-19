@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect } from "react";
 import type { ChangeEvent, FocusEvent } from "react";
 import Link from "next/link";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Heart, PackageCheck, ShoppingBag, ArrowUpRight, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,36 +13,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthProvider";
 import { getSafeRedirect } from "@/lib/auth-redirect";
-
-type ShowcaseProduct = {
-  title: string;
-  image: string;
-};
-
-const LEFT_PRODUCTS: ShowcaseProduct[] = [
-  { title: "Buy Best Kitchen Appliances", image: "/Kitchen Appliances.png" },
-  { title: "Best Mixer Grinders in Best Price", image: "/Mixer_banner.png" },
-  { title: "Water Bottle", image: "/Bottles_&_Flasks.jpg" },
-  { title: "Get Best Mobile & Computer Accessories", image: "/Computer & Mobile v1.png" },
-];
-
-const RIGHT_PRODUCTS: ShowcaseProduct[] = [
-  { title: "Shop Inductions & Cooktops Now ", image: "/Inductions_Cooktops_banner.png" },
-  { title: "Cutleries", image: "/Cutlery_Sets.jpg" },
-  { title: "Air Cooler", image: "/Air_Coolers.jpg" },
-  { title: "Kettles", image: "/Kettles.jpg" },
-];
-
-const ProductShowcaseCard = ({ title, image }: ShowcaseProduct) => {
-  return (
-    <article className="showcase-card">
-      <div className="showcase-media">
-        <Image src={image} alt={title} width={260} height={220} className="showcase-image" />
-      </div>
-      <p className="showcase-title font-footer">{title}</p>
-    </article>
-  );
-};
+import "./signup.css";
 
 const Signup = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -387,21 +358,31 @@ const Signup = () => {
 
   return (
     <div className="signup-page">
-      <main className="signup-main flex-1 py-6 md:py-10">
-        <div className="mx-auto w-full max-w-[1600px] px-4 sm:px-6 lg:px-8">
+      <div className="signup-main">
+        <div className="signup-container">
           <div className="auth-shell">
-            <aside className="gallery-column gallery-left" aria-hidden="true">
-              {LEFT_PRODUCTS.map((product) => (
-                <ProductShowcaseCard key={product.title} {...product} />
-              ))}
+            <aside className="signup-intro" aria-label="Your OWEG account">
+              <Link href="/" className="signup-wordmark" aria-label="OWEG home">
+                <Image src="/icons/brand/oweg-wordmark.svg" alt="OWEG" width={160} height={40} priority />
+              </Link>
+              <span className="signup-eyebrow">A LITTLE INSPIRATION. A LOT TO EXPLORE.</span>
+              <h2>Good finds.<br />Great beginnings.</h2>
+              <p className="signup-intro-copy">Make room for the things you love. Your next everyday favourite is waiting.</p>
+              <div className="signup-benefits">
+                <div><span><Heart size={20} /></span><p><strong>Keep your favourites close</strong><small>Save the finds you want to come back to.</small></p></div>
+                <div><span><PackageCheck size={20} /></span><p><strong>Every order, in one place</strong><small>Follow your purchases from your account.</small></p></div>
+                <div><span><ShoppingBag size={20} /></span><p><strong>For you. For your business.</strong><small>Choose the account that fits your needs.</small></p></div>
+              </div>
+              <Link href="/" className="signup-explore">Explore OWEG <ArrowUpRight size={17} /></Link>
             </aside>
 
             <section className="form-column">
               <div className="form-panel">
-                <div className="mb-6 text-center sm:mb-8">
-                  <h1 className="font-footer text-2xl font-bold text-foreground sm:text-3xl">Create your account</h1>
-                  <p className="mt-2 text-sm text-muted-foreground font-footer">
-                    Register for free to start shopping
+                <div className="signup-heading">
+                  <span className="signup-eyebrow">WELCOME TO OWEG</span>
+                  <h1>Create your account</h1>
+                  <p>
+                    A few details, and you’re ready to explore.
                   </p>
                 </div>
 
@@ -411,10 +392,10 @@ const Signup = () => {
                 </div>
               )}
 
-              <form className="space-y-6" onSubmit={handleSubmit} noValidate>
+              <form className="signup-form" onSubmit={handleSubmit} noValidate>
                 {/* User Type */}
-                <div>
-                  <Label className="text-base mb-3 block font-footer">Are you?</Label>
+                <div className="signup-wide signup-account-type">
+                  <Label className="signup-group-label">I’m shopping as</Label>
                   <RadioGroup
                     value={userType}
                     onValueChange={(v) => {
@@ -427,18 +408,19 @@ const Signup = () => {
                         return p;
                       });
                     }}
-                    className="flex gap-8"
+                    className="signup-type-options"
+                    aria-label="Account type"
                   >
-                    <div className="flex items-center space-x-2">
+                    <div className={`signup-type-card ${userType === "individual" ? "is-selected" : ""}`}>
                       <RadioGroupItem value="individual" id="individual" />
                       <Label htmlFor="individual" className="font-normal cursor-pointer font-footer">
-                        Individual
+                        <span>Individual<small>For everyday shopping</small></span>
                       </Label>
                     </div>
-                    <div className="flex items-center space-x-2">
+                    <div className={`signup-type-card ${userType === "business" ? "is-selected" : ""}`}>
                       <RadioGroupItem value="business" id="business" />
                       <Label htmlFor="business" className="font-normal cursor-pointer font-footer">
-                        Business
+                        <span>Business<small>For your company</small></span>
                       </Label>
                     </div>
                   </RadioGroup>
@@ -446,7 +428,7 @@ const Signup = () => {
 
                 {/* Business-only */}
                 {userType === "business" && (
-                  <div className="grid gap-6 md:grid-cols-2">
+                  <div className="signup-wide signup-business-fields">
                     <div className={`input-group ${form.gst ? "filled" : ""}`}>
                       <Label htmlFor="gst" className="form-label font-footer">
                         GST No
@@ -494,7 +476,7 @@ const Signup = () => {
                 )}
 
                 {/* Referral */}
-                <div className={`input-group ${form.referral ? "filled" : ""}`}>
+                <div className={`signup-wide input-group signup-referral ${form.referral ? "filled" : ""}`}>
                   <Label htmlFor="referral" className="form-label font-footer">
                     Referral code <span className="text-xs text-muted-foreground">(optional)</span>
                   </Label>
@@ -655,7 +637,7 @@ const Signup = () => {
                       aria-label="Toggle password visibility"
                     >
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                      <span className="ml-1 text-sm font-footer">Hide</span>
+                      <span className="ml-1 text-sm font-footer">{showPassword ? "Hide" : "Show"}</span>
                     </button>
                   </div>
                   <p className="text-xs text-muted-foreground mt-2 font-footer">
@@ -693,7 +675,7 @@ const Signup = () => {
                       aria-label="Toggle confirm password visibility"
                     >
                       {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                      <span className="ml-1 text-sm font-footer">Hide</span>
+                      <span className="ml-1 text-sm font-footer">{showConfirmPassword ? "Hide" : "Show"}</span>
                     </button>
                   </div>
                   {touched.confirmPassword && errors.confirmPassword && (
@@ -704,9 +686,9 @@ const Signup = () => {
                 </div>
 
                 {/* Newsletter Subscription */}
-                <div>
-                  <Label className="text-base mb-3 block font-footer">Newsletter Subscription?</Label>
-                  <RadioGroup value={newsletter} onValueChange={setNewsletter} className="flex gap-8">
+                <div className="signup-wide signup-newsletter">
+                  <div><Label className="signup-group-label">A little inspiration in your inbox?</Label><p>Receive news and offers from OWEG.</p></div>
+                  <RadioGroup value={newsletter} onValueChange={setNewsletter} className="flex gap-5" aria-label="Newsletter subscription">
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem value="yes" id="yes" />
                       <Label htmlFor="yes" className="font-normal cursor-pointer font-footer">Yes</Label>
@@ -721,7 +703,7 @@ const Signup = () => {
                 {/* Submit Button */}
                 <Button
                   type="submit"
-                  className={`w-full h-12 text-base font-footer submit-btn ${isFormValid() && !submitting ? "" : "disabled"
+                  className={`signup-wide w-full h-12 text-base font-footer submit-btn ${isFormValid() && !submitting ? "" : "disabled"
                     }`}
                   disabled={!isFormValid() || submitting}
                 >
@@ -731,12 +713,12 @@ const Signup = () => {
                       Creating your account...
                     </span>
                   ) : (
-                    "Submit"
+                    "Create account"
                   )}
                 </Button>
 
                 {/* Login Link */}
-                <p className="text-center text-sm text-muted-foreground font-footer">
+                <p className="signup-wide signup-login text-center text-sm text-muted-foreground font-footer">
                   Already have an account?{" "}
                   <Link
                     href={
@@ -750,264 +732,15 @@ const Signup = () => {
                   </Link>
                 </p>
               </form>
+              <div className="signup-security"><ShieldCheck size={15} /> One account for your OWEG finds.</div>
               </div>
             </section>
 
-            <aside className="gallery-column gallery-right" aria-hidden="true">
-              {RIGHT_PRODUCTS.map((product) => (
-                <ProductShowcaseCard key={product.title} {...product} />
-              ))}
-            </aside>
           </div>
         </div>
-      </main>
+      </div>
 
-      {/* Styles (inline) */}
-      <style jsx global>{`
-        @font-face {
-          font-family: "OPTIHandelGothic-Light";
-          src: url("/fonts/OPTIHandelGothic-Light.woff2") format("woff2");
-          font-weight: 300;
-          font-style: normal;
-          font-display: swap;
-        }
 
-        :root {
-          --form-accent: #7AC943;
-          --form-bg: #ffffff;
-          --form-text: #111827;
-          --muted: #6b7280;
-          --danger: #ef4444;
-        }
-
-        .signup-page {
-          background: #f6f7f9;
-          overflow-x: hidden;
-          overflow-y: visible;
-        }
-
-        .signup-main {
-          overflow: visible !important;
-        }
-
-        .auth-shell {
-          display: grid;
-          grid-template-columns: minmax(140px, 0.8fr) minmax(560px, 680px) minmax(140px, 0.8fr);
-          gap: 24px;
-          align-items: start;
-          overflow: visible !important;
-        }
-
-        .gallery-column {
-          display: flex;
-          flex-direction: column;
-          justify-content: flex-start;
-          gap: 14px;
-          padding: 0 4px;
-          overflow: visible !important;
-        }
-
-        .gallery-left {
-          border-right: 1px solid #e6e9ef;
-          padding-right: 18px;
-        }
-
-        .gallery-right {
-          border-left: 1px solid #e6e9ef;
-          padding-left: 18px;
-        }
-
-        .showcase-card {
-          background: transparent;
-          border: none;
-          box-shadow: none;
-          padding: 0 0 8px;
-          transition: transform 180ms ease;
-        }
-
-        .showcase-card:hover {
-          transform: translateY(-2px) scale(1.005);
-        }
-
-        .showcase-media {
-          position: relative;
-          width: 100%;
-          height: 140px;
-          border-radius: 0;
-          background: transparent;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          overflow: visible;
-        }
-
-        .showcase-image {
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-          object-position: center top;
-          transform: translateY(-6px);
-          mix-blend-mode: normal;
-        }
-
-        .showcase-title {
-          margin-top: 10px;
-          text-align: center;
-          font-size: 0.95rem;
-          color: #111827;
-        }
-
-        .form-column {
-          display: flex;
-          align-items: flex-start;
-          justify-content: center;
-        }
-
-        .form-panel {
-          width: 100%;
-          border-radius: 16px;
-          background: #ffffff;
-          border: 1px solid #e8ebf1;
-          box-shadow: 0 14px 38px rgba(17, 24, 39, 0.08);
-          padding: 30px;
-        }
-
-        .font-footer {
-          font-family: "OPTIHandelGothic-Light", ui-sans-serif, system-ui, -apple-system,
-            "Segoe UI", Roboto, "Helvetica Neue", Arial;
-          -webkit-font-smoothing: antialiased;
-          -moz-osx-font-smoothing: grayscale;
-        }
-
-        .input-group {
-          position: relative;
-        }
-        .form-label {
-          display: inline-block;
-          margin-bottom: 6px;
-          color: var(--muted);
-          transition: color 180ms ease;
-          position: relative;
-        }
-        .form-label::after {
-          content: "";
-          display: block;
-          margin-top: 6px;
-          height: 2px;
-          width: 0%;
-          background: var(--form-accent);
-          transition: width 220ms cubic-bezier(.2,.9,.2,1), opacity 180ms ease;
-          opacity: 0;
-        }
-
-        .input-group:focus-within .form-label,
-        .input-group.filled .form-label {
-          color: var(--form-accent);
-        }
-        .input-group:focus-within .form-label::after,
-        .input-group.filled .form-label::after {
-          width: 28%;
-          opacity: 1;
-        }
-
-        .form-input {
-          padding-right: 4rem !important;
-          border-radius: 6px;
-        }
-
-        .eye-btn {
-          position: absolute;
-          right: 10px;
-          top: 50%;
-          transform: translateY(-50%);
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          background: transparent;
-          border: none;
-          color: rgba(0,0,0,0.6);
-          cursor: pointer;
-          padding: 4px 6px;
-          border-radius: 6px;
-          white-space: nowrap;
-          transition: color 160ms ease, transform 120ms ease;
-        }
-        .eye-btn:hover {
-          color: var(--form-accent);
-          transform: translateY(-50%) scale(1.02);
-        }
-        .eye-btn svg { display: block; }
-
-        /* Submit button styling & states */
-        .submit-btn {
-          background: var(--form-accent);
-          color: #fff;
-          border: none;
-          transition: transform 120ms ease, box-shadow 160ms ease, opacity 160ms ease;
-          box-shadow: 0 6px 20px rgba(122,201,67,0.18);
-        }
-        .submit-btn:hover:not(:disabled) {
-          transform: translateY(-2px);
-          box-shadow: 0 10px 30px rgba(122,201,67,0.22);
-        }
-        .submit-btn:active:not(:disabled) {
-          transform: translateY(0);
-        }
-        .submit-btn.disabled,
-        .submit-btn[disabled] {
-          opacity: 0.6;
-          cursor: not-allowed;
-          box-shadow: none;
-          transform: none;
-        }
-
-        /* Error messages */
-        .text-rose-600 {
-          color: var(--danger);
-        }
-
-        /* helper text color */
-        .text-muted-foreground { color: var(--muted); }
-
-        @media (max-width: 1279px) {
-          .auth-shell {
-            grid-template-columns: minmax(110px, 0.55fr) minmax(500px, 620px) minmax(110px, 0.55fr);
-            gap: 16px;
-          }
-
-          .showcase-media {
-            height: 120px;
-          }
-
-          .showcase-title {
-            font-size: 0.85rem;
-          }
-        }
-
-        @media (max-width: 1024px) {
-          .auth-shell {
-            grid-template-columns: 1fr;
-          }
-
-          .gallery-column {
-            display: none;
-          }
-
-          .form-panel {
-            max-width: 560px;
-            margin-inline: auto;
-          }
-        }
-
-        @media (max-width: 640px) {
-          .form-panel {
-            padding: 22px 16px;
-            border-radius: 12px;
-          }
-
-          .eye-btn { right: 8px; gap:6px; }
-        }
-      `}</style>
     </div>
   );
 };

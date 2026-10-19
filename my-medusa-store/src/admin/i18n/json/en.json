@@ -40,8 +40,11 @@
     },
     "login": {
         "title": "Sign in to OWEG Admin",
-        "hint": "Use your admin credentials to access the dashboard",
-        "forgotPassword": "Forgot password? <0>Reset it here</0>"
+        "hint": "Use your admin credentials to access the system and manage operations securely.",
+        "forgotPassword": "<0>Forgot password?</0>"
+    },
+    "actions": {
+        "continueWithEmail": "Sign in →"
     },
     "invite": {
         "title": "Welcome to OWEG Admin",

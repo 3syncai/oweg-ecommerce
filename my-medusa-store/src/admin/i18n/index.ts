@@ -9,8 +9,9 @@ import { initOrderDetailLayout } from "../lib/order-detail-layout"
 import { initSidebarBranding } from "../lib/sidebar-branding"
 import { initSidebarChromeHide } from "../lib/sidebar-chrome-hide"
 import owegLogo from "../assets/oweg-logo.png"
+import owegWordmark from "../assets/oweg-wordmark.svg"
 
-initAuthPageBranding(owegLogo)
+initAuthPageBranding(owegWordmark)
 initSidebarBranding(owegLogo)
 initSidebarChromeHide()
 initHideNotificationsUi()

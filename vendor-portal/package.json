@@ -6,7 +6,8 @@
     "dev": "next dev -p 4000",
     "build": "next build",
     "start": "next start -p 4000",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:bulk": "node --test tests/bulk-upload.test.mjs"
   },
   "dependencies": {
     "@medusajs/icons": "^2.11.3",

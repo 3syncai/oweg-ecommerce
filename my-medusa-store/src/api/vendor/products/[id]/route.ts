@@ -158,6 +158,7 @@ async function updateOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
       category_ids,
       collection_id,
       images,
+      thumbnail,
       weight,
       price,
       discounted_price,
@@ -197,6 +198,12 @@ async function updateOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
     if (category_ids) updateData.category_ids = category_ids
     if (collection_id !== undefined) updateData.collection_id = collection_id || null
     if (images) updateData.images = images
+    if (thumbnail !== undefined) {
+      if (thumbnail !== null && (typeof thumbnail !== "string" || !/^https?:\/\//i.test(thumbnail))) {
+        return res.status(400).json({ message: "thumbnail must be an HTTP(S) image URL or null" })
+      }
+      updateData.thumbnail = thumbnail
+    }
     if (weight !== undefined) updateData.weight = weight
 
     const nowIso = new Date().toISOString()
