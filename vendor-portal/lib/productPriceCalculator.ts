@@ -11,6 +11,21 @@ import {
   TDS_RATE,
 } from "./pricingConfig"
 
+/** Calculator defaults to the valid selling price, then MRP; preserve a genuine zero sale price. */
+export function getCalculatorProductPrice(mrp?: string | number | null, discountedPrice?: string | number | null): string {
+  const parse = (value: string | number | null | undefined): number | undefined => {
+    if (value == null || String(value).trim() === "") return undefined
+    const text = String(value).trim()
+    if (!/^\d+(?:\.\d+)?$/.test(text)) return undefined
+    const amount = Number(text)
+    return Number.isFinite(amount) ? amount : undefined
+  }
+  const original = parse(mrp)
+  const sale = parse(discountedPrice)
+  if (sale !== undefined && (original === undefined || sale <= original)) return String(sale)
+  return original !== undefined ? String(original) : ""
+}
+
 /** Customer pays ₹50 (GST-inclusive) only when the cart/listing is below ₹500. */
 export const CUSTOMER_SHIPPING_CHARGE = 50
 export const CUSTOMER_SHIPPING_FREE_THRESHOLD = 500

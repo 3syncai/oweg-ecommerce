@@ -8,16 +8,16 @@ const ts = load('typescript')
 load.extensions['.ts'] = (module, filename) => module._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true } }).outputText, filename)
 const XLSX = load('xlsx')
 const { parseRows, applyGroupValidation, productGroupKey, rowOptionValues, normalizeImageKey, brandReady } = load('../lib/bulk-upload.ts')
-const { buildBulkTemplate, readBulkWorkbook, loadAllReferences } = load('../lib/bulk-workbook.ts')
+const { buildBulkTemplate, serializeBulkTemplate, readBulkWorkbook, loadAllReferences } = load('../lib/bulk-workbook.ts')
 const { buildBulkPayload } = load('../lib/bulk-payload.ts')
 const base = { Title: 'Bulk QA box', Brand: 'Test brand', 'Tax Code': 'GST_18', 'Price INR': '100', 'Inventory Count': '5' }
 const parse = rows => parseRows(rows, [], [])
 const file = (workbook, name = 'fixture.xlsx') => { const bytes = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }); return { name, size: bytes.length, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) } }
 const workbook = (rows, headers) => { const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, headers ? XLSX.utils.aoa_to_sheet([headers, ...rows]) : XLSX.utils.json_to_sheet(rows), 'Products'); return wb }
 
-test('template v2 is blank, has complete references, and its separate examples parse', async () => {
+test('template v3 is blank, has complete references, and its separate examples parse', async () => {
   const wb = buildBulkTemplate([{ id: 'pcat_1', name: 'Kitchen' }], [{ id: 'pcol_1', title: 'Brand' }])
-  assert.deepEqual(wb.SheetNames, ['Products', 'Examples', 'Instructions', 'Field Guide', 'GST Codes', 'Categories', 'Collections'])
+  assert.deepEqual(wb.SheetNames, ['Products', 'Examples', 'Instructions', 'Field Guide', 'GST Codes', 'Categories', 'Brands'])
   await assert.rejects(readBulkWorkbook(file(wb)), /No product rows/)
   const examples = XLSX.utils.sheet_to_json(wb.Sheets.Examples)
   assert.ok(parse(examples).every(row => !row.errors.length), JSON.stringify(parse(examples).map(r => r.errors)))
@@ -27,12 +27,12 @@ for (const [column, value] of [
   ['Price INR', '0'], ['Price INR', '-1'], ['Price INR', '₹100'], ['Price INR', '1,000'], ['Price INR', '100abc'], ['Price INR', '1.234'], ['Price INR', 'Infinity'],
   ['Discounted Price INR', '101'], ['Inventory Count', '1.2'], ['Inventory Count', '-1'], ['Inventory Count', '9007199254740992'], ['Weight', '2kg'], ['Height', '-2'],
   ['Managed Inventory', 'maybe'], ['Allow Backorder', 'maybe'], ['Discountable', 'maybe'], ['Managed Inventory', 2], ['Allow Backorder', -1], ['Tax Code', ''], ['Tax Code', 'GST_UNKNOWN'], ['GST Rate', '5'],
-  ['Option 1 Name', 'Size'], ['Option 1 Value', 'M'], ['Visual Option Name', 'Color'], ['Handle', 'Invalid Handle'], ['Country of Origin', 'India'], ['Shipping Profile ID', 'random'], ['Video URLs', 'http://example.com/video.mp4'],
+  ['Option 1 Name', 'Size'], ['Option 1 Value', 'M'], ['Visual Option Name', 'Color'], ['Handle', 'Invalid Handle'], ['Country of Origin', 'India'], ['Video URLs', 'http://example.com/video.mp4'],
 ]) test(`rejects invalid ${column}: ${value}`, () => assert.ok(parse([{ ...base, [column]: value }])[0].errors.length))
 
 test('derives GST including zero, preserves identifier text, accepts strict booleans and zero stock', () => {
-  const [row] = parse([{ ...base, SKU: '0000123', 'HS Code': '00123', 'MID Code': '0001', 'Tax Code': 'GST_0', 'GST Rate': '0', 'Inventory Count': '0', 'Managed Inventory': 'No', 'Allow Backorder': 'true', 'Discounted Price INR': '0', 'Country of Origin': 'in' }])
-  assert.deepEqual(row.errors, []); assert.equal(row.gstRate, 0); assert.equal(row.sku, '0000123'); assert.equal(row.hsCode, '00123'); assert.equal(row.countryOfOrigin, 'IN'); assert.equal(row.managedInventory, false); assert.equal(row.allowBackorder, true)
+  const [row] = parse([{ ...base, SKU: '0000123', 'HS Code': '00123', 'MID Code': '0001', 'Tax Code': 'GST_0', 'GST Rate': '0', 'Inventory Count': '0', 'Managed Inventory': 'Yes', 'Allow Backorder': 'true', 'Discounted Price INR': '0', 'Country of Origin': 'in' }])
+  assert.deepEqual(row.errors, []); assert.equal(row.gstRate, 0); assert.equal(row.sku, '0000123'); assert.equal(row.hsCode, '00123'); assert.equal(row.countryOfOrigin, 'IN'); assert.equal(row.managedInventory, true); assert.equal(row.allowBackorder, true)
   assert.equal(buildBulkPayload([row], {}).variants[0].prices[1].amount, 0)
 })
 
@@ -62,7 +62,7 @@ test('handles distinguish same-title products; dynamic option pairs and visual g
   assert.equal(Object.keys(rowOptionValues(rows[0])).length, 4)
   assert.deepEqual(Object.keys(rowOptionValues(rows[0])), ['Size', 'Color', 'Fit', 'Pack'])
   const payload = buildBulkPayload([rows[0]], { 'red.jpg': { status: 'uploaded', url: 'https://example.com/red.jpg' } })
-  assert.equal(payload.metadata.gst_rate, 18); assert.equal(payload.shipping_profile_id, 'sp_123'); assert.equal(payload.weight, 0.5); assert.equal(payload.metadata.videos[0].url, one['Video URLs']); assert.match(payload.description, /<(p|h3)>/); assert.equal(payload.options.length, 4); assert.equal(payload.images[0].url, payload.metadata.color_images.Red[0])
+  assert.equal(payload.metadata.gst_rate, 18); assert.equal(payload.shipping_profile_id, null); assert.equal(payload.weight, 0.5); assert.equal(payload.metadata.videos[0].url, one['Video URLs']); assert.match(payload.description, /<(p|h3)>/); assert.equal(payload.options.length, 4); assert.equal(payload.images[0].url, payload.metadata.color_images.Red[0])
   assert.throws(() => buildBulkPayload([rows[0]], {}), /Missing image/)
 })
 
@@ -72,7 +72,7 @@ test('image filenames match case-insensitively but signed HTTPS paths retain cas
 })
 
 test('reader preserves blank-row positions, numeric raw values and leading-zero text identifiers', async () => {
-  const wb = workbook([['Box', 'Test', 'GST_18', 1234, '00123'], [], ['Box 2', 'Test', 'GST_0', 12, '00001']], ['Title *', 'Brand *', 'Tax Code *', 'Price INR *', 'HS Code'])
+  const wb = workbook([['Box', 'Test', 'GST_18', 1234, '00123', 5], [], ['Box 2', 'Test', 'GST_0', 12, '00001', 0]], ['Title *', 'Brand *', 'Tax Code *', 'Price INR *', 'HS Code', 'Inventory Count'])
   wb.Sheets.Products.D2.z = '#,##0'
   const { json } = await readBulkWorkbook(file(wb)); assert.equal(json[0]['Price INR *'], 1234); assert.equal(json[1].__rowNumber, 4); assert.equal(json[0]['HS Code'], '00123')
 })
@@ -98,7 +98,7 @@ test('all reference pages load, incomplete pages fail instead of inventing categ
 })
 
 test('CSV and legacy XLS imports retain supported values', async () => {
-  const csv = Buffer.from('Title,Brand,Tax Code,Price INR,SKU,HS Code\nCSV QA,Test,GST_18,99,00012,00123\n')
+  const csv = Buffer.from('Title,Brand,Tax Code,Price INR,SKU,HS Code,Inventory Count\nCSV QA,Test,GST_18,99,00012,00123,2\n')
   const { json } = await readBulkWorkbook({ name: 'qa.csv', size: csv.length, arrayBuffer: async () => csv.buffer.slice(csv.byteOffset, csv.byteOffset + csv.byteLength) })
   const [row] = parse(json); assert.deepEqual(row.errors, []); assert.equal(row.sku, '00012'); assert.equal(row.hsCode, '00123')
   const bytes = XLSX.write(workbook([base]), { type: 'buffer', bookType: 'biff8' })
@@ -114,7 +114,7 @@ test('too many variants and repeated option names are rejected', () => {
 test('unknown category/collection requests survive; a subcategory matches within its parent', () => {
   const categories = [{ id: 'parent', name: 'Kitchen' }, { id: 'child', name: 'Kettle', parent_category_id: 'parent' }]
   const [row] = parseRows([{ ...base, Category: 'Kitchen', Subcategory: 'Kettle', Collection: 'New collection' }], categories, [])
-  assert.equal(row.selectedCategoryId, 'child'); assert.equal(row.collectionRequest, 'New collection')
+  assert.equal(row.selectedCategoryId, 'child'); assert.equal(row.collectionRequest, 'Test brand')
   const payload = buildBulkPayload([row], {}); assert.equal(payload.metadata.collection_request_status, 'pending'); assert.deepEqual(payload.category_ids, ['child'])
 })
 
@@ -125,4 +125,85 @@ test('brand submission requires an actual uploaded letter and respects rejected 
     assert.equal(brandReady({ status, fileUrl: 'https://example.com/letter.pdf' }), true)
   }
   for (const status of ['missing', 'rejected', 'checking', 'uploading', 'error']) assert.equal(brandReady({ status, fileUrl: 'https://example.com/letter.pdf' }), false)
+})
+
+
+test('v3 hides removed inputs and labels optional and mandatory columns', async () => {
+  const { TEMPLATE_HEADERS } = load('../lib/bulk-upload.ts')
+  const names = TEMPLATE_HEADERS.map(h => h.key)
+  for (const name of ['Additional Category IDs', 'Collection', 'MID Code', 'HS Code', 'Shipping Profile ID', 'Brand Letter', 'Visual Option Name', 'Price INR']) assert.ok(!names.includes(name), name)
+  assert.ok(names.includes('Subtitle (optional)')); assert.ok(names.includes('Handle (optional)')); assert.ok(names.includes('HSN Code'))
+  assert.ok(names.indexOf('Video URLs') > names.indexOf('Image 5'))
+  for (let n = 1; n <= 3; n++) assert.equal(names.indexOf(`Option ${n} Images`), names.indexOf(`Option ${n} Value`) + 1)
+  assert.ok(TEMPLATE_HEADERS.find(h => h.key === 'Inventory Count').required)
+})
+
+test('serialized template contains a real tax dropdown, protected calculation cells and unlocked inputs', async () => {
+  const JSZip = load('jszip')
+  const bytes = await serializeBulkTemplate(buildBulkTemplate())
+  const zip = await JSZip.loadAsync(bytes)
+  const xml = await zip.file('xl/worksheets/sheet1.xml').async('string')
+  assert.ok(xml.indexOf("<dataValidations") < xml.indexOf("<ignoredErrors"));
+  assert.match(xml, /dataValidation type="list"/); assert.match(xml, /<formula1>OWEGTaxCodes<\/formula1>/)
+  assert.match(await zip.file('xl/workbook.xml').async('string'), /fullCalcOnLoad="1"/);
+  assert.match(xml, /<sheetProtection/); assert.match(xml, /VLOOKUP/); assert.match(xml, /ROUND/)
+  assert.match(await zip.file('xl/styles.xml').async('string'), /protection locked="0"/)
+  const wb = XLSX.read(bytes, { type: 'array' }); const sheet = wb.Sheets.Products
+  assert.ok(sheet.R2.f); assert.equal(sheet.A2.s, undefined)
+  await assert.rejects(readBulkWorkbook({ name: 'blank.xlsx', size: bytes.length, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) }), /No product rows/)
+})
+
+test('comma-separated sizes and colors generate nine unique variants with the correct galleries and fixed inventory', () => {
+  const rows = parse([{ ...base, 'MRP INR': 200, 'Discounted Price INR (optional)': 150, 'Option 1 Name': 'Size', 'Option 1 Value': '8,9,10', 'Option 1 Images': 'size.jpg', 'Option 2 Name': 'Color', 'Option 2 Value': 'Red,Green,Blue', 'Option 2 Images': 'red.jpg,green.jpg,blue.jpg', SKU: 'SHOE' }])
+  assert.equal(rows.length, 9); assert.ok(rows.every(r => !r.errors.length), JSON.stringify(rows.map(r => r.errors)))
+  assert.equal(new Set(rows.map(r => r.sku)).size, 9); assert.equal(rows[8].sku, 'SHOE-9')
+  const images = Object.fromEntries(['size', 'red', 'green', 'blue'].map(name => [`${name}.jpg`, { status: 'uploaded', url: `https://example.com/${name}.jpg` }]))
+  const payload = buildBulkPayload(rows, images)
+  assert.equal(payload.variants.length, 9); assert.equal(rows[0].discountPercent, 25)
+  assert.deepEqual(payload.metadata.color_images.Red, ['https://example.com/red.jpg'])
+  assert.deepEqual(payload.metadata.option_images.Size['8'], ['https://example.com/size.jpg'])
+  assert.ok(payload.variants.every(v => v.manage_inventory && v.allow_backorder && v.inventory_quantity === 5))
+  assert.equal(payload.metadata.tax_country, 'IN'); assert.equal(rows[0].collection, base.Brand)
+})
+
+for (const patch of [
+  { 'Inventory Count': '' }, { 'Inventory Count': '1.1' }, { 'Managed Inventory': 'No' }, { 'Allow Backorder': 'No' },
+  { 'Tax Code': '', 'GST Rate': 18 }, { 'Option 1 Name': 'Size', 'Option 1 Value': '8,8' },
+  { 'Option 1 Name': 'Color', 'Option 1 Value': 'Red,Blue,Green', 'Option 1 Images': 'red.jpg,blue.jpg' },
+  { 'Option 1 Images': 'orphan.jpg' },
+  { 'Option 1 Name': 'Size', 'Option 1 Value': Array.from({length:101}, (_,i)=>i).join(',') },
+]) test(`v3 rejects invalid configuration ${JSON.stringify(patch)}`, () => assert.ok(parse([{...base, ...patch}])[0].errors.length))
+
+test('formulas and stale caches in calculated fields cannot override GST or discount', async () => {
+  const wb = buildBulkTemplate()
+  const { TEMPLATE_HEADERS } = load('../lib/bulk-upload.ts')
+  for (const [key, value] of Object.entries({Title:'Formula QA',Brand:'Existing brand','Tax Code':'GST_0.25','MRP INR':100,'Discounted Price INR':80,'Inventory Count':0})) {
+    const c = TEMPLATE_HEADERS.findIndex(h => h.key.replace(/ \(.*\)/,'') === key)
+    wb.Sheets.Products[XLSX.utils.encode_cell({r:1,c})] = {t:typeof value === 'number'?'n':'s',v:value}
+  }
+  const gst = TEMPLATE_HEADERS.findIndex(h => h.key === 'GST Rate (auto)')
+  wb.Sheets.Products[XLSX.utils.encode_cell({r:1,c:gst})].v = 99
+  const {json} = await readBulkWorkbook(file(wb)); assert.equal(json.length,1)
+  const rows = parseRows(json, [], [{ id:'pcol_existing',title:'Existing brand' }]); assert.deepEqual(rows[0].errors, [])
+  assert.equal(rows[0].gstRate,0.25); assert.equal(rows[0].discountPercent,20); assert.equal(rows[0].countryOfOrigin,'IN')
+  assert.equal(rows[0].selectedCollectionId,'pcol_existing'); assert.equal(rows[0].inventoryCount,'0')
+})
+
+
+test('each supported Tax Code controls its GST rate, and missing code never accepts GST alone', () => {
+  const {GST_TAX_CODES} = load('../lib/gst-tax-codes.ts')
+  for(const code of GST_TAX_CODES){const [row]=parse([{...base,'Tax Code':code.code}]);assert.deepEqual(row.errors,[]);assert.equal(row.gstRate,code.rate)}
+})
+
+test('reader rejects ambiguous legacy/new price or HSN columns', async () => {
+  for(const patch of [{'MRP INR':200},{'HS Code':'001','HSN Code':'002'}]) await assert.rejects(readBulkWorkbook(file(workbook([{...base,...patch}]))), /Duplicate column/)
+})
+
+
+test('preview edits keep expanded variants together, preserve other products and revalidate blank titles', () => {
+  const {editBulkProduct} = load('../lib/bulk-upload.ts')
+  let rows=parse([{...base,'Option 1 Name':'Size','Option 1 Value':'8,9'},{...base,'Option 1 Name':'Size','Option 1 Value':'10'},{...base,Title:'Other product'}])
+  rows=editBulkProduct(rows,1,{title:'Renamed shoe',type:'Shoe',tags:['QA'],categoryRequest:'Footwear'})
+  assert.equal(new Set(rows.slice(0,3).map(productGroupKey)).size,1);assert.ok(rows.slice(0,3).every(r=>r.title==='Renamed shoe'&&r.type==='Shoe'&&r.tags[0]==='QA'&&r.categoryRequest==='Footwear'&&!r.errors.length));assert.equal(rows[3].title,'Other product')
+  rows=editBulkProduct(rows,0,{title:''});assert.ok(rows.slice(0,3).every(r=>r.errors.length));rows=editBulkProduct(rows,0,{title:'Recovered'});assert.ok(rows.slice(0,3).every(r=>!r.errors.length))
 })

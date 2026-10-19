@@ -3,7 +3,7 @@
 import React, { useMemo, useRef, useState } from "react"
 import { Button, Heading, Input, Label, Switch, Text, toast } from "@medusajs/ui"
 import axios from "axios"
-import ProductPriceCalculator from "@/components/ProductPriceCalculator"
+import ProductPriceCalculator, { type LogisticsEstimateDetails } from "@/components/ProductPriceCalculator"
 import {
   MAX_AUTO_VARIANTS,
   buildVariantRows,
@@ -46,7 +46,7 @@ export type VariantMatrixEditorProps = {
   taxCode?: string
   logisticsFee?: number
   isLogisticsReadOnly?: boolean
-  logisticsDetails?: any
+  logisticsDetails?: LogisticsEstimateDetails | null
   isFetchingLogistics?: boolean
 }
 
@@ -628,6 +628,7 @@ export default function VariantMatrixEditor({
 
           {colorValues.length > 0 ? (
             <ProductPriceCalculator
+              variants={variants}
               productGstRate={productGstRate}
               taxCode={taxCode}
               logisticsFee={logisticsFee}
@@ -984,6 +985,7 @@ export default function VariantMatrixEditor({
       {/* Vendor estimate — between photos/attributes and pricing / stock */}
       {(!hasVariants || (hasVariants && !useColorFirstFlow)) ? (
         <ProductPriceCalculator
+          variants={variants}
           productGstRate={productGstRate}
           taxCode={taxCode}
           logisticsFee={logisticsFee}

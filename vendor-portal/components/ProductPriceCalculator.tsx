@@ -17,6 +17,7 @@ import {
 } from "@/lib/pricingConfig"
 import {
   calculateVendorPricing,
+  getCalculatorProductPrice,
   formatInr,
   type MoneyRow,
 } from "@/lib/productPriceCalculator"
@@ -124,6 +125,7 @@ export type LogisticsEstimateDetails = {
 }
 
 export type ProductPriceCalculatorProps = {
+  variants?: Array<{ id?: string; title?: string; sku?: string; price?: string | number; discountedPrice?: string | number }>
   productGstRate?: number | string
   taxCode?: string
   logisticsFee?: number
@@ -133,6 +135,7 @@ export type ProductPriceCalculatorProps = {
 }
 
 export default function ProductPriceCalculator({
+  variants = [],
   productGstRate,
   taxCode,
   logisticsFee,
@@ -140,7 +143,15 @@ export default function ProductPriceCalculator({
   logisticsDetails,
   isFetchingLogistics = false,
 }: ProductPriceCalculatorProps = {}) {
-  const [priceInput, setPriceInput] = useState("")
+  const [variantIndex, setVariantIndex] = useState(0)
+  const selectedVariant = variants[variantIndex] || variants[0]
+  const productPrice = getCalculatorProductPrice(selectedVariant?.price, selectedVariant?.discountedPrice)
+  const [priceInput, setPriceInput] = useState(productPrice)
+
+  // Saved prices may arrive after mount; edits and variant changes update the estimate too.
+  useEffect(() => {
+    setPriceInput(productPrice)
+  }, [productPrice, variantIndex, selectedVariant?.id])
   const [logisticsInput, setLogisticsInput] = useState(
     logisticsFee != null ? String(logisticsFee) : String(DEFAULT_LOGISTICS_FEE)
   )
@@ -192,7 +203,7 @@ export default function ProductPriceCalculator({
   }
 
   const reset = () => {
-    setPriceInput("")
+    setPriceInput(productPrice)
     setLogisticsInput(String(DEFAULT_LOGISTICS_FEE))
     setExpanded(false)
   }
@@ -227,6 +238,21 @@ export default function ProductPriceCalculator({
       </div>
 
       <div className="p-5 space-y-5">
+        {variants.length > 1 && (
+          <div>
+            <Label htmlFor="calculator-variant" className="text-xs">Variant to calculate</Label>
+            <select
+              id="calculator-variant"
+              value={variants[variantIndex] ? variantIndex : 0}
+              onChange={event => setVariantIndex(Number(event.target.value))}
+              className="mt-1 w-full rounded-lg border border-ui-border-base bg-ui-bg-base px-3 py-2 text-sm"
+            >
+              {variants.map((variant, index) => (
+                <option key={variant.id || index} value={index}>{variant.title || variant.sku || `Variant ${index + 1}`}</option>
+              ))}
+            </select>
+          </div>
+        )}
         {/* Top inputs and summary */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
           {/* Left: Inputs */}

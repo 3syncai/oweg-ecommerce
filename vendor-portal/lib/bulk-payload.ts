@@ -82,6 +82,12 @@ export const buildBulkPayload = (groupRows: ParsedRow[], imageMap: Record<string
 
   const productOptions = hasOptions ? buildOptionsFromGroup(groupRows) : []
 
+  const optionImages: Record<string, Record<string, string[]>> = Object.create(null)
+  for (const variant of groupRows) for (const [name, image] of Object.entries(variant.optionImages || {})) {
+    optionImages[name] ||= Object.create(null)
+    optionImages[name][image.value] = [...new Set([...(optionImages[name][image.value] || []), ...image.refs.map(lookupUrl).filter((url): url is string => Boolean(url))])]
+  }
+
   const colorImages: Record<string, string[]> = Object.create(null)
   let primaryVisualOption = ""
   groupRows.forEach((groupRow) => {
@@ -89,9 +95,7 @@ export const buildBulkPayload = (groupRows: ParsedRow[], imageMap: Record<string
     const visualValue = groupRow.visualOptionValue.trim()
     if (!visualName || !visualValue) return
     if (!primaryVisualOption) primaryVisualOption = visualName
-    const refs = groupRow.visualImageRefs.length
-      ? groupRow.visualImageRefs
-      : groupRow.imageRefs
+    const refs = groupRow.optionImages?.[visualName]?.refs || (groupRow.visualImageRefs.length ? groupRow.visualImageRefs : groupRow.imageRefs)
     const urls = refs
       .map((name) => lookupUrl(name))
       .filter((url): url is string => Boolean(url))
@@ -128,6 +132,8 @@ export const buildBulkPayload = (groupRows: ParsedRow[], imageMap: Record<string
       country_of_origin: row.countryOfOrigin || null,
       tax_code: row.taxCode,
       gst_rate: row.gstRate,
+      tax_country: "IN",
+      ...(Object.keys(optionImages).length ? { option_images: optionImages } : {}),
       videos: row.videoUrls.length ? row.videoUrls.map(url => ({ url })) : null,
       ...(Object.keys(colorImages).length > 0
         ? {

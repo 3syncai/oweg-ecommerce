@@ -32,8 +32,8 @@ import {
   vendorTypesApi,
 } from "@/lib/api/client"
 import { buildBulkPayload } from "@/lib/bulk-payload"
-import { parseRows, applyGroupValidation, productGroupKey, rowOptionValues, normalizeImageKey, IMAGE_COLUMN_PATTERN, LEGACY_IMAGES_COLUMN, isMediaUrl, brandReady, type Category, type Collection, type RawRow, type ParsedRow } from "@/lib/bulk-upload"
-import { buildBulkTemplate, readBulkWorkbook, loadAllReferences } from "@/lib/bulk-workbook"
+import { parseRows, applyGroupValidation, editBulkProduct, productGroupKey, rowOptionValues, normalizeImageKey, IMAGE_COLUMN_PATTERN, LEGACY_IMAGES_COLUMN, isMediaUrl, brandReady, type Category, type Collection, type RawRow, type ParsedRow } from "@/lib/bulk-upload"
+import { buildBulkTemplate, serializeBulkTemplate, readBulkWorkbook, loadAllReferences } from "@/lib/bulk-workbook"
 import {
   extractEmbeddedImages,
   indexToColumnLetter,
@@ -100,9 +100,6 @@ const VendorProductsBulkUploadPage = () => {
   const [openCategoryRequestRows, setOpenCategoryRequestRows] = useState<
     Set<number>
   >(new Set())
-  const [openCollectionRequestRows, setOpenCollectionRequestRows] = useState<
-    Set<number>
-  >(new Set())
   // Per-row selected parent category ID for the two-level category picker
   const [rowParentCatIds, setRowParentCatIds] = useState<Record<number, string>>({})
 
@@ -153,7 +150,7 @@ const VendorProductsBulkUploadPage = () => {
           router.push("/pending")
           return
         }
-        setReferenceError("Could not load categories and collections. Retry before downloading or uploading a template.")
+        setReferenceError("Could not load categories and brands. Retry before downloading or uploading a template.")
         console.warn("Failed to load reference data:", err.message)
       }
     })()
@@ -166,14 +163,6 @@ const VendorProductsBulkUploadPage = () => {
     })
     return map
   }, [categories])
-
-  const collectionByName = useMemo(() => {
-    const map = new Map<string, string>()
-    collections.forEach((c) => {
-      if (c?.title) map.set(String(c.title).toLowerCase().trim(), c.id)
-    })
-    return map
-  }, [collections])
 
   const requiredImages = useMemo(() => {
     const set = new Set<string>()
@@ -223,7 +212,7 @@ const VendorProductsBulkUploadPage = () => {
       return {
         key,
         display: value.display,
-        rowNumbers: value.rowNumbers,
+        rowNumbers: [...new Set(value.rowNumbers)],
         // First filename is treated as the canonical expected file for the brand.
         expectedLetter: filenames[0] || "",
         // If rows of the same brand list different filenames, surface them so we
@@ -296,7 +285,7 @@ const VendorProductsBulkUploadPage = () => {
   const handleBrandLetterPicked = async (
     brandKey: string,
     brandDisplay: string,
-    file: File
+    selected: File | File[]
   ) => {
     const token =
       typeof window !== "undefined" ? localStorage.getItem("vendor_token") : null
@@ -304,19 +293,46 @@ const VendorProductsBulkUploadPage = () => {
       toast.error("Not authenticated", { description: "Please sign in again" })
       return
     }
-    const allowed = [
-      "application/pdf",
-      "image/jpeg",
-      "image/jpg",
-      "image/png",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ]
-    const extOk = /\.(pdf|jpe?g|png|docx?)$/i.test(file.name)
-    if (!extOk && file.type && !allowed.includes(file.type)) {
-      toast.error("Unsupported file", {
-        description: "Brand authorization must be PDF, DOC, DOCX, JPG, or PNG",
-      })
+    const files = Array.isArray(selected) ? selected : [selected]
+    if (!files.length) return
+    if (files.some(file => !/\.(pdf|jpe?g|png)$/i.test(file.name)) || (files.length > 1 && files.some(file => !/\.(jpe?g|png)$/i.test(file.name)))) {
+      toast.error("Upload one PDF/PNG/JPG or multiple PNG/JPG images to combine into a PDF")
+      return
+    }
+    if (files.length > 20 || files.some(file => file.size > 10 * 1024 * 1024) || files.reduce((size, file) => size + file.size, 0) > 30 * 1024 * 1024) {
+      toast.error("Select up to 20 images, 10 MB each and 30 MB total")
+      return
+    }
+    let file = files[0]
+    brandsCheckedRef.current.add(brandKey)
+    setBrandAuthMap(prev => ({ ...prev, [brandKey]: { status: "uploading", file } }))
+    try {
+      if (files.length > 1) {
+        const { jsPDF } = await import("jspdf")
+        const pdf = new jsPDF()
+        for (let i = 0; i < files.length; i++) {
+          const bitmap = await createImageBitmap(files[i])
+          try {
+            const canvas = document.createElement("canvas")
+            const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height))
+            canvas.width = Math.round(bitmap.width * scale)
+            canvas.height = Math.round(bitmap.height * scale)
+            const context = canvas.getContext("2d")
+            if (!context) throw new Error("Image conversion unavailable")
+            context.fillStyle = "white"
+            context.fillRect(0, 0, canvas.width, canvas.height)
+            context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+            if (i) pdf.addPage()
+            const ratio = Math.min(190 / canvas.width, 277 / canvas.height)
+            pdf.addImage(canvas.toDataURL("image/jpeg", 0.85), "JPEG", 10, 10, canvas.width * ratio, canvas.height * ratio)
+          } finally { bitmap.close() }
+        }
+        file = new File([pdf.output("blob")], "brand-authorization.pdf", { type: "application/pdf" })
+      }
+      if (file.size > 10 * 1024 * 1024) throw new Error("Authorization exceeds 10 MB; compress the PDF and retry")
+    } catch (cause) {
+      setBrandAuthMap(prev => ({ ...prev, [brandKey]: { status: "error", message: "Could not prepare authorization; retry with valid files" } }))
+      toast.error("Could not prepare authorization", { description: cause instanceof Error ? cause.message : "Use valid PNG/JPG or PDF files" })
       return
     }
 
@@ -362,9 +378,17 @@ const VendorProductsBulkUploadPage = () => {
     }
   }
 
-  const handleDownloadTemplate = () => {
-    XLSX.writeFile(buildBulkTemplate(categories, collections), "vendor-products-template-v2.xlsx")
-    toast.success("Template downloaded", { description: "Fill the blank Products sheet. Examples and field instructions are in separate sheets." })
+  const handleDownloadTemplate = async () => {
+    try {
+      const bytes = await serializeBulkTemplate(buildBulkTemplate(categories, collections))
+      const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }))
+      const link = document.createElement("a")
+      link.href = url
+      link.download = "vendor-products-template-v3.xlsx"
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      toast.success("Template downloaded", { description: "Choose Tax Code; GST and discount calculate automatically." })
+    } catch { toast.error("Template download failed. Please retry.") }
   }
 
   const handleFile = async (file: File) => {
@@ -411,6 +435,11 @@ const VendorProductsBulkUploadPage = () => {
           })
 
           const thumbnailColumn = headerToColumn.get("Thumbnail")
+          const optionImageColumns = new Map<string, number>()
+          headerRow.forEach((label, idx) => {
+            const match = String(label).trim().match(/^Option\s*(\d+)\s*Images?$/i)
+            if (match) optionImageColumns.set(indexToColumnLetter(idx + 1), Number(match[1]))
+          })
           // Collect every column letter that holds product images:
           //   - Image 1, Image 2, ... Image N  (current template, 1 image each)
           //   - Images                          (legacy template, one cell only)
@@ -466,6 +495,21 @@ const VendorProductsBulkUploadPage = () => {
                   file: namedFile,
                 }
                 embeddedCount++
+              } else if (optionImageColumns.has(addr.column)) {
+                const number = optionImageColumns.get(addr.column)!
+                const source = json.find(value => value.__rowNumber === row.rowNumber)
+                const optionName = String(Object.entries(source || {}).find(([key]) => key.replace(/\s/g, "").toLowerCase() === `option${number}name`)?.[1] || "").trim()
+                const optionValue = rowOptionValues(row)[optionName]
+                if (!optionName || !optionValue) continue
+                const synthName = `__embedded_r${sheetRow}_option${number}_${e.file.name}`
+                embeddedImageSeed[normalizeImageKey(synthName)] = { status: "selected", file: new File([e.file], synthName, { type: e.file.type }) }
+                row.optionImages = { ...row.optionImages, [optionName]: { value: optionValue, refs: [synthName] } }
+                row.visualImageRefs = [...row.visualImageRefs.filter(ref => !ref.startsWith("#")), synthName]
+                if (!row.visualOptionName || optionName.toLowerCase() === "color") {
+                  row.visualOptionName = optionName
+                  row.visualOptionValue = optionValue
+                }
+                embeddedCount++
               } else if (imagesColumnLetters.has(addr.column)) {
                 // Each Image-N column carries one image (Excel's Images-in-
                 // Cells feature is one-image-per-cell). We append every match
@@ -499,18 +543,15 @@ const VendorProductsBulkUploadPage = () => {
       // Pre-populate the two-level category picker's parent state from parsed data
       const initialParentIds: Record<number, string> = {}
       const initialOpenCatReqs = new Set<number>()
-      const initialOpenColReqs = new Set<number>()
       parsed.forEach((row, idx) => {
         if (row.resolvedParentCategoryId) {
           initialParentIds[idx] = row.resolvedParentCategoryId
         }
         // Auto-open request editors for rows that have unresolved Excel values
         if (row.categoryRequest) initialOpenCatReqs.add(idx)
-        if (row.collectionRequest) initialOpenColReqs.add(idx)
       })
       setRowParentCatIds(initialParentIds)
       setOpenCategoryRequestRows(initialOpenCatReqs)
-      setOpenCollectionRequestRows(initialOpenColReqs)
 
       const seeded: ImageMap = { ...embeddedImageSeed }
       parsed.forEach((r) => {
@@ -732,27 +773,7 @@ const VendorProductsBulkUploadPage = () => {
    * counter update in real time.
    */
   const handleTitleEdit = (rowIdx: number, newTitle: string) => {
-    setRows((prev) => {
-      const next = prev.map((row, i) => {
-        if (i !== rowIdx) return row
-        const otherErrors = row.errors.filter((e) => e !== "Title is required")
-        const errors = !newTitle.trim() ? ["Title is required", ...otherErrors] : otherErrors
-        let status = row.status
-        if (errors.length === 0 && row.status === "failed" && !row.errorMessage) {
-          status = "pending"
-        } else if (errors.length > 0 && row.status !== "uploading" && row.status !== "success") {
-          status = "failed"
-        }
-        return {
-          ...row,
-          title: newTitle,
-          errors,
-          status,
-          errorMessage: errors.length > 0 ? errors[0] : undefined,
-        }
-      })
-      return applyGroupValidation(next)
-    })
+    setRows(prev => editBulkProduct(prev, rowIdx, { title: newTitle }))
   }
 
   /**
@@ -830,113 +851,23 @@ const VendorProductsBulkUploadPage = () => {
    * row gets a valid category id.
    */
   const handleCategorySelect = (rowIdx: number, categoryId: string) => {
-    setRows((prev) => {
-      const next = [...prev]
-      const row = { ...next[rowIdx] }
-      row.selectedCategoryId = categoryId || undefined
-      // Once the user picks (or unsets) a real category, the legacy
-      // "Category … not found — will be ignored" warning is no longer
-      // accurate, so drop it. It'll be re-evaluated automatically next
-      // time we publish the row.
-      if (categoryId) {
-        row.warnings = row.warnings.filter(
-          (w) => !/^Category ".*" not found/.test(w)
-        )
-      }
-      next[rowIdx] = row
-      return applyGroupValidation(next)
-    })
+    const category = categories.find(item => item.id === categoryId)
+    setRows(prev => editBulkProduct(prev, rowIdx, {
+      selectedCategoryId: categoryId || undefined,
+      resolvedParentCategoryId: category?.parent_category_id || category?.id,
+    }))
   }
 
-  /**
-   * Free-text remark requesting a brand-new category. We keep this
-   * separate from selectedCategoryId — both can coexist (e.g. user picks
-   * the closest existing match AND leaves a note for admin to create the
-   * exact category later). The remark is persisted onto the product as
-   * metadata.category_request for admins to action.
-   */
   const handleCategoryRequest = (rowIdx: number, remark: string) => {
-    setRows((prev) => {
-      const next = [...prev]
-      const row = { ...next[rowIdx] }
-      row.categoryRequest = remark
-      if (remark.trim()) {
-        // A non-empty remark also resolves the not-found warning — admin
-        // will see the request and create the category.
-        row.warnings = row.warnings.filter(
-          (w) => !/^Category ".*" not found/.test(w)
-        )
-      }
-      next[rowIdx] = row
-      return applyGroupValidation(next)
-    })
+    setRows(prev => editBulkProduct(prev, rowIdx, { categoryRequest: remark }))
   }
 
-  /**
-   * Inline collection override — same semantics as category. The user
-   * can pick from the existing collections list or, for a missing one,
-   * leave a remark via handleCollectionRequest.
-   */
-  const handleCollectionSelect = (rowIdx: number, collectionId: string) => {
-    setRows((prev) => {
-      const next = [...prev]
-      const row = { ...next[rowIdx] }
-      row.selectedCollectionId = collectionId || undefined
-      if (collectionId) {
-        row.warnings = row.warnings.filter(
-          (w) => !/^Collection ".*" not found/.test(w)
-        )
-      }
-      next[rowIdx] = row
-      return applyGroupValidation(next)
-    })
-  }
-
-  const handleCollectionRequest = (rowIdx: number, remark: string) => {
-    setRows((prev) => {
-      const next = [...prev]
-      const row = { ...next[rowIdx] }
-      row.collectionRequest = remark
-      if (remark.trim()) {
-        row.warnings = row.warnings.filter(
-          (w) => !/^Collection ".*" not found/.test(w)
-        )
-      }
-      next[rowIdx] = row
-      return applyGroupValidation(next)
-    })
-  }
-
-  /**
-   * Inline product type editor. The Type column is a free-text combobox:
-   * existing types get suggested as a datalist, but the vendor can also
-   * type a brand-new value. New values are auto-created server-side at
-   * publish time, so we don't need a separate "request" mechanism.
-   */
   const handleTypeChange = (rowIdx: number, value: string) => {
-    setRows((prev) => {
-      const next = [...prev]
-      const row = { ...next[rowIdx] }
-      row.type = value
-      next[rowIdx] = row
-      return applyGroupValidation(next)
-    })
+    setRows(prev => editBulkProduct(prev, rowIdx, { type: value }))
   }
 
-  /**
-   * Inline tag editor — replaces the row's full tag list. Values can be
-   * existing tags from the suggestion list or brand-new strings; the
-   * backend dedupes against existing product_tag entities and creates
-   * any that don't exist.
-   */
   const handleTagsChange = (rowIdx: number, tags: string[]) => {
-    setRows((prev) => {
-      const next = [...prev]
-      const row = { ...next[rowIdx] }
-      row.tags = tags
-      next[rowIdx] = row
-      return applyGroupValidation(next)
-    })
+    setRows(prev => editBulkProduct(prev, rowIdx, { tags }))
   }
 
   const handleImageInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1080,7 +1011,6 @@ const VendorProductsBulkUploadPage = () => {
     rowImageInputRefs.current = {}
     brandsCheckedRef.current = new Set()
     setOpenCategoryRequestRows(new Set())
-    setOpenCollectionRequestRows(new Set())
   }
 
   return (
@@ -1113,7 +1043,7 @@ const VendorProductsBulkUploadPage = () => {
         </div>
 
         {!referencesReady && <div role="status" className="rounded-xl border p-4 text-sm">
-          {referenceError || "Loading categories and collections…"}
+          {referenceError || "Loading categories and brands…"}
           {referenceError && <Button variant="secondary" onClick={() => setReferenceAttempt(attempt => attempt + 1)}>Retry</Button>}
         </div>}
         {phase === "intro" && (
@@ -1125,7 +1055,7 @@ const VendorProductsBulkUploadPage = () => {
                 style={{ animationDelay: "40ms" }}
               >
                 <Text size="small" className="text-ui-fg-subtle">
-                  Template v2 includes a blank Products sheet, separate examples, a field guide, GST codes, categories and collections.
+                  Template v3: required MRP and stock, Tax Code dropdown, automatic GST/discount, and comma-separated options with matching images. Brand becomes the collection; upload authorization after parsing.
                   Required columns are marked with <span className="font-mono">*</span>.
                   Leave SKU and Discount % blank — they are generated automatically.
                 </Text>
@@ -1201,13 +1131,13 @@ const VendorProductsBulkUploadPage = () => {
                 className="animate-fade-in-up"
               >
                 <Text size="small" className="text-ui-fg-subtle">
-                  One Excel row = one variant. Rows with the same{" "}
-                  <code className="font-mono text-xs">Title</code> become one product with
-                  multiple variants. Use Option 1 / Option 2 / Option 3, or add numbered Option Name / Value pairs. A Handle separates products with the same title.
+                  Enter comma-separated values: Size 8,9,10 and Color Red,Green,Blue create nine variants.
+                  The row&apos;s price and stock apply to each variant. For different stock or prices, use separate rows.
+                  Rows with the same Handle (or Title if blank) form one product.
                 </Text>
                 <Text size="small" className="text-ui-fg-subtle">
-                  For color galleries, use Visual Option Name, Visual Option Value, and
-                  Visual Image Refs. The template includes example variant rows.
+                  Put Option Images beside each option value: one shared photo, or one per value in the same order.
+                  For Red,Blue use red.jpg,blue.jpg. Maximum 100 variants per product.
                 </Text>
               </GuideCard>
 
@@ -1219,13 +1149,11 @@ const VendorProductsBulkUploadPage = () => {
                 className="animate-fade-in-up"
               >
                 <Text size="small" className="text-ui-fg-subtle">
-                  Reference letter filenames in the Brand Letter column (e.g.{" "}
-                  <code className="font-mono text-xs">nike-letter.pdf</code>). One letter
-                  per brand — reuse the same filename for every row of that brand.
+                  Authorization is requested after the Excel is read, once per brand. Nothing needs to be entered in Excel.
                 </Text>
                 <Text size="small" className="text-ui-fg-subtle">
-                  After upload, drop or browse PDF, DOC, DOCX, JPG, or PNG files in the
-                  brand panel. Files are stored and reused for all products of that brand.
+                  Upload one PNG/JPG or PDF. Select multiple PNG/JPG images to combine them into a single PDF automatically.
+                  Pending letters allow draft submission; admin approval is required to go live.
                 </Text>
               </GuideCard>
 
@@ -1237,8 +1165,7 @@ const VendorProductsBulkUploadPage = () => {
                 className="animate-fade-in-up md:col-span-2"
               >
                 <Text size="small" className="text-ui-fg-subtle">
-                  List filenames in Thumbnail and Image columns. The Images column accepts
-                  comma-separated lists (e.g.{" "}
+                  List filenames in Thumbnail and Image 1, Image 2, Image 3 columns. For option images, use comma-separated names (e.g.{" "}
                   <code className="font-mono text-xs">jacket-1.jpg, jacket-2.jpg</code>).
                 </Text>
                 <Text size="small" className="text-ui-fg-subtle">
@@ -1258,8 +1185,8 @@ const VendorProductsBulkUploadPage = () => {
                 <Text weight="plus">{fileName}</Text>
               </div>
               <div className="flex gap-2 flex-wrap">
-                <Badge color="grey">Rows: {rows.length}</Badge>
-                <Badge color="blue">Products: {productGroupCount}</Badge>
+                <Badge color="grey">Source rows: {new Set(rows.map(row => row.rowNumber)).size} · Variants: {rows.length}</Badge>
+                <Badge color="blue">Products: {new Set(rows.map(productGroupKey)).size} · Ready: {productGroupCount}</Badge>
                 <Badge color="green">Valid rows: {validRows.length}</Badge>
                 {invalidRows.length > 0 && (
                   <Badge color="red">Errors: {invalidRows.length}</Badge>
@@ -1319,7 +1246,7 @@ const VendorProductsBulkUploadPage = () => {
                   <div>
                     <Text weight="plus">Brand authorization letters</Text>
                     <Text size="small" className="text-ui-fg-subtle">
-                      Upload one letter per brand. We&apos;ll apply it to every row
+                      Upload one PNG/JPG or PDF per brand. Multiple images are combined into one PDF. We&apos;ll apply it to every row
                       that uses that brand — no need to re-upload for each product.
                     </Text>
                   </div>
@@ -1346,8 +1273,8 @@ const VendorProductsBulkUploadPage = () => {
                       }
                       const onCardDrop = (e: React.DragEvent<HTMLElement>) => {
                         e.preventDefault()
-                        const f = e.dataTransfer.files?.[0]
-                        if (f) handleBrandLetterPicked(key, display, f)
+                        const files = Array.from(e.dataTransfer.files || [])
+                        if (files.length) handleBrandLetterPicked(key, display, files)
                       }
 
                       let badge: React.ReactNode = (
@@ -1424,12 +1351,11 @@ const VendorProductsBulkUploadPage = () => {
                                   <>
                                     Drop{" "}
                                     <span className="font-mono">{expectedLetter}</span>{" "}
-                                    here, or click to browse (PDF, DOC, DOCX, JPG, PNG)
+                                    here, or click to browse (PDF, JPG, PNG)
                                   </>
                                 ) : (
                                   <>
-                                    Drop or click to upload letter (PDF, DOC, DOCX,
-                                    JPG, PNG)
+                                    Upload one PDF/PNG/JPG or select multiple images to combine into a PDF
                                   </>
                                 )}
                               </button>
@@ -1438,11 +1364,12 @@ const VendorProductsBulkUploadPage = () => {
                                   brandInputRefs.current[key] = el
                                 }}
                                 type="file"
-                                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                multiple
                                 className="hidden"
                                 onChange={(e) => {
-                                  const f = e.target.files?.[0]
-                                  if (f) handleBrandLetterPicked(key, display, f)
+                                  const files = Array.from(e.target.files || [])
+                                  if (files.length) handleBrandLetterPicked(key, display, files)
                                   e.target.value = ""
                                 }}
                               />
@@ -1458,7 +1385,7 @@ const VendorProductsBulkUploadPage = () => {
                           {status === "pending" && (
                             <Text size="xsmall" className="text-amber-600">
                               Already submitted previously — products can be
-                              published; admin approval is still needed for them
+                              submitted as drafts; admin approval is still needed for them
                               to go live.
                             </Text>
                           )}
@@ -1557,13 +1484,13 @@ const VendorProductsBulkUploadPage = () => {
                   </svg>
                 </div>
                 <Text size="small" className="text-ui-fg-base">
-                  <span className="font-medium">Edit rows in place.</span>{" "}
+                  <span className="font-medium">Edit product details in place; changes apply to all its variants.</span>{" "}
                   Click the title to rename, the{" "}
                   <span className="font-mono">+</span> next to a row to
                   add an image, and use the inline editors to change the
-                  category, subcategory, collection, type, or tags. New
+                  category, subcategory, type, or tags. Brand is the collection. New
                   types and tags are auto-created in Medusa on publish;
-                  missing categories/collections can be requested via{" "}
+                  missing categories can be requested via{" "}
                   <span className="italic">Request new</span> for admin
                   review. Changes are saved here and applied when you publish.
                 </Text>
@@ -1579,12 +1506,11 @@ const VendorProductsBulkUploadPage = () => {
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Title</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Brand</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Category</th>
-                    <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Collection</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Type</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Tags</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Options</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">SKU</th>
-                    <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">Price</th>
+                    <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">MRP INR</th>
                     <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">Discounted</th>
                     <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">Discount %</th>
                     <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">Inventory</th>
@@ -1727,7 +1653,7 @@ const VendorProductsBulkUploadPage = () => {
                                   aria-label={`Parent category for row ${row.rowNumber}`}
                                 >
                                   <option value="">
-                                    {noCategoriesLoaded ? "Loading…" : "— Parent category —"}
+                                    {noCategoriesLoaded ? "No categories available" : "— Parent category —"}
                                   </option>
                                   {rootCats.map((c) => (
                                     <option key={c.id} value={c.id}>
@@ -1801,146 +1727,6 @@ const VendorProductsBulkUploadPage = () => {
                                         <path d="M12 5v14M5 12h14" />
                                       </svg>
                                       Request new category
-                                    </button>
-                                  )
-                                )}
-                              </div>
-                            )
-                          })()}
-                        </td>
-                        <td className="px-3 py-2 min-w-[220px] align-top">
-                          {(() => {
-                            const canEditCol =
-                              phase !== "uploading" &&
-                              row.status !== "uploading" &&
-                              row.status !== "success"
-                            const remark = row.collectionRequest || ""
-                            const showRequest =
-                              openCollectionRequestRows.has(idx) ||
-                              remark.length > 0
-                            const noCollectionsLoaded = collections.length === 0
-                            const excelMissing =
-                              !noCollectionsLoaded &&
-                              !!row.collection &&
-                              !collectionByName.has(
-                                row.collection.toLowerCase()
-                              )
-                            const openRequestEditor = () => {
-                              setOpenCollectionRequestRows((prev) => {
-                                const next = new Set(prev)
-                                next.add(idx)
-                                return next
-                              })
-                              if (
-                                !row.collectionRequest &&
-                                row.collection &&
-                                excelMissing
-                              ) {
-                                handleCollectionRequest(idx, row.collection)
-                              }
-                            }
-                            const closeRequestEditor = () => {
-                              setOpenCollectionRequestRows((prev) => {
-                                const next = new Set(prev)
-                                next.delete(idx)
-                                return next
-                              })
-                              handleCollectionRequest(idx, "")
-                            }
-                            return (
-                              <div className="flex flex-col gap-1.5">
-                                <select
-                                  value={row.selectedCollectionId || ""}
-                                  onChange={(e) =>
-                                    handleCollectionSelect(
-                                      idx,
-                                      e.target.value
-                                    )
-                                  }
-                                  disabled={
-                                    !canEditCol || noCollectionsLoaded
-                                  }
-                                  className={clx(
-                                    "w-full text-xs rounded border bg-ui-bg-base text-ui-fg-base px-2 py-1 focus:border-blue-500 focus:outline-none transition-colors disabled:opacity-60 disabled:cursor-not-allowed",
-                                    !row.selectedCollectionId &&
-                                      excelMissing &&
-                                      !showRequest
-                                      ? "border-amber-400"
-                                      : "border-ui-border-base"
-                                  )}
-                                  aria-label={`Collection for row ${row.rowNumber}`}
-                                >
-                                  <option value="">
-                                    {noCollectionsLoaded
-                                      ? "Loading collections…"
-                                      : "— No collection —"}
-                                  </option>
-                                  {collections.map((c) => (
-                                    <option key={c.id} value={c.id}>
-                                      {toTitleCase(c.title || "")}
-                                    </option>
-                                  ))}
-                                </select>
-                                {excelMissing && !row.selectedCollectionId && (
-                                  <Text
-                                    size="xsmall"
-                                    className="text-amber-600 leading-tight"
-                                  >
-                                    Excel said{" "}
-                                    <span className="font-mono">
-                                      {row.collection}
-                                    </span>{" "}
-                                    — pick a match or request below.
-                                  </Text>
-                                )}
-                                {showRequest ? (
-                                  <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] uppercase tracking-wide text-ui-fg-subtle font-medium flex items-center justify-between">
-                                      <span>Request new collection</span>
-                                      {canEditCol && (
-                                        <button
-                                          type="button"
-                                          onClick={closeRequestEditor}
-                                          className="text-ui-fg-interactive normal-case font-normal text-xs hover:underline"
-                                        >
-                                          Cancel
-                                        </button>
-                                      )}
-                                    </label>
-                                    <textarea
-                                      value={remark}
-                                      onChange={(e) =>
-                                        handleCollectionRequest(
-                                          idx,
-                                          e.target.value
-                                        )
-                                      }
-                                      disabled={!canEditCol}
-                                      rows={2}
-                                      placeholder="e.g. Summer 2026 — please create"
-                                      className="w-full text-xs rounded border border-ui-border-base bg-ui-bg-base text-ui-fg-base px-2 py-1 focus:border-blue-500 focus:outline-none transition-colors resize-y disabled:opacity-60"
-                                    />
-                                  </div>
-                                ) : (
-                                  canEditCol && (
-                                    <button
-                                      type="button"
-                                      onClick={openRequestEditor}
-                                      className="text-xs text-ui-fg-interactive hover:underline self-start flex items-center gap-1"
-                                    >
-                                      <svg
-                                        width="12"
-                                        height="12"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      >
-                                        <path d="M12 5v14M5 12h14" />
-                                      </svg>
-                                      Request new collection
                                     </button>
                                   )
                                 )}
@@ -2158,7 +1944,7 @@ const VendorProductsBulkUploadPage = () => {
                           )}
                         </td>
                         <td className="px-3 py-2 text-right">
-                          {row.inventoryCount || <span className="text-ui-fg-muted">0</span>}
+                          {row.inventoryCount || <span className="text-red-600">Required</span>}
                         </td>
                         <td className="px-3 py-2 min-w-[200px]">
                           {(() => {
