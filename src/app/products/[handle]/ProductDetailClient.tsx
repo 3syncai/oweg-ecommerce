@@ -33,7 +33,7 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
   const selectedSellerOffer = sellerOffers?.find(offer => offer.variant_id === selectedSellerVariantId) ?? sellerOffers?.[0];
   const purchaseVariantId = selectedSellerOffer?.variant_id ?? product.variant_id;
   const displayPrice = selectedSellerOffer?.price ?? product.price;
-  const sellerChoicePinned = Boolean(selectedSellerOffer && selectedSellerOffer.variant_id === selectedSellerVariantId);
+  const sellerChoicePinned = Boolean(selectedSellerOffer);
   const showHealthCareAgeGate = productHasHealthCareCategory(product.categories);
 
   const handleAddToCart = async () => {

@@ -2,12 +2,12 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Pool } from "pg"
 import { requireApprovedVendor } from "../../_lib/guards"
 import {
-  formatVendorOrder,
   getVendorOrderOrRespond,
   setVendorOrderCorsHeaders,
   enrichOrdersWithProductGstMetadata,
   type VendorOrderSettlementRates,
 } from "../../../../lib/vendor-order-workflow"
+import { formatVendorOrderWithCancellations, loadCancelledVendorItems } from "../../../../lib/vendor-assignment-cancellations"
 import { fetchVendorCommissionRate } from "../../../../lib/vendor-earnings"
 import {
   DEFAULT_MARKETPLACE_TCS_RATE,
@@ -54,8 +54,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL })
   try {
-    const result = await getVendorOrderOrRespond(req, res, auth.vendor_id, orderId)
+    const result = await getVendorOrderOrRespond(req, res, auth.vendor_id, orderId, true)
     if (!result) return
+
+    const cancelledItems = (await loadCancelledVendorItems(pool, [orderId], auth.vendor_id)).get(orderId) || []
+    if (!result.order.items?.some((item: any) => result.vendorProductIds.includes(item.product_id || item.variant?.product_id))
+      && !cancelledItems.length) return res.status(404).json({ message: "Order not found for this vendor" })
 
     const settlementRates = await loadSettlementRates(pool, auth.vendor_id)
     try {
@@ -65,10 +69,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     }
 
     return res.json({
-      order: formatVendorOrder(
+      order: formatVendorOrderWithCancellations(
         result.order,
         auth.vendor_id,
         result.vendorProductIds,
+        cancelledItems,
         settlementRates
       ),
     })

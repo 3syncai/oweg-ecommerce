@@ -1,12 +1,14 @@
 import type { MedusaRequest } from "@medusajs/framework/http"
+import { cancelOrderWorkflow } from "@medusajs/core-flows"
 import { Modules } from "@medusajs/framework/utils"
 import { getSharedDbPool } from "./db-pool"
 import { listCatalogOffers } from "./vendor-offer-routing"
 import { withVendorOrderAssignmentLock } from "./vendor-order-assignment-lock"
 import { getReplacementRequest } from "./vendor-replacement-requests"
 import { performVendorReassignment } from "../api/admin/orders/[id]/reshuffle/route"
-import { settleReplacementRefund } from "./vendor-replacement-settlement"
+import { refundRejectedReplacementOrder, settleReplacementRefund } from "./vendor-replacement-settlement"
 import { verifyReplacementConsentCode } from "./vendor-replacement-consent"
+import { chargeVendorRelocationCancellation, reverseVendorEarningsForOrder } from "./vendor-earnings"
 
 export class ReplacementResponseError extends Error {
   constructor(message: string, public status = 409) { super(message) }
@@ -46,10 +48,43 @@ export async function respondToVendorReplacement(input: {
       throw new ReplacementResponseError("The original order item has changed. Ask support for a new offer.")
 
     if (input.decision === "reject") {
+      const metadata = { ...(order.metadata || {}) }
+      const isCod = String(metadata.payment_method || "").toLowerCase() === "cod"
+      if (!isCod) await refundRejectedReplacementOrder(input.orderId, request.id, metadata)
+      await orderModule.updateOrders(input.orderId, { metadata: {
+        ...metadata,
+        customer_cancel_reason: "Customer declined the proposed replacement",
+        cancellation_reason: "Customer declined the proposed replacement",
+        cancellation_note: "Customer declined the proposed replacement",
+        cancellation_source: "customer",
+        cancelled_by: "customer",
+        cancelled_by_admin: false,
+        cancellation_requested_at: new Date().toISOString(),
+        cancellation_requested_by: input.actorId,
+      } })
+      await cancelOrderWorkflow(input.req.scope).run({
+        input: { order_id: input.orderId, canceled_by: input.actorId },
+      })
       await getSharedDbPool().query(`UPDATE vendor_replacement_request SET
         status='rejected', responded_by=$2, response_source=$3, response_at=now(),
         resolution_note=$4, contact_method=$5, updated_at=now() WHERE id=$1 AND status='pending'`,
         [request.id, input.actorId, input.source, input.note || null, input.contactMethod || null])
+      await getSharedDbPool().query(`UPDATE vendor_replacement_request SET status='expired',updated_at=now()
+        WHERE order_id=$1 AND id<>$2 AND status='pending'`, [input.orderId, request.id])
+      await reverseVendorEarningsForOrder(input.orderId, getSharedDbPool(), "replacement-rejected")
+        .catch((error) => console.error("[replacement] cancelled order earnings reversal needs review", {
+          orderId: input.orderId, requestId: request.id, error,
+        }))
+      const originalVendor = await getSharedDbPool().query<{ vendor_id: string }>(
+        `SELECT p.metadata->>'vendor_id' AS vendor_id FROM product_variant pv
+         JOIN product p ON p.id=pv.product_id WHERE pv.id=$1`, [request.original_variant_id])
+      if (originalVendor.rows[0]?.vendor_id) {
+        await chargeVendorRelocationCancellation(input.orderId, originalVendor.rows[0].vendor_id,
+          getSharedDbPool(), { orderMetadata: metadata })
+          .catch((error) => console.error("[replacement] original vendor cancellation charge needs review", {
+            orderId: input.orderId, requestId: request.id, error,
+          }))
+      }
       return { status: "rejected" as const }
     }
 
@@ -79,6 +114,26 @@ export async function respondToVendorReplacement(input: {
       const adjustment = Number(quote.price_difference)
       if (!Number.isFinite(adjustment) || Math.abs(adjustment) < 0.005)
         throw new ReplacementResponseError("The replacement total could not be quoted. Ask support to review the order.")
+      if (String(order.metadata?.payment_method || "").toLowerCase() === "cod") {
+        if (order.metadata?.cod_status !== "confirmed")
+          throw new ReplacementResponseError("The COD order is not confirmed")
+        const reassigned = await performVendorReassignment(input.req, {
+          orderId: input.orderId, itemId: request.item_id, actorId: request.created_by,
+          targetVendorId: choice.vendor_id, targetVariantId: choice.variant_id,
+          cancelVendorAssignment: true,
+          reason: input.note && input.note.length >= 3 ? input.note : "Customer approved COD replacement",
+          requestId: request.id, approvedBy: input.actorId,
+          replacementPrice: choice.unit_price, settledAmount: adjustment,
+        })
+        await getSharedDbPool().query(`UPDATE vendor_replacement_request SET
+          status='applied', adjustment_amount=$2, selected_variant_id=$3, selected_vendor_id=$4,
+          selected_unit_price=$5, responded_by=$6, response_source=$7, response_at=now(),
+          resolution_note=$8, contact_method=$9,updated_at=now()
+          WHERE id=$1 AND status='pending'`, [request.id, adjustment, choice.variant_id,
+          choice.vendor_id, choice.unit_price, input.actorId, input.source,
+          input.note || null, input.contactMethod || null])
+        return { status: "applied" as const, reassigned, price_difference: adjustment }
+      }
       const status = adjustment > 0 ? "awaiting_payment" : "awaiting_refund"
       await getSharedDbPool().query(`UPDATE vendor_replacement_request SET
         status=$8, adjustment_amount=$9, selected_variant_id=$2, selected_vendor_id=$3,

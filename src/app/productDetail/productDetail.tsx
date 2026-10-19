@@ -215,7 +215,9 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       : offer.price,
   })).sort((a, b) => a.price - b.price || b.available - a.available || a.variant_id.localeCompare(b.variant_id)), [sellerOffers, selectedVariant?.id, flashSaleInfo?.active, flashSaleInfo?.flash_sale_price])
   const selectedSellerOffer = visibleSellerOffers?.find(offer => offer.variant_id === selectedSellerVariantId) ?? visibleSellerOffers?.[0]
-  const sellerChoicePinned = Boolean(selectedSellerOffer && selectedSellerOffer.variant_id === selectedSellerVariantId)
+  // The first offer is shown as "Selected" even before the buyer clicks it.
+  // Carry that visible choice through cart and checkout as well.
+  const sellerChoicePinned = Boolean(selectedSellerOffer)
   const purchaseVariantId = selectedSellerOffer?.variant_id ?? selectedVariant?.id ?? product?.variant_id
   const sellerHasStock = selectedSellerOffer ? selectedSellerOffer.available > 0 : undefined
   const sellerInventory = selectedSellerOffer?.available
@@ -291,7 +293,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   // ProductSummary shows the flash price + countdown when one is active.
   // Without this the PDP silently shows the regular catalogue price.
   const selectedFlashSaleInfo = purchaseVariantId === selectedVariant?.id ? flashSaleInfo : undefined
-  const checkoutSellerChoicePinned = sellerChoicePinned && !selectedFlashSaleInfo?.active
+  const checkoutSellerChoicePinned = sellerChoicePinned
   const categoryIds = useMemo(
     () => Array.from(new Set((product?.categories || []).map((cat) => cat.id).filter((id): id is string => !!id))),
     [product?.categories]
@@ -1084,6 +1086,14 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
   // expose quantity for other usages if needed, mapping back to old simple variable
   const resolvedInventory = stockInfo.quantity
+  const maxPurchaseQuantity = Math.max(
+    1,
+    Math.min(10, typeof (sellerInventory ?? resolvedInventory) === "number" ? (sellerInventory ?? resolvedInventory)! : 10)
+  )
+
+  useEffect(() => {
+    setQuantity((current) => Math.min(current, maxPurchaseQuantity))
+  }, [maxPurchaseQuantity])
 
   const hasStock = useMemo(() => {
     if (selectedVariant) {
@@ -1120,7 +1130,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   }, [product?.id, hasStock, sellerHasStock])
 
   const handleQuantityChange = (delta: number) => {
-    setQuantity((prev) => Math.max(1, prev + delta))
+    setQuantity((prev) => Math.min(maxPurchaseQuantity, Math.max(1, prev + delta)))
   }
 
   const addVariantToCart = async (variantId?: string, qty = 1, label?: string, sellerSelected = false) => {
@@ -1178,7 +1188,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       notifyOutOfStock()
       return
     }
-    if (typeof (sellerInventory ?? resolvedInventory) === 'number' && quantity > (sellerInventory ?? resolvedInventory)!) {
+    if (quantity > maxPurchaseQuantity) {
       notifyOutOfStock()
       return
     }
@@ -1204,7 +1214,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       notifyOutOfStock()
       return
     }
-    if (typeof (sellerInventory ?? resolvedInventory) === 'number' && quantity > (sellerInventory ?? resolvedInventory)!) {
+    if (quantity > maxPurchaseQuantity) {
       notifyOutOfStock()
       return
     }
@@ -1421,6 +1431,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   viewCount={viewCount}
                   hasStock={sellerHasStock ?? hasStock}
                   quantity={quantity}
+                  maxQuantity={maxPurchaseQuantity}
                   selectedOptions={selectedOptions}
                   onOptionChange={handleOptionChange}
                   onQuantityChange={handleQuantityChange}

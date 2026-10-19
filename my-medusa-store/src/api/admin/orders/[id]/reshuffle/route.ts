@@ -16,6 +16,8 @@ import { chargeVendorRelocationCancellation } from "../../../../../lib/vendor-ea
 import { getOrFreezeOrderSettlementRates } from "../../../../../lib/vendor-settlement-snapshot"
 import { acceptanceDeadline } from "../../../../../lib/vendor-acceptance-deadline"
 import { mergeVendorWorkflowMetadata } from "../../../../../lib/vendor-order-workflow"
+import { reassignmentExcludedVendorIds } from "../../../../../lib/vendor-reassignment-exclusions"
+import { normalizeOrderPublicSkus } from "../../../../../lib/order-public-sku"
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const orderId = String(req.params?.id || "")
@@ -52,6 +54,8 @@ type ReassignmentInput = {
   replacementPrice?: number
   settledAmount?: number
   previewOnly?: boolean
+  /** Internal repair for a verified checkout routing error; never exposed by POST. */
+  systemRoutingCorrection?: boolean
 }
 
 class ReassignmentError extends Error {
@@ -79,10 +83,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   )
   const fromVendorId = source.rows[0]?.vendor_id
   if (!fromVendorId) return res.status(409).json({ message: "This item has no vendor offer" })
-  const history: any[] = Array.isArray(order.metadata?.vendor_reassignment_history) ? order.metadata.vendor_reassignment_history : []
-  const prior = [...history].reverse().find((entry: any) => entry.current_item_id === itemId)
-  const originalItemId = prior?.original_item_id || itemId
-  const excluded = new Set<string>([fromVendorId, ...history.filter((entry: any) => entry.original_item_id === originalItemId).map((entry: any) => entry.from_vendor_id)])
+  // Admin is choosing a seller explicitly. Previous assignments may still be
+  // eligible; only hide the seller who currently owns the item.
+  const excluded = new Set<string>([fromVendorId])
   for (const [vendorId, workflow] of Object.entries(order.metadata?.vendor_order_workflows || {})) {
     if (isVendorAccepted(workflow as any)) excluded.add(vendorId)
   }
@@ -159,7 +162,11 @@ export async function performVendorReassignment(req: MedusaRequest, input: Reass
     const history: any[] = Array.isArray(order.metadata?.vendor_reassignment_history) ? order.metadata.vendor_reassignment_history : []
     const prior = [...history].reverse().find((entry: any) => entry.current_item_id === itemId)
     const originalItemId = prior?.original_item_id || itemId
-    const excluded = [...new Set([from.vendor_id, ...history.filter((entry: any) => entry.original_item_id === originalItemId).map((entry: any) => entry.from_vendor_id)])]
+    // Avoid retrying earlier sellers only for automatic selection. An admin's
+    // explicit choice can return to a previous seller if stock and price pass.
+    const excluded = reassignmentExcludedVendorIds(
+      from.vendor_id, history, originalItemId, Boolean(targetVendorId || targetVariantId)
+    )
     const quantity = Number(item.quantity)
     const price = Number(item.unit_price)
     const replacementPrice = input.replacementPrice ?? price
@@ -184,11 +191,15 @@ export async function performVendorReassignment(req: MedusaRequest, input: Reass
     const beforeTotal = Number(baseline.summary?.current_order_total ?? baseline.total)
     if (!Number.isFinite(beforeTotal))
       throw new ReassignmentError("The current order total could not be calculated")
-    const cancellationRates = input.previewOnly ? undefined : await getOrFreezeOrderSettlementRates({
+    const cancellationRates = input.previewOnly || input.systemRoutingCorrection ? undefined : await getOrFreezeOrderSettlementRates({
       orderId, vendorId: from.vendor_id, pool, metadata: order.metadata,
     })
 
-    await beginOrderEditOrderWorkflow(req.scope).run({ input: { order_id: orderId, description: cancelVendorAssignment ? "Admin cancelled vendor assignment and relocated item" : "Vendor reassignment", internal_note: cancelVendorAssignment ? `From ${from.vendor_id} to ${choice.vendor_id}: ${reason}` : `Vendor ${from.vendor_id} did not accept` } })
+    await beginOrderEditOrderWorkflow(req.scope).run({ input: { order_id: orderId,
+      description: input.systemRoutingCorrection ? "Correct checkout seller routing"
+        : cancelVendorAssignment ? "Admin cancelled vendor assignment and relocated item" : "Vendor reassignment",
+      internal_note: input.systemRoutingCorrection ? `Correct seller from ${from.vendor_id} to ${choice.vendor_id}: ${reason}`
+        : cancelVendorAssignment ? `From ${from.vendor_id} to ${choice.vendor_id}: ${reason}` : `Vendor ${from.vendor_id} did not accept` } })
     editActive = true
     const { result: addedPreview } = await orderEditAddNewItemWorkflow(req.scope).run({ input: { order_id: orderId, items: [{ variant_id: choice.variant_id, quantity, unit_price: replacementPrice, metadata: { oweg_reassignment_from_item_id: itemId } }] } })
     const existingIds = new Set((order.items || []).map((row: any) => row.id))
@@ -210,6 +221,8 @@ export async function performVendorReassignment(req: MedusaRequest, input: Reass
       throw new Error("Order total differs from the settled amount. The replacement needs manual review.")
     await confirmOrderEditRequestWorkflow(req.scope).run({ input: { order_id: orderId, confirmed_by: actorId } })
     editActive = false
+    await normalizeOrderPublicSkus(orderId, pool).catch(error =>
+      console.error("[vendor-reshuffle] public SKU normalization failed", { orderId, error }))
 
     const refreshed: any = await orderModule.retrieveOrder(orderId, { relations: ["items"] })
     const replacement = (refreshed.items || []).find((row: any) => row.id === addedItem.id && row.variant_id === choice.variant_id)
@@ -228,10 +241,11 @@ export async function performVendorReassignment(req: MedusaRequest, input: Reass
       new_variant_title: choice.variant_title || null,
       previous_unit_price: price,
       actor_id: actorId, at: new Date().toISOString(),
-      action: cancelVendorAssignment ? "admin_cancel_and_relocate" : "reassign",
-      vendor_cancellation_charge_status: "pending",
+      action: input.systemRoutingCorrection ? "system_routing_correction"
+        : cancelVendorAssignment ? "admin_cancel_and_relocate" : "reassign",
+      vendor_cancellation_charge_status: input.systemRoutingCorrection ? "waived" : "pending",
       vendor_cancellation_charge_rates: cancellationRates,
-      ...(cancelVendorAssignment ? { reason } : {}),
+      ...(cancelVendorAssignment || input.systemRoutingCorrection ? { reason } : {}),
       ...(input.requestId ? { replacement_request_id: input.requestId, approved_by: input.approvedBy } : {}),
     }]
     const assignedAt = new Date().toISOString()
@@ -254,17 +268,19 @@ export async function performVendorReassignment(req: MedusaRequest, input: Reass
       metadata.vendor_order_workflows = workflows
     }
     await orderModule.updateOrders(orderId, { metadata })
-    let chargeStatus: "recorded" | "waived" | "pending" = "pending"
-    try {
-      await chargeVendorRelocationCancellation(orderId, from.vendor_id, pool, {
-        orderMetadata: order.metadata, frozenRates: cancellationRates,
-      })
-      // A retry may insert zero rows because the debit is already present.
-      chargeStatus = Number(cancellationRates?.cancellation_charge || 0) > 0 ? "recorded" : "waived"
-      nextHistory[nextHistory.length - 1].vendor_cancellation_charge_status = chargeStatus
-      await orderModule.updateOrders(orderId, { metadata: { ...metadata, vendor_reassignment_history: nextHistory } })
-    } catch (error) {
-      console.error("[vendor-reshuffle] cancellation charge pending reconciliation", { orderId, vendorId: from.vendor_id, error })
+    let chargeStatus: "recorded" | "waived" | "pending" = input.systemRoutingCorrection ? "waived" : "pending"
+    if (!input.systemRoutingCorrection) {
+      try {
+        await chargeVendorRelocationCancellation(orderId, from.vendor_id, pool, {
+          orderMetadata: order.metadata, frozenRates: cancellationRates,
+        })
+        // A retry may insert zero rows because the debit is already present.
+        chargeStatus = Number(cancellationRates?.cancellation_charge || 0) > 0 ? "recorded" : "waived"
+        nextHistory[nextHistory.length - 1].vendor_cancellation_charge_status = chargeStatus
+        await orderModule.updateOrders(orderId, { metadata: { ...metadata, vendor_reassignment_history: nextHistory } })
+      } catch (error) {
+        console.error("[vendor-reshuffle] cancellation charge pending reconciliation", { orderId, vendorId: from.vendor_id, error })
+      }
     }
     invalidateVendorOrderIdCache(from.vendor_id)
     invalidateVendorOrderIdCache(choice.vendor_id)

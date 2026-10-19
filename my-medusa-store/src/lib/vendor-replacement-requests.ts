@@ -39,6 +39,10 @@ export type ReplacementRequest = {
   contact_method: string | null
   decision_email_sent_at: string | null
   decision_email_error: string | null
+  outcome_customer_email_sent_at: string | null
+  outcome_customer_email_error: string | null
+  outcome_vendor_email_sent_at: string | null
+  outcome_vendor_email_error: string | null
   response_at: string | null
   resolution_note: string | null
   email_sent_at: string | null

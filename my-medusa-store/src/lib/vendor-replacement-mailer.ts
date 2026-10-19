@@ -97,3 +97,41 @@ export async function sendVendorReplacementConsentCodeEmail(input: {
     ],
   })
 }
+
+export async function sendReplacementOutcomeEmail(input: {
+  to: string
+  orderId: string
+  displayId?: string | number | null
+  role: "customer" | "vendor"
+  outcome: "applied" | "rejected"
+  productTitle: string
+  replacementTitle?: string | null
+  paymentMethod: "cod" | "prepaid"
+}) {
+  if (!hasPasswordResetMailerConfig()) throw new Error("Replacement confirmation email is not configured")
+  const label = input.displayId ? `#${input.displayId}` : input.orderId
+  const storefront = (process.env.STOREFRONT_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "")
+  const applied = input.outcome === "applied"
+  await sendTransactionalEmail({
+    to: input.to,
+    subject: applied ? `Replacement confirmed for OWEG order ${label}` : `OWEG order ${label} cancelled`,
+    heading: applied ? `Replacement confirmed for order ${label}` : `Order ${label} cancelled`,
+    intro: applied
+      ? `${input.replacementTitle || input.productTitle} is assigned to the new vendor.`
+      : input.role === "customer"
+        ? `We're sorry we couldn't offer a suitable replacement for ${input.productTitle}. Since you declined the available options, your order has been cancelled.`
+        : `The customer declined the replacement for ${input.productTitle}, so the order has been cancelled.`,
+    paragraphs: input.role === "customer"
+      ? [applied
+          ? input.paymentMethod === "cod"
+            ? "Your updated order will be paid on delivery. No online payment was taken for this change."
+            : "Your payment adjustment is confirmed."
+          : input.paymentMethod === "prepaid"
+            ? "We've initiated a refund of your captured payment to the original payment method. Your bank or payment provider will determine when it appears."
+            : "No payment is due for this cancelled order.",
+        ...(!applied ? ["We're sorry for the inconvenience. If you need help, please contact OWEG support."] : []),
+        `View your order: ${storefront}/account/orders/${encodeURIComponent(input.orderId)}`]
+      : [applied ? "The customer confirmed this replacement. Review the updated item in your vendor orders before packing."
+          : "The customer declined the replacement. Do not pack or ship this order."],
+  })
+}

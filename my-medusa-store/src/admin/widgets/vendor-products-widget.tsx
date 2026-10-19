@@ -978,9 +978,6 @@ const VendorProductsWidget = () => {
                       <Button size="small" variant="secondary" onClick={() => handleEdit(product.id)}>
                         Edit
                       </Button>
-                      <Button size="small" onClick={() => handleApprove(product.id)}>
-                        Approve
-                      </Button>
                     </div>
                   </Table.Cell>
                 </Table.Row>

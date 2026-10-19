@@ -21,7 +21,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   try {
     const categories = productIds.length
       ? await pool.query<{ product_id: string; category_id: string }>(
-          `SELECT product_id, category_id FROM product_category_product
+          `SELECT product_id, product_category_id AS category_id FROM product_category_product
            WHERE product_id = ANY($1::text[])`,
           [productIds]
         )

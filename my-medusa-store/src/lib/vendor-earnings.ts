@@ -1274,14 +1274,14 @@ async function insertCancelFeeDebitsForOrder(
   if (known.size === 0) return 0;
 
   let orderMetadata = options?.orderMetadata ?? null;
-  if (!orderMetadata) {
+  if (!orderMetadata || [...known.values()].some(displayId => !displayId)) {
     const metaResult = await pool.query<{
       metadata: Record<string, unknown> | null;
       display_id: string | number | null;
     }>(`SELECT metadata, display_id::text AS display_id FROM "order" WHERE id = $1 LIMIT 1`, [
       orderId,
     ]);
-    orderMetadata = metaResult.rows[0]?.metadata || null;
+    orderMetadata = orderMetadata || metaResult.rows[0]?.metadata || null;
     const displayId = metaResult.rows[0]?.display_id
       ? String(metaResult.rows[0].display_id)
       : null;

@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 
 const CART_COOKIE = "cart_id";
 const GUEST_CART_HEADER = "x-guest-cart-id";
+const MAX_QUANTITY_PER_ITEM = 10;
 
 async function backend(path: string, init?: RequestInit) {
   const base = (
@@ -92,8 +93,8 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   try {
     const body = await req.json();
     const quantity = Number(body.quantity);
-    if (!Number.isFinite(quantity) || quantity < 1) {
-      return NextResponse.json({ error: "quantity must be >= 1" }, { status: 400 });
+    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY_PER_ITEM) {
+      return NextResponse.json({ error: `Maximum ${MAX_QUANTITY_PER_ITEM} units per item` }, { status: 400 });
     }
     const cartResult = await resolveCartId(req);
     if (!cartResult?.cartId) {

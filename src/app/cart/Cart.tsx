@@ -34,6 +34,7 @@ interface CartItemUI {
   name: string;
   price: number; // major unit (e.g., 350 -> 350)
   quantity: number;
+  maxQuantity: number;
   image?: string;
   currency?: string;
   meta?: {
@@ -245,6 +246,7 @@ const mapCartPayloadToItems = (payload?: CartApiPayload): CartItemUI[] => {
         name: "Item",
         price: 0,
         quantity: 1,
+        maxQuantity: 10,
       };
     }
     const it = element as CartApiPayload;
@@ -300,6 +302,15 @@ const mapCartPayloadToItems = (payload?: CartApiPayload): CartItemUI[] => {
       undefined;
 
     const qty = Math.max(1, toNumber(it.quantity, 1));
+    const inventoryCandidates = [
+      variant.inventory_quantity,
+      variant.available_quantity,
+      variant.quantity,
+    ];
+    const availableQuantity = inventoryCandidates
+      .map((value) => toNumber(value, Number.NaN))
+      .find((value) => Number.isFinite(value));
+    const maxQuantity = Math.max(1, Math.min(10, availableQuantity ?? 10));
     const currencyCode =
       toStringOrUndefined(it.currency_code) ||
       toStringOrUndefined(it.currency) ||
@@ -401,6 +412,7 @@ const mapCartPayloadToItems = (payload?: CartApiPayload): CartItemUI[] => {
       name: String(name),
       image: image ? String(image) : undefined,
       quantity: qty,
+      maxQuantity,
       price: Number(finalPrice),
       currency: normalizedCurrency,
       meta: {
@@ -514,6 +526,7 @@ const Cart: React.FC = () => {
                 name: "24 Energy 100 Watt Emergency Bulb",
                 price: 490,
                 quantity: 1,
+                maxQuantity: 10,
                 image: "/next.svg",
                 currency: "INR",
               },
@@ -522,6 +535,7 @@ const Cart: React.FC = () => {
                 name: "24 Energy High Quality Mosquito Bat With Led Light",
                 price: 350,
                 quantity: 2,
+                maxQuantity: 10,
                 image: "/next.svg",
                 currency: "INR",
               },
@@ -978,7 +992,8 @@ const Cart: React.FC = () => {
                           controlsDisabled ? "opacity-50 cursor-wait" : ""
                         }`}
                         type="button"
-                        disabled={controlsDisabled}
+                        disabled={controlsDisabled || item.quantity >= item.maxQuantity}
+                        title={item.quantity >= item.maxQuantity ? `Maximum ${item.maxQuantity} per order` : undefined}
                       >
                         <Plus className="w-4 h-4" />
                       </button>
@@ -1020,7 +1035,8 @@ const Cart: React.FC = () => {
                             controlsDisabled ? "opacity-50 cursor-wait" : ""
                           }`}
                           type="button"
-                          disabled={controlsDisabled}
+                          disabled={controlsDisabled || item.quantity >= item.maxQuantity}
+                          title={item.quantity >= item.maxQuantity ? `Maximum ${item.maxQuantity} per order` : undefined}
                         >
                           <Plus className="w-4 h-4" />
                         </button>

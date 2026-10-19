@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Badge } from "@medusajs/ui"
 
@@ -7,8 +7,36 @@ type Overview = {
   payment: string
   quantity: number | null
   status: string
-  stores: { name: string; status: string }[]
+  stores: { name: string; status: string; acceptance_deadline_at?: string | null }[]
   customer_reliability?: { rating: number | null; label: string; eligible_orders: number }
+}
+
+function AcceptanceTimer({ stores }: { stores: Overview["stores"] }) {
+  const [now, setNow] = useState(() => Date.now())
+  const pending = stores.filter((store) => store.acceptance_deadline_at)
+  useEffect(() => {
+    if (!pending.length) return
+    const interval = window.setInterval(() => setNow(Date.now()), 60_000)
+    return () => window.clearInterval(interval)
+  }, [pending.length])
+  if (!pending.length) return <span className="text-ui-fg-muted">—</span>
+  return <div className="min-w-[125px] space-y-1 py-2">
+    {pending.map((store, index) => {
+      const deadline = new Date(store.acceptance_deadline_at!).getTime()
+      if (!Number.isFinite(deadline)) return null
+      const remainingMinutes = Math.max(0, Math.ceil((deadline - now) / 60_000))
+      const hours = Math.floor(remainingMinutes / 60)
+      const minutes = remainingMinutes % 60
+      return <div key={`${store.name}-${index}`} title={`Accept by ${new Date(deadline).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST`}>
+        {pending.length > 1 ? <span className="block text-xs text-ui-fg-muted">{store.name}</span> : null}
+        {remainingMinutes === 0
+          ? <span className="font-semibold text-red-600">Overdue · Shuffle</span>
+          : <span className={hours < 12 ? "font-medium text-orange-600" : "text-ui-fg-base"}>
+              {hours}h {String(minutes).padStart(2, "0")}m left
+            </span>}
+      </div>
+    })}
+  </div>
 }
 
 export function useOwegOrderListColumns(nativeColumns: any[], orders: any[] = []) {
@@ -65,6 +93,10 @@ export function useOwegOrderListColumns(nativeColumns: any[], orders: any[] = []
               </div>)
             : statusBadge(order.status)}
         </div>
+      } },
+      { id: "oweg_acceptance_timer", header: () => "Accept timer", cell: ({ row }: any) => {
+        const order = byId.get(row.original.id)
+        return order ? <AcceptanceTimer stores={order.stores} /> : pending
       } },
       { id: "oweg_quantity", header: () => "Order Qty", cell: ({ row }: any) => {
         const order = byId.get(row.original.id)

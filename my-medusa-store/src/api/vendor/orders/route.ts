@@ -9,7 +9,6 @@ import {
   paginationMeta,
 } from "../../../lib/vendor-pagination"
 import {
-  formatVendorOrder,
   getVendorProductIds,
   setVendorOrderCorsHeaders,
   enrichOrdersWithProductGstMetadata,
@@ -17,6 +16,7 @@ import {
 } from "../../../lib/vendor-order-workflow"
 import { fetchVendorCommissionRate } from "../../../lib/vendor-earnings"
 import { getMarketplaceTaxRates } from "../../../lib/vendor-marketplace-tax"
+import { formatVendorOrderWithCancellations, hasCancelledVendorAssignment, loadCancelledVendorItems } from "../../../lib/vendor-assignment-cancellations"
 import { RETURN_MODULE } from "../../../modules/returns"
 import type ReturnModuleService from "../../../modules/returns/service"
 import {
@@ -150,10 +150,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       filters: { id: orderIds },
     })
 
+    const cancellationCandidateIds = (lightOrders || [])
+      .filter((order: any) => hasCancelledVendorAssignment(order.metadata, auth.vendor_id))
+      .map((order: any) => order.id)
+    const cancelledItemsByOrder = await loadCancelledVendorItems(pool, cancellationCandidateIds, auth.vendor_id)
+
     const visibleLight = filterVendorVisibleOrders(
       (lightOrders || []).filter((order: any) => {
         const items = order.items || []
-        return items.some((item: any) => {
+        return cancelledItemsByOrder.has(order.id) || items.some((item: any) => {
           const productId = item.product_id || item.variant?.product_id
           return productId && productIdSet.has(productId)
         })
@@ -161,7 +166,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     )
 
     const lightFormatted = visibleLight.map((order: any) =>
-      formatVendorOrder(order, auth.vendor_id, vendorProductIds, null)
+      formatVendorOrderWithCancellations(order, auth.vendor_id, vendorProductIds,
+        cancelledItemsByOrder.get(order.id) || [], null)
     )
     const counts = buildCounts(lightFormatted)
 
@@ -268,7 +274,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const byId = new Map(
       (pageOrdersData || []).map((order: any) => [
         order.id,
-        formatVendorOrder(order, auth.vendor_id, vendorProductIds, settlementRates),
+        formatVendorOrderWithCancellations(order, auth.vendor_id, vendorProductIds,
+          cancelledItemsByOrder.get(order.id) || [], settlementRates),
       ])
     )
     const pageOrders = pageIds.map((id) => {

@@ -9,6 +9,7 @@ const SALES_CHANNEL_ID =
   process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID || process.env.MEDUSA_SALES_CHANNEL_ID
 const REGION_ID =
   process.env.NEXT_PUBLIC_MEDUSA_REGION_ID || process.env.MEDUSA_REGION_ID
+const MAX_QUANTITY_PER_ITEM = 10
 
 async function backend(path: string, init?: RequestInit) {
   const base = (process.env.MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "")
@@ -164,9 +165,31 @@ export async function POST(req: NextRequest) {
     const variant_id: string = body.variant_id
     const quantity: number = Number(body.quantity || 1)
     if (!variant_id) return NextResponse.json({ error: "variant_id required" }, { status: 400 })
+    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY_PER_ITEM) {
+      return NextResponse.json({ error: `Maximum ${MAX_QUANTITY_PER_ITEM} units per item` }, { status: 400 })
+    }
     const selectedVariantId = body.seller_selected === true ? variant_id : await cheapestAvailableVariant(variant_id, quantity)
     const itemBody = { variant_id: selectedVariantId, quantity, ...(body.seller_selected === true ? { metadata: { seller_selected: true } } : {}) }
     let { cartId } = await ensureCartId(req)
+    let existingQuantity = 0
+    const existingCartRes = await backend(`/store/carts/${encodeURIComponent(cartId)}`)
+    if (existingCartRes.ok) {
+      const existingCart = await existingCartRes.json() as { cart?: { items?: Array<{ variant_id?: string; quantity?: number }> } }
+      existingQuantity = existingCart.cart?.items
+        ?.filter(item => item.variant_id === selectedVariantId)
+        .reduce((total, item) => total + (Number(item.quantity) || 0), 0) || 0
+      if (existingQuantity + quantity > MAX_QUANTITY_PER_ITEM) {
+        return NextResponse.json({ error: `Maximum ${MAX_QUANTITY_PER_ITEM} units per item` }, { status: 400 })
+      }
+    }
+    const offersRes = await backend(`/store/catalog-offers?variant_id=${encodeURIComponent(selectedVariantId)}`)
+    if (offersRes.ok) {
+      const offers = await offersRes.json() as { offers?: Array<{ variant_id?: string; available?: number }> }
+      const selectedOffer = offers.offers?.find(offer => offer.variant_id === selectedVariantId)
+      if (selectedOffer && Number(selectedOffer.available) < existingQuantity + quantity) {
+        return NextResponse.json({ error: `Only ${selectedOffer.available} units are available from this seller` }, { status: 409 })
+      }
+    }
     let res = await addLineItemRequest(cartId, itemBody)
     let attempts = 0
 

@@ -16,6 +16,7 @@ type ProductSummaryProps = {
   viewCount: number
   hasStock: boolean
   quantity: number
+  maxQuantity: number
   selectedOptions: Record<string, string>
   onOptionChange: (optionTitle: string, value: string) => void
   onQuantityChange: (delta: number) => void
@@ -87,6 +88,7 @@ const ProductSummary = ({
   brandName,
   hasStock,
   quantity,
+  maxQuantity,
   selectedOptions,
   onOptionChange,
   onQuantityChange,
@@ -370,6 +372,8 @@ const ProductSummary = ({
               onClick={() => onQuantityChange(1)}
               className={styles.quantityButton}
               aria-label="Increase quantity"
+              disabled={quantity >= maxQuantity}
+              title={quantity >= maxQuantity ? `Maximum ${maxQuantity} per order` : undefined}
             >
               <Plus className="w-4 h-4" />
             </button>

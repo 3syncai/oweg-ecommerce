@@ -6,9 +6,10 @@ import { ensureOrderSettlementSnapshots } from "../lib/vendor-settlement-snapsho
 import { getSharedDbPool } from "../lib/db-pool"
 import { listCurrentOrderVendorIds } from "../lib/vendor-cancellation-scope"
 import { getVendorWorkflow, mergeVendorWorkflowMetadata } from "../lib/vendor-order-workflow"
-import { acceptanceDeadline } from "../lib/vendor-acceptance-deadline"
+import { acceptanceDeadline, reassignmentAcceptanceDeadline } from "../lib/vendor-acceptance-deadline"
 import { withVendorOrderAssignmentLock } from "../lib/vendor-order-assignment-lock"
 import { isVendorVisibleOrder } from "../lib/vendor-order-visibility"
+import { normalizeOrderPublicSkus } from "../lib/order-public-sku"
 
 export default async function orderPlacedSubscriber({
   event: { data },
@@ -18,6 +19,12 @@ export default async function orderPlacedSubscriber({
   const orderModuleService = container.resolve(Modules.ORDER)
 
   const orderId = data.id
+
+  try {
+    await normalizeOrderPublicSkus(orderId, getSharedDbPool())
+  } catch (error) {
+    console.error(`[order-placed] public SKU normalization failed for ${orderId}:`, error)
+  }
 
   // 1. Fetch Order Details with basic relations (avoid deep nesting that causes Mikro-ORM strategy errors in Medusa V2)
   const order = await orderModuleService.retrieveOrder(orderId, {
@@ -39,7 +46,8 @@ export default async function orderPlacedSubscriber({
       for (const vendorId of vendorIds) {
         const workflow = getVendorWorkflow(metadata, vendorId)
         if (workflow.assigned_at || workflow.accepted_at || (workflow.stage && workflow.stage !== "to_accept")) continue
-        const start = (latest.metadata as any)?.checkout_convert_authorized_at
+        const start = reassignmentAcceptanceDeadline(metadata, vendorId)?.assigned_at
+          || (latest.metadata as any)?.checkout_convert_authorized_at
           || (latest.metadata as any)?.cod_paid_at || latest.created_at || Date.now()
         const assignedAt = new Date(start).toISOString()
         metadata = mergeVendorWorkflowMetadata(metadata, vendorId, {

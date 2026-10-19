@@ -4,6 +4,13 @@ import { listReplacementRequests } from "../../../../../lib/vendor-replacement-r
 import { respondToVendorReplacement } from "../../../../../lib/respond-vendor-replacement"
 import { createReplacementPaymentOrder, settleReplacementPayment } from "../../../../../lib/vendor-replacement-settlement"
 import { withVendorOrderAssignmentLock } from "../../../../../lib/vendor-order-assignment-lock"
+import { notifyReplacementOutcome } from "../../../../../lib/vendor-replacement-outcome"
+
+async function notifyIfFinal(req: MedusaRequest, orderId: string, requestId: string, status: string) {
+  if (status !== "applied" && status !== "rejected") return
+  try { await notifyReplacementOutcome(req, orderId, requestId) }
+  catch (error) { console.error("[replacement] outcome email failed", { orderId, requestId, error }) }
+}
 
 async function ownedOrder(req: MedusaRequest, res: MedusaResponse) {
   const customerId = String((req as any).auth_context?.actor_id || "")
@@ -18,7 +25,7 @@ async function ownedOrder(req: MedusaRequest, res: MedusaResponse) {
     res.status(403).json({ message: "This order does not belong to you" })
     return null
   }
-  return { orderId, customerId }
+  return { orderId, customerId, paymentMethod: String(order.metadata?.payment_method || "") }
 }
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
@@ -32,6 +39,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       options: request.options, message: request.message,
       selected_variant_id: request.selected_variant_id,
       adjustment_amount: request.adjustment_amount,
+      payment_method: owner.paymentMethod,
       response_at: request.response_at, created_at: request.created_at,
       expires_at: request.expires_at,
     })) })
@@ -60,6 +68,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           razorpay_order_id: String(body.razorpay_order_id || ""),
           razorpay_signature: String(body.razorpay_signature || ""),
         }))
+      await notifyIfFinal(req, owner.orderId, requestId, result.status)
       return res.json(result)
     }
     const decision = String(body.decision || "")
@@ -70,6 +79,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       req, orderId: owner.orderId, requestId, actorId: owner.customerId,
       source: "customer", decision: decision as "accept" | "reject", variantId,
     })
+    await notifyIfFinal(req, owner.orderId, requestId, result.status)
     return res.json(result)
   } catch (error: any) {
     return res.status(error?.status || 500).json({ message: error?.message || "Could not save your choice" })
