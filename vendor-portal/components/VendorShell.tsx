@@ -1,23 +1,17 @@
 "use client"
 
 import { PropsWithChildren, Suspense, useEffect, useMemo, useRef, useState } from "react"
-import { Text, clx, Prompt } from "@medusajs/ui"
+import { clx, Prompt } from "@medusajs/ui"
 import Image from "next/image"
+import Link from "next/link"
+import styles from "./VendorShell.module.css"
 import {
-  ShoppingCart,
-  Tag,
-  Buildings,
-  ChevronDown,
-  ChevronRight,
-  EllipsisHorizontal,
-  CurrencyDollar,
-  ArrowPath,
-  XMark,
-  ChatBubble,
-  ChartBar,
-  DocumentText,
-  User,
-} from "@medusajs/icons"
+  ShoppingBag, Tag, LayoutDashboard, Boxes, ChevronDown,
+  Ellipsis, WalletCards, RotateCcw, X, MessageSquare,
+  ChartNoAxesCombined, FileText, UsersRound, Menu,
+  Settings2, LogOut, ArrowUpRight,
+} from "lucide-react"
+
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { vendorProfileApi, vendorPayoutsApi } from "@/lib/api/client"
 import { performVendorLogout } from "@/lib/vendor-session"
@@ -46,7 +40,7 @@ const navItems = [
     label: "Dashboard",
     description: "",
     path: "/dashboard",
-    icon: Buildings,
+    icon: LayoutDashboard,
     type: "normal",
   },
   {
@@ -70,56 +64,56 @@ const navItems = [
     label: "Inventory",
     description: "",
     path: "/inventory",
-    icon: Buildings,
+    icon: Boxes,
     type: "normal",
   },
   {
     label: "Orders",
     description: "",
     path: "/orders",
-    icon: ShoppingCart,
+    icon: ShoppingBag,
     type: "normal",
   },
   {
     label: "Customers",
     description: "",
     path: "/customers",
-    icon: User,
+    icon: UsersRound,
     type: "normal",
   },
   {
     label: "Returns",
     description: "",
     path: "/returns",
-    icon: ArrowPath,
+    icon: RotateCcw,
     type: "normal",
   },
   {
     label: "Payments",
     description: "",
     path: "/payout",
-    icon: CurrencyDollar,
+    icon: WalletCards,
     type: "normal",
   },
   {
     label: "Commission Invoice",
     description: "",
     path: "/commission-invoices",
-    icon: DocumentText,
+    icon: FileText,
     type: "normal",
   },
   {
     label: "Claims",
     description: "",
     path: "/claims",
-    icon: ChartBar,
+    icon: ChartNoAxesCombined,
     type: "normal",
   },
   {
     label: "Messages",
     description: "",
     path: "/messages",
-    icon: ChatBubble,
+    icon: MessageSquare,
     type: "normal",
   },
 ]
@@ -132,15 +126,69 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
   const isDark = resolvedTheme === "dark"
   const platformLogo = isDark ? OWEG_BRAND.logoPathDark : OWEG_BRAND.logoPathLight
   const [vendorInfo, setVendorInfo] = useState<VendorInfo | null>(null)
-  const [payoutData, setPayoutData] = useState<PayoutData>({ totalRevenue: 0, totalBalance: 0, loading: true })
+  const [, setPayoutData] = useState<PayoutData>({ totalRevenue: 0, totalBalance: 0, loading: true })
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [expandedItems, setExpandedItems] = useState<string[]>(["Products"])
+  const [expandedItems, setExpandedItems] = useState<string[]>([])
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const sidebarRef = useRef<HTMLElement | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null)
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
   const [logoutPromptOpen, setLogoutPromptOpen] = useState(false)
   const [toAcceptCount, setToAcceptCount] = useState(0)
 
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 767px)")
+    const sync = () => {
+      setIsMobile(query.matches)
+      if (!query.matches) setMobileMenuOpen(false)
+    }
+    sync()
+    query.addEventListener("change", sync)
+    return () => query.removeEventListener("change", sync)
+  }, [])
+
+  useEffect(() => {
+    const sidebar = sidebarRef.current
+    const content = contentRef.current
+    if (!sidebar || !content) return
+    sidebar.inert = isMobile && !mobileMenuOpen
+    content.inert = isMobile && mobileMenuOpen
+    if (!isMobile || !mobileMenuOpen) return
+    const previousFocus = document.activeElement as HTMLElement | null
+    const focusFrame = requestAnimationFrame(() => closeButtonRef.current?.focus({ preventScroll: true }))
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        setMobileMenuOpen(false)
+        setAccountMenuOpen(false)
+      }
+      if (event.key !== "Tab") return
+      const controls = Array.from(sidebar.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),[tabindex="0"]'))
+        .filter((element) => element.getClientRects().length > 0)
+      const first = controls[0]
+      const last = controls[controls.length - 1]
+      if (!sidebar.contains(document.activeElement)) {
+        event.preventDefault(); first?.focus(); return
+      }
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last?.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first?.focus()
+      }
+    }
+    document.addEventListener("keydown", handleKey)
+    return () => {
+      content.inert = false
+      cancelAnimationFrame(focusFrame)
+      document.removeEventListener("keydown", handleKey)
+      if (previousFocus?.isConnected) previousFocus.focus()
+    }
+  }, [isMobile, mobileMenuOpen])
 
   useEffect(() => {
     if (searchParams.get("settings") === "1") {
@@ -268,255 +316,112 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
     return activeItem?.path || ""
   }, [pathname])
 
-  const navigate = (path: string) => {
-    if (path === pathname) return
-    router.push(path)
-  }
-
   const handleLogout = () => {
     void performVendorLogout("/login")
   }
 
+  const groups = [
+    { label: "Overview", paths: ["/dashboard"] },
+    { label: "Catalogue", paths: ["/products", "/inventory"] },
+    { label: "Operations", paths: ["/orders", "/customers", "/returns", "/messages"] },
+    { label: "Finance", paths: ["/payout", "/commission-invoices", "/claims"] },
+  ]
+  const currentPage = pathname === "/profile" ? "Profile & store"
+    : navItems.flatMap((item) => [...(item.children || []), item]).find((item) => pathname === item.path)?.label
+      || navItems.find((item) => pathname?.startsWith(item.path))?.label || "Workspace"
+  const closeNavigation = () => { setMobileMenuOpen(false); setAccountMenuOpen(false) }
+
   return (
-    <div className="flex h-screen overflow-hidden bg-ui-bg-base text-ui-fg-base font-sans">
-      {/* Mobile Backdrop */}
-      {mobileMenuOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
-          onClick={() => setMobileMenuOpen(false)}
-        />
-      )}
+    <div className={styles.shell}>
+      {mobileMenuOpen && <button type="button" tabIndex={-1} className={styles.backdrop}
+        aria-label="Close navigation backdrop" onClick={closeNavigation} />}
 
-      {/* Sidebar */}
-      <aside
-        className={clx(
-          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-oweg-500/15 bg-oweg-sidebar transition-transform duration-300 md:static md:translate-x-0",
-          mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        {/* Sidebar Header — vendor store (vendor logo slot) */}
-        <div className="flex h-16 shrink-0 items-center justify-between border-b border-oweg-500/10 px-4">
-          <button
-            type="button"
-            onClick={() => navigate("/dashboard")}
-            className="flex min-w-0 flex-1 items-center gap-3 text-left"
-          >
-            {vendorInfo?.store_logo ? (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg ring-1 ring-oweg-500/20 shadow-sm">
-                <Image
-                  src={vendorInfo.store_logo}
-                  alt={vendorInfo.store_name || "Store logo"}
-                  width={36}
-                  height={36}
-                  className="h-full w-full object-cover"
-                  unoptimized
-                />
-              </div>
-            ) : (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-oweg-500/15 text-sm font-semibold text-oweg-800 ring-1 ring-oweg-500/25 dark:text-oweg-200">
-                {(vendorInfo?.store_name?.[0] || vendorInfo?.name?.[0] || "S").toUpperCase()}
-              </div>
-            )}
-            <div className="min-w-0">
-              <span className="block truncate text-sm font-semibold text-ui-fg-base">
-                {vendorInfo?.store_name || "Your Store"}
-              </span>
-              <span className="block truncate text-xs text-oweg-600 dark:text-oweg-400">
-                Vendor Portal
-              </span>
-            </div>
-          </button>
-          <button
-            type="button"
-            className="shrink-0 md:hidden text-ui-fg-subtle"
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            <XMark />
-          </button>
+      <aside ref={sidebarRef} id="vendor-navigation" className={clx(styles.sidebar, mobileMenuOpen && styles.open)}
+        onTransitionEnd={(event) => {
+          if (event.target === event.currentTarget && mobileMenuOpen && isMobile
+            && !sidebarRef.current?.contains(document.activeElement)) closeButtonRef.current?.focus({ preventScroll: true })
+        }}
+        role={isMobile ? "dialog" : undefined} aria-modal={isMobile && mobileMenuOpen ? true : undefined}
+        aria-hidden={isMobile && !mobileMenuOpen ? true : undefined} aria-label="Vendor navigation">
+        <div className={styles.brandHeader}>
+          <Image src={platformLogo} alt="OWEG" width={90} height={30} className={styles.platformLogo} />
+          <span className={styles.portalTag}>VENDOR</span>
+          <button ref={closeButtonRef} type="button" className={styles.closeButton} aria-label="Close navigation" onClick={closeNavigation}><X size={19} /></button>
         </div>
 
-        {/* Navigation */}
-        <div className="oweg-scroll flex-1 overflow-y-auto px-2 py-4">
-          <nav className="flex flex-col gap-1">
-            {navItems.map((item) => {
-              const active = activePath === item.path
-              const hasChildren = item.type === "parent" && item.children
-              const isExpanded = expandedItems.includes(item.label)
-
-              return (
-                <div key={item.path}>
-                  <button
-                    onClick={() => {
-                      if (hasChildren) {
-                        toggleExpanded(item.label)
-                        navigate(item.path)
-                      } else {
-                        if (item.path === "/returns") warmReturnsCache()
-                        navigate(item.path)
-                      }
-                    }}
-                    onMouseEnter={() => {
-                      router.prefetch(item.path)
-                      if (item.path === "/returns") warmReturnsCache()
-                    }}
-                    className={clx(
-                      "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-all duration-200 active:scale-[0.98]",
-                      active
-                        ? "oweg-nav-active"
-                        : "text-ui-fg-subtle hover:bg-oweg-500/[0.06] hover:text-ui-fg-base"
-                    )}
-                  >
-                    <span className="flex h-5 w-5 items-center justify-center text-ui-fg-muted">
-                      <item.icon />
-                    </span>
-                    <span className="flex-1 font-medium">{item.label}</span>
-                    {item.path === "/orders" && toAcceptCount > 0 && (
-                      <span
-                        className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-oweg-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
-                        aria-label={`${toAcceptCount} orders to accept`}
-                      >
-                        {toAcceptCount > 99 ? "99+" : toAcceptCount}
-                      </span>
-                    )}
-                    {item.description && (
-                      <span className="text-xs text-ui-fg-muted">{item.description}</span>
-                    )}
-                    {hasChildren && (
-                      <span className="flex h-4 w-4 items-center justify-center text-ui-fg-muted">
-                        {isExpanded ? <ChevronDown /> : <ChevronRight />}
-                      </span>
-                    )}
-                  </button>
-
-                  {hasChildren && isExpanded && item.children && (
-                    <div className="mt-1 flex flex-col gap-1 pl-11">
-                      {item.children.map((child) => {
-                        const isChildActive = pathname?.includes(child.path)
-                        return (
-                          <button
-                            key={child.path}
-                            onClick={() => navigate(child.path)}
-                            className={clx(
-                              "w-full rounded-lg px-3 py-2 text-left text-sm transition-all duration-200",
-                              isChildActive
-                                ? "oweg-nav-active font-medium"
-                                : "text-ui-fg-subtle hover:bg-oweg-500/[0.06] hover:text-ui-fg-base"
-                            )}
-                          >
-                            {child.label}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </nav>
-        </div>
-
-        {/* User Menu */}
-        <div className="border-t border-oweg-500/10 p-4">
-          {/* OWEG platform branding — not in vendor logo slot */}
-          <div
-            className={clx(
-              "mb-3 flex items-center gap-2.5 rounded-lg px-3 py-2 ring-1",
-              isDark
-                ? "bg-zinc-950 ring-oweg-500/20"
-                : "bg-oweg-50 ring-oweg-200/80"
-            )}
-          >
-            <Image
-              src={platformLogo}
-              alt="OWEG"
-              width={72}
-              height={24}
-              className="h-5 w-auto object-contain"
-            />
-            <span
-              className={clx(
-                "text-[10px] font-medium uppercase tracking-wider",
-                isDark ? "text-ui-fg-muted" : "text-oweg-700"
-              )}
-            >
-              Platform
-            </span>
+        <Link href="/profile" onClick={closeNavigation} className={styles.storeCard} aria-label="View store profile">
+          <div className={styles.storeAvatar}>
+            {vendorInfo?.store_logo ? <Image src={vendorInfo.store_logo} alt="" width={40} height={40} unoptimized />
+              : <span>{(vendorInfo?.store_name?.[0] || vendorInfo?.name?.[0] || "S").toUpperCase()}</span>}
           </div>
+          <div className={styles.storeText}><strong>{vendorInfo?.store_name || "Your Store"}</strong><span>Manage your store</span></div>
+          <ArrowUpRight size={15} className={styles.storeArrow} />
+        </Link>
 
-          <div ref={accountMenuRef} className="relative">
-            <button
-              onClick={() => setAccountMenuOpen((prev) => !prev)}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-all hover:bg-oweg-500/[0.06]"
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-oweg-500/15 text-sm font-semibold text-oweg-800 ring-1 ring-oweg-500/25 dark:text-oweg-200">
-                {vendorInfo?.email?.[0]?.toUpperCase() || "A"}
+        <nav className={clx(styles.navigation, "oweg-scroll")} aria-label="Vendor workspace">
+          {groups.map((group) => <section key={group.label} className={styles.navGroup} aria-label={group.label}>
+            <h2 className={styles.groupTitle}>{group.label}</h2>
+            {group.paths.map((path) => {
+              const item = navItems.find((entry) => entry.path === path)!
+              const active = activePath === item.path
+              const expanded = expandedItems.includes(item.label)
+              const exactActive = item.path === "/products"
+                ? active && !item.children?.some((child) => pathname?.startsWith(child.path)) : active
+              return <div key={item.path}>
+                <div className={clx(styles.navRow, active && styles.active)}>
+                  <Link href={item.path} className={styles.navLink} aria-current={exactActive ? "page" : undefined}
+                    onClick={() => { if (item.path === "/returns") warmReturnsCache(); closeNavigation() }}
+                    onMouseEnter={() => { router.prefetch(item.path); if (item.path === "/returns") warmReturnsCache() }}>
+                    <item.icon size={18} strokeWidth={1.65} aria-hidden="true" />
+                    <span>{item.label}</span>
+                    {item.path === "/orders" && toAcceptCount > 0 && <span className={styles.orderCount} aria-label={`${toAcceptCount} orders to accept`}>{toAcceptCount > 99 ? "99+" : toAcceptCount}</span>}
+                  </Link>
+                  {item.children && <button type="button" className={styles.expandButton}
+                    aria-label={expanded ? "Collapse product navigation" : "Expand product navigation"}
+                    aria-expanded={expanded} aria-controls="vendor-product-navigation" onClick={() => toggleExpanded(item.label)}>
+                    <ChevronDown size={15} className={expanded ? styles.chevronOpen : undefined} />
+                  </button>}
+                </div>
+                {item.children && expanded && <div id="vendor-product-navigation" className={styles.subNav}>
+                  {item.children.map((child) => <Link key={child.path} href={child.path}
+                    className={clx(styles.subLink, pathname?.startsWith(child.path) && styles.subActive)}
+                    aria-current={pathname?.startsWith(child.path) ? "page" : undefined} onClick={closeNavigation}>
+                    <span className={styles.subDot} />{child.label}
+                  </Link>)}
+                </div>}
               </div>
-              <div className="flex-1 overflow-hidden">
-                <Text size="small" weight="plus" className="truncate text-ui-fg-base">
-                  {vendorInfo?.email?.split("@")[0] || "admin"}
-                </Text>
-              </div>
-              <span className="text-ui-fg-muted">
-                <EllipsisHorizontal />
-              </span>
+            })}
+          </section>)}
+        </nav>
+
+        <div className={styles.footer}>
+          <div ref={accountMenuRef} className={styles.accountArea}>
+            <button type="button" className={styles.accountButton} aria-expanded={accountMenuOpen}
+              aria-controls="vendor-account-actions" aria-label="Account options"
+              onKeyDown={(event) => { if (event.key === "Escape") setAccountMenuOpen(false) }}
+              onClick={() => setAccountMenuOpen((prev) => !prev)}>
+              <span className={styles.accountAvatar}>{vendorInfo?.email?.[0]?.toUpperCase() || "A"}</span>
+              <span className={styles.accountText}><strong>{vendorInfo?.name || vendorInfo?.email?.split("@")[0] || "Your account"}</strong><small>Store owner</small></span>
+              <Ellipsis size={18} />
             </button>
-
-            {accountMenuOpen && (
-              <div className="absolute bottom-full left-0 right-0 z-50 mb-2 flex flex-col gap-0.5 rounded-lg border border-ui-border-base bg-ui-bg-component p-1.5 shadow-xl">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAccountMenuOpen(false)
-                    setSettingsOpen(true)
-                  }}
-                  className="rounded-md px-3 py-2.5 text-left text-sm text-ui-fg-base hover:bg-ui-bg-base-hover transition-colors"
-                >
-                  Settings
-                </button>
-                <div className="my-0.5 h-px bg-ui-border-base" />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAccountMenuOpen(false)
-                    setLogoutPromptOpen(true)
-                  }}
-                  className="rounded-md px-3 py-2.5 text-left text-sm text-ui-fg-subtle hover:bg-ui-bg-base-hover transition-colors"
-                >
-                  Log out
-                </button>
-              </div>
-            )}
+            {accountMenuOpen && <div id="vendor-account-actions" className={styles.accountMenu}>
+              <button type="button" onClick={() => { closeNavigation(); setSettingsOpen(true) }}><Settings2 size={16} />Settings</button>
+              <button type="button" className={styles.logout} onClick={() => { closeNavigation(); setLogoutPromptOpen(true) }}><LogOut size={16} />Log out</button>
+            </div>}
           </div>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Top header — notifications */}
-        <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-oweg-500/10 bg-ui-bg-component px-4 shadow-sm md:h-16 md:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              type="button"
-              className="shrink-0 text-ui-fg-base md:hidden"
-              onClick={() => setMobileMenuOpen(true)}
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3.75 6.75H20.25M3.75 12H20.25M3.75 17.25H20.25" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <div className="min-w-0 md:hidden">
-              <div className="truncate text-sm font-semibold text-ui-fg-base">
-                {vendorInfo?.store_name || "Your Store"}
-              </div>
-              <div className="truncate text-xs text-ui-fg-muted">Vendor Portal</div>
-            </div>
+      <div ref={contentRef} className={styles.content}>
+        <header className={styles.topbar}>
+          <div className={styles.pageContext}>
+            <button ref={menuButtonRef} type="button" className={styles.menuButton} aria-label="Open navigation"
+              aria-expanded={mobileMenuOpen} aria-controls="vendor-navigation" onClick={() => setMobileMenuOpen(true)}><Menu size={21} /></button>
+            <div className={styles.breadcrumb}><span>Workspace</span><span aria-hidden="true">/</span><strong>{currentPage}</strong></div>
           </div>
           <VendorNotifications />
-        </div>
-
-        <main className="oweg-scroll flex-1 overflow-y-auto scroll-smooth bg-ui-bg-base bg-oweg-page">
-          {children}
-        </main>
+        </header>
+        <main className={clx(styles.main, "oweg-scroll bg-oweg-page")}>{children}</main>
       </div>
 
       <VendorSettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />

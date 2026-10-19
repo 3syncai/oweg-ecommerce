@@ -7,7 +7,6 @@ import {
   Button,
   Heading,
   Input,
-  Prompt,
   Text,
   clx,
   toast,
@@ -24,19 +23,13 @@ import {
   Eye,
   EyeOff,
   Shield,
-  CheckCircle2,
-  AlertCircle,
-  LogOut,
   KeyRound,
-  User,
   Palette,
 } from "lucide-react"
-import { vendorAuthApi, vendorProfileApi } from "@/lib/api/client"
-import { performVendorLogout } from "@/lib/vendor-session"
+import { vendorAuthApi } from "@/lib/api/client"
 import { type ThemeMode, useTheme } from "@/lib/theme"
-import { useRouter } from "next/navigation"
 
-type SettingsSection = "general" | "security" | "account"
+type SettingsSection = "general" | "security"
 
 type PasswordStrength = {
   score: 0 | 1 | 2 | 3 | 4
@@ -68,7 +61,6 @@ const NAV_ITEMS: Array<{
 }> = [
   { id: "general", label: "General", Icon: Palette },
   { id: "security", label: "Security", Icon: Shield },
-  { id: "account", label: "Account", Icon: User },
 ]
 
 type VendorSettingsModalProps = {
@@ -82,14 +74,9 @@ export default function VendorSettingsModal({
   onOpenChange,
   initialSection = "general",
 }: VendorSettingsModalProps) {
-  const router = useRouter()
   const { theme, setTheme } = useTheme()
   const [section, setSection] = useState<SettingsSection>(initialSection)
   const [mounted, setMounted] = useState(false)
-
-  const [vendorEmail, setVendorEmail] = useState<string | null>(null)
-  const [lastLogin, setLastLogin] = useState<string | null>(null)
-  const [loadingProfile, setLoadingProfile] = useState(true)
 
   const [currentPwd, setCurrentPwd] = useState("")
   const [newPwd, setNewPwd] = useState("")
@@ -98,7 +85,6 @@ export default function VendorSettingsModal({
   const [showNew, setShowNew] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [savingPwd, setSavingPwd] = useState(false)
-  const [logoutPromptOpen, setLogoutPromptOpen] = useState(false)
 
   const themeOptions: Array<{
     value: ThemeMode
@@ -118,26 +104,6 @@ export default function VendorSettingsModal({
     if (!open) return
     setSection(initialSection)
   }, [open, initialSection])
-
-  useEffect(() => {
-    if (!open) return
-
-    const loadProfile = async () => {
-      setLoadingProfile(true)
-      try {
-        const data = await vendorProfileApi.getMe()
-        const v = data?.vendor
-        setVendorEmail(v?.email || null)
-        setLastLogin(v?.last_login_at || null)
-      } catch {
-        // ignore
-      } finally {
-        setLoadingProfile(false)
-      }
-    }
-
-    loadProfile()
-  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -173,30 +139,11 @@ export default function VendorSettingsModal({
       setCurrentPwd("")
       setNewPwd("")
       setConfirmPwd("")
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Unable to change password"
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unable to change password"
       toast.error(message)
     } finally {
       setSavingPwd(false)
-    }
-  }
-
-  const handleLogout = async () => {
-    await performVendorLogout("/login")
-  }
-
-  const formatDate = (iso?: string | null) => {
-    if (!iso) return "—"
-    try {
-      return new Date(iso).toLocaleString("en-IN", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    } catch {
-      return "—"
     }
   }
 
@@ -467,105 +414,12 @@ export default function VendorSettingsModal({
                 </div>
               )}
 
-              {section === "account" && (
-                <div className="space-y-6 max-w-xl">
-                  <div>
-                    <Heading level="h2" className="text-lg">
-                      Account
-                    </Heading>
-                    <Text size="small" className="text-ui-fg-subtle mt-1">
-                      Your vendor session and profile.
-                    </Text>
-                  </div>
 
-                  <div className="rounded-xl border border-ui-border-base/70 p-4 sm:p-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-1">
-                        <Text size="small" className="text-ui-fg-subtle">
-                          Signed in as
-                        </Text>
-                        {loadingProfile ? (
-                          <div className="h-5 w-48 animate-pulse rounded bg-ui-bg-base-hover" />
-                        ) : (
-                          <Text weight="plus">{vendorEmail || "Unknown"}</Text>
-                        )}
-                        <Text size="small" className="text-ui-fg-subtle">
-                          Last sign-in: {loadingProfile ? "…" : formatDate(lastLogin)}
-                        </Text>
-                      </div>
-                      <Badge color="green" className="shrink-0">
-                        <CheckCircle2 className="mr-1 inline h-3 w-3" />
-                        Active
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      onClick={() => {
-                        onOpenChange(false)
-                        router.push("/profile")
-                      }}
-                    >
-                      Edit store profile
-                    </Button>
-                  </div>
-
-                  <div className="flex items-start justify-between gap-4 rounded-xl border border-ui-border-base/70 p-4 sm:p-5">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600">
-                        <LogOut className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <Text weight="plus">Sign out</Text>
-                        <Text size="small" className="text-ui-fg-subtle mt-0.5">
-                          Clears your session and local cache on this device.
-                        </Text>
-                      </div>
-                    </div>
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      onClick={() => setLogoutPromptOpen(true)}
-                    >
-                      Sign out
-                    </Button>
-                  </div>
-
-                  <div className="flex items-start gap-2 text-ui-fg-subtle">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <Text size="xsmall">
-                      If you suspect your account is compromised, change your password
-                      immediately and contact support.
-                    </Text>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
       </div>
 
-      <Prompt
-        variant="confirmation"
-        open={logoutPromptOpen}
-        onOpenChange={setLogoutPromptOpen}
-      >
-        <Prompt.Content>
-          <Prompt.Header>
-            <Prompt.Title>Sign out of vendor portal?</Prompt.Title>
-            <Prompt.Description>
-              Your session and cached data on this browser will be cleared.
-            </Prompt.Description>
-          </Prompt.Header>
-          <Prompt.Footer>
-            <Prompt.Cancel>Cancel</Prompt.Cancel>
-            <Prompt.Action onClick={handleLogout}>Yes, sign out</Prompt.Action>
-          </Prompt.Footer>
-        </Prompt.Content>
-      </Prompt>
     </>,
     document.body
   )

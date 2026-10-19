@@ -158,6 +158,30 @@ export const vendorAuthApi = {
   },
 }
 
+// Keep profile images on the existing registration upload endpoint.
+async function uploadStoreImage(file: File, vendorHint: string, type: 'logo' | 'banner') {
+  const formData = new FormData()
+  formData.append('type', type)
+  formData.append('vendorHint', vendorHint)
+  formData.append('file', file, file.name)
+  const headers: Record<string, string> = {}
+  if (PUBLISHABLE_KEY) headers['x-publishable-api-key'] = PUBLISHABLE_KEY
+  const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
+  if (token) headers.Authorization = `Bearer ${token}`
+  try {
+    const { data } = await axios.post(`${API_URL}/store/vendor/uploads`, formData, { headers })
+    const uploaded = data.files?.find((entry: { type?: string }) => entry.type === type) || data.files?.[0] || data
+    if (!uploaded?.url) throw new Error('Upload returned no image URL')
+    return uploaded as { url: string; key?: string }
+  } catch (error: unknown) {
+    if (error instanceof AxiosError) {
+      const details = error.response?.data || { message: error.message }
+      throw new ApiError(error.response?.status || 0, details.message || 'Upload failed', details)
+    }
+    throw new ApiError(0, error instanceof Error ? error.message : 'Upload failed', error)
+  }
+}
+
 // Vendor Profile API
 export const vendorProfileApi = {
   getMe: async () => {
@@ -171,32 +195,8 @@ export const vendorProfileApi = {
     })
   },
 
-  uploadLogo: async (file: File, vendorHint: string) => {
-    const formData = new FormData()
-    formData.append('type', 'logo')
-    formData.append('vendorHint', vendorHint)
-    formData.append('file', file, file.name)
-
-    const headers: Record<string, string> = {}
-    if (PUBLISHABLE_KEY) {
-      headers['x-publishable-api-key'] = PUBLISHABLE_KEY
-    }
-
-    try {
-      const response = await axios.post(`${API_URL}/store/vendor/uploads`, formData, { headers })
-      return response.data as { url?: string; key?: string }
-    } catch (error: any) {
-      if (error instanceof AxiosError) {
-        const errorData = error.response?.data || { message: error.message }
-        throw new ApiError(
-          error.response?.status || 0,
-          errorData.message || 'Upload failed',
-          errorData
-        )
-      }
-      throw new ApiError(0, error?.message || 'Upload failed', error)
-    }
-  },
+  uploadLogo: (file: File, vendorHint: string) => uploadStoreImage(file, vendorHint, 'logo'),
+  uploadBanner: (file: File, vendorHint: string) => uploadStoreImage(file, vendorHint, 'banner'),
 
   reapply: async (data: {
     name?: string
