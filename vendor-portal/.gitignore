@@ -43,3 +43,6 @@ next-env.d.ts
 # local bulk-upload sample (do not commit)
 /samples/dummy-products-bulk-upload.xlsx
 /scripts/generate-dummy-bulk-upload.mjs
+
+# Isolated bulk QA development cache
+/.next-bulk-qa/

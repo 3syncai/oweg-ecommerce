@@ -5,56 +5,58 @@ product group. Imports create drafts for admin review; they do not publish direc
 The backend continues to enforce vendor ownership, brand authorization and shared
 catalog SKU rules.
 
-## Template v2
+## Template v3
 
-Download the current template from `/products/bulk-upload`. Fill the blank
-`Products` sheet. `Examples`, `Instructions`, `Field Guide`, `GST Codes`,
-`Categories`, and `Collections` are reference sheets and are never imported.
+Download the template from `/products/bulk-upload`. Fill `Products` only. Examples,
+Instructions, Field Guide, GST Codes, Categories and Brands are reference sheets.
+Title, Brand, Tax Code, MRP INR and Inventory Count are mandatory.
 
-The template adds tax code / derived GST rate, shipping profile ID, public video
-URLs, additional category IDs, and a third option pair. More numbered option pairs
-and Image columns can be added. Existing filename-based and embedded Excel image
-flows remain supported. Legacy templates must include the required Tax Code column
-before import; downloading v2 is recommended.
-
-Price INR means MRP; Discounted Price INR is the optional selling price. Prices
-use rupees with at most two decimal places. Stock is a non-negative whole number.
-Dimensions use cm and weight uses kg, matching the single-product form. HSN/HS,
-MID and SKU identifiers should be entered as text to preserve leading zeros.
-
-Local videos can be added in the individual product editor. Bulk video entries
-currently accept existing public HTTPS video URLs.
+- Subtitle and Handle are explicitly optional. Brand also supplies the collection;
+  unknown brands become collection requests for admin review. Additional categories,
+  separate collection selection, MID, shipping profile and Brand Letter columns are removed.
+- HSN Code replaces HS Code. Origin defaults to IN; the tax country is India.
+- Tax Code has a native Excel dropdown. GST Rate and Discount % are calculated,
+  protected cells. The importer independently derives these values and never trusts
+  cached formula results. Input formulas are rejected. Tax code is mandatory even if
+  a GST rate is supplied. Inconsistent manually supplied GST is rejected.
+- MRP INR is required, positive, with up to two decimals. Discounted Price INR is
+  optional, non-negative and cannot exceed MRP. No discount means no sale price.
+- Managed Inventory and Allow Backorder are protected Yes values. The importer
+  rejects attempts to turn either off. Stock is a required non-negative whole number;
+  zero is valid. Default shipping profile and sales channel are assigned by the backend.
+- Each Option N Name/Value pair is followed by Option N Images. Comma-separated
+  Size `8,9,10` and Color `Red,Green,Blue` generate nine variants. The row's stock and
+  prices apply to EACH variant. Use separate rows with individual values for distinct
+  stock or prices. Maximum 100 variants/product and 10,000 generated variants/file.
+- Option images are comma-separated filenames/HTTPS URLs in the same order as the
+  option values, or one shared image. `Red,Blue` pairs with `red.jpg,blue.jpg`.
+  Color, or the first option with images, supplies the existing visual gallery.
+  All option images are included in the main gallery and retained in `option_images` metadata.
+- Thumbnail and Image 1..5 are together, followed by Video URLs. More numbered
+  image and option columns are supported. Embedded option pictures apply to every
+  value of that option on the source row; use filenames for distinct pictures per value.
+- Blank SKU or `(auto)` generates a unique SKU. A supplied SKU on an expanded row
+  gets numbered suffixes (`SHOE-1`, `SHOE-2`...). Duplicate SKUs and combinations block import.
+- After parsing, upload authorization once per brand: one PDF/PNG/JPG, or select
+  multiple PNG/JPG images to automatically combine into a PDF. Limit 20 images,
+  10 MB each, 30 MB combined input; final upload must be at most 10 MB. Pending
+  authorization allows draft submission; publication still requires admin approval.
 
 ## Validation and submission
 
-- Maximum 1,000 data rows, 200 columns and 10 MB per workbook; up to 100 variants
-  per product. XLSX, XLS and CSV are supported.
-- Headers belong in row one. Duplicate or unknown headers, merged cells, formulas,
-  malformed numbers, invalid booleans, invalid tax codes and inconsistent GST rates
-  produce actionable errors. Formula results must be pasted as values.
-- Rows with the same Handle form one product. When Handle is blank, Title is the
-  grouping key. Use separate handles for different products sharing a title.
-- Product-level details must agree across all variant rows. Option combinations
-  and SKUs must be unique; SKU comparisons are case-insensitive.
-- All row validation errors must be fixed before submission. Referenced thumbnail,
-  gallery and visual-option images must be uploaded or supplied as HTTPS URLs.
-  Uploads run in batches of four to avoid flooding the image endpoint.
-- A vendor must have an uploaded letter for each brand. A pending letter permits
-  draft submission; admin verification is still required for publication.
-- Existing catalog SKUs are passed through to the backend for shared-product
-  checks. An existing SKU owned by the same vendor is rejected rather than
-  creating a second offer for that vendor.
-- Each product group is submitted in one request, so invalid variant rows cannot
-  become partial products. A failure in one product does not erase successful
-  products. Review failed products to retry only those products.
-- Rapid duplicate submit clicks are blocked. If the connection is lost after a
-  request, check the Products list before retrying. Existing vendor SKU checks
-  prevent duplicating an already-created offer.
+Maximum 1,000 source rows, 200 columns and 10 MB per workbook. XLSX/XLS/CSV are
+supported; dropdowns/formulas/protection are provided in the downloaded XLSX.
+Headers belong on row one; duplicate/unknown headers and merged cells are rejected.
+Legacy Price INR and HS Code are accepted as aliases, but stock is now required.
+Removed template fields are rejected by the workbook reader so data is not silently lost.
 
-Categories and collections load all pages before a template can be downloaded or
-parsed. Unknown category/collection names become admin review requests; additional
-category IDs must refer to existing categories. Shipping profile defaults and sales
-channel assignment follow the existing product creation endpoint.
+Same Handle (or Title when Handle is blank) groups variants into a product.
+Product-level details must match across rows. Every row must pass validation before
+submission. Referenced images must be uploaded or provided as HTTPS URLs. Uploads
+run in batches of four. Products are submitted as drafts through the existing vendor
+endpoint; ownership, brand authorization and shared-SKU rules remain enforced.
+Product-level preview edits apply to every variant together. Successful products are skipped on retry; after a lost connection check Products
+before retrying. Reference categories/brands are fully paginated before import.
 
 ## Verification
 
@@ -87,6 +89,53 @@ products were created as drafts pending approval. No test product was approved
 or published. These fixtures were subsequently removed during the separately
 approved fresh-start data cleanup; the checks above describe the test results
 before that cleanup.
+
+## v3 verification (isolated local database)
+
+The v3 browser test signed in as the requested Vishal vendor on port 4001,
+connected to a separate Medusa backend on 9002 and PostgreSQL on 55439.
+It did not insert fixtures into the cleaned AWS catalogue or access `oweg_backup`.
+The template was downloaded through the UI and its saved OOXML was parsed.
+Native desktop Excel interaction/recalculation was not exercised.
+
+A missing-stock workbook was rejected with submission disabled. A valid workbook
+created two pending drafts/four variants: three shoe sizes (5 units each, MRP
+2999 / selling 2399) and a simple mug (0 units, MRP 499, no sale price).
+Read-back checks verified GST 5/18 from codes, HSN `006402`, India origin/tax,
+brand-based collection requests, fixed inventory/backorder flags and default shipping.
+Both real Unsplash photos returned HTTP 200 and rendered at their natural width
+in the vendor product list. One authorization saved as PNG; two clearly marked
+local test images were combined into a valid PDF and uploaded successfully.
+No product was approved or published. The automated contract suite now has 63 tests.
+
+The isolated run also reproduced the pre-existing `product.created` subscriber
+error resolving `productService`; that separate search-indexing problem is not
+fixed by the bulk template changes. The vendor creation requests themselves
+completed successfully and the draft data was verified.
+
+## Authorized real-database demonstration
+
+After explicit user authorization, the visible portal on port 4000 was used with
+Vishal's real vendor account and the backend connected to AWS `oweg_db`.
+The downloaded template was filled with Bajaj KTX 1.5L DLX and 1.8L DLX kettles,
+using official Bajaj product names, prices (2050/2150), and four official photos.
+Stock quantities 5/0 were test inputs, and descriptions identify the listings as
+bulk-upload demonstration drafts. Both resolved to Home Appliances > Kettles
+and the existing Bajaj collection.
+
+Because that vendor had no brand authorization, the uploaded PNG was explicitly
+marked SAMPLE / TESTING ONLY / NOT VALID BRAND AUTHORIZATION. It contains no
+brand-issued signature or endorsement and remains unverified. It must be replaced
+with genuine authorization before either product can be approved for publication.
+The UI created both products successfully as pending drafts. Read-only checks
+verified ownership, prices, inventory, GST code/rate, category, collection,
+option-image metadata, and fixed inventory/backorder flags. All four saved gallery
+URLs returned HTTP 200, and both thumbnails rendered in the real vendor catalog.
+No product was published, and `oweg_backup` was not accessed or changed.
+
+Official sources:
+- https://www.bajajelectricals.com/products/ktx-1-5-l-dlx
+- https://www.bajajelectricals.com/products/ktx-1-8-l-dlx
 
 ## Issues found during the visible demo
 

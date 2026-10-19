@@ -10,6 +10,7 @@ export type RawRow = Record<string, unknown>
 
 export type ParsedRow = {
   rowNumber: number
+  editGroupKey?: string
   title: string
   subtitle: string
   handle: string
@@ -63,6 +64,7 @@ export type ParsedRow = {
   option2Value: string
   visualOptionName: string
   visualOptionValue: string
+  optionImages?: Record<string, { value: string; refs: string[] }>
   visualImageRefs: string[]
   errors: string[]
   warnings: string[]
@@ -70,63 +72,90 @@ export type ParsedRow = {
   errorMessage?: string
 }
 
+export const normalizeBulkHeader = (value: unknown): string => {
+  const key = String(value ?? "").replace(/\((?:optional|auto|fixed)\)/gi, "").replace(/\*|\s+/g, "").toLowerCase()
+  return key === "priceinr" ? "mrpinr" : key === "hscode" ? "hsncode" : key
+}
+
 export const TEMPLATE_HEADERS: Array<{ key: string; example: string; required?: boolean }> = [
-  { key: "Title", example: "Winter jacket", required: true },
-  { key: "Subtitle", example: "Warm and cozy" },
-  { key: "Handle", example: "winter-jacket" },
-  { key: "Description", example: "A warm and cozy jacket" },
-  { key: "Brand", example: "Nike", required: true },
-  { key: "Category", example: "Clothing" },
-  { key: "Subcategory", example: "Jackets" },
-  { key: "Additional Category IDs", example: "" },
-  { key: "Collection", example: "Winter Collection" },
-  { key: "Tags", example: "winter, jacket, outdoor" },
+  { key: "Title", example: "Demo running shoe", required: true },
+  { key: "Subtitle (optional)", example: "Lightweight lace-up shoe" },
+  { key: "Handle (optional)", example: "" },
+  { key: "Description", example: "Sample listing for importer testing." },
+  { key: "Brand", example: "Demo brand", required: true },
+  { key: "Category", example: "" },
+  { key: "Subcategory", example: "" },
+  { key: "Tags", example: "shoe, running" },
   { key: "Type", example: "" },
   { key: "Discountable", example: "Yes" },
   { key: "Height", example: "" },
   { key: "Width", example: "" },
   { key: "Length", example: "" },
   { key: "Weight", example: "" },
-  { key: "MID Code", example: "" },
-  { key: "HS Code", example: "" },
+  { key: "HSN Code", example: "" },
   { key: "Country of Origin", example: "IN" },
-  { key: "Tax Code", example: "GST_5", required: true },
-  { key: "GST Rate", example: "" },
-  { key: "Shipping Profile ID", example: "" },
-  { key: "Video URLs", example: "" },
-  { key: "Option 1 Name", example: "Size" },
-  { key: "Option 1 Value", example: "M" },
-  { key: "Option 2 Name", example: "" },
-  { key: "Option 2 Value", example: "" },
-  { key: "Option 3 Name", example: "" },
-  { key: "Option 3 Value", example: "" },
-  { key: "Visual Option Name", example: "" },
-  { key: "Visual Option Value", example: "" },
-  { key: "Visual Image Refs", example: "" },
-  { key: "Variant Title", example: "Default variant" },
+  { key: "Tax Code", example: "GST_18", required: true },
+  { key: "GST Rate (auto)", example: "" },
+  ...[1, 2, 3].flatMap(n => [
+    { key: `Option ${n} Name`, example: n === 1 ? "Size" : n === 2 ? "Color" : "" },
+    { key: `Option ${n} Value`, example: n === 1 ? "8,9,10" : n === 2 ? "Red,Green,Blue" : "" },
+    { key: `Option ${n} Images`, example: "" },
+  ]),
+  { key: "Variant Title", example: "" },
   { key: "SKU", example: "(auto)" },
-  { key: "Managed Inventory", example: "Yes" },
-  { key: "Allow Backorder", example: "No" },
-  { key: "Inventory Count", example: "10" },
-  { key: "Price INR", example: "1999", required: true },
-  { key: "Discounted Price INR", example: "1499" },
-  { key: "Discount %", example: "(auto)" },
-  // Image columns — one image per cell.
-  // You can either:
-  //   (a) Use Excel's Insert → Picture in Cell (Excel 2021 / M365) — the
-  //       portal extracts the binary directly from the .xlsx and uploads it.
-  //   (b) Type a filename and drop the matching file in the portal's image
-  //       dropzone — filenames are matched case-insensitively.
-  // The Image 1..Image 5 columns each hold ONE image; add more by editing
-  // TEMPLATE_HEADERS and IMAGE_COLUMN_PATTERN.
-  { key: "Thumbnail", example: "winter-jacket-1.jpg" },
-  { key: "Image 1", example: "winter-jacket-2.jpg" },
-  { key: "Image 2", example: "winter-jacket-3.jpg" },
-  { key: "Image 3", example: "" },
-  { key: "Image 4", example: "" },
-  { key: "Image 5", example: "" },
-  { key: "Brand Letter", example: "nike-letter.pdf" },
+  { key: "Managed Inventory (fixed)", example: "Yes" },
+  { key: "Allow Backorder (fixed)", example: "Yes" },
+  { key: "Inventory Count", example: "10", required: true },
+  { key: "MRP INR", example: "1999", required: true },
+  { key: "Discounted Price INR (optional)", example: "1499" },
+  { key: "Discount % (auto)", example: "" },
+  { key: "Thumbnail", example: "shoe.jpg" },
+  ...[1, 2, 3, 4, 5].map(n => ({ key: `Image ${n}`, example: "" })),
+  { key: "Video URLs", example: "" },
 ]
+
+/** Expand comma-separated values before validation; stock and prices apply per variant. */
+export function expandBulkOptions(raw: RawRow[]): RawRow[] {
+  let expandedCount = 0
+  return raw.flatMap((source, index) => {
+    const row: RawRow = Object.fromEntries(Object.entries(source).map(([key, value]) => [normalizeBulkHeader(key), value]))
+    const pairs = Object.keys(row).flatMap(key => {
+      const match = key.match(/^option(\d+)name$/)
+      if (!match || !toStr(row[key])) return []
+      const n = Number(match[1])
+      return [{ n, name: toStr(row[key]), values: toStr(row[`option${n}value`]).split(",").map(v => v.trim()).filter(Boolean), images: toStr(row[`option${n}images`] || row[`option${n}image`]).split(",").map(v => v.trim()).filter(Boolean) }]
+    }).sort((a, b) => a.n - b.n)
+    const errors: string[] = []
+    for (const pair of pairs) {
+      if (new Set(pair.values.map(v => v.toLowerCase())).size !== pair.values.length) errors.push(`Option ${pair.n} contains duplicate values`)
+      if (pair.images.length && pair.images.length !== 1 && pair.images.length !== pair.values.length) errors.push(`Option ${pair.n} Images needs one shared image or one image per value, in the same order`)
+    }
+    if (Object.keys(row).some(k => /^option\d+images?$/.test(k) && toStr(row[k]) && !toStr(row[k.replace(/images?$/, "name")]))) errors.push("Option images require an option name and values")
+    const count = pairs.reduce((total, pair) => total * Math.max(1, pair.values.length), 1)
+    if (count > 100) errors.push("At most 100 variants are allowed per product; reduce the option combinations")
+    expandedCount += count
+    if (expandedCount > 10000) errors.push("Maximum 10000 generated variants per file; split the spreadsheet")
+    let combinations: RawRow[] = [{}]
+    if (!errors.length) for (const pair of pairs) {
+      if (!pair.values.length) continue
+      combinations = combinations.flatMap(combo => pair.values.map((value, i) => ({ ...combo, [`Option ${pair.n} Value`]: value, __optionImages: { ...(combo.__optionImages as object || {}), ...(pair.images.length ? { [pair.name]: { value, refs: [pair.images.length === 1 ? pair.images[0] : pair.images[i]] } } : {}) } })))
+    }
+    return combinations.map((combo, i) => {
+      const result: RawRow = { ...source, __rowNumber: source.__rowNumber ?? index + 2, __optionErrors: errors, __optionImages: combo.__optionImages }
+      for (const [key, value] of Object.entries(combo)) if (key !== "__optionImages") {
+        // Replace an annotated or differently spaced original header rather than leaving two values.
+        for (const existing of Object.keys(result)) if (normalizeBulkHeader(existing) === normalizeBulkHeader(key)) delete result[existing]
+        result[key] = value
+      }
+      if (combinations.length > 1) {
+        const sku = toStr(row.sku)
+        if (sku && sku.toLowerCase() !== "(auto)") result.SKU = `${sku}-${i + 1}`
+        result["Variant Title"] = ""
+      }
+      return result
+    })
+  })
+}
 
 // Matches "Image 1", "Image 2", ..., "Image10", "image_1", etc. Used by both
 // the row parser (legacy filename-based flow) and the embedded-image cell
@@ -174,7 +203,8 @@ export const computeDiscountPercent = (
   return Math.round(((p - d) / p) * 1000) / 10
 }
 
-export const productGroupKey = (row: Pick<ParsedRow, "title" | "handle" | "rowNumber">): string => {
+export const productGroupKey = (row: Pick<ParsedRow, "title" | "handle" | "rowNumber" | "editGroupKey">): string => {
+  if (row.editGroupKey) return row.editGroupKey
   const title = row.title.trim().toLowerCase()
   const handle = row.handle.trim().toLowerCase()
   if (handle) return `handle:${handle}`
@@ -239,21 +269,39 @@ export const applyGroupValidation = (rows: ParsedRow[]): ParsedRow[] => {
   return clean.map(row => ({ ...row, status: row.errors.length ? "failed" : row.status === "failed" && row.errorMessage?.startsWith(GROUP_ERROR) ? "pending" : row.status, errorMessage: row.errors[0] }))
 }
 
+/** Product-level preview edits must update every generated variant together. */
+export function editBulkProduct(rows: ParsedRow[], rowIndex: number, patch: Partial<Pick<ParsedRow, "title" | "selectedCategoryId" | "resolvedParentCategoryId" | "categoryRequest" | "type" | "tags">>): ParsedRow[] {
+  if (!rows[rowIndex]) return rows
+  const key = productGroupKey(rows[rowIndex])
+  return applyGroupValidation(rows.map(row => {
+    if (productGroupKey(row) !== key || row.status === "success" || row.status === "uploading") return row
+    const updated = { ...row, ...patch, editGroupKey: key }
+    if (patch.title !== undefined) {
+      updated.errors = row.errors.filter(error => error !== "Title is required" && !error.startsWith(GROUP_ERROR))
+      if (!patch.title.trim()) updated.errors.push("Title is required")
+      updated.errorMessage = updated.errors[0]
+      updated.status = updated.errors.length ? "failed" : "pending"
+    }
+    if (patch.selectedCategoryId || patch.categoryRequest?.trim()) updated.warnings = updated.warnings.filter(warning => !/^Category ".*" not found/.test(warning))
+    return updated
+  }))
+}
+
 export const parseRows = (raw: RawRow[], categories: Category[], collections: Collection[]): ParsedRow[] => {
   const categoryByName = new Map(categories.map(c => [c.name.toLowerCase().trim(), c.id]))
   const collectionByName = new Map(collections.map(c => [c.title.toLowerCase().trim(), c.id]))
   const usedSkus = new Set<string>()
-  const parsed = raw.map((r, idx): ParsedRow => {
+  const parsed = expandBulkOptions(raw).map((r, idx): ParsedRow => {
     const rowNumber = typeof r.__rowNumber === "number" ? r.__rowNumber : idx + 2 // +1 for header, +1 for 1-based
-    const errors: string[] = []
+    const errors: string[] = [...(r.__optionErrors as string[] || [])]
     const warnings: string[] = []
 
     const get = (k: string): unknown => {
       const direct = r[k]
       if (direct !== undefined) return direct
-      const wantedKey = k.toLowerCase().replace(/\s+|\*/g, "")
+      const wantedKey = normalizeBulkHeader(k)
       for (const key of Object.keys(r)) {
-        const norm = key.toLowerCase().replace(/\s+|\*/g, "")
+        const norm = normalizeBulkHeader(key)
         if (norm === wantedKey) return r[key]
       }
       return undefined
@@ -261,17 +309,17 @@ export const parseRows = (raw: RawRow[], categories: Category[], collections: Co
 
     const title = toStr(get("Title"))
     const brand = toStr(get("Brand"))
-    const price = toNumStr(get("Price INR"))
+    const price = toNumStr(get("MRP INR") ?? get("Price INR"))
     const discountedPrice = toNumStr(get("Discounted Price INR"))
 
     if (!title) errors.push("Title is required")
     if (!brand) errors.push("Brand is required (used to generate SKU)")
-    if (!price) errors.push("Price INR is required")
+    if (!price) errors.push("MRP INR is required")
 
     const numPrice = parseFloat(price)
     const numDiscount = parseFloat(discountedPrice)
     if (price && (!Number.isFinite(numPrice) || numPrice <= 0)) {
-      errors.push("Price INR must be greater than zero")
+      errors.push("MRP INR must be greater than zero")
     }
     if (discountedPrice && (!Number.isFinite(numDiscount) || numDiscount < 0)) {
       errors.push("Discounted Price INR must be a positive number")
@@ -281,15 +329,15 @@ export const parseRows = (raw: RawRow[], categories: Category[], collections: Co
       Number.isFinite(numDiscount) &&
       numDiscount > numPrice
     ) {
-      errors.push("Discounted Price INR cannot exceed Price INR (MRP)")
+      errors.push("Discounted Price INR cannot exceed MRP INR")
     }
 
-    for (const field of ["Price INR", "Discounted Price INR", "Height", "Width", "Length", "Weight", "Inventory Count"]) {
-      const value = toStr(get(field))
+    for (const field of ["MRP INR", "Discounted Price INR", "Height", "Width", "Length", "Weight", "Inventory Count"]) {
+      const value = toStr(get(field) ?? (field === "MRP INR" ? get("Price INR") : undefined))
       if (!value) continue
       if (!/^\d+(?:\.\d+)?$/.test(value) || !Number.isFinite(Number(value)) || Number(value) > Number.MAX_SAFE_INTEGER) errors.push(`${field} must be a non-negative number without currency symbols or separators`)
       if (field === "Inventory Count" && !Number.isSafeInteger(Number(value))) errors.push("Inventory Count must be a whole number")
-      if (["Price INR", "Discounted Price INR"].includes(field) && /^\d+\.\d{3,}$/.test(value)) errors.push(`${field} supports at most two decimal places`)
+      if (["MRP INR", "Discounted Price INR"].includes(field) && /^\d+\.\d{3,}$/.test(value)) errors.push(`${field} supports at most two decimal places`)
     }
     for (const field of ["Discountable", "Managed Inventory", "Allow Backorder"]) {
       const value = get(field)
@@ -300,8 +348,7 @@ export const parseRows = (raw: RawRow[], categories: Category[], collections: Co
     if (!tax) errors.push("Tax Code is required; use a code from the GST Codes sheet")
     const suppliedRate = toStr(get("GST Rate"))
     if (suppliedRate && (!/^\d+(?:\.\d+)?$/.test(suppliedRate) || Number(suppliedRate) !== tax?.rate)) errors.push("GST Rate must match the selected Tax Code; leave it blank to calculate automatically")
-    const shippingProfile = toStr(get("Shipping Profile ID"))
-    if (shippingProfile && !/^sp_[a-zA-Z0-9]+$/.test(shippingProfile)) errors.push("Shipping Profile ID must be a valid sp_ ID; leave blank for the default profile")
+    const shippingProfile = ""
     const videoUrls = toStr(get("Video URLs")).split(",").map(v => v.trim()).filter(Boolean)
     if (videoUrls.some(url => !isMediaUrl(url))) errors.push("Video URLs must be comma-separated public HTTPS URLs")
     const optionPairs = new Map<number, { name: string; value: string }>()
@@ -329,10 +376,9 @@ export const parseRows = (raw: RawRow[], categories: Category[], collections: Co
     if (toStr(get("Country of Origin")) && !/^[A-Za-z]{2}$/.test(toStr(get("Country of Origin")))) errors.push("Country of Origin must be a two-letter code, e.g. IN")
 
     const categoryName = toStr(get("Category"))
-    const additionalCategoryIds = [...new Set(toStr(get("Additional Category IDs")).split(",").map(id => id.trim()).filter(Boolean))]
-    if (additionalCategoryIds.some(id => !categories.some(category => category.id === id))) errors.push("Additional Category IDs must match IDs in the Categories sheet")
+    const additionalCategoryIds: string[] = []
     const subcategoryName = toStr(get("Subcategory"))
-    const collectionName = toStr(get("Collection"))
+    const collectionName = brand
 
     // Resolve parent category (Category column)
     const matchedParentId = categoryName
@@ -394,7 +440,7 @@ export const parseRows = (raw: RawRow[], categories: Category[], collections: Co
       : undefined
     const autoCollectionRequest = collectionName && !matchedCollectionId ? collectionName : ""
     if (collectionName && !matchedCollectionId) {
-      warnings.push(`Collection "${collectionName}" not found — request auto-submitted for admin review`)
+      warnings.push(`Brand "${collectionName}" will be used as the collection, pending admin review`)
     }
 
     let sku = toStr(get("SKU"))
@@ -410,13 +456,12 @@ export const parseRows = (raw: RawRow[], categories: Category[], collections: Co
       ? true
       : !falsy(discountableRaw)
 
-    const managedInventoryRaw = get("Managed Inventory")
-    const managedInventory =
-      managedInventoryRaw === undefined || managedInventoryRaw === ""
-        ? true
-        : !falsy(managedInventoryRaw)
-
-    const allowBackorder = truthy(get("Allow Backorder"))
+    const managedInventory = true
+    const allowBackorder = true
+    for (const field of ["Managed Inventory", "Allow Backorder"]) {
+      if (toStr(get(field)) && !truthy(get(field))) errors.push(`${field} is fixed to Yes; remove the override`)
+    }
+    if (!toStr(get("Inventory Count"))) errors.push("Inventory Count is required (enter 0 for no stock)")
 
     const tagsRaw = toStr(get("Tags"))
     const tags = tagsRaw
@@ -443,7 +488,10 @@ export const parseRows = (raw: RawRow[], categories: Category[], collections: Co
         if (t) imageRefs.push(t)
       }
     }
-    const brandLetterRef = toStr(get("Brand Letter"))
+    const brandLetterRef = ""
+    const optionImages = r.__optionImages as ParsedRow["optionImages"]
+    const imageOptionNames = Object.keys(optionImages || {})
+    const primaryImageOption = imageOptionNames.find(name => name.toLowerCase() === "color") || imageOptionNames[0]
 
     return {
       rowNumber,
@@ -463,20 +511,18 @@ export const parseRows = (raw: RawRow[], categories: Category[], collections: Co
       width: toNumStr(get("Width")),
       length: toNumStr(get("Length")),
       weight: toNumStr(get("Weight")),
-      midCode: toStr(get("MID Code")),
-      hsCode: toStr(get("HS Code")),
-      countryOfOrigin: toStr(get("Country of Origin")).toUpperCase(),
+      midCode: "",
+      hsCode: toStr(get("HSN Code") ?? get("HS Code")),
+      countryOfOrigin: toStr(get("Country of Origin")).toUpperCase() || "IN",
       taxCode, gstRate: tax?.rate ?? null, shippingProfile, videoUrls, extraOptions,
       option1Name: toStr(get("Option 1 Name")),
       option1Value: toStr(get("Option 1 Value")),
       option2Name: toStr(get("Option 2 Name")),
       option2Value: toStr(get("Option 2 Value")),
-      visualOptionName: toStr(get("Visual Option Name")),
-      visualOptionValue: toStr(get("Visual Option Value")),
-      visualImageRefs: toStr(get("Visual Image Refs"))
-        .split(",")
-        .map((piece) => piece.trim())
-        .filter(Boolean),
+      optionImages,
+      visualOptionName: primaryImageOption || visualName,
+      visualOptionValue: optionImages?.[primaryImageOption]?.value || visualValue,
+      visualImageRefs: [...Object.values(optionImages || {}).flatMap(item => item.refs), ...toStr(get("Visual Image Refs")).split(",").map(v => v.trim()).filter(Boolean)],
       variantTitle: toStr(get("Variant Title")) || Object.values(optionValues).join(" / ") || "Default variant",
       sku,
       managedInventory,

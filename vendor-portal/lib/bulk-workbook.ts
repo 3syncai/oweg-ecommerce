@@ -1,10 +1,11 @@
 import * as XLSX from "xlsx"
-import { TEMPLATE_HEADERS, type Category, type Collection, type RawRow } from "./bulk-upload"
+import JSZip from "jszip"
+import { TEMPLATE_HEADERS, normalizeBulkHeader, type Category, type Collection, type RawRow } from "./bulk-upload"
 import { GST_TAX_CODES } from "./gst-tax-codes"
 
 export const MAX_BULK_ROWS = 1000
 export const MAX_WORKBOOK_BYTES = 10 * 1024 * 1024
-const normalizeHeader = (value: unknown) => String(value ?? "").replace(/\*/g, "").replace(/\s+/g, "").toLowerCase()
+const normalizeHeader = normalizeBulkHeader
 
 export async function loadAllReferences<T>(load: (offset: number) => Promise<{ items: T[]; count: number }>): Promise<T[]> {
   const all: T[] = []
@@ -25,53 +26,82 @@ export function buildBulkTemplate(categories: Category[] = [], collections: Coll
   XLSX.utils.book_append_sheet(workbook, products, "Products")
   const example = Object.fromEntries(TEMPLATE_HEADERS.map(h => [h.key, h.example]))
   const examples = [
-    { ...example, Title: "Sample storage box", Handle: "sample-storage-box", Brand: "Your brand", Category: "", Subcategory: "", Collection: "", "Option 1 Name": "", "Option 1 Value": "", Thumbnail: "box.jpg", "Image 1": "", "Image 2": "", "Brand Letter": "your-letter.pdf" },
-    ...["M", "L"].map(size => ({ ...example, Title: "Sample T-shirt", Handle: "sample-t-shirt", Brand: "Your brand", Category: "", Subcategory: "", Collection: "", "Option 1 Name": "Size", "Option 1 Value": size, "Variant Title": size, Thumbnail: "shirt.jpg", "Image 1": "", "Image 2": "", "Brand Letter": "your-letter.pdf" })),
+    { ...example, Title: "Sample storage box", "Option 1 Name": "", "Option 1 Value": "", "Option 2 Name": "", "Option 2 Value": "", Thumbnail: "box.jpg" },
+    { ...example, Title: "Sample shoe", "Option 1 Value": "8,9,10", "Option 2 Value": "Red,Green,Blue", "Option 2 Images": "red.jpg,green.jpg,blue.jpg" },
   ]
   const exampleSheet = XLSX.utils.json_to_sheet(examples, { header: TEMPLATE_HEADERS.map(h => h.key) })
   exampleSheet["!cols"] = products["!cols"]
   XLSX.utils.book_append_sheet(workbook, exampleSheet, "Examples")
   const instructions = [
-    ["OWEG vendor product import · Template v2"],
-    ["Fill ONLY the blank Products sheet; Examples are reference data and are never imported."],
-    ["One row = one variant. Same Handle (or same Title when Handle is blank) = one product."],
-    ["Use different Handles for different products with the same title. Repeat all product-level details on every variant row."],
-    ["Required: Title, Brand, Tax Code, Price INR. GST Rate is derived from Tax Code; do not guess tax classification."],
-    ["Price INR = MRP; Discounted Price INR = selling price (optional, cannot exceed MRP). INR amounts use at most 2 decimals."],
-    ["Use numbers without ₹, commas, or units. Inventory is a non-negative whole number; blank defaults to 0."],
-    ["Dimensions: Height, Width, Length in cm; Weight in kg, matching the product form. Country of Origin: 2-letter code (IN)."],
-    ["Keep SKUs, HSN/HS Code and MID Code as text to preserve leading zeros. Blank SKU or (auto) generates a SKU."],
-    ["Existing catalog SKU: the backend verifies the same product and creates your own offer; your own duplicate SKU is rejected."],
-    ["Options: pair Option N Name with Option N Value on each variant. Add more numbered pairs if needed. Maximum 100 variants/product."],
-    ["Visual Option Name / Value must match an option on the row. Visual Image Refs are comma-separated image filenames or HTTPS URLs."],
-    ["Images: filenames + matching local uploads, public HTTPS URLs, or supported Excel embedded images. Add Image 6, Image 7, etc."],
-    ["Every referenced thumbnail/gallery/visual image must be ready before submission. Use unique filenames for different photos."],
-    ["Video URLs: optional comma-separated public HTTPS links to existing videos. Local videos can be added in the individual product form."],
-    ["Shipping Profile ID: optional valid sp_ ID supplied by your admin. Blank uses the default shipping profile."],
-    ["Sales channel is assigned by the backend (Default Sales Channel), as in individual product creation."],
-    ["Use category and collection names from the reference sheets. Unknown names become requests for admin review."],
-    ["Additional Category IDs: optional comma-separated IDs from the Categories sheet for products belonging to more categories."],
-    ["Type is free text; Tags are comma-separated. Yes/No, True/False, 1/0 are accepted for boolean fields."],
-    ["A brand authorization letter is required per vendor/brand. An uploaded, pending letter allows draft submission; publication requires admin verification."],
-    ["No products are published directly: all imports are drafts pending admin approval."],
-    ["All validation errors must be fixed before submitting. A product's variants are submitted together. Successful products are skipped on retry."],
-    ["If a request loses its connection after submission, check Products before retrying; the backend rejects an existing vendor SKU."],
-    [`"Products" must be the sheet name in multi-sheet workbooks. .xlsx / .xls / .csv, maximum ${MAX_BULK_ROWS} rows, 10 MB, 200 columns.`],
-    ["Keep the header row first. No merged cells, duplicate/unknown headers or formulas in product data. Paste values instead."],
+    ["OWEG vendor product import - Template v3"],
+    ["Fill Products only; Examples are never imported. * means mandatory. Calculated/fixed fields are protected."],
+    ["Required: Title, Brand, Tax Code, MRP INR, Inventory Count. Enter 0 for no stock. Stock applies to EACH variant."],
+    ["Tax country is India. Choose Tax Code from its dropdown; GST Rate is calculated from it. GST alone cannot be imported."],
+    ["MRP INR is original price. Discounted Price INR is optional and cannot exceed MRP. Discount % is automatic."],
+    ["Managed Inventory and Allow Backorder are always Yes. Shipping uses the backend default profile."],
+    ["Brand is also the collection. Unknown brands are requested for admin review; no separate collection field."],
+    ["Subtitle and Handle are optional. Same Handle (or Title if blank) groups rows. Repeat product-level details."],
+    ["Comma-separated Size 8,9,10 and Color Red,Green,Blue create all NINE combinations. Maximum 100 variants/product."],
+    ["Row price and stock apply to each generated variant. For different prices/stock, use separate rows with individual values."],
+    ["Option N Images: one shared image OR one image per value in the SAME order. Red,Blue maps to red.jpg,blue.jpg."],
+    ["Color (or first option with images) controls the visual gallery. Every option image is also included in the product gallery."],
+    ["Blank SKU/(auto) generates unique SKUs. A supplied SKU with multiple combinations gets -1, -2, etc."],
+    ["Thumbnail and Image 1,2,3... accept filenames with portal uploads, public HTTPS URLs or Excel embedded pictures."],
+    ["Video URLs is beside product images; use optional comma-separated public HTTPS video links."],
+    ["Upload brand authorization AFTER parsing, once per brand: one PNG/JPG or PDF; multiple images are combined into a PDF."],
+    ["Dimensions cm; Weight kg. Country of Origin defaults to IN. Keep HSN Code/SKU as text for leading zeros."],
+    ["Use numbers without currency symbols/separators; prices allow two decimals. Use Categories for category names."],
+    ["Imports create drafts pending admin approval. Fix all errors before submitting; successful products are skipped on retry."],
+    [`Multi-sheet files need Products. Maximum ${MAX_BULK_ROWS} rows, 10 MB, 200 columns. Add numbered image/option columns if needed.`],
+    ["Headers on row 1; no merged cells or formulas in input cells. Only calculation columns accept formulas."],
   ]
   const info = XLSX.utils.aoa_to_sheet(instructions)
   info["!cols"] = [{ wch: 145 }]
   XLSX.utils.book_append_sheet(workbook, info, "Instructions")
   const guide = XLSX.utils.aoa_to_sheet([
     ["Column", "Required", "Scope", "Example"],
-    ...TEMPLATE_HEADERS.map(h => [h.key, h.required ? "Yes" : "No", /Option|Variant|SKU|Inventory|Backorder|Price|Discount %|Image|Thumbnail/.test(h.key) ? "Variant / media" : "Product — repeat for each variant", h.example]),
+    ...TEMPLATE_HEADERS.map(h => [h.key, h.required ? "Yes" : "No", /Option|Variant|SKU|Inventory|Backorder|Price|MRP|Discount %|Image|Thumbnail/.test(h.key) ? "Variant / media" : "Product — repeat for each variant", h.example]),
   ])
   guide["!cols"] = [{ wch: 28 }, { wch: 12 }, { wch: 42 }, { wch: 45 }]
   XLSX.utils.book_append_sheet(workbook, guide, "Field Guide")
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(GST_TAX_CODES), "GST Codes")
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(categories.map(c => ({ Name: c.name, ID: c.id, "Parent ID": c.parent_category_id || "" })), { header: ["Name", "ID", "Parent ID"] }), "Categories")
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(collections.map(c => ({ Name: c.title, ID: c.id })), { header: ["Name", "ID"] }), "Collections")
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(collections.map(c => ({ Name: c.title, ID: c.id })), { header: ["Name", "ID"] }), "Brands")
+  const col = (key: string) => XLSX.utils.encode_col(TEMPLATE_HEADERS.findIndex(h => normalizeHeader(h.key) === normalizeHeader(key)))
+  for (let r = 2; r <= MAX_BULK_ROWS + 1; r++) {
+    const tax = `${col("Tax Code")}${r}`, mrp = `${col("MRP INR")}${r}`, sale = `${col("Discounted Price INR")}${r}`
+    for (let c = 0; c < headers.length; c++) products[XLSX.utils.encode_cell({ r: r - 1, c })] = { t: "s", v: "" }
+    products[`${col("GST Rate")}${r}`] = { t: "str", v: "", f: `IF(${tax}="","",IFERROR(VLOOKUP(${tax},'GST Codes'!$A$2:$C$${GST_TAX_CODES.length + 1},3,FALSE),""))` }
+    products[`${col("Discount %")}${r}`] = { t: "str", v: "", f: `IF(OR(${mrp}="",${sale}=""),"",IFERROR(ROUND((${mrp}-${sale})/${mrp}*100,1),""))` }
+    for (const key of ["Managed Inventory", "Allow Backorder"]) products[`${col(key)}${r}`] = { t: "s", v: "Yes" }
+    products[`${col("Country of Origin")}${r}`] = { t: "s", v: "IN" }
+  }
+  products["!ref"] = `A1:${XLSX.utils.encode_col(headers.length - 1)}${MAX_BULK_ROWS + 1}`
+  workbook.Workbook = { ...workbook.Workbook, Names: [{ Name: "OWEGTaxCodes", Ref: `'GST Codes'!$A$2:$A$${GST_TAX_CODES.length + 1}` }] }
   return workbook
+}
+
+/** Serialize the standard OOXML validation and unlocked-input styles unsupported by SheetJS CE. */
+export async function serializeBulkTemplate(workbook: XLSX.WorkBook): Promise<Uint8Array> {
+  const zip = await JSZip.loadAsync(XLSX.write(workbook, { type: "array", bookType: "xlsx" }))
+  const styles = await zip.file("xl/styles.xml")!.async("string")
+  const match = styles.match(/<cellXfs count="(\d+)"[^>]*>/)
+  if (!match) throw new Error("Unable to prepare protected template cells")
+  const unlocked = Number(match[1])
+  zip.file("xl/styles.xml", styles.replace(match[0], match[0].replace(`count="${unlocked}"`, `count="${unlocked + 2}"`)).replace("</cellXfs>", '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyProtection="1"><protection locked="0"/></xf><xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyProtection="1"><protection locked="0"/></xf></cellXfs>'))
+  let sheet = await zip.file("xl/worksheets/sheet1.xml")!.async("string")
+  const locked = new Set(TEMPLATE_HEADERS.flatMap((h, i) => /\((auto|fixed)\)/.test(h.key) ? [XLSX.utils.encode_col(i)] : []))
+  const textColumns = new Set(TEMPLATE_HEADERS.flatMap((h, i) => /^(HSN Code|SKU|Handle|Option \d+ Value)/.test(h.key) ? [XLSX.utils.encode_col(i)] : []))
+  sheet = sheet.replace(/<c r="([A-Z]+)(\d+)"([^>]*)>/g, (tag, column, row, rest) => Number(row) > 1 && !locked.has(column) ? `<c r="${column}${row}"${rest.replace(/ s="\d+"/, "")} s="${textColumns.has(column) ? unlocked + 1 : unlocked}">` : tag)
+  const taxCol = XLSX.utils.encode_col(TEMPLATE_HEADERS.findIndex(h => h.key === "Tax Code"))
+  sheet = sheet.replace("</sheetData>", '</sheetData><sheetProtection sheet="1" objects="1" scenarios="1" selectLockedCells="1"/>')
+  const validation = `<dataValidations count="1"><dataValidation type="list" allowBlank="0" showErrorMessage="1" errorTitle="Choose a tax code" error="Select a code from the dropdown" errorStyle="stop" sqref="${taxCol}2:${taxCol}${MAX_BULK_ROWS + 1}"><formula1>OWEGTaxCodes</formula1></dataValidation></dataValidations>`
+  // Validation must precede ignoredErrors and other trailing worksheet elements.
+  sheet = sheet.replace(/(<(?:hyperlinks|printOptions|pageMargins|pageSetup|headerFooter|rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|drawing|legacyDrawing|extLst)\b|<\/worksheet>)/, validation + "$1")
+  zip.file("xl/worksheets/sheet1.xml", sheet)
+  const workbookXml = await zip.file("xl/workbook.xml")!.async("string")
+  zip.file("xl/workbook.xml", workbookXml.replace(/<calcPr[^>]*\/>/, "").replace("</workbook>", '<calcPr calcId="0" fullCalcOnLoad="1" forceFullCalc="1"/></workbook>'))
+  return zip.generateAsync({ type: "uint8array", compression: "DEFLATE" })
 }
 
 /** Bounded reads and explicit header checks prevent silent lost columns / formula cache imports. */
@@ -92,7 +122,7 @@ export async function readBulkWorkbook(file: { name: string; size: number; array
   const normalized = headers.map(normalizeHeader)
   const seen = new Set<string>()
   const supported = new Set(TEMPLATE_HEADERS.map(h => normalizeHeader(h.key)))
-  supported.add("images")
+  ;["images", "priceinr", "hscode", "visualoptionname", "visualoptionvalue", "visualimagerefs"].forEach(key => supported.add(key))
   for (let c = 0; c < headers.length; c++) {
     const key = normalized[c]
     if (!key) {
@@ -101,15 +131,16 @@ export async function readBulkWorkbook(file: { name: string; size: number; array
     }
     if (seen.has(key)) throw new Error(`Duplicate column: ${headers[c]}`)
     seen.add(key)
-    if (!supported.has(key) && !/^image\d+$/.test(key) && !/^option\d+(name|value)$/.test(key)) throw new Error(`Unsupported column: ${headers[c]}. Use the current template.`)
+    if (!supported.has(key) && !/^image\d+$/.test(key) && !/^option\d+(name|value|images?)$/.test(key)) throw new Error(`Unsupported column: ${headers[c]}. Use the current template.`)
   }
-  const missing = TEMPLATE_HEADERS.filter(h => h.required && !seen.has(normalizeHeader(h.key)))
-  if (missing.length) throw new Error(`Missing required columns: ${missing.map(h => h.key).join(", ")}. Download template v2.`)
+  const missing = TEMPLATE_HEADERS.filter(h => h.required && !seen.has(normalizeHeader(h.key)) && !(h.key === "MRP INR" && seen.has("priceinr")))
+  if (missing.length) throw new Error(`Missing required columns: ${missing.map(h => h.key).join(", ")}. Download template v3.`)
   for (let r = 1; r <= range.e.r; r++) for (let c = 0; c <= range.e.c; c++) {
-    if (sheet[XLSX.utils.encode_cell({ r, c })]?.f) throw new Error(`Row ${r + 1}: formulas are not supported; paste values instead`)
+    if (sheet[XLSX.utils.encode_cell({ r, c })]?.f && !["gstrate", "discount%"].includes(normalized[c])) throw new Error(`Row ${r + 1}: formulas are not supported; paste values instead`)
   }
   const json: RawRow[] = values.slice(1).flatMap((row, i) => {
-    if (!row.some(value => String(value ?? "").trim())) return []
+    if (!row.some((value, c) => !["gstrate", "discount%", "managedinventory", "allowbackorder", "countryoforigin"].includes(normalized[c]) && String(value ?? "").trim())) return []
+    for (let c = 0; c < headers.length; c++) if (sheet[XLSX.utils.encode_cell({ r: i + 1, c })]?.f && ["gstrate", "discount%"].includes(normalized[c])) row[c] = ""
     return [{ ...Object.fromEntries(headers.filter(Boolean).map(header => [header, row[headers.indexOf(header)] ?? ""])), __rowNumber: i + 2 }]
   })
   if (!json.length) throw new Error("No product rows found. Fill the Products sheet; Examples are not imported.")
