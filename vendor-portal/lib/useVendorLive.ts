@@ -27,7 +27,7 @@ const DEFAULT_INTERVAL_MS = 10_000
 /** Shared pulse poller so Shell + pages don't each hit /vendor/pulse. */
 let sharedRevision: string | null = null
 let sharedTimer: number | null = null
-let sharedListeners = new Set<Listener>()
+const sharedListeners = new Set<Listener>()
 let sharedBootstrapped = false
 
 async function sharedTick(forceInvalidate = false) {

@@ -26,7 +26,7 @@ const getProductStatusConfig = (
 
 export const resolveProductStatus = (product: {
   status: string
-  metadata?: { approval_status?: string }
+  metadata?: { approval_status?: string } | null
 }) => {
   if (product.metadata?.approval_status === "pending") return "pending"
   if (product.metadata?.approval_status === "rejected") return "rejected"

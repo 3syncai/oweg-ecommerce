@@ -13,9 +13,13 @@ import {
 } from "@medusajs/ui"
 import * as XLSX from "xlsx"
 import axios from "axios"
+import styles from "@/components/bulk-upload/BulkUpload.module.css"
 import VendorShell from "@/components/VendorShell"
+import BrandLetterPreview from "@/components/bulk-upload/BrandLetterPreview"
 import BulkPricingReview from "@/components/bulk-upload/BulkPricingReview"
-import { bulkPricingReady, type BulkPricingDecision } from "@/lib/bulk-pricing"
+import type { BulkPricingDecision } from "@/lib/bulk-pricing"
+import { savedAuthorization, submitBrandLetters, type BrandAuthState } from "@/lib/bulk-brand-authorization"
+import { bulkSubmissionIssues } from "@/lib/bulk-submission"
 import GuideCard from "@/components/bulk-upload/GuideCard"
 import StepCard from "@/components/bulk-upload/StepCard"
 import {
@@ -53,15 +57,6 @@ type ImageState =
   | { status: "error"; file?: File; message: string }
 
 type ImageMap = Record<string, ImageState>
-
-type BrandAuthState =
-  | { status: "checking" }
-  | { status: "authorized"; fileUrl?: string }
-  | { status: "pending"; fileUrl?: string }
-  | { status: "missing" }
-  | { status: "uploading"; file: File }
-  | { status: "uploaded"; fileUrl?: string }
-  | { status: "error"; message: string }
 
 type BrandAuthMap = Record<string, BrandAuthState>
 
@@ -114,6 +109,8 @@ const VendorProductsBulkUploadPage = () => {
   // resolved in the current upload session so we don't re-fire the request
   // (and don't end up cancelling our own in-flight check).
   const brandsCheckedRef = useRef<Set<string>>(new Set())
+  const brandSessionRef = useRef(0)
+  const brandSelectionRef = useRef<Record<string, number>>({})
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("vendor_token") : null
@@ -241,6 +238,7 @@ const VendorProductsBulkUploadPage = () => {
     const API_URL =
       process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000"
 
+    const session = brandSessionRef.current
     uniqueBrands.forEach(async ({ key, display }) => {
       if (brandsCheckedRef.current.has(key)) return
       brandsCheckedRef.current.add(key)
@@ -255,33 +253,25 @@ const VendorProductsBulkUploadPage = () => {
             headers: { Authorization: `Bearer ${token}` },
           }
         )
+        if (session !== brandSessionRef.current) return
         const data = res.data || {}
         const status = data.status as string | undefined
         const fileUrl: string | undefined = data.authorization?.file_url
-        if (status === "authorized") {
-          setBrandAuthMap((prev) => ({
-            ...prev,
-            [key]: { status: "authorized", fileUrl },
-          }))
-        } else if (status === "pending") {
-          setBrandAuthMap((prev) => ({
-            ...prev,
-            [key]: { status: "pending", fileUrl },
-          }))
-        } else {
-          setBrandAuthMap((prev) => ({ ...prev, [key]: { status: "missing" } }))
-        }
+        setBrandAuthMap(prev => prev[key]?.status !== "checking" ? prev : ({
+          ...prev,
+          [key]: status === "authorized" || status === "pending" ? { status, fileUrl } : { status: "missing" },
+        }))
       } catch (cause: unknown) {
         const err = uploadError(cause)
         const message =
           err?.response?.data?.message ||
           err?.message ||
           "Failed to check brand authorization"
-        // Allow a retry on the next render if it failed.
-        brandsCheckedRef.current.delete(key)
+        if (session !== brandSessionRef.current) return
+        // Keep a late failed check from restarting and overwriting a local selection.
         setBrandAuthMap((prev) => ({
           ...prev,
-          [key]: { status: "error", message },
+          [key]: prev[key]?.status === "checking" ? { status: "error", message } : prev[key],
         }))
       }
     })
@@ -298,6 +288,7 @@ const VendorProductsBulkUploadPage = () => {
       toast.error("Not authenticated", { description: "Please sign in again" })
       return
     }
+    if (submittingRef.current) return
     const files = Array.isArray(selected) ? selected : [selected]
     if (!files.length) return
     if (files.some(file => !/\.(pdf|jpe?g|png)$/i.test(file.name)) || (files.length > 1 && files.some(file => !/\.(jpe?g|png)$/i.test(file.name)))) {
@@ -310,7 +301,12 @@ const VendorProductsBulkUploadPage = () => {
     }
     let file = files[0]
     brandsCheckedRef.current.add(brandKey)
-    setBrandAuthMap(prev => ({ ...prev, [brandKey]: { status: "uploading", file } }))
+    const session = brandSessionRef.current
+    const selection = (brandSelectionRef.current[brandKey] || 0) + 1
+    brandSelectionRef.current[brandKey] = selection
+    const previous = savedAuthorization(brandAuthMap[brandKey])
+    const current = () => session === brandSessionRef.current && selection === brandSelectionRef.current[brandKey]
+    setBrandAuthMap(prev => ({ ...prev, [brandKey]: { status: "preparing", file, previous } }))
     try {
       if (files.length > 1) {
         const { jsPDF } = await import("jspdf")
@@ -336,51 +332,15 @@ const VendorProductsBulkUploadPage = () => {
       }
       if (file.size > 10 * 1024 * 1024) throw new Error("Authorization exceeds 10 MB; compress the PDF and retry")
     } catch (cause) {
-      setBrandAuthMap(prev => ({ ...prev, [brandKey]: { status: "error", message: "Could not prepare authorization; retry with valid files" } }))
+      if (!current()) return
+      setBrandAuthMap(prev => ({ ...prev, [brandKey]: previous }))
       toast.error("Could not prepare authorization", { description: cause instanceof Error ? cause.message : "Use valid PNG/JPG or PDF files" })
       return
     }
 
-    brandsCheckedRef.current.add(brandKey)
-    setBrandAuthMap((prev) => ({
-      ...prev,
-      [brandKey]: { status: "uploading", file },
-    }))
-
-    try {
-      const API_URL =
-        process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000"
-      const fd = new FormData()
-      fd.append("brand_name", brandDisplay)
-      fd.append("file", file)
-
-      const res = await axios.post(
-        `${API_URL}/vendor/brands/upload-authorization`,
-        fd,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-
-      const fileUrl: string | undefined = res.data?.authorization?.file_url
-      setBrandAuthMap((prev) => ({
-        ...prev,
-        [brandKey]: { status: "uploaded", fileUrl },
-      }))
-      toast.success("Letter uploaded", {
-        description: `Brand letter saved for "${brandDisplay}". It will be applied to every row using this brand.`,
-      })
-    } catch (cause: unknown) {
-      const err = uploadError(cause)
-      const message =
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to upload brand letter"
-      setBrandAuthMap((prev) => ({
-        ...prev,
-        [brandKey]: { status: "error", message },
-      }))
-      toast.error("Upload failed", { description: message })
-    }
+    if (!current()) return
+    setBrandAuthMap(prev => ({ ...prev, [brandKey]: { status: "selected", file, previous } }))
+    toast.success("Letter selected", { description: `${brandDisplay}: it will be saved only when you click Submit.` })
   }
 
   const handleDownloadTemplate = async () => {
@@ -568,6 +528,7 @@ const VendorProductsBulkUploadPage = () => {
         })
       })
       setFileName(file.name)
+      brandSessionRef.current += 1
       brandsCheckedRef.current = new Set()
       setBrandAuthMap({})
       setImageMap(seeded)
@@ -913,22 +874,39 @@ const VendorProductsBulkUploadPage = () => {
   const pendingProductGroupCount = new Set(validRows.filter(row => row.status !== "success").map(productGroupKey)).size
   const pendingRowCount = validRows.filter(row => row.status !== "success").length
 
-  const listingPricesReady = validRows.length > 0 && validRows.every(bulkPricingReady)
+  const submissionIssues = bulkSubmissionIssues(validatedRows, imageMap, requiredImages, uploadingImages, uniqueBrands, brandAuthMap)
 
   const handlePublish = async () => {
     if (submittingRef.current) return
-    if (!listingPricesReady || validatedRows.some(row => row.errors.length) || uploadingImages || requiredImages.some(key => imageMap[key]?.status !== "uploaded") || !allBrandsReady) {
-      toast.error("Upload not ready", { description: "Fix row errors, review listing prices, upload referenced images and complete brand authorization before submitting." })
-      return
-    }
-    if (!validRows.length) {
-      toast.error("Nothing to upload", {
-        description: "Fix the errors in your Excel file and re-upload",
-      })
+    if (submissionIssues.length) {
+      toast.error("Upload not ready", { description: submissionIssues.join(" ") })
       return
     }
     submittingRef.current = true
     setPhase("uploading")
+
+    try {
+      const token = localStorage.getItem("vendor_token")
+      if (!token) throw new Error("Please sign in again before submitting.")
+      await submitBrandLetters(uniqueBrands, brandAuthMap, async (display, file) => {
+        const API_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000"
+        const fd = new FormData()
+        fd.append("brand_name", display)
+        fd.append("file", file)
+        try {
+          const response = await axios.post<{ authorization?: { file_url?: string } }>(`${API_URL}/vendor/brands/upload-authorization`, fd, { headers: { Authorization: `Bearer ${token}` } })
+          return response.data.authorization?.file_url || ""
+        } catch (cause) {
+          const error = uploadError(cause)
+          throw new Error(error.response?.data?.error || error.response?.data?.message || error.message || "Failed to upload brand letter")
+        }
+      }, (key, state) => setBrandAuthMap(prev => ({ ...prev, [key]: state })))
+    } catch (cause) {
+      submittingRef.current = false
+      setPhase("preview")
+      toast.error("Brand letter was not submitted", { description: cause instanceof Error ? cause.message : "Please retry." })
+      return
+    }
 
     const updated = [...validatedRows]
     const groups = new Map<string, { rowIndices: number[]; rows: ParsedRow[] }>()
@@ -1016,38 +994,51 @@ const VendorProductsBulkUploadPage = () => {
     setBrandAuthMap({})
     brandInputRefs.current = {}
     rowImageInputRefs.current = {}
+    brandSessionRef.current += 1
     brandsCheckedRef.current = new Set()
     setOpenCategoryRequestRows(new Set())
   }
 
   return (
     <VendorShell>
-      <div className="mx-auto max-w-7xl p-4 md:p-6 space-y-5 md:space-y-6">
+      <div className={styles.page}>
         <div
-          className="animate-fade-in-up flex flex-wrap items-start justify-between gap-4"
+          className={styles.hero}
           style={{ animationDelay: "0ms" }}
         >
-          <div>
-            <Heading level="h1" className="text-2xl md:text-3xl">
-              Bulk Upload Products
+          <div className={styles.heroCopy}>
+            <p className={styles.eyebrow}>Catalogue / Bulk listing</p>
+            <Heading level="h1" className={styles.title}>
+              Bulk upload products
             </Heading>
             <Text className="mt-1 text-ui-fg-subtle">
-              Upload an Excel sheet to create multiple products at once. SKUs and
-              discount % are computed automatically.
+              Upload your spreadsheet, review prices and product details,
+              then submit your listings for approval.
             </Text>
           </div>
-          <div className="flex gap-2">
+          <div className={styles.heroActions}>
             <Button variant="secondary" onClick={() => router.push("/products")}>
               Back to products
               <ArrowUpRightMini />
             </Button>
             {phase !== "intro" && (
-              <Button variant="secondary" disabled={phase === "uploading" || readingFile || uploadingImages || Object.values(brandAuthMap).some(state => state.status === "uploading")} onClick={handleReset}>
+              <Button variant="secondary" disabled={phase === "uploading" || readingFile || uploadingImages || Object.values(brandAuthMap).some(state => (state.status === "uploading" || state.status === "preparing"))} onClick={handleReset}>
                 Start over
               </Button>
             )}
           </div>
         </div>
+
+        <ol className={styles.steps} aria-label="Bulk listing progress">
+          {[
+            { label: "Upload spreadsheet", description: "Start with the Excel template", complete: phase !== "intro", active: phase === "intro" },
+            { label: "Review & complete", description: "Prices, photos and brand letters", complete: phase === "done", active: phase === "preview" || phase === "uploading" },
+            { label: "Submit for review", description: "Admin reviews your listings", complete: phase === "done" && failedAfterUpload === 0, active: phase === "done" },
+          ].map((step, index) => <li key={step.label} aria-current={step.active ? "step" : undefined} className={clx(styles.step, step.active && styles.activeStep, step.complete && styles.completeStep)}>
+            <span className={styles.stepNumber}>{step.complete ? "✓" : String(index + 1).padStart(2, "0")}</span>
+            <div><strong>{step.label}</strong><span>{step.description}</span></div>
+          </li>)}
+        </ol>
 
         {!referencesReady && <div role="status" className="rounded-xl border p-4 text-sm">
           {referenceError || "Loading categories and brands…"}
@@ -1055,17 +1046,17 @@ const VendorProductsBulkUploadPage = () => {
         </div>}
         {phase === "intro" && (
           <div className="space-y-5 md:space-y-6">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
+            <div className={styles.introGrid}>
               <StepCard
                 step={1}
                 title="Download the template"
                 style={{ animationDelay: "40ms" }}
               >
                 <Text size="small" className="text-ui-fg-subtle">
-                  Template v4: mandatory fields are marked in coral with *. Enter base MRP/selling price, complete package attributes and Image 1–3. Review calculated listing prices after upload. Brand becomes the collection; upload authorization after parsing.
-                  Required columns are marked with <span className="font-mono">*</span>.
-                  Leave SKU and Discount % blank — they are generated automatically.
+                  Fill in your product details, base prices, packed dimensions and photos.
+                  Coral headers marked <span className="font-mono">*</span> are required. GST, discount and SKUs are handled automatically.
                 </Text>
+                <p className={styles.helpText}>Excel template · Required fields highlighted · Tax code dropdown</p>
                 <Button variant="secondary" disabled={!referencesReady} onClick={handleDownloadTemplate}>
                   <ArrowDownTray />
                   Download Excel template
@@ -1109,13 +1100,14 @@ const VendorProductsBulkUploadPage = () => {
               </StepCard>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <details className={styles.guide}><summary>Need help filling the template?<span>Fields, variants, photos and brand letters</span></summary>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <GuideCard
                 icon={<Sparkles />}
                 title="How SKUs are generated"
                 accent="oweg"
                 style={{ animationDelay: "120ms" }}
-                className="animate-fade-in-up md:col-span-2"
+                className="animate-fade-in-up lg:col-span-2"
               >
                 <Text size="small" className="text-ui-fg-subtle">
                   SKU format:{" "}
@@ -1169,7 +1161,7 @@ const VendorProductsBulkUploadPage = () => {
                 title="Adding photos"
                 accent="green"
                 style={{ animationDelay: "240ms" }}
-                className="animate-fade-in-up md:col-span-2"
+                className="animate-fade-in-up lg:col-span-2"
               >
                 <Text size="small" className="text-ui-fg-subtle">
                   List filenames in Thumbnail and Image 1, Image 2, Image 3 columns. For option images, use comma-separated names (e.g.{" "}
@@ -1181,17 +1173,18 @@ const VendorProductsBulkUploadPage = () => {
                 </Text>
               </GuideCard>
             </div>
+            </details>
           </div>
         )}
 
         {(phase === "preview" || phase === "uploading" || phase === "done") && (
-          <div className="animate-fade-in-up space-y-4 md:space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-ui-border-base/70 bg-ui-bg-base p-4 md:p-5 shadow-sm">
-              <div>
-                <Text size="small" className="text-ui-fg-subtle">File</Text>
-                <Text weight="plus">{fileName}</Text>
+          <div className={styles.reviewLayout}>
+            <div className={styles.overview}>
+              <div className={styles.fileIdentity}>
+                <span className={styles.fileIcon}><DocumentText /></span>
+                <div><p className={styles.eyebrow}>Your spreadsheet</p><Text weight="plus" className="break-all">{fileName}</Text><p className={styles.helpText}>{phase === "uploading" ? "Submitting your products…" : phase === "done" ? "Upload results" : "Review the details below before submitting."}</p></div>
               </div>
-              <div className="flex gap-2 flex-wrap">
+              <div className={styles.fileStats}>
                 <Badge color="grey">Source rows: {new Set(rows.map(row => row.rowNumber)).size} · Variants: {rows.length}</Badge>
                 <Badge color="blue">Products: {new Set(rows.map(productGroupKey)).size} · Ready: {productGroupCount}</Badge>
                 <Badge color="green">Valid rows: {validRows.length}</Badge>
@@ -1207,18 +1200,13 @@ const VendorProductsBulkUploadPage = () => {
                   </>
                 )}
               </div>
-              <div className="flex gap-2">
+              <div className={styles.submitActions}>
                 {phase === "preview" && (
                   <Button
                     variant="primary"
                     onClick={handlePublish}
-                    disabled={
-                      pendingRowCount === 0 ||
-                      invalidRows.length > 0 ||
-                      requiredImages.some(key => imageMap[key]?.status !== "uploaded") ||
-                      uploadingImages ||
-                      !allBrandsReady || !listingPricesReady
-                    }
+                    disabled={submissionIssues.length > 0}
+                    aria-describedby={submissionIssues.length ? "bulk-submit-issues" : undefined}
                   >
                     Submit {pendingProductGroupCount} product
                     {pendingProductGroupCount === 1 ? "" : "s"}
@@ -1236,28 +1224,31 @@ const VendorProductsBulkUploadPage = () => {
                   </Button>
                 )}
               </div>
+              {phase === "preview" && submissionIssues.length > 0 && (
+                <div id="bulk-submit-issues" role="status" className={styles.blockers}>
+                  <p className="font-medium">A few things to complete</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">{submissionIssues.map(issue => <li key={issue}>{issue}</li>)}</ul>
+                </div>
+              )}
             </div>
+
+            <nav aria-label="Review sections" className={styles.sectionNav}>
+              {(phase === "preview" || phase === "uploading") && <a href="#bulk-pricing">Listing prices</a>}
+              {uniqueBrands.length > 0 && phase !== "uploading" && <a href="#bulk-brand-letters">Brand letters <span>{uniqueBrands.filter(b => brandReady(brandAuthMap[b.key])).length}/{uniqueBrands.length}</span></a>}
+              {totalImages > 0 && phase !== "uploading" && <a href="#bulk-product-images">Product photos <span>{uploadedImages}/{totalImages}</span></a>}
+              <a href="#bulk-product-details">Product details {invalidRows.length > 0 && <span>{invalidRows.length} issues</span>}</a>
+            </nav>
 
             {(phase === "preview" || phase === "uploading") && <BulkPricingReview rows={validatedRows} imageMap={imageMap} disabled={phase === "uploading"} onChange={updateListingPricing} />}
 
-            {phase === "preview" && (invalidRows.length > 0 || uploadedImages < totalImages || !allBrandsReady || !listingPricesReady) && (
-              <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                Before submitting: {invalidRows.length > 0 ? `fix ${invalidRows.length} row(s) with errors; ` : ""}
-                {uploadedImages < totalImages ? `upload ${totalImages - uploadedImages} referenced image(s); ` : ""}
-                {!allBrandsReady ? "complete the brand authorization checks; " : ""}
-                {!listingPricesReady ? "calculate logistics and review the listing prices." : ""}
-                <p className="mt-1">Fix spreadsheet values and upload the file again for fields that cannot be edited here. No partial product variants will be submitted.</p>
-              </div>
-            )}
 
             {uniqueBrands.length > 0 && phase !== "uploading" && (
-              <div className="space-y-3 rounded-xl border border-ui-border-base/70 bg-ui-bg-base p-4 md:p-5">
+              <section id="bulk-brand-letters" aria-label="Brand authorization letters" className={styles.section}>
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
-                    <Text weight="plus">Brand authorization letters</Text>
+                    <p className={styles.eyebrow}>Documents</p><h2 className={styles.sectionTitle}>Brand authorization letters</h2>
                     <Text size="small" className="text-ui-fg-subtle">
-                      Upload one PNG/JPG or PDF per brand. Multiple images are combined into one PDF. We&apos;ll apply it to every row
-                      that uses that brand — no need to re-upload for each product.
+                      One letter per brand, shared across its products. Choose a PDF or image; multiple images become one PDF. Saved only when you submit.
                     </Text>
                   </div>
                   <Badge color={allBrandsReady ? "green" : "orange"}>
@@ -1266,7 +1257,7 @@ const VendorProductsBulkUploadPage = () => {
                   </Badge>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                   {uniqueBrands.map(
                     ({
                       key,
@@ -1296,6 +1287,10 @@ const VendorProductsBulkUploadPage = () => {
                         badge = <Badge color="orange">Awaiting admin</Badge>
                       else if (status === "uploaded")
                         badge = <Badge color="green">Letter uploaded</Badge>
+                      else if (status === "selected")
+                        badge = <Badge color="blue">Selected, not submitted</Badge>
+                      else if (status === "preparing")
+                        badge = <Badge color="blue">Preparing...</Badge>
                       else if (status === "uploading")
                         badge = <Badge color="blue">Uploading…</Badge>
                       else if (status === "missing")
@@ -1306,10 +1301,10 @@ const VendorProductsBulkUploadPage = () => {
                       return (
                         <div
                           key={key}
-                          className="space-y-2 rounded-xl border border-ui-border-base/70 bg-ui-bg-subtle/40 p-4 transition-colors hover:border-ui-border-strong"
+                          className="min-w-0 space-y-3 rounded-xl border border-ui-border-base/70 bg-ui-bg-subtle/40 p-4 transition-colors hover:border-ui-border-strong"
                         >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
                               <Text weight="plus" className="truncate">
                                 {display}
                               </Text>
@@ -1337,26 +1332,26 @@ const VendorProductsBulkUploadPage = () => {
                             {badge}
                           </div>
 
-                          {(status === "missing" ||
-                            status === "uploading" ||
-                            status === "error") && (
+                          {phase === "preview" && (
                             <>
-                              <button
+                              {!["authorized", "pending", "uploaded", "selected"].includes(status) && <button
                                 onClick={triggerPicker}
                                 onDragOver={(e) => e.preventDefault()}
                                 onDrop={onCardDrop}
-                                disabled={status === "uploading"}
+                                disabled={status === "uploading" || status === "preparing" || status === "checking"}
                                 className={clx(
                                   "w-full border-2 border-dashed border-ui-border-base rounded-md py-3 px-2 text-xs text-ui-fg-subtle hover:bg-ui-bg-base transition-colors text-center",
-                                  status === "uploading" &&
+                                  (status === "uploading" || status === "preparing") &&
                                     "opacity-60 cursor-not-allowed"
                                 )}
                               >
-                                {status === "uploading" ? (
+                                {status === "uploading" || status === "preparing" ? (
                                   <>
-                                    Uploading{" "}
+                                    Preparing{" "}
                                     {state && "file" in state ? state.file.name : ""}…
                                   </>
+                                ) : ["authorized", "pending", "uploaded", "selected"].includes(status) ? (
+                                  <>Replace letter (PDF, JPG, PNG)</>
                                 ) : expectedLetter ? (
                                   <>
                                     Drop{" "}
@@ -1368,7 +1363,7 @@ const VendorProductsBulkUploadPage = () => {
                                     Upload one PDF/PNG/JPG or select multiple images to combine into a PDF
                                   </>
                                 )}
-                              </button>
+                              </button>}
                               <input
                                 ref={(el) => {
                                   brandInputRefs.current[key] = el
@@ -1386,6 +1381,26 @@ const VendorProductsBulkUploadPage = () => {
                             </>
                           )}
 
+                          {state?.status === "selected" && <BrandLetterPreview file={state.file} brand={display} />}
+                          {state && "fileUrl" in state && state.fileUrl && (
+                            <>
+                              <BrandLetterPreview fileUrl={state.fileUrl} brand={display} />
+                              {phase === "preview" && <Button variant="secondary" onClick={triggerPicker}>Edit letter</Button>}
+                            </>
+                          )}
+                          {state?.status === "selected" && (
+                            <div className="space-y-2 text-sm">
+                              <p>Saved only when you click Submit. Start over discards this selection.</p>
+                              {state.message && <p role="alert" className="text-red-600">{state.message} Click Submit to retry, or replace the letter.</p>}
+                              <Button variant="secondary" onClick={() => {
+                                brandSelectionRef.current[key] = (brandSelectionRef.current[key] || 0) + 1
+                                setBrandAuthMap(prev => ({ ...prev, [key]: state.previous }))
+                              }}>{state.previous.status === "missing" ? "Remove selection" : "Cancel replacement"}</Button>
+                              <div><Button variant="secondary" onClick={triggerPicker}>Edit letter</Button></div>
+                              {state.previous.status === "authorized" && <p>Replacing an approved letter requires a new admin review after Submit.</p>}
+                            </div>
+                          )}
+
                           {status === "error" && state && "message" in state && (
                             <Text size="xsmall" className="text-red-600">
                               {state.message} — click above to retry
@@ -1396,7 +1411,7 @@ const VendorProductsBulkUploadPage = () => {
                             <Text size="xsmall" className="text-amber-600">
                               Already submitted previously — products can be
                               submitted as drafts; admin approval is still needed for them
-                              to go live.
+                              to go live. Use Edit letter to choose a replacement; it is saved only on Submit.
                             </Text>
                           )}
 
@@ -1408,7 +1423,7 @@ const VendorProductsBulkUploadPage = () => {
 
                           {status === "uploaded" && (
                             <Text size="xsmall" className="text-emerald-600">
-                              Letter saved on S3. Will be reused for every row of
+                              Letter submitted for admin review. Will be reused for every row of
                               this brand.
                             </Text>
                           )}
@@ -1417,14 +1432,14 @@ const VendorProductsBulkUploadPage = () => {
                     }
                   )}
                 </div>
-              </div>
+              </section>
             )}
 
             {totalImages > 0 && phase !== "uploading" && (
-              <div className="space-y-3 rounded-xl border border-ui-border-base/70 bg-ui-bg-base p-4 md:p-5">
+              <section id="bulk-product-images" aria-label="Product photos" className={styles.section}>
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
-                    <Text weight="plus">Product images (bulk drop)</Text>
+                    <p className={styles.eyebrow}>Media</p><h2 className={styles.sectionTitle}>Product photos</h2>
                     <Text size="small" className="text-ui-fg-subtle">
                       Drop the image files referenced in your Excel sheet, or
                       add images directly to a single product using the{" "}
@@ -1473,7 +1488,7 @@ const VendorProductsBulkUploadPage = () => {
                     {missingImages.length > 5 ? ` +${missingImages.length - 5} more` : ""}
                   </div>
                 )}
-              </div>
+              </section>
             )}
 
             {phase === "preview" && (
@@ -1507,7 +1522,9 @@ const VendorProductsBulkUploadPage = () => {
               </div>
             )}
 
-            <div className="overflow-hidden overflow-x-auto rounded-xl border border-ui-border-base/70 bg-ui-bg-base">
+            <section id="bulk-product-details" aria-label="Product details" className={styles.section}>
+              <div className={styles.detailsHeading}><div><p className={styles.eyebrow}>Product editor</p><h2 className={styles.sectionTitle}>Check the finer details</h2></div><p className={styles.helpText}>Scroll across the table to review all fields.</p></div>
+              <div className={styles.tableScroll} role="region" aria-label="Editable product details, scroll horizontally" tabIndex={0}>
               <table className="w-full min-w-[1500px] border-collapse text-sm">
                 <thead className="bg-ui-bg-subtle border-b border-ui-border-base">
                   <tr>
@@ -2147,7 +2164,8 @@ const VendorProductsBulkUploadPage = () => {
                   })}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </section>
           </div>
         )}
       </div>

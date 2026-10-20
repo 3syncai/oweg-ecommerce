@@ -16,8 +16,8 @@ export default function LandingFooter() {
               className="mb-5 h-10 w-auto brightness-0 invert"
             />
             <p className="max-w-xs text-sm leading-relaxed">
-              India&apos;s fastest-growing marketplace for sellers. List products, fulfil orders,
-              and get paid — all from one vendor portal.
+              Your workspace for selling on OWEG. List products, manage orders,
+              and review payments from one vendor portal.
             </p>
           </div>
 
@@ -95,7 +95,7 @@ export default function LandingFooter() {
           <p>&copy; {new Date().getFullYear()} OWEG. All rights reserved.</p>
           <p className="text-zinc-500">
             Built for vendors · Powered by{" "}
-            <span className="font-medium text-oweg-500">{OWEG_BRAND.primary}</span>
+            <span className="font-medium text-oweg-500">OWEG</span>
           </p>
         </div>
       </div>

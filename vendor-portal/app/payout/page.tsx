@@ -459,7 +459,7 @@ const VendorPayoutPage = () => {
             </div>
             <Text size="small" className="mt-2 max-w-xl text-ui-fg-subtle leading-relaxed">
               Settlement breakdown: listing total minus platform, commission, partner, logistics, TCS and TDS.
-              Earnings unlock after the longer of the product's return or replacement window.
+              Earnings unlock after the longer of the product&apos;s return or replacement window.
             </Text>
           </div>
           <div className="flex flex-wrap gap-2">

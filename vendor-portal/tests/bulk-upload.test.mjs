@@ -208,6 +208,7 @@ test('preview edits keep expanded variants together, preserve other products and
   rows=editBulkProduct(rows,0,{title:''});assert.ok(rows.slice(0,3).every(r=>r.errors.length));rows=editBulkProduct(rows,0,{title:'Recovered'});assert.ok(rows.slice(0,3).every(r=>!r.errors.length))
 })
 const { calculateBulkListing, bulkPricingSignature, resolveBulkListing, bulkPricingReady } = load('../lib/bulk-pricing.ts')
+const shippingQuote = (fee = 90) => ({ success: true, freight_charge: fee, coverage_complete: true, expires_at: new Date(Date.now()+60000).toISOString(), routes: [{ status: 'quoted', quote: { freight_charge: fee } }] })
 const modern = { Title:'Bajaj KTX 1.8L DLX Electric Kettle',Description:'Stainless steel kettle with automatic shut-off.',Brand:'Bajaj',Category:'Home appliances',Subcategory:'Kettles','Length (cm)':22,'Width (cm)':20,'Height (cm)':24,'Weight (kg)':1.2,'HSN Code':'85167920','Country of Origin':'IN','Tax Code':'GST_18','MRP INR':2150,'Selling Price INR':1000,'Inventory Count':12,'Image 1':'front.jpg','Image 2':'side.jpg','Image 3':'detail.jpg' }
 
 test('changing shipping preserves every non-logistics calculation and rejects expired quotes',()=>{
@@ -215,12 +216,12 @@ test('changing shipping preserves every non-logistics calculation and rejects ex
  for(const field of ['item','platformFee','commissionFee','partnerCommission','paymentGatewayFee','tcs','tds'])assert.deepEqual(first[field],second[field],field)
  assert.equal(second.logistics.gstOrTax,34.88)
  const row=parse([modern])[0]
- row.listingPricing={signature:bulkPricingSignature(row),logisticsFee:193.77,suggestedPrice:1457.14,listingPrice:'1457.14',shippingEstimate:{expires_at:new Date(Date.now()-1000).toISOString()}}
+ row.listingPricing={signature:bulkPricingSignature(row),logisticsFee:193.77,suggestedPrice:1457.14,listingPrice:'1457.14',shippingEstimate:{...shippingQuote(193.77),expires_at:new Date(Date.now()-1000).toISOString()}}
  assert.throws(()=>resolveBulkListing(row),/expired/)
  row.listingPricing.shippingEstimate.expires_at=new Date(Date.now()+60000).toISOString()
  assert.ok(bulkPricingReady(row))
  row.listingPricing.shippingEstimate.coverage_complete=false
- assert.throws(()=>resolveBulkListing(row),/incomplete/)
+ assert.ok(bulkPricingReady(row)); assert.equal(resolveBulkListing(row).decision.logisticsFee,193.77)
 })
 
 test('base cost build-up adds existing calculator charges once without reverse settlement targeting',()=>{
@@ -242,7 +243,7 @@ test('final payload uses edited listing and calculated retail MRP while retainin
  const row=parse([modern])[0]
  const images=Object.fromEntries(['front','side','detail'].map(n=>[n+'.jpg',{status:'uploaded',url:'https://example.com/'+n+'.jpg'}]))
  assert.throws(()=>buildBulkPayload([row],images,true),/Calculate listing/)
- row.listingPricing={signature:bulkPricingSignature(row),logisticsFee:90,suggestedPrice:1334.69,listingPrice:'1400.50'}
+ row.listingPricing={signature:bulkPricingSignature(row),logisticsFee:90,suggestedPrice:1334.69,listingPrice:'1400.50',shippingEstimate:shippingQuote()}
  assert.ok(bulkPricingReady(row))
  const payload=buildBulkPayload([row],images,true)
  assert.equal(payload.variants[0].prices[1].amount,1400.5)
@@ -257,7 +258,7 @@ test('final payload uses edited listing and calculated retail MRP while retainin
 
 test('changing only one variant listing preserves the other variant price',()=>{
  const rows=parse([{...modern,'Option 1 Name':'Colour','Option 1 Value':'Silver,Black'}])
- for(const [index,row] of rows.entries())row.listingPricing={signature:bulkPricingSignature(row),logisticsFee:90,suggestedPrice:1334.69,listingPrice:String(1500+index*100)}
+ for(const [index,row] of rows.entries())row.listingPricing={signature:bulkPricingSignature(row),logisticsFee:90,suggestedPrice:1334.69,listingPrice:String(1500+index*100),shippingEstimate:shippingQuote()}
  const images=Object.fromEntries(['front','side','detail'].map(n=>[n+'.jpg',{status:'uploaded',url:'https://example.com/'+n+'.jpg'}]))
  const p=buildBulkPayload(rows,images,true)
  assert.deepEqual(p.variants.map(v=>v.prices[1].amount),[1500,1600])

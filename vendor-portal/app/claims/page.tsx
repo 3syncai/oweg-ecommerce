@@ -34,7 +34,7 @@ type OrderRow = {
   id: string
   display_id?: string | number
   created_at?: string
-  email?: string
+  email?: string | null
   currency_code?: string
   vendor_status_label?: string
   product_names?: string[]

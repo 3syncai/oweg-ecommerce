@@ -4,9 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button, Container, Heading, Text } from "@medusajs/ui"
 import {
   ArrowPath,
-  ArchiveBox,
   ArrowRightMini,
-  Calendar,
   Clock,
   CurrencyDollar,
   DocumentText,
@@ -38,7 +36,7 @@ import PageSkeleton from "@/components/PageSkeleton"
 type VendorInfo = {
   name?: string
   email?: string
-  store_name?: string
+  store_name?: string | null
 }
 
 type DashboardCachePayload = {

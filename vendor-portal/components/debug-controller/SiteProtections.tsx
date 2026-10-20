@@ -94,14 +94,13 @@ export default function SiteProtections() {
       return;
     }
 
-    let initTimer: number | undefined;
     let resizeTimer: number | undefined;
 
     const check = () => {
       setDevtoolsOpen(evaluateDevToolsOpen());
     };
 
-    initTimer = window.setTimeout(() => {
+    const initTimer = window.setTimeout(() => {
       handleViewportSettled();
       check();
     }, INITIAL_CALIBRATION_DELAY_MS);
