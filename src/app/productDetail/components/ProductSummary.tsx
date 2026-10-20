@@ -116,6 +116,10 @@ const ProductSummary = ({
 
   const rawSavings = displayMRP > displayPrice ? displayMRP - displayPrice : 0
   const visualOptionTitle = getVisualOptionTitle(product)
+  const visibleOptions = product.options.filter((option) => !(
+    option.title.trim().toLowerCase() === 'default' &&
+    option.values.every((value) => value.trim().toLowerCase() === 'default')
+  ))
 
   const titleRef = useRef<HTMLHeadingElement>(null)
   const [titleExpanded, setTitleExpanded] = useState(false)
@@ -241,9 +245,9 @@ const ProductSummary = ({
         </span>
         <span>1 coin = ₹1</span>
       </div>
-      {product.options.length > 0 && (
+      {visibleOptions.length > 0 && (
         <div className="space-y-4">
-          {product.options.map((option) => {
+          {visibleOptions.map((option) => {
             const isVisualOption = visualOptionTitle === option.title
             return (
             <div key={option.id} className="space-y-2">

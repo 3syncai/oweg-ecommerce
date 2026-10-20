@@ -1018,32 +1018,6 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     setActiveTab('compare')
   }
 
-  const detailPairs = useMemo(() => {
-    if (!product) return []
-    const entries: Array<{ label: string; value: string }> = []
-    const meta = (product.metadata as Record<string, unknown> | null) || null
-    const metaCategory =
-      (typeof meta?.category === 'string' ? meta.category : '') ||
-      (Array.isArray(meta?.categories) ? (meta?.categories as string[]).filter(Boolean).join(', ') : '')
-
-    if (product.type) entries.push({ label: 'Type', value: product.type })
-    if (product.collection?.title) {
-      entries.push({ label: 'Collection', value: product.collection.title })
-    }
-    if (product.categories?.length) {
-      entries.push({
-        label: 'Category',
-        value: product.categories.map((c) => c.title).filter(Boolean).join(', '),
-      })
-    } else if (metaCategory) {
-      entries.push({ label: 'Category', value: metaCategory })
-    }
-    if (product.tags?.length) {
-      entries.push({ label: 'Tags', value: product.tags.join(', ') })
-    }
-    return entries
-  }, [product])
-
   const resolveStockInfo = useCallback(
     (prod: unknown, variantId?: string) => {
       if (!prod || typeof prod !== 'object') return { quantity: undefined, manage: true, backorder: false }
@@ -1465,8 +1439,6 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                 onTabChange={setActiveTab}
                 product={product}
                 descriptionHasHtml={descriptionHasHtml}
-                highlights={highlights}
-                detailPairs={detailPairs}
               />
               {activeTab === 'compare' && (
                 <div className="mt-8 space-y-4 lg:pl-4">
