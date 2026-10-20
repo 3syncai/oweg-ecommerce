@@ -1,11 +1,16 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import { safeVendorRedirect } from '@/lib/vendor-redirect'
 import Link from 'next/link'
 import { vendorAuthApi, vendorProfileApi } from '@/lib/api/client'
+import { ArrowRight, ChartNoAxesColumnIncreasing, CreditCard, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail, ShieldCheck, Truck, UsersRound } from 'lucide-react'
+import logo from '@/public/vendor/oweg-wordmark.svg'
+import laptopArtwork from '@/public/vendor/login-laptop.png'
+import packageArtwork from '@/public/vendor/login-packages-branded.png'
+import styles from './login.module.css'
 
 function LoginForm() {
   const router = useRouter()
@@ -13,6 +18,14 @@ function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [keepSignedIn, setKeepSignedIn] = useState(true)
+  const [showRecovery, setShowRecovery] = useState(false)
+  const recoveryDialog = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    if (showRecovery) recoveryDialog.current?.showModal()
+    else recoveryDialog.current?.close()
+  }, [showRecovery])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [redirectPath, setRedirectPath] = useState('/dashboard')
@@ -39,7 +52,7 @@ function LoginForm() {
       localStorage.setItem('vendor_user', JSON.stringify(response.vendor_user))
 
       // Also set cookie for middleware to detect
-      document.cookie = `vendor_token=${token}; path=/; max-age=86400; SameSite=Lax`
+      document.cookie = `vendor_token=${token}; path=/; ${keepSignedIn ? 'max-age=86400; ' : ''}SameSite=Lax`
 
       // Check if password reset needed
       if (response?.vendor_user?.must_reset_password) {
@@ -89,14 +102,14 @@ function LoginForm() {
 
         // Vendor is pending
         router.push('/pending')
-      } catch (meError: any) {
+      } catch (meError: unknown) {
         // If 403, vendor not approved (pending)
-        if (meError.status === 403) {
+        if (typeof meError === 'object' && meError !== null && 'status' in meError && meError.status === 403) {
           router.push('/pending')
           return
         }
         // If 401, token might be invalid - clear and show error
-        if (meError.status === 401) {
+        if (typeof meError === 'object' && meError !== null && 'status' in meError && meError.status === 401) {
           localStorage.removeItem('vendor_token')
           localStorage.removeItem('vendor_user')
           setError('Invalid credentials. Please try again.')
@@ -104,8 +117,8 @@ function LoginForm() {
         }
         throw meError
       }
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Login failed. Please check your credentials.')
       // Clear any partial token storage on error
       localStorage.removeItem('vendor_token')
       localStorage.removeItem('vendor_user')
@@ -115,279 +128,97 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex" style={{ colorScheme: "light" }}>
-      {/* Left Panel - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-green-600 via-green-700 to-emerald-900 p-12 flex-col justify-between relative overflow-hidden">
-        {/* Soft animated blobs */}
-        <div className="absolute inset-0 opacity-25 pointer-events-none">
-          <div className="absolute -top-20 -left-20 w-96 h-96 bg-emerald-300 rounded-full blur-3xl animate-pulse" />
-          <div className="absolute bottom-0 right-0 w-[28rem] h-[28rem] bg-lime-300 rounded-full blur-3xl animate-pulse [animation-delay:1500ms]" />
-        </div>
-
-        {/* Subtle grid overlay */}
-        <div
-          aria-hidden
-          className="absolute inset-0 opacity-[0.07] pointer-events-none"
-          style={{
-            backgroundImage:
-              "linear-gradient(rgba(255,255,255,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.6) 1px, transparent 1px)",
-            backgroundSize: "40px 40px",
-          }}
-        />
-
-        {/* Hero Oweg 3D logo, large and floating behind the text */}
-        <div
-          aria-hidden
-          className="absolute -right-24 top-1/2 -translate-y-1/2 w-[42rem] h-[42rem] pointer-events-none select-none animate-float"
-        >
-          <div className="absolute inset-0 bg-emerald-400/30 rounded-full blur-[120px]" />
-          <Image
-            src="/Oweg3d-400.png"
-            alt=""
-            fill
-            priority
-            sizes="(min-width: 1024px) 50vw, 100vw"
-            className="object-contain drop-shadow-[0_30px_60px_rgba(0,0,0,0.45)]"
-            unoptimized
-          />
-        </div>
-
-        {/* Smaller decorative copy of the logo, top-right */}
-        <div
-          aria-hidden
-          className="absolute top-12 right-12 w-24 h-24 opacity-30 animate-float-slow pointer-events-none select-none"
-        >
-          <Image
-            src="/Oweg3d-400.png"
-            alt=""
-            fill
-            sizes="96px"
-            className="object-contain"
-            unoptimized
-          />
-        </div>
-
-        {/* Foreground content */}
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-white/15 backdrop-blur-md ring-1 ring-white/30 flex items-center justify-center overflow-hidden">
-              <Image
-                src="/Oweg3d-400.png"
-                alt="OWEG"
-                width={36}
-                height={36}
-                className="object-contain"
-                unoptimized
-              />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white leading-none">OWEG</h1>
-              <p className="text-emerald-100/80 text-xs tracking-widest uppercase mt-1">
-                Vendor Portal
-              </p>
-            </div>
+    <main className={styles.page}>
+      <div className={styles.canvas}>
+        <section className={styles.hero} aria-label="OWEG Vendor Control">
+          <BrandLogo className={styles.heroLogo} />
+          <div className={styles.heroCopy}>
+            <h1>Smarter Tools.<br />Better Sales.<br /><span>Higher Earnings.</span></h1>
+            <p>One workspace for operations, sales performance,<br className={styles.desktopBreak} /> payments and dispatch tracking.</p>
           </div>
-
-          <div className="mt-20 max-w-md">
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md px-3 py-1 text-xs font-medium text-white ring-1 ring-white/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-              Trusted by sellers across India
-            </span>
-            <h2 className="mt-5 text-4xl font-bold text-white leading-tight tracking-tight">
-              Welcome back to<br />
-              <span className="bg-gradient-to-r from-white to-emerald-200 bg-clip-text text-transparent">
-                your vendor hub
-              </span>
-            </h2>
-            <p className="mt-5 text-emerald-50/90 text-lg leading-relaxed">
-              Manage products, track orders, and grow your business with our
-              all-in-one vendor management platform.
-            </p>
-          </div>
-        </div>
-
-        {/* Footer pills */}
-        <div className="relative z-10 flex items-center gap-3 text-white/90 text-sm">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md px-3 py-1.5 ring-1 ring-white/15">
-            <svg className="w-4 h-4 text-emerald-200" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <span>Secure Access</span>
-          </div>
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md px-3 py-1.5 ring-1 ring-white/15">
-            <svg className="w-4 h-4 text-emerald-200" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <span>24/7 Support</span>
-          </div>
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md px-3 py-1.5 ring-1 ring-white/15">
-            <svg className="w-4 h-4 text-emerald-200" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M2.94 6.412A2 2 0 002 8.108V16a2 2 0 002 2h12a2 2 0 002-2V8.108a2 2 0 00-.94-1.696l-6-3.75a2 2 0 00-2.12 0l-6 3.75z" />
-            </svg>
-            <span>Fast Payouts</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Right Panel - Login Form */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-gray-50">
-        <div className="w-full max-w-md">
-          {/* Mobile Logo */}
-          <div className="lg:hidden flex items-center gap-3 mb-8 justify-center">
-            <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-              </svg>
-            </div>
-            <h1 className="text-xl font-bold text-gray-900">Vendor Portal</h1>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
-            <div className="mb-8">
-              <h2 className="text-3xl font-bold text-gray-900 mb-2">Sign in</h2>
-              <p className="text-gray-600">Welcome back! Please enter your details.</p>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 animate-shake">
-                  <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                  <span className="text-red-800 text-sm">{error}</span>
-                </div>
-              )}
-
-              <div className="space-y-5">
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                    Email address
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
-                      </svg>
-                    </div>
-                    <input
-                      id="email"
-                      name="email"
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="block w-full pl-10 pr-3 py-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-400"
-                      placeholder="vendor@example.com"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
-                    </div>
-                    <input
-                      id="password"
-                      name="password"
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="block w-full pl-10 pr-12 py-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-400"
-                      placeholder="••••••••"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
-                    >
-                      {showPassword ? (
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                        </svg>
-                      ) : (
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                </div>
+          <div className={styles.features}>
+            {[
+              { icon: UsersRound, lines: ['User', 'Management'] },
+              { icon: ChartNoAxesColumnIncreasing, lines: ['Sales', 'Performance'] },
+              { icon: CreditCard, lines: ['Payments &', 'Settlements'] },
+              { icon: Truck, lines: ['Dispatch', 'Monitoring'] },
+            ].map(({ icon: Icon, lines }) => (
+              <div className={styles.feature} key={lines[0]}>
+                <span className={styles.featureIcon}><Icon aria-hidden="true" strokeWidth={2.1} /></span>
+                <p>{lines[0]}<br />{lines[1]}</p>
               </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2 shadow-lg shadow-green-600/30"
-              >
-                {loading ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Signing in...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Sign in</span>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                    </svg>
-                  </>
-                )}
-              </button>
-
-              <div className="text-center pt-4 border-t border-gray-200">
-                <p className="text-sm text-gray-600">
-                  Don&apos;t have an account?{' '}
-                  <Link href="/signup" className="text-green-600 hover:text-green-700 font-semibold hover:underline transition-colors">
-                    Sign up
-                  </Link>
-                </p>
-              </div>
-            </form>
+            ))}
           </div>
+        </section>
 
-          <p className="text-center text-xs text-gray-500 mt-8">
-            By signing in, you agree to our Terms of Service and Privacy Policy
-          </p>
+        <div className={styles.artworkScene}>
+          <div className={styles.packages}>
+            <Image src={packageArtwork} alt="OWEG branded shipping packages" fill priority sizes="(min-width: 1101px) 28vw, 1px" className={styles.productImage} />
+          </div>
+          <div className={styles.laptop}>
+            <Image src={laptopArtwork} alt="Laptop displaying the OWEG vendor dashboard" fill priority sizes="(min-width: 1101px) 36vw, 1px" className={styles.productImage} />
+          </div>
         </div>
+
+        <section className={styles.card} aria-labelledby="login-title">
+          <BrandLogo className={styles.cardLogo} />
+          <div>
+            <h2 id="login-title">Sign in to OWEG Vendor</h2>
+            <p className={styles.intro}>Access your workspace and manage<br className={styles.desktopBreak} /> your business securely.</p>
+          </div>
+          <form onSubmit={handleSubmit} className={styles.form} aria-busy={loading}>
+            {error && <div className={styles.error} role="alert">{error}</div>}
+            <div className={styles.fieldGroup}>
+              <label htmlFor="email" className={styles.fieldLabel}>Email address</label>
+              <div className={styles.field}>
+                <Mail aria-hidden="true" />
+                <input id="email" name="email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address" />
+              </div>
+            </div>
+            <div className={styles.fieldGroup}>
+              <label htmlFor="password" className={styles.fieldLabel}>Password</label>
+              <div className={styles.field}>
+                <LockKeyhole aria-hidden="true" />
+                <input id="password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className={styles.passwordToggle} aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword}>
+                  {showPassword ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
+                </button>
+              </div>
+            </div>
+            <div className={styles.options}>
+              <label className={styles.remember}><input type="checkbox" checked={keepSignedIn} onChange={(e) => setKeepSignedIn(e.target.checked)} /><span>Keep me signed in</span></label>
+              <button type="button" className={styles.forgot} onClick={() => setShowRecovery(true)}>Forgot password?</button>
+            </div>
+            <button type="submit" disabled={loading} className={styles.submit}>
+              {loading ? <><LoaderCircle className={styles.spinner} aria-hidden="true" />Signing in...</> : <>Sign In <ArrowRight aria-hidden="true" /></>}
+            </button>
+          </form>
+          <p className={styles.signup}>Don&apos;t have an account? <Link href="/signup">Sign up</Link></p>
+          <div className={styles.security}><ShieldCheck aria-hidden="true" /><span>Secure access for authorized users</span></div>
+        </section>
       </div>
+      <dialog ref={recoveryDialog} className={styles.recovery} aria-labelledby="recovery-title" onClose={() => setShowRecovery(false)} onClick={(e) => { if (e.target === e.currentTarget) setShowRecovery(false) }}>
+        <ShieldCheck aria-hidden="true" />
+        <h2 id="recovery-title">Reset your password</h2>
+        <p>Contact your OWEG administrator to request a password reset for your vendor account.</p>
+        <button type="button" autoFocus onClick={() => setShowRecovery(false)}>Back to sign in</button>
+      </dialog>
+    </main>
+  )
+}
+
+function BrandLogo({ className }: { className: string }) {
+  return (
+    <div className={`${styles.brand} ${className}`}>
+      <div className={styles.wordmark}><Image src={logo} alt="OWEG" width={685} height={173} priority unoptimized /></div>
+      <p>VENDOR CONTROL</p>
     </div>
   )
 }
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50" style={{ colorScheme: "light" }}>
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
-            <svg className="animate-spin h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          </div>
-          <p className="text-gray-600 font-medium">Loading...</p>
-        </div>
-      </div>
-    }>
+    <Suspense fallback={<main className={styles.loading} aria-label="Loading sign in"><LoaderCircle className={styles.spinner} /></main>}>
       <LoginForm />
     </Suspense>
   )
