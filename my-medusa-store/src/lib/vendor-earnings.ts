@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { fetchVendorCouponCashback } from "./vendor-coupon-cashback";
 import {
   getVendorCommissionDefaultRate,
   resolveVendorCommissionRate,
@@ -143,6 +144,7 @@ export type VendorPaymentSettlement = {
   payment_gateway_gst?: number;
   payment_gateway_total?: number;
   claim_amount: number;
+  cashback_amount?: number;
   taxes: number;
   settlement_amount: number;
   bank_settlement: number;
@@ -231,6 +233,7 @@ export async function ensureVendorEarningsTaxColumns(pool: Pool): Promise<void> 
       .query(
         `
           ALTER TABLE vendor_earnings_log
+            ADD COLUMN IF NOT EXISTS cashback_amount numeric NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS taxable_amount numeric NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS gst_amount numeric NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS gst_rate numeric NOT NULL DEFAULT 0,
@@ -406,7 +409,12 @@ export async function recomputeUnpaidVendorLedger(
   }
 
   let updated = 0;
+  const cashbackByOrder = new Map<string, Map<string, number>>();
   for (const row of rows.rows) {
+    if (!cashbackByOrder.has(row.order_id)) {
+      cashbackByOrder.set(row.order_id, await fetchVendorCouponCashback(row.order_id, pool));
+    }
+    const cashbackAmount = cashbackByOrder.get(row.order_id)?.get(vendorId) || 0;
     let orderMeta = orderMetaById.get(row.order_id) || null;
     // This also repairs legacy snapshots that predate partner attribution.
     // A global partner rate must never be applied to a direct customer.
@@ -435,6 +443,7 @@ export async function recomputeUnpaidVendorLedger(
       itemPrice: Number(row.taxable_amount) || 0,
       logisticFee: Number(row.logistic_fee) || 0,
       customerShippingTotal,
+      cashbackAmount,
       returnFee: Number(row.return_fee) || 0,
       cancellationFee: Number(row.cancellation_fee) || 0,
       gstRate: Number(row.gst_rate) || 18,
@@ -467,6 +476,7 @@ export async function recomputeUnpaidVendorLedger(
           customer_shipping_gst = $18,
           customer_shipping_total = $19,
           net_amount = $20,
+          cashback_amount = $21,
           updated_at = NOW()
         WHERE id = $1 AND vendor_id = $2
           AND status IN ('UNLOCKING', 'CREDITED', 'ON_HOLD')
@@ -492,6 +502,7 @@ export async function recomputeUnpaidVendorLedger(
         ledger.customer_shipping_gst,
         ledger.customer_shipping_total,
         adminPayableNetFromLedger(ledger),
+        cashbackAmount,
       ]
     );
     updated += 1;
@@ -514,9 +525,9 @@ async function fetchVendorOrderEarnings(
         oli.metadata->>'gst_rate' AS item_gst_rate,
         oli.metadata->>'tax_code' AS item_tax_code,
         (
-          SELECT STRING_AGG(pcp.category_id, ',' ORDER BY pc.rank NULLS LAST)
+          SELECT STRING_AGG(pcp.product_category_id, ',' ORDER BY pc.rank NULLS LAST)
           FROM product_category_product pcp
-          JOIN product_category pc ON pcp.category_id = pc.id
+          JOIN product_category pc ON pcp.product_category_id = pc.id
           WHERE pcp.product_id = p.id
         ) AS product_category_ids
       FROM order_item oi
@@ -633,6 +644,7 @@ async function ledgerForSaleRow(params: {
   itemPrice: number;
   logisticFee: number;
   customerShippingTotal?: number;
+  cashbackAmount?: number;
   returnFee?: number;
   cancellationFee?: number;
   gstRate: number;
@@ -660,6 +672,7 @@ async function ledgerForSaleRow(params: {
     item_price: params.itemPrice,
     logistic_fee: params.logisticFee,
     customer_shipping_total: params.customerShippingTotal,
+    cashback_amount: params.cashbackAmount,
     reverse_logistic_fee: params.returnFee,
     cancellation_fee: params.cancellationFee,
     rates,
@@ -708,6 +721,7 @@ async function upsertVendorEarningRow(
     metadata: Record<string, unknown> | null;
   }>(`SELECT metadata FROM "order" WHERE id = $1 LIMIT 1`, [orderId]);
   const orderMetadata = orderMetaResult.rows[0]?.metadata || null;
+  const cashbackAmount = (await fetchVendorCouponCashback(orderId, pool)).get(row.vendor_id) || 0;
 
   const snap = await getOrFreezeOrderSettlementRates({
     orderId,
@@ -728,6 +742,7 @@ async function upsertVendorEarningRow(
   const ledger = await ledgerForSaleRow({
     vendorId: row.vendor_id,
     itemPrice: settlement.taxable_amount,
+    cashbackAmount,
     logisticFee,
     customerShippingTotal,
     returnFee,
@@ -782,6 +797,7 @@ async function upsertVendorEarningRow(
         platform_fee_rate,
         partner_commission_rate,
         net_amount,
+        cashback_amount,
         currency_code,
         status,
         delivered_at,
@@ -793,6 +809,7 @@ async function upsertVendorEarningRow(
         $2, $1, $3,
         $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
         $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
+        $33,
         'inr',
         'UNLOCKING',
         $31,
@@ -828,6 +845,7 @@ async function upsertVendorEarningRow(
         platform_fee_rate = EXCLUDED.platform_fee_rate,
         partner_commission_rate = EXCLUDED.partner_commission_rate,
         net_amount = EXCLUDED.net_amount,
+        cashback_amount = EXCLUDED.cashback_amount,
         delivered_at = COALESCE(vendor_earnings_log.delivered_at, EXCLUDED.delivered_at),
         unlock_at = COALESCE(vendor_earnings_log.unlock_at, EXCLUDED.unlock_at),
         status = CASE
@@ -871,6 +889,7 @@ async function upsertVendorEarningRow(
       netAfterFees,
       deliveredAt.toISOString(),
       unlockAt.toISOString(),
+      cashbackAmount,
     ]
   );
 }
@@ -2667,6 +2686,7 @@ export function settlementFromLedger(params: {
     payment_gateway_gst: ledger.payment_gateway_gst,
     payment_gateway_total: ledger.payment_gateway_total,
     claim_amount: ledger.claim_amount,
+    cashback_amount: ledger.cashback_amount || 0,
     taxes: ledger.product_gst,
     settlement_amount: ledger.bank_settlement,
     bank_settlement: ledger.bank_settlement,
