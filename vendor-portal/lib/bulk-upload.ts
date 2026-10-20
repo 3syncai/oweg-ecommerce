@@ -40,6 +40,7 @@ export type ParsedRow = {
   managedInventory: boolean
   allowBackorder: boolean
   inventoryCount: string
+  listingPricing?: import("./bulk-pricing").BulkPricingDecision
   price: string
   discountedPrice: string
   discountPercent: number | null
@@ -74,26 +75,26 @@ export type ParsedRow = {
 
 export const normalizeBulkHeader = (value: unknown): string => {
   const key = String(value ?? "").replace(/\((?:optional|auto|fixed)\)/gi, "").replace(/\*|\s+/g, "").toLowerCase()
-  return key === "priceinr" ? "mrpinr" : key === "hscode" ? "hsncode" : key
+  return ({ priceinr: "mrpinr", hscode: "hsncode", "length(cm)": "length", "width(cm)": "width", "height(cm)": "height", "weight(kg)": "weight", sellingpriceinr: "discountedpriceinr" } as Record<string, string>)[key] || key
 }
 
 export const TEMPLATE_HEADERS: Array<{ key: string; example: string; required?: boolean }> = [
-  { key: "Title", example: "Demo running shoe", required: true },
-  { key: "Subtitle (optional)", example: "Lightweight lace-up shoe" },
+  { key: "Title", example: "Bajaj KTX 1.8L DLX Electric Kettle", required: true },
+  { key: "Subtitle (optional)", example: "Stainless steel with automatic shut-off" },
   { key: "Handle (optional)", example: "" },
-  { key: "Description", example: "Sample listing for importer testing." },
-  { key: "Brand", example: "Demo brand", required: true },
-  { key: "Category", example: "" },
-  { key: "Subcategory", example: "" },
-  { key: "Tags", example: "shoe, running" },
+  { key: "Description", example: "Stainless steel electric kettle with automatic shut-off and a concealed heating element.", required: true },
+  { key: "Brand", example: "Bajaj", required: true },
+  { key: "Category", example: "", required: true },
+  { key: "Subcategory", example: "", required: true },
+  { key: "Tags", example: "kettle, kitchen, stainless steel" },
   { key: "Type", example: "" },
   { key: "Discountable", example: "Yes" },
-  { key: "Height", example: "" },
-  { key: "Width", example: "" },
-  { key: "Length", example: "" },
-  { key: "Weight", example: "" },
-  { key: "HSN Code", example: "" },
-  { key: "Country of Origin", example: "IN" },
+  { key: "Length (cm)", example: "22", required: true },
+  { key: "Width (cm)", example: "20", required: true },
+  { key: "Height (cm)", example: "24", required: true },
+  { key: "Weight (kg)", example: "1.2", required: true },
+  { key: "HSN Code", example: "", required: true },
+  { key: "Country of Origin", example: "IN", required: true },
   { key: "Tax Code", example: "GST_18", required: true },
   { key: "GST Rate (auto)", example: "" },
   ...[1, 2, 3].flatMap(n => [
@@ -107,10 +108,10 @@ export const TEMPLATE_HEADERS: Array<{ key: string; example: string; required?: 
   { key: "Allow Backorder (fixed)", example: "Yes" },
   { key: "Inventory Count", example: "10", required: true },
   { key: "MRP INR", example: "1999", required: true },
-  { key: "Discounted Price INR (optional)", example: "1499" },
+  { key: "Selling Price INR", example: "1499", required: true },
   { key: "Discount % (auto)", example: "" },
-  { key: "Thumbnail", example: "shoe.jpg" },
-  ...[1, 2, 3, 4, 5].map(n => ({ key: `Image ${n}`, example: "" })),
+  { key: "Thumbnail", example: "ktx-1-8-l-dlx-1.jpg" },
+  ...[1, 2, 3, 4, 5].map(n => ({ key: `Image ${n}`, example: "", required: n <= 3 })),
   { key: "Video URLs", example: "" },
 ]
 
@@ -312,6 +313,16 @@ export const parseRows = (raw: RawRow[], categories: Category[], collections: Co
     const price = toNumStr(get("MRP INR") ?? get("Price INR"))
     const discountedPrice = toNumStr(get("Discounted Price INR"))
 
+    const clientFormat = Object.keys(r).some(key => /(?:selling\s*price|weight\s*\(kg\))/i.test(key))
+    if (clientFormat) {
+      for (const field of ["Description", "Category", "Subcategory", "HSN Code", "Country of Origin", "Image 1", "Image 2", "Image 3"]) {
+        if (!toStr(get(field))) errors.push(`${field} is required`)
+      }
+      for (const field of ["Length", "Width", "Height", "Weight"]) {
+        if (!toStr(get(field)) || !Number.isFinite(Number(get(field))) || Number(get(field)) <= 0) errors.push(`${field} must be greater than zero for logistics`)
+      }
+      if (!discountedPrice || !Number.isFinite(Number(discountedPrice)) || Number(discountedPrice) <= 0) errors.push("Selling Price INR is required and must be greater than zero")
+    }
     if (!title) errors.push("Title is required")
     if (!brand) errors.push("Brand is required (used to generate SKU)")
     if (!price) errors.push("MRP INR is required")

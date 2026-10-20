@@ -5,11 +5,14 @@ product group. Imports create drafts for admin review; they do not publish direc
 The backend continues to enforce vendor ownership, brand authorization and shared
 catalog SKU rules.
 
-## Template v3
+## Template v4
 
 Download the template from `/products/bulk-upload`. Fill `Products` only. Examples,
 Instructions, Field Guide, GST Codes, Categories and Brands are reference sheets.
-Title, Brand, Tax Code, MRP INR and Inventory Count are mandatory.
+Mandatory headers use coral, optional headers use dark green, and calculated or
+fixed headers use muted green. Title, Description, Brand, Category, Subcategory,
+package Length/Width/Height (cm), Weight (kg), HSN Code, Country of Origin, Tax Code,
+MRP INR, Selling Price INR, Inventory Count and Image 1–3 are mandatory.
 
 - Subtitle and Handle are explicitly optional. Brand also supplies the collection;
   unknown brands become collection requests for admin review. Additional categories,
@@ -19,8 +22,9 @@ Title, Brand, Tax Code, MRP INR and Inventory Count are mandatory.
   protected cells. The importer independently derives these values and never trusts
   cached formula results. Input formulas are rejected. Tax code is mandatory even if
   a GST rate is supplied. Inconsistent manually supplied GST is rejected.
-- MRP INR is required, positive, with up to two decimals. Discounted Price INR is
-  optional, non-negative and cannot exceed MRP. No discount means no sale price.
+- MRP INR and Selling Price INR are product base prices, positive with up to two
+  decimals. Selling price cannot exceed base MRP. Equal values mean no base discount.
+  The former Discounted Price INR header is still accepted for older workbooks.
 - Managed Inventory and Allow Backorder are protected Yes values. The importer
   rejects attempts to turn either off. Stock is a required non-negative whole number;
   zero is valid. Default shipping profile and sales channel are assigned by the backend.
@@ -44,6 +48,27 @@ Title, Brand, Tax Code, MRP INR and Inventory Count are mandatory.
 
 ## Validation and submission
 
+After parsing, each variant receives a logistics estimate using its package
+attributes and the existing vendor shipping endpoint. The preview adds the existing
+product calculator's fee/tax lines to the Excel base selling price (or base MRP for
+legacy files without a selling price). This is a cost build-up, not a reverse
+calculation guaranteeing a settlement amount. The resulting listing price is
+prefilled and editable. View calculation shows that variant's package, route,
+base price, fee/tax breakdown and selected listing price. Refreshing logistics
+preserves a manual override when the source attributes have not changed.
+
+Submission is blocked while a quote is pending/failed, a listing price is invalid,
+or its source price/tax/package attributes have changed. No silent frontend freight
+fallback is used. Backend weight-based estimates are identified in the preview;
+actual shipment charges can vary. Listing prices must be positive with at most two
+decimals. Source Excel prices stay unchanged in the preview and are saved in each
+variant's `bulk_base_pricing` metadata alongside the quote and listing decision.
+Catalogue MRP is calculated from the base MRP with the same charges and is at least
+the selected listing price; the selected listing becomes the catalogue selling price.
+
+Older templates retain their original parser requirements, but imports through the
+current portal must still complete package logistics and listing-price review.
+
 Maximum 1,000 source rows, 200 columns and 10 MB per workbook. XLSX/XLS/CSV are
 supported; dropdowns/formulas/protection are provided in the downloaded XLSX.
 Headers belong on row one; duplicate/unknown headers and merged cells are rejected.
@@ -65,7 +90,7 @@ From `vendor-portal`:
 ```sh
 npm run test:bulk
 npx tsc --noEmit --incremental false
-npx eslint app/products/bulk-upload/page.tsx lib/bulk-upload.ts lib/bulk-workbook.ts lib/bulk-payload.ts tests/bulk-upload.test.mjs
+npx eslint app/products/bulk-upload/page.tsx components/bulk-upload/BulkPricingReview.tsx lib/bulk-pricing.ts lib/bulk-upload.ts lib/bulk-workbook.ts lib/bulk-payload.ts tests/bulk-upload.test.mjs
 ```
 
 The automated suite uses the production template generator, workbook reader,

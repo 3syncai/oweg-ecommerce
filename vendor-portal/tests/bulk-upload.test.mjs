@@ -177,8 +177,8 @@ for (const patch of [
 test('formulas and stale caches in calculated fields cannot override GST or discount', async () => {
   const wb = buildBulkTemplate()
   const { TEMPLATE_HEADERS } = load('../lib/bulk-upload.ts')
-  for (const [key, value] of Object.entries({Title:'Formula QA',Brand:'Existing brand','Tax Code':'GST_0.25','MRP INR':100,'Discounted Price INR':80,'Inventory Count':0})) {
-    const c = TEMPLATE_HEADERS.findIndex(h => h.key.replace(/ \(.*\)/,'') === key)
+  for (const [key, value] of Object.entries({Title:'Bajaj Electric Kettle',Description:'Stainless steel electric kettle.',Category:'Home appliances',Subcategory:'Kettles','HSN Code':'85167920','Country of Origin':'IN','Length (cm)':22,'Width (cm)':20,'Height (cm)':24,'Weight (kg)':1.2,'Image 1':'front.jpg','Image 2':'side.jpg','Image 3':'detail.jpg',Brand:'Existing brand','Tax Code':'GST_0.25','MRP INR':100,'Selling Price INR':80,'Inventory Count':0})) {
+    const c = TEMPLATE_HEADERS.findIndex(h => h.key === key || h.key.replace(/ \(.*\)/,'') === key)
     wb.Sheets.Products[XLSX.utils.encode_cell({r:1,c})] = {t:typeof value === 'number'?'n':'s',v:value}
   }
   const gst = TEMPLATE_HEADERS.findIndex(h => h.key === 'GST Rate (auto)')
@@ -206,4 +206,56 @@ test('preview edits keep expanded variants together, preserve other products and
   rows=editBulkProduct(rows,1,{title:'Renamed shoe',type:'Shoe',tags:['QA'],categoryRequest:'Footwear'})
   assert.equal(new Set(rows.slice(0,3).map(productGroupKey)).size,1);assert.ok(rows.slice(0,3).every(r=>r.title==='Renamed shoe'&&r.type==='Shoe'&&r.tags[0]==='QA'&&r.categoryRequest==='Footwear'&&!r.errors.length));assert.equal(rows[3].title,'Other product')
   rows=editBulkProduct(rows,0,{title:''});assert.ok(rows.slice(0,3).every(r=>r.errors.length));rows=editBulkProduct(rows,0,{title:'Recovered'});assert.ok(rows.slice(0,3).every(r=>!r.errors.length))
+})
+const { calculateBulkListing, bulkPricingSignature, resolveBulkListing, bulkPricingReady } = load('../lib/bulk-pricing.ts')
+const modern = { Title:'Bajaj KTX 1.8L DLX Electric Kettle',Description:'Stainless steel kettle with automatic shut-off.',Brand:'Bajaj',Category:'Home appliances',Subcategory:'Kettles','Length (cm)':22,'Width (cm)':20,'Height (cm)':24,'Weight (kg)':1.2,'HSN Code':'85167920','Country of Origin':'IN','Tax Code':'GST_18','MRP INR':2150,'Selling Price INR':1000,'Inventory Count':12,'Image 1':'front.jpg','Image 2':'side.jpg','Image 3':'detail.jpg' }
+
+test('base cost build-up adds existing calculator charges once without reverse settlement targeting',()=>{
+ const result=calculateBulkListing(1000,90,18)
+ assert.equal(result.suggestedPrice,1334.69)
+ assert.equal(result.calculation.item.total,1000)
+ assert.equal(result.calculation.logistics.total,106.2)
+ for(const args of [[0,90,18],[100,-1,18],[100,NaN,18],[100,90,NaN]])assert.throws(()=>calculateBulkListing(...args))
+})
+
+test('client-format mandatory cells, units and header aliases are enforced',()=>{
+ assert.deepEqual(parse([modern])[0].errors,[])
+ assert.equal(parse([modern])[0].weight,'1.2')
+ for(const field of ['Description','Category','Subcategory','Length (cm)','Width (cm)','Height (cm)','Weight (kg)','HSN Code','Country of Origin','Selling Price INR','Image 1','Image 2','Image 3'])assert.ok(parse([{...modern,[field]:''}])[0].errors.length,field)
+ for(const value of ['-1','2kg','0','Infinity'])assert.ok(parse([{...modern,'Weight (kg)':value}])[0].errors.length)
+})
+
+test('final payload uses edited listing and calculated retail MRP while retaining source base prices',()=>{
+ const row=parse([modern])[0]
+ const images=Object.fromEntries(['front','side','detail'].map(n=>[n+'.jpg',{status:'uploaded',url:'https://example.com/'+n+'.jpg'}]))
+ assert.throws(()=>buildBulkPayload([row],images,true),/Calculate listing/)
+ row.listingPricing={signature:bulkPricingSignature(row),logisticsFee:90,suggestedPrice:1334.69,listingPrice:'1400.50'}
+ assert.ok(bulkPricingReady(row))
+ const payload=buildBulkPayload([row],images,true)
+ assert.equal(payload.variants[0].prices[1].amount,1400.5)
+ assert.ok(payload.variants[0].prices[0].amount>=1400.5)
+ assert.equal(payload.variants[0].metadata.bulk_base_pricing.base_mrp,2150)
+ assert.equal(payload.variants[0].metadata.bulk_base_pricing.base_selling_price,1000)
+ assert.equal(payload.variants[0].metadata.bulk_base_pricing.method,'base_plus_calculator_costs')
+ for(const price of ['', '0','NaN','Infinity','12.345','-2']) { row.listingPricing.listingPrice=price; assert.equal(bulkPricingReady(row),false) }
+ row.listingPricing.listingPrice='1500'; row.weight='2'; assert.equal(bulkPricingReady(row),false)
+ assert.throws(()=>resolveBulkListing(row),/Calculate listing/)
+})
+
+test('changing only one variant listing preserves the other variant price',()=>{
+ const rows=parse([{...modern,'Option 1 Name':'Colour','Option 1 Value':'Silver,Black'}])
+ for(const [index,row] of rows.entries())row.listingPricing={signature:bulkPricingSignature(row),logisticsFee:90,suggestedPrice:1334.69,listingPrice:String(1500+index*100)}
+ const images=Object.fromEntries(['front','side','detail'].map(n=>[n+'.jpg',{status:'uploaded',url:'https://example.com/'+n+'.jpg'}]))
+ const p=buildBulkPayload(rows,images,true)
+ assert.deepEqual(p.variants.map(v=>v.prices[1].amount),[1500,1600])
+})
+
+test('template v4 styles mandatory headers distinctly and emits consistent native style records',async()=>{
+ const JSZip=load('jszip');const bytes=await serializeBulkTemplate(buildBulkTemplate());const zip=await JSZip.loadAsync(bytes)
+ const styles=await zip.file('xl/styles.xml').async('string'),sheet=await zip.file('xl/worksheets/sheet1.xml').async('string')
+ const xfs=styles.match(/<cellXfs count="(\d+)">([\s\S]*?)<\/cellXfs>/)
+ assert.equal(Number(xfs[1]),(xfs[2].match(/<xf\b/g)||[]).length)
+ assert.match(styles,/FFD96950/);assert.match(styles,/FF344B44/)
+ const titleStyle=sheet.match(/<c r="A1"[^>]*s="(\d+)"/)[1],subtitleStyle=sheet.match(/<c r="B1"[^>]*s="(\d+)"/)[1]
+ assert.notEqual(titleStyle,subtitleStyle)
 })

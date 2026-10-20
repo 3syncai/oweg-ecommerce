@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import {
@@ -14,6 +14,8 @@ import {
 import * as XLSX from "xlsx"
 import axios from "axios"
 import VendorShell from "@/components/VendorShell"
+import BulkPricingReview from "@/components/bulk-upload/BulkPricingReview"
+import { bulkPricingReady, type BulkPricingDecision } from "@/lib/bulk-pricing"
 import GuideCard from "@/components/bulk-upload/GuideCard"
 import StepCard from "@/components/bulk-upload/StepCard"
 import {
@@ -74,6 +76,9 @@ const VendorProductsBulkUploadPage = () => {
   const router = useRouter()
   const [phase, setPhase] = useState<Phase>("intro")
   const [rows, setRows] = useState<ParsedRow[]>([])
+  const updateListingPricing = useCallback((sku: string, decision: BulkPricingDecision | undefined) => {
+    setRows(previous => previous.map(row => row.sku === sku ? { ...row, listingPricing: decision } : row))
+  }, [])
   const [fileName, setFileName] = useState<string>("")
   const [referencesReady, setReferencesReady] = useState(false)
   const [referenceError, setReferenceError] = useState("")
@@ -908,10 +913,12 @@ const VendorProductsBulkUploadPage = () => {
   const pendingProductGroupCount = new Set(validRows.filter(row => row.status !== "success").map(productGroupKey)).size
   const pendingRowCount = validRows.filter(row => row.status !== "success").length
 
+  const listingPricesReady = validRows.length > 0 && validRows.every(bulkPricingReady)
+
   const handlePublish = async () => {
     if (submittingRef.current) return
-    if (validatedRows.some(row => row.errors.length) || uploadingImages || requiredImages.some(key => imageMap[key]?.status !== "uploaded") || !allBrandsReady) {
-      toast.error("Upload not ready", { description: "Fix all row errors, upload every referenced image and verify each brand before submitting." })
+    if (!listingPricesReady || validatedRows.some(row => row.errors.length) || uploadingImages || requiredImages.some(key => imageMap[key]?.status !== "uploaded") || !allBrandsReady) {
+      toast.error("Upload not ready", { description: "Fix row errors, review listing prices, upload referenced images and complete brand authorization before submitting." })
       return
     }
     if (!validRows.length) {
@@ -951,7 +958,7 @@ const VendorProductsBulkUploadPage = () => {
       setRows([...updated])
 
       try {
-        await vendorProductsApi.create(buildBulkPayload(group.rows, imageMap))
+        await vendorProductsApi.create(buildBulkPayload(group.rows, imageMap, true))
         group.rowIndices.forEach((index) => {
           updated[index] = { ...updated[index], status: "success" }
         })
@@ -1055,7 +1062,7 @@ const VendorProductsBulkUploadPage = () => {
                 style={{ animationDelay: "40ms" }}
               >
                 <Text size="small" className="text-ui-fg-subtle">
-                  Template v3: required MRP and stock, Tax Code dropdown, automatic GST/discount, and comma-separated options with matching images. Brand becomes the collection; upload authorization after parsing.
+                  Template v4: mandatory fields are marked in coral with *. Enter base MRP/selling price, complete package attributes and Image 1–3. Review calculated listing prices after upload. Brand becomes the collection; upload authorization after parsing.
                   Required columns are marked with <span className="font-mono">*</span>.
                   Leave SKU and Discount % blank — they are generated automatically.
                 </Text>
@@ -1210,7 +1217,7 @@ const VendorProductsBulkUploadPage = () => {
                       invalidRows.length > 0 ||
                       requiredImages.some(key => imageMap[key]?.status !== "uploaded") ||
                       uploadingImages ||
-                      !allBrandsReady
+                      !allBrandsReady || !listingPricesReady
                     }
                   >
                     Submit {pendingProductGroupCount} product
@@ -1231,11 +1238,14 @@ const VendorProductsBulkUploadPage = () => {
               </div>
             </div>
 
-            {phase === "preview" && (invalidRows.length > 0 || uploadedImages < totalImages || !allBrandsReady) && (
+            {(phase === "preview" || phase === "uploading") && <BulkPricingReview rows={validatedRows} imageMap={imageMap} disabled={phase === "uploading"} onChange={updateListingPricing} />}
+
+            {phase === "preview" && (invalidRows.length > 0 || uploadedImages < totalImages || !allBrandsReady || !listingPricesReady) && (
               <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                 Before submitting: {invalidRows.length > 0 ? `fix ${invalidRows.length} row(s) with errors; ` : ""}
                 {uploadedImages < totalImages ? `upload ${totalImages - uploadedImages} referenced image(s); ` : ""}
-                {!allBrandsReady ? "complete the brand authorization checks." : ""}
+                {!allBrandsReady ? "complete the brand authorization checks; " : ""}
+                {!listingPricesReady ? "calculate logistics and review the listing prices." : ""}
                 <p className="mt-1">Fix spreadsheet values and upload the file again for fields that cannot be edited here. No partial product variants will be submitted.</p>
               </div>
             )}
@@ -1510,8 +1520,8 @@ const VendorProductsBulkUploadPage = () => {
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Tags</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Options</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">SKU</th>
-                    <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">MRP INR</th>
-                    <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">Discounted</th>
+                    <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">Base MRP INR</th>
+                    <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">Base selling</th>
                     <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">Discount %</th>
                     <th className="px-3 py-2 text-right font-medium text-ui-fg-muted">Inventory</th>
                     <th className="px-3 py-2 text-left font-medium text-ui-fg-muted">Images</th>
