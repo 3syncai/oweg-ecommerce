@@ -63,8 +63,49 @@ fallback is used. Backend weight-based estimates are identified in the preview;
 actual shipment charges can vary. Listing prices must be positive with at most two
 decimals. Source Excel prices stay unchanged in the preview and are saved in each
 variant's `bulk_base_pricing` metadata alongside the quote and listing decision.
+
 Catalogue MRP is calculated from the base MRP with the same charges and is at least
 the selected listing price; the selected listing becomes the catalogue selling price.
+
+### National package logistics allowance
+
+Shipping estimates require the signed-in vendor's saved pickup pincode, positive
+packed length/width/height in cm and packed weight in kg. No default origin or
+grams inference is used. ITL receives actual kg, dimensions rounded up to whole cm,
+and base MRP. Packages above the documented 10 kg automatic limit (actual or
+estimated volumetric weight), or dimensions above 1000 cm, require manual quotes.
+The displayed volumetric estimate uses L×W×H/5000; ITL's service slabs and final
+weight checks determine actual billing.
+
+Without a specific destination, the API compares the pickup locality plus Mumbai,
+Delhi, Bengaluru, Chennai, Kolkata, Guwahati, Srinagar, Leh and Port Blair. For each
+destination it selects the least expensive eligible prepaid surface service by
+carrier total, then uses the highest of those destination quotes. This is a
+representative national allowance, not a guaranteed maximum for every Indian pin.
+It does not change checkout delivery policy or book shipments.
+
+The logistics basic includes freight plus other carrier charges, excluding carrier
+GST. The existing calculator applies its unchanged 18% logistics GST once. Quotes
+with missing or incompatible GST breakdowns are unverified rather than guessed.
+Product GST, all fee rates/formulas, TCS and TDS are unchanged. No extra buffer,
+COD or return/RTO allowance is added. Unavailable services are disclosed; any API
+failure/unverified route makes the result provisional and blocks bulk submission
+until resolved. No synthetic weight-based fallback replaces live quotes.
+
+Quotes expire after 15 minutes. The vendor view shows the package logistics in the calculation and a short
+verification message when needed. Route comparisons, exceptions and technical
+quote details are retained in API/audit metadata rather than shown to vendors. Refresh bypasses the cache; automatic listing
+prices update while manual overrides remain. Audit metadata retains the quote.
+
+The shipping regression tests include eligibility, min/max selection, carrier GST,
+other charges, kg handling, invalid/heavy packages and partial coverage. The bulk
+suite confirms that varying shipping leaves every non-logistics calculation equal.
+
+```sh
+cd my-medusa-store
+node --test --require ts-node/register/transpile-only src/lib/__tests__/shipping-estimate.test.ts
+```
+
 
 Older templates retain their original parser requirements, but imports through the
 current portal must still complete package logistics and listing-price review.

@@ -1,5 +1,6 @@
 import { calculateVendorPricing, getCalculatorProductPrice, round2 } from "./productPriceCalculator"
 import type { ParsedRow } from "./bulk-upload"
+import type { ShippingEstimate } from "./shipping-estimate"
 
 export type BulkPricingDecision = {
   signature: string
@@ -9,6 +10,7 @@ export type BulkPricingDecision = {
   deliveryPincode?: string
   suggestedPrice: number
   listingPrice: string
+  shippingEstimate?: ShippingEstimate
 }
 
 export const bulkPricingSignature = (row: ParsedRow) =>
@@ -28,6 +30,8 @@ export function calculateBulkListing(base: number, logistics: number, gst: numbe
 export function resolveBulkListing(row: ParsedRow) {
   const decision = row.listingPricing
   if (!decision || decision.signature !== bulkPricingSignature(row)) throw new Error(`Calculate listing price for ${row.title} (${row.sku})`)
+  if (decision.shippingEstimate?.coverage_complete === false) throw new Error(`Shipping coverage is incomplete for ${row.title}; retry or request a manual quote before submitting`)
+  if (decision.shippingEstimate && (!Number.isFinite(Date.parse(decision.shippingEstimate.expires_at)) || Date.parse(decision.shippingEstimate.expires_at) <= Date.now())) throw new Error(`Shipping quote expired for ${row.title}; refresh logistics`)
   if (!/^\d+(?:\.\d{1,2})?$/.test(decision.listingPrice) || Number(decision.listingPrice) <= 0 || !Number.isSafeInteger(Math.round(Number(decision.listingPrice) * 100))) throw new Error(`Enter a valid listing price for ${row.title}`)
   const base = Number(getCalculatorProductPrice(row.price, row.discountedPrice))
   const { suggestedPrice } = calculateBulkListing(base, decision.logisticsFee, Number(row.gstRate))

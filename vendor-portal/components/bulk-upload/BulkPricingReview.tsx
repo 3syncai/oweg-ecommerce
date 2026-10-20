@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Button } from "@medusajs/ui"
 import { X, Calculator, ImageIcon } from "lucide-react"
 import Image from "next/image"
+import ShippingEstimateDetails from "@/components/ShippingEstimateDetails"
 import { vendorShippingApi } from "@/lib/api/client"
 import { normalizeImageKey, isMediaUrl, type ParsedRow } from "@/lib/bulk-upload"
 import { bulkPricingSignature, calculateBulkListing, type BulkPricingDecision } from "@/lib/bulk-pricing"
@@ -36,24 +37,26 @@ export default function BulkPricingReview({ rows, imageMap, onChange, disabled }
           for (const field of ["length", "width", "height", "weight"] as const) {
             if (!Number.isFinite(Number(row[field])) || Number(row[field]) <= 0) throw new Error(`Enter a positive package ${field} in the Excel file`)
           }
-          const params = { length: Number(row.length), width: Number(row.width), height: Number(row.height), weight: Number(row.weight) }
+          const params = { length: Number(row.length), width: Number(row.width), height: Number(row.height), weight: Number(row.weight), declared_value: Number(row.price), refresh: retry > 0 }
           const packageKey = JSON.stringify(params)
           let promise = packages.get(packageKey)
           if (!promise) { promise = vendorShippingApi.estimateRate(params); packages.set(packageKey, promise) }
           const quote = await promise
           if (cancelled) return
-          if (!quote.success || !Number.isFinite(quote.freight_charge) || quote.freight_charge < 0) throw new Error("Unable to estimate logistics. Retry before listing.")
+          if (!quote.success || !Number.isFinite(quote.freight_charge) || quote.freight_charge < 0 || !quote.routes?.length || !quote.expires_at) throw new Error("Unable to verify national logistics. Retry before listing.")
           const base = Number(getCalculatorProductPrice(row.price, row.discountedPrice))
           const { suggestedPrice } = calculateBulkListing(base, quote.freight_charge, Number(row.gstRate))
           const previous = row.listingPricing
           onChange(row.sku, {
             signature, logisticsFee: quote.freight_charge,
             courierName: quote.courier_name, pickupPincode: quote.pickup_pincode, deliveryPincode: quote.delivery_pincode,
-            suggestedPrice, listingPrice: previous?.signature === signature ? previous.listingPrice : suggestedPrice.toFixed(2),
+            shippingEstimate: quote,
+            suggestedPrice, listingPrice: previous?.signature === signature && previous.listingPrice !== previous.suggestedPrice.toFixed(2) ? previous.listingPrice : suggestedPrice.toFixed(2),
           })
-          setQuotes(prev => ({ ...prev, [row.sku]: { signature, status: "ready", message: `${(quote as typeof quote & { fallback?: boolean }).fallback ? "Weight-based estimate" : quote.courier_name} · ${quote.pickup_pincode} to ${quote.delivery_pincode}` } }))
+          setQuotes(prev => ({ ...prev, [row.sku]: { signature, status: "ready", message: quote.coverage_complete ? "Shipping calculated" : "Shipping needs verification before submission" } }))
         } catch (error) {
-          if (!cancelled) setQuotes(prev => ({ ...prev, [row.sku]: { signature, status: "error", message: error instanceof Error ? error.message : "Logistics estimate failed" } }))
+          const apiError = error as { response?: { data?: { message?: string } } }
+          if (!cancelled) setQuotes(prev => ({ ...prev, [row.sku]: { signature, status: "error", message: apiError.response?.data?.message || (error instanceof Error ? error.message : "Logistics estimate failed") } }))
         }
       }
     }
@@ -61,13 +64,27 @@ export default function BulkPricingReview({ rows, imageMap, onChange, disabled }
     return () => { cancelled = true }
   }, [source, retry, onChange])
 
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (disabled) return
+      for (const row of rowsRef.current) {
+        const expiry = row.listingPricing?.shippingEstimate?.expires_at
+        if (expiry && Date.parse(expiry) <= Date.now()) {
+          onChange(row.sku, undefined)
+          setQuotes(prev => ({ ...prev, [row.sku]: { signature: bulkPricingSignature(row), status: "error", message: "Shipping quote expired. Refresh logistics before submitting." } }))
+        }
+      }
+    }, 30000)
+    return () => clearInterval(timer)
+  }, [disabled, onChange])
+
   const selectedRow = rows.find(row => row.sku === selected)
   return <section className="rounded-2xl border border-emerald-200 bg-ui-bg-base p-4 sm:p-6 space-y-4" aria-label="Listing prices">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h2 className="text-lg font-semibold">Review listing prices</h2><p className="mt-1 text-sm text-ui-fg-subtle">Excel prices are your base prices. Package logistics and the existing calculator&apos;s charges are added to suggest each listing price.</p></div>
       <Button variant="secondary" type="button" disabled={disabled} onClick={() => setRetry(value => value + 1)}>Refresh logistics</Button>
     </div>
-    <p className="text-xs text-ui-fg-muted">Prices include product GST. Logistics is an estimate for the route shown; actual shipment charges may vary. You can edit the listing price before submission.</p>
+    <p className="text-xs text-ui-fg-muted">Listing prices include estimated package logistics. You can edit the price or open the calculation for each product.</p>
     <div className="divide-y divide-ui-border-base">
       {rows.map(row => {
         const decision = row.listingPricing
@@ -111,7 +128,8 @@ function CalculationDialog({ row, onClose }: { row: ParsedRow; onClose: () => vo
   const lines = [[`Platform fee (${PLATFORM_FEE_RATE}% of basic)`, c.platformFee], [`Commission (${COMMISSION_RATE}% of basic)`, c.commissionFee], [`Partner commission (${PARTNER_COMMISSION_RATE}% of base)`, c.partnerCommission], [`Payment gateway (${PAYMENT_GATEWAY_RATE}% of base)`, c.paymentGatewayFee], ["Package logistics", c.logisticsDeduction], [`TCS (${TCS_RATE}% of basic)`, c.tcs], [`TDS (${TDS_RATE}% of basic)`, c.tds]] as const
   return <dialog ref={ref} aria-labelledby="bulk-calculation-title" onCancel={event => { event.preventDefault(); onClose() }} className="w-[min(680px,calc(100vw-24px))] max-h-[90dvh] overflow-auto rounded-2xl border border-ui-border-base bg-ui-bg-base p-4 sm:p-6 text-ui-fg-base shadow-xl backdrop:bg-black/50">
     <div className="flex items-start justify-between gap-3"><div><h2 id="bulk-calculation-title" className="text-lg font-semibold">Product Price Calculator</h2><p className="mt-1 text-sm">{row.title}</p><p className="text-xs text-ui-fg-muted mt-1">{row.variantTitle || row.sku} · {row.taxCode} · {row.gstRate}% GST</p></div><button aria-label="Close calculation" onClick={onClose} className="p-2"><X size={20} /></button></div>
-    <div className="my-5 rounded-xl bg-ui-bg-subtle p-4 text-sm space-y-2"><p>Excel base MRP <strong className="float-right">{formatInr(Number(row.price))}</strong></p><p>Excel base selling price <strong className="float-right">{formatInr(base)}</strong></p><p className="text-xs text-ui-fg-subtle">Basic {formatInr(c.item.basic)} + product GST {formatInr(c.item.gstOrTax)}. Product GST is already included in the base price.</p><p className="text-xs text-ui-fg-subtle">Package: {row.length} × {row.width} × {row.height} cm, {row.weight} kg. {decision.courierName} · {decision.pickupPincode} to {decision.deliveryPincode}.</p></div>
+    <div className="my-5 rounded-xl bg-ui-bg-subtle p-4 text-sm space-y-2"><p>Excel base MRP <strong className="float-right">{formatInr(Number(row.price))}</strong></p><p>Excel base selling price <strong className="float-right">{formatInr(base)}</strong></p><p className="text-xs text-ui-fg-subtle">Basic {formatInr(c.item.basic)} + product GST {formatInr(c.item.gstOrTax)}. Product GST is already included in the base price.</p><p className="text-xs text-ui-fg-subtle">Package: {row.length} × {row.width} × {row.height} cm, {row.weight} kg.</p></div>
+    {decision.shippingEstimate && <ShippingEstimateDetails estimate={decision.shippingEstimate} />}
     <p className="text-xs text-ui-fg-subtle mb-3">Charges below use the existing product calculator&apos;s rates applied to the Excel base price.</p>
     <div className="overflow-x-auto"><table className="w-full min-w-[420px] text-xs sm:text-sm"><thead><tr className="border-b border-ui-border-base text-ui-fg-muted"><th className="text-left py-2">Charge</th><th className="text-right">Basic</th><th className="text-right">GST / tax</th><th className="text-right">Total</th></tr></thead><tbody>{lines.map(([label, amount]) => <tr key={label} className="border-b border-ui-border-base/50"><td className="py-2">{label}</td><td className="text-right">{formatInr(amount.basic)}</td><td className="text-right">{formatInr(amount.gstOrTax)}</td><td className="text-right">{formatInr(amount.total)}</td></tr>)}</tbody></table></div>
     <div className="mt-4 space-y-2 text-sm"><p>Total charges <strong className="float-right">{formatInr(c.totalDeductionsAmount)}</strong></p><p className="border-t border-ui-border-base pt-3">Calculated listing price <strong className="float-right">{formatInr(suggestedPrice)}</strong></p><p className="text-xs text-ui-fg-subtle">Base price + the charges above. This is not a guaranteed settlement amount.</p><p className="rounded-lg bg-emerald-50 p-3 text-emerald-900">Your listing price <strong className="float-right">{formatInr(Number(decision.listingPrice))}</strong></p></div>

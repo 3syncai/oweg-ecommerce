@@ -81,6 +81,7 @@ export const buildBulkPayload = (groupRows: ParsedRow[], imageMap: Record<string
         courier: listing.decision.courierName || null,
         pickup_pincode: listing.decision.pickupPincode || null,
         delivery_pincode: listing.decision.deliveryPincode || null,
+        shipping_estimate: listing.decision.shippingEstimate || null,
         method: "base_plus_calculator_costs", version: 1,
       } } } : {}),
       manage_inventory: groupRow.managedInventory,

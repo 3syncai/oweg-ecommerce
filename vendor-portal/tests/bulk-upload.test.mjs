@@ -210,6 +210,19 @@ test('preview edits keep expanded variants together, preserve other products and
 const { calculateBulkListing, bulkPricingSignature, resolveBulkListing, bulkPricingReady } = load('../lib/bulk-pricing.ts')
 const modern = { Title:'Bajaj KTX 1.8L DLX Electric Kettle',Description:'Stainless steel kettle with automatic shut-off.',Brand:'Bajaj',Category:'Home appliances',Subcategory:'Kettles','Length (cm)':22,'Width (cm)':20,'Height (cm)':24,'Weight (kg)':1.2,'HSN Code':'85167920','Country of Origin':'IN','Tax Code':'GST_18','MRP INR':2150,'Selling Price INR':1000,'Inventory Count':12,'Image 1':'front.jpg','Image 2':'side.jpg','Image 3':'detail.jpg' }
 
+test('changing shipping preserves every non-logistics calculation and rejects expired quotes',()=>{
+ const first=calculateBulkListing(1000,90,18).calculation,second=calculateBulkListing(1000,193.77,18).calculation
+ for(const field of ['item','platformFee','commissionFee','partnerCommission','paymentGatewayFee','tcs','tds'])assert.deepEqual(first[field],second[field],field)
+ assert.equal(second.logistics.gstOrTax,34.88)
+ const row=parse([modern])[0]
+ row.listingPricing={signature:bulkPricingSignature(row),logisticsFee:193.77,suggestedPrice:1457.14,listingPrice:'1457.14',shippingEstimate:{expires_at:new Date(Date.now()-1000).toISOString()}}
+ assert.throws(()=>resolveBulkListing(row),/expired/)
+ row.listingPricing.shippingEstimate.expires_at=new Date(Date.now()+60000).toISOString()
+ assert.ok(bulkPricingReady(row))
+ row.listingPricing.shippingEstimate.coverage_complete=false
+ assert.throws(()=>resolveBulkListing(row),/incomplete/)
+})
+
 test('base cost build-up adds existing calculator charges once without reverse settlement targeting',()=>{
  const result=calculateBulkListing(1000,90,18)
  assert.equal(result.suggestedPrice,1334.69)
