@@ -36,6 +36,7 @@ type HistoryRow = {
   tds_rate: string | number
   logistic_fee: string | number
   customer_shipping_total: string | number
+  cashback_amount?: string | number
   return_fee: string | number
   cancellation_fee: string | number
   net_amount: string | number
@@ -133,6 +134,7 @@ export type EarningLedgerSource = {
   taxable_amount: number
   logistic_fee: number
   customer_shipping_total?: number
+  cashback_amount?: number
   return_fee?: number
   cancellation_fee?: number
   gst_rate: number
@@ -252,6 +254,7 @@ export function buildVendorLedgerRowsFromEarning(
     item_price: itemPrice,
     logistic_fee: logisticFee,
     customer_shipping_total: customerShippingTotal,
+    cashback_amount: row.cashback_amount,
     rates,
     payment_method: row.payment_method,
     order_status: row.order_status,
@@ -272,6 +275,7 @@ export function buildVendorLedgerRowsFromEarning(
       ...saleLedger,
       bank_settlement: 0,
       balance_delta: 0,
+      cashback_amount: 0,
     }
   }
 
@@ -496,6 +500,7 @@ export async function buildVendorPaymentsView(
                 COALESCE(NULLIF((o.metadata->'vendor_order_workflows'->vel.vendor_id->>'easy_courier_rate')::numeric, 0), 0)
               ) END AS logistic_fee,
             COALESCE(vel.customer_shipping_total, 0) AS customer_shipping_total,
+            COALESCE(vel.cashback_amount, 0) AS cashback_amount,
             CASE WHEN vel.order_id LIKE 'cancel-fee:%'
               THEN COALESCE(vel.return_fee, 0)
               ELSE GREATEST(
@@ -606,6 +611,7 @@ export async function buildVendorPaymentsView(
           taxable_amount: Number(row.taxable_amount) || 0,
           logistic_fee: Number(row.logistic_fee) || 0,
           customer_shipping_total: Number(row.customer_shipping_total) || 0,
+          cashback_amount: Number(row.cashback_amount) || 0,
           return_fee: Number(row.return_fee) || 0,
           cancellation_fee: Number(row.cancellation_fee) || 0,
           gst_rate: gstRate,

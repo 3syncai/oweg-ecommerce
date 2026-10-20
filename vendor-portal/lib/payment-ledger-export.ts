@@ -31,7 +31,7 @@ const EXPORT_HEADERS = [
   "Return fee", "Return GST", "Return total",
   "Cancellation fee", "Cancellation GST", "Cancellation total",
   "Payment gateway fee", "Payment gateway GST", "Payment gateway total",
-  "Claim", "Transaction ID", "Payment date", "Payout", "Running balance",
+  "Cashback", "Claim", "Transaction ID", "Payment date", "Payout", "Running balance",
 ]
 
 function categoryLabel(row: SettlementRow) {
@@ -170,6 +170,7 @@ export function mapPaymentLedgerExportRow(row: SettlementRow) {
     exportPgFee,
     exportPgGst,
     exportPgTotal,
+    n(row.cashback_amount),
     n(row.claim_amount),
     row.transaction_id || "",
     formatIsoDate(row.payment_date),

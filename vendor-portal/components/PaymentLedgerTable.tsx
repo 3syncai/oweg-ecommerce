@@ -258,6 +258,7 @@ export default function PaymentLedgerTable({
               <Group colSpan={3} rate="2% + GST 18%">
                 Payment gateway
               </Group>
+              <Group>Cashback</Group>
               <Group>Claim</Group>
               <Group colSpan={2} rate={`${tcsHdr} / ${tdsHdr}`}>
                 Tax deduct
@@ -301,6 +302,7 @@ export default function PaymentLedgerTable({
               <TH className="text-right">Fee</TH>
               <TH className="text-right">Tax</TH>
               <TH className="text-right">Total</TH>
+              <TH className="text-right">Cashback (₹)</TH>
               <TH className="text-right">Amount</TH>
               <TH className="text-right">TCS</TH>
               <TH className="text-right">TDS</TH>
@@ -508,6 +510,7 @@ export default function PaymentLedgerTable({
                   <Money value={displayPgFee} tone={moneyTone} />
                   <Money value={displayPgGst} tone={moneyTone} />
                   <Money value={displayPgTotal} tone={moneyTone} />
+                  <Money value={row.cashback_amount} tone={moneyTone} />
                   <Money value={row.claim_amount} tone={moneyTone} />
                   <Money value={row.tcs} tone={moneyTone} />
                   <Money value={row.tds} tone={moneyTone} />
