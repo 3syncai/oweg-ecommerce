@@ -32,3 +32,9 @@ export type ShippingEstimate = {
   coverage_complete: boolean
   warning: string
 }
+
+/** Partial destination coverage is usable when the carrier supplied a valid quote. */
+export function hasUsableShippingQuote(estimate: ShippingEstimate | undefined): boolean {
+  return Boolean(estimate?.success && Number.isFinite(estimate.freight_charge) && estimate.freight_charge >= 0 &&
+    estimate.routes?.some(route => route.status === "quoted" && route.quote && Number.isFinite(route.quote.freight_charge) && route.quote.freight_charge >= 0))
+}

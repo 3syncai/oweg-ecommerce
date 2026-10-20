@@ -510,14 +510,6 @@ const VendorProductNewPage = () => {
     }
   }
 
-  const _handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    // This is now handled by handleMediaUpload, but keeping for backward compatibility
-    if (e.target.files && e.target.files.length > 0) {
-      const files = Array.from(e.target.files)
-      await uploadMediaToS3(files)
-    }
-  }
-
   // Unified media upload handler that detects file type and routes appropriately
   const uploadMediaToS3 = async (files: File[]) => {
     if (files.length === 0) return
@@ -731,15 +723,6 @@ const VendorProductNewPage = () => {
   }, [openMenuIndex])
 
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const files = Array.from(e.dataTransfer.files)
-      await uploadMediaToS3(files)
-    }
-  }
-
-  const _handleVideoDrop = async (e: React.DragEvent<HTMLDivElement>) => {
-    // This is now handled by handleDrop, but keeping for backward compatibility
     e.preventDefault()
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files)

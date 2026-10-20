@@ -20,14 +20,14 @@ type Product = {
   title: string
   status: string
   created_at: string
-  thumbnail?: string
-  handle?: string
+  thumbnail?: string | null
+  handle?: string | null
   metadata?: {
     approval_status?: string
     vendor_id?: string
     tax_code?: string | null
     gst_rate?: number | string | null
-  }
+  } | null
 }
 
 const PAGE_SIZE = 20

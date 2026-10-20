@@ -21,20 +21,20 @@ type SearchTab = "all" | "products" | "orders" | "customers"
 type Product = {
   id: string
   title: string
-  handle?: string
+  handle?: string | null
   status?: string
-  thumbnail?: string
+  thumbnail?: string | null
   images?: Array<{ url?: string }>
   metadata?: {
     approval_status?: string
-  }
+  } | null
   created_at?: string
 }
 
 type Order = {
   id: string
-  display_id?: string
-  email?: string
+  display_id?: string | number
+  email?: string | null
   fulfillment_status?: string
   created_at?: string
   total?: number
@@ -43,9 +43,9 @@ type Order = {
 
 type Customer = {
   id: string
-  email?: string
-  first_name?: string
-  last_name?: string
+  email?: string | null
+  first_name?: string | null
+  last_name?: string | null
   orders_count?: number
   total_spent?: number
   last_order_date?: string

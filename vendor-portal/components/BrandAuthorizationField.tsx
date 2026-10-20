@@ -165,7 +165,7 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
                 return (
                     <div style={{ marginTop: 8, padding: 12, background: "var(--bg-warning-subtle)", borderRadius: 6, border: "1px solid var(--border-warning)" }}>
                         <Text size="small" weight="plus" style={{ color: "var(--fg-warning)", marginBottom: 8 }}>
-                            ⚠️ Required: Upload your brand authorization letter for "{brand}" to continue
+                            ⚠️ Required: Upload your brand authorization letter for &quot;{brand}&quot; to continue
                         </Text>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <input

@@ -8,7 +8,9 @@
     "start": "next start -p 4000",
     "lint": "eslint",
     "test:bulk": "node --test tests/bulk-upload.test.mjs",
-    "test:calculator": "node --test tests/product-price-calculator.test.mjs"
+    "test:calculator": "node --test tests/product-price-calculator.test.mjs",
+    "test:api": "node --test tests/api-client.test.mjs",
+    "test:submission": "node --test tests/bulk-submission.test.mjs"
   },
   "dependencies": {
     "@medusajs/icons": "^2.11.3",

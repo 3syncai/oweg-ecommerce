@@ -1,7 +1,7 @@
 "use client"
 
 import { ReactNode } from "react"
-import { Badge, Text, clx } from "@medusajs/ui"
+import { Text, clx } from "@medusajs/ui"
 
 type StepCardProps = {
   step: number
@@ -35,9 +35,9 @@ const StepCard = ({
       onDragOver={onDragOver}
       onDrop={onDrop}
       className={clx(
-        "animate-fade-in-up rounded-xl border bg-ui-bg-base p-5 md:p-6 space-y-4",
+        "rounded-2xl border bg-ui-bg-base p-5 sm:p-7 space-y-5 min-w-0",
         isDropzone
-          ? "cursor-pointer border-dashed border-ui-border-base/80 text-center transition-all duration-200 hover:border-ui-border-strong hover:bg-ui-bg-subtle/40 hover:shadow-sm"
+          ? "cursor-pointer border-dashed border-emerald-300 bg-emerald-50/40 text-center transition-colors hover:border-emerald-500 hover:bg-emerald-50"
           : "border-ui-border-base/70 transition-all duration-200 hover:border-ui-border-strong hover:shadow-sm",
         className
       )}
@@ -48,9 +48,7 @@ const StepCard = ({
           isDropzone && "justify-center"
         )}
       >
-        <Badge color="blue" size="xsmall">
-          Step {step}
-        </Badge>
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-xs font-semibold text-emerald-800">0{step}</span>
         <Text weight="plus">{title}</Text>
       </div>
       {children}

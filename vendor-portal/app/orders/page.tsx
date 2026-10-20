@@ -80,7 +80,7 @@ function easyProviderLabel(workflow?: VendorWorkflow | null) {
 type VendorOrder = {
   id: string
   display_id?: string | number
-  email?: string
+  email?: string | null
   status?: string
   fulfillment_status?: string
   vendor_stage: VendorStage

@@ -4,8 +4,8 @@ import { GST_TAX_CODES } from "./gst-tax-codes"
 export type Category = { id: string; name: string; parent_category_id?: string | null }
 export type Collection = { id: string; title: string }
 
-export const brandReady = (state: { status: string; fileUrl?: string } | undefined): boolean =>
-  Boolean(state?.fileUrl && ["authorized", "pending", "uploaded"].includes(state.status))
+export const brandReady = (state: { status: string; fileUrl?: string; file?: File } | undefined): boolean =>
+  Boolean(state?.status === "selected" ? state.file : state?.fileUrl && ["authorized", "pending", "uploaded"].includes(state.status))
 export type RawRow = Record<string, unknown>
 
 export type ParsedRow = {

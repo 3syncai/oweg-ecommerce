@@ -1,3 +1,7 @@
+import type { VendorProfile, VendorProfileUpdate, VendorLogin, UploadResponse, UploadedFile, VendorProduct,
+  ProductInput, ProductDetailResponse, ProductVariantMatrix, VariantMatrixInput, Metadata, VendorOrder, OrderTracking,
+  VendorPayout, ProductCategory, ProductCollection, ProductType, ProductTag, VendorStats, VendorInventoryRow,
+  VendorCustomer, ReportProductSnapshot, ReportOrderSnapshot } from "./contracts"
 import type { ShippingEstimate } from "../shipping-estimate"
 /**
  * API Client for Medusa Backend
@@ -21,11 +25,25 @@ if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
   console.log('API Client initialized with URL:', API_URL)
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+/** Narrow arbitrary thrown values and backend error envelopes without discarding raw details. */
+function readMessage(value: unknown, fallback: string): string {
+  const message = isRecord(value) ? value.message : undefined
+  return typeof message === "string" && message ? message : fallback
+}
+
+function isUploadedFile(value: unknown): value is UploadedFile {
+  return isRecord(value) && typeof value.url === "string" && Boolean(value.url)
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
     public message: string,
-    public data?: any
+    public data?: unknown
   ) {
     super(message)
     this.name = 'ApiError'
@@ -45,7 +63,7 @@ export function logApiFailure(context: string, error: unknown) {
 
 export async function apiRequest<T>(
   endpoint: string,
-  options: AxiosRequestConfig = {}
+  options: AxiosRequestConfig<unknown> = {}
 ): Promise<T> {
   const url = `${API_URL}${endpoint}`
 
@@ -65,7 +83,7 @@ export async function apiRequest<T>(
   }
 
   try {
-    const response = await axios({
+    const response = await axios<T>({
       url,
       method: options.method || 'GET',
       headers: {
@@ -78,7 +96,7 @@ export async function apiRequest<T>(
     })
 
     return response.data
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Handle network errors (CORS, connection refused, etc.)
     if (error instanceof AxiosError) {
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
@@ -92,9 +110,9 @@ export async function apiRequest<T>(
         )
       }
 
-      const errorData = error.response?.data || { message: error.message }
+      const errorData: unknown = error.response?.data || { message: error.message }
       let message =
-        (typeof errorData === "object" && errorData?.message) ||
+        (isRecord(errorData) && readMessage(errorData, "")) ||
         (typeof errorData === "string" ? errorData : null) ||
         "API request failed"
 
@@ -115,7 +133,7 @@ export async function apiRequest<T>(
       throw error
     }
     // Wrap other errors
-    throw new ApiError(0, error?.message || 'Unknown error occurred', error)
+    throw new ApiError(0, readMessage(error, 'Unknown error occurred'), error)
   }
 }
 
@@ -125,23 +143,23 @@ export const vendorAuthApi = {
     // Don't use apiRequest for login since we don't have a token yet
     const url = `${API_URL}/vendor/auth/login`
     try {
-      const response = await axios.post(url, { email, password }, {
+      const response = await axios.post<VendorLogin>(url, { email, password }, {
         headers: {
           'Content-Type': 'application/json',
           ...(PUBLISHABLE_KEY ? { 'x-publishable-api-key': PUBLISHABLE_KEY } : {}),
         },
       })
       return response.data
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof AxiosError) {
-        const errorData = error.response?.data || { message: error.message }
+        const errorData: unknown = error.response?.data || { message: error.message }
         throw new ApiError(
           error.response?.status || 0,
-          errorData.message || 'Login failed',
+          readMessage(errorData, 'Login failed'),
           errorData
         )
       }
-      throw new ApiError(0, error?.message || 'Login failed', error)
+      throw new ApiError(0, readMessage(error, 'Login failed'), error)
     }
   },
 
@@ -170,14 +188,14 @@ async function uploadStoreImage(file: File, vendorHint: string, type: 'logo' | '
   const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
   if (token) headers.Authorization = `Bearer ${token}`
   try {
-    const { data } = await axios.post(`${API_URL}/store/vendor/uploads`, formData, { headers })
+    const { data } = await axios.post<UploadResponse>(`${API_URL}/store/vendor/uploads`, formData, { headers })
     const uploaded = data.files?.find((entry: { type?: string }) => entry.type === type) || data.files?.[0] || data
-    if (!uploaded?.url) throw new Error('Upload returned no image URL')
-    return uploaded as { url: string; key?: string }
+    if (!isUploadedFile(uploaded)) throw new Error('Upload returned no image URL')
+    return uploaded
   } catch (error: unknown) {
     if (error instanceof AxiosError) {
-      const details = error.response?.data || { message: error.message }
-      throw new ApiError(error.response?.status || 0, details.message || 'Upload failed', details)
+      const details: unknown = error.response?.data || { message: error.message }
+      throw new ApiError(error.response?.status || 0, readMessage(details, 'Upload failed'), details)
     }
     throw new ApiError(0, error instanceof Error ? error.message : 'Upload failed', error)
   }
@@ -186,11 +204,11 @@ async function uploadStoreImage(file: File, vendorHint: string, type: 'logo' | '
 // Vendor Profile API
 export const vendorProfileApi = {
   getMe: async () => {
-    return apiRequest<{ vendor: any }>('/store/vendors/me')
+    return apiRequest<{ vendor: VendorProfile }>('/store/vendors/me')
   },
 
-  updateProfile: async (data: any) => {
-    return apiRequest<{ vendor: any }>('/vendor/profile', {
+  updateProfile: async (data: VendorProfileUpdate) => {
+    return apiRequest<{ vendor: VendorProfile }>('/vendor/profile', {
       method: 'PUT',
       data,
     })
@@ -226,7 +244,7 @@ export const vendorProfileApi = {
     cancel_cheque_url?: string | null
     documents?: Array<{ key: string; url: string; name?: string; type?: string; category?: string }> | null
   }) => {
-    return apiRequest<{ message: string; vendor: any }>('/store/vendors/reapply', {
+    return apiRequest<{ message: string; vendor: VendorProfile }>('/store/vendors/reapply', {
       method: 'POST',
       data,
     })
@@ -284,18 +302,18 @@ export const vendorSignupApi = {
     }
 
     try {
-      const response = await axios.post(`${API_URL}/store/vendors/signup`, data, { headers })
+      const response = await axios.post<{ vendor: VendorProfile }>(`${API_URL}/store/vendors/signup`, data, { headers })
       return response.data
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof AxiosError) {
-        const errorData = error.response?.data || { message: error.message }
+        const errorData: unknown = error.response?.data || { message: error.message }
         throw new ApiError(
           error.response?.status || 0,
-          errorData.message || 'Signup failed',
+          readMessage(errorData, 'Signup failed'),
           errorData
         )
       }
-      throw new ApiError(0, error?.message || 'Signup failed', error)
+      throw new ApiError(0, readMessage(error, 'Signup failed'), error)
     }
   },
 
@@ -315,20 +333,20 @@ export const vendorSignupApi = {
     }
 
     try {
-      const response = await axios.post(`${API_URL}/store/vendor/uploads`, formData, {
+      const response = await axios.post<UploadResponse>(`${API_URL}/store/vendor/uploads`, formData, {
         headers,
       })
       return response.data
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof AxiosError) {
-        const errorData = error.response?.data || { message: error.message }
+        const errorData: unknown = error.response?.data || { message: error.message }
         throw new ApiError(
           error.response?.status || 0,
-          errorData.message || 'Upload failed',
+          readMessage(errorData, 'Upload failed'),
           errorData
         )
       }
-      throw new ApiError(0, error?.message || 'Upload failed', error)
+      throw new ApiError(0, readMessage(error, 'Upload failed'), error)
     }
   },
 
@@ -342,18 +360,18 @@ export const vendorSignupApi = {
     }
 
     try {
-      const response = await axios.post(`${API_URL}/vendors/validate`, { field, value }, { headers })
+      const response = await axios.post<{ exists: boolean; message: string }>(`${API_URL}/vendors/validate`, { field, value }, { headers })
       return response.data
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof AxiosError) {
-        const errorData = error.response?.data || { message: error.message }
+        const errorData: unknown = error.response?.data || { message: error.message }
         throw new ApiError(
           error.response?.status || 0,
-          errorData.message || 'Validation failed',
+          readMessage(errorData, 'Validation failed'),
           errorData
         )
       }
-      throw new ApiError(0, error?.message || 'Validation failed', error)
+      throw new ApiError(0, readMessage(error, 'Validation failed'), error)
     }
   },
 }
@@ -410,7 +428,7 @@ export const vendorProductsApi = {
     if (params?.status) qs.set('status', params.status)
     const suffix = qs.toString() ? `?${qs}` : ''
     return apiRequest<{
-      products: any[]
+      products: VendorProduct[]
       count?: number
       limit?: number
       offset?: number
@@ -419,11 +437,11 @@ export const vendorProductsApi = {
   },
 
   get: async (id: string) => {
-    return apiRequest<{ product: any }>(`/vendor/products/${id}`)
+    return apiRequest<ProductDetailResponse>(`/vendor/products/${id}`)
   },
 
-  create: async (data: any) => {
-    return apiRequest<{ product: any }>('/vendor/products', {
+  create: async (data: ProductInput) => {
+    return apiRequest<{ product: VendorProduct }>('/vendor/products', {
       method: 'POST',
       data,
     })
@@ -480,22 +498,22 @@ export const vendorProductsApi = {
     })
   },
 
-  update: async (id: string, data: any) => {
-    return apiRequest<{ product: any }>(`/vendor/products/${id}`, {
+  update: async (id: string, data: ProductInput) => {
+    return apiRequest<{ product: VendorProduct }>(`/vendor/products/${id}`, {
       method: 'PUT',
       data,
     })
   },
 
   setStatus: async (id: string, action: 'draft' | 'publish') => {
-    return apiRequest<{ product: any; message?: string }>(`/vendor/products/${id}/status`, {
+    return apiRequest<{ product: VendorProduct; message?: string }>(`/vendor/products/${id}/status`, {
       method: 'POST',
       data: { action },
     })
   },
 
-  updateVariants: async (id: string, data: any) => {
-    return apiRequest<{ product_id: string; variant_matrix: any; metadata: any }>(
+  updateVariants: async (id: string, data: VariantMatrixInput) => {
+    return apiRequest<{ product_id: string; variant_matrix: ProductVariantMatrix; metadata: Metadata }>(
       `/vendor/products/${id}/variants`,
       {
         method: 'PATCH',
@@ -521,34 +539,34 @@ export const vendorProductsApi = {
     }
 
     try {
-      const response = await axios.post(`${API_URL}/vendor/products/upload-image`, formData, {
+      const response = await axios.post<UploadResponse>(`${API_URL}/vendor/products/upload-image`, formData, {
         headers,
       })
       return response.data
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof AxiosError) {
-        const errorData = error.response?.data || { message: error.message }
+        const errorData: unknown = error.response?.data || { message: error.message }
         throw new ApiError(
           error.response?.status || 0,
-          errorData.message || 'Upload failed',
+          readMessage(errorData, 'Upload failed'),
           errorData
         )
       }
-      throw new ApiError(0, error?.message || 'Upload failed', error)
+      throw new ApiError(0, readMessage(error, 'Upload failed'), error)
     }
   },
 }
 
 // Vendor Orders API
 let listOrdersInFlight: Promise<{
-  orders: any[]
+  orders: VendorOrder[]
   counts?: Record<string, number>
   count?: number
   limit?: number
   offset?: number
 }> | null = null
 let countsInFlight: Promise<{
-  orders: any[]
+  orders: VendorOrder[]
   counts?: Record<string, number>
   count?: number
 }> | null = null
@@ -581,7 +599,7 @@ export const vendorOrdersApi = {
     // Only dedupe identical in-flight unscoped full lists
     if (!params && listOrdersInFlight) return listOrdersInFlight
     const req = apiRequest<{
-      orders: any[]
+      orders: VendorOrder[]
       counts?: Record<string, number>
       count?: number
       limit?: number
@@ -600,7 +618,7 @@ export const vendorOrdersApi = {
   counts: async () => {
     if (countsInFlight) return countsInFlight
     countsInFlight = apiRequest<{
-      orders: any[]
+      orders: VendorOrder[]
       counts?: Record<string, number>
       count?: number
     }>('/vendor/orders?counts_only=1').finally(() => {
@@ -610,11 +628,11 @@ export const vendorOrdersApi = {
   },
 
   get: async (id: string) => {
-    return apiRequest<{ order: any }>(`/vendor/orders/${id}`)
+    return apiRequest<{ order: VendorOrder }>(`/vendor/orders/${id}`)
   },
 
   accept: async (id: string) => {
-    return apiRequest<{ order: any }>(`/vendor/orders/${id}/accept`, {
+    return apiRequest<{ order: VendorOrder }>(`/vendor/orders/${id}/accept`, {
       method: 'POST',
     })
   },
@@ -635,7 +653,7 @@ export const vendorOrdersApi = {
       label_url?: string
     }
   ) => {
-    return apiRequest<{ order: any }>(`/vendor/orders/${id}/shipping`, {
+    return apiRequest<{ order: VendorOrder }>(`/vendor/orders/${id}/shipping`, {
       method: 'POST',
       data: { method: 'easy', ...data },
     })
@@ -732,7 +750,7 @@ export const vendorOrdersApi = {
       label_url?: string
     }
   ) => {
-    return apiRequest<{ order: any }>(`/vendor/orders/${id}/shipping`, {
+    return apiRequest<{ order: VendorOrder }>(`/vendor/orders/${id}/shipping`, {
       method: 'POST',
       data: { method: 'self', ...data },
     })
@@ -740,7 +758,7 @@ export const vendorOrdersApi = {
 
   generateInvoice: async (id: string) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
-    const response = await axios({
+    const response = await axios<Blob>({
       url: `${API_URL}/vendor/orders/${id}/invoice`,
       method: 'POST',
       responseType: 'blob',
@@ -749,30 +767,30 @@ export const vendorOrdersApi = {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     })
-    return response.data as Blob
+    return response.data
   },
 
   markReadyToDispatch: async (id: string) => {
-    return apiRequest<{ order: any }>(`/vendor/orders/${id}/rtd`, {
+    return apiRequest<{ order: VendorOrder }>(`/vendor/orders/${id}/rtd`, {
       method: 'POST',
     })
   },
   markDispatched: async (id: string) => {
-    return apiRequest<{ order: any }>(`/vendor/orders/${id}/dispatch`, {
+    return apiRequest<{ order: VendorOrder }>(`/vendor/orders/${id}/dispatch`, {
       method: 'POST',
     })
   },
 
   /** Self-ship only: vendor confirms delivery while In Transit */
   markDelivered: async (id: string, data?: { delivery_confirmation?: string }) => {
-    return apiRequest<{ order: any }>(`/vendor/orders/${id}/delivered`, {
+    return apiRequest<{ order: VendorOrder }>(`/vendor/orders/${id}/delivered`, {
       method: 'POST',
       data: data || {},
     })
   },
 
   track: async (id: string) => {
-    return apiRequest<{ order: any; tracking: any }>(`/vendor/orders/${id}/track`)
+    return apiRequest<{ order: VendorOrder; tracking: OrderTracking }>(`/vendor/orders/${id}/track`)
   },
 }
 
@@ -921,9 +939,9 @@ async function payoutRequestWithFallback<T>(
 ): Promise<T> {
   try {
     return await apiRequest<T>(primary.path, { method: primary.method || 'GET' })
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Hosted Medusa may not have /summary or /earnings-by-orders yet — use routes that exist.
-    if (error?.status === 404) {
+    if (isRecord(error) && error.status === 404) {
       return await apiRequest<T>(fallback.path, { method: fallback.method || 'GET' })
     }
     throw error
@@ -959,7 +977,7 @@ export const vendorPayoutsApi = {
   },
 
   list: async () => {
-    return apiRequest<{ summary?: VendorEarningsSummary; payouts: any[]; totals: any; count: number }>('/vendor/payouts')
+    return apiRequest<{ summary?: VendorEarningsSummary; payouts: VendorPayout[]; totals: { total_credited: number; total_commission: number; total_gross: number }; count: number }>('/vendor/payouts')
   },
 
   payments: async () => {
@@ -1083,7 +1101,7 @@ export const vendorCategoriesApi = {
     if (params?.offset) query.append('offset', params.offset.toString())
 
     const queryString = query.toString()
-    return apiRequest<{ product_categories: any[]; count: number }>(
+    return apiRequest<{ product_categories: ProductCategory[]; count: number }>(
       `/vendor/categories${queryString ? `?${queryString}` : ''}`
     )
   },
@@ -1097,7 +1115,7 @@ export const vendorCollectionsApi = {
     if (params?.offset) query.append('offset', params.offset.toString())
 
     const queryString = query.toString()
-    return apiRequest<{ collections: any[]; count: number }>(
+    return apiRequest<{ collections: ProductCollection[]; count: number }>(
       `/vendor/collections${queryString ? `?${queryString}` : ''}`
     )
   },
@@ -1113,7 +1131,7 @@ export const vendorTypesApi = {
     if (params?.offset) query.append('offset', params.offset.toString())
 
     const queryString = query.toString()
-    return apiRequest<{ product_types: any[]; count: number }>(
+    return apiRequest<{ product_types: ProductType[]; count: number }>(
       `/vendor/types${queryString ? `?${queryString}` : ''}`
     )
   },
@@ -1128,7 +1146,7 @@ export const vendorTagsApi = {
     if (params?.offset) query.append('offset', params.offset.toString())
 
     const queryString = query.toString()
-    return apiRequest<{ product_tags: any[]; count: number }>(
+    return apiRequest<{ product_tags: ProductTag[]; count: number }>(
       `/vendor/tags${queryString ? `?${queryString}` : ''}`
     )
   },
@@ -1137,7 +1155,7 @@ export const vendorTagsApi = {
 // Vendor Stats API
 export const vendorStatsApi = {
   get: async () => {
-    return apiRequest<{ stats: any }>('/vendor/stats')
+    return apiRequest<{ stats: VendorStats }>('/vendor/stats')
   },
 }
 
@@ -1152,8 +1170,8 @@ export const vendorInventoryApi = {
     const suffix = qs.toString() ? `?${qs}` : ''
     return apiRequest<{
       success: boolean
-      inventory: any[]
-      total: number
+      inventory: VendorInventoryRow[]
+      total?: number
       count?: number
       limit?: number
       offset?: number
@@ -1174,7 +1192,7 @@ export const vendorInventoryApi = {
 // Vendor Customers API
 export const vendorCustomersApi = {
   list: async () => {
-    return apiRequest<{ customers: any[] }>('/vendor/customers')
+    return apiRequest<{ customers: VendorCustomer[] }>('/vendor/customers')
   },
 }
 
@@ -1307,7 +1325,7 @@ export const vendorReturnsApi = {
     }
   ) => {
     return apiRequest<{
-      return_request: any
+      return_request: Partial<VendorReturnRequest> & { id: string; order_id: string; type: string; status: string }
       selected: { courier_id: number; courier_name: string }
     }>(`/vendor/returns/${returnId}/select-courier`, {
       method: 'POST',
@@ -1324,7 +1342,7 @@ export const vendorReturnsApi = {
     }
   ) => {
     return apiRequest<{
-      return_request: any
+      return_request: Partial<VendorReturnRequest> & { id: string; order_id: string; type: string; status: string }
       self_tracking: {
         tracking_number: string | null
         tracking_url: string | null
@@ -1340,7 +1358,7 @@ export const vendorReturnsApi = {
     returnId: string,
     action: 'pickup_initiated' | 'picked_up' | 'received'
   ) => {
-    return apiRequest<{ return_request: any; action: string; message: string }>(
+    return apiRequest<{ return_request: Partial<VendorReturnRequest> & { id: string; order_id: string; type: string; status: string }; action: string; message: string }>(
       `/vendor/returns/${returnId}/status`,
       {
         method: 'POST',
@@ -1385,8 +1403,8 @@ export type VendorReportTicket = {
   source: "return" | "order_lookup" | string
   issue_title: string
   issue_description: string
-  product_snapshot?: any
-  order_snapshot?: any
+  product_snapshot?: ReportProductSnapshot | null
+  order_snapshot?: ReportOrderSnapshot | null
   image_urls?: string[] | null
   status: "open" | "in_review" | "resolved" | "closed" | string
   admin_notes?: string | null
@@ -1435,29 +1453,26 @@ export const vendorReportsApi = {
     }
 
     try {
-      const response = await axios.post(`${API_URL}/store/vendor/uploads`, formData, {
+      const response = await axios.post<UploadResponse>(`${API_URL}/store/vendor/uploads`, formData, {
         headers,
       })
-      const data = response.data as {
-        files?: Array<{ url: string; key?: string }>
-        url?: string
-      }
+      const data = response.data
       const url = data?.files?.[0]?.url || data?.url
       if (!url) {
         throw new ApiError(500, "Upload succeeded but no file URL was returned", data)
       }
       return { url, key: data?.files?.[0]?.key }
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof ApiError) throw error
       if (error instanceof AxiosError) {
-        const errorData = error.response?.data || { message: error.message }
+        const errorData: unknown = error.response?.data || { message: error.message }
         throw new ApiError(
           error.response?.status || 0,
-          errorData.message || "Upload failed",
+          readMessage(errorData, "Upload failed"),
           errorData
         )
       }
-      throw new ApiError(0, error?.message || "Upload failed", error)
+      throw new ApiError(0, readMessage(error, "Upload failed"), error)
     }
   },
 }

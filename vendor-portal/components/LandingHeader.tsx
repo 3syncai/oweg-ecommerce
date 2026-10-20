@@ -30,6 +30,7 @@ export default function LandingHeader() {
 
   return (
     <header
+      onKeyDown={event => { if (event.key === "Escape") setMobileOpen(false) }}
       className={`sticky top-0 z-50 transition-all duration-300 ${
         scrolled
           ? "border-b border-oweg-200/60 bg-white/90 shadow-sm shadow-oweg-500/5 backdrop-blur-xl"
@@ -86,6 +87,8 @@ export default function LandingHeader() {
             type="button"
             className="inline-flex rounded-lg p-2 text-zinc-600 hover:bg-zinc-100 md:hidden"
             aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileOpen}
+            aria-controls="landing-mobile-navigation"
             onClick={() => setMobileOpen((v) => !v)}
           >
             {mobileOpen ? (
@@ -102,7 +105,7 @@ export default function LandingHeader() {
       </div>
 
       {mobileOpen && (
-        <div className="border-t border-zinc-100 bg-white px-4 py-4 md:hidden">
+        <div id="landing-mobile-navigation" className="border-t border-zinc-100 bg-white px-4 py-4 md:hidden">
           <nav className="flex flex-col gap-1">
             {LANDING_NAV.map((item) => {
               const active =
@@ -110,6 +113,7 @@ export default function LandingHeader() {
               return (
                 <Link
                   key={item.href}
+                  onClick={() => setMobileOpen(false)}
                   href={item.href}
                   className={`rounded-lg px-3 py-2.5 text-sm font-medium ${
                     active ? "bg-oweg-50 text-oweg-800" : "text-zinc-700"

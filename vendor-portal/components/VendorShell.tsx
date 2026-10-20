@@ -25,7 +25,7 @@ import { warmReturnsCache } from "@/lib/warm-returns-cache"
 type VendorInfo = {
   name?: string
   email?: string
-  store_name?: string
+  store_name?: string | null
   store_logo?: string | null
 }
 
