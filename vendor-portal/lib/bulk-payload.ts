@@ -1,7 +1,8 @@
+import { resolveBulkListing } from "./bulk-pricing"
 import { applyGroupValidation, buildOptionsFromGroup, normalizeImageKey, rowOptionValues, type ParsedRow } from "./bulk-upload"
 import { toProductDescriptionHtml } from "./plain-description"
 
-export const buildBulkPayload = (groupRows: ParsedRow[], imageMap: Record<string, { status: string; url?: string }>) => {
+export const buildBulkPayload = (groupRows: ParsedRow[], imageMap: Record<string, { status: string; url?: string }>, requireListingPricing = false) => {
   if (!groupRows.length || applyGroupValidation(groupRows).some(row => row.errors.length)) throw new Error("Fix product validation errors before creating a payload")
   const row = groupRows[0]
 
@@ -48,8 +49,9 @@ export const buildBulkPayload = (groupRows: ParsedRow[], imageMap: Record<string
       Math.floor(Number.parseInt(groupRow.inventoryCount, 10)) || 0
     )
 
-    const numPrice = parseFloat(groupRow.price)
-    const numDiscount = parseFloat(groupRow.discountedPrice)
+    const listing = requireListingPricing || groupRow.listingPricing ? resolveBulkListing(groupRow) : null
+    const numPrice = listing ? listing.catalogueMrp : parseFloat(groupRow.price)
+    const numDiscount = listing ? listing.listingPrice : parseFloat(groupRow.discountedPrice)
     const prices: Array<{ amount: number; currency_code: string; price_list_id?: string }> = []
     if (Number.isFinite(numPrice)) {
       prices.push({ amount: numPrice, currency_code: "inr" })
@@ -72,6 +74,16 @@ export const buildBulkPayload = (groupRows: ParsedRow[], imageMap: Record<string
     return {
       title: variantTitle,
       sku: groupRow.sku || undefined,
+      ...(listing ? { metadata: { bulk_base_pricing: {
+        base_mrp: Number(groupRow.price), base_selling_price: listing.base,
+        listing_price: listing.listingPrice, suggested_listing_price: listing.suggestedPrice,
+        logistics_fee_basic: listing.decision.logisticsFee,
+        courier: listing.decision.courierName || null,
+        pickup_pincode: listing.decision.pickupPincode || null,
+        delivery_pincode: listing.decision.deliveryPincode || null,
+        shipping_estimate: listing.decision.shippingEstimate || null,
+        method: "base_plus_calculator_costs", version: 1,
+      } } } : {}),
       manage_inventory: groupRow.managedInventory,
       allow_backorder: groupRow.allowBackorder,
       inventory_quantity: inventoryQuantity,

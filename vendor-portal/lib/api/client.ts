@@ -1,3 +1,4 @@
+import type { ShippingEstimate } from "../shipping-estimate"
 /**
  * API Client for Medusa Backend
  * Handles all API requests to the vendor endpoints
@@ -695,6 +696,8 @@ export const vendorOrdersApi = {
   },
 
   estimateShippingRate: async (params: {
+    declared_value?: number
+    refresh?: boolean
     weight?: number
     length?: number
     width?: number
@@ -711,28 +714,10 @@ export const vendorOrdersApi = {
     if (params.height != null && !isNaN(params.height)) query.set('height', String(params.height))
     if (params.pickup_pincode) query.set('pickup_pincode', params.pickup_pincode)
     if (params.delivery_pincode) query.set('delivery_pincode', params.delivery_pincode)
+    if (params.declared_value != null) query.set('declared_value', String(params.declared_value))
+    if (params.refresh) query.set('refresh', 'true')
     const qs = query.toString()
-    return apiRequest<{
-      success: boolean
-      provider: string
-      courier_name: string
-      freight_charge: number
-      gst_rate: number
-      gst_amount: number
-      total_logistics_fee: number
-      pickup_pincode: string
-      delivery_pincode: string
-      weight: number
-      volumetric_weight: number
-      applied_weight: number
-      couriers?: Array<{
-        courier_id: number
-        courier_name: string
-        freight_charge: number
-        total_with_gst: number
-        etd?: string | null
-      }>
-    }>(`/vendor/shipping/estimate-rate${qs ? `?${qs}` : ''}`)
+    return apiRequest<ShippingEstimate>(`/vendor/shipping/estimate-rate${qs ? `?${qs}` : ''}`)
   },
 
   chooseSelfShipping: async (

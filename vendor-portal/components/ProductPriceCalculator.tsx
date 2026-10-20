@@ -3,6 +3,8 @@
 import React, { useMemo, useState, useEffect } from "react"
 import { Button, Heading, Input, Label, Text } from "@medusajs/ui"
 import { InformationCircleSolid } from "@medusajs/icons"
+import ShippingEstimateDetails from "@/components/ShippingEstimateDetails"
+import type { ShippingEstimate } from "@/lib/shipping-estimate"
 import {
   COMMISSION_RATE,
   DEFAULT_LOGISTICS_FEE,
@@ -113,7 +115,7 @@ function MoneyTableRow({
   )
 }
 
-export type LogisticsEstimateDetails = {
+export type LogisticsEstimateDetails = Partial<ShippingEstimate> & {
   freight_charge?: number
   gst_rate?: number
   gst_amount?: number
@@ -366,6 +368,7 @@ export default function ProductPriceCalculator({
                   </span>
                 )}
               </Text>
+              {logisticsDetails && <ShippingEstimateDetails estimate={logisticsDetails} />}
             </div>
 
             <div className="rounded-lg border border-ui-border-base/70 bg-ui-bg-subtle/40 px-3.5 py-2.5 flex items-center justify-between gap-3">

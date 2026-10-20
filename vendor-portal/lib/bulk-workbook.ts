@@ -26,18 +26,19 @@ export function buildBulkTemplate(categories: Category[] = [], collections: Coll
   XLSX.utils.book_append_sheet(workbook, products, "Products")
   const example = Object.fromEntries(TEMPLATE_HEADERS.map(h => [h.key, h.example]))
   const examples = [
-    { ...example, Title: "Sample storage box", "Option 1 Name": "", "Option 1 Value": "", "Option 2 Name": "", "Option 2 Value": "", Thumbnail: "box.jpg" },
-    { ...example, Title: "Sample shoe", "Option 1 Value": "8,9,10", "Option 2 Value": "Red,Green,Blue", "Option 2 Images": "red.jpg,green.jpg,blue.jpg" },
+    { ...example, Title: "Bajaj KTX 1.8L DLX Electric Kettle", Category: "Home appliances", Subcategory: "Kettles", "HSN Code": "85167920", "Option 1 Name": "Capacity", "Option 1 Value": "1.8 L", "Option 2 Name": "Colour", "Option 2 Value": "Silver & Black", Thumbnail: "ktx-1-8-l-dlx-1.jpg", "Image 1": "ktx-1-8-l-dlx-1.jpg", "Image 2": "ktx-1-8-l-dlx-2.jpg", "Image 3": "ktx-1-8-l-dlx-3.jpg" },
+
   ]
   const exampleSheet = XLSX.utils.json_to_sheet(examples, { header: TEMPLATE_HEADERS.map(h => h.key) })
   exampleSheet["!cols"] = products["!cols"]
   XLSX.utils.book_append_sheet(workbook, exampleSheet, "Examples")
   const instructions = [
-    ["OWEG vendor product import - Template v3"],
+    ["OWEG vendor product import - Template v4"],
     ["Fill Products only; Examples are never imported. * means mandatory. Calculated/fixed fields are protected."],
-    ["Required: Title, Brand, Tax Code, MRP INR, Inventory Count. Enter 0 for no stock. Stock applies to EACH variant."],
+    ["Required fields have a coral header and *. Include description, category/subcategory, package dimensions/weight, HSN, origin, tax, base prices, stock and Image 1-3. Enter 0 for no stock. Stock applies to EACH variant."],
     ["Tax country is India. Choose Tax Code from its dropdown; GST Rate is calculated from it. GST alone cannot be imported."],
-    ["MRP INR is original price. Discounted Price INR is optional and cannot exceed MRP. Discount % is automatic."],
+    ["MRP INR and Selling Price INR are BASE prices, including product GST. Selling price must not exceed base MRP. Discount % is automatic. Final listing prices are calculated and edited in the portal after upload."],
+    ["After parsing, logistics uses package dimensions in cm and weight in kg. Review the calculated listing price and View calculation for each product before submitting."],
     ["Managed Inventory and Allow Backorder are always Yes. Shipping uses the backend default profile."],
     ["Brand is also the collection. Unknown brands are requested for admin review; no separate collection field."],
     ["Subtitle and Handle are optional. Same Handle (or Title if blank) groups rows. Repeat product-level details."],
@@ -84,15 +85,24 @@ export function buildBulkTemplate(categories: Category[] = [], collections: Coll
 /** Serialize the standard OOXML validation and unlocked-input styles unsupported by SheetJS CE. */
 export async function serializeBulkTemplate(workbook: XLSX.WorkBook): Promise<Uint8Array> {
   const zip = await JSZip.loadAsync(XLSX.write(workbook, { type: "array", bookType: "xlsx" }))
-  const styles = await zip.file("xl/styles.xml")!.async("string")
+  let styles = await zip.file("xl/styles.xml")!.async("string")
+  const fontCount = Number(styles.match(/<fonts count="(\d+)"/)?.[1])
+  const fillCount = Number(styles.match(/<fills count="(\d+)"/)?.[1])
+  styles = styles.replace(/<fonts count="\d+"/, `<fonts count="${fontCount + 1}"`).replace("</fonts>", '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Arial"/></font></fonts>').replace(/<fills count="\d+"/, `<fills count="${fillCount + 3}"`).replace("</fills>", ["D96950", "344B44", "638476"].map(color => `<fill><patternFill patternType="solid"><fgColor rgb="FF${color}"/><bgColor indexed="64"/></patternFill></fill>`).join("") + "</fills>")
   const match = styles.match(/<cellXfs count="(\d+)"[^>]*>/)
   if (!match) throw new Error("Unable to prepare protected template cells")
   const unlocked = Number(match[1])
-  zip.file("xl/styles.xml", styles.replace(match[0], match[0].replace(`count="${unlocked}"`, `count="${unlocked + 2}"`)).replace("</cellXfs>", '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyProtection="1"><protection locked="0"/></xf><xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyProtection="1"><protection locked="0"/></xf></cellXfs>'))
+  zip.file("xl/styles.xml", styles.replace(match[0], match[0].replace(`count="${unlocked}"`, `count="${unlocked + 5}"`)).replace("</cellXfs>", '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyProtection="1"><protection locked="0"/></xf><xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyProtection="1"><protection locked="0"/></xf>' + [0, 1, 2].map(n => `<xf numFmtId="0" fontId="${fontCount}" fillId="${fillCount + n}" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>`).join("") + '</cellXfs>'))
   let sheet = await zip.file("xl/worksheets/sheet1.xml")!.async("string")
   const locked = new Set(TEMPLATE_HEADERS.flatMap((h, i) => /\((auto|fixed)\)/.test(h.key) ? [XLSX.utils.encode_col(i)] : []))
   const textColumns = new Set(TEMPLATE_HEADERS.flatMap((h, i) => /^(HSN Code|SKU|Handle|Option \d+ Value)/.test(h.key) ? [XLSX.utils.encode_col(i)] : []))
   sheet = sheet.replace(/<c r="([A-Z]+)(\d+)"([^>]*)>/g, (tag, column, row, rest) => Number(row) > 1 && !locked.has(column) ? `<c r="${column}${row}"${rest.replace(/ s="\d+"/, "")} s="${textColumns.has(column) ? unlocked + 1 : unlocked}">` : tag)
+  sheet = sheet.replace(/<c r="([A-Z]+)1"([^>]*)>/g, (tag, column, rest) => {
+    const header = TEMPLATE_HEADERS[XLSX.utils.decode_col(column)]
+    const index = /\((auto|fixed)\)/.test(header.key) ? 2 : header.required ? 0 : 1
+    return `<c r="${column}1"${rest.replace(/ s="\d+"/, "")} s="${unlocked + 2 + index}">`
+  }).replace(/<row r="1"([^>]*)>/, '<row r="1"$1 ht="36" customHeight="1">')
+  sheet = sheet.replace(/<sheetView([^>]*?)\/>/, '<sheetView$1 showGridLines="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView>')
   const taxCol = XLSX.utils.encode_col(TEMPLATE_HEADERS.findIndex(h => h.key === "Tax Code"))
   sheet = sheet.replace("</sheetData>", '</sheetData><sheetProtection sheet="1" objects="1" scenarios="1" selectLockedCells="1"/>')
   const validation = `<dataValidations count="1"><dataValidation type="list" allowBlank="0" showErrorMessage="1" errorTitle="Choose a tax code" error="Select a code from the dropdown" errorStyle="stop" sqref="${taxCol}2:${taxCol}${MAX_BULK_ROWS + 1}"><formula1>OWEGTaxCodes</formula1></dataValidation></dataValidations>`
@@ -133,8 +143,10 @@ export async function readBulkWorkbook(file: { name: string; size: number; array
     seen.add(key)
     if (!supported.has(key) && !/^image\d+$/.test(key) && !/^option\d+(name|value|images?)$/.test(key)) throw new Error(`Unsupported column: ${headers[c]}. Use the current template.`)
   }
-  const missing = TEMPLATE_HEADERS.filter(h => h.required && !seen.has(normalizeHeader(h.key)) && !(h.key === "MRP INR" && seen.has("priceinr")))
-  if (missing.length) throw new Error(`Missing required columns: ${missing.map(h => h.key).join(", ")}. Download template v3.`)
+  const clientFormat = headers.some(header => /selling\s*price|weight\s*\(kg\)/i.test(header))
+  const legacyRequired = new Set(["Title", "Brand", "Tax Code", "MRP INR", "Inventory Count"])
+  const missing = TEMPLATE_HEADERS.filter(h => h.required && (clientFormat || legacyRequired.has(h.key)) && !seen.has(normalizeHeader(h.key)) && !(h.key === "MRP INR" && seen.has("priceinr")))
+  if (missing.length) throw new Error(`Missing required columns: ${missing.map(h => h.key).join(", ")}. Download template v4.`)
   for (let r = 1; r <= range.e.r; r++) for (let c = 0; c <= range.e.c; c++) {
     if (sheet[XLSX.utils.encode_cell({ r, c })]?.f && !["gstrate", "discount%"].includes(normalized[c])) throw new Error(`Row ${r + 1}: formulas are not supported; paste values instead`)
   }

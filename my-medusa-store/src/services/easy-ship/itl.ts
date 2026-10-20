@@ -70,14 +70,11 @@ export class ItlProvider implements EasyShipProvider {
   }> {
     this.assertConfigured()
     const rateUrl = "https://my.ithinklogistics.com/api_v3/rate/check.json"
-    const length = Math.max(1, Math.round(input.length || 10))
-    const breadth = Math.max(1, Math.round(input.breadth || 10))
-    const height = Math.max(1, Math.round(input.height || 10))
-    let weight = input.weight != null && input.weight > 0 ? input.weight : 0.5
-    // If weight passed in grams (> 20), convert to kg
-    if (weight > 20) {
-      weight = Number((weight / 1000).toFixed(2))
-    }
+    const length = Math.max(1, Math.ceil(input.length || 10))
+    const breadth = Math.max(1, Math.ceil(input.breadth || 10))
+    const height = Math.max(1, Math.ceil(input.height || 10))
+    // The service contract is explicitly kg. Never infer grams from the amount.
+    const weight = input.weight != null && input.weight > 0 ? input.weight : 0.5
 
     const payload = {
       data: {
@@ -99,6 +96,7 @@ export class ItlProvider implements EasyShipProvider {
     console.log(`[ITL] Request POST ${rateUrl} from=${input.pickup_postcode} to=${input.delivery_postcode} wt=${weight}kg`)
     const res = await fetch(rateUrl, {
       method: "POST",
+      signal: AbortSignal.timeout(15000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
@@ -120,6 +118,9 @@ export class ItlProvider implements EasyShipProvider {
       courier_name: String(c.logistic_name || "ITL Partner"),
       rate: Number(c.rate) || 0,
       freight_charge: Number(c.freight_charges) || Number(c.rate) || 0,
+      gst_amount: c.gst_charges != null && c.gst_charges !== "" ? Number(c.gst_charges) : null,
+      prepaid: c.prepaid === "Y",
+      pickup_available: c.pickup === "Y",
       rto_charges: Number(c.rto_charges) || 0,
       cod_charges: Number(c.cod_charges) || 0,
       charge_weight: Number(c.weight_slab) || null,

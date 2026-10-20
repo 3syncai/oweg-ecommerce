@@ -1,6 +1,10 @@
 export type EasyShipProviderName = "itl" | "shiprocket"
 
 export type EasyShipCourier = {
+  /** Explicit ITL eligibility/tax fields; absent means unverified for listing estimates. */
+  prepaid?: boolean
+  pickup_available?: boolean
+  gst_amount?: number | null
   courier_id: number
   courier_name: string
   rate: number | null
