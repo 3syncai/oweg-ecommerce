@@ -904,6 +904,7 @@ export type VendorPaymentsView = {
     payment_gateway_gst?: number
     payment_gateway_total?: number
     claim_amount?: number
+    cashback_amount?: number
     taxes: number
     settlement_amount: number
     bank_settlement?: number

@@ -49,6 +49,9 @@ describe("persisting coupon cashback in vendor earnings", () => {
     expect(params).toHaveLength(33)
     expect(params[32]).toBe(25)
     expect(params[29]).toBe(expectedNet())
+    const categoryLookup = query.mock.calls.find(([sql]) => sql.includes("AS product_category_ids"))![0]
+    expect(categoryLookup).toContain("pcp.product_category_id")
+    expect(categoryLookup).not.toContain("pcp.category_id")
     expect(Math.max(...[...insert[0].matchAll(/\$(\d+)/g)].map(match => Number(match[1])))).toBe(params.length)
   })
 

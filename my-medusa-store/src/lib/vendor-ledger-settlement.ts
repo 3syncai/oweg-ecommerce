@@ -52,6 +52,7 @@ export type LedgerSettlementInput = {
   reverse_logistic_fee?: number
   cancellation_fee?: number
   claim_amount?: number
+  cashback_amount?: number
   payment_amount?: number
   /** Product taxable value used for a prepaid cancellation gateway debit. */
   payment_gateway_base?: number
@@ -104,6 +105,7 @@ export type LedgerSettlementBreakdown = {
   cancellation_gst: number
   cancellation_total: number
   claim_amount: number
+  cashback_amount?: number
   payment: number
   balance_delta: number
 }
@@ -175,7 +177,7 @@ export function overlaySaleDeductions(
     cancellation_fee: cancel?.cancellation_fee || 0,
     cancellation_gst: cancel?.cancellation_gst || 0,
     cancellation_total: cancelTotal,
-    balance_delta: round2(sale.bank_settlement - reverseTotal - cancelTotal),
+    balance_delta: round2(sale.bank_settlement - reverseTotal - cancelTotal + (sale.cashback_amount || 0)),
   }
 }
 
@@ -185,6 +187,7 @@ export function adminPayableNetFromLedger(ledger: LedgerSettlementBreakdown): nu
 }
 
 export function ledgerRowBalanceDelta(row: {
+  cashback_amount?: number
   category: LedgerCategory
   payment: number
   claim_amount: number
@@ -197,7 +200,8 @@ export function ledgerRowBalanceDelta(row: {
   return round2(
     (Number(row.bank_settlement) || 0) -
       Math.abs(Number(row.reverse_logistic_total) || 0) -
-      Math.abs(Number(row.cancellation_total) || 0)
+      Math.abs(Number(row.cancellation_total) || 0) +
+      (Number(row.cashback_amount) || 0)
   )
 }
 
@@ -228,6 +232,10 @@ export function calculateVendorLedgerSettlement(
   input: LedgerSettlementInput
 ): LedgerSettlementBreakdown {
   const category = input.category
+  // Cashback is a separate sale credit and does not change fee or tax bases.
+  const cashback = category === "sale" && Number.isFinite(Number(input.cashback_amount))
+    ? round2(Math.max(0, Number(input.cashback_amount) || 0))
+    : 0
   const rates = input.rates
   const serviceGst = clampLedgerRate(rates.service_gst_rate, DEFAULT_SERVICE_GST_RATE)
   const outputGst = clampLedgerRate(rates.output_gst_rate, DEFAULT_OUTPUT_GST_RATE)
@@ -444,9 +452,10 @@ export function calculateVendorLedgerSettlement(
     cancellation_fee: category === "return" ? 0 : cancel.fee,
     cancellation_gst: category === "return" ? 0 : cancel.tax,
     cancellation_total: category === "return" ? 0 : cancel.total,
+    cashback_amount: cashback,
     claim_amount: 0,
     payment: 0,
-    balance_delta: round2(bank - reverse.total - (category === "return" ? 0 : cancel.total)),
+    balance_delta: round2(bank - reverse.total - (category === "return" ? 0 : cancel.total) + cashback),
   }
 }
 
@@ -496,6 +505,7 @@ function emptyBreakdown(opts: {
     cancellation_fee: 0,
     cancellation_gst: 0,
     cancellation_total: 0,
+    cashback_amount: 0,
     claim_amount: opts.claim_amount || 0,
     payment: opts.payment || 0,
     balance_delta: opts.balance_delta || 0,
