@@ -451,7 +451,7 @@ export default function CustomerLoginFlow({
       </div>
 
       {step === 1 && (
-        <form onSubmit={handleStepOne} className="grid gap-5" noValidate>
+        <form onSubmit={handleStepOne} className="grid min-w-0 gap-5" noValidate>
           <div className="grid gap-2">
             <label
               htmlFor="login-identifier"
@@ -584,9 +584,9 @@ export default function CustomerLoginFlow({
       )}
 
       {step === 2 && (
-        <form onSubmit={handleLogin} className="grid gap-5" noValidate>
-          <div className="bg-slate-50 rounded-lg p-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
+        <form onSubmit={handleLogin} className="grid min-w-0 gap-5" noValidate>
+          <div className="min-w-0 bg-slate-50 rounded-lg p-4 flex items-center justify-between gap-3">
+            <div className="flex flex-1 items-center gap-3 min-w-0">
               {inputType === "phone" ? (
                 <Phone className="h-5 w-5 text-green-600 shrink-0" />
               ) : (
@@ -620,7 +620,7 @@ export default function CustomerLoginFlow({
                 type="button"
                 onClick={() => setAuthMethod("password")}
                 aria-pressed={authMethod === "password"}
-                className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                className={`min-w-0 flex-1 rounded-md px-2 sm:px-4 py-2.5 text-sm font-medium transition-all cursor-pointer flex items-center justify-center gap-2 ${
                   authMethod === "password"
                     ? "bg-white shadow-sm"
                     : "text-slate-600 hover:text-slate-800"
@@ -634,7 +634,7 @@ export default function CustomerLoginFlow({
                 type="button"
                 onClick={() => setAuthMethod("otp")}
                 aria-pressed={authMethod === "otp"}
-                className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                className={`min-w-0 flex-1 rounded-md px-2 sm:px-4 py-2.5 text-sm font-medium transition-all cursor-pointer flex items-center justify-center gap-2 ${
                   authMethod === "otp"
                     ? "bg-white shadow-sm"
                     : "text-slate-600 hover:text-slate-800"
@@ -649,7 +649,7 @@ export default function CustomerLoginFlow({
 
           {authMethod === "password" && (
             <div className="grid gap-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                 <label
                   htmlFor="login-password"
                   className="text-sm font-medium text-slate-700"
@@ -760,7 +760,7 @@ export default function CustomerLoginFlow({
                       e.currentTarget.style.boxShadow = "none";
                     }}
                   />
-                  <p className="text-xs text-slate-500 text-center">
+                  <p className="text-xs text-slate-500 text-center break-all">
                     OTP sent to {otpRequestedFor || identifier}
                   </p>
                 </div>
