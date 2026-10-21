@@ -3,7 +3,7 @@
 .backLink { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #667362; margin-bottom: 20px; transition: color .15s; }
 .backLink:hover { color: #315c25; }
 .backLink:focus-visible, .help a:focus-visible { outline: 2px solid #497f2f; outline-offset: 5px; border-radius: 4px; }
-.card { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; border: 1px solid #e1e7d9; border-radius: 28px; background: white; box-shadow: 0 12px 44px -32px #24421f40; }
+.card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); overflow: hidden; border: 1px solid #e1e7d9; border-radius: 28px; background: white; box-shadow: 0 12px 44px -32px #24421f40; }
 .story { position: relative; padding: 38px 42px 28px; background: #edf3e3; overflow: hidden; }
 .eyebrow { display: flex; align-items: center; gap: 8px; color: #5b714c; font-size: 10px; letter-spacing: .17em; font-weight: 700; text-transform: uppercase; }
 .eyebrow > span { width: 6px; height: 6px; border-radius: 50%; background: #6eb83c; }
@@ -22,12 +22,13 @@
 .sparkle { position: absolute; top: 21px; right: 31px; color: #83b75d; }
 .benefits { display: flex; flex-wrap: wrap; gap: 18px; border-top: 1px solid #d9e3cb; padding-top: 20px; margin-top: 10px; }
 .benefits > span { display: inline-flex; align-items: center; gap: 7px; color: #5e7350; font-size: 10px; }
-.formPanel { padding: 40px 48px 28px; display: flex; flex-direction: column; justify-content: center; }
+.formPanel { min-width: 0; padding: 40px 48px 28px; display: flex; flex-direction: column; justify-content: center; }
 .formTop { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 34px; color: #86917d; font-size: 9px; font-weight: 600; letter-spacing: .14em; }
 .brandDot { height: 12px; width: 12px; border-radius: 50%; background: #7ac943; box-shadow: 0 0 0 5px #f1f7e9; }
 .loginForm { border: 0; padding: 0; background: transparent; border-radius: 0; box-shadow: none; backdrop-filter: none; min-width: 0; }
 .loginForm :global(h1) { font-family: var(--font-plus-jakarta),sans-serif; font-size: 30px; letter-spacing: -.05em; line-height: 1.25; margin-bottom: 10px; }
-.loginForm :global(input) { border-radius: 10px; background: #fdfefb; }
+.loginForm :global(form), .loginForm :global(form > div) { min-width: 0; }
+.loginForm :global(input) { min-width: 0; max-width: 100%; border-radius: 10px; background: #fdfefb; }
 .loginForm :global(button[type="submit"]) { border-radius: 10px; min-height: 50px; box-shadow: 0 3px 0 #5fa331; letter-spacing: -.01em; }
 .loginForm :global(button[type="submit"]:hover:not(:disabled)) { background: #87d451 !important; transform: none; box-shadow: 0 3px 0 #5fa331; }
 .loginForm :global(button:focus-visible), .loginForm :global(a:focus-visible) { outline: 2px solid #4e8033; outline-offset: 4px; }
