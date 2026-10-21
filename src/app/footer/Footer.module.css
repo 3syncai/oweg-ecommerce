@@ -20,8 +20,6 @@
 .copyright { margin:8px 0 0; text-align:center; color:#88937f; font-size:10px; line-height:1.8; }
 .mobile a:focus-visible,.mobile summary:focus-visible { outline:2px solid #75ad48; outline-offset:3px; border-radius:4px; }
 .desktop { display:none; }
-@media (max-width:767px) { .root[data-standalone="true"] { display:none; } }
-/* Hide immediately in installed display modes, including before hydration. */
-@media (max-width:767px) and (display-mode:standalone), (max-width:767px) and (display-mode:fullscreen) { .root { display:none; } }
+/* Keep the compact footer reachable in mobile browsers and installed PWAs. */
 @media (min-width:768px) { .mobile { display:none; }.desktop { display:block; } }
 @media (prefers-reduced-motion:reduce) { .group summary svg { transition:none; } }
