@@ -280,8 +280,6 @@ const ProductGallery = ({
             }}
             onMouseLeave={() => setLensActive(false)}
             onMouseMove={handleMouseMove}
-            onTouchStart={handleMainImageTouchStart}
-            onTouchEnd={handleMainImageTouchEnd}
           >
             <button
               type="button"
@@ -302,6 +300,8 @@ const ProductGallery = ({
               role="button"
               tabIndex={0}
               aria-label="View product image gallery"
+              onTouchStart={handleMainImageTouchStart}
+              onTouchEnd={handleMainImageTouchEnd}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();

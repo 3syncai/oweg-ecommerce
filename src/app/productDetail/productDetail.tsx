@@ -1301,7 +1301,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       try {
         await navigator.share({
           title: product.title,
-          text: product.subtitle || product.description || '',
+          text: product.title || 'View this product on OWEG',
           url: window.location.href,
         })
         return
