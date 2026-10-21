@@ -1651,18 +1651,6 @@ const Header: React.FC = () => {
               <div className="bg-white/95 backdrop-blur border-b border-gray-100">
                 <div className="flex items-center justify-between gap-2 px-3 pb-2">
                   <div className="flex flex-1 items-center gap-2">
-                    <button
-                      type="button"
-                      aria-label="Open menu"
-                      className="oweg-tap -ml-1.5 flex items-center justify-center rounded-full text-[#7AC943] active:bg-[var(--oweg-surface-tint)]"
-                      onClick={() => {
-                        window.dispatchEvent(
-                          new CustomEvent("oweg:open-mobile-categories")
-                        );
-                      }}
-                    >
-                      <Menu className="w-6 h-6" />
-                    </button>
                     <Link href="/" className="flex items-center" aria-label="OWEG home">
                       <Image src="/oweg_logo.png" alt="OWEG" width={100} height={28} className="h-7 w-auto" priority />
                     </Link>
@@ -1674,13 +1662,6 @@ const Header: React.FC = () => {
                       aria-label="Notifications"
                     >
                       <Bell className="w-6 h-6" />
-                    </Link>
-                    <Link
-                      href="/cart"
-                      className="oweg-tap relative -mr-1.5 flex items-center justify-center rounded-full text-[#7AC943] active:bg-[var(--oweg-surface-tint)]"
-                      aria-label="Cart"
-                    >
-                      <CartIcon className="w-7 h-7" count={cartCount} />
                     </Link>
                   </div>
                 </div>

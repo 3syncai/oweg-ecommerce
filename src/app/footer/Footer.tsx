@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Facebook, Twitter, Instagram, Youtube } from "lucide-react";
+import { Facebook, Twitter, Instagram, Youtube, ChevronDown } from "lucide-react";
+import { storefrontPolicyLinks as policyLinks, storefrontQuickLinks as quickLinks } from "@/lib/storefront-links";
+import { useStandaloneDisplay } from "@/hooks/useStandaloneDisplay";
+import styles from "./Footer.module.css";
 
 const accountLinks = [
   { label: "Brands", href: "/brands" },
@@ -10,25 +13,34 @@ const accountLinks = [
   { label: "My Reward", href: "/my-reward" },
 ];
 
-const policyLinks = [
-  { label: "Terms & Conditions", href: "/terms" },
-  { label: "Returns Policy", href: "/returns-policy" },
-  { label: "Shipping Policy", href: "/shipping-policy" },
-  { label: "Coupon Code Policy", href: "/coupon-policy" },
-  { label: "Reward", href: "/reward-policy" },
-  { label: "Privacy Policy", href: "/privacy-policy" },
-];
-
-const quickLinks = [
-  { label: "About Us", href: "/about" },
-  { label: "FAQ", href: "/faq" },
-  { label: "Contact", href: "/contact" },
-  { label: "Seller Registration", href: "/seller-registration" },
-];
-
 const Footer = () => {
+  const standalone = useStandaloneDisplay();
   return (
-    <footer className="footer-root block">
+    <footer className={styles.root} data-standalone={standalone} aria-label="OWEG information and support">
+      <div className={styles.mobile}>
+        <div className={styles.intro}><strong>A little help, whenever you need it.</strong><p>Support, store information and the details that matter.</p></div>
+        <details className={styles.group}>
+          <summary>Customer help <ChevronDown aria-hidden="true" /></summary>
+          <ul className={styles.links}>
+            <li><Link href="/contact">Contact us</Link></li>
+            <li><Link href="/faq">Frequently asked questions</Link></li>
+            <li><a href="mailto:owegonline@oweg.in">owegonline@oweg.in</a></li>
+          </ul>
+          <div className={styles.support}><p><strong>Ascent Retechno India Pvt Ltd</strong></p><p>Av Pride, B-12, Ground Floor, Opp. Rahul, International School, Nilemore 4th Road, Nalasopara West, Thane, Maharashtra - 401203.</p></div>
+        </details>
+        <details className={styles.group}>
+          <summary>Policies <ChevronDown aria-hidden="true" /></summary>
+          <ul className={styles.links}>{policyLinks.map(item => <li key={item.href}><Link href={item.href}>{item.label}</Link></li>)}</ul>
+        </details>
+        <details className={styles.group}>
+          <summary>About OWEG &amp; more <ChevronDown aria-hidden="true" /></summary>
+          <ul className={styles.links}>{[...quickLinks.filter(item => item.href === "/about"), ...accountLinks, ...quickLinks.filter(item => item.href === "/seller-registration")].map(item => <li key={item.href}><Link href={item.href}>{item.label}</Link></li>)}</ul>
+        </details>
+        <nav className={styles.legal} aria-label="Legal information"><Link href="/privacy-policy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/contact">Contact</Link></nav>
+        <p className={styles.copyright}>© 2026 OWEG. All Rights Reserved.</p>
+      </div>
+      <div className={`footer-root ${styles.desktop}`}>
+
       <div className="oweg-container py-10 md:py-16">
         <div className="grid grid-cols-2 gap-x-6 gap-y-9 md:gap-10 lg:grid-cols-5 lg:gap-12">
           {/* My Account Section */}
@@ -124,7 +136,8 @@ const Footer = () => {
         </div>
       </div>
 
-      {/* Styles injected inside component - no external file needed */}
+      </div>
+      {/* Existing desktop footer styles */}
       <style jsx global>{`
         /* Font: put actual file at /public/fonts/OPTIHandelGothic-Light.woff2 for best result */
         @font-face {

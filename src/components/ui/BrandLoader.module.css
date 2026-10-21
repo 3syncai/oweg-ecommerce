@@ -1,5 +1,16 @@
 .loader { display: grid; place-items: center; width: 100%; color: #72bd3e; }
-.page { min-height: min(55svh, 440px); padding: 32px 16px; }
+/* Fill the visible content area beneath the measured fixed header. */
+.page {
+  min-height: max(180px, calc(100svh - var(--app-header-height, 136px)));
+  min-height: max(180px, calc(100dvh - var(--app-header-height, 136px)));
+  padding: 32px 16px;
+}
+@media (max-width: 767px) {
+  .page {
+    min-height: max(180px, calc(100svh - var(--app-header-height, 136px) - 6rem - env(safe-area-inset-bottom, 0px)));
+    min-height: max(180px, calc(100dvh - var(--app-header-height, 136px) - 6rem - env(safe-area-inset-bottom, 0px)));
+  }
+}
 .compact { min-height: 160px; padding: 24px 12px; }
 .visual { display: flex; flex-direction: column; align-items: center; gap: 16px; opacity: 0; animation: reveal 160ms ease-out 200ms forwards; }
 .perspective { display: block; width: 64px; height: 64px; perspective: 320px; }

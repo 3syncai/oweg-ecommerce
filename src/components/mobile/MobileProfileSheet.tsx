@@ -4,13 +4,13 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import {
   ChevronRight,
+  ChevronDown,
   Facebook,
   FileText,
   Heart,
   HelpCircle,
   Info,
   Instagram,
-  Linkedin,
   Lock,
   LogOut,
   Mail,
@@ -26,33 +26,23 @@ import {
   Twitter,
   User,
   Users,
+  Youtube,
   X,
 } from "lucide-react";
+
+import { storefrontPolicyLinks, storefrontQuickLinks } from "@/lib/storefront-links";
 
 type ProfileLink = { label: string; href: string };
 
 const accountLinks: ProfileLink[] = [
   { label: "Brands", href: "/brands" },
+  { label: "Affiliates", href: "/affiliates" },
   { label: "My Reward", href: "/my-reward" },
   { label: "My Wishlist", href: "/wishlist" },
 ];
 
-const policyLinks: ProfileLink[] = [
-  { label: "Terms & Conditions", href: "/terms" },
-  { label: "Returns Policy", href: "/returns-policy" },
-  { label: "Shipping Policy", href: "/shipping-policy" },
-  { label: "Coupon Code Policy", href: "/coupon-policy" },
-  { label: "Reward", href: "/reward-policy" },
-  { label: "Privacy Policy", href: "/privacy-policy" },
-];
-
-const quickLinks: ProfileLink[] = [
-  { label: "About Us", href: "/about" },
-  { label: "FAQ", href: "/faq" },
-  { label: "Contact", href: "/contact" },
-  { label: "Seller Registration", href: "/seller-registration" },
-  { label: "Agent Registration", href: "/agent-registration" },
-];
+const policyLinks = storefrontPolicyLinks;
+const quickLinks: ProfileLink[] = [...storefrontQuickLinks, { label: "Agent Registration", href: "/agent-registration" }];
 
 const iconTone = "h-4 w-4 text-[var(--oweg-green-dark)]";
 
@@ -69,6 +59,7 @@ function accountIcon(label: string) {
   if (lower.includes("brand")) return <Store className={iconTone} />;
   if (lower.includes("reward")) return <Trophy className={iconTone} />;
   if (lower.includes("wishlist")) return <Heart className={iconTone} />;
+  if (lower.includes("affiliate")) return <Users className={iconTone} />;
   return <Tag className={iconTone} />;
 }
 
@@ -293,18 +284,27 @@ export default function MobileProfileSheet({
         iconFor={accountIcon}
         onNavigate={onClose}
       />
-      <LinkSection
-        title="Policy"
-        links={policyLinks}
-        iconFor={policyIcon}
-        onNavigate={onClose}
-      />
-      <LinkSection
-        title="Quick Links"
-        links={quickLinks}
-        iconFor={quickIcon}
-        onNavigate={onClose}
-      />
+      <details className="group/help oweg-surface-card">
+        <summary className="flex min-h-[56px] cursor-pointer list-none items-center gap-3 rounded-[var(--oweg-radius-lg)] px-4 py-3 text-sm font-semibold text-[var(--oweg-ink)] marker:content-none [&::-webkit-details-marker]:hidden focus-visible:outline-2 focus-visible:outline-[var(--oweg-green)]">
+          <HelpCircle className={iconTone} />
+          <span className="flex-1">Help &amp; policies</span>
+          <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open/help:rotate-180" />
+        </summary>
+        <div className="space-y-5 border-t border-[var(--oweg-border)] p-3">
+          <LinkSection
+            title="Policy"
+            links={policyLinks}
+            iconFor={policyIcon}
+            onNavigate={onClose}
+          />
+          <LinkSection
+            title="Quick Links"
+            links={quickLinks}
+            iconFor={quickIcon}
+            onNavigate={onClose}
+          />
+        </div>
+      </details>
 
       {/* Support footer */}
       <section className="oweg-surface-card space-y-3 p-4 text-sm text-[var(--oweg-ink-muted)]">
@@ -324,14 +324,16 @@ export default function MobileProfileSheet({
         </a>
         <div className="-ml-2 flex items-center gap-0.5">
           {[
-            { label: "Facebook", Icon: Facebook },
-            { label: "Twitter", Icon: Twitter },
-            { label: "Instagram", Icon: Instagram },
-            { label: "LinkedIn", Icon: Linkedin },
-          ].map(({ label, Icon }) => (
+            { label: "Facebook", Icon: Facebook, href: "https://www.facebook.com/owegonline/" },
+            { label: "Twitter", Icon: Twitter, href: "https://x.com/owegonline" },
+            { label: "Instagram", Icon: Instagram, href: "https://www.instagram.com/owegonline/" },
+            { label: "YouTube", Icon: Youtube, href: "https://www.youtube.com/@owegonline" },
+          ].map(({ label, Icon, href }) => (
             <a
               key={label}
-              href="#"
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
               aria-label={label}
               className="inline-flex h-11 w-11 items-center justify-center rounded-full text-[var(--oweg-ink-muted)] transition-colors hover:bg-[var(--oweg-surface-tint)] hover:text-[var(--oweg-green-dark)]"
             >
