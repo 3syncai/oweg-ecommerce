@@ -47,10 +47,10 @@ export default function FloatingWhatsAppWidget() {
       rel="noopener noreferrer"
       aria-label="Chat with us on WhatsApp"
       title="Chat with us on WhatsApp"
-      className={`fixed ${bottomClass} z-[120] group rounded-full focus-visible:outline-2 focus-visible:outline-[#679e3e] focus-visible:outline-offset-4 ${positionClass}`}
+      className={`fixed ${bottomClass} z-[120] group inline-flex rounded-full focus-visible:outline-2 focus-visible:outline-[#679e3e] focus-visible:outline-offset-4 ${positionClass}`}
     >
-      <span className="relative inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#f4f8ef] text-[#496837] shadow-[0_3px_12px_rgba(38,57,27,0.1)] border border-[#d9e5cf] transition-colors duration-200 ease-out group-hover:bg-[#eaf3e2] group-hover:border-[#bdcfad]">
-        <FaWhatsapp className="h-6 w-6 shrink-0 text-[#557b35]" aria-hidden="true" />
+      <span className="relative inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#25D366] text-white shadow-[0_3px_12px_rgba(38,57,27,0.16)] transition-colors duration-200 ease-out group-hover:bg-[#1DA851]">
+        <FaWhatsapp className="block h-7 w-7 shrink-0" aria-hidden="true" />
       </span>
     </a>
   );

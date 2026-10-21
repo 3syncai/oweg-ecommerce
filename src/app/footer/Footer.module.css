@@ -1,0 +1,27 @@
+.root { margin-top:auto; }
+.mobile { padding:28px 22px calc(94px + env(safe-area-inset-bottom, 0px)); background:#f4f7ef; color:#293e23; border-top:1px solid #e0e7d7; }
+.intro { margin-bottom:18px; }
+.intro strong { font-size:18px; font-weight:600; letter-spacing:-.025em; }
+.intro p { color:#718067; font-size:12px; line-height:1.8; margin:5px 0 0; }
+.group { border-top:1px solid #dfe7d5; }
+.group:last-of-type { border-bottom:1px solid #dfe7d5; }
+.group summary { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:58px; cursor:pointer; font-size:13px; font-weight:600; list-style:none; }
+.group summary::-webkit-details-marker { display:none; }
+.group summary svg { flex-shrink:0; width:17px; height:17px; color:#718360; transition:transform .18s ease; }
+.group[open] summary svg { transform:rotate(180deg); }
+.links { list-style:none; margin:0; padding:0 0 14px; }
+.links a { display:flex; align-items:center; min-height:44px; padding:10px 4px; color:#516347; font-size:12px; line-height:1.6; overflow-wrap:anywhere; }
+.links a:hover,.legal a:hover { text-decoration:underline; }
+.support { padding:4px 4px 20px; color:#75836b; font-size:11px; line-height:1.8; }
+.support p { margin:0 0 7px; }
+.support strong { color:#56674c; font-weight:500; }
+.legal { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; column-gap:22px; margin-top:16px; }
+.legal a { display:inline-flex; align-items:center; min-height:44px; font-size:11px; color:#617654; }
+.copyright { margin:8px 0 0; text-align:center; color:#88937f; font-size:10px; line-height:1.8; }
+.mobile a:focus-visible,.mobile summary:focus-visible { outline:2px solid #75ad48; outline-offset:3px; border-radius:4px; }
+.desktop { display:none; }
+@media (max-width:767px) { .root[data-standalone="true"] { display:none; } }
+/* Hide immediately in installed display modes, including before hydration. */
+@media (max-width:767px) and (display-mode:standalone), (max-width:767px) and (display-mode:fullscreen) { .root { display:none; } }
+@media (min-width:768px) { .mobile { display:none; }.desktop { display:block; } }
+@media (prefers-reduced-motion:reduce) { .group summary svg { transition:none; } }
