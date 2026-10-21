@@ -25,6 +25,7 @@ import {
   SlidersHorizontal,
   ImageOff,
   ShoppingCart,
+  Search,
 } from "lucide-react";
 import type { MedusaCategory } from "@/lib/medusa";
 import { useAuth } from "@/contexts/AuthProvider";
@@ -320,6 +321,9 @@ export default function MobileBottomNav() {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [categorySearch, setCategorySearch] = useState("");
+  const categoryContentRef = useRef<HTMLDivElement>(null);
+  const categoryScrollPositions = useRef<Record<string, number>>({});
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
     null,
   );
@@ -327,28 +331,22 @@ export default function MobileBottomNav() {
     useState<MobileCategory | null>(null);
   const [subProducts, setSubProducts] = useState<InlineProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<MobileCategory | null>(
-    null,
-  );
   const [priceSort, setPriceSort] = useState<"none" | "asc" | "desc">("none");
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
   const [brandFilter, setBrandFilter] = useState("");
   const [availableBrands, setAvailableBrands] = useState<string[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
   const [sidebarOverlayOpen, setSidebarOverlayOpen] = useState(false);
   const [expandedCatId, setExpandedCatId] = useState<string | null>(null);
   const lastCategoryIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (selectedSubcategory) {
-      setIsOpen(false);
       setSidebarOverlayOpen(false);
     }
   }, [selectedSubcategory]);
   useEffect(() => {
     if (!categoryOpen) return;
-    setIsOpen(false);
     setSidebarOverlayOpen(false);
     setExpandedCatId(null);
   }, [categoryOpen]);
@@ -374,15 +372,14 @@ export default function MobileBottomNav() {
     if (!sidebarOverlayOpen) return;
     if (!selectedCategoryId) return;
     if (selectedCategoryId !== lastCategoryIdRef.current) {
-      setIsOpen(false);
       setSidebarOverlayOpen(false);
       lastCategoryIdRef.current = selectedCategoryId;
     }
   }, [selectedCategoryId, sidebarOverlayOpen]);
   const closeCategory = () => {
     setCategoryOpen(false);
-    setActiveCategory(null);
     setSearchTerm("");
+    setCategorySearch("");
   };
   const closeProfile = () => setProfileOpen(false);
   const overlayOpen = categoryOpen || profileOpen;
@@ -400,7 +397,6 @@ export default function MobileBottomNav() {
     if (!categoryOpen) {
       setSelectedCategoryId(null);
       setSelectedSubcategory(null);
-      setActiveCategory(null);
     }
   }, [categoryOpen]);
 
@@ -464,32 +460,24 @@ export default function MobileBottomNav() {
   }, [categoryOpen, categoriesWithChildren, selectedCategoryId]);
 
   const filteredCategories = useMemo(() => {
-    const base = categoriesWithChildren;
-    if (selectedSubcategory) return base;
-    if (!searchTerm.trim()) return base;
-    const term = searchTerm.toLowerCase();
-    return base.filter((cat) => cat.title.toLowerCase().includes(term));
-  }, [categoriesWithChildren, searchTerm, selectedSubcategory]);
+    const term = categorySearch.trim().toLowerCase();
+    if (selectedSubcategory || !term) return categoriesWithChildren;
+    return categoriesWithChildren.filter(cat => cat.title.toLowerCase().includes(term) ||
+      cat.children?.some(child => child.title.toLowerCase().includes(term)));
+  }, [categoriesWithChildren, categorySearch, selectedSubcategory]);
 
-  const displayedCategory = useMemo(() => {
-    if (!selectedCategoryId) return null;
-    return filteredCategories.find((c) => c.id === selectedCategoryId) || null;
-  }, [filteredCategories, selectedCategoryId]);
+  const displayedCategory = useMemo(() =>
+    filteredCategories.find(c => c.id === selectedCategoryId) || filteredCategories[0] || null,
+    [filteredCategories, selectedCategoryId]);
 
   useEffect(() => {
-    if (selectedCategoryId && !displayedCategory) {
-      setSelectedCategoryId(null);
-      setSelectedSubcategory(null);
-      setActiveCategory(null);
+    if (categoryContentRef.current && !selectedSubcategory) {
+      categoryContentRef.current.scrollTop = categorySearch ? 0 :
+        categoryScrollPositions.current[displayedCategory?.id || ""] || 0;
     }
-  }, [displayedCategory, selectedCategoryId]);
+  }, [displayedCategory?.id, categoryOpen, selectedSubcategory, categorySearch]);
 
-  useEffect(() => {
-    if (!displayedCategory) return;
-    setActiveCategory(displayedCategory);
-    // keep subcategory unselected by default; user must tap one
-    setSelectedSubcategory(null);
-  }, [displayedCategory]);
+  const activeCategory = displayedCategory;
 
   useEffect(() => {
     const target = selectedSubcategory;
@@ -792,42 +780,18 @@ export default function MobileBottomNav() {
       {/* Category sheet */}
       <Overlay open={categoryOpen} onClose={closeCategory} scrollable={false} panelClassName={`bg-white ${navStyles.categoryPanel}`}>
         <div className={`${navStyles.categorySheet} relative`}>
-          {!selectedSubcategory && (
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  aria-label={
-                    isOpen ? "Collapse categories" : "Expand categories"
-                  }
-                  aria-pressed={isOpen}
-                  onClick={() => {
-                    const next = !isOpen;
-                    setIsOpen(next);
-                    setSidebarOverlayOpen(next);
-                    if (next) {
-                      lastCategoryIdRef.current = selectedCategoryId;
-                    }
-                  }}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition active:scale-[0.97]"
-                >
-                  <ChevronsLeft
-                    className={`w-5 h-5 transition-transform duration-200 ${isOpen ? "rotate-0" : "rotate-180"}`}
-                  />
-                </button>
-                <h3 className="text-lg font-semibold text-gray-900 pt-1">
-                  Categories
-                </h3>
+          {(
+            <>
+              <div className={navStyles.directoryHeader}>
+                <div><p className={navStyles.directoryEyebrow}>FIND YOUR NEXT FAVOURITE</p><h2>Shop by category</h2></div>
+                <button type="button" aria-label="Close categories" onClick={closeCategory} className={navStyles.directoryClose}><X size={20} /></button>
               </div>
-              <button
-                type="button"
-                aria-label="Close categories"
-                onClick={closeCategory}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--oweg-border)] bg-white text-[var(--oweg-ink)] shadow-sm transition active:scale-[0.97]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+              {!selectedSubcategory && <div className={navStyles.directorySearch}>
+                <Search size={18} aria-hidden="true" />
+                <input aria-label="Find a category" placeholder="Find a category" value={categorySearch} onChange={event => setCategorySearch(event.target.value)} />
+                {categorySearch && <button type="button" aria-label="Clear category search" onClick={() => setCategorySearch("")}><X size={16} /></button>}
+              </div>}
+            </>
           )}
 
           {categoriesLoading && (
@@ -844,16 +808,6 @@ export default function MobileBottomNav() {
               ))}
             </div>
           )}
-
-          {/* <div className="relative">
-            <input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder={selectedSubcategory ? 'Search products' : 'Search categories'}
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
-            />
-            <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500" />
-          </div> */}
 
           {selectedSubcategory && sidebarOverlayOpen && (
             <div
@@ -893,14 +847,11 @@ export default function MobileBottomNav() {
                           onClick={() => {
                             setSelectedCategoryId(cat.id);
                             setSelectedSubcategory(null);
-                            setActiveCategory(cat);
                             if (hasChildren) {
                               setExpandedCatId(cat.id);
-                              setIsOpen(true);
                               setSidebarOverlayOpen(true);
                             } else {
                               setExpandedCatId(null);
-                              setIsOpen(false);
                               setSidebarOverlayOpen(false);
                             }
                           }}
@@ -933,9 +884,7 @@ export default function MobileBottomNav() {
                                 onClick={() => {
                                   setSelectedCategoryId(cat.id);
                                   setSelectedSubcategory(child);
-                                  setActiveCategory(cat);
-                                  setIsOpen(false);
-                                  setSidebarOverlayOpen(false);
+                                    setSidebarOverlayOpen(false);
                                 }}
                                 className={navStyles.drawerChild}
                                 aria-current={selectedSubcategory.id === child.id ? "true" : undefined}
@@ -957,108 +906,44 @@ export default function MobileBottomNav() {
             className={`${navStyles.categoryBody} relative min-h-0 transition-all duration-300 ease-in-out ${selectedSubcategory ? "" : "flex gap-3"}`}
           >
             {!selectedSubcategory && (
-              <div
-                className={`${navStyles.categoryScroll} flex-shrink-0 space-y-2 overflow-y-auto h-full pr-1 min-h-0 transition-all duration-300 ease-in-out`}
-                style={{
-                  width: isOpen ? 240 : 90,
-                }}
-              >
-                {categoriesLoading ? (
-                  <div className="text-sm text-gray-500">
-                    Loading categoriesâ€¦
-                  </div>
-                ) : filteredCategories.length === 0 ? (
-                  <div className="text-sm text-gray-500">
-                    No categories found.
-                  </div>
-                ) : (
-                  filteredCategories.map((cat) => {
-                    const active = displayedCategory?.id === cat.id;
-                    return (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedCategoryId(cat.id);
-                          setSelectedSubcategory(null);
-                        }}
-                        className={`group w-full rounded-2xl border transition-all duration-300 text-left ${
-                          active
-                            ? "border-emerald-400 bg-emerald-50 shadow-sm"
-                            : "border-gray-200 bg-white"
-                        } ${isOpen ? "px-2.5 py-2" : "px-1.5 py-1.5"}`}
-                        title={cat.title}
-                      >
-                        <div className="flex flex-col items-center">
-                          <div
-                            className="oweg-icon-tile relative w-full"
-                            data-active={active ? "true" : "false"}
-                            style={{ height: isOpen ? 72 : 56 }}
-                          >
-                            <CategoryIcon
-                              handle={cat.handle}
-                              title={cat.title}
-                              active={active}
-                              className={isOpen ? "h-9 w-9" : "h-8 w-8"}
-                            />
-                          </div>
-                          {isOpen ? (
-                            <span className="mt-2 text-center text-[12px] font-semibold leading-tight text-[var(--oweg-ink-soft)] transition-opacity duration-200">
-                              {cat.title}
-                            </span>
-                          ) : null}
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
+              <nav className={navStyles.departmentRail} aria-label="Departments">
+                {categoriesLoading ? <p className={navStyles.directoryMessage}>Loading…</p> : filteredCategories.map(cat => {
+                  const active = displayedCategory?.id === cat.id;
+                  return <button key={cat.id} type="button" className={navStyles.department} aria-pressed={active} onClick={() => { setSelectedCategoryId(cat.id); setSelectedSubcategory(null); }}>
+                    <CategoryIcon handle={cat.handle} title={cat.title} active={active} className="h-7 w-7" />
+                    <span>{cat.title}</span>
+                  </button>;
+                })}
+              </nav>
             )}
 
             <div
+              ref={categoryContentRef}
+              onScroll={event => { if (!selectedSubcategory && displayedCategory && !categorySearch) categoryScrollPositions.current[displayedCategory.id] = event.currentTarget.scrollTop; }}
               className={`${navStyles.categoryScroll} ${selectedSubcategory ? "w-full" : "flex-1 min-w-0"} h-full min-h-0 overflow-y-auto pr-1 transition-all duration-300 ease-in-out`}
             >
               <div className="space-y-3">
                 <>
-                    {activeCategory &&
-                      (activeCategory.children || []).length > 0 &&
-                      !selectedSubcategory && (
-                        <div className="flex flex-col gap-2 pb-2 animate-in fade-in duration-200">
-                          <div className="px-0.5 mb-2">
-                            <h3 className="text-base font-semibold tracking-tight text-gray-900">
-                              {activeCategory.title}
-                            </h3>
-                            <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-700/80 mt-0.5">
-                              Browse
-                            </p>
-                          </div>
-                          <ul className="flex flex-col gap-2" role="list">
-                            {activeCategory.children!.map((child) => (
-                                <li key={child.id}>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setSelectedSubcategory(child)
-                                    }
-                                    className="group flex w-full items-center gap-2 rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-white px-3 py-3 text-left shadow-[var(--oweg-shadow-sm)] transition-all duration-200 hover:border-[rgba(122,201,67,0.45)] hover:bg-[var(--oweg-surface-tint)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7AC943]/40"
-                                  >
-                                    <CategoryIconTile
-                                      kind="subcategory"
-                                      handle={child.handle}
-                                      title={child.title}
-                                      size="md"
-                                      orientation="horizontal"
-                                      labelWrap
-                                      className="min-w-0 flex-1"
-                                      labelClassName="text-[14px] font-medium"
-                                    />
-                                    <ChevronRight className="h-4 w-4 shrink-0 text-[#7AC943] transition-transform group-hover:translate-x-0.5" />
-                                  </button>
-                                </li>
-                            ))}
-                          </ul>
+                    {!selectedSubcategory && displayedCategory && (
+                      <section className={navStyles.directorySection} aria-label={displayedCategory.title}>
+                        <div className={navStyles.departmentHeading}>
+                          <div><h3>{displayedCategory.title}</h3><p>Explore the collection</p></div>
+                          <Link href={`/c/${encodeURIComponent(displayedCategory.handle || displayedCategory.id)}`} onClick={closeCategory}>Shop all <ChevronRight size={14} aria-hidden="true" /></Link>
                         </div>
-                      )}
+                        <ul className={navStyles.subcategoryGrid}>
+                          {(displayedCategory.children || []).filter(child => !categorySearch.trim() || displayedCategory.title.toLowerCase().includes(categorySearch.trim().toLowerCase()) || child.title.toLowerCase().includes(categorySearch.trim().toLowerCase())).map(child => (
+                            <li key={child.id}>
+                              <button type="button" className={navStyles.subcategoryTile} onClick={() => { setSelectedCategoryId(displayedCategory.id); setSelectedSubcategory(child); }}>
+                                <CategoryIconTile kind="subcategory" handle={child.handle} title={child.title} size="md" showLabel={false} />
+                                <span>{child.title}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                        {!(displayedCategory.children || []).length && <p className={navStyles.directoryMessage}>Discover everything in {displayedCategory.title} using Shop all.</p>}
+                      </section>
+                    )}
+                    {!selectedSubcategory && !displayedCategory && !categoriesLoading && <div className={navStyles.directoryMessage}><strong>No matching categories</strong><p>Try a different name, such as kettle or kitchen.</p><button type="button" onClick={() => setCategorySearch("")}>Clear search</button></div>}
 
                     {selectedSubcategory && (
                       <div className={navStyles.resultsHeader}>
@@ -1068,7 +953,6 @@ export default function MobileBottomNav() {
                               type="button"
                               aria-label="Show categories"
                               onClick={() => {
-                                setIsOpen(true);
                                 setSidebarOverlayOpen(true);
                                 lastCategoryIdRef.current = selectedCategoryId;
                               }}
@@ -1080,7 +964,6 @@ export default function MobileBottomNav() {
                               type="button"
                               onClick={() => {
                                 setSelectedSubcategory(null);
-                                setIsOpen(false);
                                 setSidebarOverlayOpen(false);
                               }}
                               className={navStyles.backLink}
@@ -1239,11 +1122,6 @@ export default function MobileBottomNav() {
                             </Link>
                           ))
                         )}
-                      </div>
-                    ) : activeCategory &&
-                      (activeCategory.children || []).length === 0 ? (
-                      <div className="text-sm text-gray-500 px-0.5">
-                        No subcategories in this category yet.
                       </div>
                     ) : null}
                   </>
