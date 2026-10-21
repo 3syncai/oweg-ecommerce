@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Facebook, Twitter, Instagram, Youtube, ChevronDown } from "lucide-react";
 import { storefrontPolicyLinks as policyLinks, storefrontQuickLinks as quickLinks } from "@/lib/storefront-links";
-import { useStandaloneDisplay } from "@/hooks/useStandaloneDisplay";
 import styles from "./Footer.module.css";
 
 const accountLinks = [
@@ -14,9 +13,8 @@ const accountLinks = [
 ];
 
 const Footer = () => {
-  const standalone = useStandaloneDisplay();
   return (
-    <footer className={styles.root} data-standalone={standalone} aria-label="OWEG information and support">
+    <footer className={styles.root} aria-label="OWEG information and support">
       <div className={styles.mobile}>
         <div className={styles.intro}><strong>A little help, whenever you need it.</strong><p>Support, store information and the details that matter.</p></div>
         <details className={styles.group}>
