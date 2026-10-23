@@ -6,6 +6,7 @@ import { vendorProductsApi } from "@/lib/api/client"
 import ProductPriceCalculator, { type LogisticsEstimateDetails } from "@/components/ProductPriceCalculator"
 import {
   MAX_AUTO_VARIANTS,
+  UNSPECIFIED_SIZE,
   buildVariantRows,
   collectVisualOptionValues,
   computeDiscountPercent,
@@ -416,12 +417,14 @@ export default function VariantMatrixEditor({
       <tr key={`${color}-${globalIndex}`} className="border-b border-ui-border-base/60">
         <td className="px-3 py-2">
           <Input
-            value={row.optionValues[primarySecondaryOption] || ""}
+            value={/^size$/i.test(primarySecondaryOption) && row.optionValues[primarySecondaryOption] === UNSPECIFIED_SIZE ? "" : row.optionValues[primarySecondaryOption] || ""}
             onChange={(e) =>
               updateVariantOptionValue(globalIndex, primarySecondaryOption, e.target.value)
             }
-            placeholder="e.g. 32"
-            className="w-20 h-8"
+            type="text"
+            aria-label={`${primarySecondaryOption} (optional)`}
+            placeholder="e.g. 32, M"
+            className="w-28 h-8"
           />
         </td>
         <td className="px-3 py-2">
@@ -636,7 +639,7 @@ export default function VariantMatrixEditor({
           {colorValues.length > 0 && (
             <SectionCard
               title="Step 3 — Sizes, MRP & stock"
-              description="For each color, add every size as its own row. Use + Add size to add 32, 33, 34, etc."
+              description="Size is optional. Leave it blank or enter numbers or letters, such as 32, M, XL, or 2XL."
             >
               {variants.length > 1 && (
                 <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg bg-ui-bg-subtle p-3">
@@ -686,7 +689,7 @@ export default function VariantMatrixEditor({
                         <table className="w-full min-w-[560px] border-collapse text-sm">
                           <thead>
                             <tr className="border-b border-ui-border-base text-left text-xs uppercase text-ui-fg-muted">
-                              <th className="px-3 py-2 font-medium">{primarySecondaryOption}</th>
+                              <th className="px-3 py-2 font-medium">{primarySecondaryOption}{/^size$/i.test(primarySecondaryOption) ? " (optional)" : ""}</th>
                               <th className="px-3 py-2 font-medium">SKU</th>
                               <th className="px-3 py-2 font-medium">Stock</th>
                               <th className="px-3 py-2 font-medium">MRP ₹</th>

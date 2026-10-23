@@ -24,6 +24,8 @@ import {
   isSimpleDefaultProduct,
   resolveProductOptionsFromRows,
   serializeColorImages,
+  serializeVariantOptions,
+  UNSPECIFIED_SIZE,
   variantComboKey,
   type ProductOptionDef,
   type UploadedImageRef,
@@ -242,7 +244,7 @@ const VendorProductEditPage = () => {
           price: variant.price != null ? String(variant.price) : "",
           discountedPrice:
             variant.discounted_price != null ? String(variant.discounted_price) : "",
-          optionValues: variant.option_values || {},
+          optionValues: Object.fromEntries(Object.entries(variant.option_values || {}).map(([title, value]) => [title, /^size$/i.test(title) && value === UNSPECIFIED_SIZE ? "" : value])),
         }))
 
         const mappedColorImages: Record<string, UploadedImageRef[]> = {}
@@ -457,7 +459,7 @@ const VendorProductEditPage = () => {
       const comboKeys = new Set<string>()
       for (const variant of variantRows) {
         for (const title of optionTitles) {
-          if (!variant.optionValues[title]?.trim()) {
+          if (!/^size$/i.test(title) && !variant.optionValues[title]?.trim()) {
             toast.error("Incomplete variant row", {
               description: `Every row needs a value for "${title}"`,
             })
@@ -516,8 +518,8 @@ const VendorProductEditPage = () => {
             ),
             price: row.price ? Number(row.price) : undefined,
             discounted_price: row.discountedPrice ? Number(row.discountedPrice) : undefined,
-            options: row.optionValues,
-            option_values: row.optionValues,
+            options: serializeVariantOptions(resolvedOptions, row.optionValues),
+            option_values: serializeVariantOptions(resolvedOptions, row.optionValues),
           })),
           color_images: serializedColorImages,
           primary_visual_option: primaryVisualOption || undefined,

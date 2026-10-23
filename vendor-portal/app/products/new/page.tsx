@@ -15,6 +15,7 @@ import {
   detectVisualOption,
   resolveProductOptionsFromRows,
   serializeColorImages,
+  serializeVariantOptions,
   variantComboKey,
   type ProductOptionDef,
   type UploadedImageRef,
@@ -795,7 +796,7 @@ const VendorProductNewPage = () => {
       const comboKeys = new Set<string>()
       for (const variant of formData.variants) {
         for (const title of optionTitles) {
-          if (!variant.optionValues[title]?.trim()) {
+          if (!/^size$/i.test(title) && !variant.optionValues[title]?.trim()) {
             toast.error("Incomplete variant row", {
               description: `Every row needs a value for "${title}"`,
             })
@@ -881,7 +882,7 @@ const VendorProductNewPage = () => {
 
       const variants = formData.variants.map((v) => ({
         title: formData.hasVariants
-          ? Object.values(v.optionValues).join(" / ") || v.title.trim() || "Variant"
+          ? Object.values(v.optionValues).filter(Boolean).join(" / ") || v.title.trim() || "Variant"
           : v.title || "Default variant",
         sku: v.sku || undefined,
         manage_inventory: v.managedInventory,
@@ -901,7 +902,7 @@ const VendorProductNewPage = () => {
             ]
           : [],
         inventory_quantity: Math.max(0, Math.floor(Number.parseInt(v.inventoryCount, 10)) || 0),
-        ...(formData.hasVariants ? { options: v.optionValues } : {}),
+        ...(formData.hasVariants ? { options: serializeVariantOptions(resolveProductOptionsFromRows(formData.productOptions, formData.variants), v.optionValues) } : {}),
       }))
 
       const productOptions = formData.hasVariants
