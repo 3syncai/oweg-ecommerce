@@ -110,6 +110,11 @@ test('uploads preserve multipart fields, auth and legacy/direct response support
   fixture(upload); assert.equal(await api.vendorSignupApi.uploadFile(file, 'logo', 'store'), upload)
   assert.equal(calls[0].headers.has('Authorization'), false)
   fixture(upload); assert.equal(await api.vendorProductsApi.uploadImage(file), upload)
+  assert.equal(calls[0].url, '/api/medusa/vendor/products/upload-image')
+  assert.equal(calls[0].method, 'post')
+  assert.equal(calls[0].data.get('file').name, 'banner.png')
+  assert.equal(calls[0].headers.get('Authorization'), 'Bearer fixture-vendor-token')
+  assert.notEqual(calls[0].headers.get('Content-Type'), 'application/json')
   fixture(upload); assert.deepEqual(await api.vendorReportsApi.uploadImage(file, 'store'), { url: upload.files[0].url, key: 'logo' })
 })
 test('missing upload URL retains existing error status and message', async () => {

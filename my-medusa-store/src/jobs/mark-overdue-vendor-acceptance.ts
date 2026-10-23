@@ -16,7 +16,7 @@ export default async function markOverdueVendorAcceptance(container: any) {
   const uninitialized = await pool.query<{ id: string }>(`
     SELECT id FROM "order"
     WHERE created_at > now() - interval '14 days'
-      AND status NOT IN ('canceled','cancelled')
+      AND status <> 'canceled'
       AND metadata->>'vendor_acceptance_initialized' IS DISTINCT FROM 'true'
       AND (metadata->>'cod_status'='confirmed'
         OR metadata->>'cod_payment_status'='captured'
@@ -64,7 +64,7 @@ export default async function markOverdueVendorAcceptance(container: any) {
       CASE WHEN jsonb_typeof(o.metadata->'vendor_reassignment_history')='array'
         THEN o.metadata->'vendor_reassignment_history' ELSE '[]'::jsonb END
     ) history ON history->>'to_vendor_id'=p.metadata->>'vendor_id'
-    WHERE o.status NOT IN ('canceled','cancelled') AND COALESCE(oi.quantity,0)>0
+    WHERE o.status <> 'canceled' AND COALESCE(oi.quantity,0)>0
       AND NULLIF(history->>'at','') IS NOT NULL
       AND (o.metadata->'vendor_order_workflows'->(history->>'to_vendor_id')->>'acceptance_deadline_at') IS NULL
       AND (o.metadata->'vendor_order_workflows'->(history->>'to_vendor_id')->>'accepted_at') IS NULL
@@ -97,7 +97,7 @@ export default async function markOverdueVendorAcceptance(container: any) {
     }
   }
   const pending = await pool.query<{ id: string }>(`
-    SELECT id FROM "order" WHERE status NOT IN ('canceled','cancelled')
+    SELECT id FROM "order" WHERE status <> 'canceled'
       AND EXISTS (
         SELECT 1 FROM jsonb_each(
           CASE WHEN jsonb_typeof(metadata->'vendor_order_workflows')='object'
