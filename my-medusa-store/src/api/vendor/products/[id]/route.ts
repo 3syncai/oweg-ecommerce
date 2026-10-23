@@ -36,7 +36,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
   try {
     const productModuleService = req.scope.resolve(Modules.PRODUCT)
-    const product = await productModuleService.retrieveProduct(productId)
+    const product = await productModuleService.retrieveProduct(productId, { relations: ["images", "categories", "collection"] })
 
     // Verify product belongs to vendor
     const metadata = (product as any).metadata || {}

@@ -2,10 +2,11 @@
 
 import React, { useMemo, useRef, useState } from "react"
 import { Button, Heading, Input, Label, Switch, Text, toast } from "@medusajs/ui"
-import axios from "axios"
+import { vendorProductsApi } from "@/lib/api/client"
 import ProductPriceCalculator, { type LogisticsEstimateDetails } from "@/components/ProductPriceCalculator"
 import {
   MAX_AUTO_VARIANTS,
+  UNSPECIFIED_SIZE,
   buildVariantRows,
   collectVisualOptionValues,
   computeDiscountPercent,
@@ -27,6 +28,7 @@ import {
 import { validateSingleSkuInput } from "@/lib/sku-validation"
 
 export type VariantMatrixEditorProps = {
+  onImageUploadStateChange?: (uploading: boolean) => void
   hasVariants: boolean
   onHasVariantsChange: (enabled: boolean) => void
   productOptions: ProductOptionDef[]
@@ -65,19 +67,7 @@ const VariantDiscountCell = ({
 }
 
 const uploadImageToS3 = async (file: File): Promise<UploadedImageRef> => {
-  const API_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000"
-  const vendorToken = localStorage.getItem("vendor_token")
-  const formData = new FormData()
-  formData.append("files", file)
-
-  const response = await axios.post(`${API_URL}/vendor/products/upload-image`, formData, {
-    headers: {
-      Authorization: `Bearer ${vendorToken}`,
-      "Content-Type": "multipart/form-data",
-    },
-  })
-
-  const payload = response.data
+  const payload = await vendorProductsApi.uploadImage(file)
   const uploaded = payload.files?.[0] || payload
   if (!uploaded?.url) {
     throw new Error("Upload succeeded but no image URL was returned")
@@ -86,8 +76,8 @@ const uploadImageToS3 = async (file: File): Promise<UploadedImageRef> => {
   return {
     url: uploaded.url,
     key: uploaded.key,
-    filename: uploaded.filename,
-    originalName: uploaded.originalName || file.name,
+    filename: payload.files?.[0]?.filename,
+    originalName: payload.files?.[0]?.originalName || file.name,
   }
 }
 
@@ -130,6 +120,7 @@ function ensureDefaultOptions(options: ProductOptionDef[]): ProductOptionDef[] {
 }
 
 export default function VariantMatrixEditor({
+  onImageUploadStateChange,
   hasVariants,
   onHasVariantsChange,
   productOptions,
@@ -390,19 +381,24 @@ export default function VariantMatrixEditor({
 
   const handleVisualImageUpload = async (visualValue: string, files: FileList | null) => {
     if (!files?.length) return
+    onImageUploadStateChange?.(true)
     setUploadingFor(visualValue)
     try {
-      const uploaded = await Promise.all(Array.from(files).map(uploadImageToS3))
+      const results = await Promise.allSettled(Array.from(files).map(uploadImageToS3))
+      const uploaded = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : [])
       onColorImagesChange({
         ...colorImages,
         [visualValue]: [...(colorImages[visualValue] || []), ...uploaded],
       })
+      const failed = results.find((result) => result.status === "rejected")
+      if (failed?.status === "rejected") throw failed.reason
     } catch (err) {
       toast.error("Upload failed", {
         description: err instanceof Error ? err.message : "Could not upload",
       })
     } finally {
       setUploadingFor(null)
+      onImageUploadStateChange?.(false)
     }
   }
 
@@ -421,12 +417,14 @@ export default function VariantMatrixEditor({
       <tr key={`${color}-${globalIndex}`} className="border-b border-ui-border-base/60">
         <td className="px-3 py-2">
           <Input
-            value={row.optionValues[primarySecondaryOption] || ""}
+            value={/^size$/i.test(primarySecondaryOption) && row.optionValues[primarySecondaryOption] === UNSPECIFIED_SIZE ? "" : row.optionValues[primarySecondaryOption] || ""}
             onChange={(e) =>
               updateVariantOptionValue(globalIndex, primarySecondaryOption, e.target.value)
             }
-            placeholder="e.g. 32"
-            className="w-20 h-8"
+            type="text"
+            aria-label={`${primarySecondaryOption} (optional)`}
+            placeholder="e.g. 32, M"
+            className="w-28 h-8"
           />
         </td>
         <td className="px-3 py-2">
@@ -469,7 +467,7 @@ export default function VariantMatrixEditor({
           <VariantDiscountCell price={row.price} discountedPrice={row.discountedPrice} />
         </td>
         <td className="px-3 py-2">
-          <Button
+          <Button type="button"
             variant="transparent"
             size="small"
             className="text-ui-fg-error"
@@ -552,7 +550,7 @@ export default function VariantMatrixEditor({
                   }
                 }}
               />
-              <Button variant="primary" size="small" onClick={addColor}>
+              <Button type="button" variant="primary" size="small" onClick={addColor}>
                 + Add color
               </Button>
             </div>
@@ -584,10 +582,10 @@ export default function VariantMatrixEditor({
                           e.target.value = ""
                         }}
                       />
-                      <Button
+                      <Button type="button"
                         variant="secondary"
                         size="small"
-                        disabled={uploadingFor === value}
+                        disabled={uploadingFor !== null}
                         onClick={() => fileInputRefs.current[value]?.click()}
                       >
                         {uploadingFor === value ? "Uploading…" : "+ Add photos"}
@@ -641,7 +639,7 @@ export default function VariantMatrixEditor({
           {colorValues.length > 0 && (
             <SectionCard
               title="Step 3 — Sizes, MRP & stock"
-              description="For each color, add every size as its own row. Use + Add size to add 32, 33, 34, etc."
+              description="Size is optional. Leave it blank or enter numbers or letters, such as 32, M, XL, or 2XL."
             >
               {variants.length > 1 && (
                 <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg bg-ui-bg-subtle p-3">
@@ -663,7 +661,7 @@ export default function VariantMatrixEditor({
                       className="w-28"
                     />
                   </div>
-                  <Button variant="secondary" size="small" onClick={applyBulkPrice}>
+                  <Button type="button" variant="secondary" size="small" onClick={applyBulkPrice}>
                     Apply to all
                   </Button>
                 </div>
@@ -679,7 +677,7 @@ export default function VariantMatrixEditor({
                     >
                       <div className="flex items-center justify-between gap-3 bg-ui-bg-subtle px-4 py-3 border-b border-ui-border-base">
                         <Text weight="plus">{color}</Text>
-                        <Button
+                        <Button type="button"
                           variant="secondary"
                           size="small"
                           onClick={() => addSizeForColor(color)}
@@ -691,7 +689,7 @@ export default function VariantMatrixEditor({
                         <table className="w-full min-w-[560px] border-collapse text-sm">
                           <thead>
                             <tr className="border-b border-ui-border-base text-left text-xs uppercase text-ui-fg-muted">
-                              <th className="px-3 py-2 font-medium">{primarySecondaryOption}</th>
+                              <th className="px-3 py-2 font-medium">{primarySecondaryOption}{/^size$/i.test(primarySecondaryOption) ? " (optional)" : ""}</th>
                               <th className="px-3 py-2 font-medium">SKU</th>
                               <th className="px-3 py-2 font-medium">Stock</th>
                               <th className="px-3 py-2 font-medium">MRP ₹</th>
@@ -704,7 +702,7 @@ export default function VariantMatrixEditor({
                             {rows.length === 0 ? (
                               <tr>
                                 <td colSpan={7} className="px-3 py-4 text-center text-ui-fg-muted">
-                                  <Button
+                                  <Button type="button"
                                     variant="secondary"
                                     size="small"
                                     onClick={() => addSizeForColor(color)}
@@ -783,7 +781,7 @@ export default function VariantMatrixEditor({
                           placeholder="Black, White"
                         />
                       </div>
-                      <Button
+                      <Button type="button"
                         variant="transparent"
                         size="small"
                         onClick={() =>
@@ -798,7 +796,7 @@ export default function VariantMatrixEditor({
                   ))}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Button
+                  <Button type="button"
                     variant="secondary"
                     size="small"
                     onClick={() =>
@@ -810,7 +808,7 @@ export default function VariantMatrixEditor({
                   >
                     + Add option
                   </Button>
-                  <Button variant="primary" size="small" onClick={generateMatrix}>
+                  <Button type="button" variant="primary" size="small" onClick={generateMatrix}>
                     Build full matrix
                   </Button>
                 </div>
@@ -866,7 +864,7 @@ export default function VariantMatrixEditor({
                     placeholder="Black, White, Red"
                   />
                 </div>
-                <Button
+                <Button type="button"
                   variant="transparent"
                   size="small"
                   onClick={() =>
@@ -881,7 +879,7 @@ export default function VariantMatrixEditor({
             ))}
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button
+            <Button type="button"
               variant="secondary"
               size="small"
               onClick={() =>
@@ -893,7 +891,7 @@ export default function VariantMatrixEditor({
             >
               + Add option
             </Button>
-            <Button variant="primary" size="small" onClick={generateMatrix}>
+            <Button type="button" variant="primary" size="small" onClick={generateMatrix}>
               Build variants
             </Button>
           </div>
@@ -929,10 +927,10 @@ export default function VariantMatrixEditor({
                         e.target.value = ""
                       }}
                     />
-                    <Button
+                    <Button type="button"
                       variant="secondary"
                       size="small"
-                      disabled={uploadingFor === value}
+                      disabled={uploadingFor !== null}
                       onClick={() => fileInputRefs.current[value]?.click()}
                     >
                       {uploadingFor === value ? "Uploading…" : "+ Add photos"}
@@ -1020,7 +1018,7 @@ export default function VariantMatrixEditor({
                   className="w-28"
                 />
               </div>
-              <Button variant="secondary" size="small" onClick={applyBulkPrice}>
+              <Button type="button" variant="secondary" size="small" onClick={applyBulkPrice}>
                 Apply to all
               </Button>
             </div>
@@ -1113,66 +1111,36 @@ export default function VariantMatrixEditor({
           title="Pricing & inventory"
           description="Set SKU, stock, and MRP for this product."
         >
-          <div className="overflow-x-auto -mx-1">
-            <table className="w-full min-w-[640px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-ui-border-base text-left text-xs uppercase text-ui-fg-muted">
-                  <th className="px-3 py-2 font-medium">SKU</th>
-                  <th className="px-3 py-2 font-medium">Stock</th>
-                  <th className="px-3 py-2 font-medium">MRP ₹</th>
-                  <th className="px-3 py-2 font-medium">Sale ₹</th>
-                  <th className="px-3 py-2 font-medium">Off %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {variants.map((variant, idx) => (
-                  <tr key={variant.id || idx} className="border-b border-ui-border-base/60">
-                    <td className="px-3 py-2">
-                      <Input
-                        value={variant.sku}
-                        onChange={(e) => updateVariantField(idx, "sku", e.target.value)}
-                        onBlur={(e) => handleSkuBlur(idx, e.target.value)}
-                        placeholder="Optional"
-                        className="min-w-[80px] h-8"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <Input
-                        type="number"
-                        min="0"
-                        value={variant.inventoryCount}
-                        onChange={(e) =>
-                          updateVariantField(idx, "inventoryCount", e.target.value)
-                        }
-                        className="w-16 h-8"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <Input
-                        value={variant.price}
-                        onChange={(e) => updateVariantField(idx, "price", e.target.value)}
-                        className="w-24 h-8"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <Input
-                        value={variant.discountedPrice}
-                        onChange={(e) =>
-                          updateVariantField(idx, "discountedPrice", e.target.value)
-                        }
-                        className="w-24 h-8"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <VariantDiscountCell
-                        price={variant.price}
-                        discountedPrice={variant.discountedPrice}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-4">
+            {variants.map((variant, idx) => (
+              <div key={variant.id || idx} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor={`product-sku-${idx}`}>SKU</Label>
+                  <Input id={`product-sku-${idx}`} value={variant.sku}
+                    onChange={(e) => updateVariantField(idx, "sku", e.target.value)}
+                    onBlur={(e) => handleSkuBlur(idx, e.target.value)} placeholder="Optional" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`product-stock-${idx}`}>Stock</Label>
+                  <Input id={`product-stock-${idx}`} type="number" min="0" value={variant.inventoryCount}
+                    onChange={(e) => updateVariantField(idx, "inventoryCount", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`product-mrp-${idx}`}>MRP ₹</Label>
+                  <Input id={`product-mrp-${idx}`} type="number" min="0" step="any" value={variant.price}
+                    onChange={(e) => updateVariantField(idx, "price", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`product-sale-${idx}`}>Sale price ₹</Label>
+                  <Input id={`product-sale-${idx}`} type="number" min="0" step="any" value={variant.discountedPrice}
+                    onChange={(e) => updateVariantField(idx, "discountedPrice", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Text size="small">Discount</Text>
+                  <VariantDiscountCell price={variant.price} discountedPrice={variant.discountedPrice} />
+                </div>
+              </div>
+            ))}
           </div>
         </SectionCard>
       )}

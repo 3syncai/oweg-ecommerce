@@ -147,17 +147,37 @@ export function buildVariantRows(
   })
 }
 
+// Medusa requires a value for each declared option. Keep blank sizes optional
+// in the form; use an explicit value only when mixed with named sizes.
+export const UNSPECIFIED_SIZE = "Not specified"
+
+export function serializeVariantOptions(
+  options: Array<{ title: string }>,
+  values: Record<string, string>
+): Record<string, string> {
+  return Object.fromEntries(options.map(({ title }) => [
+    title,
+    values[title]?.trim() || (/^size$/i.test(title) ? UNSPECIFIED_SIZE : ""),
+  ]))
+}
+
 export function resolveProductOptionsFromRows(
   options: ProductOptionDef[],
   rows: VariantMatrixRow[]
 ): Array<{ title: string; values: string[] }> {
-  return normalizeProductOptions(options).map((opt) => {
+  // Ignore old size values after a seller clears the field. Other options
+  // retain their configured values as before.
+  const definitions = options.map((opt) => /^size$/i.test(opt.title.trim())
+    ? { ...opt, values: rows.map((row) => row.optionValues[opt.title]?.trim() || ""), valuesInput: "" }
+    : opt)
+  return normalizeProductOptions(definitions).map((opt) => {
     const fromRows = rows
       .map((row) => row.optionValues[opt.title]?.trim())
       .filter((v): v is string => Boolean(v))
+    const hasBlankSize = /^size$/i.test(opt.title) && rows.some((row) => !row.optionValues[opt.title]?.trim())
     return {
       title: opt.title,
-      values: Array.from(new Set([...opt.values, ...fromRows])),
+      values: Array.from(new Set([...opt.values, ...fromRows, ...(hasBlankSize ? [UNSPECIFIED_SIZE] : [])])),
     }
   })
 }

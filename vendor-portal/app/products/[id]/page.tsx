@@ -24,6 +24,8 @@ import {
   isSimpleDefaultProduct,
   resolveProductOptionsFromRows,
   serializeColorImages,
+  serializeVariantOptions,
+  UNSPECIFIED_SIZE,
   variantComboKey,
   type ProductOptionDef,
   type UploadedImageRef,
@@ -123,6 +125,12 @@ const VendorProductEditPage = () => {
   const [initialVariantRows, setInitialVariantRows] = useState<VariantMatrixRow[]>([])
   const [colorImages, setColorImages] = useState<Record<string, UploadedImageRef[]>>({})
   const [initialColorImages, setInitialColorImages] = useState<Record<string, UploadedImageRef[]>>({})
+  const [galleryImages, setGalleryImages] = useState<UploadedImageRef[]>([])
+  const [initialGalleryImages, setInitialGalleryImages] = useState<UploadedImageRef[]>([])
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
+  const [initialThumbnailUrl, setInitialThumbnailUrl] = useState<string | null>(null)
+  const [uploadingImages, setUploadingImages] = useState(false)
+  const [uploadingVariantImages, setUploadingVariantImages] = useState(false)
   const [primaryVisualOption, setPrimaryVisualOption] = useState("")
   const [usedSkus, setUsedSkus] = useState<Set<string>>(new Set())
 
@@ -236,7 +244,7 @@ const VendorProductEditPage = () => {
           price: variant.price != null ? String(variant.price) : "",
           discountedPrice:
             variant.discounted_price != null ? String(variant.discounted_price) : "",
-          optionValues: variant.option_values || {},
+          optionValues: Object.fromEntries(Object.entries(variant.option_values || {}).map(([title, value]) => [title, /^size$/i.test(title) && value === UNSPECIFIED_SIZE ? "" : value])),
         }))
 
         const mappedColorImages: Record<string, UploadedImageRef[]> = {}
@@ -249,6 +257,18 @@ const VendorProductEditPage = () => {
         }
 
         const productHasVariants = !isSimpleDefaultProduct(optionDefs, rows)
+        const variantImageUrls = new Set(Object.values(loadedColorImages).flat())
+        const existingUrls = Array.from(new Set([
+          ...(prod.thumbnail ? [prod.thumbnail] : []),
+          ...(prod.images || []).map((image) => image.url),
+        ]))
+        const gallery = existingUrls
+          .filter((url) => !productHasVariants || !variantImageUrls.has(url))
+          .map((url) => ({ url }))
+        setGalleryImages(gallery)
+        setInitialGalleryImages(gallery)
+        setThumbnailUrl(prod.thumbnail || existingUrls[0] || null)
+        setInitialThumbnailUrl(prod.thumbnail || existingUrls[0] || null)
         setHasVariants(productHasVariants)
         setInitialHasVariants(productHasVariants)
         setProductOptions(productHasVariants ? optionDefs : [])
@@ -290,8 +310,12 @@ const VendorProductEditPage = () => {
     if (formData.taxCode !== initialFormData.taxCode) changes.push("tax_code")
     if (formData.gstRate !== initialFormData.gstRate) changes.push("gst_rate")
 
+    if (JSON.stringify(galleryImages.map((image) => image.url)) !==
+        JSON.stringify(initialGalleryImages.map((image) => image.url)) ||
+        thumbnailUrl !== initialThumbnailUrl) changes.push("images")
+
     return changes
-  }, [formData, initialFormData])
+  }, [formData, initialFormData, galleryImages, initialGalleryImages, thumbnailUrl, initialThumbnailUrl])
 
   const variantRowsChanged = useMemo(() => {
     return JSON.stringify(variantRows) !== JSON.stringify(initialVariantRows)
@@ -307,12 +331,13 @@ const VendorProductEditPage = () => {
 
   const hasVariantsChanged = hasVariants !== initialHasVariants
 
-  const hasChanges =
-    changedFields.length > 0 ||
-    variantRowsChanged ||
-    productOptionsChanged ||
-    colorImagesChanged ||
-    hasVariantsChanged
+  const allChangedFields = [
+    ...changedFields,
+    ...(variantRowsChanged ? [hasVariants ? "variant details" : "pricing & stock"] : []),
+    ...(productOptionsChanged || hasVariantsChanged ? ["options"] : []),
+    ...(colorImagesChanged ? ["variant images"] : []),
+  ]
+  const hasChanges = allChangedFields.length > 0
 
   const selectedCategoryName = useMemo(() => {
     return categories.find((c) => c.id === formData.categoryId)?.name || ""
@@ -326,8 +351,41 @@ const VendorProductEditPage = () => {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
+  const allImageUrls = collectAllImageUrls(galleryImages, hasVariants ? colorImages : {})
+  const previewImage = (thumbnailUrl && allImageUrls.includes(thumbnailUrl)
+    ? thumbnailUrl : allImageUrls[0]) || null
+
+  const handleImageUpload = async (files: FileList | null) => {
+    if (!files?.length) return
+    const images = Array.from(files)
+    if (images.some((file) => !file.type.startsWith("image/"))) {
+      toast.error("Please select image files")
+      return
+    }
+    setUploadingImages(true)
+    try {
+      // Keep successful uploads even if another file fails.
+      const results = await Promise.allSettled(images.map(async (file) => {
+        const data = await vendorProductsApi.uploadImage(file)
+        const uploaded = data.files?.[0] || data
+        if (!uploaded.url) throw new Error("No image URL returned")
+        return { url: uploaded.url, originalName: file.name }
+      }))
+      const uploaded = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : [])
+      setGalleryImages((previous) => [...previous, ...uploaded])
+      if (results.some((result) => result.status === "rejected")) {
+        const failed = results.find((result) => result.status === "rejected")
+        toast.error("Image upload failed", { description: failed?.status === "rejected" && failed.reason instanceof Error ? failed.reason.message : "Please try again." })
+      }
+    } finally {
+      setUploadingImages(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (uploadingImages || uploadingVariantImages || saving) return
 
     if (!hasChanges) {
       toast.warning("No changes", { description: "Update at least one field before saving" })
@@ -401,7 +459,7 @@ const VendorProductEditPage = () => {
       const comboKeys = new Set<string>()
       for (const variant of variantRows) {
         for (const title of optionTitles) {
-          if (!variant.optionValues[title]?.trim()) {
+          if (!/^size$/i.test(title) && !variant.optionValues[title]?.trim()) {
             toast.error("Incomplete variant row", {
               description: `Every row needs a value for "${title}"`,
             })
@@ -444,7 +502,7 @@ const VendorProductEditPage = () => {
           (opt) => opt.title && opt.values.length > 0
         )
         const serializedColorImages = serializeColorImages(colorImages)
-        const allImageUrls = collectAllImageUrls([], colorImages)
+        const allImageUrls = collectAllImageUrls(galleryImages, colorImages)
 
         await vendorProductsApi.updateVariants(productId, {
           options: resolvedOptions,
@@ -460,8 +518,8 @@ const VendorProductEditPage = () => {
             ),
             price: row.price ? Number(row.price) : undefined,
             discounted_price: row.discountedPrice ? Number(row.discountedPrice) : undefined,
-            options: row.optionValues,
-            option_values: row.optionValues,
+            options: serializeVariantOptions(resolvedOptions, row.optionValues),
+            option_values: serializeVariantOptions(resolvedOptions, row.optionValues),
           })),
           color_images: serializedColorImages,
           primary_visual_option: primaryVisualOption || undefined,
@@ -484,7 +542,7 @@ const VendorProductEditPage = () => {
           formData.discountedPrice.trim() !== initialFormData.discountedPrice.trim() ||
           variantRowsChanged)
 
-      if (nonPriceFields.length > 0 || simplePriceChanged) {
+      if (nonPriceFields.length > 0 || simplePriceChanged || colorImagesChanged) {
         const payload = {
           title: formData.title.trim(),
           description: formData.description.trim()
@@ -499,6 +557,10 @@ const VendorProductEditPage = () => {
                 price: parsedPrice,
                 discounted_price: hasDiscountedValue ? parsedDiscountedPrice : undefined,
               }),
+          ...((changedFields.includes("images") || colorImagesChanged) ? {
+            images: allImageUrls.map((url) => ({ url })),
+            thumbnail: previewImage,
+          } : {}),
           vendor_edit_remark: formData.vendorRemark.trim(),
           metadata: {
             category: selectedCategoryName || null,
@@ -510,7 +572,7 @@ const VendorProductEditPage = () => {
               formData.gstRate !== "" && formData.gstRate != null
                 ? Number(formData.gstRate)
                 : null,
-            last_vendor_changed_fields: changedFields,
+            last_vendor_changed_fields: allChangedFields,
           },
         }
 
@@ -532,6 +594,10 @@ const VendorProductEditPage = () => {
             ? String(parsedDiscountedPrice)
             : "",
       }
+      setInitialGalleryImages(galleryImages)
+      setThumbnailUrl(previewImage)
+      setInitialThumbnailUrl(previewImage)
+      setInitialColorImages(colorImages)
       setInitialFormData(resetFormData)
       setFormData(resetFormData)
       if (!hasVariants) {
@@ -662,7 +728,7 @@ const VendorProductEditPage = () => {
   } else {
     content = (
       <Container className="p-4 md:p-6 space-y-6">
-        <div className="overflow-hidden rounded-2xl border border-ui-border-base bg-gradient-to-r from-emerald-900/30 via-cyan-900/20 to-slate-900/20 p-5 md:p-7">
+        <div className="overflow-hidden rounded-2xl border border-ui-border-base bg-ui-bg-subtle p-5 md:p-7">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="space-y-2">
               <Text className="text-xs uppercase tracking-[0.18em] text-ui-fg-subtle font-['Space_Grotesk',var(--font-geist-sans)]">
@@ -734,9 +800,13 @@ const VendorProductEditPage = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border border-ui-border-base bg-ui-bg-component p-5 md:p-6">
+        <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <form onSubmit={handleSubmit} className="min-w-0 space-y-5 rounded-2xl border border-ui-border-base bg-ui-bg-component p-5 md:p-6">
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ui-border-base bg-ui-bg-subtle p-3">
+                <Text size="small">{hasVariants ? "Manage photos for each variant below." : "Add or update your product photos below."}</Text>
+                <a href="#product-images" className="text-sm font-medium text-ui-fg-interactive underline">Upload / edit images</a>
+              </div>
               <div className="space-y-2 md:col-span-2">
                 <Label>Product name *</Label>
                 <Input
@@ -850,9 +920,9 @@ const VendorProductEditPage = () => {
               </div>
             </div>
 
-            <div className="border-t border-ui-border-base pt-5">
+            <div id="product-images" className="scroll-mt-6 border-t border-ui-border-base pt-5">
               <Heading level="h2" className="mb-3 text-base font-['Space_Grotesk',var(--font-geist-sans)]">
-                Options & variants
+                Product images & variants
               </Heading>
               <VariantMatrixEditor
                 hasVariants={hasVariants}
@@ -865,6 +935,44 @@ const VendorProductEditPage = () => {
                 onColorImagesChange={setColorImages}
                 primaryVisualOption={primaryVisualOption}
                 onPrimaryVisualOptionChange={setPrimaryVisualOption}
+                onImageUploadStateChange={setUploadingVariantImages}
+                simpleProductExtras={
+                  <div className="space-y-4">
+                    <Label htmlFor="product-image-upload">Product images</Label>
+                    <Text size="small" className="text-ui-fg-subtle">Upload photos, remove old images, or choose the thumbnail shown in your listing.</Text>
+                    <Label htmlFor="product-image-upload" className="flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-ui-border-base bg-ui-bg-subtle p-4 text-center hover:border-ui-border-interactive focus-within:ring-2 focus-within:ring-ui-border-interactive">
+                      <span className="font-medium">{uploadingImages ? "Uploading images…" : "Choose product images"}</span>
+                      <span className="text-xs text-ui-fg-subtle">Select one or more images from your device</span>
+                    <input
+                      className="sr-only"
+                      id="product-image-upload"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      disabled={uploadingImages || saving}
+                      onChange={(event) => {
+                        void handleImageUpload(event.target.files)
+                        event.target.value = ""
+                      }}
+                    />
+                    </Label>
+                    <div className="flex flex-wrap gap-4">
+                      {galleryImages.map((image, index) => (
+                        <div key={`${image.url}-${index}`} className="space-y-2 rounded-lg border border-ui-border-base p-2">
+                          <img src={image.url} alt={image.originalName || `Product image ${index + 1}`} className="h-24 w-24 object-contain" />
+                          <div className="flex flex-col gap-2">
+                            <Button type="button" size="small" variant="secondary" disabled={saving || uploadingImages} onClick={() => setThumbnailUrl(image.url)}>
+                              {previewImage === image.url ? "Thumbnail" : "Set thumbnail"}
+                            </Button>
+                            <Button type="button" size="small" variant="secondary" disabled={saving || uploadingImages} onClick={() => setGalleryImages((previous) => previous.filter((_, i) => i !== index))}>
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                }
                 usedSkus={usedSkus}
               />
             </div>
@@ -872,9 +980,9 @@ const VendorProductEditPage = () => {
             <div className="flex flex-col gap-3 border-t border-ui-border-base pt-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge color={hasChanges ? "orange" : "grey"}>
-                  {hasChanges ? `${changedFields.length} field(s) changed` : "No pending changes"}
+                  {hasChanges ? `${allChangedFields.length} field(s) changed` : "No pending changes"}
                 </Badge>
-                {changedFields.map((field) => (
+                {allChangedFields.map((field) => (
                   <Badge key={field} color="blue">
                     {field}
                   </Badge>
@@ -885,7 +993,7 @@ const VendorProductEditPage = () => {
                 <Button type="button" variant="secondary" onClick={() => router.push("/products")}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={saving || !hasChanges}>
+                <Button type="submit" disabled={saving || uploadingImages || uploadingVariantImages || !hasChanges}>
                   {saving ? "Saving & Sending..." : "Save & Send For Approval"}
                 </Button>
               </div>
@@ -899,9 +1007,9 @@ const VendorProductEditPage = () => {
               </Heading>
               <div className="space-y-3">
                 <div className="h-40 overflow-hidden rounded-xl border border-ui-border-base bg-ui-bg-subtle">
-                  {(product.thumbnail || product.images?.[0]?.url) ? (
+                  {previewImage ? (
                     <img
-                      src={product.thumbnail || product.images?.[0]?.url}
+                      src={previewImage}
                       alt={formData.title || "Product image"}
                       className="h-full w-full object-cover"
                     />
