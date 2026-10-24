@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { authorizeReferralCustomer } from "@/lib/referral-auth"
 import { Pool } from "pg"
 
 export const dynamic = "force-dynamic"
@@ -46,7 +47,9 @@ export async function POST(req: NextRequest) {
     }
 
     const referCode = (body.refer_code || "").trim().toUpperCase()
-    const referredId = (body.referred_customer_id || "").trim()
+    const auth = await authorizeReferralCustomer(req, [body.referred_customer_id])
+    if (auth.error) return auth.error
+    const referredId = auth.customer!.id
 
     if (!referCode || !referredId) {
         return NextResponse.json(
@@ -102,8 +105,8 @@ export async function POST(req: NextRequest) {
                 referCode,
                 affiliateCustomerId,
                 referredId,
-                body.referred_email || null,
-                body.referred_name || null,
+                auth.customer!.email || null,
+                [auth.customer!.first_name, auth.customer!.last_name].filter(Boolean).join(" ") || null,
             ]
         )
 

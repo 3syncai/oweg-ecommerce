@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Pool } from "pg"
+import { authorizeReferralService } from "@/lib/referral-auth"
 
 /**
  * GET /api/affiliate/stats
  * Get affiliate statistics (referrals, commission, etc.)
  * 
- * Headers: x-affiliate-code (affiliate's refer_code)
+ * Requires server authentication (INTERNAL_API_SECRET); x-affiliate-code selects the scope.
  */
 export async function GET(req: NextRequest) {
+    const authError = authorizeReferralService(req)
+    if (authError) return authError
     try {
         const affiliateCode = req.headers.get("x-affiliate-code")
 

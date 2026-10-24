@@ -1,0 +1,12 @@
+✔ touching navigation arrows changes one image without opening the lightbox, including wraparound (45.14425ms)
+✔ image swipe navigates while a vertical scroll does not navigate or open a lightbox (9.995708ms)
+✔ tapping the image still opens the lightbox, and single-image products have no arrows (9.222625ms)
+✔ thumbnail taps select the correct image without opening the lightbox (6.178ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1139.482708

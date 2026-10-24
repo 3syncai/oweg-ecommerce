@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-24",
+  "scope": "Source handlers with mocks only; no hosted exposure or exploitation claim.",
+  "results": [
+    {
+      "id": "F21-read",
+      "status": 200,
+      "unsigned_token_reads_vendor": true,
+      "banking_and_tax_fields_returned": true
+    },
+    {
+      "id": "F21-write",
+      "status": 200,
+      "unsigned_token_reaches_reapply_service": true,
+      "limitation": "Service is mocked; actual service permits only rejected vendors."
+    },
+    {
+      "id": "F22",
+      "status": 200,
+      "public_review_includes_email_and_customer_id": true,
+      "public_review_includes_pending": true
+    },
+    {
+      "id": "F23",
+      "status": 200,
+      "unauthenticated_payment_lookup": true
+    },
+    {
+      "id": "F24",
+      "status": 500,
+      "unauthenticated_debug_error_includes_stack": true
+    }
+  ]
+}

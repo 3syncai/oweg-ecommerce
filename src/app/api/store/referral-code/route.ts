@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { authorizeReferralCustomer } from "@/lib/referral-auth"
 import { Pool } from "pg"
 
 export const dynamic = "force-dynamic"
@@ -17,19 +18,15 @@ export async function GET(req: NextRequest) {
     console.log('=== REFERRAL CODE API CALLED ===')
 
     try {
-        // Get customer ID from header
-        const customerId = req.headers.get("x-customer-id")
+        // Derive identity from the verified store session.
+        const auth = await authorizeReferralCustomer(req)
+        if (auth.error) return auth.error
+        const customerId = auth.customer!.id
 
-        console.log('Customer ID from header:', customerId)
+        console.log('Authenticated customer ID:', customerId)
         console.log('DATABASE_URL exists:', !!DATABASE_URL)
 
-        if (!customerId) {
-            console.log('No customer ID provided')
-            return NextResponse.json(
-                { referral_code: null, message: "Not authenticated" },
-                { status: 200 }
-            )
-        }
+
 
         if (!DATABASE_URL) {
             console.error('DATABASE_URL not configured!')

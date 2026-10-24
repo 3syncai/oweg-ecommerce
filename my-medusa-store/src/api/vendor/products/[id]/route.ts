@@ -1,7 +1,8 @@
-import { CatalogConflict, cleanVendorMetadata, protectCatalogEdit, publicVariantSku, withCatalogLock } from "../../../../lib/catalog-identity"
+import { ProductEditError, saveVendorProductEdit } from "../../../../lib/vendor-product-edit"
+import { CatalogConflict, protectCatalogEdit, publicVariantSku, withCatalogLock } from "../../../../lib/catalog-identity"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../../_lib/guards"
-import { Modules, ProductStatus } from "@medusajs/framework/utils"
+import { Modules } from "@medusajs/framework/utils"
 import client from "../../../../utils/opensearch"
 import { PRODUCTS_INDEX } from "../../../../utils/search-index"
 import {
@@ -14,7 +15,7 @@ import { releaseInventorySkusForProduct } from "../../../../lib/release-sku"
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
   res.setHeader('Access-Control-Allow-Credentials', 'true')
 }
@@ -68,6 +69,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           .leftJoin("price as p", "p.price_set_id", "pvps.price_set_id")
           .where("pvps.variant_id", firstVariant.id)
           .whereNull("p.price_list_id")
+          .whereNull("p.deleted_at")
           .orderByRaw("CASE WHEN LOWER(p.currency_code) = 'inr' THEN 0 ELSE 1 END")
           .first("p.amount", "p.currency_code")
 
@@ -75,6 +77,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           .leftJoin("price as p", "p.price_set_id", "pvps.price_set_id")
           .where("pvps.variant_id", firstVariant.id)
           .whereNotNull("p.price_list_id")
+          .whereNull("p.deleted_at")
           .orderByRaw("CASE WHEN LOWER(p.currency_code) = 'inr' THEN 0 ELSE 1 END")
           .first("p.amount", "p.currency_code", "p.price_list_id")
 
@@ -109,6 +112,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     if (variantMatrix) for (const variant of variantMatrix.variants) variant.sku = publicVariantSku(product, variant)
     return res.json({
       product,
+      atomic_edit_version: 1,
       variant_summary: variantSummary,
       variant_matrix: variantMatrix,
       color_images: colorImages,
@@ -128,7 +132,7 @@ export async function PUT(req: MedusaRequest, res: MedusaResponse) {
   return withCatalogLock(req.scope, () => updateOffer(req, res, auth))
 }
 
-async function updateOffer(req: MedusaRequest, res: MedusaResponse, auth: { vendor_id: string }) {
+export async function updateOffer(req: MedusaRequest, res: MedusaResponse, auth: { vendor_id: string }, matrixResponse = false) {
 
   const productId = req.params?.id as string
   if (!productId) {
@@ -151,99 +155,7 @@ async function updateOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
       const allowed = await (req.scope.resolve("vendorBrandAuthorization") as any).checkBrandAuthorization(auth.vendor_id, body.metadata.brand)
       if (!allowed) return res.status(400).json({ error: "brand_authorization_required", message: "Brand authorization is required for this brand." })
     }
-    const {
-      title,
-      description,
-      handle,
-      category_ids,
-      collection_id,
-      images,
-      thumbnail,
-      weight,
-      price,
-      discounted_price,
-      vendor_edit_remark,
-      metadata: requestMetadata,
-    } = body
-
-    const hasPriceUpdate = price !== undefined && price !== null && `${price}`.toString().trim() !== ""
-    const hasDiscountedPriceUpdate =
-      discounted_price !== undefined &&
-      discounted_price !== null &&
-      `${discounted_price}`.toString().trim() !== ""
-
-    const parsedPrice = hasPriceUpdate ? Number(price) : null
-    const parsedDiscountedPrice = hasDiscountedPriceUpdate ? Number(discounted_price) : null
-
-    if (hasPriceUpdate && (!Number.isFinite(parsedPrice) || (parsedPrice as number) <= 0)) {
-      return res.status(400).json({ message: "price must be a valid number greater than 0" })
-    }
-    if (
-      hasDiscountedPriceUpdate &&
-      (!Number.isFinite(parsedDiscountedPrice) || (parsedDiscountedPrice as number) <= 0)
-    ) {
-      return res.status(400).json({ message: "discounted_price must be a valid number greater than 0" })
-    }
-    if (hasPriceUpdate && hasDiscountedPriceUpdate && (parsedDiscountedPrice as number) >= (parsedPrice as number)) {
-      return res
-        .status(400)
-        .json({ message: "discounted_price must be lower than original price" })
-    }
-
-    // Update product using product service directly
-    const updateData: any = {}
-    if (title) updateData.title = title
-    if (description !== undefined) updateData.description = description
-    if (handle !== undefined) updateData.handle = handle
-    if (category_ids) updateData.category_ids = category_ids
-    if (collection_id !== undefined) updateData.collection_id = collection_id || null
-    if (images) updateData.images = images
-    if (thumbnail !== undefined) {
-      if (thumbnail !== null && (typeof thumbnail !== "string" || !/^https?:\/\//i.test(thumbnail))) {
-        return res.status(400).json({ message: "thumbnail must be an HTTP(S) image URL or null" })
-      }
-      updateData.thumbnail = thumbnail
-    }
-    if (weight !== undefined) updateData.weight = weight
-
-    const nowIso = new Date().toISOString()
-    const cleanRemark = typeof vendor_edit_remark === "string" ? vendor_edit_remark.trim() : ""
-    const existingHistory = Array.isArray((metadata as any)?.vendor_edit_history)
-      ? (metadata as any).vendor_edit_history
-      : []
-    const nextHistory = cleanRemark
-      ? [
-          ...existingHistory,
-          {
-            remark: cleanRemark,
-            submitted_at: nowIso,
-            vendor_id: auth.vendor_id,
-          },
-        ]
-      : existingHistory
-
-    // Preserve vendor_id in metadata
-    updateData.metadata = {
-      ...metadata,
-      ...cleanVendorMetadata(requestMetadata),
-      vendor_id: auth.vendor_id,
-      approval_status: "pending",
-      submitted_at: nowIso,
-      resubmitted_at: nowIso,
-      approved_at: null,
-      approved_by: null,
-      rejected_at: null,
-      rejected_by: null,
-      rejection_reason: null,
-      vendor_edit_remark: cleanRemark || null,
-      vendor_edit_history: nextHistory,
-    }
-    delete updateData.metadata.return_window_days
-    delete updateData.metadata.replacement_window_days
-    delete updateData.metadata.return_replacement_policy_configured
-    updateData.status = ProductStatus.DRAFT
-
-    const updatedProduct = await productModuleService.updateProducts(productId, updateData)
+    const updatedProduct = await saveVendorProductEdit(req, productId, auth.vendor_id, body)
 
     // Product is moved to pending/draft after vendor edit; remove stale published doc from OpenSearch.
     try {
@@ -258,110 +170,17 @@ async function updateOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
       }
     }
 
-    // Update first variant prices (if provided)
-    if (hasPriceUpdate || hasDiscountedPriceUpdate) {
-      try {
-        const knex = req.scope.resolve("__pg_connection__") as any
-        const pricingModule = req.scope.resolve(Modules.PRICING) as any
-
-        const firstVariant = await knex("product_variant")
-          .where({ product_id: productId })
-          .orderBy("created_at", "asc")
-          .first("id")
-
-        if (firstVariant?.id) {
-          const priceSetRow = await knex("product_variant_price_set")
-            .where({ variant_id: firstVariant.id })
-            .first("price_set_id")
-
-          if (priceSetRow?.price_set_id) {
-            const currencyCode = "inr"
-            const now = new Date()
-
-            const upsertPrice = async (amount: number, priceListId: string | null) => {
-              const queryBuilder = knex("price")
-                .where({
-                  price_set_id: priceSetRow.price_set_id,
-                  currency_code: currencyCode,
-                })
-
-              if (priceListId) {
-                queryBuilder.where({ price_list_id: priceListId })
-              } else {
-                queryBuilder.whereNull("price_list_id")
-              }
-
-              const existingRow = await queryBuilder.first("id")
-
-              if (existingRow?.id) {
-                await knex("price")
-                  .where({ id: existingRow.id })
-                  .update({
-                    amount,
-                    raw_amount: amount,
-                    updated_at: now,
-                  })
-                return
-              }
-
-              await knex("price").insert({
-                id: `price_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-                price_set_id: priceSetRow.price_set_id,
-                price_list_id: priceListId,
-                currency_code: currencyCode,
-                amount,
-                raw_amount: amount,
-                min_quantity: 1,
-                rules_count: 0,
-                created_at: now,
-                updated_at: now,
-              })
-            }
-
-            if (hasPriceUpdate) {
-              await upsertPrice(parsedPrice as number, null)
-            }
-
-            if (hasDiscountedPriceUpdate) {
-              const existingDiscountedPrice = await knex("price")
-                .where({
-                  price_set_id: priceSetRow.price_set_id,
-                  currency_code: currencyCode,
-                })
-                .whereNotNull("price_list_id")
-                .first("price_list_id")
-
-              let priceListId = existingDiscountedPrice?.price_list_id || null
-
-              if (!priceListId) {
-                const activePriceLists =
-                  typeof pricingModule?.listPriceLists === "function"
-                    ? await pricingModule.listPriceLists({ status: ["active"] }).catch(() => [])
-                    : []
-                const preferred =
-                  activePriceLists.find((pl: any) =>
-                    (pl?.title || "").toString().toLowerCase().includes("india")
-                  ) || activePriceLists[0]
-                priceListId = preferred?.id || null
-              }
-
-              if (priceListId) {
-                await upsertPrice(parsedDiscountedPrice as number, priceListId)
-              } else {
-                throw new Error("No active price list available for discounted price update")
-              }
-            }
-          }
-        }
-      } catch (priceUpdateError: any) {
-        console.error("Vendor product price update error:", priceUpdateError)
-        return res.status(500).json({ message: "Product details saved but failed to update price" })
-      }
+    if (matrixResponse) {
+      // A post-commit read failure must not report that the committed edit failed.
+      const matrix = await fetchProductVariantMatrix(req, productId).catch(() => null)
+      if (matrix) for (const variant of matrix.variants) variant.sku = publicVariantSku(updatedProduct, variant)
+      return res.json({ product_id: productId, product: updatedProduct, variant_matrix: matrix, metadata: updatedProduct.metadata })
     }
-
-    return res.json({ product: updatedProduct })
+    return res.json({ product: updatedProduct, variant_ids: body.variants?.map((row: { id: string }) => row.id), atomic_edit_version: 1 })
   } catch (error: any) {
     if (error instanceof CatalogConflict) return res.status(409).json({ error: "catalog_sku_conflict", message: error.message })
+    if (error instanceof ProductEditError) return res.status(error.status).json({ message: error.message })
+    if (error?.code === "23505") return res.status(409).json({ message: "SKU or product handle is already in use" })
     console.error("Vendor product update error:", error)
     return res.status(500).json({ message: error?.message || "Failed to update product" })
   }
