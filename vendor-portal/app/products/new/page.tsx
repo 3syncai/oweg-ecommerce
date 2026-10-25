@@ -747,7 +747,7 @@ const VendorProductNewPage = () => {
       toast.error("Error", { description: "Brand is required" })
       return
     }
-    if (sharedProduct && !brandAuthorizationFile && !sharedBrandAuthorizationKey) {
+    if (sharedProduct && brandNeedsAuthorization && !brandAuthorizationFile && !sharedBrandAuthorizationKey) {
       toast.error("Error", { description: "Upload your own brand authorization letter for this shared product" })
       return
     }
@@ -1953,7 +1953,7 @@ const VendorProductNewPage = () => {
     <VendorShell>
       <div className="p-4 md:p-8 max-w-[1200px] mx-auto">
         {(shareLoading || shareError || sharedProduct) && <div role="status" className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-          {shareLoading ? "Loading shared product and images…" : shareError || "Shared catalog product: review the details, then enter your own price and stock. Your brand authorization is still required."}
+          {shareLoading ? "Loading shared product and images…" : shareError || "Shared catalog product: review the details, then enter your own price and stock. An approved authorization for this brand is reused; otherwise upload a letter for review."}
         </div>}
         {sharedProduct && !shareError && formData.uploadedImages.length > 0 && <div className="mb-6 rounded-xl border border-ui-border-base p-4">
           <Text className="mb-3 font-medium">Catalog images</Text>
@@ -2093,7 +2093,7 @@ const VendorProductNewPage = () => {
           </Heading>
           <Text size="small" className="text-ui-fg-muted mb-3">
             Paste an oweg.in product URL or an admin Share link. A Share link fills the product
-            details, images, variants, and SKUs. Add your own MRP, stock, and brand authorization letter before submitting.
+            details, images, variants, and SKUs. Add your own MRP and stock. Your approved brand authorization is reused; otherwise upload a letter for review.
           </Text>
           <div className="flex flex-col sm:flex-row gap-3">
             <Input

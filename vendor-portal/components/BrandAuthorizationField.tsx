@@ -50,12 +50,6 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
         setAuthorizationFile(null)
         onFileSelect(null)
 
-        if (requireNewUpload) {
-            setAuthStatus("needs_upload")
-            onAuthorizationStatusChange(false, true)
-            return
-        }
-
         // Set checking status immediately for UX feedback
         setAuthStatus("checking")
 
@@ -80,6 +74,14 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
             if (currentBrandRef.current !== brandName || selectedFileRef.current) return
             const status =
                 data.status || (data.requires_authorization ? "missing" : "authorized")
+
+            // Shared listings can reuse this vendor's approved brand letter.
+            // Only unapproved shared listings need a new, share-bound upload.
+            if (requireNewUpload && status !== "authorized") {
+                setAuthStatus("needs_upload")
+                onAuthorizationStatusChange(false, true)
+                return
+            }
 
             if (status === "pending") {
                 setAuthStatus("pending")
