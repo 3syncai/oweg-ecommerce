@@ -1,0 +1,61 @@
+.mobileTools { display:none; }
+@media (max-width:767px) {
+  .dashboard { min-width:0; width:100%; padding:16px !important; background:transparent; border:0; box-shadow:none; }
+  .dashboard > * + * { margin-top:18px !important; }
+  .hero { padding:20px 18px 16px !important; border-radius:20px; box-shadow:0 8px 25px -20px #15432e80; }
+  .heroHeading { flex-wrap:nowrap; gap:10px; }
+  .heroHeading > div { min-width:0; }
+  .heroHeading h1 { font-size:21px; line-height:1.35; letter-spacing:-.035em; overflow-wrap:anywhere; }
+  .heroHeading p { font-size:11px; line-height:1.7; max-width:235px; }
+  .heroHeading > button { flex-shrink:0; width:36px; min-width:36px; height:36px; padding:0 !important; font-size:0; }
+  .heroHeading > button svg { width:17px; height:17px; }
+  .snapshots { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:20px; }
+  .snapshot { min-width:0; padding:12px; background:#ffffff0c; border-color:#ffffff24; border-radius:13px; backdrop-filter:none; }
+  .snapshot > div { align-items:flex-start; gap:7px; margin-bottom:10px; }
+  .snapshot > div > span { width:25px; height:25px; flex-shrink:0; }
+  .snapshot > div > span svg { width:13px; height:13px; }
+  .snapshot p { font-size:11px; line-height:1.5; }
+  .snapshot > p { font-size:23px; font-weight:650; line-height:1.3; letter-spacing:-.035em; overflow-wrap:anywhere; }
+  .snapshot a { min-height:28px; margin-top:4px; font-size:10px; }
+  .snapshot:last-child { grid-column:1/-1; display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:8px; align-items:center; }
+  .snapshot:last-child > div { margin:0; align-items:center; }
+  .snapshot:last-child > p { font-size:21px; text-align:right; }
+  .snapshot:last-child > a { grid-column:1/-1; justify-self:end; }
+  .mobileTools { display:grid; gap:14px; }
+  .actionGrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
+  .actionGrid a { display:flex; align-items:center; flex-direction:column; gap:9px; min-width:0; padding:14px 5px; border:1px solid var(--border-base); border-radius:14px; background:var(--bg-component); }
+  .actionGrid a > span { display:grid; place-items:center; height:35px; width:35px; color:#4e7440; background:#eff5e8; border-radius:11px; }
+  .actionGrid strong { color:var(--fg-subtle); font-size:11px; font-weight:550; text-align:center; }
+  .orderAction { display:flex; align-items:center; gap:11px; min-height:80px; padding:14px 12px; border:1px solid #dce8d5; border-radius:14px; background:#f3f7ec; }
+  .orderActionIcon { display:grid; place-items:center; height:37px; width:37px; flex-shrink:0; border:1px solid #dce8d5; border-radius:11px; background:var(--bg-component); color:#527541; }
+  .orderAction > span:nth-child(2) { min-width:0; flex:1; }
+  .orderAction strong { display:block; color:#3d5633; font-size:12px; font-weight:600; line-height:1.5; }
+  .orderAction small { display:block; margin-top:4px; color:#718165; font-size:10px; line-height:1.6; }
+  .orderAction > svg { flex-shrink:0; color:#638253; }
+  .workspaceGrid, .salesGrid { grid-template-columns:minmax(0,1fr); min-width:0; }
+  .workspaceGrid > *, .salesGrid > * { min-width:0; }
+  .kpiGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .kpiCard { min-width:0; padding:14px 12px; border-radius:15px; box-shadow:none; }
+  .kpiCard > div:first-child { align-items:center; gap:7px; }
+  .kpiCard > div:first-child p { font-size:12px; }
+  .kpiValue { flex-direction:column; align-items:flex-start; gap:5px; margin-top:7px; }
+  .kpiValue h2 { max-width:100%; font-size:23px; line-height:1.2; overflow-wrap:anywhere; }
+  .kpiValue p { font-size:10px; line-height:1.6; }
+  .kpiMetrics { gap:5px; margin-top:12px; }
+  .kpiMetrics > span { flex-wrap:wrap; column-gap:4px; width:100%; }
+  .kpiMetrics p { font-size:10px; }
+  .kpiCard > a { min-height:40px; font-size:11px; padding-top:12px; }
+  .desktopActions { display:none; }
+  :global(.dark) .actionGrid a > span { background:#25392c; color:#bcd6b5; }
+  :global(.dark) .orderAction { background:#223228; border-color:#354c37; }
+  :global(.dark) .orderAction strong { color:#c2d6ba; }
+  :global(.dark) .orderAction small { color:#9bad93; }
+}
+@media (max-width:359px) {
+  .dashboard { padding:12px !important; }
+  .hero { padding:16px 13px 13px !important; }
+  .heroHeading h1 { font-size:19px; }
+  .snapshot { padding:10px; }
+  .snapshot > p { font-size:21px; }
+  .kpiCard { padding:12px 10px; }
+}

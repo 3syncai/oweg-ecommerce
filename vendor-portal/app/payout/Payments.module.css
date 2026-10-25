@@ -1,0 +1,60 @@
+.activitySummary { list-style: none; pointer-events: none; }
+.activitySummary::-webkit-details-marker { display: none; }
+.activity > div { margin-top: 1rem; }
+.ledgerHint { display: none; }
+.mobileIntro { display: none; }
+
+@media (max-width: 767px) {
+  .page { padding: 18px 14px 24px; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+  .page > * + * { margin-top: 24px; }
+  .header { gap: 14px; }
+  .header h1 { font-size: 25px; line-height: 32px; }
+  .intro { display: none; }
+  .mobileIntro { display: block; margin-top: 8px; font-size: 12px; line-height: 19px; color: var(--fg-subtle, #66746e); }
+  .headerActions { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .headerActions button { min-height: 42px; }
+  .sectionHeading { align-items: flex-start; gap: 8px; }
+  .sectionHeading > div { min-width: 0; gap: 8px; }
+  .sectionHeading > div > div:first-child { flex-shrink: 0; }
+  .sectionHeading > span { flex-shrink: 0; padding: 4px 7px; }
+  .sectionHeading > span p { font-size: 10px; }
+  .balanceGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .balanceGrid > div { min-width: 0; padding: 14px; border-radius: 16px; }
+  .balanceGrid > div:hover { transform: none; }
+  .balanceGrid h2 { font-size: clamp(18px, 4.6vw, 24px); line-height: 1.3; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .balanceGrid > div > div:first-child { gap: 7px; margin-bottom: 10px; }
+  .balanceGrid p { font-size: 11px; line-height: 17px; }
+  .balanceGrid svg { width: 16px; height: 16px; }
+  .balanceGrid > div > div:first-child > div { padding: 6px; }
+  .balanceGrid .deduction { padding: 0; border: 0; }
+  .deductionCard { height: 100%; padding: 14px; border-radius: 16px; }
+  .deductionCard > div:first-child { gap: 7px; padding-right: 16px; margin-bottom: 10px; }
+  .deductionCard > div:first-child > div { display: none; }
+  .deduction > div:last-child { top: 9px; right: 9px; }
+  .deduction > div:last-child > button { width: 28px; height: 28px; }
+  .feePopover { width: min(288px, calc(100vw - 48px)); }
+  .balanceGrid .balanceHero { grid-column: 1 / -1; order: -1; padding: 22px; background: linear-gradient(120deg, #103f37, #176c54); color: #fff; border: 0; box-shadow: 0 8px 20px #123f3714; }
+  .balanceHero > div:first-child p, .balanceHero > div:last-child p { color: #d4e8df; }
+  .balanceHero > div:first-child > div { background: #ffffff1c; color: #c6efcf; }
+  .balanceHero h2 { font-size: 36px; line-height: 44px; color: inherit; letter-spacing: -1px; }
+  .balanceHero h2[class*="text-rose"] { color: #fecdd3; }
+  .balanceHero > div:last-child p[class*="text-rose"] { color: #fecdd3; }
+  .balanceGrid > div:nth-child(5) { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0 10px; }
+  .balanceGrid > div:nth-child(5) > div:first-child { margin-bottom: 0; }
+  .balanceGrid > div:nth-child(5) > div:last-child { margin-top: 0; }
+  .balanceGrid > div:nth-child(5) h2 { grid-column: 2; grid-row: 1 / 3; }
+  .formula { padding: 12px; }
+  .activity { border: 1px solid var(--border-base, #e1e7e3); border-radius: 18px; padding: 14px; background: var(--bg-base, #fff); }
+  .activitySummary { pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 32px; }
+  .activitySummary > div { flex: 1; }
+  .activitySummary::after { content: '+'; font-size: 21px; color: #397057; }
+  .activity[open] > .activitySummary::after { content: '−'; }
+  .activity > div > div { padding: 10px; box-shadow: none; }
+  .activity > div p { letter-spacing: 0; white-space: normal; overflow-wrap: anywhere; }
+  .filters { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; }
+  .filters button { flex-shrink: 0; min-height: 42px; }
+  .ledgerHint { display: block; font-size: 11px; color: var(--fg-muted, #68766d); }
+  .reportOverlay { padding: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .report { padding: 20px; max-height: calc(100dvh - 32px); overflow-y: auto; }
+  .report input { min-width: 0; }
+}
