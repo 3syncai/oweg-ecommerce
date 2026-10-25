@@ -1,5 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import Busboy from "busboy"
+import { boundedUpload } from "../../../../../../lib/bounded-upload"
 import * as path from "path"
 import * as fs from "fs"
 import { randomUUID } from "node:crypto"
@@ -126,7 +126,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     const s3FileUrl = process.env.S3_FILE_URL || `https://${s3Bucket}.s3.${s3Region}.amazonaws.com`
 
     const headers = (req as any).headers || {}
-    const bb = Busboy({ headers })
+    const bb = boundedUpload(headers, res)
     const results: Array<{ url: string; key: string; filename: string }> = []
     let fileCount = 0
     let pendingUploads = 0
@@ -331,7 +331,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     return res.json({ files: results })
   } catch (error: any) {
     console.error("Error in review media upload:", error)
-    return res.status(500).json({
+    return res.status([413, 429].includes(error?.statusCode) ? error.statusCode : 500).json({
       message: "Failed to upload media",
       error: error.message || "Unknown error",
     })
