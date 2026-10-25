@@ -14,6 +14,7 @@ import { useVendorLive } from "@/lib/useVendorLive"
 import { hasPageCache, peekPageCache, writePageCache } from "@/lib/page-cache"
 import { ArrowPath, CurrencyDollar, Clock, ArchiveBox, ShoppingCart, Tag } from "@medusajs/icons"
 import { ChevronLeft, ChevronRight } from "lucide-react"
+import styles from "./Payments.module.css"
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(amount)
@@ -203,7 +204,7 @@ const SectionHeading = ({
   subtitle?: string
   right?: React.ReactNode
 }) => (
-  <div className="flex items-baseline justify-between gap-3">
+  <div className={clx(styles.sectionHeading, "flex items-baseline justify-between gap-3")}>
     <div className="flex items-center gap-3">
       <div className="h-5 w-1 rounded-full bg-gradient-to-b from-oweg-400 to-oweg-600" />
       <div>
@@ -445,9 +446,9 @@ const VendorPayoutPage = () => {
     }
 
     content = (
-      <Container className="mx-auto max-w-7xl space-y-8 p-4 md:p-6 lg:p-8">
+      <Container className={clx(styles.page, "mx-auto max-w-7xl space-y-8 p-4 md:p-6 lg:p-8")}>
         {/* Page header */}
-        <div className="animate-fade-in-up flex flex-wrap items-start justify-between gap-4">
+        <div className={clx(styles.header, "animate-fade-in-up flex flex-wrap items-start justify-between gap-4")}>
           <div className="max-w-2xl">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-oweg-400 to-oweg-600 text-white shadow-md shadow-oweg-500/20">
@@ -457,12 +458,13 @@ const VendorPayoutPage = () => {
                 Payments
               </Heading>
             </div>
-            <Text size="small" className="mt-2 max-w-xl text-ui-fg-subtle leading-relaxed">
+            <p className={styles.mobileIntro}>Track earnings, deductions and bank settlements.</p>
+            <Text size="small" className={clx(styles.intro, "mt-2 max-w-xl text-ui-fg-subtle leading-relaxed")}>
               Settlement breakdown: listing total minus platform, commission, partner, logistics, TCS and TDS.
               Earnings unlock after the longer of the product&apos;s return or replacement window.
             </Text>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className={clx(styles.headerActions, "flex flex-wrap gap-2")}>
             <Button
               variant="secondary"
               disabled={!payments.settlements.length}
@@ -498,7 +500,7 @@ const VendorPayoutPage = () => {
             title="Balance"
             subtitle="Lifetime · not reset daily"
           />
-          <div className="oweg-stagger grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className={clx(styles.balanceGrid, "oweg-stagger grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4")}>
             <StatCard
               icon={<ShoppingCart />}
               label="Total sale"
@@ -509,12 +511,12 @@ const VendorPayoutPage = () => {
                 </Text>
               }
             />
-            <div className="relative">
+            <div className={clx(styles.deduction, "relative")}>
               <StatCard
                 icon={<Tag />}
                 label="Total deduction"
                 value={formatCurrency(taxesAndCommission)}
-                className="pr-10"
+                className={clx(styles.deductionCard, "pr-10")}
               />
               <div
                 className="absolute right-3 top-3 z-20"
@@ -541,6 +543,7 @@ const VendorPayoutPage = () => {
                 </button>
                 <div
                   className={clx(
+                    styles.feePopover,
                     "oweg-popover absolute right-0 top-full z-30 mt-2 w-72 rounded-2xl border border-ui-border-base/60 bg-ui-bg-base p-4 shadow-xl shadow-black/[0.08]",
                     feesInfoOpen ? "oweg-popover-open" : "oweg-popover-closed"
                   )}
@@ -646,11 +649,11 @@ const VendorPayoutPage = () => {
               icon={<CurrencyDollar className={isNegativeBalance ? "text-rose-600 dark:text-rose-400" : undefined} />}
               label="Balance"
               value={formatCurrency(balance)}
-              className={
+              className={clx(styles.balanceHero,
                 isNegativeBalance
                   ? "border-rose-500/40 bg-gradient-to-br from-rose-500/[0.12] via-ui-bg-base to-rose-50/40 dark:from-rose-500/[0.18] dark:to-ui-bg-base shadow-sm shadow-rose-500/[0.08]"
                   : undefined
-              }
+              )}
               subtext={
                 <Text
                   size="small"
@@ -668,7 +671,7 @@ const VendorPayoutPage = () => {
             />
           </div>
 
-          <div className="rounded-xl border border-ui-border-base/40 bg-ui-bg-subtle/30 px-4 py-2.5">
+          <div className={clx(styles.formula, "rounded-xl border border-ui-border-base/40 bg-ui-bg-subtle/30 px-4 py-2.5")}>
             <Text size="xsmall" className="text-ui-fg-muted leading-relaxed">
               <span className="font-medium text-ui-fg-subtle">Formula:</span>{" "}
               Pending unlocks after the product return/replacement window. Balance = Settlement −
@@ -678,10 +681,10 @@ const VendorPayoutPage = () => {
         </section>
 
         {/* ── Today's activity ── */}
-        <section
-          className="animate-fade-in-up-slow space-y-4"
+        <details open className={styles.activity}
           style={{ animationDelay: "140ms" }}
         >
+          <summary className={styles.activitySummary}>
           <SectionHeading
             title="Today's activity"
             right={
@@ -696,6 +699,7 @@ const VendorPayoutPage = () => {
               </span>
             }
           />
+          </summary>
           <div className="oweg-stagger grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
             <MetricChip
               label="Total sale"
@@ -742,7 +746,7 @@ const VendorPayoutPage = () => {
               </Text>
             </div>
           ) : null}
-        </section>
+        </details>
 
         {/* ── Settlement ledger ── */}
         <section
@@ -766,11 +770,12 @@ const VendorPayoutPage = () => {
 
           {(payments.settlements.filter(isLedgerDisplayRow).length > 0 ||
             filteredLedgerRows.length > 0) && (
-            <div className="flex flex-wrap gap-2">
+            <div className={clx(styles.filters, "flex flex-wrap gap-2")}>
               {LEDGER_FILTERS.map((option) => (
                 <button
                   key={option.key}
                   type="button"
+                  aria-pressed={ledgerFilter === option.key}
                   onClick={() => setLedgerFilter(option.key)}
                   className={clx(
                     "rounded-xl border px-3.5 py-2 text-xs font-semibold transition-all duration-200",
@@ -797,6 +802,7 @@ const VendorPayoutPage = () => {
             />
           ) : (
             <>
+              <p className={styles.ledgerHint}>Swipe the ledger sideways to see every fee and settlement detail.</p>
               <PaymentLedgerTable
                 rows={pagedLedgerRows}
                 onUnlock={() => void loadPayments()}
@@ -855,9 +861,9 @@ const VendorPayoutPage = () => {
 
         {/* ── Report modal ── */}
         {reportOpen ? (
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 backdrop-blur-sm sm:items-center">
+          <div className={clx(styles.reportOverlay, "fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 backdrop-blur-sm sm:items-center")}>
             <div
-              className="w-full max-w-md animate-fade-in-up rounded-2xl border border-ui-border-base/60 bg-ui-bg-base p-6 shadow-2xl shadow-black/10"
+              className={clx(styles.report, "w-full max-w-md animate-fade-in-up rounded-2xl border border-ui-border-base/60 bg-ui-bg-base p-6 shadow-2xl shadow-black/10")}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center gap-3 mb-1">

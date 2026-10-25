@@ -32,6 +32,8 @@ import { hasPageCache, peekPageCache, writePageCache } from "@/lib/page-cache"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import PageSkeleton from "@/components/PageSkeleton"
+import styles from "./Dashboard.module.css"
+import { Plus, Upload, Boxes, ArrowUpRight, ClipboardCheck } from "lucide-react"
 
 type VendorInfo = {
   name?: string
@@ -486,7 +488,7 @@ const KpiCard = ({
   footer: string
   metrics: Array<{ label: string; value: string | number; variant?: StatusVariant }>
 }) => (
-  <div className="flex h-full flex-col rounded-xl border border-black/5 bg-white p-3 shadow-sm dark:border-ui-border-base/70 dark:bg-ui-bg-base">
+  <div className={`${styles.kpiCard} flex h-full flex-col rounded-xl border border-black/5 bg-white p-3 shadow-sm dark:border-ui-border-base/70 dark:bg-ui-bg-base`}>
     <div className="mb-1.5 flex items-center gap-2">
       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-700 [&_svg]:h-3.5 [&_svg]:w-3.5 dark:bg-oweg-500/15 dark:text-oweg-700">
         {icon}
@@ -495,7 +497,7 @@ const KpiCard = ({
         {label}
       </Text>
     </div>
-    <div className="flex items-baseline gap-1.5">
+    <div className={`${styles.kpiValue} flex items-baseline gap-1.5`}>
       <Heading
         level="h2"
         className="text-[1.35rem] font-semibold leading-none tracking-tight text-zinc-900 dark:text-ui-fg-base md:text-[1.5rem]"
@@ -513,7 +515,7 @@ const KpiCard = ({
         {helper}
       </Text>
     ) : null}
-    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+    <div className={`${styles.kpiMetrics} mt-2 flex flex-wrap gap-x-3 gap-y-1`}>
       {metrics.map((metric) => (
         <span key={metric.label} className="flex items-center gap-1">
           <StatusDot variant={metric.variant || "neutral"} />
@@ -549,7 +551,7 @@ const SnapshotChip = ({
   icon: React.ReactNode
   hint?: string
 }) => (
-  <div className="min-w-[140px] flex-1 rounded-xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
+  <div className={`${styles.snapshot} min-w-[140px] flex-1 rounded-xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm`}>
     <div className="mb-2 flex items-center gap-2.5">
       <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white [&_svg]:h-4 [&_svg]:w-4">
         {icon}
@@ -704,10 +706,10 @@ const VendorDashboardPage = () => {
     const orderDelta = data.orders.today
 
     content = (
-      <Container className="mx-auto max-w-[1400px] space-y-3 bg-transparent p-3 md:p-4">
+      <Container className={`${styles.dashboard} mx-auto max-w-[1400px] space-y-3 bg-transparent p-3 md:p-4`}>
         {/* Hero */}
-        <section className="animate-fade-in-up relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0a3d32] via-[#0f5c45] to-[#147a56] p-3.5 text-white shadow-sm md:p-4">
-          <div className="relative flex flex-wrap items-start justify-between gap-2">
+        <section className={`${styles.hero} animate-fade-in-up relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0a3d32] via-[#0f5c45] to-[#147a56] p-3.5 text-white shadow-sm md:p-4`}>
+          <div className={`${styles.heroHeading} relative flex flex-wrap items-start justify-between gap-2`}>
             <div className="max-w-xl">
               <Heading level="h1" className="text-xl text-white md:text-2xl">
                 {getTimeGreeting()}, {displayName}! 👋
@@ -720,6 +722,7 @@ const VendorDashboardPage = () => {
               size="small"
               variant="secondary"
               disabled={refreshing}
+              aria-label="Refresh dashboard"
               className="!border-white/20 !bg-white/10 !text-white hover:!bg-white/15"
               onClick={() => void handleRefresh()}
             >
@@ -728,7 +731,7 @@ const VendorDashboardPage = () => {
             </Button>
           </div>
 
-          <div className="relative mt-3 flex flex-wrap gap-2">
+          <div className={`${styles.snapshots} relative mt-3 flex flex-wrap gap-2`}>
             <SnapshotChip
               href="/orders"
               label="Today's sales"
@@ -751,10 +754,23 @@ const VendorDashboardPage = () => {
           </div>
         </section>
 
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
+        <div className={styles.mobileTools}>
+          <nav aria-label="Quick store actions" className={styles.actionGrid}>
+            <Link href="/products/new"><span><Plus size={20} /></span><strong>Add product</strong></Link>
+            <Link href="/products/bulk-upload"><span><Upload size={20} /></span><strong>Bulk upload</strong></Link>
+            <Link href="/inventory"><span><Boxes size={20} /></span><strong>Inventory</strong></Link>
+          </nav>
+          <Link href="/orders" className={styles.orderAction}>
+            <span className={styles.orderActionIcon}><ClipboardCheck size={21} /></span>
+            <span><strong>{data.orders.toAccept > 0 ? `${data.orders.toAccept} ${data.orders.toAccept === 1 ? "order needs" : "orders need"} your attention` : "No orders waiting for acceptance"}</strong><small>{data.orders.toAccept > 0 ? "Review new orders and accept them on time" : "New orders will appear here when they arrive"}</small></span>
+            <ArrowUpRight size={18} />
+          </Link>
+        </div>
+
+        <div className={`${styles.workspaceGrid} grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]`}>
           <div className="space-y-3">
             {/* KPI grid — keep both rows visible without scrolling */}
-            <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+            <div className={`${styles.kpiGrid} grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3`}>
               <KpiCard
                 href="/products"
                 icon={<Tag />}
@@ -882,7 +898,7 @@ const VendorDashboardPage = () => {
             </div>
 
             {/* Sales + top products */}
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.9fr)]">
+            <div className={`${styles.salesGrid} grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.9fr)]`}>
               <div className="rounded-2xl border border-black/5 bg-white p-4 shadow-sm dark:border-ui-border-base/70 dark:bg-ui-bg-base md:p-5">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <Text weight="plus" className="text-[15px] text-zinc-900 dark:text-ui-fg-base">
@@ -947,7 +963,7 @@ const VendorDashboardPage = () => {
           </div>
 
           <aside className="space-y-4">
-            <DashboardQuickActions />
+            <div className={styles.desktopActions}><DashboardQuickActions /></div>
             <DashboardAnnouncements />
           </aside>
         </div>

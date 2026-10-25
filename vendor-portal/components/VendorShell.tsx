@@ -330,6 +330,14 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
     : navItems.flatMap((item) => [...(item.children || []), item]).find((item) => pathname === item.path)?.label
       || navItems.find((item) => pathname?.startsWith(item.path))?.label || "Workspace"
   const closeNavigation = () => { setMobileMenuOpen(false); setAccountMenuOpen(false) }
+  const mobileTabs = [
+    { label: "Home", path: "/dashboard", icon: LayoutDashboard },
+    { label: "Orders", path: "/orders", icon: ShoppingBag },
+    { label: "Products", path: "/products", icon: Tag },
+    { label: "Payments", path: "/payout", icon: WalletCards },
+  ]
+  const primaryMobileRoute = mobileTabs.some(tab => activePath === tab.path)
+
 
   return (
     <div className={styles.shell}>
@@ -415,13 +423,31 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
       <div ref={contentRef} className={styles.content}>
         <header className={styles.topbar}>
           <div className={styles.pageContext}>
-            <button ref={menuButtonRef} type="button" className={styles.menuButton} aria-label="Open navigation"
-              aria-expanded={mobileMenuOpen} aria-controls="vendor-navigation" onClick={() => setMobileMenuOpen(true)}><Menu size={21} /></button>
+            <Link href="/dashboard" className={styles.mobileIdentity} aria-label="OWEG vendor home">
+              <Image src={platformLogo} alt="OWEG" width={74} height={26} />
+              <span><strong>{vendorInfo?.store_name || "Your store"}</strong><small>{currentPage}</small></span>
+            </Link>
             <div className={styles.breadcrumb}><span>Workspace</span><span aria-hidden="true">/</span><strong>{currentPage}</strong></div>
           </div>
           <VendorNotifications />
         </header>
         <main className={clx(styles.main, "oweg-scroll bg-oweg-page")}>{children}</main>
+        <nav className={styles.mobileDock} aria-label="Mobile vendor navigation">
+          {mobileTabs.map(tab => {
+            const Icon = tab.icon
+            const active = activePath === tab.path
+            return <Link key={tab.path} href={tab.path} className={styles.dockItem} aria-current={active ? "page" : undefined} onClick={closeNavigation}>
+              <span className={styles.dockIcon}><Icon size={21} strokeWidth={1.7} aria-hidden="true" />
+                {tab.path === "/orders" && toAcceptCount > 0 && <span className={styles.dockBadge} aria-label={`${toAcceptCount} orders to accept`}>{toAcceptCount > 99 ? "99+" : toAcceptCount}</span>}
+              </span>
+              <span>{tab.label}</span>
+            </Link>
+          })}
+          <button ref={menuButtonRef} type="button" className={styles.dockItem} aria-label="More vendor options" aria-expanded={mobileMenuOpen} aria-controls="vendor-navigation"
+            data-active={!primaryMobileRoute || mobileMenuOpen || undefined} onClick={() => setMobileMenuOpen(true)}>
+            <span className={styles.dockIcon}><Menu size={21} strokeWidth={1.7} aria-hidden="true" /></span><span>More</span>
+          </button>
+        </nav>
       </div>
 
       <VendorSettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />

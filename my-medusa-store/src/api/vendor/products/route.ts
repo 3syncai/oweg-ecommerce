@@ -177,6 +177,9 @@ async function createOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
     // A submitted letter is enough to create a draft for admin review.
     // Publication still requires the letter to be verified by an admin.
     const brandName = (metadata?.brand || "UNBRANDED").toString().trim()
+    if (sharedProduct && brandName.toLowerCase() !== String(sharedProduct.metadata?.brand || "UNBRANDED").trim().toLowerCase()) {
+      return res.status(409).json({ message: "The brand must match the shared product." })
+    }
 
     try {
       const brandAuthService = req.scope.resolve("vendorBrandAuthorization") as any
@@ -192,7 +195,9 @@ async function createOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
           brand_name: brandName,
         })
       }
-      if (sharedProduct && (
+      // Approval belongs to the receiving vendor and brand, not one shared link.
+      // An unverified letter must still belong to this share before draft creation.
+      if (sharedProduct && !authorization.verified && (
         !body.shared_brand_authorization_key ||
         body.shared_brand_authorization_key !== authorization.authorization_file_key ||
         authorization.metadata?.shared_product_id !== sharedProduct.id ||
