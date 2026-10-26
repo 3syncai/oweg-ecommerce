@@ -1,4 +1,5 @@
 import type { DetailedProduct } from "./medusa"
+import { isVariantPurchasable } from "./stock-availability"
 
 type Card = {
   id: string | number
@@ -43,8 +44,7 @@ export function groupCatalogProductCards<T extends Card>(cards: T[]): T[] {
 const normalized = (value: string) => value.trim().toLocaleLowerCase()
 const isDefault = (title: string, value: string) =>
   ["default", "default option"].includes(normalized(title)) && normalized(value) === "default"
-const available = (variant: DetailedProduct["variants"][number]) =>
-  variant.manage_inventory === false || variant.allow_backorder === true || (variant.inventory_quantity || 0) > 0
+const available = isVariantPurchasable
 
 /** Combine the size/colour matrix across every approved seller listing. */
 export function mergeCatalogProductDetails(products: DetailedProduct[], catalogId: string): DetailedProduct {

@@ -2,6 +2,8 @@
 
 import { getPriceListPrices } from "./price-lists";
 import { mergeCatalogProductDetails } from "./catalog-product-group";
+import { isVariantPurchasable } from "./stock-availability";
+export { isVariantPurchasable } from "./stock-availability";
 
 export type MedusaCategory = {
   id: string;
@@ -1206,17 +1208,6 @@ export function toDetailedProduct(p: MedusaProduct): DetailedProduct {
     metadata:
       Object.keys(normalizedMetadata).length > 0 ? normalizedMetadata : null,
   };
-}
-
-// A variant is purchasable when inventory is unmanaged, backorders are allowed, or there is stock.
-export function isVariantPurchasable(v: {
-  manage_inventory?: boolean;
-  allow_backorder?: boolean;
-  inventory_quantity?: number;
-}): boolean {
-  if (v.manage_inventory === false) return true;
-  if (v.allow_backorder === true) return true;
-  return typeof v.inventory_quantity === "number" && v.inventory_quantity > 0;
 }
 
 function computeUiPriceForVariant(
