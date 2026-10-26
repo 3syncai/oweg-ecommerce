@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
-import { publicVariantSku } from "./catalog-identity"
+import { publicVariantSku, readCatalog } from "./catalog-identity"
+import { mergeApprovedCatalogVariants } from "./shared-catalog-offer"
 
 export function issueProductShare() {
   const token = randomBytes(32).toString("base64url")
@@ -37,5 +38,6 @@ export async function loadShareProduct(scope: any, id: string) {
   const { data } = await scope.resolve("query").graph({ entity: "product", filters: { id },
     fields: ["id", "title", "subtitle", "description", "metadata", "images.*", "thumbnail", "weight", "height", "width", "length", "collection_id", "type_id", "categories.id", "tags.value", "options.*", "options.values.*", "variants.id", "variants.title", "variants.sku", "variants.options.*", "variants.options.option.title"],
   })
-  return data?.[0]
+  const product = data?.[0]
+  return product ? mergeApprovedCatalogVariants(product, await readCatalog(scope)) : undefined
 }

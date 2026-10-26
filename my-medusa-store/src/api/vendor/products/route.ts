@@ -1,4 +1,5 @@
 import { loadShareProduct, sharedProductDraft, validProductShare } from "../../../lib/product-share"
+import { prepareSharedCatalogOffer } from "../../../lib/shared-catalog-offer"
 import { CatalogConflict, cleanVendorMetadata, prepareCatalogOffer, publicVariantSku, withCatalogLock } from "../../../lib/catalog-identity"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
@@ -143,9 +144,6 @@ async function createOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
       const shared = await loadShareProduct(req.scope, body.shared_product_id)
       if (!validProductShare(shared, body.share_token)) return res.status(404).json({ message: "Shared product link expired. Ask the admin for a new link." })
       sharedProduct = shared
-      const submitted = body.variants || []
-      const allowedSkus = new Set((shared.variants || []).map((v: any) => publicVariantSku(shared, v).toUpperCase()))
-      if (!submitted.length || submitted.some((v: any) => !allowedSkus.has(String(v.sku || "").trim().toUpperCase()))) return res.status(409).json({ message: "Use only the SKUs from the shared product." })
     }
     const {
       title,
@@ -213,7 +211,9 @@ async function createOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
       return res.status(503).json({ message: "Brand authorization is temporarily unavailable. Please try again." })
     }
 
-    const offer = await prepareCatalogOffer(req.scope, auth.vendor_id, body)
+    const offer = sharedProduct
+      ? await prepareSharedCatalogOffer(req.scope, auth.vendor_id, body, sharedProduct)
+      : await prepareCatalogOffer(req.scope, auth.vendor_id, body)
 
     // Get default shipping profile if not provided
     let finalShippingProfileId = shipping_profile_id
