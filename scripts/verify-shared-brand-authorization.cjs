@@ -60,6 +60,9 @@ async function createProduct({ authorization, shared = true, submittedBrand = 'P
   const source = { id: 'source-product', metadata: { brand: 'Pigeon', catalog_share_hash: 'fixture-share-hash' }, variants: [{ sku: 'PIGEON-1' }] }
   const route = compile('my-medusa-store/src/api/vendor/products/route.ts', name => {
     if (name.endsWith('/product-share')) return { loadShareProduct: async () => source, validProductShare: () => validLink }
+    if (name.endsWith('/shared-catalog-offer')) return {
+      prepareSharedCatalogOffer: async (_scope, vendorId) => { downstream.push(vendorId); throw Error('TEST_STOP_BEFORE_PRODUCT_CREATION') },
+    }
     if (name.endsWith('/catalog-identity')) return {
       CatalogConflict, withCatalogLock: async (_scope, fn) => fn(), publicVariantSku: (_product, variant) => variant.sku,
       prepareCatalogOffer: async (_scope, vendorId) => { downstream.push(vendorId); throw Error('TEST_STOP_BEFORE_PRODUCT_CREATION') },

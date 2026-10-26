@@ -82,6 +82,7 @@ export default async function verify({ container }: { container: any }) {
   const concurrent = await Promise.all([invoke(createOffer, vendorC, payload(700, 3)), invoke(createOffer, vendorC, payload(800, 5))])
   assert.deepEqual(concurrent.map(r => r.status).sort(), [200, 409])
   const refreshed = await loadShareProduct(container, original.id)
+  if (!refreshed?.metadata) throw new Error("Shared catalog product is missing after verification")
   assert.equal(refreshed.metadata.vendor_id, vendorA.id)
   console.log("CATALOG QA PASS: authenticated share, images, token rejection, independent prices/inventory, stock updates, SKU conflict, same-vendor duplicate, concurrent submissions, brand authorization")
 }

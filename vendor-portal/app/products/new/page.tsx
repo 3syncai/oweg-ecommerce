@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { BrandAuthorizationField } from "@/components/BrandAuthorizationField"
 import GstTaxCodeField from "@/components/GstTaxCodeField"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
+import SharedVariantRequests, { type SharedCatalogVariant } from "@/components/SharedVariantRequests"
 import { apiRequest, vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorTypesApi, vendorInventoryApi, vendorShippingApi, logApiFailure } from "@/lib/api/client"
 import { DEFAULT_LOGISTICS_FEE } from "@/lib/pricingConfig"
 import {
@@ -86,7 +87,7 @@ type ProductFormData = {
 const VendorProductNewPage = () => {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [sharedProduct, setSharedProduct] = useState<{ id: string; token: string } | null>(null)
+  const [sharedProduct, setSharedProduct] = useState<{ id: string; token: string; variants: SharedCatalogVariant[] } | null>(null)
   const [shareLoading, setShareLoading] = useState(false)
   const [shareError, setShareError] = useState("")
   const [categories, setCategories] = useState<any[]>([])
@@ -217,7 +218,7 @@ const VendorProductNewPage = () => {
       .then(({ product: p }) => {
         if (cancelled) return
         const m = p.metadata || {}
-        setSharedProduct({ id, token })
+        setSharedProduct({ id, token, variants: (p.variants || []).map((variant: { sku: string; options: Record<string, string> }) => ({ sku: variant.sku, options: variant.options || {} })) })
         setSharedBrandAuthorizationKey(null)
         setFormData(prev => ({ ...prev,
           title: p.title || "", subtitle: p.subtitle || "", description: htmlToEditableDescription(p.description || ""),
@@ -817,6 +818,13 @@ const VendorProductNewPage = () => {
     }
 
     const skus = formData.variants.map((v) => v.sku.trim()).filter(Boolean)
+    if (sharedProduct) {
+      const incomplete = formData.variants.slice(sharedProduct.variants.length).find(variant => !Number.isFinite(Number(variant.price)) || Number(variant.price) <= 0)
+      if (incomplete) {
+        toast.error("New variant needs an MRP", { description: `Set an MRP greater than zero for ${incomplete.sku || "the requested variant"} before submitting.` })
+        return
+      }
+    }
     const skuValidation = validateProductSkus(skus, usedSkus)
     if (!skuValidation.ok) {
       toast.error(skuValidation.title, { description: skuValidation.description })
@@ -1918,6 +1926,8 @@ const VendorProductNewPage = () => {
         }))
       }
       productOptions={formData.productOptions}
+      optionsReadOnly={Boolean(sharedProduct)}
+      fixedSkuRows={sharedProduct?.variants.length || 0}
       onProductOptionsChange={(productOptions) =>
         setFormData((prev) => ({ ...prev, productOptions }))
       }
@@ -1954,7 +1964,7 @@ const VendorProductNewPage = () => {
     <VendorShell>
       <div className="p-4 md:p-8 max-w-[1200px] mx-auto">
         {(shareLoading || shareError || sharedProduct) && <div role="status" className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-          {shareLoading ? "Loading shared product and images…" : shareError || "Shared catalog product: review the details, then enter your own price and stock. An approved authorization for this brand is reused; otherwise upload a letter for review."}
+          {shareLoading ? "Loading shared product and images…" : shareError || "Shared catalog product: set your price and stock, or add a new variant for review. The full listing needs admin approval. Your approved brand authorization is reused."}
         </div>}
         {sharedProduct && !shareError && formData.uploadedImages.length > 0 && <div className="mb-6 rounded-xl border border-ui-border-base p-4">
           <Text className="mb-3 font-medium">Catalog images</Text>
@@ -2139,6 +2149,12 @@ const VendorProductNewPage = () => {
 
         {renderBasicsSection()}
         {renderVariantsSection()}
+        {sharedProduct && !shareError && <SharedVariantRequests
+          catalog={sharedProduct.variants}
+          variants={formData.variants}
+          onAdd={variant => setFormData(prev => ({ ...prev, variants: [...prev.variants, variant] }))}
+          onRemove={index => setFormData(prev => ({ ...prev, variants: prev.variants.filter((_, i) => i !== index) }))}
+        />}
         {renderOrganizeSection()}
 
         <div className="flex justify-end gap-3 mt-4 pb-8">

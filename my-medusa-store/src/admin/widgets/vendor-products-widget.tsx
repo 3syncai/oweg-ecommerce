@@ -48,6 +48,7 @@ type VendorProduct = {
       vendor_id?: string
     }>
     last_vendor_changed_fields?: string[]
+    catalog_variant_requests?: Array<{ sku: string; options: Record<string, string>; status: string }>
     mid_code?: string
     hs_code?: string
     country_of_origin?: string
@@ -237,6 +238,9 @@ const VendorProductsWidget = () => {
       if (response.ok) {
         fetchPendingProducts()
         setSelectedProduct(null)
+      } else {
+        const result = await response.json()
+        alert(result.message || "Unable to approve this listing. Please review its variants.")
       }
     } catch (error) {
       console.error("Failed to approve product:", error)
@@ -462,6 +466,14 @@ const VendorProductsWidget = () => {
   if (selectedProduct) {
     return (
       <Container className="p-6">
+        {selectedProduct.metadata?.catalog_variant_requests?.length ? <div className="mb-6 space-y-3 rounded-lg border border-ui-border-base p-4">
+          <Heading level="h3">New catalog variants requested</Heading>
+          <Text size="small">Approving this listing also approves these new combinations for this catalog product. Other vendors&apos; prices and stock are unchanged.</Text>
+          {selectedProduct.metadata.catalog_variant_requests.map(request => <div key={request.sku} className="flex flex-wrap items-center justify-between gap-2 border-t border-ui-border-base pt-3">
+            <div><Text weight="plus">{request.sku}</Text><Text size="small">{Object.entries(request.options).map(([name, value]) => `${name}: ${value}`).join(" · ")}</Text></div>
+            <Badge color="orange">Pending listing approval</Badge>
+          </div>)}
+        </div> : null}
         <div style={{ marginBottom: 24 }}>
           <Button variant="secondary" onClick={() => setSelectedProduct(null)}>
             ← Back to list
