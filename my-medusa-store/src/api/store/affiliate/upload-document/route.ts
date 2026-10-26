@@ -1,6 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
-import Busboy from "busboy"
+import { boundedUpload } from "../../../../lib/bounded-upload"
 import path from "path"
 import { randomUUID } from "crypto"
 
@@ -63,7 +63,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     const s3FileUrl = process.env.S3_FILE_URL || `https://${s3Bucket}.s3.${s3Region}.amazonaws.com`
 
     const headers = (req as any).headers || {}
-    const bb = Busboy({ headers })
+    const bb = boundedUpload(headers, res)
     const results: Array<{ url: string; key: string; filename: string; originalName: string; fieldName: string }> = []
     let fileCount = 0
     let pendingUploads = 0
@@ -195,7 +195,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     })
   } catch (error: any) {
     console.error("Document upload error:", error)
-    return res.status(500).json({
+    return res.status([413, 429].includes(error?.statusCode) ? error.statusCode : 500).json({
       message: "Failed to upload documents",
       error: error?.message || String(error),
     })

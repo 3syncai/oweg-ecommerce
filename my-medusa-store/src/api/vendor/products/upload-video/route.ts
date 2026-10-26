@@ -1,6 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireVendorAuth } from "../../_lib/guards"
-import Busboy from "busboy"
+import { boundedUpload } from "../../../../lib/bounded-upload"
 import * as path from "path"
 import * as fs from "fs"
 import { randomUUID } from "node:crypto"
@@ -154,7 +154,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     const s3FileUrl = s3PublicBaseUrl(s3Bucket, s3Region)
 
     const headers = (req as any).headers || {}
-    const bb = Busboy({ headers })
+    const bb = boundedUpload(headers, res, { fileSize: 100 * 1024 * 1024, files: 1, totalSize: 100 * 1024 * 1024 })
     const results: Array<{ url: string; key: string; filename: string; originalName: string }> = []
     let pendingUploads = 0
     let busboyFinished = false
@@ -391,7 +391,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
       name: error?.name,
       code: error?.code,
     })
-    return res.status(500).json({
+    return res.status([413, 429].includes(error?.statusCode) ? error.statusCode : 500).json({
       message: "Failed to upload videos",
       error: error.message || "Unknown error",
     })

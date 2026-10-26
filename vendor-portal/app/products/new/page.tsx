@@ -23,7 +23,7 @@ import {
   type VariantMatrixRow,
 } from "@/lib/variant-matrix"
 import { buildUsedSkuSet, validateProductSkus } from "@/lib/sku-validation"
-import { stripDescriptionSectionHeadings, toProductDescriptionHtml } from "@/lib/plain-description"
+import { htmlToEditableDescription, toProductDescriptionHtml } from "@/lib/plain-description"
 import axios from "axios"
 import Image from "next/image"
 
@@ -221,7 +221,7 @@ const VendorProductNewPage = () => {
         setSharedProduct({ id, token, variants: (p.variants || []).map((variant: { sku: string; options: Record<string, string> }) => ({ sku: variant.sku, options: variant.options || {} })) })
         setSharedBrandAuthorizationKey(null)
         setFormData(prev => ({ ...prev,
-          title: p.title || "", subtitle: p.subtitle || "", description: stripDescriptionSectionHeadings(p.description || ""),
+          title: p.title || "", subtitle: p.subtitle || "", description: htmlToEditableDescription(p.description || ""),
           brand: m.brand || "UNBRANDED", handle: "", thumbnailUrl: p.thumbnail || null,
           uploadedImages: (p.images || []).map((image: any) => ({ url: image.url, key: "", filename: "", originalName: "Catalog image" })),
           uploadedVideos: (m.videos || []).map((video: any) => ({ url: typeof video === "string" ? video : video.url, key: "", filename: "", originalName: "Catalog video" })),
@@ -276,6 +276,7 @@ const VendorProductNewPage = () => {
     if (!availableDraft?.formData) return
     setFormData({
       ...availableDraft.formData,
+      description: htmlToEditableDescription(availableDraft.formData.description || ""),
     })
     if (availableDraft.logisticsEstimate) {
       setLogisticsEstimate(availableDraft.logisticsEstimate)
@@ -472,7 +473,7 @@ const VendorProductNewPage = () => {
         ...prev,
         title: draft.title || prev.title,
         handle: draft.handle || prev.handle,
-        description: stripDescriptionSectionHeadings(draft.description || prev.description),
+        description: htmlToEditableDescription(draft.description || prev.description),
         brand: draft.brand || prev.brand,
         hasVariants,
         productOptions,

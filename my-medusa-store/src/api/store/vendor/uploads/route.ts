@@ -1,6 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
-import Busboy from "busboy"
+import { boundedUpload } from "../../../../lib/bounded-upload"
 import path from "path"
 import { randomUUID } from "crypto"
 import { verifyVendorToken } from "../../../vendor/_lib/token"
@@ -69,7 +69,7 @@ function readPublishableKey(req: MedusaRequest): string {
   ).trim()
 }
 
-function readVendorClaims(req: MedusaRequest) {
+async function readVendorClaims(req: MedusaRequest) {
   const headers = (req as any).headers || {}
   const rawAuth = String(headers.authorization || headers.Authorization || "")
   const token = rawAuth.startsWith("Bearer ") ? rawAuth.slice(7).trim() : ""
@@ -103,7 +103,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       })
     }
 
-    const vendorClaims = readVendorClaims(req)
+    const vendorClaims = await readVendorClaims(req)
 
     const { s3Region, s3AccessKeyId, s3SecretAccessKey, s3Bucket } = getS3Config()
 
@@ -129,7 +129,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         : `https://${s3Bucket}.s3.${s3Region}.amazonaws.com`
 
     const headers = (req as any).headers || {}
-    const bb = Busboy({ headers, limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } })
+    const bb = boundedUpload(headers, res, { files: 1, totalSize: MAX_UPLOAD_BYTES })
 
     const results: Array<{
       url: string
