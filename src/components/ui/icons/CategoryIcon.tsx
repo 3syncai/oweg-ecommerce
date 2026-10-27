@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { catalogIconSrc } from "@/lib/catalog-icons";
 
 export type CategoryIconKey =
   | "home-appliances"
@@ -166,7 +167,9 @@ export default function CategoryIcon({
 }: CategoryIconProps) {
   const resolvedKey = iconKey ?? resolveCategoryIconKey(handle, title);
 
-  if (resolvedKey === "default") {
+  const suppliedSrc = catalogIconSrc("category", handle, title);
+
+  if (resolvedKey === "default" && !suppliedSrc) {
     return (
       <DefaultCategoryIcon
         className={`shrink-0 transition-all ${active ? "text-header-accent opacity-100 scale-105" : "text-header-muted opacity-80 group-hover:text-header-accent group-hover:opacity-100"} ${className}`}
@@ -174,15 +177,15 @@ export default function CategoryIcon({
     );
   }
 
-  const filename = CATEGORY_SVG_FILES[resolvedKey];
-  const src = `/icons/categories/${filename}`;
+  const filename = resolvedKey === "default" ? undefined : CATEGORY_SVG_FILES[resolvedKey];
+  const src = suppliedSrc || `/icons/categories/${filename}`;
 
   return (
     <img
       src={src}
       alt=""
       aria-hidden="true"
-      className={`shrink-0 object-contain transition-all ${active ? "opacity-100 scale-105" : "opacity-80 group-hover:opacity-100 group-hover:scale-105"} ${className}`}
+      className={`shrink-0 object-contain transition-all ${active ? "opacity-100 scale-105" : "opacity-100 group-hover:scale-105"} ${className}`}
     />
   );
 }

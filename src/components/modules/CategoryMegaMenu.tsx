@@ -201,6 +201,7 @@ export default function CategoryMegaMenu({
           <div className="flex min-h-0 flex-col rounded-xl bg-[#EAF8E7] p-4">
             {config?.featured ? (
               <div className="shrink-0">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#557647]">Everyday finds</p>
                 <p className="text-lg font-bold leading-tight text-[#1F2A33]">
                   {config.featured.headline}
                 </p>
@@ -224,15 +225,9 @@ export default function CategoryMegaMenu({
               </div>
             ) : null}
 
-            {config?.featured ? (
-              <Link
-                href={config.featured.ctaHref}
-                className="mt-3 inline-flex shrink-0 items-center justify-center rounded-lg bg-[#66C940] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#57b536]"
-                onClick={onClose}
-              >
-                {config.featured.ctaLabel}
-              </Link>
-            ) : null}
+            <p className="mt-3 border-t border-[#C8EAC0] pt-3 text-xs leading-relaxed text-[#557647]">
+              A little inspiration for your everyday.
+            </p>
           </div>
         </aside>
       ) : null}
