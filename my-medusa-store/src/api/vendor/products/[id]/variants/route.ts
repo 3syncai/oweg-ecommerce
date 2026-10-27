@@ -1,4 +1,5 @@
 import { CatalogConflict, protectCatalogEdit, publicVariantSku, withCatalogLock } from "../../../../../lib/catalog-identity"
+import { variantPricesError } from "../../../../../lib/variant-pricing"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../../../_lib/guards"
 import { Modules, ProductStatus } from "@medusajs/framework/utils"
@@ -75,6 +76,18 @@ async function updateOfferVariants(req: MedusaRequest, res: MedusaResponse, auth
       Array.isArray(optionUpdates) &&
       optionUpdates.length > 0 &&
       Array.isArray(variantUpdates)
+
+    if (Array.isArray(variantUpdates)) {
+      const current = await fetchProductVariantMatrix(req, productId)
+      const rows = variantUpdates.map((row: Record<string, unknown>) => {
+        const saved = current.variants.find(variant => variant.id === row.id)
+        return { title: String(row.title || saved?.title || "Variant"), sku: String(row.sku || saved?.sku || ""),
+          price: row.price !== undefined ? row.price : saved?.price,
+          discounted_price: row.discounted_price !== undefined ? row.discounted_price : saved?.discounted_price }
+      })
+      const pricingError = variantPricesError(rows)
+      if (pricingError) return res.status(400).json({ message: pricingError })
+    }
 
     if (wantsFullMatrixSync) {
       const syncOptions = (optionUpdates as Array<Record<string, unknown>>)

@@ -1,5 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules, ProductStatus, ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { variantPricesError } from "../../../../../../lib/variant-pricing"
+import { fetchProductVariantMatrix } from "../../../../../../lib/vendor-product-variants"
 import client from "../../../../../../utils/opensearch"
 import { PRODUCTS_INDEX, buildSearchDocument, ensureProductsIndex } from "../../../../../../utils/search-index"
 import { CatalogConflict, withCatalogLock } from "../../../../../../lib/catalog-identity"
@@ -29,6 +31,10 @@ const approveProduct = async (req: MedusaRequest, res: MedusaResponse) => {
         message: `Approve the brand authorization letter for "${brandName}" before publishing this product`,
       })
     }
+
+    const matrix = await fetchProductVariantMatrix(req, id)
+    const pricingError = variantPricesError(matrix.variants)
+    if (pricingError) return res.status(400).json({ message: pricingError })
 
     const reviewedVariants = await reviewCatalogVariantRequests(req.scope, existingProduct as any)
     // The listing and its requested variants become approved together.

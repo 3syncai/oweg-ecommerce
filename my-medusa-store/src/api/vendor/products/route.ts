@@ -12,6 +12,7 @@ import {
   sanitizeColorImages,
   attachVariantThumbnails,
 } from "../../../lib/variant-matrix"
+import { variantPricesError } from "../../../lib/variant-pricing"
 import { syncVariantThumbnailsFromColorImages } from "../../../lib/vendor-product-variants"
 import { releaseOrphanInventorySkus } from "../../../lib/release-sku"
 import {
@@ -227,6 +228,14 @@ async function createOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
 
     console.log("Received variants:", JSON.stringify(variants, null, 2))
     console.log("Received options:", JSON.stringify(options, null, 2))
+
+    const pricingError = variantPricesError((offer.variants || []).map(variant => {
+      const base = variant.prices?.find(price => !price.price_list_id)
+      const sales = variant.prices?.filter(price => price.price_list_id) || []
+      return { title: variant.title, sku: variant.sku, price: base?.amount,
+        discounted_price: sales.length ? Math.max(...sales.map(price => Number(price.amount))) : undefined }
+    }))
+    if (pricingError) return res.status(400).json({ message: pricingError })
 
     const normalized = normalizeOptionsAndVariants(options, offer.variants)
     if (normalized.error) {

@@ -60,6 +60,9 @@ const VariantDiscountCell = ({
   price: string
   discountedPrice: string
 }) => {
+  if (price.trim() && discountedPrice.trim() && Number(discountedPrice) > Number(price)) {
+    return <span role="status" className="text-xs text-red-600">Sale exceeds MRP</span>
+  }
   const discountPercent = computeDiscountPercent(price, discountedPrice)
   if (discountPercent === null) {
     return <span className="text-ui-fg-muted">—</span>

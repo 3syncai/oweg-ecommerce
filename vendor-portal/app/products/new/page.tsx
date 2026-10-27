@@ -24,6 +24,7 @@ import {
 } from "@/lib/variant-matrix"
 import { buildUsedSkuSet, validateProductSkus } from "@/lib/sku-validation"
 import { htmlToEditableDescription, toProductDescriptionHtml } from "@/lib/plain-description"
+import { variantPricesError } from "@/lib/variant-pricing"
 import axios from "axios"
 import Image from "next/image"
 
@@ -767,12 +768,11 @@ const VendorProductNewPage = () => {
       return
     }
 
-    const hasValidPrice = formData.variants.some((v) => {
-      const price = parseFloat(v.price)
-      return Number.isFinite(price) && price > 0
-    })
-    if (!hasValidPrice) {
-      toast.error("Error", { description: "At least one variant must have an MRP greater than 0" })
+    const pricingError = variantPricesError(formData.variants.map(row => ({
+      ...row, discounted_price: row.discountedPrice,
+    })))
+    if (pricingError) {
+      toast.error("Check variant pricing", { description: pricingError })
       return
     }
 

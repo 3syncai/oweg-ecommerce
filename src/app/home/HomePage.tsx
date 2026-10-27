@@ -163,7 +163,7 @@ const HERO_SLIDES = [
 ];
 
 const BAG_SECTION_BANNERS = [
-  { image: '/Mixer_banner.png', href: '/c/mixer-grinders', alt: 'Shop mixer grinders' },
+  { image: '/Mixer_banner.png', href: '/c/kitchen-appliances/kitchen-appliances-mixer-grinders-juicer', alt: 'Shop mixer grinders' },
 ];
 
 // Portrait-friendly artwork used for the hero on small screens (source ratio ~2:1),
