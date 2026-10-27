@@ -1,0 +1,105 @@
+PASS src/lib/__tests__/vendor-payments-ledger-parity.unit.spec.ts
+PASS src/lib/__tests__/vendor-ledger-settlement.unit.spec.ts
+PASS src/lib/__tests__/vendor-cancel-fee-debit.unit.spec.ts
+  ● Console
+
+    console.log
+      [vendor-earnings] cancel-fee debit -23.6 (fee 20, logistic 0) for vendor vendor_a order order_move
+
+      at log (src/lib/vendor-earnings.ts:1444:15)
+
+    console.log
+      [vendor-earnings] cancel-fee debit -33.52 (fee 20, logistic 0) for vendor vendor_b order order_cancel
+
+      at log (src/lib/vendor-earnings.ts:1444:15)
+
+    console.log
+      [vendor-earnings] skip cancel charges for ven_pre order order_pre: packet not booked
+
+      at log (src/lib/vendor-earnings.ts:1319:15)
+
+    console.log
+      [vendor-earnings] cancel-fee debit -88.5 (fee 25, logistic 50) for vendor ven_pre order order_pre
+
+      at log (src/lib/vendor-earnings.ts:1444:15)
+
+    console.log
+      [vendor-earnings] skip cancel charges for ven_1 order order_rev: packet not booked
+
+      at log (src/lib/vendor-earnings.ts:1319:15)
+
+    console.log
+      [vendor-earnings] reversed 1 row(s) for order order_rev (cancelled)
+
+      at log (src/lib/vendor-earnings.ts:1786:13)
+
+PASS src/lib/__tests__/vendor-coupon-earnings.unit.spec.ts
+PASS src/lib/__tests__/vendor-payment-gateway-charge.unit.spec.ts
+PASS src/lib/__tests__/vendor-coupon-cashback.unit.spec.ts
+PASS src/lib/__tests__/vendor-cashback.unit.spec.ts
+PASS src/lib/__tests__/vendor-delivery-earnings-scope.unit.spec.ts
+PASS src/lib/__tests__/order-cancel-metadata.unit.spec.ts
+PASS src/lib/__tests__/vendor-return-earnings-scope.unit.spec.ts
+  ● Console
+
+    console.warn
+      [vendor-earnings] refusing unscoped return hold for order order_1
+
+      1166 |   const vendorIds = normalizeVendorScope(options);
+      1167 |   if (vendorIds.length === 0) {
+    > 1168 |     console.warn(
+           |             ^
+      1169 |       `[vendor-earnings] refusing unscoped return hold for order ${orderId}`
+      1170 |     );
+      1171 |     return { held: 0, skipped: true, skipped_unscoped: true };
+
+      at warn (src/lib/vendor-earnings.ts:1168:13)
+      at Object.<anonymous> (src/lib/__tests__/vendor-return-earnings-scope.unit.spec.ts:22:53)
+
+    console.warn
+      [vendor-earnings] refusing unscoped return credit for order order_1
+
+      1211 |   const vendorIds = normalizeVendorScope(options);
+      1212 |   if (vendorIds.length === 0) {
+    > 1213 |     console.warn(
+           |             ^
+      1214 |       `[vendor-earnings] refusing unscoped return credit for order ${orderId}`
+      1215 |     );
+      1216 |     return { credited: 0, skipped: true, skipped_unscoped: true };
+
+      at warn (src/lib/vendor-earnings.ts:1213:13)
+      at Object.<anonymous> (src/lib/__tests__/vendor-return-earnings-scope.unit.spec.ts:33:65)
+
+    console.warn
+      [vendor-earnings] refusing unscoped reverse for order order_1 (return_approved)
+
+      1635 |   const vendorIds = normalizeVendorScope(options);
+      1636 |   if (options?.vendorScoped && vendorIds.length === 0) {
+    > 1637 |     console.warn(
+           |             ^
+      1638 |       `[vendor-earnings] refusing unscoped reverse for order ${orderId} (${reason})`
+      1639 |     );
+      1640 |     return {
+
+      at warn (src/lib/vendor-earnings.ts:1637:13)
+      at Object.<anonymous> (src/lib/__tests__/vendor-return-earnings-scope.unit.spec.ts:46:55)
+
+PASS src/lib/__tests__/vendor-payout-paid-guard.unit.spec.ts
+PASS src/services/__tests__/s3-service.unit.spec.ts
+PASS src/lib/__tests__/vendor-paid-clawback.unit.spec.ts
+  ● Console
+
+    console.log
+      [vendor-earnings] PAID clawback -500 for vendor ven_1 order order_paid (return_approved)
+
+      at log (src/lib/vendor-earnings.ts:1595:15)
+
+PASS src/lib/__tests__/vendor-return-policy.unit.spec.ts
+PASS src/lib/__tests__/vendor-category-query.unit.spec.ts
+
+Test Suites: 15 passed, 15 total
+Tests:       105 passed, 105 total
+Snapshots:   0 total
+Time:        4.056 s
+Ran all test suites.
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations that kept running after all tests finished?

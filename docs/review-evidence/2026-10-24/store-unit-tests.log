@@ -1,0 +1,91 @@
+(node:38222) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/vishalgupta/Desktop/oweg-ecommerce/src/lib/catalog-product-group.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/vishalgupta/Desktop/oweg-ecommerce/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ one catalog card uses the cheapest stocked seller (0.468209ms)
+✔ sizes sold only by another vendor remain available (0.629583ms)
+✔ an in-stock seller wins over a cheaper out-of-stock seller for the same size (0.118375ms)
+(node:38223) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/vishalgupta/Desktop/oweg-ecommerce/src/lib/return-request-error.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/vishalgupta/Desktop/oweg-ecommerce/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ return errors show useful text rather than raw Medusa JSON or server details (0.821166ms)
+(node:38224) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/vishalgupta/Desktop/oweg-ecommerce/src/lib/search-query-normalize.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/vishalgupta/Desktop/oweg-ecommerce/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ collapseRepeatedLetters
+  ✔ collapses elongated runs to max 2 (0.362041ms)
+  ✔ leaves already-short runs alone (0.063ms)
+✔ collapseRepeatedLetters (0.935ms)
+▶ rewriteSearchTypos
+  ✔ covers 53 shared fixture cases (0.338417ms)
+  ✔ rewrites "faaaaan" → "fan" (0.119959ms)
+  ✔ rewrites "fane" → "fan" (0.047208ms)
+  ✔ rewrites "faan" → "fan" (0.040708ms)
+  ✔ rewrites "fant" → "fan" (0.046708ms)
+  ✔ rewrites "Celing" → "ceiling" (0.055458ms)
+  ✔ rewrites "cieling" → "ceiling" (0.051875ms)
+  ✔ rewrites "ceilling" → "ceiling" (0.068083ms)
+  ✔ rewrites "ceeeiling" → "ceiling" (0.041875ms)
+  ✔ rewrites "miixer" → "mixer" (0.046542ms)
+  ✔ rewrites "mixxxer" → "mixer" (0.048208ms)
+  ✔ rewrites "mixure" → "mixer" (0.0325ms)
+  ✔ rewrites "cookr" → "cooker" (0.028958ms)
+  ✔ rewrites "cookerr" → "cooker" (0.028583ms)
+  ✔ rewrites "geysir" → "geyser" (0.034417ms)
+  ✔ rewrites "geeyser" → "geyser" (0.027459ms)
+  ✔ rewrites "indction" → "induction" (0.028334ms)
+  ✔ rewrites "inducton" → "induction" (0.028083ms)
+  ✔ rewrites "micowave" → "microwave" (0.028416ms)
+  ✔ rewrites "microvawe" → "microwave" (0.030875ms)
+  ✔ rewrites "keybord" → "keyboard" (0.029583ms)
+  ✔ rewrites "keybaord" → "keyboard" (0.028084ms)
+  ✔ rewrites "speeker" → "speaker" (0.028208ms)
+  ✔ rewrites "speker" → "speaker" (0.029584ms)
+  ✔ rewrites "camra" → "camera" (0.028125ms)
+  ✔ rewrites "cameras" → "camera" (0.027209ms)
+  ✔ rewrites "labtop" → "laptop" (0.02875ms)
+  ✔ rewrites "laptp" → "laptop" (0.028375ms)
+  ✔ rewrites "blutooth" → "bluetooth" (0.0305ms)
+  ✔ rewrites "bluetooh" → "bluetooth" (0.033208ms)
+  ✔ rewrites "irn" → "iron" (0.027667ms)
+  ✔ rewrites "iroon" → "iron" (0.027875ms)
+  ✔ rewrites "ketle" → "kettle" (0.027709ms)
+  ✔ rewrites "kettel" → "kettle" (0.312541ms)
+  ✔ rewrites "blendr" → "blender" (0.071791ms)
+  ✔ rewrites "blendar" → "blender" (0.054125ms)
+  ✔ rewrites "pressur" → "pressure" (0.061583ms)
+  ✔ rewrites "presure" → "pressure" (0.042625ms)
+  ✔ rewrites "coolr" → "cooler" (0.029583ms)
+  ✔ rewrites "coler" → "cooler" (0.023542ms)
+  ✔ rewrites "heatr" → "heater" (0.024291ms)
+  ✔ rewrites "heaterr" → "heater" (0.026458ms)
+  ✔ rewrites "grindr" → "grinder" (0.024583ms)
+  ✔ rewrites "grindrr" → "grinder" (0.025333ms)
+  ✔ rewrites "celing fane" → "ceiling fan" (0.031583ms)
+  ✔ rewrites "celing faan" → "ceiling fan" (0.0385ms)
+  ✔ rewrites "pressur cookr" → "pressure cooker" (0.043042ms)
+  ✔ rewrites "indction cookr" → "induction cooker" (0.023542ms)
+  ✔ rewrites "miixer grindr" → "mixer grinder" (0.021459ms)
+  ✔ rewrites "mixxxer grindr" → "mixer grinder" (0.021417ms)
+  ✔ rewrites "micowave oven" → "microwave oven" (0.026291ms)
+  ✔ rewrites "cieling faaaaan" → "ceiling fan" (0.02475ms)
+  ✔ rewrites "coolr geysir" → "cooler geyser" (0.027834ms)
+  ✔ rewrites "ketle heatr" → "kettle heater" (0.034875ms)
+  ✔ leaves ceiling fan unchanged (0.034375ms)
+✔ rewriteSearchTypos (3.200917ms)
+(node:38225) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/vishalgupta/Desktop/oweg-ecommerce/src/lib/security-headers.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/vishalgupta/Desktop/oweg-ecommerce/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ production permits the current marketing bucket without storefront S3 env (1.240458ms)
+✔ new configured buckets still join the exact-host allowlist (0.202167ms)
+ℹ tests 63
+ℹ suites 2
+ℹ pass 63
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 127.835625

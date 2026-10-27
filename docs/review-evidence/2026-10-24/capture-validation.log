@@ -1,0 +1,18 @@
+PASS: wrong payment ID
+PASS: wrong checkout binding
+PASS: gateway order mismatch
+PASS: tampered amount
+PASS: tampered currency
+PASS: incorrect server amount
+PASS: incorrect server currency
+PASS: authorized is not captured
+PASS: failed is not captured
+PASS: created is not captured
+PASS: refunded is not captured
+PASS: paid is not captured
+PASS: invalid minor-unit amount 0
+PASS: invalid minor-unit amount -1
+PASS: invalid minor-unit amount 100.5
+PASS: invalid minor-unit amount NaN
+PASS: invalid minor-unit amount Infinity
+PASS: captured payment with exact paise amount and case-normalized currency

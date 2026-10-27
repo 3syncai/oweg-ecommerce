@@ -109,15 +109,8 @@ export async function POST(req: NextRequest) {
                 })
             }
 
-            // ============================================
-            // AFFILIATE COMMISSION: Start the 5-minute unlock timer.
-            // We DO NOT credit to the wallet yet — the row stays PENDING with
-            // an unlock_at set 5 minutes in the future. The affiliate-portal
-            // sync (`syncAffiliateCommissionStatuses`) promotes the row to
-            // CREDITED once unlock_at <= NOW(), which is when the amount
-            // becomes spendable in the wallet balance.
-            // ============================================
-            const COMMISSION_UNLOCK_MINUTES = 5
+            // Partner/admin commissions stay pending through the longest admin
+            // category return/replacement window, measured from delivery.
             let affiliateCommissionTotal = 0
             try {
                 const affiliateCommissionResult = await pool.query(`
@@ -168,16 +161,19 @@ export async function POST(req: NextRequest) {
                         // Start the unlock countdown. Status stays PENDING; the
                         // affiliate-portal sync will flip it to CREDITED once
                         // the timer elapses.
-                        const commissionUnlockTime = new Date(
-                            Date.now() + COMMISSION_UNLOCK_MINUTES * 60 * 1000
-                        )
                         await pool.query(`
                             UPDATE affiliate_commission_log
-                            SET unlock_at = COALESCE(unlock_at, $2),
-                                affiliate_user_id = COALESCE(affiliate_user_id, $3)
+                            SET policy_delivered_at = COALESCE(policy_delivered_at,
+                                    resolve_commission_delivered_at(order_id), NOW()),
+                                policy_hold_days = COALESCE(policy_hold_days,
+                                    resolve_commission_hold_days(order_id)),
+                                unlock_at = COALESCE(policy_delivered_at,
+                                    resolve_commission_delivered_at(order_id), NOW())
+                                    + COALESCE(policy_hold_days, resolve_commission_hold_days(order_id)) * INTERVAL '1 day',
+                                affiliate_user_id = COALESCE(affiliate_user_id, $2)
                             WHERE id = $1
                               AND status = 'PENDING'
-                        `, [row.id, commissionUnlockTime.toISOString(), userId])
+                        `, [row.id, userId])
                     }
                 }
             } catch (affiliateErr) {

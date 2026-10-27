@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { authorizeReferralCustomer } from "@/lib/referral-auth"
 import { Pool } from "pg"
 
 export const dynamic = "force-dynamic"
@@ -12,17 +13,13 @@ const DATABASE_URL = process.env.DATABASE_URL
  *  - earned coins / pending coins
  *  - per-referral order info
  *
- * Headers: x-customer-id
+ * Verified customer session required; x-customer-id must match it.
  */
 export async function GET(req: NextRequest) {
-    const customerId = req.headers.get("x-customer-id")
+    const auth = await authorizeReferralCustomer(req)
+    if (auth.error) return auth.error
+    const customerId = auth.customer!.id
 
-    if (!customerId) {
-        return NextResponse.json(
-            { error: "Not authenticated" },
-            { status: 401 }
-        )
-    }
 
     if (!DATABASE_URL) {
         return NextResponse.json(

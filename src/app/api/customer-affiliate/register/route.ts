@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { authorizeReferralCustomer } from "@/lib/referral-auth"
 import { query } from "@/lib/affiliate-pg"
 import { invalidate } from "@/lib/affiliate-cache"
 
@@ -57,13 +58,9 @@ export async function POST(req: NextRequest) {
         )
     }
 
-    const customerId = body.customer_id || req.headers.get("x-customer-id")
-    if (!customerId) {
-        return NextResponse.json(
-            { error: "Not authenticated. Please sign in first." },
-            { status: 401 }
-        )
-    }
+    const auth = await authorizeReferralCustomer(req, [body.customer_id])
+    if (auth.error) return auth.error
+    const customerId = auth.customer!.id
 
     try {
         // Idempotent: if the customer already became an affiliate, return existing
@@ -117,7 +114,7 @@ export async function POST(req: NextRequest) {
              VALUES ($1, $2, $3, $4)
              RETURNING id, customer_id, refer_code, email, name,
                        earned_coins, pending_coins, created_at`,
-            [customerId, code, body.email || null, body.name || null]
+            [customerId, code, auth.customer!.email || null, [auth.customer!.first_name, auth.customer!.last_name].filter(Boolean).join(" ") || null]
         )
 
         const row = insert.rows[0]

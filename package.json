@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "type-check": "tsc --noEmit",
+    "test:security": "node --test scripts/security-regressions.test.cjs",
     "payment:worker": "node scripts/payment-worker.cjs",
     "payment:status": "node scripts/payment-worker.cjs --status",
     "test:payment": "node scripts/verify-payment-validation.cjs && node scripts/verify-manual-refund.cjs && node scripts/verify-payment-acid.cjs && node scripts/verify-payment-reliability.cjs && node scripts/verify-wallet-refund-acid.cjs && node scripts/verify-payment-outbound.cjs && node scripts/verify-payment-browser-regressions.cjs && node scripts/verify-payment-performance.cjs",

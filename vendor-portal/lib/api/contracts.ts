@@ -54,7 +54,7 @@ export type VendorProduct = {
 export type ProductVariantInput = {
   id?: string; title?: string; sku?: string | null; manage_inventory?: boolean; allow_backorder?: boolean
   inventory_quantity?: number; prices?: ProductPrice[]; metadata?: Metadata
-  options?: Record<string, string>; option_values?: Record<string, string>; price?: number; discounted_price?: number
+  options?: Record<string, string>; option_values?: Record<string, string>; price?: number; discounted_price?: number | null
 }
 // products POST/PUT support the same product fields, plus these custom offer fields.
 export type ProductInput = {
@@ -64,6 +64,7 @@ export type ProductInput = {
   thumbnail?: string | null; options?: Array<{ title: string; values: string[] }>; variants?: ProductVariantInput[]
   shipping_profile_id?: string | null; height?: number | null; width?: number | null; length?: number | null; weight?: number | null
   metadata?: Metadata; price?: number | null; discounted_price?: number | null; vendor_edit_remark?: string
+  color_images?: Record<string, string[]>; primary_visual_option?: string
   share_id?: string; share_token?: string
 }
 export type ProductVariantMatrix = {
@@ -76,6 +77,7 @@ export type VariantMatrixInput = {
   color_images?: Record<string, string[]>; primary_visual_option?: string; images?: Array<{ url: string }>; vendor_edit_remark?: string
 }
 export type ProductDetailResponse = {
+  atomic_edit_version?: number
   product: VendorProduct
   variant_summary?: { id: string; title: string | null; sku: string | null; price: number | null; discounted_price: number | null; discounted_price_list_id: string | null; currency_code: string } | null
   variant_matrix?: ProductVariantMatrix | null; color_images?: Record<string, string[]>; primary_visual_option?: string | null

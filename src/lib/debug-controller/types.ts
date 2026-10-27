@@ -66,12 +66,13 @@ export type DebugDeliverableOrder = {
   vendors: string[];
 };
 
-/** Debug-only view of earnings still held in the vendor protection window. */
+/** Debug-only view of vendor and partner/admin earnings still pending. */
 export type DebugPendingSettlementOrder = {
   orderId: string;
   displayId: string;
   email: string | null;
   vendorCount: number;
+  commissionCount: number;
   pendingAmount: number;
   unlockAt: string | null;
 };

@@ -3,6 +3,9 @@ import { medusaStoreFetch } from "@/lib/medusa-auth";
 
 export type AuthenticatedStoreCustomer = {
   id: string;
+  email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   metadata?: Record<string, unknown> | null;
 };
 
