@@ -15,6 +15,7 @@ import {
 } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
 import PageSkeleton from "@/components/PageSkeleton"
+import { variantPricesError } from "@/lib/variant-pricing"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
 import GstTaxCodeField from "@/components/GstTaxCodeField"
 import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorInventoryApi } from "@/lib/api/client"
@@ -415,13 +416,13 @@ const VendorProductEditPage = () => {
     }
     const hasDiscountedValue = (simpleSaleSource || "").trim().length > 0
     const parsedDiscountedPrice = hasDiscountedValue ? Number(simpleSaleSource) : null
-    if (hasDiscountedValue && (!Number.isFinite(parsedDiscountedPrice) || (parsedDiscountedPrice as number) <= 0)) {
+    if (!hasVariants && hasDiscountedValue && (!Number.isFinite(parsedDiscountedPrice) || (parsedDiscountedPrice as number) <= 0)) {
       toast.error("Invalid discounted price", { description: "Enter a valid discounted price greater than 0." })
       return
     }
-    if (hasDiscountedValue && (parsedDiscountedPrice as number) >= parsedPrice) {
+    if (!hasVariants && hasDiscountedValue && (parsedDiscountedPrice as number) > parsedPrice) {
       toast.error("Invalid discounted price", {
-        description: "Discounted price must be less than original price.",
+        description: "Sale price cannot exceed MRP.",
       })
       return
     }
@@ -434,14 +435,12 @@ const VendorProductEditPage = () => {
         return
       }
 
-      const hasValidPrice = variantRows.some((row) => {
-        const price = Number(row.price)
-        return Number.isFinite(price) && price > 0
-      })
-      if (!hasValidPrice) {
-      toast.error("Invalid MRP", {
-          description: "At least one variant must have an MRP greater than 0.",
-        })
+      // Validate the edited rows, never the stale single-product price summary.
+      const pricingError = variantPricesError(variantRows.map(row => ({
+        ...row, discounted_price: row.discountedPrice,
+      })))
+      if (pricingError) {
+        toast.error("Check variant pricing", { description: pricingError })
         return
       }
 
@@ -705,6 +704,8 @@ const VendorProductEditPage = () => {
       setStatusUpdating(false)
     }
   }
+
+  const previewVariant = variantRows.find(row => Number(row.price) > 0) || variantRows[0]
 
   let content
 
@@ -1022,19 +1023,17 @@ const VendorProductEditPage = () => {
                 <Text className="font-medium">{formData.title || "Untitled product"}</Text>
                 <div className="flex items-center gap-2">
                   <Text className="text-ui-fg-subtle text-sm">
-                    ₹{" "}
-                    {hasVariants
-                      ? variantRows.find((row) => Number(row.price) > 0)?.price || "--"
-                      : variantRows[0]?.price || formData.price || "--"}
+                    MRP ₹ {previewVariant?.price || formData.price || "--"}
                   </Text>
-                  {!hasVariants && (variantRows[0]?.discountedPrice || formData.discountedPrice) && (
+                  {(previewVariant?.discountedPrice || (!hasVariants && formData.discountedPrice)) && (
                     <Text className="text-emerald-500 text-sm font-medium">
-                      Sale ₹ {variantRows[0]?.discountedPrice || formData.discountedPrice}
+                      Sale ₹ {previewVariant?.discountedPrice || formData.discountedPrice}
                     </Text>
                   )}
                 </div>
-                {variantSummary?.sku && (
-                  <Text className="text-xs text-ui-fg-subtle">SKU: {variantSummary.sku}</Text>
+                {hasVariants && previewVariant?.title && <Text className="text-xs text-ui-fg-subtle">{previewVariant.title}</Text>}
+                {(previewVariant?.sku || variantSummary?.sku) && (
+                  <Text className="text-xs text-ui-fg-subtle">SKU: {previewVariant?.sku || variantSummary?.sku}</Text>
                 )}
               </div>
             </div>

@@ -2,6 +2,7 @@ import { CatalogConflict, cleanVendorMetadata, protectCatalogEdit, publicVariant
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../../_lib/guards"
 import { Modules, ProductStatus } from "@medusajs/framework/utils"
+import { variantPricesError } from "../../../../lib/variant-pricing"
 import client from "../../../../utils/opensearch"
 import { PRODUCTS_INDEX } from "../../../../utils/search-index"
 import {
@@ -184,10 +185,19 @@ async function updateOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
     ) {
       return res.status(400).json({ message: "discounted_price must be a valid number greater than 0" })
     }
-    if (hasPriceUpdate && hasDiscountedPriceUpdate && (parsedDiscountedPrice as number) >= (parsedPrice as number)) {
+    if (hasPriceUpdate && hasDiscountedPriceUpdate && (parsedDiscountedPrice as number) > (parsedPrice as number)) {
       return res
         .status(400)
-        .json({ message: "discounted_price must be lower than original price" })
+        .json({ message: "Sale price cannot exceed MRP" })
+    }
+
+    if (hasPriceUpdate || hasDiscountedPriceUpdate) {
+      const matrix = await fetchProductVariantMatrix(req, productId)
+      const first = matrix.variants[0]
+      const pricingError = variantPricesError([{ ...first,
+        price: hasPriceUpdate ? parsedPrice : first?.price,
+        discounted_price: hasDiscountedPriceUpdate ? parsedDiscountedPrice : first?.discounted_price }])
+      if (pricingError) return res.status(400).json({ message: pricingError })
     }
 
     // Update product using product service directly
