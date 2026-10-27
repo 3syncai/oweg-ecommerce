@@ -590,6 +590,14 @@ export async function searchProducts(params: {
   return await fetchStoreProducts(baseParams);
 }
 
+/** Bounded public product lookup for merchandising stock checks. */
+export async function fetchProductsByIds(ids: string[]): Promise<MedusaProduct[]> {
+  const unique = Array.from(new Set(ids.filter(Boolean))).slice(0, 60);
+  if (!unique.length) return [];
+  return (await fetchStoreProducts(createBaseSearchParams(60,
+    unique.map(id => ["id[]", id] as [string, string])))).products;
+}
+
 function dedupeMedusaProducts(products: MedusaProduct[]): MedusaProduct[] {
   const seen = new Set<string>();
   const out: MedusaProduct[] = [];

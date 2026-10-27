@@ -50,7 +50,7 @@ const inr = new Intl.NumberFormat("en-IN", {
   currency: "INR",
 })
 
-const FlashSaleSection: React.FC<{ showImageFallback?: boolean }> = ({ showImageFallback = false }) => {
+const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: boolean }> = ({ showImageFallback = false, inStockOnly = false }) => {
   const [flashSaleData, setFlashSaleData] = useState<FlashSaleData | null>(null)
   const [loading, setLoading] = useState(true)
   const [timeRemaining, setTimeRemaining] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
@@ -92,7 +92,7 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean }> = ({ showImage
 
   const fetchFlashSale = async () => {
     try {
-      const response = await axios.get('/api/medusa/flash-sale/products', {
+      const response = await axios.get(`/api/medusa/flash-sale/products${inStockOnly ? '?in_stock=1' : ''}`, {
         headers: {
           'Cache-Control': 'no-store',
         },
