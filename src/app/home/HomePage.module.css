@@ -162,3 +162,16 @@
 @media (prefers-reduced-motion: reduce) {
   .home *, .home *::before, .home *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
+
+.viewAll { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; color: #496e34; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.viewAll:focus-visible { outline: 2px solid #6ba93f; outline-offset: 3px; border-radius: 5px; }
+.discoveryGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.discoveryGrid > * { min-width: 0; }
+.discoverySkeleton { min-height: 270px; background: #eef2e8; border: 1px solid #e2e8db; border-radius: 18px; }
+.discoveryActions { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 26px 0 6px; text-align: center; }
+.discoveryActions button:disabled { opacity: .65; cursor: wait; }
+/* Appending a batch must not pin the viewport to the footer and fetch every page. */
+:global(body):has(.home) { overflow-anchor: none; }
+@media (min-width: 640px) { .discoveryGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; } }
+@media (min-width: 1024px) { .discoveryGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1400px) { .discoveryGrid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }

@@ -3,12 +3,14 @@
 import { Suspense, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ArrowLeft, CheckCircle2, Loader2, LockKeyhole } from "lucide-react"
+import { ArrowRight, Check, Eye, EyeOff, Loader2, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { PASSWORD_POLICY_MESSAGE, validateStrongPassword } from "@/lib/password-policy"
+import { PASSWORD_REQUIREMENTS, validateStrongPassword } from "@/lib/password-policy"
+import AccountRecoveryLayout from "@/components/auth/AccountRecoveryLayout"
+import styles from "@/components/auth/AccountRecovery.module.css"
 
 function ResetPasswordPageInner() {
   const router = useRouter()
@@ -16,6 +18,8 @@ function ResetPasswordPageInner() {
   const token = useMemo(() => searchParams.get("token")?.trim() || "", [searchParams])
 
   const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [confirmPassword, setConfirmPassword] = useState("")
   const [checking, setChecking] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -81,7 +85,8 @@ function ResetPasswordPageInner() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (!token) {
+    if (submitting) return
+    if (!token || !validToken) {
       setErrorMessage("This reset link is invalid or has expired.")
       return
     }
@@ -89,13 +94,11 @@ function ResetPasswordPageInner() {
     const passwordError = validateStrongPassword(password)
     if (passwordError) {
       setErrorMessage(passwordError)
-      toast.error(passwordError)
       return
     }
 
     if (password !== confirmPassword) {
       setErrorMessage("Passwords do not match.")
-      toast.error("Passwords do not match.")
       return
     }
 
@@ -135,148 +138,62 @@ function ResetPasswordPageInner() {
   }
 
   return (
-    <div className="min-h-[100svh] bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),_transparent_30%),linear-gradient(180deg,#0f172a_0%,#111827_55%,#022c22_100%)] px-4 py-10">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8">
-        <Link
-          href="/login"
-          className="inline-flex w-fit items-center gap-2 text-sm font-medium text-emerald-200 transition hover:text-white"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to login
-        </Link>
-
-        <div className="grid gap-6 overflow-hidden rounded-[2rem] border border-white/10 bg-white/10 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.85)] backdrop-blur md:grid-cols-[0.92fr_1.08fr]">
-          <aside className="relative overflow-hidden bg-emerald-500/10 px-8 py-10 text-white md:px-10 md:py-12">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(74,222,128,0.30),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(255,255,255,0.12),_transparent_35%)]" />
-            <div className="relative flex h-full flex-col justify-between gap-10">
-              <div>
-                <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
-                  <LockKeyhole className="h-7 w-7 text-emerald-200" />
-                </div>
-                <h1 className="mt-6 text-3xl font-black tracking-tight">Create a new password</h1>
-                <p className="mt-3 max-w-sm text-sm leading-6 text-emerald-50/80">
-                  Use a strong password you haven&apos;t used elsewhere. This reset link can only be
-                  used once.
-                </p>
-              </div>
-
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-emerald-50/85">
-                <div className="mb-3 font-semibold text-white">Password rules</div>
-                <p>{PASSWORD_POLICY_MESSAGE}</p>
-              </div>
+    <AccountRecoveryLayout>
+      <div className={styles.eyebrow}>Reset password</div>
+      <h1 className={styles.title}>{!checking && !validToken ? "Let’s get you a fresh link" : "A new password. A fresh start."}</h1>
+      <p className={styles.intro}>{!checking && !validToken
+        ? "Reset links expire automatically. Request a new one to get back into your account."
+        : "Choose a password for your OWEG account, then sign in to pick up where you left off."}</p>
+      {checking ? <div className={styles.loading} role="status"><Loader2 size={24} className="animate-spin" /> Checking your reset link…</div>
+        : !validToken ? <>
+          <div className={styles.error} role="alert">{errorMessage || "This reset link is invalid or has expired."}</div>
+          <div className={styles.actions}>
+            <Link href="/forgot" className={styles.submit}>Get a new link <ArrowRight size={16} className="ml-2" /></Link>
+            <Link href="/login" className={styles.textLink}>Back to sign in</Link>
+          </div>
+        </> : <form className={styles.form} onSubmit={handleSubmit}>
+          {errorMessage && <div className={styles.error} role="alert">{errorMessage}</div>}
+          <div className={styles.field}>
+            <label htmlFor="new-password">New password</label>
+            <div className={styles.password}>
+              <Input id="new-password" type={showPassword ? "text" : "password"} autoComplete="new-password"
+                value={password} onChange={event => setPassword(event.target.value)} placeholder="Enter your new password"
+                aria-describedby="password-requirements" disabled={submitting} required />
+              <button type="button" className={styles.visibility} onClick={() => setShowPassword(value => !value)}
+                aria-label={showPassword ? "Hide new password" : "Show new password"} aria-pressed={showPassword}>
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
             </div>
-          </aside>
-
-          <section className="bg-white px-8 py-10 md:px-10 md:py-12">
-            {checking ? (
-              <div className="flex min-h-[18rem] flex-col items-center justify-center gap-4 text-center">
-                <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-                <div>
-                  <p className="text-base font-semibold text-slate-900">Checking your reset link</p>
-                  <p className="mt-1 text-sm text-slate-500">Please wait a moment.</p>
-                </div>
-              </div>
-            ) : !validToken ? (
-              <div className="flex min-h-[18rem] flex-col items-start justify-center">
-                <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-4 text-sm text-rose-700">
-                  {errorMessage || "This reset link is invalid or has expired."}
-                </div>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <Button asChild className="rounded-2xl bg-emerald-600 hover:bg-emerald-700">
-                    <Link href="/forgot">Request a new link</Link>
-                  </Button>
-                  <Button asChild variant="outline" className="rounded-2xl">
-                    <Link href="/login">Return to login</Link>
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <form className="grid gap-5" onSubmit={handleSubmit}>
-                <div>
-                  <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                    Reset Password
-                  </div>
-                  <h2 className="mt-4 text-3xl font-black tracking-tight text-slate-900">
-                    Choose your new password
-                  </h2>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    Once updated, you&apos;ll be redirected to login and can sign in with the new
-                    password immediately.
-                  </p>
-                </div>
-
-                {errorMessage && (
-                  <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-4 text-sm text-rose-700">
-                    {errorMessage}
-                  </div>
-                )}
-
-                <div className="grid gap-2">
-                  <label className="text-sm font-semibold text-slate-700" htmlFor="new-password">
-                    New password
-                  </label>
-                  <Input
-                    id="new-password"
-                    type="password"
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Enter a strong password"
-                    className="h-12 rounded-2xl border-slate-200 bg-white px-4"
-                    required
-                  />
-                </div>
-
-                <div className="grid gap-2">
-                  <label className="text-sm font-semibold text-slate-700" htmlFor="confirm-password">
-                    Confirm password
-                  </label>
-                  <Input
-                    id="confirm-password"
-                    type="password"
-                    autoComplete="new-password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    placeholder="Re-enter your password"
-                    className="h-12 rounded-2xl border-slate-200 bg-white px-4"
-                    required
-                  />
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" />
-                    <span>{PASSWORD_POLICY_MESSAGE}</span>
-                  </div>
-                </div>
-
-                <Button
-                  type="submit"
-                  disabled={submitting || !password || !confirmPassword}
-                  className="h-12 rounded-2xl bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-700"
-                >
-                  {submitting ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Resetting password...
-                    </span>
-                  ) : (
-                    "Reset password"
-                  )}
-                </Button>
-              </form>
-            )}
-          </section>
-        </div>
-      </div>
-    </div>
+          </div>
+          <div className={styles.rules} id="password-requirements" aria-label="Password requirements">
+            {PASSWORD_REQUIREMENTS.map(rule => <span key={rule.label} className={styles.rule} data-met={rule.test(password)}>
+              <Check size={13} aria-hidden="true" />{rule.label}
+            </span>)}
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="confirm-password">Confirm password</label>
+            <div className={styles.password}>
+              <Input id="confirm-password" type={showConfirmPassword ? "text" : "password"} autoComplete="new-password"
+                value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} placeholder="Enter it once more"
+                disabled={submitting} required />
+              <button type="button" className={styles.visibility} onClick={() => setShowConfirmPassword(value => !value)}
+                aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} aria-pressed={showConfirmPassword}>
+                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </div>
+          <Button type="submit" disabled={submitting || !password || !confirmPassword} className={styles.submit}>
+            {submitting ? <span className={styles.busy}><Loader2 size={17} className="animate-spin" /> Updating password…</span>
+              : <span className={styles.busy}>Reset password <ArrowRight size={17} /></span>}
+          </Button>
+        </form>}
+      <p className={styles.note}><ShieldCheck size={16} />Your reset link is single use. Your orders and saved items stay unchanged.</p>
+    </AccountRecoveryLayout>
   )
 }
 
 export default function ResetPasswordPage() {
-  return (
-    <Suspense fallback={null}>
-      <ResetPasswordPageInner />
-    </Suspense>
-  )
+  return <Suspense fallback={<AccountRecoveryLayout><div className={styles.loading} role="status"><Loader2 size={24} className="animate-spin" /> Loading…</div></AccountRecoveryLayout>}>
+    <ResetPasswordPageInner />
+  </Suspense>
 }

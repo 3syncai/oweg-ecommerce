@@ -1,17 +1,21 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import axios from 'axios'
+import { inStockHomeFlashSale } from '@/lib/home-flash-sale'
 
 // In-memory cache: 30 minutes TTL
 let flashSaleCache: { data: unknown; expires: number } | null = null
 const CACHE_TTL_MS = 1000 * 60 * 30 // 30 minutes
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const homeOnly = request.nextUrl.searchParams.get('in_stock') === '1'
+  const respond = async (data: unknown) => NextResponse.json(homeOnly
+    ? await inStockHomeFlashSale(data as Parameters<typeof inStockHomeFlashSale>[0])
+    : data)
+  try {
   // Return cached data if still valid
   if (flashSaleCache && flashSaleCache.expires > Date.now()) {
-    return NextResponse.json(flashSaleCache.data)
+    return await respond(flashSaleCache.data)
   }
-
-  try {
     const backendUrl = process.env.MEDUSA_BACKEND_URL || process.env.BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
     const url = `${backendUrl}/store/flash-sale/products`
 
@@ -66,7 +70,7 @@ export async function GET() {
       })
     }
     
-    return NextResponse.json(data)
+    return await respond(data)
   } catch (error) {
     console.error('[Flash Sale API] Error fetching flash sale products:', error)
     return NextResponse.json(

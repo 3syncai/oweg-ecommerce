@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { extractErrorPayload, medusaStoreFetch } from "@/lib/medusa-auth"
+import { PASSWORD_POLICY_MESSAGE, validateStrongPassword } from "@/lib/password-policy"
 
 export const dynamic = "force-dynamic"
 
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
       "user-agent": req.headers.get("user-agent") ?? undefined,
     }
     const token = body.token?.trim()
-    const password = body.password?.trim()
+    const password = typeof body.password === "string" ? body.password.trim() : ""
 
     if (!token) {
       return NextResponse.json(
@@ -25,11 +26,11 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       )
     }
-    if (!password || password.length < 10) {
+    if (validateStrongPassword(password)) {
       return NextResponse.json(
         {
           error:
-            "Use at least 10 characters with uppercase, lowercase, number, and special character.",
+            PASSWORD_POLICY_MESSAGE,
         },
         { status: 400 }
       )

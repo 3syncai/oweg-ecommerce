@@ -27,6 +27,7 @@ export type ProductCardProps = {
   sourceCategoryHandle?: string;
   inventory_quantity?: number;
   showImageFallback?: boolean;
+  prefetch?: boolean;
 };
 
 const inr = new Intl.NumberFormat("en-IN", {
@@ -49,6 +50,7 @@ export function ProductCard({
   sourceCategoryHandle,
   inventory_quantity,
   showImageFallback = true,
+  prefetch,
 }: ProductCardProps) {
   const [failedImage, setFailedImage] = useState<string | null>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -89,6 +91,7 @@ export function ProductCard({
     <Link
       ref={cardRef}
       href={productHref}
+      prefetch={prefetch}
       className={`${styles.card} group relative flex h-full w-full flex-col overflow-visible rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-white shadow-[var(--oweg-shadow-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--oweg-green)] hover:shadow-[var(--oweg-shadow-md)]`}
       onMouseEnter={() => {
         setIsHovered(true);

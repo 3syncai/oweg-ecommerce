@@ -14,10 +14,13 @@ import { normalizeBrandKey, resolveBrandLogo, getCollectionLogoUrl, getCollectio
 import { BrandLogoImage, brandLogoFallbackHandler } from '@/components/modules/BrandLogoImage';
 import FlashSaleSection from '@/components/flash-sale/FlashSaleSection';
 import CategoryIconTile from '@/components/ui/icons/CategoryIconTile';
+import HomeDiscovery from './HomeDiscovery';
+import { selectHomeCategories } from '@/lib/home-category-tiles';
 
 // UI product type (used by carousel/cards)
 type UIProduct = {
   id: string | number;
+  catalog_product_id?: string;
   name: string;
   image: string;
   price: number;
@@ -35,11 +38,13 @@ function ProductCarousel({
   title,
   products,
   sourceTag,
+  href,
   loading,
 }: {
   title: string;
   products: UIProduct[];
   sourceTag?: string;
+  href?: string;
   loading?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -77,11 +82,12 @@ function ProductCarousel({
             <p className={styles.eyebrow}>{title === 'Popular picks' ? 'Worth a look' : 'Discover more'}</p>
             <h2 className="oweg-title">{title}</h2>
           </div>
-          <div className="hidden sm:flex gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
+            {href && <Link href={href} className={styles.viewAll}>View all <ArrowUpRight size={14} /></Link>}
             <button
               type="button"
               onClick={() => scroll('left')}
-              className="oweg-rail-btn"
+              className="oweg-rail-btn hidden sm:inline-flex"
               aria-label={`Scroll ${title} left`}
             >
               <ChevronLeft className="w-4.5 h-4.5" />
@@ -89,7 +95,7 @@ function ProductCarousel({
             <button
               type="button"
               onClick={() => scroll('right')}
-              className="oweg-rail-btn"
+              className="oweg-rail-btn hidden sm:inline-flex"
               aria-label={`Scroll ${title} right`}
             >
               <ChevronRight className="w-4.5 h-4.5" />
@@ -128,6 +134,7 @@ function ProductCarousel({
                       sourceTag={sourceTag}
                       inventory_quantity={product.inventory_quantity}
                       showImageFallback
+                      prefetch={false}
                     />
                   </div>
                 ))}
@@ -142,9 +149,9 @@ const HERO_SLIDES = [
   { src: '/HeroBaneer_1.png', href: '/specials', label: 'See Specials offers' },
   { src: '/HeroBaneer_2.png', href: '/c/home-appliances', label: 'Shop Home Appliances' },
   { src: '/HeroBaneer_3.png', href: '/c/kitchen-appliances', label: 'Shop Kitchen Appliances' },
-  { src: '/HeroBaneer_4.png', href: '/c/computer-and-mobile-accessories', label: 'Shop Computer & Mobile Accessories' },
-  { src: '/HeroBaneer_5.png', href: '/c/mobile-accessories', label: 'Shop Mobile Accessories' },
-  { src: '/HeroBaneer_6.png', href: '/c/surveillance-and-security', label: 'Shop Surveillance & Security' },
+  { src: '/HeroBaneer_4.png', href: '/c/computer-%26-mobile-accessories', label: 'Shop Computer & Mobile Accessories' },
+  { src: '/HeroBaneer_5.png', href: '/c/computer-%26-mobile-accessories', label: 'Shop Mobile Accessories' },
+  { src: '/HeroBaneer_6.png', href: '/c/surveillance-%26-security', label: 'Shop Surveillance & Security' },
   { src: '/HeroBaneer_7.png', href: '/c/clothing', label: 'Shop Clothing' },
   { src: '/HeroBaneer_8.png', href: '/c/bags', label: 'Shop Bags' },
   { src: '/HeroBaneer_9.png', href: '/c/hardware', label: 'Shop Hardware' },
@@ -578,6 +585,7 @@ export default function HomePage({
       products: UIProduct[];
       loading: boolean;
       sourceTag?: string;
+      href?: string;
       key: string;
     }>;
 
@@ -586,6 +594,7 @@ export default function HomePage({
       products: UIProduct[];
       loading: boolean;
       sourceTag?: string;
+      href?: string;
       key: string;
     }> = [];
 
@@ -607,6 +616,7 @@ export default function HomePage({
         products: section.products,
         loading: false,
         sourceTag: section.sourceTag,
+        href: section.href,
       });
     }
 
@@ -616,13 +626,20 @@ export default function HomePage({
   const sectionsToRender = useMemo(() => {
     const seen = new Set<string>();
     const merged: typeof autoSections = [];
+    const seenProducts = new Set<string>();
 
     const push = (section: (typeof autoSections)[number]) => {
       const key = (section.key || section.title || '').toLowerCase();
       if (!key || seen.has(key)) return;
       if (!section.loading && !(section.products?.length > 0)) return;
       seen.add(key);
-      merged.push(section);
+      const products = section.products.filter(product => {
+        const id = product.catalog_product_id || String(product.id);
+        if (!(Number(product.inventory_quantity) > 0) || seenProducts.has(id)) return false;
+        seenProducts.add(id);
+        return true;
+      });
+      if (section.loading || products.length) merged.push({ ...section, products });
     };
 
     autoSections.forEach(push);
@@ -653,9 +670,18 @@ export default function HomePage({
     return merged;
   }, [autoSections, homeFeedQuery.isLoading]);
 
-  const spotlightSection = homeFeedQuery.data?.spotlight?.products?.length
-    ? homeFeedQuery.data.spotlight
-    : null;
+  const spotlightSection = useMemo(() => {
+    const section = homeFeedQuery.data?.spotlight;
+    if (!section) return null;
+    const seen = new Set(sectionsToRender.flatMap(row => row.products.map(product => product.catalog_product_id || String(product.id))));
+    const products = section.products.filter(product => Number(product.inventory_quantity) > 0 && !seen.has(product.catalog_product_id || String(product.id)));
+    return products.length ? { ...section, products } : null;
+  }, [homeFeedQuery.data?.spotlight, sectionsToRender]);
+
+  const discoveryExcludedIds = useMemo(() => Array.from(new Set([
+    ...sectionsToRender.flatMap(section => section.products),
+    ...(spotlightSection?.products || []),
+  ].map(product => product.catalog_product_id || String(product.id)))), [sectionsToRender, spotlightSection]);
 
   const categoriesQuery = useStoreCategories();
   const categoriesData: MedusaCategory[] = useMemo(
@@ -682,20 +708,8 @@ export default function HomePage({
 
   const mobileCategories: MobileCategory[] = useMemo(() => {
     const seen = new Set<string>();
-    const roots = categoriesData.filter((cat) => {
-      const parentId =
-        (cat as MedusaCategory & { parent_category_id?: string | null }).parent_category_id ??
-        (cat as MedusaCategory & { parent_category?: { id?: string | null } }).parent_category?.id;
-      return !parentId;
-    });
-
-    const withChildren = roots.filter((cat) => {
-      const children = (cat as MedusaCategory).category_children;
-      return Array.isArray(children) && children.length > 0;
-    });
-
     const result: MobileCategory[] = [];
-    withChildren.forEach((node) => {
+    selectHomeCategories(categoriesData).forEach((node) => {
       if (!node) return;
       const id = (node.id || node.handle || node.title || node.name || Math.random().toString()).toString();
       if (seen.has(id)) return;
@@ -849,7 +863,7 @@ export default function HomePage({
           </section>
         )}
 
-        <FlashSaleSection showImageFallback />
+        <FlashSaleSection showImageFallback inStockOnly />
 
         <section className="oweg-section-tight">
           <div className="oweg-container">
@@ -868,6 +882,7 @@ export default function HomePage({
               title={section.title}
               products={section.products}
               sourceTag={section.sourceTag}
+              href={section.href}
               loading={section.loading}
             />
             {idx === 1 && <PromoBanners />}
@@ -883,7 +898,7 @@ export default function HomePage({
                   />
                   <BannerTile
                     src="/App_Banner-7.png"
-                    href="/c/computer-and-mobile-accessories"
+                    href="/c/computer-%26-mobile-accessories"
                     alt="Shop computer and mobile accessories"
                     ratio="2.41"
                     sizes="(min-width: 768px) 50vw, 100vw"
@@ -933,6 +948,7 @@ export default function HomePage({
             title={spotlightSection.title}
             products={spotlightSection.products}
             sourceTag={spotlightSection.sourceTag}
+            href={spotlightSection.href}
           />
         ) : null}
 
@@ -993,6 +1009,8 @@ export default function HomePage({
             </div>
           </section>
         ) : null}
+
+        <HomeDiscovery excludeIds={discoveryExcludedIds} />
 
         {loading && (
           <div className="oweg-container py-3">
