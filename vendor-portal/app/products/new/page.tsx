@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { BrandAuthorizationField } from "@/components/BrandAuthorizationField"
 import GstTaxCodeField from "@/components/GstTaxCodeField"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
+import SharedVariantRequests, { type SharedCatalogVariant } from "@/components/SharedVariantRequests"
 import { apiRequest, vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorTypesApi, vendorInventoryApi, vendorShippingApi, logApiFailure } from "@/lib/api/client"
 import { DEFAULT_LOGISTICS_FEE } from "@/lib/pricingConfig"
 import {
@@ -22,7 +23,8 @@ import {
   type VariantMatrixRow,
 } from "@/lib/variant-matrix"
 import { buildUsedSkuSet, validateProductSkus } from "@/lib/sku-validation"
-import { stripDescriptionSectionHeadings, toProductDescriptionHtml } from "@/lib/plain-description"
+import { htmlToEditableDescription, toProductDescriptionHtml } from "@/lib/plain-description"
+import { variantPricesError } from "@/lib/variant-pricing"
 import axios from "axios"
 import Image from "next/image"
 
@@ -86,7 +88,7 @@ type ProductFormData = {
 const VendorProductNewPage = () => {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [sharedProduct, setSharedProduct] = useState<{ id: string; token: string } | null>(null)
+  const [sharedProduct, setSharedProduct] = useState<{ id: string; token: string; variants: SharedCatalogVariant[] } | null>(null)
   const [shareLoading, setShareLoading] = useState(false)
   const [shareError, setShareError] = useState("")
   const [categories, setCategories] = useState<any[]>([])
@@ -217,10 +219,10 @@ const VendorProductNewPage = () => {
       .then(({ product: p }) => {
         if (cancelled) return
         const m = p.metadata || {}
-        setSharedProduct({ id, token })
+        setSharedProduct({ id, token, variants: (p.variants || []).map((variant: { sku: string; options: Record<string, string> }) => ({ sku: variant.sku, options: variant.options || {} })) })
         setSharedBrandAuthorizationKey(null)
         setFormData(prev => ({ ...prev,
-          title: p.title || "", subtitle: p.subtitle || "", description: stripDescriptionSectionHeadings(p.description || ""),
+          title: p.title || "", subtitle: p.subtitle || "", description: htmlToEditableDescription(p.description || ""),
           brand: m.brand || "UNBRANDED", handle: "", thumbnailUrl: p.thumbnail || null,
           uploadedImages: (p.images || []).map((image: any) => ({ url: image.url, key: "", filename: "", originalName: "Catalog image" })),
           uploadedVideos: (m.videos || []).map((video: any) => ({ url: typeof video === "string" ? video : video.url, key: "", filename: "", originalName: "Catalog video" })),
@@ -275,6 +277,7 @@ const VendorProductNewPage = () => {
     if (!availableDraft?.formData) return
     setFormData({
       ...availableDraft.formData,
+      description: htmlToEditableDescription(availableDraft.formData.description || ""),
     })
     if (availableDraft.logisticsEstimate) {
       setLogisticsEstimate(availableDraft.logisticsEstimate)
@@ -471,7 +474,7 @@ const VendorProductNewPage = () => {
         ...prev,
         title: draft.title || prev.title,
         handle: draft.handle || prev.handle,
-        description: stripDescriptionSectionHeadings(draft.description || prev.description),
+        description: htmlToEditableDescription(draft.description || prev.description),
         brand: draft.brand || prev.brand,
         hasVariants,
         productOptions,
@@ -747,7 +750,7 @@ const VendorProductNewPage = () => {
       toast.error("Error", { description: "Brand is required" })
       return
     }
-    if (sharedProduct && !brandAuthorizationFile && !sharedBrandAuthorizationKey) {
+    if (sharedProduct && brandNeedsAuthorization && !brandAuthorizationFile && !sharedBrandAuthorizationKey) {
       toast.error("Error", { description: "Upload your own brand authorization letter for this shared product" })
       return
     }
@@ -765,12 +768,11 @@ const VendorProductNewPage = () => {
       return
     }
 
-    const hasValidPrice = formData.variants.some((v) => {
-      const price = parseFloat(v.price)
-      return Number.isFinite(price) && price > 0
-    })
-    if (!hasValidPrice) {
-      toast.error("Error", { description: "At least one variant must have an MRP greater than 0" })
+    const pricingError = variantPricesError(formData.variants.map(row => ({
+      ...row, discounted_price: row.discountedPrice,
+    })))
+    if (pricingError) {
+      toast.error("Check variant pricing", { description: pricingError })
       return
     }
 
@@ -816,6 +818,13 @@ const VendorProductNewPage = () => {
     }
 
     const skus = formData.variants.map((v) => v.sku.trim()).filter(Boolean)
+    if (sharedProduct) {
+      const incomplete = formData.variants.slice(sharedProduct.variants.length).find(variant => !Number.isFinite(Number(variant.price)) || Number(variant.price) <= 0)
+      if (incomplete) {
+        toast.error("New variant needs an MRP", { description: `Set an MRP greater than zero for ${incomplete.sku || "the requested variant"} before submitting.` })
+        return
+      }
+    }
     const skuValidation = validateProductSkus(skus, usedSkus)
     if (!skuValidation.ok) {
       toast.error(skuValidation.title, { description: skuValidation.description })
@@ -1917,6 +1926,8 @@ const VendorProductNewPage = () => {
         }))
       }
       productOptions={formData.productOptions}
+      optionsReadOnly={Boolean(sharedProduct)}
+      fixedSkuRows={sharedProduct?.variants.length || 0}
       onProductOptionsChange={(productOptions) =>
         setFormData((prev) => ({ ...prev, productOptions }))
       }
@@ -1953,7 +1964,7 @@ const VendorProductNewPage = () => {
     <VendorShell>
       <div className="p-4 md:p-8 max-w-[1200px] mx-auto">
         {(shareLoading || shareError || sharedProduct) && <div role="status" className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-          {shareLoading ? "Loading shared product and images…" : shareError || "Shared catalog product: review the details, then enter your own price and stock. Your brand authorization is still required."}
+          {shareLoading ? "Loading shared product and images…" : shareError || "Shared catalog product: set your price and stock, or add a new variant for review. The full listing needs admin approval. Your approved brand authorization is reused."}
         </div>}
         {sharedProduct && !shareError && formData.uploadedImages.length > 0 && <div className="mb-6 rounded-xl border border-ui-border-base p-4">
           <Text className="mb-3 font-medium">Catalog images</Text>
@@ -2093,7 +2104,7 @@ const VendorProductNewPage = () => {
           </Heading>
           <Text size="small" className="text-ui-fg-muted mb-3">
             Paste an oweg.in product URL or an admin Share link. A Share link fills the product
-            details, images, variants, and SKUs. Add your own MRP, stock, and brand authorization letter before submitting.
+            details, images, variants, and SKUs. Add your own MRP and stock. Your approved brand authorization is reused; otherwise upload a letter for review.
           </Text>
           <div className="flex flex-col sm:flex-row gap-3">
             <Input
@@ -2138,6 +2149,12 @@ const VendorProductNewPage = () => {
 
         {renderBasicsSection()}
         {renderVariantsSection()}
+        {sharedProduct && !shareError && <SharedVariantRequests
+          catalog={sharedProduct.variants}
+          variants={formData.variants}
+          onAdd={variant => setFormData(prev => ({ ...prev, variants: [...prev.variants, variant] }))}
+          onRemove={index => setFormData(prev => ({ ...prev, variants: prev.variants.filter((_, i) => i !== index) }))}
+        />}
         {renderOrganizeSection()}
 
         <div className="flex justify-end gap-3 mt-4 pb-8">

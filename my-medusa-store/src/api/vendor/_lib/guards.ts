@@ -16,7 +16,7 @@ export async function requireApprovedVendor(
     res.status(401).json({ message: "Unauthorized" })
     return null
   }
-  const claims = verifyVendorToken(token)
+  const claims = await verifyVendorToken(token)
   if (!claims) {
     res.status(401).json({ message: "Invalid token" })
     return null
@@ -41,7 +41,7 @@ export async function requireVendorAuth(req: MedusaRequest): Promise<string | nu
     return null
   }
   
-  const claims = verifyVendorToken(token)
+  const claims = await verifyVendorToken(token)
   if (!claims) {
     return null
   }

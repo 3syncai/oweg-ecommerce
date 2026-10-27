@@ -1,11 +1,10 @@
 import {
   fetchCategories,
   fetchProductsByCategoryId,
-  isMedusaProductInStock,
   toUiProduct,
   type MedusaCategory,
-  type MedusaProduct,
 } from "@/lib/medusa";
+import { inStockHomeProducts, homeProductKey } from "./home-products";
 
 export type HomeFeedUiProduct = ReturnType<typeof toUiProduct> & {
   score?: number;
@@ -33,8 +32,8 @@ export type HomeFeedResult = {
 
 const MAX_SECTIONS = 6;
 const MAX_PER_SECTION = 12;
-const PER_CATEGORY_FETCH = 12;
-const MAX_CATEGORIES_TO_PROBE = 8;
+const PER_CATEGORY_FETCH = 24;
+const MAX_CATEGORIES_TO_PROBE = 12;
 const CATEGORY_FETCH_CONCURRENCY = 6;
 const CATEGORY_FETCH_TIMEOUT_MS = 8000;
 const HOME_FEED_CACHE_TTL_MS = 60_000;
@@ -108,9 +107,8 @@ function isRootCategory(cat: MedusaCategory) {
   return !parentId;
 }
 
-function rankProduct(product: MedusaProduct, index: number) {
-  const ui = toUiProduct(product);
-  const inStock = isMedusaProductInStock(product) ? 1000 : 0;
+function rankProduct(ui: HomeFeedUiProduct, index: number) {
+  const inStock = (ui.inventory_quantity || 0) > 0 ? 1000 : 0;
   const discount = typeof ui.discount === "number" ? ui.discount : 0;
   const hasRealImage = ui.image && ui.image !== "/oweg_logo.png" ? 80 : 0;
   const pricePenalty = ui.price > 0 ? Math.min(40, Math.floor(ui.price / 5000)) : 0;
@@ -118,11 +116,11 @@ function rankProduct(product: MedusaProduct, index: number) {
   return inStock + discount * 2 + hasRealImage + recency - pricePenalty;
 }
 
-function sortAndSlice(products: MedusaProduct[], limit = MAX_PER_SECTION): HomeFeedUiProduct[] {
+function sortAndSlice(products: HomeFeedUiProduct[], limit = MAX_PER_SECTION): HomeFeedUiProduct[] {
   return products
     .map((product, index) => {
       const score = rankProduct(product, index);
-      return { ...toUiProduct(product), score };
+      return { ...product, score };
     })
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     .slice(0, limit);
@@ -176,9 +174,8 @@ async function fetchCategorySection(cat: MedusaCategory): Promise<FilledSection 
       CATEGORY_FETCH_TIMEOUT_MS
     );
     const products = Array.isArray(list.products) ? list.products : [];
-    // Prefer in-stock products for carousels; fall back to all if none in stock
-    const inStock = products.filter(isMedusaProductInStock);
-    const pool = inStock.length > 0 ? inStock : products;
+    // Never backfill a home carousel with sold-out variants.
+    const pool = inStockHomeProducts(products);
     if (!pool.length) return null;
     const ranked = sortAndSlice(pool, MAX_PER_SECTION);
     if (!ranked.length) return null;
@@ -235,7 +232,7 @@ export async function buildHomeFeed(): Promise<HomeFeedResult> {
   const popularPool: HomeFeedUiProduct[] = [];
   for (const section of filled) {
     for (const product of section.products) {
-      const id = String(product.id);
+      const id = homeProductKey(product);
       if (seen.has(id)) continue;
       seen.add(id);
       popularPool.push(product);

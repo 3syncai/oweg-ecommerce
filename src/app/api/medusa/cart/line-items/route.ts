@@ -169,6 +169,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Maximum ${MAX_QUANTITY_PER_ITEM} units per item` }, { status: 400 })
     }
     const selectedVariantId = body.seller_selected === true ? variant_id : await cheapestAvailableVariant(variant_id, quantity)
+    const offersRes = await backend(`/store/catalog-offers?variant_id=${encodeURIComponent(selectedVariantId)}`)
+    if (!offersRes.ok) {
+      return NextResponse.json({ error: "Unable to verify seller stock. Please try again." }, { status: 503 })
+    }
+    const offers = await offersRes.json() as { offers?: Array<{ variant_id?: string; available?: number }> }
+    const selectedOffer = offers.offers?.find(offer => offer.variant_id === selectedVariantId)
+    if (!selectedOffer || !Number.isFinite(Number(selectedOffer.available)) || Number(selectedOffer.available) < quantity) {
+      return NextResponse.json({ error: "This item is out of stock or has insufficient stock from this seller" }, { status: 409 })
+    }
     const itemBody = { variant_id: selectedVariantId, quantity, ...(body.seller_selected === true ? { metadata: { seller_selected: true } } : {}) }
     let { cartId } = await ensureCartId(req)
     let existingQuantity = 0
@@ -182,13 +191,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: `Maximum ${MAX_QUANTITY_PER_ITEM} units per item` }, { status: 400 })
       }
     }
-    const offersRes = await backend(`/store/catalog-offers?variant_id=${encodeURIComponent(selectedVariantId)}`)
-    if (offersRes.ok) {
-      const offers = await offersRes.json() as { offers?: Array<{ variant_id?: string; available?: number }> }
-      const selectedOffer = offers.offers?.find(offer => offer.variant_id === selectedVariantId)
-      if (selectedOffer && Number(selectedOffer.available) < existingQuantity + quantity) {
-        return NextResponse.json({ error: `Only ${selectedOffer.available} units are available from this seller` }, { status: 409 })
-      }
+    if (Number(selectedOffer.available) < existingQuantity + quantity) {
+      return NextResponse.json({ error: `Only ${selectedOffer.available} units are available from this seller` }, { status: 409 })
     }
     let res = await addLineItemRequest(cartId, itemBody)
     let attempts = 0

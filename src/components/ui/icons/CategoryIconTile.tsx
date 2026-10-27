@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { catalogIconSrc } from "@/lib/catalog-icons";
 import CategoryIcon from "@/components/ui/icons/CategoryIcon";
 import SubcategoryIcon from "@/components/ui/icons/SubcategoryIcon";
 
@@ -60,7 +61,8 @@ export default function CategoryIconTile({
   className = "",
   labelClassName = "",
 }: CategoryIconTileProps) {
-  const glyphClass = TILE_GLYPH[size];
+  const suppliedIcon = Boolean(catalogIconSrc(kind, handle, title));
+  const glyphClass = suppliedIcon ? "h-full w-full" : TILE_GLYPH[size];
   const text = label ?? title ?? "";
 
   const glyph =
@@ -85,6 +87,7 @@ export default function CategoryIconTile({
       <span
         className={`oweg-icon-tile shrink-0 ${TILE_BOX[size]}`}
         data-active={active ? "true" : "false"}
+        data-pastel={suppliedIcon ? "true" : undefined}
       >
         {glyph}
       </span>

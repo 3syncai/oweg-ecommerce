@@ -1,9 +1,16 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules, ProductStatus, ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { variantPricesError } from "../../../../../../lib/variant-pricing"
+import { fetchProductVariantMatrix } from "../../../../../../lib/vendor-product-variants"
 import client from "../../../../../../utils/opensearch"
 import { PRODUCTS_INDEX, buildSearchDocument, ensureProductsIndex } from "../../../../../../utils/search-index"
+import { CatalogConflict, withCatalogLock } from "../../../../../../lib/catalog-identity"
+import { reviewCatalogVariantRequests } from "../../../../../../lib/shared-catalog-offer"
 
-export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
+export const POST = async (req: MedusaRequest, res: MedusaResponse) =>
+  withCatalogLock(req.scope, () => approveProduct(req, res))
+
+const approveProduct = async (req: MedusaRequest, res: MedusaResponse) => {
   try {
     const { id } = req.params
     const productModuleService = req.scope.resolve(Modules.PRODUCT)
@@ -25,11 +32,17 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
       })
     }
 
-    // Update product to approved status, merging with existing metadata
+    const matrix = await fetchProductVariantMatrix(req, id)
+    const pricingError = variantPricesError(matrix.variants)
+    if (pricingError) return res.status(400).json({ message: pricingError })
+
+    const reviewedVariants = await reviewCatalogVariantRequests(req.scope, existingProduct as any)
+    // The listing and its requested variants become approved together.
     const updatedProduct = await productModuleService.updateProducts(id, {
       status: ProductStatus.PUBLISHED,
       metadata: {
         ...existingMetadata,
+        ...(reviewedVariants.length ? { catalog_variant_requests: reviewedVariants } : {}),
         approval_status: "approved",
         approved_at: new Date().toISOString(),
         approved_by: "admin", // You can get actual admin ID from session
@@ -104,6 +117,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
 
     return res.json({ product: updatedProduct })
   } catch (error) {
+    if (error instanceof CatalogConflict) return res.status(409).json({ message: error.message })
     console.error("Error approving product:", error)
     return res.status(500).json({
       message: "Failed to approve product",

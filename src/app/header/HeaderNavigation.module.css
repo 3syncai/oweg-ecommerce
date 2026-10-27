@@ -84,3 +84,16 @@
 @media (prefers-reduced-motion: reduce) {
   .navigation, .navigation *, .departmentsPanel * { transition: none !important; }
 }
+
+/* Give the detailed pastel artwork room without changing the menu trigger. */
+.categoryLink:not(.allDepartments) .categoryIcon {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: transparent;
+}
+.categoryLink:not(.allDepartments) .categoryIcon img {
+  width: 36px;
+  height: 36px;
+  max-width: none;
+}

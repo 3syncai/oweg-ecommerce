@@ -14,6 +14,7 @@ import HealthCareAgeGate from "@/components/modules/HealthCareAgeGate";
 import { productHasHealthCareCategory } from "@/lib/health-care-age-gate";
 import SellerOffers from "@/components/modules/SellerOffers";
 import { useSellerOffers } from "@/hooks/useSellerOffers";
+import { isVariantPurchasable } from "@/lib/stock-availability";
 
 type ProductDetailClientProps = {
   product: DetailedProduct;
@@ -34,9 +35,12 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
   const purchaseVariantId = selectedSellerOffer?.variant_id ?? product.variant_id;
   const displayPrice = selectedSellerOffer?.price ?? product.price;
   const sellerChoicePinned = Boolean(selectedSellerOffer);
+  const selectedVariant = product.variants.find(variant => variant.id === purchaseVariantId);
+  const hasStock = selectedSellerOffer ? selectedSellerOffer.available > 0 : Boolean(selectedVariant && isVariantPurchasable(selectedVariant));
   const showHealthCareAgeGate = productHasHealthCareCategory(product.categories);
 
   const handleAddToCart = async () => {
+    if (!hasStock || sellerOffersLoading || isAdding) return;
     if (!purchaseVariantId || sellerOffersLoading) {
       alert("This product is not available for purchase");
       return;
@@ -183,11 +187,11 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
             <div className="flex gap-3 mb-6">
               <Button
                 onClick={handleAddToCart}
-                disabled={isAdding || sellerOffersLoading || !purchaseVariantId}
+                disabled={isAdding || sellerOffersLoading || !purchaseVariantId || !hasStock}
                 className="flex-1 bg-[#7AC943] hover:bg-[#6BB832] text-white text-lg py-6"
               >
                 <ShoppingCart className="w-5 h-5 mr-2" />
-                {isAdding ? "Adding..." : "Add to Cart"}
+                {isAdding ? "Adding..." : hasStock ? "Add to Cart" : "Out of stock"}
               </Button>
               <Button
                 variant="outline"

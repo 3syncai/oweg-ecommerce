@@ -15,6 +15,7 @@ import {
   normalizeNdrReason,
   validateLogisticsTransition,
 } from "../../../../lib/vendor-logistics-status"
+import { findShipmentOrder } from "../../../../lib/find-shipment-order"
 import { scheduleVendorEarningsOnDelivery } from "../../../../lib/vendor-earnings"
 
 export function verifyItlWebhookSecret(req: MedusaRequest): boolean {
@@ -58,20 +59,7 @@ export async function handleItlWebhook(req: MedusaRequest, res: MedusaResponse) 
     (payload?.force === true || payload?.force === "true" || payload?.force === 1)
 
   const orderModuleService = req.scope.resolve(Modules.ORDER)
-  const orders = await orderModuleService.listOrders({}, { take: 500 })
-
-  const match = (orders || []).find((order: any) => {
-    const metadata = order.metadata || {}
-    if (awb && metadata.shiprocket_awb === awb) return true
-    if (providerOrderId && metadata.shiprocket_order_id === providerOrderId) return true
-
-    const workflows = getVendorWorkflows(metadata)
-    return Object.values(workflows).some((wf) => {
-      if (awb && (wf.shiprocket_awb === awb || wf.tracking_number === awb)) return true
-      if (providerOrderId && String(wf.shiprocket_order_id || "") === providerOrderId) return true
-      return false
-    })
-  })
+  const match = await findShipmentOrder(orderModuleService, awb, providerOrderId)
 
   if (!match) {
     console.warn(`[ITL] Webhook: no order matched awb=${awb} order_id=${providerOrderId}`)

@@ -1,26 +1,12 @@
 export const PASSWORD_POLICY_MESSAGE =
-  "Use at least 10 characters with uppercase, lowercase, number, and special character."
+  "Include 1 capital letter, 1 number and 1 special character."
+
+export const PASSWORD_REQUIREMENTS = [
+  { label: "1 capital letter", test: (password: string) => /[A-Z]/.test(password) },
+  { label: "1 number", test: (password: string) => /\d/.test(password) },
+  { label: "1 special character", test: (password: string) => /[\p{P}\p{S}]/u.test(password) },
+]
 
 export function validateStrongPassword(password: string) {
-  if (password.length < 10) {
-    return PASSWORD_POLICY_MESSAGE
-  }
-
-  if (!/[a-z]/.test(password)) {
-    return PASSWORD_POLICY_MESSAGE
-  }
-
-  if (!/[A-Z]/.test(password)) {
-    return PASSWORD_POLICY_MESSAGE
-  }
-
-  if (!/\d/.test(password)) {
-    return PASSWORD_POLICY_MESSAGE
-  }
-
-  if (!/[^A-Za-z0-9]/.test(password)) {
-    return PASSWORD_POLICY_MESSAGE
-  }
-
-  return null
+  return PASSWORD_REQUIREMENTS.every(rule => rule.test(password)) ? null : PASSWORD_POLICY_MESSAGE
 }

@@ -1,4 +1,5 @@
 import { loadShareProduct, sharedProductDraft, validProductShare } from "../../../lib/product-share"
+import { prepareSharedCatalogOffer } from "../../../lib/shared-catalog-offer"
 import { CatalogConflict, cleanVendorMetadata, prepareCatalogOffer, publicVariantSku, withCatalogLock } from "../../../lib/catalog-identity"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
@@ -11,6 +12,7 @@ import {
   sanitizeColorImages,
   attachVariantThumbnails,
 } from "../../../lib/variant-matrix"
+import { variantPricesError } from "../../../lib/variant-pricing"
 import { syncVariantThumbnailsFromColorImages } from "../../../lib/vendor-product-variants"
 import { releaseOrphanInventorySkus } from "../../../lib/release-sku"
 import {
@@ -143,9 +145,6 @@ async function createOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
       const shared = await loadShareProduct(req.scope, body.shared_product_id)
       if (!validProductShare(shared, body.share_token)) return res.status(404).json({ message: "Shared product link expired. Ask the admin for a new link." })
       sharedProduct = shared
-      const submitted = body.variants || []
-      const allowedSkus = new Set((shared.variants || []).map((v: any) => publicVariantSku(shared, v).toUpperCase()))
-      if (!submitted.length || submitted.some((v: any) => !allowedSkus.has(String(v.sku || "").trim().toUpperCase()))) return res.status(409).json({ message: "Use only the SKUs from the shared product." })
     }
     const {
       title,
@@ -177,6 +176,9 @@ async function createOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
     // A submitted letter is enough to create a draft for admin review.
     // Publication still requires the letter to be verified by an admin.
     const brandName = (metadata?.brand || "UNBRANDED").toString().trim()
+    if (sharedProduct && brandName.toLowerCase() !== String(sharedProduct.metadata?.brand || "UNBRANDED").trim().toLowerCase()) {
+      return res.status(409).json({ message: "The brand must match the shared product." })
+    }
 
     try {
       const brandAuthService = req.scope.resolve("vendorBrandAuthorization") as any
@@ -192,7 +194,9 @@ async function createOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
           brand_name: brandName,
         })
       }
-      if (sharedProduct && (
+      // Approval belongs to the receiving vendor and brand, not one shared link.
+      // An unverified letter must still belong to this share before draft creation.
+      if (sharedProduct && !authorization.verified && (
         !body.shared_brand_authorization_key ||
         body.shared_brand_authorization_key !== authorization.authorization_file_key ||
         authorization.metadata?.shared_product_id !== sharedProduct.id ||
@@ -208,7 +212,9 @@ async function createOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
       return res.status(503).json({ message: "Brand authorization is temporarily unavailable. Please try again." })
     }
 
-    const offer = await prepareCatalogOffer(req.scope, auth.vendor_id, body)
+    const offer = sharedProduct
+      ? await prepareSharedCatalogOffer(req.scope, auth.vendor_id, body, sharedProduct)
+      : await prepareCatalogOffer(req.scope, auth.vendor_id, body)
 
     // Get default shipping profile if not provided
     let finalShippingProfileId = shipping_profile_id
@@ -222,6 +228,14 @@ async function createOffer(req: MedusaRequest, res: MedusaResponse, auth: { vend
 
     console.log("Received variants:", JSON.stringify(variants, null, 2))
     console.log("Received options:", JSON.stringify(options, null, 2))
+
+    const pricingError = variantPricesError((offer.variants || []).map(variant => {
+      const base = variant.prices?.find(price => !price.price_list_id)
+      const sales = variant.prices?.filter(price => price.price_list_id) || []
+      return { title: variant.title, sku: variant.sku, price: base?.amount,
+        discounted_price: sales.length ? Math.max(...sales.map(price => Number(price.amount))) : undefined }
+    }))
+    if (pricingError) return res.status(400).json({ message: pricingError })
 
     const normalized = normalizeOptionsAndVariants(options, offer.variants)
     if (normalized.error) {

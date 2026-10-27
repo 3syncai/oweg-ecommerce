@@ -419,7 +419,7 @@ export default function VendorNotifications() {
       {toast ? (
         <div
           className={clx(
-            "fixed bottom-4 right-4 z-[60] w-[min(100vw-2rem,22rem)] rounded-xl border bg-ui-bg-component p-3 shadow-xl md:bottom-6 md:right-6",
+            "fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] right-4 z-[60] w-[min(100vw-2rem,22rem)] rounded-xl border bg-ui-bg-component p-3 shadow-xl md:bottom-6 md:right-6",
             toast.kind === "return"
               ? "border-amber-500/30"
               : "border-emerald-500/30"

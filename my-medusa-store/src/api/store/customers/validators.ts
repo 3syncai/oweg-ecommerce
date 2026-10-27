@@ -50,7 +50,7 @@ export const StoreValidatePasswordResetToken = z.object({
 
 export const StoreResetPassword = z.object({
   token: z.string().trim().min(32).max(256),
-  password: z.string().min(10).max(128),
+  password: z.string().min(1).max(128),
 })
 
 export const StoreRequestLoginOtp = z

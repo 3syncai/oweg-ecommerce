@@ -1,7 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import AffiliateModuleService from "../../../../modules/affiliate/service"
 import { AFFILIATE_MODULE } from "../../../../modules/affiliate"
-import Busboy from "busboy"
+import { boundedUpload } from "../../../../lib/bounded-upload"
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
 import path from "path"
 import { randomUUID } from "crypto"
@@ -78,7 +78,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       }
 
       const headers = (req as any).headers || {}
-      const bb = Busboy({ headers })
+      const bb = boundedUpload(headers, res)
       const filePromises: Promise<void>[] = []
       let userName = ''
       let userEmail = ''
@@ -284,7 +284,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       })
     }
 
-    return res.status(500).json({
+    return res.status([413, 429].includes(error?.statusCode) ? error.statusCode : 500).json({
       message: "Failed to create affiliate user",
       error: error?.message || String(error),
     })

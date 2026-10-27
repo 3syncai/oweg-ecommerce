@@ -1076,9 +1076,6 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
     // If we don't manage inventory, it's always in stock
     if (!stockInfo.manage) return true
-    // If backorders are allowed, it's always in stock
-    if (stockInfo.backorder) return true
-
     // Otherwise check quantity > 0
     if (typeof stockInfo.quantity === 'number') {
       return stockInfo.quantity > 0

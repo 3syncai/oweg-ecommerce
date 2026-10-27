@@ -134,7 +134,7 @@ export async function saveVendorProductEdit(req: MedusaRequest, productId: strin
           ? await trx("price").where({ price_set_id: priceSet.price_set_id, currency_code: "inr" }).whereNotNull("price_list_id").whereNull("deleted_at").first()
           : null
         const effectiveSale = row.discounted_price === undefined ? (previousSale ? Number(previousSale.amount) : null) : row.discounted_price
-        if (effectiveSale != null && (mrp == null || effectiveSale >= mrp)) throw new ProductEditError("Sale price must be lower than MRP")
+        if (effectiveSale != null && (mrp == null || effectiveSale > mrp)) throw new ProductEditError("Sale price cannot exceed MRP")
         const upsert = async (value: number, listId: string | null) => {
           const query = trx("price").where({ price_set_id: priceSet.price_set_id, currency_code: "inr" }).whereNull("deleted_at")
           listId ? query.where({ price_list_id: listId }) : query.whereNull("price_list_id")

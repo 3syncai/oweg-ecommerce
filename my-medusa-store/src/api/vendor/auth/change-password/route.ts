@@ -16,7 +16,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     if (!token) {
       return res.status(401).json({ message: "Unauthorized" })
     }
-    const claims = verifyVendorToken(token)
+    const claims = await verifyVendorToken(token)
     if (!claims?.sub) {
       return res.status(401).json({ message: "Invalid token" })
     }

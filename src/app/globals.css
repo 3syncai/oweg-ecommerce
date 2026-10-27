@@ -586,3 +586,14 @@ body > div[style*="z-index: 9999"] {
   }
 }
 
+
+/* Supplied pastel SVGs include their own circle, shading and shadow. */
+.oweg-icon-tile[data-pastel="true"] {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.oweg-icon-tile[data-pastel="true"][data-active="true"] {
+  outline: 2px solid var(--oweg-green);
+  outline-offset: 1px;
+}

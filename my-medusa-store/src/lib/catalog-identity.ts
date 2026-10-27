@@ -95,7 +95,7 @@ export async function withCatalogLock<T>(_scope: any, action: () => Promise<T>):
 
 export async function readCatalog(scope: any): Promise<any[]> {
   const { data } = await scope.resolve("query").graph({
-    entity: "product", fields: ["id", "title", "metadata", "collection.title", "variants.id", "variants.sku", "variants.options.value", "variants.options.option.title"],
+    entity: "product", fields: ["id", "title", "status", "metadata", "collection.title", "variants.id", "variants.title", "variants.sku", "variants.options.value", "variants.options.option.title"],
   })
   return data || []
 }

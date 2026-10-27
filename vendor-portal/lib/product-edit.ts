@@ -16,7 +16,7 @@ export function serializeProductEditVariants(
     const price = row.price.trim() ? Number(row.price) : undefined
     const sale = row.discountedPrice.trim() ? Number(row.discountedPrice) : null
     if (price !== undefined && (!Number.isFinite(price) || price <= 0)) throw new Error("MRP must be greater than zero")
-    if (sale !== null && (!Number.isFinite(sale) || sale <= 0 || (price !== undefined && sale >= price))) throw new Error("Sale price must be greater than zero and lower than MRP")
+    if (sale !== null && (!Number.isFinite(sale) || sale <= 0 || (price !== undefined && sale > price))) throw new Error("Sale price must be greater than zero and cannot exceed MRP")
     return {
       id: row.id, title: row.title, sku: row.sku.trim() || null,
       manage_inventory: row.managedInventory, allow_backorder: row.allowBackorder,

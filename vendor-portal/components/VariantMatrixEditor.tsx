@@ -40,6 +40,7 @@ export type VariantMatrixEditorProps = {
   primaryVisualOption?: string
   onPrimaryVisualOptionChange?: (option: string) => void
   optionsReadOnly?: boolean
+  fixedSkuRows?: number
   simpleProductExtras?: React.ReactNode
   policyExtras?: React.ReactNode
   usedSkus?: Set<string>
@@ -59,6 +60,9 @@ const VariantDiscountCell = ({
   price: string
   discountedPrice: string
 }) => {
+  if (price.trim() && discountedPrice.trim() && Number(discountedPrice) > Number(price)) {
+    return <span role="status" className="text-xs text-red-600">Sale exceeds MRP</span>
+  }
   const discountPercent = computeDiscountPercent(price, discountedPrice)
   if (discountPercent === null) {
     return <span className="text-ui-fg-muted">—</span>
@@ -132,6 +136,7 @@ export default function VariantMatrixEditor({
   primaryVisualOption,
   onPrimaryVisualOptionChange,
   optionsReadOnly = false,
+  fixedSkuRows = 0,
   simpleProductExtras,
   policyExtras,
   usedSkus,
@@ -482,7 +487,7 @@ export default function VariantMatrixEditor({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5">
       {!optionsReadOnly && (
         <div className="flex items-center justify-between gap-4 rounded-xl border border-ui-border-base bg-ui-bg-subtle/30 px-5 py-4">
           <div>
@@ -1058,6 +1063,7 @@ export default function VariantMatrixEditor({
                       <td className="px-3 py-2">
                         <Input
                           value={variant.sku}
+                          readOnly={idx < fixedSkuRows}
                           onChange={(e) => updateVariantField(idx, "sku", e.target.value)}
                           onBlur={(e) => handleSkuBlur(idx, e.target.value)}
                           placeholder="Optional"
@@ -1116,7 +1122,7 @@ export default function VariantMatrixEditor({
               <div key={variant.id || idx} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor={`product-sku-${idx}`}>SKU</Label>
-                  <Input id={`product-sku-${idx}`} value={variant.sku}
+                  <Input id={`product-sku-${idx}`} value={variant.sku} readOnly={idx < fixedSkuRows}
                     onChange={(e) => updateVariantField(idx, "sku", e.target.value)}
                     onBlur={(e) => handleSkuBlur(idx, e.target.value)} placeholder="Optional" />
                 </div>

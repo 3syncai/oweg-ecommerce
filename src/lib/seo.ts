@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import type { DetailedProduct } from "@/lib/medusa"
+import { isVariantPurchasable } from "./stock-availability"
 
 export type BreadcrumbItem = {
   name: string
@@ -88,11 +89,7 @@ export function buildProductJsonLd(product: DetailedProduct) {
     .map((src) => absoluteUrl(src))
 
   const currency = (product.currency || "INR").toUpperCase()
-  const inStock = product.variants?.some((v) => {
-    if (v.allow_backorder) return true
-    if (v.manage_inventory === false) return true
-    return (v.inventory_quantity ?? 0) > 0
-  })
+  const inStock = product.variants?.some(isVariantPurchasable)
 
   return {
     "@context": "https://schema.org",
