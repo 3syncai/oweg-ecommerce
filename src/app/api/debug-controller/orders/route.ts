@@ -85,29 +85,34 @@ export async function GET(req: NextRequest) {
       display_id: string | number | null;
       email: string | null;
       vendor_count: string | number;
+      commission_count: string | number;
       pending_amount: string | number;
       unlock_at: string | null;
     }>(`
-      SELECT
-        vel.order_id,
-        COALESCE(o.display_id::text, vel.order_display_id, vel.order_id) AS display_id,
-        o.email,
-        COUNT(DISTINCT vel.vendor_id) AS vendor_count,
-        SUM(vel.net_amount) AS pending_amount,
-        MIN(vel.unlock_at) AS unlock_at
-      FROM vendor_earnings_log vel
-      LEFT JOIN "order" o ON o.id = vel.order_id
-      WHERE vel.status = 'UNLOCKING'
-        AND vel.net_amount <> 0
-      GROUP BY vel.order_id, o.display_id, vel.order_display_id, o.email
-      ORDER BY MIN(vel.unlock_at) ASC NULLS LAST
-      LIMIT 100
+      WITH pending AS (
+        SELECT order_id, vendor_id, net_amount AS amount, unlock_at,
+               order_display_id::text AS display_id, false AS commission
+        FROM vendor_earnings_log WHERE status = 'UNLOCKING' AND net_amount <> 0
+        UNION ALL
+        SELECT order_id, NULL AS vendor_id, affiliate_commission AS amount, unlock_at,
+               NULL AS display_id, true AS commission
+        FROM affiliate_commission_log WHERE status = 'PENDING' AND affiliate_commission > 0
+      )
+      SELECT p.order_id, COALESCE(o.display_id::text, MAX(p.display_id), p.order_id) AS display_id,
+        o.email, COUNT(DISTINCT p.vendor_id) AS vendor_count,
+        COUNT(*) FILTER (WHERE p.commission) AS commission_count,
+        SUM(p.amount) AS pending_amount, MIN(p.unlock_at) AS unlock_at
+      FROM pending p JOIN "order" o ON o.id = p.order_id
+      WHERE o.status <> 'canceled' AND o.deleted_at IS NULL
+      GROUP BY p.order_id, o.display_id, o.email
+      ORDER BY MIN(p.unlock_at) ASC NULLS LAST LIMIT 100
     `);
     const pendingOrders: DebugPendingSettlementOrder[] = pendingResult.rows.map((row) => ({
       orderId: row.order_id,
       displayId: String(row.display_id || row.order_id),
       email: row.email,
       vendorCount: Number(row.vendor_count) || 0,
+      commissionCount: Number(row.commission_count) || 0,
       pendingAmount: Number(row.pending_amount) || 0,
       unlockAt: row.unlock_at,
     }));

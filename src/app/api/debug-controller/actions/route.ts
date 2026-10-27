@@ -1,3 +1,4 @@
+import { forceSettleDebugOrder } from "@/lib/debug-controller/settlement";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { Pool } from "pg";
@@ -198,32 +199,11 @@ async function syncDebugDeliveryLedger(orderId: string) {
   }
 }
 
-/** Test-only: promote every pending vendor earning on an order immediately. */
+/** Test-only: release vendor and partner/admin earnings in one transaction. */
 async function forceSettlePendingOrder(orderId: string) {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
-    const result = await pool.query<{ id: string; vendor_id: string; net_amount: string }>(
-      `
-        UPDATE vendor_earnings_log
-        SET
-          status = 'CREDITED',
-          credited_at = COALESCE(credited_at, NOW()),
-          unlock_at = NULL,
-          updated_at = NOW()
-        WHERE order_id = $1
-          AND status = 'UNLOCKING'
-        RETURNING id, vendor_id, net_amount
-      `,
-      [orderId]
-    );
-    if (!result.rowCount) {
-      throw new Error("No pending earnings found for this order")
-    }
-    return {
-      orderId,
-      promoted: result.rowCount,
-      vendorIds: [...new Set(result.rows.map((row) => row.vendor_id))],
-    };
+    return await forceSettleDebugOrder(pool, orderId);
   } finally {
     await pool.end();
   }
