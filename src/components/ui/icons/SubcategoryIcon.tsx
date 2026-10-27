@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { catalogIconSrc } from "@/lib/catalog-icons";
 import { normalizeCategorySlug } from "@/components/ui/icons/CategoryIcon";
 
 const SUBCATEGORY_ICON_FILES = new Set([
@@ -184,7 +185,9 @@ export default function SubcategoryIcon({
 }: SubcategoryIconProps) {
   const slug = resolveSubcategoryIconSlug(handle, title);
 
-  if (!slug) {
+  const suppliedSrc = catalogIconSrc("subcategory", handle, title);
+
+  if (!slug && !suppliedSrc) {
     return (
       <DefaultSubcategoryIcon
         className={`shrink-0 text-[#1F2A33] group-hover:text-[#66C940] transition-colors ${className}`}
@@ -194,7 +197,7 @@ export default function SubcategoryIcon({
 
   return (
     <img
-      src={`/icons/subcategories/${slug}.svg`}
+      src={suppliedSrc || `/icons/subcategories/${slug}.svg`}
       alt=""
       aria-hidden="true"
       className={`shrink-0 object-contain transition-opacity group-hover:opacity-100 ${className}`}
