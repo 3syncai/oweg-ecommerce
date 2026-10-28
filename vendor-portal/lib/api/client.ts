@@ -528,6 +528,19 @@ export const vendorProductsApi = {
     })
   },
 
+  importImageUrl: async (url: string, signal?: AbortSignal) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await apiRequest<{ url: string; key: string; stored: boolean }>("/vendor/products/import-image-url", {
+          method: "POST", data: { url }, signal, timeout: 46000,
+        })
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 429 || attempt >= 2 || signal?.aborted) throw error
+        await new Promise(resolve => setTimeout(resolve, 800 * (attempt + 1)))
+      }
+    }
+  },
+
   uploadImage: async (file: File) => {
     const formData = new FormData()
     formData.append('file', file)

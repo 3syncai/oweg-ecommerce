@@ -17,9 +17,13 @@ import styles from "@/components/bulk-upload/BulkUpload.module.css"
 import VendorShell from "@/components/VendorShell"
 import BrandLetterPreview from "@/components/bulk-upload/BrandLetterPreview"
 import BulkPricingReview from "@/components/bulk-upload/BulkPricingReview"
+import BulkPreviewPagination from "@/components/bulk-upload/BulkPreviewPagination"
+import { bulkPreviewPage } from "@/lib/bulk-preview-page"
 import type { BulkPricingDecision } from "@/lib/bulk-pricing"
 import { savedAuthorization, submitBrandLetters, type BrandAuthState } from "@/lib/bulk-brand-authorization"
 import { bulkSubmissionIssues } from "@/lib/bulk-submission"
+import { isRemoteImageSource } from "@/lib/bulk-image-source"
+import { importBulkImageSources } from "@/lib/bulk-image-import"
 import GuideCard from "@/components/bulk-upload/GuideCard"
 import StepCard from "@/components/bulk-upload/StepCard"
 import {
@@ -38,7 +42,7 @@ import {
   vendorTypesApi,
 } from "@/lib/api/client"
 import { buildBulkPayload } from "@/lib/bulk-payload"
-import { parseRows, applyGroupValidation, editBulkProduct, productGroupKey, rowOptionValues, normalizeImageKey, IMAGE_COLUMN_PATTERN, LEGACY_IMAGES_COLUMN, isMediaUrl, brandReady, type Category, type Collection, type RawRow, type ParsedRow } from "@/lib/bulk-upload"
+import { parseRows, applyGroupValidation, editBulkProduct, productGroupKey, rowOptionValues, normalizeImageKey, IMAGE_COLUMN_PATTERN, LEGACY_IMAGES_COLUMN, brandReady, type Category, type Collection, type RawRow, type ParsedRow } from "@/lib/bulk-upload"
 import { buildBulkTemplate, serializeBulkTemplate, readBulkWorkbook, loadAllReferences } from "@/lib/bulk-workbook"
 import {
   extractEmbeddedImages,
@@ -51,6 +55,7 @@ const uploadError = (error: unknown): UploadError => error && typeof error === "
 
 type ImageState =
   | { status: "missing" }
+  | { status: "checking"; source: string }
   | { status: "selected"; file: File }
   | { status: "uploading"; file: File }
   | { status: "uploaded"; url: string; key: string; originalName: string }
@@ -71,6 +76,8 @@ const VendorProductsBulkUploadPage = () => {
   const router = useRouter()
   const [phase, setPhase] = useState<Phase>("intro")
   const [rows, setRows] = useState<ParsedRow[]>([])
+  const [previewPage, setPreviewPage] = useState(1)
+  const preview = bulkPreviewPage(rows.length, previewPage)
   const updateListingPricing = useCallback((sku: string, decision: BulkPricingDecision | undefined) => {
     setRows(previous => previous.map(row => row.sku === sku ? { ...row, listingPricing: decision } : row))
   }, [])
@@ -85,6 +92,8 @@ const VendorProductsBulkUploadPage = () => {
   const [, setUploadingIndex] = useState<number | null>(null)
   const [imageMap, setImageMap] = useState<ImageMap>({})
   const [uploadingImages, setUploadingImages] = useState(false)
+  const remoteImagesRef = useRef<AbortController | null>(null)
+  useEffect(() => () => remoteImagesRef.current?.abort(), [])
   const [brandAuthMap, setBrandAuthMap] = useState<BrandAuthMap>({})
   const submittingRef = useRef(false)
   const [readingFile, setReadingFile] = useState(false)
@@ -356,6 +365,21 @@ const VendorProductsBulkUploadPage = () => {
     } catch { toast.error("Template download failed. Please retry.") }
   }
 
+  const checkRemoteImages = async (refs: string[]) => {
+    remoteImagesRef.current?.abort()
+    const controller = new AbortController()
+    remoteImagesRef.current = controller
+    setUploadingImages(true)
+    try {
+      const result = await importBulkImageSources(refs, vendorProductsApi.importImageUrl, (key, state) => {
+        if (!controller.signal.aborted) setImageMap(prev => ({ ...prev, [key]: state }))
+      }, controller.signal)
+      if (result.failed && !controller.signal.aborted) toast.error("Some image links need attention", { description: `${result.failed} link(s) failed. See the affected product rows, then retry or replace those links.` })
+    } finally {
+      if (remoteImagesRef.current === controller) setUploadingImages(false)
+    }
+  }
+
   const handleFile = async (file: File) => {
     if (!referencesReady || readingFile || submittingRef.current) return
     setReadingFile(true)
@@ -504,6 +528,7 @@ const VendorProductsBulkUploadPage = () => {
       // ----------------------------------------------------------------------
 
       setRows(parsed)
+      setPreviewPage(1)
 
       // Pre-populate the two-level category picker's parent state from parsed data
       const initialParentIds: Record<number, string> = {}
@@ -524,7 +549,7 @@ const VendorProductsBulkUploadPage = () => {
         allRefs.forEach((name) => {
           const key = normalizeImageKey(name)
           // Don't downgrade an already-seeded embedded image to "missing".
-          if (!seeded[key]) seeded[key] = isMediaUrl(name) ? { status: "uploaded", url: name, key: "", originalName: name } : { status: "missing" }
+          if (!seeded[key]) seeded[key] = isRemoteImageSource(name) ? { status: "checking", source: name } : { status: "missing" }
         })
       })
       setFileName(file.name)
@@ -549,6 +574,9 @@ const VendorProductsBulkUploadPage = () => {
       const embeddedToUpload = Object.entries(embeddedImageSeed)
         .filter(([, v]) => v.status === "selected" && (v as { file?: File }).file)
         .map(([key, v]) => ({ key, file: (v as { file: File }).file }))
+
+      const remoteRefs = Object.entries(seeded).filter(([, state]) => state.status === "checking").map(([key]) => key)
+      if (remoteRefs.length) await checkRemoteImages(remoteRefs)
 
       if (embeddedToUpload.length > 0) {
         const { ok, failed } = await uploadMatchedFiles(embeddedToUpload)
@@ -848,7 +876,7 @@ const VendorProductsBulkUploadPage = () => {
     if (files.length) await handleImagesPicked(files)
   }
 
-  const validatedRows = applyGroupValidation(rows)
+  const validatedRows = useMemo(() => applyGroupValidation(rows), [rows])
   const validRows = validatedRows.filter((r) => r.errors.length === 0)
   const invalidRows = validatedRows.filter((r) => r.errors.length > 0)
   const successCount = new Set(rows.filter((r) => r.status === "success").map(productGroupKey)).size
@@ -985,7 +1013,9 @@ const VendorProductsBulkUploadPage = () => {
   }
 
   const handleReset = () => {
+    remoteImagesRef.current?.abort()
     setRows([])
+    setPreviewPage(1)
     setFileName("")
     setPhase("intro")
     setUploadingIndex(null)
@@ -1239,7 +1269,7 @@ const VendorProductsBulkUploadPage = () => {
               <a href="#bulk-product-details">Product details {invalidRows.length > 0 && <span>{invalidRows.length} issues</span>}</a>
             </nav>
 
-            {(phase === "preview" || phase === "uploading") && <BulkPricingReview rows={validatedRows} imageMap={imageMap} disabled={phase === "uploading"} onChange={updateListingPricing} />}
+            {(phase === "preview" || phase === "uploading") && <BulkPricingReview rows={validatedRows} imageMap={imageMap} disabled={phase === "uploading"} onChange={updateListingPricing} page={previewPage} onPageChange={setPreviewPage} />}
 
 
             {uniqueBrands.length > 0 && phase !== "uploading" && (
@@ -1441,7 +1471,8 @@ const VendorProductsBulkUploadPage = () => {
                   <div>
                     <p className={styles.eyebrow}>Media</p><h2 className={styles.sectionTitle}>Product photos</h2>
                     <Text size="small" className="text-ui-fg-subtle">
-                      Drop the image files referenced in your Excel sheet, or
+                      HTTP and HTTPS image links are checked automatically and served securely.
+                      For filenames in your sheet, drop the matching files here, or
                       add images directly to a single product using the{" "}
                       <span className="font-mono">+</span> button next to that
                       row in the table below. Filenames are matched
@@ -1450,9 +1481,9 @@ const VendorProductsBulkUploadPage = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge color={uploadedImages === totalImages ? "green" : "orange"}>
-                      {uploadedImages} / {totalImages} uploaded
+                      {uploadedImages} / {totalImages} ready
                     </Badge>
-                    {uploadingImages && <Badge color="blue">Uploading…</Badge>}
+                    {uploadingImages && <Badge color="blue">Checking / uploading images…</Badge>}
                   </div>
                 </div>
 
@@ -1482,9 +1513,10 @@ const VendorProductsBulkUploadPage = () => {
                   />
                 </div>
 
+                {missingImages.some(isRemoteImageSource) && <Button variant="secondary" disabled={uploadingImages || readingFile} onClick={() => checkRemoteImages(missingImages.filter(isRemoteImageSource))}>Retry failed image links</Button>}
                 {missingImages.length > 0 && (
                   <div className="text-xs text-amber-600">
-                    Still needed: {missingImages.slice(0, 5).join(", ")}
+                    Needs attention: {missingImages.slice(0, 5).join(", ")}
                     {missingImages.length > 5 ? ` +${missingImages.length - 5} more` : ""}
                   </div>
                 )}
@@ -1524,6 +1556,7 @@ const VendorProductsBulkUploadPage = () => {
 
             <section id="bulk-product-details" aria-label="Product details" className={styles.section}>
               <div className={styles.detailsHeading}><div><p className={styles.eyebrow}>Product editor</p><h2 className={styles.sectionTitle}>Check the finer details</h2></div><p className={styles.helpText}>Scroll across the table to review all fields.</p></div>
+              <BulkPreviewPagination total={rows.length} page={previewPage} onPageChange={setPreviewPage} label="Product detail pages" />
               <div className={styles.tableScroll} role="region" aria-label="Editable product details, scroll horizontally" tabIndex={0}>
               <table className="w-full min-w-[1500px] border-collapse text-sm">
                 <thead className="bg-ui-bg-subtle border-b border-ui-border-base">
@@ -1546,7 +1579,8 @@ const VendorProductsBulkUploadPage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, idx) => {
+                  {rows.slice(preview.start, preview.end).map((row, visibleIndex) => {
+                    const idx = preview.start + visibleIndex
                     const isUploading = phase === "uploading" && row.status === "uploading"
                     const groupCount = rowGroupCounts.get(productGroupKey(row)) || 1
                     const optionSummary = Object.entries(rowOptionValues(row))
@@ -1987,7 +2021,7 @@ const VendorProductsBulkUploadPage = () => {
                               (s) => s.state?.status === "uploaded"
                             ).length
                             const uploadingThis = states.some(
-                              (s) => s.state?.status === "uploading"
+                              (s) => s.state?.status === "uploading" || s.state?.status === "checking"
                             )
                             const thumbState = row.thumbnailRef
                               ? imageMap[normalizeImageKey(row.thumbnailRef)]
@@ -2080,6 +2114,7 @@ const VendorProductsBulkUploadPage = () => {
                                       No image yet
                                     </span>
                                   )}
+                                  {states.filter(s => s.state?.status === "error").map(({ name, state }) => <p key={name} role="alert" className="text-red-600 break-words" title={name}>Image {refs.indexOf(name) + 1}: {state?.status === "error" ? state.message : ""}</p>)}
                                   {canEdit && refs.length > 0 && (
                                     <button
                                       type="button"
@@ -2165,6 +2200,7 @@ const VendorProductsBulkUploadPage = () => {
                 </tbody>
               </table>
               </div>
+              <BulkPreviewPagination total={rows.length} page={previewPage} onPageChange={setPreviewPage} label="Product detail pages, bottom" />
             </section>
           </div>
         )}

@@ -5,6 +5,8 @@ import { Button } from "@medusajs/ui"
 import { X, Calculator, ImageIcon } from "lucide-react"
 import Image from "next/image"
 import styles from "./BulkUpload.module.css"
+import BulkPreviewPagination from "./BulkPreviewPagination"
+import { bulkPreviewPage } from "@/lib/bulk-preview-page"
 import ShippingEstimateDetails from "@/components/ShippingEstimateDetails"
 import { hasUsableShippingQuote } from "@/lib/shipping-estimate"
 import { vendorShippingApi } from "@/lib/api/client"
@@ -13,10 +15,10 @@ import { bulkPricingSignature, calculateBulkListing, type BulkPricingDecision } 
 import { PLATFORM_FEE_RATE, COMMISSION_RATE, PARTNER_COMMISSION_RATE, PAYMENT_GATEWAY_RATE, TCS_RATE, TDS_RATE } from "@/lib/pricingConfig"
 import { formatInr, getCalculatorProductPrice } from "@/lib/productPriceCalculator"
 
-type Props = { rows: ParsedRow[]; imageMap: Record<string, { status: string; url?: string }>; disabled: boolean; onChange: (sku: string, decision: BulkPricingDecision | undefined) => void }
+type Props = { rows: ParsedRow[]; imageMap: Record<string, { status: string; url?: string }>; disabled: boolean; onChange: (sku: string, decision: BulkPricingDecision | undefined) => void; page: number; onPageChange: (page: number) => void }
 type QuoteState = { signature: string; status: "loading" | "ready" | "error"; message?: string }
 
-export default function BulkPricingReview({ rows, imageMap, onChange, disabled }: Props) {
+export default function BulkPricingReview({ rows, imageMap, onChange, disabled, page, onPageChange }: Props) {
   const [quotes, setQuotes] = useState<Record<string, QuoteState>>({})
   const [retry, setRetry] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
@@ -81,6 +83,7 @@ export default function BulkPricingReview({ rows, imageMap, onChange, disabled }
   }, [disabled, onChange])
 
   const selectedRow = rows.find(row => row.sku === selected)
+  const preview = bulkPreviewPage(rows.length, page)
   return <section id="bulk-pricing" className={styles.section} aria-label="Listing prices">
     <div className={styles.pricingHeader}>
       <div className="min-w-0 flex-1"><p className={styles.eyebrow}>Pricing</p><h2 className={styles.sectionTitle}>Review listing prices</h2><p className="mt-1 text-sm text-ui-fg-subtle">Your base price plus package logistics and calculator charges. Review or edit each listing price.</p></div>
@@ -88,7 +91,7 @@ export default function BulkPricingReview({ rows, imageMap, onChange, disabled }
     </div>
     <p className="text-xs text-ui-fg-muted">Listing prices include estimated package logistics. You can edit the price or open the calculation for each product.</p>
     <div className={styles.pricingGrid}>
-      {rows.map(row => {
+      {rows.slice(preview.start, preview.end).map(row => {
         const decision = row.listingPricing
         const state = quotes[row.sku]
         const ready = decision?.signature === bulkPricingSignature(row) && state?.status === "ready"
@@ -110,6 +113,7 @@ export default function BulkPricingReview({ rows, imageMap, onChange, disabled }
         </div>
       })}
     </div>
+    <BulkPreviewPagination total={rows.length} page={page} onPageChange={onPageChange} label="Listing price pages" />
     {selectedRow?.listingPricing && <CalculationDialog key={selectedRow.sku} row={selectedRow} onClose={() => setSelected(null)} />}
   </section>
 }
