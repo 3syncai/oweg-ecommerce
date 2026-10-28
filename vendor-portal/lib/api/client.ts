@@ -528,6 +528,19 @@ export const vendorProductsApi = {
     })
   },
 
+  importImageUrl: async (url: string, signal?: AbortSignal) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await apiRequest<{ url: string; key: string; stored: boolean }>("/vendor/products/import-image-url", {
+          method: "POST", data: { url }, signal, timeout: 46000,
+        })
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 429 || attempt >= 2 || signal?.aborted) throw error
+        await new Promise(resolve => setTimeout(resolve, 800 * (attempt + 1)))
+      }
+    }
+  },
+
   uploadImage: async (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
@@ -723,7 +736,7 @@ export const vendorOrdersApi = {
     height?: number
     pickup_pincode?: string
     delivery_pincode?: string
-  }) => {
+  }, signal?: AbortSignal) => {
     const query = new URLSearchParams()
     if (params.weight != null && !isNaN(params.weight)) query.set('weight', String(params.weight))
     if (params.length != null && !isNaN(params.length)) query.set('length', String(params.length))
@@ -735,7 +748,7 @@ export const vendorOrdersApi = {
     if (params.declared_value != null) query.set('declared_value', String(params.declared_value))
     if (params.refresh) query.set('refresh', 'true')
     const qs = query.toString()
-    return apiRequest<ShippingEstimate>(`/vendor/shipping/estimate-rate${qs ? `?${qs}` : ''}`)
+    return apiRequest<ShippingEstimate>(`/vendor/shipping/estimate-rate${qs ? `?${qs}` : ''}`, { signal, timeout: 90000 })
   },
 
   chooseSelfShipping: async (

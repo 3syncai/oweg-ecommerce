@@ -5,19 +5,21 @@ import { Button } from "@medusajs/ui"
 import { X, Calculator, ImageIcon } from "lucide-react"
 import Image from "next/image"
 import styles from "./BulkUpload.module.css"
+import BulkPreviewPagination from "./BulkPreviewPagination"
+import { bulkPreviewPage } from "@/lib/bulk-preview-page"
 import ShippingEstimateDetails from "@/components/ShippingEstimateDetails"
 import { hasUsableShippingQuote } from "@/lib/shipping-estimate"
+import { bulkQuoteFresh, refreshBulkLogistics, type BulkQuoteState } from "@/lib/bulk-logistics"
 import { vendorShippingApi } from "@/lib/api/client"
 import { normalizeImageKey, isMediaUrl, type ParsedRow } from "@/lib/bulk-upload"
 import { bulkPricingSignature, calculateBulkListing, type BulkPricingDecision } from "@/lib/bulk-pricing"
 import { PLATFORM_FEE_RATE, COMMISSION_RATE, PARTNER_COMMISSION_RATE, PAYMENT_GATEWAY_RATE, TCS_RATE, TDS_RATE } from "@/lib/pricingConfig"
 import { formatInr, getCalculatorProductPrice } from "@/lib/productPriceCalculator"
 
-type Props = { rows: ParsedRow[]; imageMap: Record<string, { status: string; url?: string }>; disabled: boolean; onChange: (sku: string, decision: BulkPricingDecision | undefined) => void }
-type QuoteState = { signature: string; status: "loading" | "ready" | "error"; message?: string }
-
-export default function BulkPricingReview({ rows, imageMap, onChange, disabled }: Props) {
-  const [quotes, setQuotes] = useState<Record<string, QuoteState>>({})
+type Props = { rows: ParsedRow[]; imageMap: Record<string, { status: string; url?: string }>; disabled: boolean; onChange: (sku: string, decision: BulkPricingDecision | undefined) => void; page: number; onPageChange: (page: number) => void }
+export default function BulkPricingReview({ rows, imageMap, onChange, disabled, page, onPageChange }: Props) {
+  const [quotes, setQuotes] = useState<Record<string, BulkQuoteState>>({})
+  const [now, setNow] = useState(Date.now)
   const [retry, setRetry] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
   const source = JSON.stringify(rows.map(row => [row.sku, bulkPricingSignature(row), row.errors]))
@@ -25,82 +27,59 @@ export default function BulkPricingReview({ rows, imageMap, onChange, disabled }
   const rowsRef = useRef(rows)
   rowsRef.current = rows
   useEffect(() => {
-    let cancelled = false
-    const inputs = rowsRef.current.filter(row => !row.errors.length)
-    const packages = new Map<string, Promise<Awaited<ReturnType<typeof vendorShippingApi.estimateRate>>>>()
-    let next = 0
-    async function worker() {
-      while (next < inputs.length && !cancelled) {
-        const row = inputs[next++]
-        const signature = bulkPricingSignature(row)
-        setQuotes(prev => ({ ...prev, [row.sku]: { signature, status: "loading" } }))
-        onChange(row.sku, undefined)
-        try {
-          for (const field of ["length", "width", "height", "weight"] as const) {
-            if (!Number.isFinite(Number(row[field])) || Number(row[field]) <= 0) throw new Error(`Enter a positive package ${field} in the Excel file`)
-          }
-          const params = { length: Number(row.length), width: Number(row.width), height: Number(row.height), weight: Number(row.weight), declared_value: Number(row.price), refresh: retry > 0 }
-          const packageKey = JSON.stringify(params)
-          let promise = packages.get(packageKey)
-          if (!promise) { promise = vendorShippingApi.estimateRate(params); packages.set(packageKey, promise) }
-          const quote = await promise
-          if (cancelled) return
-          if (!hasUsableShippingQuote(quote) || !quote.expires_at) throw new Error("No usable shipping quote is available. Refresh logistics or contact support for a shipping quote.")
-          const base = Number(getCalculatorProductPrice(row.price, row.discountedPrice))
-          const { suggestedPrice } = calculateBulkListing(base, quote.freight_charge, Number(row.gstRate))
-          const previous = row.listingPricing
-          onChange(row.sku, {
-            signature, logisticsFee: quote.freight_charge,
-            courierName: quote.courier_name, pickupPincode: quote.pickup_pincode, deliveryPincode: quote.delivery_pincode,
-            shippingEstimate: quote,
-            suggestedPrice, listingPrice: previous?.signature === signature && previous.listingPrice !== previous.suggestedPrice.toFixed(2) ? previous.listingPrice : suggestedPrice.toFixed(2),
-          })
-          setQuotes(prev => ({ ...prev, [row.sku]: { signature, status: "ready", message: quote.coverage_complete ? "Shipping calculated" : "Shipping estimated from available quotes. Some destinations could not be checked; you can submit." } }))
-        } catch (error) {
-          const apiError = error as { response?: { data?: { message?: string } } }
-          if (!cancelled) setQuotes(prev => ({ ...prev, [row.sku]: { signature, status: "error", message: apiError.response?.data?.message || (error instanceof Error ? error.message : "Logistics estimate failed") } }))
-        }
-      }
-    }
-    void Promise.all([worker(), worker(), worker()])
-    return () => { cancelled = true }
-  }, [source, retry, onChange])
+    if (disabled) return
+    const controller = new AbortController()
+    void refreshBulkLogistics(rowsRef.current, vendorShippingApi.estimateRate, {
+      signal: controller.signal,
+      getRow: sku => rowsRef.current.find(row => row.sku === sku),
+      onDecision: onChange,
+      onState: (sku, state) => setQuotes(previous => ({ ...previous, [sku]: state })),
+    })
+    return () => controller.abort()
+  }, [source, retry, onChange, disabled])
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (disabled) return
-      for (const row of rowsRef.current) {
-        const expiry = row.listingPricing?.shippingEstimate?.expires_at
-        if (expiry && Date.parse(expiry) <= Date.now()) {
-          onChange(row.sku, undefined)
-          setQuotes(prev => ({ ...prev, [row.sku]: { signature: bulkPricingSignature(row), status: "error", message: "Shipping quote expired. Refresh logistics before submitting." } }))
-        }
-      }
-    }, 30000)
+    if (disabled) return
+    // Expiration changes the display, never discards a vendor's reviewed price.
+    const timer = setInterval(() => setNow(Date.now()), 30000)
     return () => clearInterval(timer)
-  }, [disabled, onChange])
+  }, [disabled])
 
   const selectedRow = rows.find(row => row.sku === selected)
+  const preview = bulkPreviewPage(rows.length, page)
+  const pending = rows.filter(row => !row.errors.length && row.status !== "success")
+  const reviewIndex = rows.findIndex(row => row.status !== "success" && row.listingPricing?.requiresReview)
+  const reviewCount = pending.filter(row => row.listingPricing?.requiresReview).length
+  const recheckCount = pending.filter(row => row.listingPricing && !bulkQuoteFresh(row, now)).length
   return <section id="bulk-pricing" className={styles.section} aria-label="Listing prices">
     <div className={styles.pricingHeader}>
       <div className="min-w-0 flex-1"><p className={styles.eyebrow}>Pricing</p><h2 className={styles.sectionTitle}>Review listing prices</h2><p className="mt-1 text-sm text-ui-fg-subtle">Your base price plus package logistics and calculator charges. Review or edit each listing price.</p></div>
-      <Button variant="secondary" type="button" disabled={disabled} onClick={() => setRetry(value => value + 1)}>Refresh logistics</Button>
+      <Button variant="secondary" type="button" disabled={disabled} onClick={() => setRetry(value => value + 1)}>Refresh expired / failed quotes</Button>
     </div>
-    <p className="text-xs text-ui-fg-muted">Listing prices include estimated package logistics. You can edit the price or open the calculation for each product.</p>
+    <p className="text-xs text-ui-fg-muted">Expired quotes are refreshed before each product is submitted. If shipping changes, submission pauses for your price review. Your edited prices are preserved.</p>
+    <div className="my-3 flex flex-wrap items-center gap-3 text-sm" role="status"><span>{pending.filter(row => !row.listingPricing || row.listingPricing.signature !== bulkPricingSignature(row)).length} awaiting calculation · {recheckCount} to recheck on submit · {reviewCount} need price review</span>{reviewIndex >= 0 && <Button type="button" variant="secondary" disabled={disabled} onClick={() => onPageChange(Math.floor(reviewIndex / 50) + 1)}>Go to price review</Button>}</div>
     <div className={styles.pricingGrid}>
-      {rows.map(row => {
+      {rows.slice(preview.start, preview.end).map(row => {
         const decision = row.listingPricing
         const state = quotes[row.sku]
-        const ready = decision?.signature === bulkPricingSignature(row) && state?.status === "ready"
+        const ready = decision?.signature === bulkPricingSignature(row) && hasUsableShippingQuote(decision.shippingEstimate)
+        const stale = ready && !bulkQuoteFresh(row, now)
+        const message = row.errors.length ? "Fix the spreadsheet fields first" : state?.status === "loading" ? "Calculating package logistics…"
+          : ready ? decision.requiresReview ? "Shipping changed. Confirm your reviewed price before submitting."
+            : stale ? "Shipping will be rechecked before submission."
+              : decision.shippingEstimate?.coverage_complete ? "Shipping calculated" : "Shipping estimated from available routes; some destinations could not be checked."
+            : state?.message || "Calculating package logistics…"
         const base = getCalculatorProductPrice(row.price, row.discountedPrice)
         const thumbnail = [row.thumbnailRef, ...row.visualImageRefs, ...row.imageRefs].filter(Boolean).map(ref => {
           const uploaded = imageMap[normalizeImageKey(ref)]
           return uploaded?.status === "uploaded" ? uploaded.url : isMediaUrl(ref) ? ref : undefined
         }).find(Boolean)
         return <div key={row.sku} className={styles.priceCard}>
-          <div className={styles.productIdentity}><ProductThumbnail src={thumbnail} title={row.title} /><div className="min-w-0"><h3 className="font-medium text-sm break-words">{row.title}</h3><p className="text-xs text-ui-fg-muted mt-1">{row.variantTitle || row.sku}</p><p className="text-xs text-ui-fg-subtle mt-1">{row.length} × {row.width} × {row.height} cm · {row.weight} kg</p><p className="text-xs mt-1 text-ui-fg-subtle">{state?.message || (row.errors.length ? "Fix the spreadsheet fields first" : "Calculating package logistics…")}</p></div></div>
+          <div className={styles.productIdentity}><ProductThumbnail src={thumbnail} title={row.title} /><div className="min-w-0"><h3 className="font-medium text-sm break-words">{row.title}</h3><p className="text-xs text-ui-fg-muted mt-1">{row.variantTitle || row.sku}</p><p className="text-xs text-ui-fg-subtle mt-1">{row.length} × {row.width} × {row.height} cm · {row.weight} kg</p><p className="text-xs mt-1 text-ui-fg-subtle">{message}</p></div></div>
           <div className={styles.basePrice}><span className="text-xs text-ui-fg-muted block">Excel base price</span><strong className="text-sm">{base ? formatInr(Number(base)) : "—"}</strong>{ready && <span className="block mt-1 text-xs text-ui-fg-muted">Suggested {formatInr(decision.suggestedPrice)}</span>}</div>
           <div className={styles.listingField}><label htmlFor={`listing-${row.sku}`} className="block text-xs font-medium mb-1.5">Listing price (INR) <span className="text-orange-700">*</span></label>
+            {stale && <p className="mb-2 text-xs text-amber-700">Shipping will be rechecked before submission.</p>}
+            {ready && decision.requiresReview && <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900"><p>Updated shipping: {formatInr(decision.logisticsFee)}. Suggested listing: {formatInr(decision.suggestedPrice)}. Review your listing price below.</p><button type="button" disabled={disabled || state?.status === "loading"} className="mt-2 underline" onClick={() => onChange(row.sku, { ...decision, requiresReview: false })}>Confirm reviewed price</button></div>}
             <input id={`listing-${row.sku}`} aria-label={`Listing price for ${row.sku}`} inputMode="decimal" value={ready ? decision.listingPrice : ""} placeholder={state?.status === "error" ? "Estimate unavailable" : "Calculating…"} disabled={!ready || disabled}
               onChange={event => { if (/^\d*(?:\.\d{0,2})?$/.test(event.target.value) && decision) onChange(row.sku, { ...decision, listingPrice: event.target.value }) }} className="w-full rounded-lg border border-ui-border-base bg-ui-bg-base p-2 text-sm disabled:opacity-60" />
             {ready && !disabled && decision.listingPrice !== decision.suggestedPrice.toFixed(2) && <button type="button" className="text-xs text-emerald-700 mt-1" onClick={() => onChange(row.sku, { ...decision, listingPrice: decision.suggestedPrice.toFixed(2) })}>Use calculated price</button>}
@@ -110,6 +89,7 @@ export default function BulkPricingReview({ rows, imageMap, onChange, disabled }
         </div>
       })}
     </div>
+    <BulkPreviewPagination total={rows.length} page={page} onPageChange={onPageChange} label="Listing price pages" />
     {selectedRow?.listingPricing && <CalculationDialog key={selectedRow.sku} row={selectedRow} onClose={() => setSelected(null)} />}
   </section>
 }

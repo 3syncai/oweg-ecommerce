@@ -10,6 +10,7 @@ export function bulkSubmissionIssues(
   uploadingImages: boolean,
   brands: ReadonlyArray<{ key: string; display: string }>,
   authorizations: Record<string, BrandAuthState>,
+  options: { refreshExpiredBeforeSubmit?: boolean } = {},
 ): string[] {
   const issues: string[] = []
   const invalid = rows.filter(row => row.errors.length)
@@ -18,7 +19,7 @@ export function bulkSubmissionIssues(
   if (!pending.length) issues.push("No products are ready to submit. Add valid rows or start a new upload.")
   const pricing = new Set<string>()
   for (const row of pending) {
-    try { resolveBulkListing(row) } catch (cause) {
+    try { resolveBulkListing(row, options) } catch (cause) {
       if (cause instanceof Error) pricing.add(cause.message)
       else pricing.add(`Review the listing price and refresh logistics for ${row.title}.`)
     }
