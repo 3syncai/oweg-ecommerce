@@ -221,6 +221,7 @@ export async function fetchProductVariantMatrix(
       .leftJoin("price as p", "p.price_set_id", "pvps.price_set_id")
       .where("pvps.variant_id", variant.id)
       .whereNull("p.price_list_id")
+          .whereNull("p.deleted_at")
       .orderByRaw("CASE WHEN LOWER(p.currency_code) = 'inr' THEN 0 ELSE 1 END")
       .first("p.amount")
 
@@ -228,6 +229,7 @@ export async function fetchProductVariantMatrix(
       .leftJoin("price as p", "p.price_set_id", "pvps.price_set_id")
       .where("pvps.variant_id", variant.id)
       .whereNotNull("p.price_list_id")
+          .whereNull("p.deleted_at")
       .orderByRaw("CASE WHEN LOWER(p.currency_code) = 'inr' THEN 0 ELSE 1 END")
       .first("p.amount")
 

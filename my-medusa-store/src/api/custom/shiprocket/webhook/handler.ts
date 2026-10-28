@@ -1,3 +1,4 @@
+import { shippingWebhookAuthError } from "../../../../lib/shipping-webhook-auth"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { Pool } from "pg"
@@ -22,25 +23,12 @@ function normalizeStatus(status: string) {
 }
 
 export function verifyShiprocketWebhookSecret(req: MedusaRequest): boolean {
-  const secret = process.env.SHIPROCKET_WEBHOOK_SECRET
-  if (!secret) return true
-
-  const headerSecret =
-    (req.headers["x-api-key"] as string | undefined) ||
-    (req.headers["x-shiprocket-webhook-secret"] as string | undefined) ||
-    (req.headers["x-shiprocket-signature"] as string | undefined)
-
-  return Boolean(headerSecret && headerSecret === secret)
+  return shippingWebhookAuthError(req, "shiprocket") === null
 }
 
 export async function handleShiprocketWebhook(req: MedusaRequest, res: MedusaResponse) {
-  const authed = verifyShiprocketWebhookSecret(req)
-  if (!authed) {
-    // Shiprocket's "Test Webhook" often POSTs without x-api-key. Return 200 so
-    // the dashboard test passes; only process payloads when the token matches.
-    console.warn("[Shiprocket] Webhook test or unauthorized request acknowledged without processing")
-    return res.json({ received: true })
-  }
+  const authError = shippingWebhookAuthError(req, "shiprocket")
+  if (authError) return res.status(authError.status).json({ message: authError.message })
 
   const payload = req.body as any
   console.log("[Shiprocket] Webhook payload received")

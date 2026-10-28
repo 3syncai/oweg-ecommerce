@@ -1,0 +1,57 @@
+
+> ecommerce-oweg@0.1.0 lint
+> eslint .
+
+(node:39397) ESLintIgnoreWarning: The ".eslintignore" file is no longer supported. Switch to using the "ignores" property in "eslint.config.js": https://eslint.org/docs/latest/use/configure/migration-guide#ignoring-files
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/src/app/checkout/page.tsx
+  1002:6    warning  React Hook useEffect has a missing dependency: 'sellerSelectedFromQuery'. Either include it or remove the dependency array                                                                                                                                                               react-hooks/exhaustive-deps
+  1206:6    warning  React Hook useEffect has a missing dependency: 'sellerSelectedFromQuery'. Either include it or remove the dependency array                                                                                                                                                               react-hooks/exhaustive-deps
+  2299:19   warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  2384:106  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  2514:27   warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/src/app/global-error.tsx
+  29:13  warning  Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages  @next/next/no-html-link-for-pages
+  29:13  warning  Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages  @next/next/no-html-link-for-pages
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/src/app/my-reward/page.tsx
+  105:13  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  113:17  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  213:27  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/src/app/productDetail/components/ProductSummary.tsx
+  244:11  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/src/app/productDetail/productDetail.tsx
+  190:6  warning  React Hook useEffect has missing dependencies: 'product.options', 'product.variant_id', and 'product.variants'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/src/components/account/sections/AccountQuickStats.tsx
+  33:13  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/src/components/flash-sale/FlashSaleBadge.tsx
+  37:6  warning  React Hook useEffect has a missing dependency: 'startTime'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/src/components/modules/CategoryMegaMenuBannerCarousel.tsx
+  128:13  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/src/components/orders/TrackOrderContent.tsx
+  94:11  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/src/components/ui/icons/CategoryIcon.tsx
+  181:5  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/src/components/ui/icons/SubcategoryIcon.tsx
+  196:5  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/src/components/wallet/WalletBalance.tsx
+  72:17  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  81:17  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/src/hooks/useAccountOrdersSummary.ts
+  194:9  warning  The 'orders' logical expression could make the dependencies of useMemo Hook (at line 197) change on every render. To fix this, wrap the initialization of 'orders' in its own useMemo() Hook  react-hooks/exhaustive-deps
+  194:9  warning  The 'orders' logical expression could make the dependencies of useMemo Hook (at line 198) change on every render. To fix this, wrap the initialization of 'orders' in its own useMemo() Hook  react-hooks/exhaustive-deps
+
+✖ 22 problems (0 errors, 22 warnings)
+

@@ -1,3 +1,4 @@
+import { shippingWebhookAuthError } from "../../../../lib/shipping-webhook-auth"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { Pool } from "pg"
@@ -18,23 +19,12 @@ import { findShipmentOrder } from "../../../../lib/find-shipment-order"
 import { scheduleVendorEarningsOnDelivery } from "../../../../lib/vendor-earnings"
 
 export function verifyItlWebhookSecret(req: MedusaRequest): boolean {
-  const secret = process.env.ITL_WEBHOOK_SECRET
-  if (!secret) return true
-
-  const headerSecret =
-    (req.headers["x-api-key"] as string | undefined) ||
-    (req.headers["x-itl-webhook-secret"] as string | undefined) ||
-    (req.headers["x-itl-signature"] as string | undefined)
-
-  return Boolean(headerSecret && headerSecret === secret)
+  return shippingWebhookAuthError(req, "itl") === null
 }
 
 export async function handleItlWebhook(req: MedusaRequest, res: MedusaResponse) {
-  const authed = verifyItlWebhookSecret(req)
-  if (!authed) {
-    console.warn("[ITL] Webhook unauthorized — acknowledged without processing")
-    return res.json({ received: true })
-  }
+  const authError = shippingWebhookAuthError(req, "itl")
+  if (authError) return res.status(authError.status).json({ message: authError.message })
 
   const payload = (req.body || {}) as any
   console.log("[ITL] Webhook payload received")

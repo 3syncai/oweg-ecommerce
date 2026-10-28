@@ -284,7 +284,7 @@ export default function DebugControllerDashboard() {
     const result = await runAction("force-settle-pending-order", { orderId });
     if (result) {
       setSettlementConfirm(null);
-      showMessage("Pending order moved to settlement for testing");
+      showMessage("Vendor and partner/admin earnings released for testing");
       await loadDeliverableOrders();
     }
   };
@@ -441,7 +441,7 @@ export default function DebugControllerDashboard() {
             <div>
               <h2 className="text-lg font-semibold text-rose-200">Force pending order to settlement</h2>
               <p className="text-sm text-rose-300 mt-1">
-                Debug-only: immediately releases a pending order to the vendor settlement balance. Never use this in production.
+                Debug-only: immediately releases vendor earnings and partner/admin commissions to their available balances. Never use this in production.
               </p>
             </div>
             <Button onClick={loadDeliverableOrders} disabled={ordersLoading} variant="outline" className="border-rose-700 text-rose-200">
@@ -454,7 +454,7 @@ export default function DebugControllerDashboard() {
                 <div>
                   <p className="font-medium">Order #{order.displayId} · ₹{order.pendingAmount.toFixed(2)} pending</p>
                   <p className="text-xs text-slate-400">
-                    {order.email || "No email"} · {order.vendorCount} vendor{order.vendorCount === 1 ? "" : "s"} · scheduled unlock {order.unlockAt ? new Date(order.unlockAt).toLocaleString() : "not set"}
+                    {order.email || "No email"} · {order.vendorCount} vendor{order.vendorCount === 1 ? "" : "s"} · {order.commissionCount || 0} partner/admin commissions · scheduled unlock {order.unlockAt ? new Date(order.unlockAt).toLocaleString() : "not set"}
                   </p>
                 </div>
                 {settlementConfirm === order.orderId ? (
@@ -467,7 +467,7 @@ export default function DebugControllerDashboard() {
                 )}
               </div>
             ))}
-            {!ordersLoading && pendingSettlementOrders.length === 0 ? <p className="text-sm text-slate-500">No pending vendor earnings to release.</p> : null}
+            {!ordersLoading && pendingSettlementOrders.length === 0 ? <p className="text-sm text-slate-500">No pending vendor or partner/admin earnings to release.</p> : null}
           </div>
         </section>
 

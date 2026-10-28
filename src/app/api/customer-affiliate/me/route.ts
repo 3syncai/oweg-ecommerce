@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { authorizeReferralCustomer } from "@/lib/referral-auth"
 import { query } from "@/lib/affiliate-pg"
 import { cacheGet, cacheSet } from "@/lib/affiliate-cache"
 
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic"
  * GET /api/customer-affiliate/me
  * Returns the customer-affiliate record for the signed-in customer (if any).
  *
- * Headers: x-customer-id (Medusa customer id)
+ * A verified customer session is required; x-customer-id is an optional identity assertion.
  * Response: { is_affiliate: boolean, affiliate?: { refer_code, ... } }
  *
  * Cached per-customer for 30 seconds inside the warm Lambda. The cache is
@@ -35,14 +36,10 @@ type AffiliateMeResponse =
     }
 
 export async function GET(req: NextRequest) {
-    const customerId = req.headers.get("x-customer-id")
+    const auth = await authorizeReferralCustomer(req)
+    if (auth.error) return auth.error
+    const customerId = auth.customer!.id
 
-    if (!customerId) {
-        return NextResponse.json(
-            { is_affiliate: false, message: "Not authenticated" },
-            { status: 200 }
-        )
-    }
 
     const cached = cacheGet<AffiliateMeResponse>(cacheKey(customerId))
     if (cached) {

@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Pool } from "pg"
+import { authorizeReferralService } from "@/lib/referral-auth"
 
 /**
  * GET /api/affiliate/referrals
  * List all customers referred by this affiliate
  * 
- * Headers: x-affiliate-code (affiliate's refer_code)
+ * Requires server authentication (INTERNAL_API_SECRET); x-affiliate-code selects the scope.
  * Query: page, limit
  */
 export async function GET(req: NextRequest) {
+    const authError = authorizeReferralService(req)
+    if (authError) return authError
     try {
         const affiliateCode = req.headers.get("x-affiliate-code")
 
@@ -90,66 +93,6 @@ export async function GET(req: NextRequest) {
     }
 }
 
-/**
- * POST /api/affiliate/referrals
- * Track a new referral when customer signs up with affiliate code
- * 
- * Body: { affiliate_code, customer_id, customer_email, customer_name }
- */
-export async function POST(req: NextRequest) {
-    try {
-        const body = await req.json()
-        const { affiliate_code, customer_id, customer_email, customer_name } = body
-
-        if (!affiliate_code || !customer_id) {
-            return NextResponse.json(
-                { error: "affiliate_code and customer_id required" },
-                { status: 400 }
-            )
-        }
-
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-
-        try {
-            // Find affiliate_user_id if exists
-            const affiliateResult = await pool.query(`
-                SELECT id FROM affiliate_user WHERE refer_code = $1
-            `, [affiliate_code])
-
-            const affiliateUserId = affiliateResult.rows[0]?.id || null
-
-            // Insert or update referral record
-            await pool.query(`
-                INSERT INTO affiliate_referrals 
-                    (affiliate_code, affiliate_user_id, customer_id, customer_email, customer_name)
-                VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT (affiliate_code, customer_id) 
-                DO UPDATE SET 
-                    customer_email = EXCLUDED.customer_email,
-                    customer_name = EXCLUDED.customer_name
-            `, [affiliate_code, affiliateUserId, customer_id, customer_email, customer_name])
-
-            await pool.end()
-
-            console.log(`[Affiliate] Tracked referral: ${customer_email} referred by ${affiliate_code}`)
-
-            return NextResponse.json({
-                success: true,
-                message: "Referral tracked"
-            })
-        } catch (dbError) {
-            console.error("Database error:", dbError)
-            await pool.end().catch(() => { })
-            return NextResponse.json(
-                { error: "Database error", details: String(dbError) },
-                { status: 500 }
-            )
-        }
-    } catch (error) {
-        console.error("Error tracking referral:", error)
-        return NextResponse.json(
-            { error: "Failed to track referral" },
-            { status: 500 }
-        )
-    }
-}
+// Preserve the legacy request shape, with the same authenticated ownership
+// and locked-attribution rules as the storefront save endpoint.
+export { POST } from "@/app/api/store/save-referral/route"

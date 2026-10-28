@@ -1,0 +1,3 @@
+CONFIRMED: referral GET reads and returns customer records with caller-supplied affiliate code and no session.
+CONFIRMED: customer-affiliate stats queries supplied victim ID without session authentication.
+CONFIRMED: vendor debug authentication accepts its source-code fallback in production when both secret variables are absent.

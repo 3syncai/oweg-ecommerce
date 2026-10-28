@@ -1,0 +1,164 @@
+
+> vendor-portal@0.1.0 lint
+> eslint
+
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/claims/page.tsx
+   87:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  103:24  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  163:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  224:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  240:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  258:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  324:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  629:55  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  953:70  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/commission-invoices/page.tsx
+  224:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  295:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/dashboard/page.tsx
+  164:29  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  172:27  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  180:35  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  186:34  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  192:28  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  198:34  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  214:34  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  236:35  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  240:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  278:13  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  279:11  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  280:12  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  282:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  283:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  645:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/inventory/page.tsx
+  166:21  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  217:21  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/messages/page.tsx
+  72:36  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  96:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/orders/page.tsx
+    98:37  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+    99:36  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   238:47  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   281:71  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   363:44  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   439:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   537:21  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   541:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   582:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   603:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   624:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   651:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   670:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   684:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   706:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1438:13  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1913:50  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1987:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/payout/page.tsx
+  256:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  329:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/pending/page.tsx
+  10:40  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  38:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/products/[id]/page.tsx
+    51:29  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   160:42  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   161:45  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   162:44  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   176:56  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   180:57  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   187:57  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   188:59  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   194:35  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   196:51  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   283:19  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   627:17  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   644:17  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   700:17  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   962:27  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  1011:21  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/products/collections/page.tsx
+  20:14  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/products/new/page.tsx
+    92:48   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+    93:50   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+    94:52   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   182:25   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   216:27   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   225:56   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   226:56   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   229:94   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   229:147  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   230:89   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   231:58   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   232:54   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   237:24   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   589:68   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   604:21   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   649:68   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   662:21   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   869:29   error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  1091:19   warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/reapply/page.tsx
+    9:40  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   13:44  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   65:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   80:33  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  114:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  121:50  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  122:24  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/returns/page.tsx
+   83:40  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   84:42  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   85:49  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  167:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  216:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  216:57  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  222:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  247:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  285:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  302:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/search/page.tsx
+  119:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/app/signup/page.tsx
+  135:19  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                             @typescript-eslint/no-explicit-any
+  153:40  warning  The ref value 'validationTimeouts.current' will likely have changed by the time this effect cleanup function runs. If this ref points to a node rendered by React, copy 'validationTimeouts.current' to a variable inside the effect, and use that variable in the cleanup function  react-hooks/exhaustive-deps
+  630:19  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                             @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/components/BrandAuthorizationField.tsx
+  72:8  warning  React Hook useEffect has missing dependencies: 'checkBrandAuthorization', 'checkDebounceTimer', 'onAuthorizationStatusChange', and 'onFileSelect'. Either include them or remove the dependency array. If 'onFileSelect' changes too often, find the parent component that defines it and wrap that definition in useCallback  react-hooks/exhaustive-deps
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/components/VariantMatrixEditor.tsx
+  598:29  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  943:27  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/components/VendorNotifications.tsx
+  112:33  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/lib/warm-returns-cache.ts
+  38:44  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  39:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  40:53  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/vishalgupta/Desktop/oweg-ecommerce/vendor-portal/scripts/generate-dummy-bulk-upload.mjs
+  8:10  error  'writeFileSync' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 117 problems (110 errors, 7 warnings)
+

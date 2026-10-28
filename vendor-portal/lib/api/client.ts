@@ -499,7 +499,7 @@ export const vendorProductsApi = {
   },
 
   update: async (id: string, data: ProductInput) => {
-    return apiRequest<{ product: VendorProduct }>(`/vendor/products/${id}`, {
+    return apiRequest<{ product: VendorProduct; variant_ids?: string[]; atomic_edit_version?: number }>(`/vendor/products/${id}`, {
       method: 'PUT',
       data,
     })
@@ -513,7 +513,7 @@ export const vendorProductsApi = {
   },
 
   updateVariants: async (id: string, data: VariantMatrixInput) => {
-    return apiRequest<{ product_id: string; variant_matrix: ProductVariantMatrix; metadata: Metadata }>(
+    return apiRequest<{ product_id: string; variant_matrix: ProductVariantMatrix | null; metadata: Metadata }>(
       `/vendor/products/${id}/variants`,
       {
         method: 'PATCH',

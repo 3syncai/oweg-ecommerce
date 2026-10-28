@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { authorizeReferralCustomer } from "@/lib/referral-auth"
 import { Pool } from "pg"
 
 export const dynamic = "force-dynamic"
@@ -10,10 +11,9 @@ const DATABASE_URL = process.env.DATABASE_URL
  *
  * Validates a customer-referrer affiliate code (the `customer_referrer.refer_code`).
  *
- * One-time-per-(customer, product, code) enforcement (when caller supplies
- * the customer):
+ * One-time-per-(customer, product, code) enforcement for the verified session:
  *   - Pass the current customer id either via `?customer_id=` or `x-customer-id`
- *     header. The endpoint will check which of the supplied `product_ids` the
+ *     header. The identity must match the session. Checks which of the supplied `product_ids` the
  *     customer has already redeemed with this code (status PENDING or EARNED).
  *   - Returns:
  *       valid: false  if ANY product in `product_ids` was already redeemed
@@ -35,9 +35,9 @@ export async function GET(req: NextRequest) {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean)
-    const customerId =
-        (req.headers.get("x-customer-id") || "").trim() ||
-        (req.nextUrl.searchParams.get("customer_id") || "").trim()
+    const auth = await authorizeReferralCustomer(req, [req.nextUrl.searchParams.get("customer_id")], true)
+    if (auth.error) return auth.error
+    const customerId = auth.customer?.id || ""
 
     if (!code) {
         return NextResponse.json(

@@ -17,6 +17,7 @@ import VendorShell from "@/components/VendorShell"
 import PageSkeleton from "@/components/PageSkeleton"
 import { variantPricesError } from "@/lib/variant-pricing"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
+import { simpleProductPrices, serializeProductEditVariants } from "@/lib/product-edit"
 import GstTaxCodeField from "@/components/GstTaxCodeField"
 import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorInventoryApi } from "@/lib/api/client"
 import {
@@ -25,7 +26,6 @@ import {
   isSimpleDefaultProduct,
   resolveProductOptionsFromRows,
   serializeColorImages,
-  serializeVariantOptions,
   UNSPECIFIED_SIZE,
   variantComboKey,
   type ProductOptionDef,
@@ -108,6 +108,7 @@ const VendorProductEditPage = () => {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [atomicEditSupported, setAtomicEditSupported] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [statusUpdating, setStatusUpdating] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -188,6 +189,7 @@ const VendorProductEditPage = () => {
         const loadedCategories = (categoriesResponse as any)?.product_categories || []
         const loadedCollections = (collectionsResponse as any)?.collections || []
 
+        setAtomicEditSupported(productResponse.atomic_edit_version === 1)
         setProduct(prod)
         setVariantSummary(summary || null)
         setCategories(loadedCategories)
@@ -387,6 +389,10 @@ const VendorProductEditPage = () => {
     e.preventDefault()
 
     if (uploadingImages || uploadingVariantImages || saving) return
+    if (!atomicEditSupported) {
+      toast.error("Backend update required", { description: "Deploy the product editing backend before saving changes, then reload this page." })
+      return
+    }
 
     if (!hasChanges) {
       toast.warning("No changes", { description: "Update at least one field before saving" })
@@ -402,12 +408,7 @@ const VendorProductEditPage = () => {
 
 
     const simpleRow = variantRows[0]
-    const simplePriceSource = hasVariants
-      ? formData.price
-      : simpleRow?.price?.trim() || formData.price
-    const simpleSaleSource = hasVariants
-      ? formData.discountedPrice
-      : simpleRow?.discountedPrice?.trim() || formData.discountedPrice
+    const { price: simplePriceSource, discountedPrice: simpleSaleSource } = simpleProductPrices(simpleRow, formData)
 
     const parsedPrice = Number(simplePriceSource)
     if (!hasVariants && (!Number.isFinite(parsedPrice) || parsedPrice <= 0)) {
@@ -479,109 +480,47 @@ const VendorProductEditPage = () => {
     setSaving(true)
 
     try {
-      const matrixChanged =
-        hasVariants &&
-        (variantRowsChanged ||
-          productOptionsChanged ||
-          colorImagesChanged ||
-          hasVariantsChanged)
-
-      if (matrixChanged) {
-        const skuValidation = validateProductSkus(
-          variantRows.map((row) => row.sku),
-          usedSkus
-        )
-        if (!skuValidation.ok) {
-          toast.error(skuValidation.title, { description: skuValidation.description })
-          setSaving(false)
-          return
-        }
-
-        const resolvedOptions = resolveProductOptionsFromRows(productOptions, variantRows).filter(
-          (opt) => opt.title && opt.values.length > 0
-        )
-        const serializedColorImages = serializeColorImages(colorImages)
-        const allImageUrls = collectAllImageUrls(galleryImages, colorImages)
-
-        await vendorProductsApi.updateVariants(productId, {
-          options: resolvedOptions,
-          variants: variantRows.map((row) => ({
-            id: row.id,
-            title: row.title,
-            sku: row.sku || null,
-            manage_inventory: row.managedInventory,
-            allow_backorder: row.allowBackorder,
-            inventory_quantity: Math.max(
-              0,
-              Math.floor(Number.parseInt(row.inventoryCount, 10)) || 0
-            ),
-            price: row.price ? Number(row.price) : undefined,
-            discounted_price: row.discountedPrice ? Number(row.discountedPrice) : undefined,
-            options: serializeVariantOptions(resolvedOptions, row.optionValues),
-            option_values: serializeVariantOptions(resolvedOptions, row.optionValues),
-          })),
-          color_images: serializedColorImages,
-          primary_visual_option: primaryVisualOption || undefined,
-          images: allImageUrls.map((url) => ({ url })),
-          vendor_edit_remark: formData.vendorRemark.trim(),
-        })
-
-        setInitialVariantRows(variantRows)
-        setInitialProductOptions(productOptions)
-        setInitialColorImages(colorImages)
-        setInitialHasVariants(true)
+      const existingSkus = new Set(initialVariantRows.map((row) => row.sku.trim().toUpperCase()).filter(Boolean))
+      const skuValidation = validateProductSkus(variantRows.map((row) => row.sku), new Set([...usedSkus].filter((sku) => !existingSkus.has(sku))))
+      if (!skuValidation.ok) {
+        toast.error(skuValidation.title, { description: skuValidation.description })
+        return
       }
-
-      const nonPriceFields = changedFields.filter(
-        (field) => field !== "price" && field !== "discounted_price"
-      )
-      const simplePriceChanged =
-        !hasVariants &&
-        (formData.price.trim() !== initialFormData.price.trim() ||
-          formData.discountedPrice.trim() !== initialFormData.discountedPrice.trim() ||
-          variantRowsChanged)
-
-      if (nonPriceFields.length > 0 || simplePriceChanged || colorImagesChanged) {
-        const payload = {
-          title: formData.title.trim(),
-          description: formData.description.trim()
-            ? toProductDescriptionHtml(formData.description)
-            : null,
-          handle: formData.handle.trim() || null,
-          category_ids: formData.categoryId ? [formData.categoryId] : [],
+      const resolvedOptions = hasVariants
+        ? resolveProductOptionsFromRows(productOptions, variantRows).filter((opt) => opt.title && opt.values.length)
+        : hasVariantsChanged ? [{ title: "Default", values: ["Default"] }] : undefined
+      const variants = serializeProductEditVariants(variantRows, resolvedOptions, hasVariants)
+      const data = await vendorProductsApi.update(productId, {
+        title: formData.title.trim(),
+        description: formData.description.trim() ? toProductDescriptionHtml(formData.description) : null,
+        handle: formData.handle.trim() || null,
+        category_ids: formData.categoryId ? [formData.categoryId] : [],
+        collection_id: formData.collectionId || null,
+        ...(resolvedOptions ? { options: resolvedOptions } : {}),
+        variants,
+        color_images: hasVariants ? serializeColorImages(colorImages) : {},
+        primary_visual_option: hasVariants ? primaryVisualOption || undefined : undefined,
+        images: allImageUrls.map((url) => ({ url })),
+        thumbnail: previewImage,
+        vendor_edit_remark: formData.vendorRemark.trim(),
+        metadata: {
+          category: selectedCategoryName || null,
+          categories: formData.categoryId ? [formData.categoryId] : [],
           collection_id: formData.collectionId || null,
-          ...(hasVariants
-            ? {}
-            : {
-                price: parsedPrice,
-                discounted_price: hasDiscountedValue ? parsedDiscountedPrice : undefined,
-              }),
-          ...((changedFields.includes("images") || colorImagesChanged) ? {
-            images: allImageUrls.map((url) => ({ url })),
-            thumbnail: previewImage,
-          } : {}),
-          vendor_edit_remark: formData.vendorRemark.trim(),
-          metadata: {
-            category: selectedCategoryName || null,
-            categories: formData.categoryId ? [formData.categoryId] : [],
-            collection_id: formData.collectionId || null,
-            collection_title: selectedCollectionTitle || null,
-            tax_code: formData.taxCode || null,
-            gst_rate:
-              formData.gstRate !== "" && formData.gstRate != null
-                ? Number(formData.gstRate)
-                : null,
-            last_vendor_changed_fields: allChangedFields,
-          },
-        }
-
-        const data = await vendorProductsApi.update(productId, payload)
-        const updatedProduct = data?.product as Product | undefined
-
-        if (updatedProduct) {
-          setProduct(updatedProduct)
-        }
-      }
+          collection_title: selectedCollectionTitle || null,
+          tax_code: formData.taxCode || null,
+          gst_rate: formData.gstRate !== "" ? Number(formData.gstRate) : null,
+          last_vendor_changed_fields: allChangedFields,
+        },
+      })
+      if (!data?.product || data.atomic_edit_version !== 1) throw new Error("Backend update required. Reload after deploying the product editing backend.")
+      setProduct(data.product as Product)
+      const savedRows = variantRows.map((row, index) => ({ ...row, id: data.variant_ids?.[index] || row.id }))
+      setVariantRows(savedRows)
+      // Baselines only advance after the server commits the entire edit.
+      setInitialVariantRows(savedRows)
+      setInitialProductOptions(productOptions)
+      setInitialHasVariants(hasVariants)
 
       const resetFormData = {
         ...formData,
@@ -600,9 +539,10 @@ const VendorProductEditPage = () => {
       setInitialFormData(resetFormData)
       setFormData(resetFormData)
       if (!hasVariants) {
-        setInitialVariantRows(variantRows)
+        setInitialVariantRows(savedRows)
         setInitialHasVariants(false)
         setInitialProductOptions([])
+        setProductOptions([])
       }
 
       // Reflect pending approval immediately in the UI badge
@@ -978,6 +918,7 @@ const VendorProductEditPage = () => {
               />
             </div>
 
+            {!atomicEditSupported && <Text className="text-sm text-ui-fg-error">Deploy the updated product editing backend, then reload this page to enable saving.</Text>}
             <div className="flex flex-col gap-3 border-t border-ui-border-base pt-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge color={hasChanges ? "orange" : "grey"}>
@@ -994,7 +935,7 @@ const VendorProductEditPage = () => {
                 <Button type="button" variant="secondary" onClick={() => router.push("/products")}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={saving || uploadingImages || uploadingVariantImages || !hasChanges}>
+                <Button type="submit" disabled={saving || uploadingImages || uploadingVariantImages || !hasChanges || !atomicEditSupported}>
                   {saving ? "Saving & Sending..." : "Save & Send For Approval"}
                 </Button>
               </div>
