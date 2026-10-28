@@ -20,6 +20,7 @@ import BulkPricingReview from "@/components/bulk-upload/BulkPricingReview"
 import BulkPreviewPagination from "@/components/bulk-upload/BulkPreviewPagination"
 import { bulkPreviewPage } from "@/lib/bulk-preview-page"
 import type { BulkPricingDecision } from "@/lib/bulk-pricing"
+import { prepareBulkProduct } from "@/lib/bulk-logistics"
 import { savedAuthorization, submitBrandLetters, type BrandAuthState } from "@/lib/bulk-brand-authorization"
 import { bulkSubmissionIssues } from "@/lib/bulk-submission"
 import { isRemoteImageSource } from "@/lib/bulk-image-source"
@@ -38,6 +39,7 @@ import {
   vendorCategoriesApi,
   vendorCollectionsApi,
   vendorProductsApi,
+  vendorShippingApi,
   vendorTagsApi,
   vendorTypesApi,
 } from "@/lib/api/client"
@@ -902,7 +904,9 @@ const VendorProductsBulkUploadPage = () => {
   const pendingProductGroupCount = new Set(validRows.filter(row => row.status !== "success").map(productGroupKey)).size
   const pendingRowCount = validRows.filter(row => row.status !== "success").length
 
-  const submissionIssues = bulkSubmissionIssues(validatedRows, imageMap, requiredImages, uploadingImages, uniqueBrands, brandAuthMap)
+  // This only allows the submission workflow to start with an expired quote.
+  // The payload still requires a fresh quote, checked just before each request.
+  const submissionIssues = bulkSubmissionIssues(validatedRows, imageMap, requiredImages, uploadingImages, uniqueBrands, brandAuthMap, { refreshExpiredBeforeSubmit: true })
 
   const handlePublish = async () => {
     if (submittingRef.current) return
@@ -964,7 +968,22 @@ const VendorProductsBulkUploadPage = () => {
       setRows([...updated])
 
       try {
-        await vendorProductsApi.create(buildBulkPayload(group.rows, imageMap, true))
+        const prepared = await prepareBulkProduct(group.rowIndices.map(index => updated[index]), vendorShippingApi.estimateRate, (sku, decision) => {
+          const index = group.rowIndices.find(index => updated[index].sku === sku)!
+          updated[index] = { ...updated[index], listingPricing: decision }
+        })
+        if (prepared.needsReview) {
+          group.rowIndices.forEach(index => { updated[index] = { ...updated[index], status: "pending" } })
+          setRows([...updated])
+          const reviewIndex = group.rowIndices.find(index => updated[index].listingPricing?.requiresReview) ?? firstIndex
+          setPreviewPage(Math.floor(reviewIndex / 50) + 1)
+          setUploadingIndex(null)
+          submittingRef.current = false
+          setPhase("preview")
+          toast.info("Shipping changed — review prices", { description: "Submission paused before this product was created. Confirm its updated pricing, then resume. Products already created will be skipped." })
+          return
+        }
+        await vendorProductsApi.create(buildBulkPayload(prepared.rows, imageMap, true))
         group.rowIndices.forEach((index) => {
           updated[index] = { ...updated[index], status: "success" }
         })
