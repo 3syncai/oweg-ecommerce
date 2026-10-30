@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useCallback, useEffect, useState, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Megaphone } from 'lucide-react'
@@ -55,12 +55,30 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
   const [loading, setLoading] = useState(true)
   const [timeRemaining, setTimeRemaining] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
   const scrollRef = useRef<HTMLDivElement>(null)
+  const fetching = useRef(false)
+  const refreshedExpiry = useRef<string | null>(null)
+
+  const fetchFlashSale = useCallback(async () => {
+    if (fetching.current || document.visibilityState === 'hidden') return
+    fetching.current = true
+    try {
+      const response = await axios.get(`/api/medusa/flash-sale/products${inStockOnly ? '?in_stock=1' : ''}`)
+      setFlashSaleData(response.status === 200 ? response.data : { active: false, flash_sale: null, products: [] })
+    } catch {
+      setFlashSaleData({ active: false, flash_sale: null, products: [] })
+    } finally {
+      fetching.current = false
+      setLoading(false)
+    }
+  }, [inStockOnly])
 
   useEffect(() => {
-    fetchFlashSale()
-    const interval = setInterval(fetchFlashSale, 60000) // Refresh every minute
-    return () => clearInterval(interval)
-  }, [])
+    void fetchFlashSale()
+    const interval = setInterval(() => { void fetchFlashSale() }, 60000)
+    const onVisible = () => { if (document.visibilityState === 'visible') void fetchFlashSale() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible) }
+  }, [fetchFlashSale])
 
   useEffect(() => {
     if (!flashSaleData?.flash_sale?.expires_at) {
@@ -78,8 +96,11 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
         updateCountdown(remaining)
       } else {
         setTimeRemaining({ days: 0, hours: 0, minutes: 0, seconds: 0 })
-        // Refresh data when expired
-        fetchFlashSale()
+        // One request per expiry; regular minute polling handles retries.
+        if (refreshedExpiry.current !== expiresAt && document.visibilityState !== 'hidden') {
+          refreshedExpiry.current = expiresAt
+          void fetchFlashSale()
+        }
       }
     }
     
@@ -88,28 +109,7 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
     
     const interval = setInterval(updateTimer, 1000)
     return () => clearInterval(interval)
-  }, [flashSaleData?.flash_sale?.expires_at])
-
-  const fetchFlashSale = async () => {
-    try {
-      const response = await axios.get(`/api/medusa/flash-sale/products${inStockOnly ? '?in_stock=1' : ''}`, {
-        headers: {
-          'Cache-Control': 'no-store',
-        },
-      })
-      
-      if (response.status === 200) {
-        setFlashSaleData(response.data)
-      } else {
-        setFlashSaleData({ active: false, flash_sale: null, products: [] })
-      }
-    } catch (error) {
-      console.error('[FlashSaleSection] Failed to fetch flash sale:', error)
-      setFlashSaleData({ active: false, flash_sale: null, products: [] })
-    } finally {
-      setLoading(false)
-    }
-  }
+  }, [flashSaleData?.flash_sale?.expires_at, fetchFlashSale])
 
   const updateCountdown = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000)
