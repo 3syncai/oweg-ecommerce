@@ -4,7 +4,8 @@ import { resolveRequestedCollection } from "../lib/resolve-requested-collection"
 
 import { defineWidgetConfig } from "@medusajs/admin-sdk"
 import { Container, Heading, Text, Badge, Button, Table } from "@medusajs/ui"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { PENDING_PRODUCT_PAGE_SIZE, pendingProductOffset } from "../../lib/pending-product-pagination"
 import { CheckCircleSolid, XCircleSolid } from "@medusajs/icons"
 
 type VendorProduct = {
@@ -198,33 +199,51 @@ const BrandAuthorizationReview = ({ productId }: { productId: string }) => {
 const VendorProductsWidget = () => {
   const [products, setProducts] = useState<VendorProduct[]>([])
   const [loading, setLoading] = useState(true)
+  const [count, setCount] = useState(0)
+  const [offset, setOffset] = useState(0)
+  const [loadError, setLoadError] = useState("")
+  const [acting, setActing] = useState(false)
+  const requestId = useRef(0)
   const [selectedProduct, setSelectedProduct] = useState<VendorProduct | null>(null)
   const [creatingCategory, setCreatingCategory] = useState(false)
   const [creatingCollection, setCreatingCollection] = useState(false)
 
-  useEffect(() => {
-    fetchPendingProducts()
-  }, [])
-
-  const fetchPendingProducts = async () => {
+  const fetchPendingProducts = useCallback(async () => {
+    const currentRequest = ++requestId.current
+    setLoading(true)
+    setLoadError("")
     try {
       const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
-      const response = await fetch(`${backend}/admin/custom/vendor-products/pending`, {
+      const response = await fetch(`${backend}/admin/custom/vendor-products/pending?limit=${PENDING_PRODUCT_PAGE_SIZE}&offset=${offset}`, {
         credentials: "include",
+        cache: "no-store",
+        signal: AbortSignal.timeout(15_000),
       })
-
-      if (response.ok) {
-        const data = await response.json()
-        setProducts(data.products || [])
+      const data = await response.json().catch(() => ({}))
+      if (currentRequest !== requestId.current) return
+      if (!response.ok) throw new Error(data.message || "Unable to load pending products")
+      if (!Number.isInteger(data.count) || data.count < 0 || !Array.isArray(data.products)) {
+        throw new Error("Update the admin backend to enable the paginated approval list.")
       }
+      setCount(data.count)
+      const nextOffset = pendingProductOffset(data.count, PENDING_PRODUCT_PAGE_SIZE, offset)
+      if (nextOffset !== offset) { setOffset(nextOffset); setProducts([]); return }
+      setProducts(data.products)
     } catch (error) {
-      console.error("Failed to fetch pending products:", error)
+      if (currentRequest === requestId.current) setLoadError(error instanceof Error ? error.message : "Unable to load pending products")
     } finally {
-      setLoading(false)
+      if (currentRequest === requestId.current) setLoading(false)
     }
-  }
+  }, [offset])
+
+  useEffect(() => {
+    void fetchPendingProducts()
+    return () => { requestId.current++ }
+  }, [fetchPendingProducts])
 
   const handleApprove = async (productId: string) => {
+    if (acting) return
+    setActing(true)
     try {
       const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
       const response = await fetch(`${backend}/admin/custom/vendor-products/${productId}/approve`, {
@@ -236,7 +255,7 @@ const VendorProductsWidget = () => {
       })
 
       if (response.ok) {
-        fetchPendingProducts()
+        await fetchPendingProducts()
         setSelectedProduct(null)
       } else {
         const result = await response.json()
@@ -244,10 +263,12 @@ const VendorProductsWidget = () => {
       }
     } catch (error) {
       console.error("Failed to approve product:", error)
-    }
+    } finally { setActing(false) }
   }
 
   const handleReject = async (productId: string) => {
+    if (acting) return
+    setActing(true)
     try {
       const backend = (process.env.BACKEND_URL || window.location.origin).replace(/\/$/, "")
       const response = await fetch(`${backend}/admin/custom/vendor-products/${productId}/reject`, {
@@ -259,12 +280,15 @@ const VendorProductsWidget = () => {
       })
 
       if (response.ok) {
-        fetchPendingProducts()
+        await fetchPendingProducts()
         setSelectedProduct(null)
+      } else {
+        const result = await response.json().catch(() => ({}))
+        alert(result.message || "Unable to reject this listing. Please try again.")
       }
     } catch (error) {
       console.error("Failed to reject product:", error)
-    }
+    } finally { setActing(false) }
   }
 
   const handleEdit = (productId: string) => {
@@ -455,7 +479,7 @@ const VendorProductsWidget = () => {
     }
   }
 
-  if (loading) {
+  if (loading && products.length === 0 && !selectedProduct) {
     return (
       <Container>
         <Text>Loading pending products...</Text>
@@ -887,11 +911,11 @@ const VendorProductsWidget = () => {
           <Button variant="secondary" onClick={() => handleEdit(selectedProduct.id)}>
             Edit Product
           </Button>
-          <Button onClick={() => handleApprove(selectedProduct.id)}>
+          <Button disabled={acting || loading || creatingCategory || creatingCollection} onClick={() => handleApprove(selectedProduct.id)}>
             <CheckCircleSolid />
             Approve
           </Button>
-          <Button variant="danger" onClick={() => handleReject(selectedProduct.id)}>
+          <Button disabled={acting || loading || creatingCategory || creatingCollection} variant="danger" onClick={() => handleReject(selectedProduct.id)}>
             <XCircleSolid />
             Reject
           </Button>
@@ -907,14 +931,19 @@ const VendorProductsWidget = () => {
         <Text style={{ color: "var(--fg-muted)" }}>
           Review and approve products submitted by vendors
         </Text>
+        <Button className="mt-3" size="small" variant="secondary" disabled={loading || acting} onClick={() => void fetchPendingProducts()}>Refresh list</Button>
       </div>
 
-      {products.length === 0 ? (
+      {loadError && <div role="alert" className="mb-4 flex flex-wrap items-center gap-3">
+        <Text className="text-ui-fg-error">{loadError}</Text>
+        <Button size="small" variant="secondary" disabled={loading} onClick={() => void fetchPendingProducts()}>Retry</Button>
+      </div>}
+      {!loadError && products.length === 0 ? (
         <div style={{ textAlign: "center", padding: 48 }}>
-          <Text style={{ color: "var(--fg-muted)" }}>No pending products</Text>
+          <Text style={{ color: "var(--fg-muted)" }}>{count ? "No pending products on this page. Refresh the list or choose another page." : "No pending products"}</Text>
         </div>
       ) : (
-        <div style={{ background: "var(--bg-base)", border: "1px solid var(--border-base)", borderRadius: 8 }}>
+        <div aria-busy={loading} style={{ overflowX: "auto", background: "var(--bg-base)", border: "1px solid var(--border-base)", borderRadius: 8 }}>
           <Table>
             <Table.Header>
               <Table.Row>
@@ -935,6 +964,8 @@ const VendorProductsWidget = () => {
                         <img
                           src={product.thumbnail}
                           alt={product.title}
+                          loading="lazy"
+                          decoding="async"
                           style={{ width: 40, height: 40, borderRadius: 4, objectFit: "cover" }}
                         />
                       )}
@@ -984,10 +1015,10 @@ const VendorProductsWidget = () => {
                   </Table.Cell>
                   <Table.Cell>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <Button size="small" variant="secondary" onClick={() => setSelectedProduct(product)}>
+                      <Button size="small" variant="secondary" disabled={loading || acting || !!loadError} onClick={() => setSelectedProduct(product)}>
                         View
                       </Button>
-                      <Button size="small" variant="secondary" onClick={() => handleEdit(product.id)}>
+                      <Button size="small" variant="secondary" disabled={loading || acting || !!loadError} onClick={() => handleEdit(product.id)}>
                         Edit
                       </Button>
                     </div>
@@ -998,6 +1029,14 @@ const VendorProductsWidget = () => {
           </Table>
         </div>
       )}
+      <nav aria-label="Pending product pages" className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <Text size="small">{products.length ? `${offset + 1}–${Math.min(offset + products.length, count)} of ${count}` : `${count} pending products`} · {PENDING_PRODUCT_PAGE_SIZE} per page</Text>
+        <div className="flex items-center gap-3">
+          <Button size="small" variant="secondary" disabled={offset === 0 || loading || acting} onClick={() => setOffset(Math.max(0, offset - PENDING_PRODUCT_PAGE_SIZE))}>Previous</Button>
+          <Text size="small">Page {Math.floor(offset / PENDING_PRODUCT_PAGE_SIZE) + 1} of {Math.max(1, Math.ceil(count / PENDING_PRODUCT_PAGE_SIZE))}</Text>
+          <Button size="small" variant="secondary" disabled={offset + PENDING_PRODUCT_PAGE_SIZE >= count || loading || acting} onClick={() => setOffset(offset + PENDING_PRODUCT_PAGE_SIZE)}>Next</Button>
+        </div>
+      </nav>
     </Container>
   )
 }
