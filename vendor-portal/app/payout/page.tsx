@@ -387,6 +387,10 @@ const VendorPayoutPage = () => {
       (sum, row) => sum + Math.abs(Number(row.logistic_total) || 0),
       0
     )
+    const paymentGatewayTotalFromLedger = salesRows.reduce(
+      (sum, row) => sum + Math.abs(Number(row.payment_gateway_total) || 0),
+      0
+    )
 
     const fullSale =
       Number(payments.cards.full_sale) > 0
@@ -404,11 +408,13 @@ const VendorPayoutPage = () => {
     const lifetimeCommission = commissionTotalFromLedger
     const lifetimePartner = partnerTotalFromLedger
     const lifetimeLogistics = logisticTotalFromLedger
+    const lifetimePaymentGateway = paymentGatewayTotalFromLedger
     const taxesAndCommission =
       lifetimePlatform +
       lifetimeCommission +
       lifetimePartner +
       lifetimeLogistics +
+      lifetimePaymentGateway +
       lifetimeTcs +
       lifetimeTds
 
@@ -424,6 +430,7 @@ const VendorPayoutPage = () => {
     const platformRateLabel = formatRate(rateSource?.platform_rate)
     const commissionRateLabel = formatRate(rateSource?.commission_rate)
     const partnerRateLabel = formatRate(rateSource?.partner_rate)
+    const paymentGatewayRateLabel = formatRate(rateSource?.payment_gateway_rate)
     const tcsRateLabel = formatRate(rateSource?.tcs_rate) || "0.5%"
     const tdsRateLabel = formatRate(rateSource?.tds_rate) || "0.1%"
     const logisticsRateLabel = null
@@ -460,7 +467,7 @@ const VendorPayoutPage = () => {
             </div>
             <p className={styles.mobileIntro}>Track earnings, deductions and bank settlements.</p>
             <Text size="small" className={clx(styles.intro, "mt-2 max-w-xl text-ui-fg-subtle leading-relaxed")}>
-              Settlement breakdown: listing total minus platform, commission, partner, logistics, TCS and TDS.
+              Settlement breakdown: listing total minus platform, commission, partner, logistics, payment gateway, TCS and TDS.
               Earnings unlock after the longer of the product&apos;s return or replacement window.
             </Text>
           </div>
@@ -537,7 +544,7 @@ const VendorPayoutPage = () => {
                   )}
                   aria-expanded={feesInfoOpen}
                   aria-label="Total deduction breakdown"
-                  title="Platform, commission, partner, logistics, TCS & TDS"
+                  title="Platform, commission, partner, logistics, payment gateway, TCS & TDS"
                 >
                   i
                 </button>
@@ -577,6 +584,12 @@ const VendorPayoutPage = () => {
                         rate: logisticsRateLabel,
                         val: lifetimeLogistics,
                         color: "bg-emerald-500",
+                      },
+                      {
+                        label: "Payment gateway",
+                        rate: paymentGatewayRateLabel,
+                        val: lifetimePaymentGateway,
+                        color: "bg-cyan-500",
                       },
                       {
                         label: "TCS",
@@ -675,7 +688,7 @@ const VendorPayoutPage = () => {
             <Text size="xsmall" className="text-ui-fg-muted leading-relaxed">
               <span className="font-medium text-ui-fg-subtle">Formula:</span>{" "}
               Pending unlocks after the product return/replacement window. Balance = Settlement −
-              Withdrawn. Bank settlement = C − (D + E + F + B + TCS + TDS).
+              Withdrawn. Bank settlement = C − (D + E + F + B + PG + TCS + TDS).
             </Text>
           </div>
         </section>
