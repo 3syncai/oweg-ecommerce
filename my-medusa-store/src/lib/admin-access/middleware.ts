@@ -32,6 +32,8 @@ export async function enforceAdminAccess(req: AuthenticatedMedusaRequest, res: M
   try {
     const access = await getAdminAccess(context.actor_id)
     if (!access) return res.status(401).json({ message: "Admin account no longer exists" })
+    // Request-scoped only: downstream access/me need not repeat these queries.
+    ;(res.locals ||= {}).owegAdminAccess = access
     const activity = activityContext.getStore()
     if (activity) activity.actor = access
     const issuedAt = Number((context as unknown as { iat?: number }).iat || 0)

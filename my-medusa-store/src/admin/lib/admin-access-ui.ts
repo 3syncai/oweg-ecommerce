@@ -1,6 +1,6 @@
 import { ADMIN_RESPONSIBILITIES } from "../../shared/admin-responsibilities"
 import { ADMIN_PERMISSION_GROUPS, canAccessAdminPage, matchesPath, normalizeAdminPath, type AdminAccess } from "../../shared/admin-access"
-import { currentAdminAccess } from "./admin-access-client"
+import { currentAdminAccess, resetAdminAccessRequest } from "./admin-access-client"
 
 let initialized = false
 let access: AdminAccess | null = null
@@ -50,7 +50,7 @@ function apply() {
   if (!window.location.pathname.startsWith("/app") || isAuthPage()) {
     delete document.documentElement.dataset.owegAccessPending
     document.getElementById("oweg-admin-access-status")?.remove()
-    if (!wasAuthPage) { access = null; lastRefresh = 0; lastAttempt = 0; lastRecordedPage = ""; sessionGeneration++ }
+    if (!wasAuthPage) { access = null; lastRefresh = 0; lastAttempt = 0; lastRecordedPage = ""; sessionGeneration++; resetAdminAccessRequest() }
     wasAuthPage = true
     return
   }
@@ -149,11 +149,16 @@ async function refresh() {
     lastRefresh = Date.now()
     apply()
   } catch {
+    if (generation !== sessionGeneration || isAuthPage()) return
     access = null
     document.documentElement.dataset.owegAccessPending = "true"
     document.getElementById("oweg-admin-access-status")?.remove()
     statusPanel("Unable to verify your admin access. Sign in again or retry. If this continues, contact the superadmin.", true)
-  } finally { pending = false }
+  } finally {
+    pending = false
+    // A previous session's request must not delay the newly signed-in account.
+    if (generation !== sessionGeneration && !isAuthPage()) void refresh()
+  }
 }
 
 export function initAdminAccessUi() {
@@ -203,13 +208,18 @@ export function initAdminAccessUi() {
   }
   document.addEventListener("click", blockRestrictedReference, true)
   document.addEventListener("auxclick", blockRestrictedReference, true)
-  const schedule = () => { window.clearTimeout(timer); timer = window.setTimeout(apply, 40) }
+  // Throttle instead of restarting a debounce for every spinner/table mutation.
+  // A busy page must not postpone its initial access check indefinitely.
+  const schedule = () => {
+    if (timer !== undefined) return
+    timer = window.setTimeout(() => { timer = undefined; apply() }, 40)
+  }
   const observer = new MutationObserver(schedule)
   observer.observe(document.documentElement, { subtree: true, childList: true })
   window.addEventListener("popstate", schedule)
   for (const method of ["pushState", "replaceState"] as const) {
     const original = history[method].bind(history)
-    history[method] = (...args: Parameters<History["pushState"]>) => { original(...args); schedule() }
+    history[method] = (...args: Parameters<History["pushState"]>) => { original(...args); window.dispatchEvent(new Event("oweg-admin-location")); schedule() }
   }
   window.addEventListener("focus", () => { if (Date.now() - lastRefresh > 5000) void refresh() })
   window.setInterval(() => { if (document.visibilityState === "visible" && Date.now() - lastRefresh > 30000) void refresh() }, 10000)

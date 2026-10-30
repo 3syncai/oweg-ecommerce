@@ -22,6 +22,7 @@ export type ProductCardQuickActionsProps = {
   inventoryQuantity?: number;
   className?: string;
   children?: React.ReactNode;
+  layout?: "overlay" | "inline";
 };
 
 function stopCardNavigation(event: React.MouseEvent<HTMLButtonElement>) {
@@ -37,6 +38,7 @@ export function ProductCardQuickActions({
   inventoryQuantity,
   className = "",
   children,
+  layout = "overlay",
 }: ProductCardQuickActionsProps) {
   const { line } = useCartLineByVariant(variantId);
   const { addToCart, isLoading: isAdding } = useAddToCartWithNotification(productName);
@@ -53,7 +55,7 @@ export function ProductCardQuickActions({
       : undefined;
   const atMaxQty = maxQty != null && quantity >= maxQty;
 
-  const isVisible = inCart || isHovered;
+  const isVisible = layout === "inline" || inCart || isHovered;
   const pointerEvents = isVisible ? "auto" : "none";
 
   useEffect(() => {
@@ -83,14 +85,14 @@ export function ProductCardQuickActions({
 
   return (
     <div
-      className={`absolute top-2 right-2 flex flex-col gap-2 z-30 transition-all duration-150 ${
+      className={`${layout === "inline" ? "relative w-full flex flex-col gap-2" : "absolute top-2 right-2 flex flex-col gap-2 z-30"} transition-all duration-150 ${
         isVisible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-2"
       } ${className}`}
       style={{ pointerEvents }}
     >
       {inCart ? (
         <div
-          className={`flex items-center rounded-full border border-[#1F2A33]/20 bg-white shadow-lg overflow-hidden h-9 min-w-[96px] ${
+          className={`flex items-center justify-between border border-[#1F2A33]/20 bg-white overflow-hidden ${layout === "inline" ? "h-10 w-full rounded-md" : "h-9 min-w-[96px] rounded-full shadow-lg"} ${
             isBusy ? "opacity-70 cursor-wait pointer-events-none" : ""
           }`}
           role="group"
@@ -135,10 +137,11 @@ export function ProductCardQuickActions({
         </div>
       ) : showAddedFlash ? (
         <div
-          className="flex h-9 w-9 items-center justify-center"
+          className={layout === "inline" ? "flex h-10 w-full items-center justify-center rounded-md bg-[#155344] text-sm font-semibold text-white" : "flex h-9 w-9 items-center justify-center"}
           aria-label="Added to cart"
         >
           <QtyCheckAddedIcon className="h-9 w-9 drop-shadow-md" />
+          {layout === "inline" && "Added to cart"}
         </div>
       ) : (
         <button
@@ -148,11 +151,13 @@ export function ProductCardQuickActions({
           disabled={!canAdd || isBusy}
           aria-busy={isAdding || undefined}
           aria-label={disabled ? "Out of Stock" : isAdding ? "Adding to cart" : "Add to Cart"}
-          className={`relative flex h-9 w-9 items-center justify-center border-0 bg-transparent p-0 shadow-none transition before:absolute before:-inset-1 before:content-[''] ${
+          className={`${layout === "inline" ? "relative flex h-10 w-full items-center justify-center gap-2 rounded-md border-0 bg-[#155344] px-2 text-sm font-semibold text-white hover:bg-[#103f34] disabled:bg-[#e9eeeb] disabled:text-[#75817b]" : "relative flex h-9 w-9 items-center justify-center border-0 bg-transparent p-0 shadow-none before:absolute before:-inset-1 before:content-['']"} transition ${
             canAdd && !isBusy ? "hover:scale-105" : "cursor-not-allowed"
           } ${isBusy ? "opacity-60 cursor-wait" : ""}`}
         >
-          {isAdding ? (
+          {layout === "inline" ? (
+            <>{isAdding && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}{disabled ? "Out of stock" : isAdding ? "Adding…" : "Add to Cart"}</>
+          ) : isAdding ? (
             <Loader2 className="h-7 w-7 animate-spin text-[#66C940] drop-shadow-md" aria-hidden />
           ) : (
             <AddFabPlusIcon

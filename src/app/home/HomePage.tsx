@@ -146,32 +146,15 @@ function ProductCarousel({
 
 // Hero Banner Component
 const HERO_SLIDES = [
-  { src: '/HeroBaneer_1.png', href: '/specials', label: 'See Specials offers' },
-  { src: '/HeroBaneer_2.png', href: '/c/home-appliances', label: 'Shop Home Appliances' },
-  { src: '/HeroBaneer_3.png', href: '/c/kitchen-appliances', label: 'Shop Kitchen Appliances' },
-  { src: '/HeroBaneer_4.png', href: '/c/computer-%26-mobile-accessories', label: 'Shop Computer & Mobile Accessories' },
-  { src: '/HeroBaneer_5.png', href: '/c/computer-%26-mobile-accessories', label: 'Shop Mobile Accessories' },
-  { src: '/HeroBaneer_6.png', href: '/c/surveillance-%26-security', label: 'Shop Surveillance & Security' },
-  { src: '/HeroBaneer_7.png', href: '/c/clothing', label: 'Shop Clothing' },
-  { src: '/HeroBaneer_8.png', href: '/c/bags', label: 'Shop Bags' },
-  { src: '/HeroBaneer_9.png', href: '/c/hardware', label: 'Shop Hardware' },
-  { src: '/HeroBaneer_10.png', href: '/c/toys-and-games', label: 'Shop Toys and Games' },
-  { src: '/HeroBaneer_11.png', href: '/c/health-care', label: 'Shop Health Care' },
-  { src: '/HeroBaneer_12.png', href: '/c/stationery', label: 'Shop Stationery' },
-  { src: '/Banner.png', href: '/c/beauty-and-personal-care', label: 'Shop Beauty and Personal Care' },
-  { src: '/HeroBaneer_13.png', href: '/c/jewellery', label: 'Shop Jewellery' },
+  { src: '/main-banners/creative-v2/home-desktop.webp', mobileSrc: '/main-banners/creative-v2/home-mobile.webp', href: '/c/home-appliances', label: 'Big little home upgrades — shop the home sale, up to 80% off' },
+  { src: '/main-banners/creative-v2/bags-desktop.webp', mobileSrc: '/main-banners/creative-v2/bags-mobile.webp', href: '/c/bags', label: 'Carry a little more you — shop everyday bags' },
+  { src: '/main-banners/creative-v2/technology-desktop.webp', mobileSrc: '/main-banners/creative-v2/technology-mobile.webp', href: '/c/computer-%26-mobile-accessories', label: 'Plug into possibilities — shop computer and mobile accessories' },
+  { src: '/main-banners/creative-v2/health-desktop.webp', mobileSrc: '/main-banners/creative-v2/health-mobile.webp', href: '/c/health-care', label: 'A moment, just for you — shop Sassiest Health Care' },
+  { src: '/main-banners/creative-v2/kitchen-desktop.webp', mobileSrc: '/main-banners/creative-v2/kitchen-mobile.webp', href: '/c/kitchen-appliances', label: 'Good food. Great company. — shop kitchen appliances' },
 ];
 
 const BAG_SECTION_BANNERS = [
   { image: '/Mixer_banner.png', href: '/c/kitchen-appliances/kitchen-appliances-mixer-grinders-juicer', alt: 'Shop mixer grinders' },
-];
-
-// Portrait-friendly artwork used for the hero on small screens (source ratio ~2:1),
-// so the wide 3.28:1 desktop slides never get their left-aligned copy cropped.
-const MOBILE_HERO_SLIDES = [
-  { src: '/App_Banner-1.jpg', href: '/specials', label: 'Explore Specials' },
-  { src: '/App_Banner-3.jpg', href: '/c/kitchen-appliances', label: 'Shop Kitchen Appliances' },
-  { src: '/App_Banner-9.png', href: '/c/home-appliances', label: 'Shop Home Appliances' },
 ];
 
 /**
@@ -296,7 +279,6 @@ function HeroBanner() {
     setTouchDelta(0);
   };
 
-  const mobileSlide = MOBILE_HERO_SLIDES[currentSlide % MOBILE_HERO_SLIDES.length];
 
   return (
     <section
@@ -313,27 +295,8 @@ function HeroBanner() {
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Mobile: portrait-friendly artwork at its own ratio */}
-      <div className="relative w-full md:hidden" style={{ aspectRatio: '2.05' }}>
-        {!heroReady && (
-          <div className="absolute inset-0 z-10 bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 animate-pulse" />
-        )}
-        <Link href={mobileSlide.href} aria-label={mobileSlide.label} className="absolute inset-0 block">
-          <Image
-            key={mobileSlide.src}
-            src={mobileSlide.src}
-            alt={mobileSlide.label}
-            fill
-            priority
-            onLoad={() => setHeroReady(true)}
-            className="object-cover object-center oweg-fade-up"
-            sizes="100vw"
-          />
-        </Link>
-      </div>
-
-      {/* Desktop: wide slides at their native 3.28:1 ratio — no crop, no stretch */}
-      <div className="relative hidden w-full md:block" style={{ aspectRatio: '3.28' }}>
+      {/* One responsive image stage; preserve the complete supplied SVG artwork. */}
+      <div className={`${styles.heroStage} relative w-full`}>
         {!heroReady && (
           <div className="absolute inset-0 z-10 bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 animate-pulse" />
         )}
@@ -353,15 +316,20 @@ function HeroBanner() {
               aria-hidden={!isActive}
             >
               <Link href={slide.href} aria-label={slide.label} tabIndex={isActive ? 0 : -1} className="absolute inset-0 block">
-                <Image
-                  src={slide.src}
-                  alt={slide.label}
-                  fill
-                  priority={idx === 0}
-                  onLoad={() => setHeroReady(true)}
-                  className="object-cover object-center"
-                  sizes="100vw"
-                />
+                <picture>
+                  <source media="(max-width: 767px)" srcSet={slide.mobileSrc} />
+                  <Image
+                    src={slide.src}
+                    alt={slide.label}
+                    fill
+                    unoptimized
+                    loading={idx === 0 ? 'eager' : 'lazy'}
+                    fetchPriority={idx === 0 ? 'high' : 'auto'}
+                    onLoad={() => setHeroReady(true)}
+                    className="object-contain object-center"
+                    sizes="100vw"
+                  />
+                </picture>
               </Link>
             </div>
           );
@@ -369,64 +337,20 @@ function HeroBanner() {
 
       </div>
 
-      <div className={styles.heroFooter}>
-        <div className={styles.heroCaption}>
-          <span className={styles.offerDot} aria-hidden="true" />
-          <span>Explore our latest offers</span>
-          <button
-            type="button"
-            className={styles.pauseButton}
-            onClick={() => setIsPaused((paused) => !paused)}
-            aria-label={isPaused ? 'Resume offer slideshow' : 'Pause offer slideshow'}
-            aria-pressed={isPaused}
-          >
-            {isPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
-          </button>
-        </div>
-        <div className={`${styles.desktopDots} hidden items-center justify-center gap-0.5 md:flex`}>
-          {HERO_SLIDES.map((slide, idx) => (
-            <HeroDot
-              key={`d-dot-${slide.src}`}
-              active={currentSlide === idx}
-              index={idx}
-              onSelect={() => setCurrentSlide(idx)}
-            />
-          ))}
-        </div>
-        <div className={styles.heroControls}>
-          <span className={styles.slideCount} aria-label={`Offer ${currentSlide + 1} of ${HERO_SLIDES.length}`}>
-            {String(currentSlide + 1).padStart(2, '0')} <span>/ {HERO_SLIDES.length}</span>
-          </span>
-          <button
-            type="button"
-            onClick={prev}
-            className={`oweg-rail-btn ${styles.heroArrow}`}
-            aria-label="Previous slide"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            onClick={next}
-            className={`oweg-rail-btn ${styles.heroArrow}`}
-            aria-label="Next slide"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Progress rails — one dot per slide actually shown at that breakpoint */}
-      <div className="flex items-center justify-center gap-0.5 md:hidden">
-        {MOBILE_HERO_SLIDES.map((slide, idx) => (
-          <HeroDot
-            key={`m-dot-${slide.src}`}
-            active={currentSlide % MOBILE_HERO_SLIDES.length === idx}
-            index={idx}
-            onSelect={() => setCurrentSlide(idx)}
-          />
+      <button type="button" onClick={prev} className={`${styles.heroArrow} ${styles.heroPrevious}`} aria-label="Previous slide">
+        <ChevronLeft size={20} aria-hidden />
+      </button>
+      <button type="button" onClick={next} className={`${styles.heroArrow} ${styles.heroNext}`} aria-label="Next slide">
+        <ChevronRight size={20} aria-hidden />
+      </button>
+      <div className={styles.heroDots}>
+        {HERO_SLIDES.map((slide, idx) => (
+          <HeroDot key={slide.src} active={currentSlide === idx} index={idx} onSelect={() => setCurrentSlide(idx)} />
         ))}
       </div>
+      <button type="button" className={styles.pauseButton} onClick={() => setIsPaused((paused) => !paused)} aria-label={isPaused ? 'Resume offer slideshow' : 'Pause offer slideshow'} aria-pressed={isPaused}>
+        {isPaused ? <Play size={14} aria-hidden /> : <Pause size={14} aria-hidden />}
+      </button>
     </section>
   );
 }
@@ -493,7 +417,7 @@ function CategoryStrip({ categories }: { categories: MobileCategory[] }) {
         <div className="oweg-section-head">
           <div className="min-w-0">
             <p className={styles.eyebrow}>Find your next favourite</p>
-            <h2 className="oweg-title">Shop by category</h2>
+            <h2 className="oweg-title">Shop by subcategory</h2>
             <p className="oweg-subtle mt-1">For your home, your routine, and everything in between.</p>
           </div>
         </div>
@@ -792,18 +716,8 @@ export default function HomePage({
   return (
     <div className={`oweg-page min-h-screen ${styles.home}`}>
       <main className={`w-full pb-8 ${styles.content}`}>
-        <section className={`oweg-container ${styles.intro}`}>
-          <div className={styles.introCopy}>
-            <p className={styles.eyebrow}>A little inspiration. A lot to explore.</p>
-            <h1>Good finds.<br className="sm:hidden" /> Everyday living.</h1>
-            <p>Discover the things that make your day feel a little better.</p>
-          </div>
-          <div className={styles.introActions}>
-            <Link href="/specials" className={styles.primaryLink}>Explore offers <ArrowUpRight className="h-4 w-4" /></Link>
-            <a href="#home-categories" className={styles.secondaryLink}>Browse categories <ChevronRight className="h-4 w-4" /></a>
-          </div>
-        </section>
-        <div className="oweg-container"><HeroBanner /></div>
+        <h1 className="sr-only">Good finds. Everyday living.</h1>
+        <HeroBanner />
 
         <CategoryStrip categories={mobileCategories} />
 
