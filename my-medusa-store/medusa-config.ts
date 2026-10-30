@@ -1,4 +1,5 @@
 import { loadEnv, defineConfig } from "@medusajs/framework/utils"
+import { resolveAdminBackendUrl } from "./src/lib/admin-backend-url"
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd())
 
@@ -82,17 +83,25 @@ export default defineConfig({
     // 502s (ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR). Cross-origin cookies
     // work with cookieOptions sameSite=none + secure below; ADMIN_CORS /
     // AUTH_CORS must include the Vercel admin origin.
-    backendUrl:
-      process.env.MEDUSA_ADMIN_BACKEND_URL ||
-      (process.env.NODE_ENV === "production"
-        ? "https://api.oweg.itshover.com"
-        : "http://localhost:9000"),
+    //
+    // Important: Vercel may set MEDUSA_ADMIN_BACKEND_URL to
+    // https://ecomm-admin-ecru.vercel.app/api — treat that as a proxy URL and
+    // replace it, otherwise login keeps 502'ing through the rewrite.
+    backendUrl: resolveAdminBackendUrl(process.env.MEDUSA_ADMIN_BACKEND_URL),
     vite: () => ({
       // admin-bundler defines process.env as a plugin-only object. Give Vite
       // an explicit production constant so dependency development branches
       // and i18next debug logging are removed from deployed builds.
       define: {
         "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV === "production" ? "production" : "development"),
+        "process.env.MEDUSA_ADMIN_BACKEND_URL": JSON.stringify(
+          resolveAdminBackendUrl(process.env.MEDUSA_ADMIN_BACKEND_URL)
+        ),
+        "process.env.BACKEND_URL": JSON.stringify(
+          resolveAdminBackendUrl(
+            process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL
+          )
+        ),
       },
       // After patch-package touches @medusajs/dashboard, stale Vite dep chunks
       // (chunk-XXXX.js 404) blank the whole admin. Force re-optimize on boot.
