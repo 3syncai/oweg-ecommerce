@@ -83,6 +83,10 @@ test('dashboard auth switches from session cookies to JWT for cross-origin admin
   assert.ok(patched.includes('jwtTokenStorageMethod: "local"'));
   assert.ok(patched.includes('OWEG_JWT_AUTH'));
   assert.equal(patchJwtAuth(patched), patched);
+  // Already-JWT sources (e.g. Vercel node_modules cache) must stay valid.
+  const already = 'auth: {\n    // OWEG_JWT_AUTH\n    type: "jwt",\n    jwtTokenStorageMethod: "local",\n  }';
+  assert.equal(patchJwtAuth(already), already);
+  assert.ok(require('../my-medusa-store/scripts/patch-admin-startup.cjs').hasJwtAuth(already));
 });
 test('access requests send Bearer token when medusa_auth_token is present', async () => {
   let authHeader = '';

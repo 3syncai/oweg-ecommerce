@@ -34,25 +34,37 @@ function patchLogin(source) {
 // Admin on Vercel + API on Hostinger is cross-origin. Session cookies fail
 // (especially in Incognito). Use JWT in localStorage + Authorization Bearer.
 const jwtMarker = "OWEG_JWT_AUTH"
+const sessionAuthRe = /auth:\s*\{\s*type:\s*["']session["']\s*,?\s*\}/g
+const jwtAuthBlock = `auth: {\n    // ${jwtMarker}\n    type: "jwt",\n    jwtTokenStorageMethod: "local",\n  }`
+
+function hasJwtAuth(source) {
+  return source.includes(jwtMarker) || /type:\s*["']jwt["']/.test(source)
+}
+
 function patchJwtAuth(source) {
   if (source.includes(jwtMarker)) return source
-  if (!source.includes('type: "session"')) return source
-  return source.replace(
-    /auth:\s*\{\s*type:\s*"session"\s*,?\s*\}/,
-    `auth: {\n    // ${jwtMarker}\n    type: "jwt",\n    jwtTokenStorageMethod: "local",\n  }`
-  )
+  if (!sessionAuthRe.test(source)) return source
+  sessionAuthRe.lastIndex = 0
+  return source.replace(sessionAuthRe, jwtAuthBlock)
 }
 
 function apply() {
   const dashboard = path.resolve(__dirname, "../node_modules/@medusajs/dashboard")
+  if (!fs.existsSync(dashboard)) {
+    throw new Error(`Dashboard package missing at ${dashboard}`)
+  }
+  const distDir = path.join(dashboard, "dist")
+  const distFiles = fs.existsSync(distDir)
+    ? fs.readdirSync(distDir).filter((name) => name.endsWith(".mjs") || name === "app.js").map((name) => `dist/${name}`)
+    : []
   const candidates = [
     "src/hooks/api/feature-flags.tsx",
     "src/routes/login/login.tsx",
     "src/lib/client/client.ts",
-    ...fs.readdirSync(path.join(dashboard, "dist")).filter(name => name.endsWith(".mjs") || name === "app.js").map(name => `dist/${name}`),
+    ...distFiles,
   ]
   let patchedFlags = 0
-  let patchedJwt = 0
+  let jwtOk = 0
   for (const relative of candidates) {
     const filename = path.join(dashboard, relative)
     if (!fs.existsSync(filename)) continue
@@ -60,18 +72,20 @@ function apply() {
     let source = original
     if (source.includes('queryKey: ["admin", "feature-flags"]')) { source = patchFeatureFlags(source); patchedFlags++ }
     if (relative === "src/routes/login/login.tsx" || relative.startsWith("dist/login-") || relative === "dist/app.js") source = patchLogin(source)
-    if (source.includes('type: "session"') || source.includes(jwtMarker)) {
-      const next = patchJwtAuth(source)
-      if (next !== source) patchedJwt++
-      source = next
+    if (sessionAuthRe.test(source) || hasJwtAuth(source) || source.includes('type: "session"') || source.includes("type: 'session'")) {
+      sessionAuthRe.lastIndex = 0
+      source = patchJwtAuth(source)
     }
     if (relative === "dist/app.js") source = source.replace('import { useSyncExternalStore as owegUseLocation } from "react";', 'const { useSyncExternalStore: owegUseLocation } = require("react");')
     if (source !== original) fs.writeFileSync(filename, source)
+    if (hasJwtAuth(source)) jwtOk++
   }
   if (patchedFlags < 2) throw new Error("Expected source and runtime feature-flags hooks")
-  if (patchedJwt < 1) throw new Error("Expected dashboard JWT auth patch")
+  // Success if JWT is present after patching — including when a prior build
+  // cache already contained the marker (patchedJwt change-count would be 0).
+  if (jwtOk < 1) throw new Error("Expected dashboard JWT auth patch")
   console.log("[admin] Auth-aware feature flags ready")
-  console.log("[admin] JWT auth enabled for cross-origin admin")
+  console.log(`[admin] JWT auth enabled for cross-origin admin (${jwtOk} file(s))`)
 }
-module.exports = { apply, patchFeatureFlags, patchLogin, patchJwtAuth }
+module.exports = { apply, patchFeatureFlags, patchLogin, patchJwtAuth, hasJwtAuth }
 if (require.main === module) apply()
