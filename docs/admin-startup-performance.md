@@ -25,3 +25,22 @@ Deploy the admin Vercel project and Medusa backend from this revision. Admin Ver
 After deployment, use a fresh/incognito browser and record a Network waterfall for login and the first authorized page. Confirm no feature-flags request on login, one concurrent access/me request after sign-in, production bundle caching, and correct access for superadmin, restricted roles, forced-password accounts and expired sessions. Do not put passwords/tokens or raw authenticated responses in the report.
 
 Public timing checks cannot establish authenticated login/password-check time or database saturation. No live credentials were submitted during this investigation. If 30-second 502s recur, correlate Vercel request IDs/timestamps with reverse-proxy and backend logs; code changes alone cannot confirm that infrastructure issue is resolved.
+
+## Follow-up: authenticated verification and repeated popups
+
+The user subsequently authorized credential checks. No passwords, tokens or cookies are stored in this report.
+
+Direct backend verification passed for the superadmin and the customer, catalog, orders, returns, vendor, marketing and partner subadmins: login/session/access and one assigned-section GET all returned 200. Role administration returned 403 for all seven tested subadmins and 200 for the superadmin. Direct login requests took approximately 133–281 ms in that sample. The supplied accounting credential returned 401 via the admin origin; that account was not reset or changed.
+
+Through Vercel, some successful password checks were followed by session/access timeouts. Two public requests reproduced a 30-second 502 with `x-vercel-error: ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR`, including `/api/health`, which needs no admin credentials or database authorization. Direct backend health requests in the same three-round comparison took 79–269 ms. The error is documented at https://vercel.com/docs/errors/router_external_target_connection_error. Sample request IDs:
+
+- `bom1::tx6wv-1793364142609-31b2155229dc` — health, 30,135 ms.
+- `bom1::6zj2q-1793364172784-8737dff86795` — unauthenticated users/me, 30,130 ms.
+
+Hostinger terminal checks confirmed LiteSpeed on 80/443, Node on 9000, local health about 4 ms and public health about 108 ms. Connection limits are 10,000 and per-client rate throttling is disabled. Startup process-limit notices are not proof of the current connection failure. Firewalld is active; further origin/network diagnostics remain necessary. No firewall, reverse-proxy, credential or account settings have been changed.
+
+The earlier UI cleared all verified access after any background refresh failure. Follow-up changes distinguish auth rejection from transient connectivity errors: 401/403 immediately block the UI; temporary failures retain the last server-verified UI for at most 90 seconds from verification, with bounded retry backoff. With no previous verification, or once that window expires, the UI blocks. Every privileged backend request still independently enforces current permissions and token revocation. No permissions are persisted to browser storage. Focus refreshes use the same 30-second cadence rather than triggering extra reads after five seconds.
+
+Login now defaults to the neutral My Access page instead of Orders, avoiding a needless denied-route/full-reload cycle for non-order admins. Empty SDK error messages receive an actionable fallback. Non-JSON errors preserve HTTP status; malformed access responses never grant access. Auth-aware dashboard changes apply to source, ESM runtime and CommonJS runtime.
+
+Follow-up validation: eight startup/refresh regression tests, the existing 80 admin-access tests, backend TypeScript check, changed-file lint and static production build passed. Browser sign-in through the deployed Vercel origin did not complete reliably; this must not be reported as an end-to-end success. These follow-up code changes are local until committed and deployed.

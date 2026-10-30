@@ -1,6 +1,7 @@
 import { ADMIN_RESPONSIBILITIES } from "../../shared/admin-responsibilities"
 import { ADMIN_PERMISSION_GROUPS, canAccessAdminPage, matchesPath, normalizeAdminPath, type AdminAccess } from "../../shared/admin-access"
-import { currentAdminAccess, resetAdminAccessRequest } from "./admin-access-client"
+import { AdminAccessRequestError, currentAdminAccess, resetAdminAccessRequest } from "./admin-access-client"
+import { ADMIN_ACCESS_REFRESH_MS, accessRefreshFailure, accessRetryDelay } from "./admin-access-refresh"
 
 let initialized = false
 let access: AdminAccess | null = null
@@ -11,6 +12,8 @@ let lastAttempt = 0
 let sessionGeneration = 0
 let wasAuthPage = false
 let lastRecordedPage = ""
+let failures = 0
+let nextAttempt = 0
 
 function recordPage() {
   const page = window.location.pathname.replace(/\/+$/, "")
@@ -50,7 +53,7 @@ function apply() {
   if (!window.location.pathname.startsWith("/app") || isAuthPage()) {
     delete document.documentElement.dataset.owegAccessPending
     document.getElementById("oweg-admin-access-status")?.remove()
-    if (!wasAuthPage) { access = null; lastRefresh = 0; lastAttempt = 0; lastRecordedPage = ""; sessionGeneration++; resetAdminAccessRequest() }
+    if (!wasAuthPage) { access = null; lastRefresh = 0; lastAttempt = 0; lastRecordedPage = ""; failures = 0; nextAttempt = 0; sessionGeneration++; resetAdminAccessRequest() }
     wasAuthPage = true
     return
   }
@@ -58,7 +61,7 @@ function apply() {
   if (!access) {
     document.documentElement.dataset.owegAccessPending = "true"
     statusPanel("Checking your admin access…")
-    if (!pending && Date.now() - lastAttempt > 5000) void refresh()
+    if (!pending && Date.now() >= nextAttempt && Date.now() - lastAttempt > 5000) void refresh()
     return
   }
   if (access.must_change_password && normalizeAdminPath(window.location.pathname) !== "/change-password") {
@@ -147,13 +150,22 @@ async function refresh() {
     if (generation !== sessionGeneration || isAuthPage()) return
     access = value
     lastRefresh = Date.now()
+    failures = 0
+    nextAttempt = 0
     apply()
-  } catch {
+  } catch (error) {
     if (generation !== sessionGeneration || isAuthPage()) return
+    failures++
+    nextAttempt = Date.now() + accessRetryDelay(failures)
+    const decision = accessRefreshFailure(error instanceof AdminAccessRequestError ? error.status : undefined, !!access, lastRefresh, Date.now())
+    // One slow background read must not erase an established session or hide
+    // the page. The server remains authoritative; this grace is bounded.
+    if (decision === "retain") return
     access = null
+    resetAdminAccessRequest()
     document.documentElement.dataset.owegAccessPending = "true"
     document.getElementById("oweg-admin-access-status")?.remove()
-    statusPanel("Unable to verify your admin access. Sign in again or retry. If this continues, contact the superadmin.", true)
+    statusPanel(decision === "expired" ? "Your admin session has expired or access has changed. Please sign in again." : "Unable to verify your admin access. Check your connection and try again.", true)
   } finally {
     pending = false
     // A previous session's request must not delay the newly signed-in account.
@@ -221,7 +233,11 @@ export function initAdminAccessUi() {
     const original = history[method].bind(history)
     history[method] = (...args: Parameters<History["pushState"]>) => { original(...args); window.dispatchEvent(new Event("oweg-admin-location")); schedule() }
   }
-  window.addEventListener("focus", () => { if (Date.now() - lastRefresh > 5000) void refresh() })
-  window.setInterval(() => { if (document.visibilityState === "visible" && Date.now() - lastRefresh > 30000) void refresh() }, 10000)
+  const refreshIfDue = () => {
+    if (document.visibilityState === "visible" && Date.now() >= nextAttempt && Date.now() - lastRefresh >= ADMIN_ACCESS_REFRESH_MS) void refresh()
+  }
+  window.addEventListener("focus", refreshIfDue)
+  document.addEventListener("visibilitychange", refreshIfDue)
+  window.setInterval(refreshIfDue, 10000)
   schedule()
 }

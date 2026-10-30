@@ -26,19 +26,26 @@ const owegSubscribe = (notify) => {
     refetchOnWindowFocus: false,`).replace(/method: "GET",?\s*\n/, 'method: "GET",\n        signal: AbortSignal.timeout(8000),\n')
 }
 
+function patchLogin(source) {
+  return source.replace('const from = location.state?.from?.pathname || "/orders";', 'const from = location.state?.from?.pathname || "/my-access";')
+    .replace(/message: error\.message(?!\s*\|\|)/g, 'message: error.message || "Unable to connect to the admin server. Please try again."')
+}
+
 function apply() {
   const dashboard = path.resolve(__dirname, "../node_modules/@medusajs/dashboard")
-  const candidates = ["src/hooks/api/feature-flags.tsx", ...fs.readdirSync(path.join(dashboard, "dist")).filter(name => name.endsWith(".mjs") || name === "app.js").map(name => `dist/${name}`)]
+  const candidates = ["src/hooks/api/feature-flags.tsx", "src/routes/login/login.tsx", ...fs.readdirSync(path.join(dashboard, "dist")).filter(name => name.endsWith(".mjs") || name === "app.js").map(name => `dist/${name}`)]
   let patched = 0
   for (const relative of candidates) {
     const filename = path.join(dashboard, relative)
-    const source = fs.readFileSync(filename, "utf8")
-    if (!source.includes('queryKey: ["admin", "feature-flags"]')) continue
-    fs.writeFileSync(filename, patchFeatureFlags(source))
-    patched++
+    const original = fs.readFileSync(filename, "utf8")
+    let source = original
+    if (source.includes('queryKey: ["admin", "feature-flags"]')) { source = patchFeatureFlags(source); patched++ }
+    if (relative === "src/routes/login/login.tsx" || relative.startsWith("dist/login-") || relative === "dist/app.js") source = patchLogin(source)
+    if (relative === "dist/app.js") source = source.replace('import { useSyncExternalStore as owegUseLocation } from "react";', 'const { useSyncExternalStore: owegUseLocation } = require("react");')
+    if (source !== original) fs.writeFileSync(filename, source)
   }
   if (patched < 2) throw new Error("Expected source and runtime feature-flags hooks")
   console.log("[admin] Auth-aware feature flags ready")
 }
-module.exports = { apply, patchFeatureFlags }
+module.exports = { apply, patchFeatureFlags, patchLogin }
 if (require.main === module) apply()
