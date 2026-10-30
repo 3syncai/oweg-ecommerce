@@ -43,9 +43,18 @@ function hasJwtAuth(source) {
 
 function patchJwtAuth(source) {
   if (source.includes(jwtMarker)) return source
-  if (!sessionAuthRe.test(source)) return source
   sessionAuthRe.lastIndex = 0
-  return source.replace(sessionAuthRe, jwtAuthBlock)
+  let next = source.replace(sessionAuthRe, jwtAuthBlock)
+  if (next !== source) return next
+  // Broader fallback: auth blocks that include extra fields (e.g. fetchCredentials).
+  next = source.replace(
+    /auth:\s*\{([\s\S]*?)type:\s*["']session["']([\s\S]*?)\}/,
+    (match, before, after) => {
+      if (match.includes(jwtMarker) || /type:\s*["']jwt["']/.test(match)) return match
+      return `auth: {${before}type: "jwt", jwtTokenStorageMethod: "local" /* ${jwtMarker} */${after}}`
+    }
+  )
+  return next
 }
 
 function apply() {
