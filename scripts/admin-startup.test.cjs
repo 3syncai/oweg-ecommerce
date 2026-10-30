@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
-const { patchFeatureFlags } = require('../my-medusa-store/scripts/patch-admin-startup.cjs');
+const { patchFeatureFlags, patchJwtAuth } = require('../my-medusa-store/scripts/patch-admin-startup.cjs');
 
 function load(file, globals = {}) {
   const module = { exports: {} };
@@ -75,6 +75,27 @@ test('failed access checks fail closed, remain retryable and have a deadline', a
   await assert.rejects(client.currentAdminAccess(), /Sign in again/);
   await assert.rejects(client.currentAdminAccess(), /Sign in again/);
   assert.equal(calls, 2);
+});
+test('dashboard auth switches from session cookies to JWT for cross-origin admin', () => {
+  const fixture = 'export const sdk = new Medusa({\n  baseUrl: backendUrl,\n  auth: {\n    type: "session",\n  },\n})';
+  const patched = patchJwtAuth(fixture);
+  assert.ok(patched.includes('type: "jwt"'));
+  assert.ok(patched.includes('jwtTokenStorageMethod: "local"'));
+  assert.ok(patched.includes('OWEG_JWT_AUTH'));
+  assert.equal(patchJwtAuth(patched), patched);
+});
+test('access requests send Bearer token when medusa_auth_token is present', async () => {
+  let authHeader = '';
+  const store = { medusa_auth_token: 'test-jwt' };
+  const client = load(clientFile, {
+    localStorage: { getItem: key => store[key] || null },
+    fetch: async (_url, options) => {
+      authHeader = (options.headers && options.headers.Authorization) || '';
+      return { ok: true, status: 200, json: async () => ({ access: { user_id: 'u1', permissions: [] } }) };
+    },
+  });
+  assert.equal((await client.currentAdminAccess()).user_id, 'u1');
+  assert.equal(authHeader, 'Bearer test-jwt');
 });
 test('feature flags skip auth screens and become enabled on navigation without retrying 401s', () => {
   const fixture = `export const useFeatureFlags = () => useQuery({ queryKey: ["admin", "feature-flags"], queryFn: () => sdk.client.fetch("/admin/feature-flags", {\nmethod: "GET",\n}) });`;

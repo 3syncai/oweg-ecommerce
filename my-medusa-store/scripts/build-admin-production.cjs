@@ -54,6 +54,9 @@ if (result.status === 0) {
   if (!text.includes(PRODUCTION_API)) {
     throw new Error(`Admin build missing ${PRODUCTION_API}`)
   }
+  if (!/type:\s*"jwt"/.test(text) && !text.includes('type:"jwt"')) {
+    throw new Error("Admin build missing JWT auth (still session cookies?)")
+  }
   console.log(`[admin] Production entry: ${bundle.length} bytes (${gzipSync(bundle).length} gzip)`)
-  console.log(`[admin] Verified direct API origin in bundle`)
+  console.log(`[admin] Verified direct API origin + JWT auth in bundle`)
 }
