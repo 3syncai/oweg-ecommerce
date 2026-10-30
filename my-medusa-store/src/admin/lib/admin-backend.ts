@@ -1,22 +1,23 @@
-const PRODUCTION_API_ORIGIN = "https://api.oweg.itshover.com"
+import {
+  PRODUCTION_MEDUSA_API_ORIGIN,
+  isProxyAdminBackendUrl,
+  resolveAdminBackendUrl,
+} from "../../lib/admin-backend-url"
 
 export function getAdminBackendUrl(): string {
   if (typeof window === "undefined") return ""
-  const configured = (
-    process.env.BACKEND_URL ||
-    process.env.MEDUSA_ADMIN_BACKEND_URL ||
-    ""
-  ).replace(/\/$/, "")
-  // Prefer the real Medusa host over same-origin /api (Vercel rewrite), which
-  // intermittently returns 30s 502s against the Hostinger origin.
-  if (configured && configured !== "/api") return configured
-  if (
-    typeof window !== "undefined" &&
-    /\.vercel\.app$/i.test(window.location.hostname)
-  ) {
-    return PRODUCTION_API_ORIGIN
+  const configured =
+    process.env.BACKEND_URL || process.env.MEDUSA_ADMIN_BACKEND_URL || ""
+  if (!isProxyAdminBackendUrl(configured)) {
+    return String(configured).replace(/\/$/, "")
   }
-  return (configured || window.location.origin).replace(/\/$/, "")
+  if (/\.vercel\.app$/i.test(window.location.hostname)) {
+    return PRODUCTION_MEDUSA_API_ORIGIN
+  }
+  return resolveAdminBackendUrl(configured, {
+    production: false,
+    fallbackDev: window.location.origin,
+  })
 }
 
 export async function readAdminApiError(
