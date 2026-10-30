@@ -1,4 +1,5 @@
 import en from "./json/en.json"
+import { installAdminAuthFetch } from "../lib/admin-auth-fetch"
 import { initAdminAccessUi } from "../lib/admin-access-ui"
 
 import { initAuthPageBranding } from "../lib/auth-page-branding"
@@ -11,6 +12,8 @@ import { initSidebarChromeHide } from "../lib/sidebar-chrome-hide"
 import owegLogo from "../assets/oweg-logo.png"
 import owegWordmark from "../assets/oweg-wordmark.svg"
 
+// Cross-origin admin → API must use JWT Bearer, not third-party session cookies.
+installAdminAuthFetch()
 initAuthPageBranding(owegWordmark)
 initSidebarBranding(owegLogo)
 initSidebarChromeHide()

@@ -1,6 +1,7 @@
 import { ADMIN_RESPONSIBILITIES } from "../../shared/admin-responsibilities"
 import { ADMIN_PERMISSION_GROUPS, canAccessAdminPage, matchesPath, normalizeAdminPath, type AdminAccess } from "../../shared/admin-access"
 import { AdminAccessRequestError, currentAdminAccess, resetAdminAccessRequest } from "./admin-access-client"
+import { adminFetch } from "./admin-auth-fetch"
 import { ADMIN_ACCESS_REFRESH_MS, accessRefreshFailure, accessRetryDelay } from "./admin-access-refresh"
 
 let initialized = false
@@ -19,7 +20,12 @@ function recordPage() {
   const page = window.location.pathname.replace(/\/+$/, "")
   if (page === lastRecordedPage || isAuthPage() || !/^\/app(?:\/[a-zA-Z0-9_-]+)*$/.test(page)) return
   lastRecordedPage = page
-  void fetch("/admin/access/activity/page-view", { method: "POST", credentials: "include", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ page_path: page }) }).catch(() => { lastRecordedPage = "" })
+  void adminFetch("/admin/access/activity/page-view", {
+    method: "POST",
+    keepalive: true,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ page_path: page }),
+  }).catch(() => { lastRecordedPage = "" })
 }
 
 const isAuthPage = () => /\/(login|reset-password|invite)(\/|$)/.test(window.location.pathname)
