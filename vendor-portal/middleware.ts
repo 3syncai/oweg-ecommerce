@@ -1,6 +1,7 @@
 import { safeVendorRedirect } from "./lib/vendor-redirect";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { getDebugControllerSettings } from "./lib/debug-controller/settings";
 
 const MAINTENANCE_BYPASS = new Set([
   "/maintenance",
@@ -21,15 +22,10 @@ function isMaintenanceBypass(pathname: string) {
   return false;
 }
 
-async function fetchDebugSettings(origin: string): Promise<MiddlewareSettings | null> {
+async function fetchDebugSettings(): Promise<MiddlewareSettings | null> {
   try {
-    const res = await fetch(`${origin}/api/site-settings`, {
-      cache: "no-store",
-      headers: { "x-debug-middleware": "1" },
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { settings?: MiddlewareSettings };
-    return data.settings || null;
+    // Read the same cached settings directly, avoiding a second function invocation.
+    return await getDebugControllerSettings();
   } catch {
     return null;
   }
@@ -39,7 +35,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (!isMaintenanceBypass(pathname)) {
-    const settings = await fetchDebugSettings(request.nextUrl.origin);
+    const settings = await fetchDebugSettings();
 
     if (settings?.siteStatus === "maintenance") {
       const url = request.nextUrl.clone();
@@ -92,6 +88,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
+  runtime: "nodejs",
   matcher: [
     "/((?!api/medusa|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],

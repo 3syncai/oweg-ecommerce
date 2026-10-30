@@ -47,7 +47,7 @@ export function buildBulkTemplate(categories: Category[] = [], collections: Coll
     ["Option N Images: one shared image OR one image per value in the SAME order. Red,Blue maps to red.jpg,blue.jpg."],
     ["Color (or first option with images) controls the visual gallery. Every option image is also included in the product gallery."],
     ["Blank SKU/(auto) generates unique SKUs. A supplied SKU with multiple combinations gets -1, -2, etc."],
-    ["Thumbnail and Image 1,2,3... accept filenames with portal uploads, public HTTPS URLs or Excel embedded pictures."],
+    ["Thumbnail and Image 1,2,3... accept filenames with portal uploads, public HTTP/HTTPS URLs or Excel embedded pictures. HTTP links are checked over HTTPS first; HTTP-only images are imported to secure storage."],
     ["Video URLs is beside product images; use optional comma-separated public HTTPS video links."],
     ["Upload brand authorization AFTER parsing, once per brand: one PNG/JPG or PDF; multiple images are combined into a PDF."],
     ["Dimensions cm; Weight kg. Country of Origin defaults to IN. Keep HSN Code/SKU as text for leading zeros."],

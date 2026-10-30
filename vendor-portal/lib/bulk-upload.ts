@@ -1,5 +1,6 @@
 import { generateSku } from "./sku"
 import { GST_TAX_CODES } from "./gst-tax-codes"
+import { isRemoteImageSource } from "./bulk-image-source"
 
 export type Category = { id: string; name: string; parent_category_id?: string | null }
 export type Collection = { id: string; title: string }
@@ -168,7 +169,7 @@ export const IMAGE_COLUMN_PATTERN = /^image\s*\d*$/i
 export const LEGACY_IMAGES_COLUMN = "Images"
 
 export const normalizeImageKey = (name: string): string =>
-  isMediaUrl(name.trim()) ? name.trim() : name.trim().toLowerCase()
+  isRemoteImageSource(name) ? name.trim() : name.trim().toLowerCase()
 
 const truthy = (v: unknown): boolean => {
   if (typeof v === "boolean") return v
@@ -484,8 +485,8 @@ export const parseRows = (raw: RawRow[], categories: Category[], collections: Co
     // Collect image filenames from:
     //   - Image 1, Image 2, ... Image N columns (one filename each)
     //   - Legacy "Images" column (comma-separated, kept for older templates)
-    // Both produce strings of filenames the user is expected to upload via
-    // the dropzone unless they used embedded images (handled separately).
+    // References may be local filenames, public HTTP/HTTPS links, or embedded
+    // images. The page checks remote links and uploads local/embedded files.
     const imageRefs: string[] = []
     for (const headerKey of Object.keys(r)) {
       if (!IMAGE_COLUMN_PATTERN.test(headerKey.replace(/\*/g, "").trim())) continue

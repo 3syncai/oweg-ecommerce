@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -47,8 +48,11 @@ export function useDebugControllerSettings() {
 
 export function DebugControllerProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<PublicSettings>(DEFAULT_PUBLIC);
+  const pending = useRef(false);
 
   const load = useCallback(async () => {
+    if (document.visibilityState === "hidden" || pending.current) return;
+    pending.current = true;
     try {
       const res = await fetch("/api/site-settings", {
         cache: "no-store",
@@ -60,13 +64,17 @@ export function DebugControllerProvider({ children }: { children: ReactNode }) {
       }
     } catch {
       // keep strict defaults
+    } finally {
+      pending.current = false;
     }
   }, []);
 
   useEffect(() => {
     load();
     const interval = setInterval(load, 30_000);
-    return () => clearInterval(interval);
+    const onVisible = () => { if (document.visibilityState === "visible") void load(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
   }, [load]);
 
   const value = useMemo(() => settings, [settings]);

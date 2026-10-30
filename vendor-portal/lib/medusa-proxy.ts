@@ -96,9 +96,9 @@ export async function proxyMedusaRequest(
     responseHeaders.set("Cache-Control", "no-store, no-cache, max-age=0, must-revalidate");
     responseHeaders.set("Pragma", "no-cache");
 
-    const body = await upstream.arrayBuffer();
-
-    return new NextResponse(body, {
+    // Pass through the body stream instead of buffering/copying whole catalog or
+    // report responses in the function. Private responses remain uncacheable.
+    return new NextResponse(upstream.body, {
       status: upstream.status,
       statusText: upstream.statusText,
       headers: responseHeaders,

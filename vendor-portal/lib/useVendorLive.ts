@@ -29,29 +29,42 @@ let sharedRevision: string | null = null
 let sharedTimer: number | null = null
 const sharedListeners = new Set<Listener>()
 let sharedBootstrapped = false
+let sharedCleanup: (() => void) | null = null
+let sharedRequest: Promise<void> | null = null
+let forceDuringRequest = false
 
 async function sharedTick(forceInvalidate = false) {
   if (typeof window === "undefined") return
-  if (!localStorage.getItem("vendor_token")) return
+  if (!sharedListeners.size) return
+  const token = localStorage.getItem("vendor_token")
+  if (!token) return
   if (document.visibilityState === "hidden" && !forceInvalidate) return
+  forceDuringRequest ||= forceInvalidate
+  if (sharedRequest) return sharedRequest
+  sharedRequest = (async () => {
+    try {
+      const pulse = await vendorPulseApi.get()
+      if (localStorage.getItem("vendor_token") !== token) return
+      const revision = String(pulse.revision || "")
+      const changed =
+        forceDuringRequest ||
+        (sharedRevision !== null && sharedRevision !== revision)
+      sharedRevision = revision || sharedRevision
+      forceDuringRequest = false
 
-  try {
-    const pulse = await vendorPulseApi.get()
-    const revision = String(pulse.revision || "")
-    const changed =
-      forceInvalidate ||
-      (sharedRevision !== null && sharedRevision !== revision)
-    sharedRevision = revision || sharedRevision
-
-    for (const listener of sharedListeners) {
-      listener.onPulse?.(pulse)
-      if (changed || forceInvalidate) {
-        listener.onInvalidate?.(pulse)
+      for (const listener of sharedListeners) {
+        listener.onPulse?.(pulse)
+        if (changed) {
+          listener.onInvalidate?.(pulse)
+        }
       }
+    } catch {
+      // Keep last known state
+    } finally {
+      sharedRequest = null
     }
-  } catch {
-    // Keep last known state
-  }
+  })()
+  return sharedRequest
 }
 
 let sharedTickQueued = false
@@ -96,6 +109,18 @@ function ensureSharedPoller(intervalMs: number) {
   window.addEventListener("focus", onFocusOrLocal)
   window.addEventListener(VENDOR_DATA_CHANGED, onFocusOrLocal)
   window.addEventListener(VENDOR_ORDERS_CHANGED, onFocusOrLocal)
+  sharedCleanup = () => {
+    if (sharedTimer != null) window.clearInterval(sharedTimer)
+    sharedTimer = null
+    document.removeEventListener("visibilitychange", onVisible)
+    window.removeEventListener("focus", onFocusOrLocal)
+    window.removeEventListener(VENDOR_DATA_CHANGED, onFocusOrLocal)
+    window.removeEventListener(VENDOR_ORDERS_CHANGED, onFocusOrLocal)
+    sharedBootstrapped = false
+    sharedRevision = null
+    forceDuringRequest = false
+    sharedCleanup = null
+  }
 }
 
 type UseVendorLiveOptions = {
@@ -129,6 +154,7 @@ export function useVendorLive(options: UseVendorLiveOptions = {}) {
 
     return () => {
       sharedListeners.delete(listener)
+      if (!sharedListeners.size) sharedCleanup?.()
     }
   }, [enabled, intervalMs])
 }

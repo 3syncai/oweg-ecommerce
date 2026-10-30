@@ -24,21 +24,23 @@ export function useFlashSale(productId: string | undefined) {
       return
     }
 
+    let fetching = false
+    let disposed = false
+    const controller = new AbortController()
     const fetchFlashSale = async () => {
+      if (disposed || fetching || document.visibilityState === 'hidden') return
+      fetching = true
       setLoading(true)
       try {
-        const response = await axios.get('/api/medusa/flash-sale/products', {
-          headers: {
-            'Cache-Control': 'no-store',
-          },
-        })
-        
+        const response = await axios.get('/api/medusa/flash-sale/products', { signal: controller.signal })
+        if (disposed) return
+
         if (response.status === 200) {
           const data = response.data
-          
+
           if (data.active && data.products) {
             const product = data.products.find((p: { id: string; flash_sale_price?: number; original_price?: number; flash_sale?: { expires_at: string; time_remaining_ms: number } }) => p.id === productId)
-            
+
             if (product && product.flash_sale) {
               // Belt-and-braces: coerce numeric prices in case the upstream
               // API serializes Postgres NUMERICs as strings. Comparing
@@ -62,21 +64,25 @@ export function useFlashSale(productId: string | undefined) {
             }
           }
         }
-        
+
         setFlashSaleInfo({ active: false })
       } catch (error) {
+        if (disposed) return
         console.error('[useFlashSale] Failed to fetch flash sale:', error)
         setFlashSaleInfo({ active: false })
       } finally {
-        setLoading(false)
+        fetching = false
+        if (!disposed) setLoading(false)
       }
     }
 
     fetchFlashSale()
-    
+
     // Refresh every 60 seconds to update countdown
     const interval = setInterval(fetchFlashSale, 60000)
-    return () => clearInterval(interval)
+    const onVisible = () => { if (document.visibilityState === 'visible') void fetchFlashSale() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { disposed = true; controller.abort(); clearInterval(interval); document.removeEventListener('visibilitychange', onVisible) }
   }, [productId])
 
   return { flashSaleInfo, loading }
