@@ -187,3 +187,4 @@ function main() {
 main()
 require("./remove-inventory-menu")()
 require("./patch-customer-order-overview.cjs")()
+require("./patch-admin-startup.cjs").apply()

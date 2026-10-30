@@ -15,6 +15,7 @@
   "scripts": {
     "prebuild": "node scripts/patch-customer-order-overview.cjs",
     "build": "medusa build",
+    "build:admin": "node scripts/build-admin-production.cjs",
     "seed": "medusa exec ./src/scripts/seed.ts",
     "seed:customer-groups": "medusa exec ./src/scripts/seed-customer-groups.ts",
     "backfill:customer-groups": "medusa exec ./src/scripts/backfill-customer-groups.ts",

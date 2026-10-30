@@ -12,6 +12,10 @@ import {
   Bell,
   User,
   Pencil,
+  Tag,
+  Truck,
+  PackageCheck,
+  CircleHelp,
 } from "lucide-react";
 // import UserIcon from "@/components/ui/icons/UserIcon";
 import OrderIcon from "@/components/ui/icons/OrderIcon";
@@ -39,6 +43,7 @@ import LogoutConfirmModal from "@/components/account/LogoutConfirmModal";
 import PincodeModal from "@/components/PincodeModal";
 import { useStoreCategories } from "@/hooks/useStoreCategories";
 import WalletBalance from "@/components/wallet/WalletBalance";
+import { FREE_SHIPPING_THRESHOLD_RUPEES } from "@/lib/shipping-rules";
 
 type NavCategory = {
   id: string;
@@ -1374,30 +1379,35 @@ const Header: React.FC = () => {
     <header ref={headerRootRef} className="fixed top-0 left-0 right-0 z-[120] w-full header-root bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       <div className="bg-header-bg">
         {/* Top Bar */}
-        {!isMobile && oweg10Visible && (
-          <div className="bg-header-top-bg text-header-top-text py-2 text-center text-sm">
-            <p>
-              Get 10% Extra off! - Use Code <span className="font-semibold">OWEG10</span>{" "}
-            </p>
+        {!isMobile && (
+          <div className={navStyles.topBar}>
+            <div className={navStyles.topBarInner}>
+              {oweg10Visible && <p className={navStyles.offer}><Tag size={15} aria-hidden /><span>Get 10% Extra off! - Use Code <strong>OWEG10</strong></span></p>}
+              <nav className={navStyles.utilityLinks} aria-label="Shopping help">
+                <Link href="/shipping-policy"><Truck size={16} aria-hidden /><span>Free shipping on orders ₹{FREE_SHIPPING_THRESHOLD_RUPEES}+</span></Link>
+                <Link href="/account/orders"><PackageCheck size={16} aria-hidden /><span>Track Order</span></Link>
+                <Link href="/contact"><CircleHelp size={16} aria-hidden /><span>Help &amp; Support</span></Link>
+              </nav>
+            </div>
           </div>
         )}
 
         {/* Main Header */}
         <div className="bg-header-bg">
-          <div className="w-full px-4 sm:px-6 lg:px-8 py-2">
-            <div className="hidden md:flex min-h-14 items-center justify-between gap-2 w-full">
+          <div className={navStyles.mainContainer}>
+            <div className={`${navStyles.desktopHeader} hidden md:flex`}>
               {/* Left Section: Logo + Location */}
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className={navStyles.brandLocation}>
                 {/* Logo */}
-                <Link href="/" className="flex items-center logo-link">
-                  <Image src="/oweg_logo.png" alt="OWEG" width={189} height={50} className="h-[50px] w-auto" />
+                <Link href="/" className={`${navStyles.logo} logo-link`}>
+                  <Image src="/oweg_logo.png" alt="OWEG" width={189} height={50} className="h-[36px] w-auto" />
                 </Link>
 
                 {/* Delivery Location - Hidden on category pages */}
                 {!isCategoryPage && (
                   <button
                     type="button"
-                    className="hidden lg:flex items-center gap-2 text-sm location-block hover:opacity-80 transition-opacity"
+                    className={`${navStyles.location} hidden lg:flex location-block`}
                     onClick={() => setPinModalOpen(true)}
                   >
                     <LocationIcon className="w-5 h-5 text-header-text flex-shrink-0" />
@@ -1405,7 +1415,7 @@ const Header: React.FC = () => {
                       <p className="text-header-text text-xs leading-tight whitespace-nowrap">
                         {deliverTitle}
                       </p>
-                      <p className="text-header-text font-medium text-sm leading-tight whitespace-nowrap">
+                      <p className="text-header-text font-medium text-xs leading-tight line-clamp-2">
                         {locationLabel}
                       </p>
                     </div>
@@ -1414,7 +1424,7 @@ const Header: React.FC = () => {
               </div>
 
               {/* Search Bar - Center (flex: 1) */}
-              <div className="flex-1">
+              <div className={navStyles.search}>
                 <div className="flex gap-0 relative items-stretch">
                   {/* Category Dropdown ("All") - Pixel Perfect */}
                   <div className="relative" data-browse-root>
@@ -1423,7 +1433,7 @@ const Header: React.FC = () => {
                       className="h-10 px-4 bg-white border border-gray-300 border-r-0 rounded-l-md text-sm font-normal text-gray-700 flex items-center justify-between gap-2 hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-header-accent focus:ring-offset-0 focus:z-10"
                       type="button"
                       style={{
-                        minWidth: '120px',
+                        minWidth: '72px', maxWidth: '132px',
                       }}
                     >
                       <span className="truncate">{selectedFilter ? selectedFilter.title : "All"}</span>
@@ -1511,7 +1521,7 @@ const Header: React.FC = () => {
                   <div className="flex-1 flex relative">
                     <Input
                       type="text"
-                      placeholder={selectedFilter ? `Search in ${selectedFilter.title}...` : "Search in All..."}
+                      placeholder={selectedFilter ? `Search in ${selectedFilter.title}...` : "Search for products, categories and more..."}
                       className="h-10 rounded-none border-y border-gray-300 border-x-0 px-4 text-sm focus:ring-2 focus:ring-header-accent focus:border-y-header-accent focus:z-10"
                       value={q}
                       onChange={(e) => {
@@ -1547,7 +1557,7 @@ const Header: React.FC = () => {
               </div>
 
               {/* Right Section - Account, Orders, Cart */}
-              <div className="flex items-center gap-4 flex-shrink-0">
+              <div className={navStyles.actions}>
                 {/* Account Section - Always visible (like Amazon) */}
                 <div
                   className="relative group"
@@ -1562,23 +1572,14 @@ const Header: React.FC = () => {
                 >
                   <button
                     type="button"
-                    className="flex items-center gap-2 py-1 text-left hover:opacity-80 transition-opacity"
+                    className={navStyles.accountButton}
+                    onClick={() => setProfileMenuOpen((open) => !open)}
                     aria-label="Account menu"
                     aria-expanded={profileMenuOpen}
                     aria-haspopup="true"
                   >
-                    <User className="w-5 h-5 text-header-text shrink-0" />
-                    <div className="text-left min-w-0">
-                      <p className="text-xs text-header-text leading-tight">Hello,</p>
-                      <p className="text-sm font-medium text-header-text leading-tight whitespace-nowrap">
-                        {customer ? customerName : "User"}
-                      </p>
-                      <p className="text-xs text-header-text leading-tight">Account & Lists</p>
-                    </div>
-                    <ChevronDown
-                      className={`w-4 h-4 text-header-text transition-transform shrink-0 ${profileMenuOpen ? "rotate-180" : ""
-                        }`}
-                    />
+                    <User size={21} aria-hidden />
+                    <span className={navStyles.actionLabel}>Account <ChevronDown size={11} aria-hidden /></span>
                   </button>
                   {profileMenuOpen && (
                     <div
@@ -1612,9 +1613,9 @@ const Header: React.FC = () => {
                 )}
 
                 {/* Orders */}
-                <Link href="/account/orders" className="hidden lg:flex items-center gap-1.5 hover:opacity-80 transition-opacity py-1">
+                <Link href="/account/orders" className={`${navStyles.actionLink} hidden lg:flex`}>
                   <OrderIcon className="w-5 h-5 text-header-text shrink-0" />
-                  <span className="text-sm font-medium text-header-text whitespace-nowrap">Orders</span>
+                  <span className={navStyles.actionLabel}>Orders</span>
                 </Link>
 
                 {/* Cart */}
@@ -1635,11 +1636,11 @@ const Header: React.FC = () => {
                     cartPreviewTimer.current = setTimeout(() => setCartPreviewOpen(false), 300);
                   }}
                 >
-                  <Link href="/cart" className="flex items-center gap-1.5 py-1">
+                  <Link href="/cart" className={navStyles.actionLink}>
                     <div className="relative shrink-0">
                       <CartIcon className="w-6 h-6 text-header-text" count={cartCount} />
                     </div>
-                    <span className="text-sm font-medium text-header-text whitespace-nowrap">
+                    <span className={navStyles.actionLabel}>
                       Cart
                     </span>
                   </Link>
@@ -1748,7 +1749,7 @@ const Header: React.FC = () => {
             inert={!showDesktopCategories}
             data-desktop-category-nav
           >
-            <div ref={desktopNavRef} className="w-full px-4 sm:px-6 lg:px-8">
+            <div ref={desktopNavRef} className={navStyles.navContainer}>
               <div className="py-1 relative" data-nav-scroll>
                 {/* Compact department bar; the full catalog stays in All departments. */}
                 {navCatsLoading ? (

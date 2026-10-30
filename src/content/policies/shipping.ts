@@ -1,9 +1,16 @@
 import type { PolicyDocument } from "./types";
+import { FREE_SHIPPING_THRESHOLD_RUPEES, SHIPPING_CHARGE_RUPEES } from "@/lib/shipping-rules";
 
 export const shippingPolicy: PolicyDocument = {
   badge: "Shipping Policy",
   title: "Shipment status",
   sections: [
+    {
+      title: "Delivery charges",
+      paragraphs: [
+        `Delivery is free on product subtotals of ₹${FREE_SHIPPING_THRESHOLD_RUPEES} or more. Orders below ₹${FREE_SHIPPING_THRESHOLD_RUPEES} have a ₹${SHIPPING_CHARGE_RUPEES} delivery charge. Eligibility uses the product subtotal before coupons or wallet coins.`,
+      ],
+    },
     {
       title: "Shipment status",
       paragraphs: [

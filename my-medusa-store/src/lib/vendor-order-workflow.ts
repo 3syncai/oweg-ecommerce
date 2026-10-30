@@ -11,6 +11,7 @@ import {
   DEFAULT_PLATFORM_FEE_RATE,
   DEFAULT_SERVICE_GST_RATE,
 } from "./vendor-ledger-settlement"
+import { orderCustomerShipping } from "./order-customer-shipping"
 import { readCancellationInfo } from "./order-cancel/metadata"
 import { isAcceptanceOverdue, withRecoveredAcceptanceDeadline } from "./vendor-acceptance-deadline"
 
@@ -721,7 +722,7 @@ export function formatVendorOrder(
             ? Math.max(0, Number(workflow.easy_courier_rate) || 0)
             : 0,
         return_fee: Math.max(0, Number(workflow.return_courier_rate) || 0),
-        customer_shipping_total: cartItemsTotal > 0 && cartItemsTotal < 500 ? 50 : 0,
+        customer_shipping_total: orderCustomerShipping(order.metadata, cartItemsTotal),
       })
     : null
   const cancellation = readCancellationInfo(order as any)

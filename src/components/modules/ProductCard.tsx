@@ -1,11 +1,11 @@
-// ProductCard: Reusable card for product listings with hover effects and quick actions
+// Shared product listing card; cart and wishlist use the existing mutation hooks.
 
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Heart, ImageOff } from "lucide-react";
+import { Heart, ImageOff, Star } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useAddToWishlistWithNotification } from "@/hooks/useWishlistMutations";
@@ -28,11 +28,15 @@ export type ProductCardProps = {
   inventory_quantity?: number;
   showImageFallback?: boolean;
   prefetch?: boolean;
+  rating?: number;
+  reviewCount?: number;
 };
 
 const inr = new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
 });
 
 export function ProductCard({
@@ -51,14 +55,14 @@ export function ProductCard({
   inventory_quantity,
   showImageFallback = true,
   prefetch,
+  rating,
+  reviewCount,
 }: ProductCardProps) {
   const [failedImage, setFailedImage] = useState<string | null>(null);
-  const [isHovered, setIsHovered] = useState(false);
   const [prefetched, setPrefetched] = useState(false);
   const { customer } = useAuth();
   const { addToWishlist, isLoading: isAddingToWishlist } = useAddToWishlistWithNotification(name);
   const router = useRouter();
-  const cardRef = useRef<HTMLAnchorElement | null>(null);
 
   const isOutOfStock = typeof inventory_quantity !== "number" || inventory_quantity <= 0;
 
@@ -87,86 +91,42 @@ export function ProductCard({
     router.prefetch(productHref);
   };
 
+  const hasRating = typeof rating === "number" && Number.isFinite(rating) && rating > 0 && rating <= 5 && typeof reviewCount === "number" && reviewCount > 0;
+
   return (
-    <Link
-      ref={cardRef}
-      href={productHref}
-      prefetch={prefetch}
-      className={`${styles.card} group relative flex h-full w-full flex-col overflow-visible rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-white shadow-[var(--oweg-shadow-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--oweg-green)] hover:shadow-[var(--oweg-shadow-md)]`}
-      onMouseEnter={() => {
-        setIsHovered(true);
-        prefetchRoute();
-      }}
-      onFocus={prefetchRoute}
-      onTouchStart={prefetchRoute}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      <div className={`${styles.media} relative aspect-square overflow-visible rounded-t-[var(--oweg-radius-lg)] bg-[var(--oweg-surface-subtle)]`}>
-        <div className={`${styles.imageFrame} absolute inset-0 overflow-hidden rounded-t-[var(--oweg-radius-lg)]`}>
+    <article className={styles.card} onMouseEnter={prefetchRoute} onFocus={prefetchRoute} onTouchStart={prefetchRoute}>
+      <div className={styles.media}>
+        <Link href={productHref} prefetch={prefetch} className={styles.imageFrame} aria-label={name}>
           {showImageFallback && failedImage === image ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-[var(--oweg-ink-muted)]" role="img" aria-label={`${name}: image unavailable`}>
-              <ImageOff className="h-8 w-8 opacity-40" strokeWidth={1.25} />
-              <span className="text-[11px]">Image unavailable</span>
+            <div className={styles.imageFallback} role="img" aria-label={`${name}: image unavailable`}>
+              <ImageOff size={28} aria-hidden />
+              <span>Image unavailable</span>
             </div>
-          ) : <Image
-            src={image}
-            alt={name}
-            fill
-            className={`object-contain p-3 transition-transform duration-300 ease-out group-hover:scale-[1.04] ${
-              isOutOfStock ? "opacity-60 grayscale" : ""
-            }`}
-            sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 20vw"
-            onError={showImageFallback ? () => setFailedImage(image) : undefined}
-          />}
-        </div>
-        {isOutOfStock && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-t-[var(--oweg-radius-lg)] bg-black/40">
-            <div className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white shadow-lg sm:px-4 sm:py-2 sm:text-sm">
-              OUT OF STOCK
-            </div>
-          </div>
-        )}
-        <ProductCardQuickActions
-          variantId={variant_id}
-          productName={name}
-          disabled={isOutOfStock}
-          isHovered={isHovered}
-          inventoryQuantity={inventory_quantity}
-        >
-          <button
-            type="button"
-            onClick={handleWishlist}
-            title="Add to Wishlist"
-            disabled={isAddingToWishlist}
-            className={`relative flex h-9 w-9 items-center justify-center rounded-full border bg-white shadow-lg transition before:absolute before:-inset-1 before:content-[''] hover:text-red-500 ${
-              isWishlisted ? "text-red-500 border-red-200" : "text-gray-700"
-            } ${isAddingToWishlist ? "opacity-60 cursor-not-allowed" : ""}`}
-          >
-            <Heart className="w-4 h-4" fill={isWishlisted ? "currentColor" : "none"} />
-          </button>
-        </ProductCardQuickActions>
-      </div>
-      <div className={`${styles.body} flex flex-1 flex-col p-2.5 sm:p-3`}>
-        <div className="mb-2 flex flex-wrap items-start gap-1.5">
-          <span className={`${styles.discount} rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white`}>
-            {discount}% off
-          </span>
-          {limitedDeal && (
-            <span className={`${styles.limited} rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700`}>
-              Limited
-            </span>
+          ) : (
+            <Image src={image} alt={name} fill className={`${styles.image} ${isOutOfStock ? styles.unavailable : ""}`} sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 20vw" onError={showImageFallback ? () => setFailedImage(image) : undefined} />
           )}
-        </div>
-        <p className="mb-2 line-clamp-2 flex-1 text-[13px] leading-snug text-[var(--oweg-ink-soft)] sm:text-sm">
-          {name}
-        </p>
-        <div className="mt-auto flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="text-base font-bold text-[var(--oweg-ink)] sm:text-lg">
-            {inr.format(price)}
-          </span>
-          <span className="text-xs text-[var(--oweg-ink-muted)] line-through">{inr.format(mrp)}</span>
-        </div>
+          {isOutOfStock && <span className={styles.stockBadge}>Out of stock</span>}
+        </Link>
+        <button type="button" onClick={handleWishlist} disabled={isAddingToWishlist} aria-label={isWishlisted ? `${name} is in your wishlist` : `Add ${name} to wishlist`} aria-pressed={isWishlisted} className={styles.wishlist}>
+          <Heart size={20} fill={isWishlisted ? "currentColor" : "none"} aria-hidden />
+        </button>
       </div>
-    </Link>
+      <div className={styles.body}>
+        <div className={styles.rating}>
+          <Star size={13} fill={hasRating ? "currentColor" : "none"} aria-hidden />
+          {hasRating ? <span>{rating.toFixed(1)} <span className={styles.reviewCount}>({new Intl.NumberFormat("en-IN", { notation: "compact", maximumFractionDigits: 1 }).format(reviewCount)})</span></span> : <span className={styles.reviewCount}>No reviews yet</span>}
+          {limitedDeal && <span className={styles.limited}>Limited</span>}
+        </div>
+        <Link href={productHref} prefetch={prefetch} className={styles.title}>{name}</Link>
+        <div className={styles.pricing}>
+          <div className={styles.amounts}>
+            <span className={styles.price}>{inr.format(price)}</span>
+            {mrp > price && <span className={styles.mrp}>{inr.format(mrp)}</span>}
+          </div>
+          {discount > 0 && mrp > price && <span className={styles.discount}>{discount}% OFF</span>}
+        </div>
+        <ProductCardQuickActions variantId={variant_id} productName={name} disabled={isOutOfStock} isHovered={false} inventoryQuantity={inventory_quantity} layout="inline" />
+      </div>
+    </article>
   );
 }

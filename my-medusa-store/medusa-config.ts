@@ -1,4 +1,4 @@
-import { loadEnv, defineConfig, Modules, ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { loadEnv, defineConfig } from "@medusajs/framework/utils"
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd())
 
@@ -81,6 +81,12 @@ export default defineConfig({
     // Vercel rewrites /api/* to https://api.oweg.itshover.com/*
     backendUrl: process.env.MEDUSA_ADMIN_BACKEND_URL || (process.env.NODE_ENV === "production" ? "/api" : "http://localhost:9000"),
     vite: () => ({
+      // admin-bundler defines process.env as a plugin-only object. Give Vite
+      // an explicit production constant so dependency development branches
+      // and i18next debug logging are removed from deployed builds.
+      define: {
+        "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV === "production" ? "production" : "development"),
+      },
       // After patch-package touches @medusajs/dashboard, stale Vite dep chunks
       // (chunk-XXXX.js 404) blank the whole admin. Force re-optimize on boot.
       optimizeDeps: {
