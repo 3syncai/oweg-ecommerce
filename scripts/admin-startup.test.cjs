@@ -12,18 +12,42 @@ function load(file, globals = {}) {
   return module.exports;
 }
 const clientFile = 'my-medusa-store/src/admin/lib/admin-access-client.ts';
+test('background network failures retain verified UI briefly, but auth revocation and stale data block immediately', () => {
+  const policy = load('my-medusa-store/src/admin/lib/admin-access-refresh.ts');
+  for (const status of [undefined, 408, 429, 500, 502, 503]) {
+    assert.equal(policy.accessRefreshFailure(status, true, 1000, 31_000), 'retain');
+    assert.equal(policy.accessRefreshFailure(status, true, 1000, 91_000), 'block');
+    assert.equal(policy.accessRefreshFailure(status, false, 0, 31_000), 'block');
+  }
+  for (const status of [401, 403]) assert.equal(policy.accessRefreshFailure(status, true, 1000, 1001), 'expired');
+  assert.equal(policy.accessRefreshFailure(400, true, 1000, 1001), 'block');
+  assert.deepEqual([1,2,3,4,20].map(policy.accessRetryDelay), [5000,10000,20000,30000,30000]);
+});
+test('a non-JSON unauthorized response preserves status and malformed success never grants access', async () => {
+  const client = load(clientFile, { fetch: async () => ({ok:false,status:401,json:async()=>{throw new Error('HTML error');}}) });
+  await assert.rejects(client.currentAdminAccess(), error => error.status === 401);
+  const malformed = load(clientFile, { fetch: async () => ({ok:true,status:200,json:async()=>({access:{active:true}})}) });
+  await assert.rejects(malformed.currentAdminAccess(), error => error.status === 502);
+});
+test('first login uses a role-neutral landing page and shows nonempty connection failures', () => {
+  const { patchLogin } = require('../my-medusa-store/scripts/patch-admin-startup.cjs');
+  const result = patchLogin('const from = location.state?.from?.pathname || "/orders"; const errorState = { message: error.message };');
+  assert.ok(result.includes('|| "/my-access"'));
+  assert.ok(result.includes('error.message || "Unable to connect'));
+  assert.equal(patchLogin(result), result);
+});
 test('concurrent permission consumers share a request, but completed reads are never cached', async () => {
   let calls = 0, finish;
   const client = load(clientFile, { fetch: () => { calls++; return new Promise(resolve => { finish = resolve; }); } });
   const first = client.currentAdminAccess();
   const second = client.currentAdminAccess();
   assert.equal(calls, 1);
-  finish({ ok: true, json: async () => ({ access: { user_id: 'first' } }) });
+  finish({ ok: true, json: async () => ({ access: { user_id: 'first', permissions: [] } }) });
   assert.equal((await first).user_id, 'first');
   assert.equal((await second).user_id, 'first');
   const next = client.currentAdminAccess();
   assert.equal(calls, 2);
-  finish({ ok: true, json: async () => ({ access: { user_id: 'first', active: false } }) });
+  finish({ ok: true, json: async () => ({ access: { user_id: 'first', permissions: [], active: false } }) });
   assert.equal((await next).active, false);
 });
 test('logout/login invalidates an in-flight read and an older completion cannot clear the new request', async () => {
@@ -32,11 +56,11 @@ test('logout/login invalidates an in-flight read and an older completion cannot 
   const old = client.currentAdminAccess();
   client.resetAdminAccessRequest();
   const current = client.currentAdminAccess();
-  pending[0]({ ok: true, json: async () => ({ access: { user_id: 'old' } }) });
+  pending[0]({ ok: true, json: async () => ({ access: { user_id: 'old', permissions: [] } }) });
   await old;
   assert.equal(client.currentAdminAccess(), current);
   assert.equal(pending.length, 2);
-  pending[1]({ ok: true, json: async () => ({ access: { user_id: 'new' } }) });
+  pending[1]({ ok: true, json: async () => ({ access: { user_id: 'new', permissions: [] } }) });
   assert.equal((await current).user_id, 'new');
 });
 test('failed access checks fail closed, remain retryable and have a deadline', async () => {
