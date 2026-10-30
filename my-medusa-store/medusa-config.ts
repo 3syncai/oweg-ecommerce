@@ -77,9 +77,16 @@ export default defineConfig({
     },
   },
   admin: {
-    // Use /api path for Vercel proxy - this makes cookies first-party
-    // Vercel rewrites /api/* to https://api.oweg.itshover.com/*
-    backendUrl: process.env.MEDUSA_ADMIN_BACKEND_URL || (process.env.NODE_ENV === "production" ? "/api" : "http://localhost:9000"),
+    // Call the Medusa API host directly in production. Routing admin auth
+    // through Vercel rewrites (/api → Hostinger) causes intermittent ~30s
+    // 502s (ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR). Cross-origin cookies
+    // work with cookieOptions sameSite=none + secure below; ADMIN_CORS /
+    // AUTH_CORS must include the Vercel admin origin.
+    backendUrl:
+      process.env.MEDUSA_ADMIN_BACKEND_URL ||
+      (process.env.NODE_ENV === "production"
+        ? "https://api.oweg.itshover.com"
+        : "http://localhost:9000"),
     vite: () => ({
       // admin-bundler defines process.env as a plugin-only object. Give Vite
       // an explicit production constant so dependency development branches

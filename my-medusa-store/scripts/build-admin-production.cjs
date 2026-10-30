@@ -9,6 +9,12 @@ process.env.NODE_ENV = "production"
 // or connects to the database. Do not require copying backend secrets to Vercel.
 const buildEnv = { ...process.env }
 for (const key of ["JWT_SECRET", "COOKIE_SECRET"]) buildEnv[key] = randomBytes(32).toString("hex")
+// Bake the real API origin into the admin bundle. Same-origin /api rewrites
+// through Vercel intermittently 502 for ~30s against Hostinger.
+if (!buildEnv.MEDUSA_ADMIN_BACKEND_URL || buildEnv.MEDUSA_ADMIN_BACKEND_URL === "/api") {
+  buildEnv.MEDUSA_ADMIN_BACKEND_URL = "https://api.oweg.itshover.com"
+}
+console.log(`[admin] MEDUSA_ADMIN_BACKEND_URL=${buildEnv.MEDUSA_ADMIN_BACKEND_URL}`)
 require("./patch-admin-startup.cjs").apply()
 require("./patch-customer-order-overview.cjs")()
 const cli = require.resolve("@medusajs/cli/cli.js")
