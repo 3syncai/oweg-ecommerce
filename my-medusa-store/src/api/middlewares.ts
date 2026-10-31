@@ -243,6 +243,11 @@ export default defineMiddlewares({
       middlewares: [authenticate("customer", ["session", "bearer"])],
     },
     {
+      matcher: "/store/orders/*/invoice",
+      method: ["GET"],
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
       matcher: "/auth",
       middlewares: [recordAdminActivity, crossOriginCookieMiddleware, scopeAdminLogin],
     },

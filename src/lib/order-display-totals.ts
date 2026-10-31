@@ -137,10 +137,41 @@ export async function enrichOrdersWithSummaryTotals(
   }
 }
 
+/** Vendor-only cancel fields must never reach the customer browser/API. */
+const CUSTOMER_HIDDEN_CANCEL_META_KEYS = [
+  "vendor_cancel_message",
+  "cancellation_note",
+  "admin_cancel_note",
+] as const
+
+export function sanitizeOrderMetadataForCustomer(
+  metadata: Record<string, unknown>
+): Record<string, unknown> {
+  const next = { ...metadata }
+  for (const key of CUSTOMER_HIDDEN_CANCEL_META_KEYS) {
+    delete next[key]
+  }
+  // Keep only the customer-facing cancel message. Never fall back to a vendor note.
+  const customerReason =
+    (typeof next.customer_cancel_reason === "string" && next.customer_cancel_reason.trim()) ||
+    (typeof next.cancellation_reason === "string" && next.cancellation_reason.trim()) ||
+    ""
+  if (customerReason) {
+    next.customer_cancel_reason = customerReason
+    next.cancellation_reason = customerReason
+  } else {
+    delete next.customer_cancel_reason
+    delete next.cancellation_reason
+  }
+  return next
+}
+
 export function normalizeOrderForCustomer(order: Record<string, unknown>): Record<string, unknown> {
-  const metadata = (order.metadata && typeof order.metadata === "object"
-    ? order.metadata
-    : {}) as Record<string, unknown>;
+  const metadata = sanitizeOrderMetadataForCustomer(
+    (order.metadata && typeof order.metadata === "object"
+      ? order.metadata
+      : {}) as Record<string, unknown>
+  );
 
   const currency =
     typeof order.currency_code === "string" ? order.currency_code : undefined;

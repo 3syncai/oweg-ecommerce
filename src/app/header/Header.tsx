@@ -566,7 +566,10 @@ const Header: React.FC = () => {
     }
     return "Account";
   }, [customer]);
-  const deliverTitle = customer ? `Deliver to ${customerName}` : "Deliver to";
+  // Keep SSR and first client paint identical — customer comes from client auth/storage.
+  const deliverTitle =
+    hasMounted && customer ? `Deliver to ${customerName}` : "Deliver to";
+  const deliverNameLabel = hasMounted && customer ? customerName : "Deliver to";
 
   // mapping from category id to trigger element
   const triggersRef = React.useRef<Record<string, HTMLElement | null>>({});
@@ -1894,7 +1897,7 @@ const Header: React.FC = () => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900 truncate">
-                        {customer ? customerName : "Deliver to"}
+                        {deliverNameLabel}
                       </p>
                       <p className="text-xs text-gray-600 truncate">{locationLabel}</p>
                     </div>

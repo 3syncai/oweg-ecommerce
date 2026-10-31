@@ -11,6 +11,7 @@ import {
   getMarketplaceTaxRates,
 } from "./vendor-marketplace-tax"
 import {
+  ensureVendorCancelledOrderLedgerRows,
   formatOrderFallback,
   getVendorEarningsSummary,
   repairClaimCreditsWithoutCommission,
@@ -191,12 +192,16 @@ export function buildVendorLedgerRowsFromEarning(
     // The debit was recorded using the rates frozen at cancellation time.
     // Preserve that booked balance if live settings later change.
     const bookedDebit = Number(row.net_amount)
+    const hasCharge =
+      fee > 0 ||
+      Math.abs(logisticFee) > 0 ||
+      (Number.isFinite(bookedDebit) && bookedDebit < 0)
     return [
       settlementFromLedger({
         id: row.id,
         order_id: row.order_id,
         order_display_id: row.order_display_id,
-        product_name: "Cancellation charge",
+        product_name: hasCharge ? "Cancellation charge" : "Order cancelled",
         status: row.status,
         delivered_at: row.delivered_at,
         unlock_at: row.unlock_at,
@@ -435,6 +440,7 @@ export async function buildVendorPaymentsView(
 ): Promise<VendorPaymentsView> {
   await syncVendorEarningsStatuses(pool)
   await repairClaimCreditsWithoutCommission(vendorId, pool)
+  await ensureVendorCancelledOrderLedgerRows(vendorId, pool)
   await recomputeUnpaidVendorLedger(vendorId, pool)
 
   try {

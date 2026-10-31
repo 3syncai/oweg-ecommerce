@@ -4,13 +4,31 @@ const line = (vendor: string | null, total: number, coupon = 0) => ({
   vendor_id: vendor, line_total: total, coupon_discount: coupon,
 })
 
-describe("coupon discounts as vendor cashback", () => {
-  it("uses the actual applied admin coupon discount, excluding coins", () => {
+describe("coupon + coin discounts as vendor cashback", () => {
+  it("sums coupon and redeemed coins when both are applied", () => {
     const amounts = allocateVendorCouponCashback({
       promo_code: "SAVE200", promo_discount_rupees: 150,
       coin_discount_rupees: 50,
     }, [line("v1", 1000, 150)])
-    expect(amounts.get("v1")).toBe(150)
+    expect(amounts.get("v1")).toBe(200)
+  })
+
+  it("credits coin-only redemptions as cashback", () => {
+    expect(allocateVendorCouponCashback(
+      { coin_discount_rupees: 2, coin_discount_minor: 200, coins_discounted: 2 },
+      [line("v1", 100)]
+    ).get("v1")).toBe(2)
+  })
+
+  it("adds coins on top of native item coupons", () => {
+    const amounts = allocateVendorCouponCashback(
+      { coin_discount_rupees: 10 },
+      [line("v1", 100, 20), line("v2", 200, 0)]
+    )
+    // 20 coupon on v1 + 10 coins split 100:200 → 3.33 / 6.67
+    expect(amounts.get("v1")).toBeCloseTo(23.33, 2)
+    expect(amounts.get("v2")).toBeCloseTo(6.67, 2)
+    expect((amounts.get("v1") || 0) + (amounts.get("v2") || 0)).toBeCloseTo(30, 2)
   })
 
   it("does not double count mirrored minor amounts or the first item's adjustment", () => {
@@ -42,18 +60,18 @@ describe("coupon discounts as vendor cashback", () => {
     ])]).toEqual([["v1", 30], ["v2", 30]])
   })
 
-  it("returns zero for no coupon, coin-only orders, and invalid amounts", () => {
-    for (const metadata of [null, { coin_discount_rupees: 100 }, { promo_discount_rupees: -50 }, { promo_discount_rupees: Infinity }]) {
-      expect(allocateVendorCouponCashback(metadata, [line("v1", 100)]).get("v1")).toBe(0)
+  it("returns zero for no discount and invalid amounts", () => {
+    for (const metadata of [null, { promo_discount_rupees: -50 }, { promo_discount_rupees: Infinity }]) {
+      expect(allocateVendorCouponCashback(metadata, [line("v1", 100)]).get("v1") || 0).toBe(0)
     }
     expect(allocateVendorCouponCashback({ promo_discount_rupees: 10 }, []).size).toBe(0)
   })
 
-  it("loads the requested order and uses stored actual discounts", async () => {
+  it("loads the requested order and uses stored actual discounts including coins", async () => {
     const query = jest.fn().mockResolvedValue({ rows: [
-      { ...line("v1", 300), metadata: { promo_discount_rupees: 20 } },
+      { ...line("v1", 300), metadata: { promo_discount_rupees: 20, coin_discount_rupees: 5 } },
     ] })
-    expect((await fetchVendorCouponCashback("ord_coupon", { query } as any)).get("v1")).toBe(20)
+    expect((await fetchVendorCouponCashback("ord_coupon", { query } as any)).get("v1")).toBe(25)
     expect(query.mock.calls[0][1]).toEqual(["ord_coupon"])
   })
 })

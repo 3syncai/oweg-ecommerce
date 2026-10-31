@@ -388,9 +388,14 @@ const OrderVendorAcceptanceWidget = () => {
             <Text size="small" weight="plus" className="text-ui-fg-base">
               {data?.cancellation?.cancelled_by_label || "This order has been cancelled."}
             </Text>
-            {data?.cancellation?.vendor_message || data?.cancellation?.note ? (
+            {data?.cancellation?.vendor_message ? (
               <Text size="small" className="text-ui-fg-muted mt-1 leading-relaxed">
-                {data.cancellation.vendor_message || data.cancellation.note}
+                Vendor note: {data.cancellation.vendor_message}
+              </Text>
+            ) : null}
+            {data?.cancellation?.customer_reason ? (
+              <Text size="small" className="text-ui-fg-muted mt-1 leading-relaxed">
+                Customer message: {data.cancellation.customer_reason}
               </Text>
             ) : null}
           </div>
