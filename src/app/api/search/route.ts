@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import {
-  searchProducts as searchProductsOpenSearch,
+  searchProducts as searchProductsMeili,
   isInStockHit,
   type SearchHit,
 } from "@/services/medusa/searchService"
@@ -33,7 +33,7 @@ export type SearchApiProduct = {
   inventory_quantity?: number
 }
 
-function mapOpenSearchHit(hit: SearchHit): SearchApiProduct {
+function mapSearchHit(hit: SearchHit): SearchApiProduct {
   return {
     id: String(hit.id),
     handle: hit.handle,
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
   const pageSize = Number.isFinite(pageSizeRaw)
     ? Math.max(1, Math.min(pageSizeRaw, 100))
     : 24
-  // OpenSearch max_result_window is typically 10000; keep from+size under it.
+  // Meilisearch maxTotalHits is configured at 10000; keep offset under it.
   const MAX_SEARCH_OFFSET = 9900
   const offset = Math.min((page - 1) * pageSize, MAX_SEARCH_OFFSET)
 
@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
       collectionId = resolved?.id
     }
 
-    const openSearchResults = await searchProductsOpenSearch(searchQuery, {
+    const meiliResults = await searchProductsMeili(searchQuery, {
       limit: pageSize,
       offset,
       categoryId,
@@ -100,19 +100,19 @@ export async function GET(req: NextRequest) {
       category: !categoryId ? category : undefined,
     }).catch(() => ({ hits: [] as SearchHit[], total: 0 }))
 
-    if (Array.isArray(openSearchResults.hits) && openSearchResults.hits.length > 0) {
-      // in_stock is filtered in OpenSearch; keep post-filter for stale index docs.
-      const inStockOS = openSearchResults.hits.filter(isInStockHit).map(mapOpenSearchHit)
+    if (Array.isArray(meiliResults.hits) && meiliResults.hits.length > 0) {
+      // in_stock is filtered in Meilisearch; keep post-filter for stale index docs.
+      const inStockHits = meiliResults.hits.filter(isInStockHit).map(mapSearchHit)
 
-      if (inStockOS.length > 0) {
-        const count = openSearchResults.total
+      if (inStockHits.length > 0) {
+        const count = meiliResults.total
         return NextResponse.json({
-          products: inStockOS,
+          products: inStockHits,
           count,
           page,
           pageSize,
           hasMore: offset + pageSize < count,
-          countIsApproximate: inStockOS.length < openSearchResults.hits.length,
+          countIsApproximate: inStockHits.length < meiliResults.hits.length,
         })
       }
     }

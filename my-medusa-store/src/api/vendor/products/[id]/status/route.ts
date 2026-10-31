@@ -1,11 +1,9 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules, ProductStatus, ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { requireApprovedVendor } from "../../../_lib/guards"
-import client from "../../../../../utils/opensearch"
 import {
-  PRODUCTS_INDEX,
-  buildSearchDocument,
-  ensureProductsIndex,
+  deleteSearchDocument,
+  upsertProductToSearch,
 } from "../../../../../utils/search-index"
 
 function setCorsHeaders(res: MedusaResponse) {
@@ -83,18 +81,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       })
 
       try {
-        await client.delete({
-          index: PRODUCTS_INDEX,
-          id: productId,
-          refresh: true,
-        })
+        await deleteSearchDocument(productId)
       } catch (deleteError: any) {
-        if (deleteError?.meta?.statusCode !== 404) {
-          console.warn(
-            "Failed removing product from OpenSearch during vendor draft:",
-            deleteError?.message
-          )
-        }
+        console.warn(
+          "Failed removing product from Meilisearch during vendor draft:",
+          deleteError?.message
+        )
       }
 
       return res.json({
@@ -182,17 +174,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         ],
       })
 
-      await ensureProductsIndex()
-      const doc = buildSearchDocument(productForIndex as Record<string, any>)
-      await client.index({
-        index: PRODUCTS_INDEX,
-        id: productId,
-        refresh: true,
-        body: doc,
-      })
+      await upsertProductToSearch(productForIndex as Record<string, any>)
     } catch (indexError: any) {
       console.error(
-        "Failed to sync OpenSearch on vendor publish:",
+        "Failed to sync Meilisearch on vendor publish:",
         indexError?.message || indexError
       )
     }

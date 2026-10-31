@@ -38,7 +38,8 @@ export async function GET(req: NextRequest) {
         medusaUrl,
         medusaOnline,
         databaseConfigured: Boolean(process.env.DATABASE_URL),
-        opensearchConfigured: Boolean(process.env.OPENSEARCH_URL),
+        opensearchConfigured: Boolean(process.env.MEILI_HOST || process.env.MEILI_MASTER_KEY),
+        meilisearchConfigured: Boolean(process.env.MEILI_HOST || process.env.MEILI_MASTER_KEY),
       },
     });
   } catch (error) {

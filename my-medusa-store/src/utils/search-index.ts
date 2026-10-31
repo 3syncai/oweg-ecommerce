@@ -1,4 +1,4 @@
-import client from "./opensearch"
+import { getMeiliClient, waitForMeiliTask } from "./meilisearch"
 
 export const PRODUCTS_INDEX = "products"
 
@@ -82,7 +82,6 @@ function pickMrp(product: AnyRecord, variant: AnyRecord, fallbackPrice: number):
     }
   }
 
-  // Fallback from variant prices: use highest available price as MRP.
   const variantPrices = Array.isArray(variant?.prices) ? variant.prices : []
   const priceCandidates = variantPrices
     .map((p: AnyRecord) => toNumber(p?.amount))
@@ -133,6 +132,43 @@ function getTags(product: AnyRecord): string[] {
     .filter(Boolean)
 }
 
+/** Retail synonyms for typo-tolerant Amazon-like recall. */
+export const PRODUCT_SEARCH_SYNONYMS: Record<string, string[]> = {
+  tv: ["television"],
+  television: ["tv"],
+  bulb: ["lamp", "light", "led", "led lamp"],
+  lamp: ["bulb", "light", "led"],
+  fridge: ["refrigerator", "fridge freezer"],
+  refrigerator: ["fridge"],
+  ac: ["air conditioner", "airconditioner", "aircon"],
+  "air conditioner": ["ac", "airconditioner", "aircon"],
+  mixer: ["grinder", "mixer grinder", "juicer"],
+  fan: ["ceiling fan", "table fan", "pedestal fan"],
+  mobile: ["phone", "smartphone", "cellphone", "cell phone"],
+  phone: ["mobile", "smartphone"],
+  laptop: ["notebook", "notebook pc"],
+  geyser: ["water heater", "waterheater", "immersion rod"],
+  cooker: ["pressure cooker", "rice cooker", "electric cooker"],
+  oven: ["microwave", "microwave oven", "otg"],
+  microwave: ["oven", "microwave oven"],
+  iron: ["steam iron", "dry iron"],
+  keyboard: ["keys"],
+  mouse: ["computer mouse"],
+  webcam: ["web camera", "e camera", "e-camera"],
+  "power bank": ["powerbank", "battery pack"],
+  powerbank: ["power bank", "battery pack"],
+  speaker: ["bluetooth speaker", "soundbar"],
+  camera: ["cctv", "security camera"],
+  lock: ["em lock", "electromagnetic lock"],
+  biometric: ["fingerprint", "fingerprint device"],
+  castor: ["castor wheels", "caster", "caster wheels"],
+  tawa: ["tava", "dosa tawa"],
+  kadai: ["kadhai", "wok"],
+  "frying pan": ["fry pan", "frypan"],
+  induction: ["induction cooktop", "cooktop"],
+  "gas stove": ["hob", "gas hob"],
+}
+
 export function buildSearchDocument(product: AnyRecord): AnyRecord {
   const variants = Array.isArray(product.variants) ? product.variants : []
   const variant = variants[0] ?? {}
@@ -180,126 +216,109 @@ export function buildSearchDocument(product: AnyRecord): AnyRecord {
   }
 }
 
-export function createProductsIndexBody() {
-  return {
-    settings: {
-      index: {
-        number_of_shards: 1,
-        number_of_replicas: 0,
-      },
-      analysis: {
-        filter: {
-          oweg_synonyms: {
-            type: "synonym_graph",
-            synonyms: [
-              "tv, television",
-              "bulb, lamp, light, led, led lamp",
-              "fridge, refrigerator, fridge freezer",
-              "ac, air conditioner, airconditioner, aircon",
-              "mixer, grinder, mixer grinder, juicer",
-              "fan, ceiling fan, table fan, pedestal fan",
-              "mobile, phone, smartphone, cellphone, cell phone",
-              "laptop, notebook, notebook pc",
-              "geyser, water heater, waterheater, immersion rod",
-              "cooker, pressure cooker, rice cooker, electric cooker",
-              "oven, microwave, microwave oven, otg",
-              "iron, steam iron, dry iron",
-              "keyboard, keys",
-              "mouse, computer mouse",
-              "webcam, web camera, e camera, e-camera",
-              "power bank, powerbank, battery pack",
-              "speaker, bluetooth speaker, soundbar",
-              "camera, cctv, security camera",
-              "lock, em lock, electromagnetic lock",
-              "biometric, fingerprint, fingerprint device",
-              "castor, castor wheels, caster, caster wheels",
-              "tawa, tava, dosa tawa",
-              "kadai, kadhai, wok",
-              "frying pan, fry pan, frypan",
-              "induction, induction cooktop, cooktop",
-              "gas stove, hob, gas hob",
-            ],
-          },
-          oweg_edge_ngram: {
-            type: "edge_ngram",
-            min_gram: 2,
-            max_gram: 20,
-          },
-        },
-        analyzer: {
-          oweg_text: {
-            type: "custom",
-            tokenizer: "standard",
-            filter: ["lowercase", "asciifolding", "oweg_synonyms"],
-          },
-          // Query-time only — no synonym_graph (safe for fuzzy / typo matching).
-          oweg_search: {
-            type: "custom",
-            tokenizer: "standard",
-            filter: ["lowercase", "asciifolding"],
-          },
-          oweg_prefix: {
-            type: "custom",
-            tokenizer: "standard",
-            filter: ["lowercase", "asciifolding", "oweg_edge_ngram"],
-          },
-        },
+export function getProductsIndexUid(): string {
+  return process.env.MEILI_PRODUCTS_INDEX || PRODUCTS_INDEX
+}
+
+export async function ensureProductsIndex(): Promise<void> {
+  const client = getMeiliClient()
+  const uid = getProductsIndexUid()
+
+  try {
+    await client.getIndex(uid)
+  } catch {
+    const task = await client.createIndex(uid, { primaryKey: "id" })
+    await waitForMeiliTask(client, task.taskUid)
+  }
+
+  const index = client.index(uid)
+  const settingsTask = await index.updateSettings({
+    searchableAttributes: [
+      "title",
+      "brand",
+      "category_titles",
+      "tags",
+      "subtitle",
+      "collection_title",
+      "description",
+      "handle",
+    ],
+    filterableAttributes: [
+      "status",
+      "in_stock",
+      "category_ids",
+      "category_titles",
+      "collection_id",
+      "price",
+      "brand",
+      "tags",
+    ],
+    sortableAttributes: [
+      "in_stock",
+      "price",
+      "rating",
+      "popularity_score",
+      "sales_30d",
+      "created_at",
+    ],
+    rankingRules: [
+      "words",
+      "typo",
+      "proximity",
+      "attribute",
+      "sort",
+      "exactness",
+      "in_stock:desc",
+      "popularity_score:desc",
+      "rating:desc",
+    ],
+    synonyms: PRODUCT_SEARCH_SYNONYMS,
+    typoTolerance: {
+      enabled: true,
+      minWordSizeForTypos: {
+        oneTypo: 3,
+        twoTypos: 6,
       },
     },
-    mappings: {
-      dynamic: false,
-      properties: {
-        id: { type: "keyword" },
-        handle: { type: "keyword" },
-        title: {
-          type: "text",
-          analyzer: "oweg_text",
-          search_analyzer: "oweg_search",
-          fields: {
-            keyword: { type: "keyword", ignore_above: 512 },
-            prefix: {
-              type: "text",
-              analyzer: "oweg_prefix",
-              search_analyzer: "oweg_search",
-            },
-          },
-        },
-        subtitle: { type: "text", analyzer: "oweg_text", search_analyzer: "oweg_search" },
-        description: { type: "text", analyzer: "oweg_text", search_analyzer: "oweg_search" },
-        thumbnail: { type: "keyword", index: false },
-        brand: {
-          type: "text",
-          analyzer: "oweg_text",
-          search_analyzer: "oweg_search",
-          fields: { keyword: { type: "keyword", ignore_above: 256 } },
-        },
-        category: { type: "keyword" },
-        category_ids: { type: "keyword" },
-        category_titles: { type: "text", analyzer: "oweg_text", search_analyzer: "oweg_search" },
-        collection_id: { type: "keyword" },
-        collection_title: { type: "text", analyzer: "oweg_text", search_analyzer: "oweg_search" },
-        tags: { type: "keyword" },
-        price: { type: "float" },
-        mrp: { type: "float" },
-        discount: { type: "integer" },
-        in_stock: { type: "boolean" },
-        stock_score: { type: "integer" },
-        rating: { type: "float" },
-        sales_30d: { type: "integer" },
-        popularity_score: { type: "float" },
-        status: { type: "keyword" },
-        created_at: { type: "date", format: "strict_date_optional_time||epoch_millis" },
-        updated_at: { type: "date", format: "strict_date_optional_time||epoch_millis" },
-      },
+    pagination: {
+      maxTotalHits: 10_000,
     },
+  })
+  await waitForMeiliTask(client, settingsTask.taskUid)
+}
+
+export async function upsertSearchDocument(doc: AnyRecord): Promise<void> {
+  await ensureProductsIndex()
+  const client = getMeiliClient()
+  const index = client.index(getProductsIndexUid())
+  const task = await index.addDocuments([doc], { primaryKey: "id" })
+  await waitForMeiliTask(client, task.taskUid)
+}
+
+export async function deleteSearchDocument(productId: string): Promise<void> {
+  const id = String(productId || "").trim()
+  if (!id) return
+
+  try {
+    const client = getMeiliClient()
+    const index = client.index(getProductsIndexUid())
+    const task = await index.deleteDocument(id)
+    await waitForMeiliTask(client, task.taskUid)
+  } catch (error: any) {
+    const code = error?.code || error?.errorCode || error?.httpStatus
+    const msg = String(error?.message || "")
+    if (code === 404 || code === "document_not_found" || msg.includes("not found")) {
+      return
+    }
+    throw error
   }
 }
 
-export async function ensureProductsIndex() {
-  const exists = await client.indices.exists({ index: PRODUCTS_INDEX })
-  if (exists.body) return
-  await client.indices.create({
-    index: PRODUCTS_INDEX,
-    body: createProductsIndexBody() as any,
-  })
+export async function upsertProductToSearch(product: AnyRecord): Promise<void> {
+  const doc = buildSearchDocument(product)
+  if (String(doc.status).toLowerCase() !== "published") {
+    await deleteSearchDocument(doc.id)
+    return
+  }
+  await upsertSearchDocument(doc)
 }
