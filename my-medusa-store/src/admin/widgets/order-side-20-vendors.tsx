@@ -78,6 +78,7 @@ type VendorAcceptanceResponse = {
     is_cancelled?: boolean
     source?: "admin" | "customer" | null
     note?: string | null
+    customer_reason?: string | null
     vendor_message?: string | null
     cancelled_by_label?: string
   }
