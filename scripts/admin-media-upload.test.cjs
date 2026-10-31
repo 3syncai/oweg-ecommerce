@@ -42,7 +42,7 @@ test('real S3 provider uploads without an ACL header, retaining URLs, file conte
 })
 
 const editorPath = 'my-medusa-store/node_modules/@medusajs/dashboard/src/routes/products/product-media/components/edit-product-media-form/edit-product-media-form.tsx'
-function editor(upload) {
+function editor(upload, options = {}) {
   const source = patchMediaSource(fs.readFileSync(editorPath, 'utf8'))
   const body = source.slice(source.indexOf('const handleSubmit = form.handleSubmit'), source.indexOf('  const handleCheckedChange'))
   const saves = [], errors = []
@@ -50,6 +50,8 @@ function editor(upload) {
     form: { handleSubmit: fn => fn, setError: (...args) => errors.push(args) },
     sdk: { admin: { upload: { create: upload } } },
     mutateAsync: async payload => saves.push(payload), t: key => key,
+    product: { images: options.existingImages || [], thumbnail: options.existingThumbnail || null },
+    owegConfirmEmptyMedia: async () => options.confirm !== false,
   })
   return { submit, saves, errors }
 }
@@ -61,6 +63,28 @@ test('failed, partial and invalid-URL uploads never issue a product update', asy
     assert.equal(flow.saves.length, 0)
     assert.ok(flow.errors.length)
   }
+})
+
+test('save falls back to the first remaining/new image and manual selection wins after reorder', async () => {
+  const flow = editor(async () => ({ files: [{ url: 'https://cdn.example/new-first.jpg' }, { url: 'https://cdn.example/new-second.jpg' }] }))
+  await flow.submit({ media: [{ id: 'b', url: 'https://cdn.example/b.jpg' }, { id: 'c', url: 'https://cdn.example/c.jpg' }] })
+  assert.equal(flow.saves[0].thumbnail, 'https://cdn.example/b.jpg')
+  await flow.submit({ media: [{ file: { name: 'first.jpg' } }, { file: { name: 'second.jpg' } }] })
+  assert.equal(flow.saves[1].thumbnail, 'https://cdn.example/new-first.jpg')
+  await flow.submit({ media: [{ id: 'c', url: 'https://cdn.example/c.jpg' }, { id: 'b', url: 'https://cdn.example/b.jpg', isThumbnail: true }] })
+  assert.equal(flow.saves[2].thumbnail, 'https://cdn.example/b.jpg')
+})
+
+test('removing all saved images requires confirmation and cancelling leaves the product unchanged', async () => {
+  for (const confirm of [false, true]) {
+    const flow = editor(async () => { throw new Error('must not upload') }, { existingImages: [{ url: 'https://cdn.example/old.jpg' }], confirm })
+    await flow.submit({ media: [] })
+    assert.equal(flow.saves.length, confirm ? 1 : 0)
+    if (confirm) assert.equal(flow.saves[0].thumbnail, null)
+  }
+  const legacy = editor(async () => ({}), { existingThumbnail: 'https://cdn.example/legacy.jpg', confirm: false })
+  await legacy.submit({ media: [] })
+  assert.equal(legacy.saves.length, 0)
 })
 
 test('successful replacement preserves order, retained images and thumbnail selection', async () => {
