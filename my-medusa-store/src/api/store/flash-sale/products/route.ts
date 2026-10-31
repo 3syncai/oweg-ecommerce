@@ -11,7 +11,8 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
     
     // Get all flash sale items (don't cleanup yet, just filter)
     console.log('[Flash Sale API] Fetching flash sale items...')
-    const allItems = await flashSaleService.listFlashSaleItems({})
+    const all = req.query.all === '1'
+    const allItems = all ? await flashSaleService.getAllFlashSaleItems() : await flashSaleService.listFlashSaleItems({})
     console.log(`[Flash Sale API] Total items in DB: ${allItems.length}`)
     
     // Filter for active items (not deleted and not expired) - manual check for better control
@@ -70,10 +71,15 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
     // it returns. No DB writes needed, no cron, fully idempotent.
     let products: any[] = []
     try {
-      products = await productModuleService.listProducts({
-        id: productIds,
-        status: ["published"],
-      })
+      if (all) {
+        for (let offset = 0; offset < productIds.length; offset += 60) {
+          products.push(...await productModuleService.listProducts({
+            id: productIds.slice(offset, offset + 60), status: ["published"],
+          }, { take: 60 }))
+        }
+      } else {
+        products = await productModuleService.listProducts({ id: productIds, status: ["published"] })
+      }
       console.log(`[Flash Sale API] Fetched ${products.length} published products from productModuleService`)
     } catch (error: any) {
       console.error('[Flash Sale API] Error fetching products:', error.message)
@@ -133,6 +139,7 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
         flash_sale_price: Number.isFinite(flashSalePriceNum) ? flashSalePriceNum : 0,
         original_price: Number.isFinite(originalPriceNum) ? originalPriceNum : 0,
         flash_sale: {
+          title: flashSaleItem.title ?? null,
           expires_at: expiresAt.toISOString(),
           time_remaining_ms: timeRemaining,
         }
@@ -152,10 +159,12 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
     const timeRemaining = earliestExpiration 
       ? Math.max(0, earliestExpiration.getTime() - new Date().getTime())
       : 0
+    const headingItem = flashSaleItems.find(item => new Date(item.expires_at).getTime() === earliestExpiration?.getTime())
     
     return res.json({ 
       active: true,
       flash_sale: {
+        title: headingItem?.title ?? null,
         expires_at: earliestExpiration?.toISOString() || null,
         time_remaining_ms: timeRemaining,
         item_count: flashSaleItems.length,

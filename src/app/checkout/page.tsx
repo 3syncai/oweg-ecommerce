@@ -27,10 +27,12 @@ import {maxRedeemableCoins as getMaxRedeemableCoins,eligibleCoinDiscount} from "
 import { findMatchingCustomerAddress } from "@/lib/customer-address-dedupe";
 import styles from "@/components/shopping/Shopping.module.css";
 import PurchaseJourney from "@/components/shopping/PurchaseJourney";
+import { cartVariantLabel } from "@/lib/cart-variant-label";
 
 type CartItem = {
   id: string;
   title: string;
+  variant_title?: string;
   quantity: number;
   unit_price: number;
   thumbnail?: string;
@@ -247,6 +249,7 @@ function CheckoutPageInner() {
     variantId: string;
     quantity: number;
     title?: string;
+    variantTitle?: string;
     thumbnail?: string;
     priceMinor?: number;
     sellerSelected?: boolean;
@@ -926,6 +929,7 @@ function CheckoutPageInner() {
             variantId: String(parsed.variantId),
             quantity: Math.max(1, Number(parsed.quantity) || 1),
             title: parsed.title,
+            variantTitle: typeof parsed.variantTitle === "string" ? parsed.variantTitle : undefined,
             thumbnail: parsed.thumbnail,
             priceMinor: typeof parsed.priceMinor === "number" ? parsed.priceMinor : undefined,
             sellerSelected: parsed.sellerSelected === true,
@@ -974,6 +978,7 @@ function CheckoutPageInner() {
               {
                 id: fallbackBuyNow.variantId,
                 title: fallbackBuyNow.title || "Selected item",
+                variant_title: buyNowItem?.variantId === fallbackBuyNow.variantId ? buyNowItem.variantTitle : undefined,
                 quantity: fallbackBuyNow.quantity,
                 unit_price: fallbackBuyNow.priceMinor ?? 0,
                 thumbnail: fallbackBuyNow.thumbnail,
@@ -2406,6 +2411,7 @@ function CheckoutPageInner() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-[#2c342f] line-clamp-2">{item.title}</p>
+                      {cartVariantLabel(item) && <p className="mt-1 text-xs text-[#5f7168]">{cartVariantLabel(item)}</p>}
                       <p className="text-xs text-slate-500 mt-0.5">Qty {item.quantity}</p>
                     </div>
                     <div className="text-sm font-semibold text-[#2c342f]">
@@ -2451,7 +2457,6 @@ function CheckoutPageInner() {
                     value={promoCodeInput}
                     onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
                     aria-label="Promo code"
-                    placeholder="e.g. OWEG50"
                     className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     disabled={promoValidating}
                   />

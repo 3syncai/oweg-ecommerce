@@ -9,7 +9,47 @@ test('active customers and a later fresh account are protected',()=>{assert.equa
 test('shared admin/vendor identities and other providers are never deleted',()=>{for(const app_metadata of [{user_id:'admin'},{vendor_id:'vendor'},{customer_id:null,user_id:'admin'}])assert.equal(canReleaseDeletedCustomerAuth(customer,{...identity,app_metadata},providers,false),false);assert.equal(canReleaseDeletedCustomerAuth(customer,identity,[...providers,{provider:'google',entity_id:'google-subject',created_at:identity.created_at}],false),false)});
 test('signup credentials created after deletion cannot be cleared by a delete retry',()=>{assert.equal(canReleaseDeletedCustomerAuth(customer,{...identity,created_at:'2026-10-27T10:01:00Z'},providers,false),false);assert.equal(canReleaseDeletedCustomerAuth(customer,identity,[{...providers[0],created_at:'2026-10-27T10:01:00Z'}],false),false)});
 test('unrelated emails, missing providers and invalid timestamps fail closed',()=>{assert.equal(canReleaseDeletedCustomerAuth(customer,identity,[{...providers[0],entity_id:'other@example.com'}],false),false);assert.equal(canReleaseDeletedCustomerAuth(customer,identity,[],false),false);assert.equal(canReleaseDeletedCustomerAuth({...customer,deleted_at:'invalid'},identity,providers,false),false)});
-function routeSetup(deleted=false){const calls=[];const scope={resolve:()=>()=>({where:()=>({first:async()=>({id:'cus_old',deleted_at:deleted?'2026-10-27':null})})})};const route=load('my-medusa-store/src/api/admin/customers/[id]/route.ts',{'@medusajs/core-flows':{removeCustomerAccountWorkflow:()=>({run:async args=>{calls.push(['delete',args.input.customerId])}})},'../../../../lib/deleted-customer-auth':{releaseDeletedCustomerAuth:async(_db,id)=>{calls.push(['release',id])}},'@medusajs/medusa/api/admin/customers/[id]/route':{GET:()=>{},POST:()=>{}}});const res={code:200,body:null,status(code){this.code=code;return this},json(body){this.body=body;return this}};return{route,scope,res,calls}}
+function routeSetup(deleted=false, options={}) {
+  const calls=[], queries=[];
+  const db=table=>{
+    queries.push(table);
+    if(table==='customer') return {where(filter){
+      assert.equal(filter.id,'cus_old');
+      assert.deepEqual(Object.keys(filter),['id']);
+      return {first:async()=>options.missingCustomer ? undefined : {id:'cus_old',has_account:options.hasAccount??true,deleted_at:deleted?'2026-10-27':null}};
+    }};
+    assert.equal(table,'auth_identity'); // No vendor, user, product or store access.
+    return {whereRaw(sql,bindings){
+      assert.equal(sql,"app_metadata->>'customer_id' = ?");
+      assert.equal(bindings[0],'cus_old'); // Email is never used to choose a login identity.
+      return {whereNull(column){
+        assert.equal(column,'deleted_at');
+        return {first:async()=>{
+          if(options.identityLookupError) throw Error('Identity lookup failed');
+          return options.missingIdentity ? undefined : {id:'auth_customer'};
+        }};
+      }};
+    }};
+  };
+  const scope={resolve:key=>{assert.equal(key,'__pg_connection__');return db;}};
+  const route=load('my-medusa-store/src/api/admin/customers/[id]/route.ts',{
+    '@medusajs/core-flows':{
+      removeCustomerAccountWorkflow:()=>({run:async args=>{
+        if(options.workflowError) throw Error('Workflow failed');
+        calls.push(['delete',args.input.customerId]);
+      }}),
+      deleteCustomersWorkflow:()=>({run:async args=>{
+        if(options.workflowError) throw Error('Workflow failed');
+        assert.equal(args.input.ids.length,1);
+        calls.push(['delete-customer-only',args.input.ids[0]]);
+      }}),
+    },
+    '../../../../lib/deleted-customer-auth':{releaseDeletedCustomerAuth:async(_db,id)=>{calls.push(['release',id]);}},
+    '@medusajs/medusa/api/admin/customers/[id]/route':{GET:()=>{},POST:()=>{}},
+  });
+  const res={code:200,body:null,status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
+  return{route,scope,res,calls,queries};
+}
 test('admin delete runs native deletion before releasing credentials',async()=>{const s=routeSetup();await s.route.DELETE({params:{id:'cus_old'},auth_context:{actor_id:'admin',actor_type:'user'},scope:s.scope},s.res);assert.deepEqual(s.calls,[['delete','cus_old'],['release','cus_old']]);assert.equal(s.res.body.deleted,true);assert.equal(typeof s.route.GET,'function');assert.equal(typeof s.route.POST,'function')});
 test('delete retries finish cleanup without rerunning customer deletion',async()=>{const s=routeSetup(true);await s.route.DELETE({params:{id:'cus_old'},auth_context:{actor_id:'admin',actor_type:'user'},scope:s.scope},s.res);assert.deepEqual(s.calls,[['release','cus_old']])});
 test('anonymous delete is rejected before any data access',async()=>{const s=routeSetup();await s.route.DELETE({params:{id:'cus_old'},scope:{resolve:()=>{throw Error('Must not touch database')}}},s.res);assert.equal(s.res.code,401);assert.deepEqual(s.calls,[])});
@@ -17,3 +57,40 @@ test('anonymous delete is rejected before any data access',async()=>{const s=rou
 test('customer tokens cannot invoke admin cleanup',async()=>{const s=routeSetup();await s.route.DELETE({params:{id:'cus_old'},auth_context:{actor_id:'customer',actor_type:'customer'},scope:{resolve:()=>{throw Error('Must not touch database')}}},s.res);assert.equal(s.res.code,403);assert.deepEqual(s.calls,[])});
 
 test('native customer handlers use a package-exported runtime path',()=>{assert.ok(require.resolve('@medusajs/medusa/api/admin/customers/[id]/route',{paths:[require('node:path').resolve('my-medusa-store')]}).endsWith('route.js'))});
+
+test('migrated registered customer without its own login uses customer-only deletion',async()=>{
+  const s=routeSetup(false,{missingIdentity:true});
+  await s.route.DELETE({params:{id:'cus_old'},auth_context:{actor_id:'admin',actor_type:'user'},scope:s.scope},s.res);
+  assert.deepEqual(s.calls,[['delete-customer-only','cus_old'],['release','cus_old']]);
+  assert.equal(s.res.body.deleted,true);
+  assert.deepEqual(s.queries,['customer','auth_identity']);
+});
+
+test('same-email admin/vendor identities are protected even when also linked to the deleted customer',()=>{
+  for(const app_metadata of [
+    {customer_id:customer.id,user_id:'admin'},
+    {customer_id:customer.id,vendor_id:'vendor'},
+    {customer_id:customer.id,user_id:'admin',vendor_id:'vendor'},
+  ]) assert.equal(canReleaseDeletedCustomerAuth(customer,{...identity,app_metadata},providers,false),false);
+});
+
+test('guest deletion keeps the native workflow and does not look up login identities',async()=>{
+  const s=routeSetup(false,{hasAccount:false});
+  await s.route.DELETE({params:{id:'cus_old'},auth_context:{actor_id:'admin',actor_type:'user'},scope:s.scope},s.res);
+  assert.deepEqual(s.calls,[['delete','cus_old'],['release','cus_old']]);
+  assert.deepEqual(s.queries,['customer']);
+});
+
+test('missing customer returns 404 without deleting or clearing credentials',async()=>{
+  const s=routeSetup(false,{missingCustomer:true});
+  await s.route.DELETE({params:{id:'cus_old'},auth_context:{actor_id:'admin',actor_type:'user'},scope:s.scope},s.res);
+  assert.equal(s.res.code,404);assert.deepEqual(s.calls,[]);
+});
+
+test('lookup and workflow errors propagate without credential cleanup or fallback deletion',async()=>{
+  for(const options of [{identityLookupError:true},{workflowError:true},{missingIdentity:true,workflowError:true}]){
+    const s=routeSetup(false,options);
+    await assert.rejects(s.route.DELETE({params:{id:'cus_old'},auth_context:{actor_id:'admin',actor_type:'user'},scope:s.scope},s.res),/failed/);
+    assert.deepEqual(s.calls,[]);
+  }
+});

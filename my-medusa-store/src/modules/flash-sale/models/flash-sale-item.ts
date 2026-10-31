@@ -2,6 +2,7 @@ import { model } from "@medusajs/framework/utils"
 
 const FlashSaleItem = model.define("flash_sale_item", {
   id: model.id().primaryKey(),
+  title: model.text().nullable(),
   
   // Product ID
   product_id: model.text(),

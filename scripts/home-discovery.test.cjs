@@ -15,6 +15,30 @@ function load(file, imports) {
   return context.exports
 }
 const stock = load('src/lib/stock-availability.ts', {})
+const rowLayout = load('src/lib/home-discovery-rows.ts', {})
+test('discovery buffers incomplete rows at every responsive column count', () => {
+  for (const columns of [2, 3, 4, 6]) {
+    const partial = rowLayout.discoveryRows(columns * 2 + 1, columns, true)
+    assert.equal(partial.visibleCount, columns * 2)
+    assert.equal(partial.bufferedCount, 1)
+    assert.equal(partial.needsFill, true)
+    const filled = rowLayout.discoveryRows(columns * 3, columns, true)
+    assert.equal(filled.visibleCount, columns * 3)
+    assert.equal(filled.needsFill, false)
+  }
+})
+test('discovery retains every final product and recalculates rows on resize', () => {
+  assert.equal(rowLayout.discoveryRows(17, 6, false).visibleCount, 17)
+  assert.equal(rowLayout.discoveryRows(17, 4, true).visibleCount, 16)
+  assert.equal(rowLayout.discoveryRows(17, 6, true).visibleCount, 12)
+  assert.equal(rowLayout.discoveryRows(0, 3, true).needsFill, true)
+})
+test('discovery only follows a forward safe-integer cursor', () => {
+  for (const cursor of [null, 24, 12, -1, 24.5, Infinity]) {
+    assert.equal(rowLayout.nextDiscoveryOffset(cursor, 24), undefined)
+  }
+  assert.equal(rowLayout.nextDiscoveryOffset(48, 24), 48)
+})
 const group = load('src/lib/catalog-product-group.ts', { './stock-availability': stock })
 const convert = product => {
   const variant = [...product.variants].sort((a, b) => a.price - b.price)[0]

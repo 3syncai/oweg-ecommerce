@@ -3,6 +3,7 @@ import { Modules } from "@medusajs/framework/utils"
 import { Client } from "pg"
 import FlashSaleModuleService from "../../../modules/flash-sale/service"
 import { FLASH_SALE_MODULE } from "../../../modules/flash-sale"
+import { normalizeFlashSaleTitle } from "../../../lib/flash-sale-title"
 
 export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
   try {
@@ -59,6 +60,7 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
 
       return {
         id: item.id,
+        title: item.title ?? null,
         product_id: item.product_id,
         variant_id: item.variant_id,
         product_title: product.title,
@@ -110,7 +112,10 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     const productModuleService = req.scope.resolve(Modules.PRODUCT)
     const query = req.scope.resolve("query")
     
-    const { items } = req.body as any
+    const { items, title: requestedTitle } = req.body as any
+    let title: string | null
+    try { title = normalizeFlashSaleTitle(requestedTitle) }
+    catch (error) { return res.status(400).json({ message: (error as Error).message }) }
     
     // Validate input
     if (!Array.isArray(items) || items.length === 0) {
@@ -195,6 +200,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
       }
       
       validatedItems.push({
+        title,
         product_id: item.product_id,
         variant_id: variantId,
         flash_sale_price: item.flash_sale_price,

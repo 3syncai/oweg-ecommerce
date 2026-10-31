@@ -18,6 +18,9 @@ type ProductSummaryProps = {
   quantity: number
   maxQuantity: number
   selectedOptions: Record<string, string>
+  selectionRequired?: boolean
+  selectedVariantId?: string
+  onVariantChange?: (id: string) => void
   onOptionChange: (optionTitle: string, value: string) => void
   onQuantityChange: (delta: number) => void
   onAddToCart: () => void
@@ -90,6 +93,9 @@ const ProductSummary = ({
   quantity,
   maxQuantity,
   selectedOptions,
+  selectionRequired = false,
+  selectedVariantId,
+  onVariantChange,
   onOptionChange,
   onQuantityChange,
   onAddToCart,
@@ -347,10 +353,20 @@ const ProductSummary = ({
           )})}
         </div>
       )}
+      {!product.options.length && product.variants.length > 1 && (
+        <label className="block space-y-2 text-sm">
+          <span>Choose variant</span>
+          <select className="w-full rounded-lg border p-3" value={selectedVariantId || ''} onChange={event => onVariantChange?.(event.target.value)}>
+            <option value="" disabled>Select a variant</option>
+            {product.variants.map((variant, index) => <option key={variant.id} value={variant.id} disabled={!isVariantPurchasable(variant)}>{variant.title || `Variant ${index + 1}`}</option>)}
+          </select>
+        </label>
+      )}
+      {selectionRequired && <p role="status" className="mt-3 text-sm text-[#155344]">Choose your size, colour or other options before adding to cart.</p>}
       {sellerOffers}
       <div className={styles.stockRow}>
         <div className={`${styles.stock} ${hasStock ? styles.inStock : styles.outOfStock}`}>
-          {hasStock ? 'In stock' : 'Out of stock'}
+          {selectionRequired ? 'Select options to check availability' : hasStock ? 'In stock' : 'Out of stock'}
         </div>
         <button type="button" onClick={onSaveForLater} className={styles.wishlistButton}>
           <Heart className="w-4 h-4" fill={isWishlisted ? 'currentColor' : 'none'} aria-hidden="true" />
@@ -387,8 +403,8 @@ const ProductSummary = ({
             <button
               type="button"
               onClick={onAddToCart}
-              disabled={!hasStock || cartBusy || buyNowBusy}
-              aria-disabled={!hasStock || cartBusy || buyNowBusy}
+              disabled={selectionRequired || !hasStock || cartBusy || buyNowBusy}
+              aria-disabled={selectionRequired || !hasStock || cartBusy || buyNowBusy}
               aria-busy={cartBusy || undefined}
               className={`${styles.cartButton} ${cartBusy ? 'cursor-wait' : ''}`}
             >
@@ -402,8 +418,8 @@ const ProductSummary = ({
             <button
               type="button"
               onClick={onBuyNow}
-              disabled={!hasStock || cartBusy || buyNowBusy}
-              aria-disabled={!hasStock || cartBusy || buyNowBusy}
+              disabled={selectionRequired || !hasStock || cartBusy || buyNowBusy}
+              aria-disabled={selectionRequired || !hasStock || cartBusy || buyNowBusy}
               aria-busy={buyNowBusy || undefined}
               className={`${styles.buyButton} ${buyNowBusy ? 'cursor-wait' : ''}`}
             >

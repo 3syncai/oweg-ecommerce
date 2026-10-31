@@ -3,20 +3,20 @@ import { z } from "zod"
 const upiIdSchema = z
   .string()
   .trim()
-  .min(5)
-  .max(120)
+  .min(5, "Enter a valid UPI ID (example: name@upi).")
+  .max(120, "UPI ID must be 120 characters or fewer.")
   .regex(/^[\w.\-]{2,256}@[a-zA-Z]{2,64}$/, "Enter a valid UPI ID (example: name@upi).")
 
 const bankDetailsSchema = z.object({
-  account_name: z.string().trim().min(1).max(120),
-  account_number: z.string().trim().min(6).max(32).regex(/^[0-9]+$/, "Account number must be numeric."),
+  account_name: z.string().trim().min(1, "Enter the account holder name.").max(120, "Account holder name must be 120 characters or fewer."),
+  account_number: z.string().trim().min(6, "Bank account number must contain 6–32 digits.").max(32, "Bank account number must contain 6–32 digits.").regex(/^[0-9]+$/, "Account number must be numeric."),
   ifsc_code: z
     .string()
     .trim()
-    .min(11)
-    .max(11)
-    .regex(/^[A-Z]{4}0[A-Z0-9]{6}$/i, "Enter a valid IFSC code."),
-  bank_name: z.string().trim().max(120).optional(),
+    .min(11, "Enter a valid 11-character IFSC code (example: ABCD0123456).")
+    .max(11, "Enter a valid 11-character IFSC code (example: ABCD0123456).")
+    .regex(/^[A-Z]{4}0[A-Z0-9]{6}$/i, "Enter a valid 11-character IFSC code (example: ABCD0123456)."),
+  bank_name: z.string().trim().max(120, "Bank name must be 120 characters or fewer.").optional(),
 })
 
 export const StoreCreateReturnRequest = z

@@ -138,7 +138,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     const categoryRows = productIds.length
       ? await knex("product_category_product")
           .whereIn("product_id", productIds)
-          .select("product_id", "category_id")
+          .select("product_id", "product_category_id as category_id")
       : []
     const categoriesByProduct = new Map<string, string[]>()
     for (const row of categoryRows) {

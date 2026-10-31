@@ -9,7 +9,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve))
 function load(relative, mocks = {}, globals = {}) {
   const file = path.join(root, relative), mod = { exports: {} }, local = createRequire(file)
   const js = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText
-  vm.runInNewContext(js, { module: mod, exports: mod.exports, require: name => name in mocks ? mocks[name] : local(name), console, Date, URL, AbortController, queueMicrotask, ...globals }, { filename: file })
+  vm.runInNewContext(js, { module: mod, exports: mod.exports, require: name => name in mocks ? mocks[name] : local(name), console, Date, URL, URLSearchParams, AbortController, queueMicrotask, ...globals }, { filename: file })
   return mod.exports
 }
 
@@ -107,6 +107,8 @@ test('expired countdown makes no per-second API loop; hidden tabs stop flash-sal
     axios: { get: async () => { requests++; return { status: 200, data: sale } } },
     'next/image': {}, 'next/link': {}, 'lucide-react': {},
     '@/contexts/AuthProvider': {}, '@/hooks/useWishlistMutations': {}, '@/components/modules/ProductCardQuickActions': {},
+    './FlashSaleSection.module.css': {},
+    '@/lib/flash-sale-display': load('src/lib/flash-sale-display.ts'),
   }, h.globals)
   section.default({}); h.mount(); await flush()
   for (let second = 0; second < 60; second++) { h.tick(1000); await flush() }

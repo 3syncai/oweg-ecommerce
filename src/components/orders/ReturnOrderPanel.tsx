@@ -409,6 +409,8 @@ export function ReturnOrderPanel({
                     onChange={(event) => onUpiIdChange(event.target.value)}
                     className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
                     placeholder="yourname@upi"
+                    aria-label="Refund UPI ID"
+                    maxLength={120}
                     autoComplete="off"
                   />
                 ) : (
@@ -420,6 +422,8 @@ export function ReturnOrderPanel({
                       }
                       className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
                       placeholder="Account holder name"
+                      aria-label="Account holder name"
+                      maxLength={120}
                     />
                     <input
                       value={bankDetails.account_number}
@@ -428,6 +432,9 @@ export function ReturnOrderPanel({
                       }
                       className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
                       placeholder="Account number"
+                      aria-label="Bank account number"
+                      inputMode="numeric"
+                      maxLength={32}
                     />
                     <input
                       value={bankDetails.ifsc_code}
@@ -439,6 +446,9 @@ export function ReturnOrderPanel({
                       }
                       className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
                       placeholder="IFSC code"
+                      aria-label="IFSC code"
+                      aria-describedby="return-ifsc-help"
+                      maxLength={11}
                     />
                     <input
                       value={bankDetails.bank_name}
@@ -447,7 +457,12 @@ export function ReturnOrderPanel({
                       }
                       className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
                       placeholder="Bank name (optional)"
+                      aria-label="Bank name (optional)"
+                      maxLength={120}
                     />
+                    <p id="return-ifsc-help" className="text-xs text-gray-500 sm:col-span-2">
+                      IFSC has 11 characters: 4 letters, then 0, then 6 letters or digits (example: ABCD0123456).
+                    </p>
                   </div>
                 )}
                 <p className="text-[11px] text-gray-500">
@@ -476,7 +491,7 @@ export function ReturnOrderPanel({
 
         <div className="border-t border-gray-100 bg-white px-4 py-4 sm:px-6">
           {error && (
-            <p className="mb-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+            <p role="alert" className="mb-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
               {error}
             </p>
           )}
