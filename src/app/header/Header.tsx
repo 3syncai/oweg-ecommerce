@@ -343,8 +343,11 @@ const Header: React.FC = () => {
 
   const normalizeSuggestionImage = React.useCallback((value?: string) => {
     const v = (value || "").trim();
-    if (!v) return undefined;
+    if (!v || v === "null" || v === "undefined") return undefined;
+    if (v.startsWith("//")) return `https:${v}`;
     if (v.startsWith("http://") || v.startsWith("https://") || v.startsWith("/")) return v;
+    const s3Base = (process.env.NEXT_PUBLIC_S3_FILE_URL || "").replace(/\/$/, "");
+    if (s3Base && !v.includes("://")) return `${s3Base}/${v.replace(/^\//, "")}`;
     return undefined;
   }, []);
 
@@ -808,7 +811,7 @@ const Header: React.FC = () => {
     setShowSuggest(false);
   }, [q, router, buildSearchParams]);
 
-  // Debounced OpenSearch suggestions (same engine as /search results)
+  // Debounced Meilisearch suggestions (same engine as /search results)
   React.useEffect(() => {
     const trimmed = q.trim();
     if (trimmed.length < 2) {
@@ -904,6 +907,7 @@ const Header: React.FC = () => {
           suggestions.map((s) => {
             const slug = encodeURIComponent(String(s.handle || s.id));
             const href = `/productDetail/${slug}?id=${encodeURIComponent(String(s.id))}`;
+            const thumbSize = mobile ? 40 : 36;
             return (
               <Link
                 key={s.id}
@@ -911,31 +915,43 @@ const Header: React.FC = () => {
                 role="option"
                 className={
                   mobile
-                    ? "flex items-center gap-3 px-4 py-2 hover:bg-gray-50"
-                    : "flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                    ? "flex w-full items-center gap-3 px-4 py-2 hover:bg-gray-50"
+                    : "flex w-full items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer"
                 }
                 onClick={() => setShowSuggest(false)}
               >
-                {s.image ? (
-                  <Image
-                    src={s.image}
-                    alt={s.name}
-                    width={mobile ? 40 : 36}
-                    height={mobile ? 40 : 36}
-                    className={mobile ? "rounded-md object-cover" : "rounded object-cover"}
-                  />
-                ) : (
-                  <div className={mobile ? "w-10 h-10 rounded-md bg-gray-200" : "w-9 h-9 bg-gray-200 rounded"} />
-                )}
-                <div
+                <span
+                  className={`relative shrink-0 overflow-hidden bg-gray-100 ${
+                    mobile ? "h-10 w-10 rounded-md" : "h-9 w-9 rounded"
+                  }`}
+                  aria-hidden
+                >
+                  {s.image ? (
+                    // Native img avoids Next/Image alt-text spill when a remote thumb fails.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={s.image}
+                      alt=""
+                      width={thumbSize}
+                      height={thumbSize}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : null}
+                </span>
+                <span
                   className={
                     mobile
-                      ? "min-w-0 flex-1 text-sm text-header-text truncate"
-                      : "min-w-0 flex-1 text-sm text-gray-800 truncate"
+                      ? "min-w-0 flex-1 truncate text-sm text-header-text"
+                      : "min-w-0 flex-1 truncate text-sm text-gray-800"
                   }
+                  title={s.name}
                 >
                   {s.name}
-                </div>
+                </span>
               </Link>
             );
           })}

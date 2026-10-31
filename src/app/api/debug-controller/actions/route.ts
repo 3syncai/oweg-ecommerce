@@ -2,7 +2,7 @@ import { forceSettleDebugOrder } from "@/lib/debug-controller/settlement";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { Pool } from "pg";
-import client from "@/lib/opensearch";
+import { getMeiliClient, getProductsIndexName, waitForMeiliTask } from "@/lib/meilisearch";
 import { scheduleVendorEarningsOnDelivery } from "@/lib/vendor-earnings";
 import {
   extractDebugAuthToken,
@@ -71,41 +71,34 @@ async function purgeAbandonedCarts(days = 7) {
   }
 }
 
-async function removeOpenSearchProduct(productId: string) {
-  const index = process.env.OPENSEARCH_PRODUCTS_INDEX || "products";
+async function removeMeiliProduct(productId: string) {
+  const index = getProductsIndexName();
   try {
-    await client.delete({
-      index,
-      id: productId,
-    });
+    const client = getMeiliClient();
+    const task = await client.index(index).deleteDocument(productId);
+    await waitForMeiliTask(client, task.taskUid);
   } catch (error: unknown) {
-    const statusCode =
-      error &&
-      typeof error === "object" &&
-      "meta" in error &&
-      (error as { meta?: { statusCode?: number } }).meta?.statusCode;
-    if (statusCode !== 404) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (!msg.toLowerCase().includes("not found")) {
       throw error;
     }
   }
   return { index, productId };
 }
 
-async function syncOpenSearchIndex() {
-  const index = process.env.OPENSEARCH_PRODUCTS_INDEX || "products";
-  const exists = await client.indices.exists({ index });
-  const body = exists.body ?? exists;
-  if (!body) {
-    await client.indices.create({
-      index,
-      body: {
-        settings: { number_of_shards: 1, number_of_replicas: 0 },
-      },
-    });
+async function syncMeiliIndex() {
+  const index = getProductsIndexName();
+  const client = getMeiliClient();
+  try {
+    await client.getIndex(index);
+  } catch {
+    const task = await client.createIndex(index, { primaryKey: "id" });
+    await waitForMeiliTask(client, task.taskUid);
   }
   return {
     index,
-    message: "Index verified. Run my-medusa-store/scripts/sync-products-to-search.ts for full sync.",
+    message:
+      "Index verified. Run my-medusa-store/scripts/sync-products-to-search.ts for full sync.",
   };
 }
 
@@ -241,15 +234,17 @@ export async function POST(req: NextRequest) {
         revalidatePath("/brands", "layout");
         return NextResponse.json({ success: true, revalidated: ["/", "/products", "/brands"] });
       }
-      case "remove-opensearch-product": {
+      case "remove-opensearch-product":
+      case "remove-meili-product": {
         if (!body?.productId) {
           return NextResponse.json({ error: "productId required" }, { status: 400 });
         }
-        const result = await removeOpenSearchProduct(body.productId);
+        const result = await removeMeiliProduct(body.productId);
         return NextResponse.json({ success: true, ...result });
       }
-      case "sync-opensearch-index": {
-        const result = await syncOpenSearchIndex();
+      case "sync-opensearch-index":
+      case "sync-meili-index": {
+        const result = await syncMeiliIndex();
         return NextResponse.json({ success: true, ...result });
       }
       case "clear-flash-sale-cache": {
