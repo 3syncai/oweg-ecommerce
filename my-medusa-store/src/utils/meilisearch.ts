@@ -1,4 +1,8 @@
-import type { Config } from "meilisearch"
+/** Local config shape — avoid `import type` from ESM meilisearch under Medusa CJS build. */
+type MeiliConfig = {
+  host: string
+  apiKey?: string
+}
 
 type MeiliClient = {
   index: (uid: string) => any
@@ -23,11 +27,11 @@ const apiKey = process.env.MEILI_MASTER_KEY || process.env.MEILI_API_KEY || ""
 
 let client: MeiliClient | null = null
 
-function resolveMeilisearchConstructor(): new (config: Config) => MeiliClient {
+function resolveMeilisearchConstructor(): new (config: MeiliConfig) => MeiliClient {
   // Medusa exec (CJS/ts-node) can mangle named ESM imports; resolve at runtime.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mod = require("meilisearch") as Record<string, unknown> & {
-    default?: Record<string, unknown> | (new (config: Config) => MeiliClient)
+    default?: Record<string, unknown> | (new (config: MeiliConfig) => MeiliClient)
   }
 
   const candidates = [
@@ -41,7 +45,7 @@ function resolveMeilisearchConstructor(): new (config: Config) => MeiliClient {
   ]
 
   const Ctor = candidates.find((c) => typeof c === "function") as
-    | (new (config: Config) => MeiliClient)
+    | (new (config: MeiliConfig) => MeiliClient)
     | undefined
 
   if (!Ctor) {
