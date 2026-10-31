@@ -15,37 +15,69 @@ function metadataAmount(metadata: Record<string, unknown>, key: string): number 
   return money(metadata[`${key}_rupees`]) || money(Number(metadata[`${key}_minor`]) / 100)
 }
 
-/** Amounts are customer discounts in rupees, never coupon face values or wallet coins. */
+/** Coin redeem amount in minor units (paise). Prefer explicit rupee/minor keys. */
+function coinMetadataAmount(metadata: Record<string, unknown>): number {
+  return (
+    metadataAmount(metadata, "coin_discount") ||
+    money(metadata.coins_discounted) ||
+    money(metadata.coins_discountend)
+  )
+}
+
+/**
+ * Split an order-wide discount across line totals using largest-remainder.
+ * Returns per-line amounts in minor units, summing exactly to `discount`.
+ */
+function allocateProportionally(discount: number, amounts: number[], subtotal: number): number[] {
+  if (discount <= 0 || subtotal <= 0) return amounts.map(() => 0)
+  const capped = Math.min(subtotal, discount)
+  const shares = amounts.map((amount) => Math.floor((capped * amount) / subtotal))
+  let remaining = capped - shares.reduce((sum, amount) => sum + amount, 0)
+  const priority = amounts
+    .map((amount, index) => ({ index, remainder: (capped * amount) % subtotal }))
+    .sort((a, b) => b.remainder - a.remainder || a.index - b.index)
+  for (const { index } of priority) {
+    if (remaining-- <= 0) break
+    shares[index] += 1
+  }
+  return shares
+}
+
+/**
+ * Vendor cashback = customer coupon discount + redeemed wallet coins.
+ * - coupon only → coupon amount
+ * - coins only → coin amount
+ * - coupon + coins → sum of both
+ * Amounts are actual applied discounts in rupees (never coupon face values).
+ */
 export function allocateVendorCouponCashback(
   metadata: Record<string, unknown> | null,
   lines: CouponLine[]
 ): Map<string, number> {
   const result = new Map<string, number>()
-  const amounts = lines.map(line => money(line.line_total))
+  const amounts = lines.map((line) => money(line.line_total))
   const subtotal = amounts.reduce((sum, amount) => sum + amount, 0)
   const meta = metadata || {}
-  const discount = Math.min(subtotal,
-    metadataAmount(meta, "promo_discount") + metadataAmount(meta, "oweg10_discount"))
+  const couponMeta =
+    metadataAmount(meta, "promo_discount") + metadataAmount(meta, "oweg10_discount")
+  const coinMeta = coinMetadataAmount(meta)
 
-  // Checkout writes its order-wide promotion adjustment on the first item.
-  // Allocate metadata amounts across ALL items instead of assigning it to that vendor.
-  let shares: number[]
-  if (discount > 0 && subtotal > 0) {
-    shares = amounts.map(amount => Math.floor(discount * amount / subtotal))
-    let remaining = discount - shares.reduce((sum, amount) => sum + amount, 0)
-    const priority = amounts.map((amount, index) => ({ index, remainder: discount * amount % subtotal }))
-      .sort((a, b) => b.remainder - a.remainder || a.index - b.index)
-    for (const { index } of priority) {
-      if (remaining-- <= 0) break
-      shares[index] += 1
-    }
-  } else {
-    // Native Medusa coupons already have item-level allocations.
-    shares = lines.map((line, index) => Math.min(amounts[index], money(line.coupon_discount)))
-  }
+  // Order-wide admin promo: allocate coupon (+ coins if present) across all items.
+  // Native item coupons: keep per-line coupon shares, then layer coin redeem on top.
+  const couponShares =
+    couponMeta > 0 && subtotal > 0
+      ? allocateProportionally(couponMeta, amounts, subtotal)
+      : lines.map((line, index) => Math.min(amounts[index], money(line.coupon_discount)))
+
+  const coinShares =
+    coinMeta > 0 && subtotal > 0
+      ? allocateProportionally(coinMeta, amounts, subtotal)
+      : amounts.map(() => 0)
+
   lines.forEach((line, index) => {
     if (!line.vendor_id) return
-    result.set(line.vendor_id, (result.get(line.vendor_id) || 0) + shares[index])
+    const share = Math.min(amounts[index], couponShares[index] + coinShares[index])
+    result.set(line.vendor_id, (result.get(line.vendor_id) || 0) + share)
   })
   return new Map([...result].map(([vendor, cents]) => [vendor, cents / 100]))
 }

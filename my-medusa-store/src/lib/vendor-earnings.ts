@@ -1261,6 +1261,11 @@ async function insertCancelFeeDebitsForOrder(
     chargePaymentGateway?: boolean;
     chargeLogistics?: boolean;
     frozenRates?: VendorSettlementRatesSnapshot;
+    /**
+     * Always write a cancel-fee ledger row so Payments shows the cancelled order.
+     * When the packet was never booked (and admin did not force), fee/debit stay ₹0.
+     */
+    recordVisibilityEvenIfZero?: boolean;
   }
 ): Promise<number> {
   await ensureVendorEarningsTaxColumns(pool);
@@ -1313,9 +1318,13 @@ async function insertCancelFeeDebitsForOrder(
 
   let insertedCount = 0;
   const now = new Date().toISOString();
+  const recordVisibility = options?.recordVisibilityEvenIfZero !== false;
 
   for (const [vendorId, displayId] of known) {
-    if (!options?.forceCancellationCharge && !isVendorPacketBooked(orderMetadata, vendorId)) {
+    const packetBooked = isVendorPacketBooked(orderMetadata, vendorId);
+    const chargeFees = Boolean(options?.forceCancellationCharge) || packetBooked;
+
+    if (!chargeFees && !recordVisibility) {
       console.log(
         `[vendor-earnings] skip cancel charges for ${vendorId} order ${orderId}: packet not booked`
       );
@@ -1328,20 +1337,34 @@ async function insertCancelFeeDebitsForOrder(
       pool,
       metadata: orderMetadata,
     });
-    const fee = roundMoney(Number(snap.cancellation_charge) || 0);
-    const paymentGatewayBase = roundMoney(
-      (earningsByVendor.get(vendorId)?.lines || []).reduce(
-        (sum, line) => sum + (line.inclusive_amount / (1 + Math.max(0, line.gst_rate) / 100)),
-        0
-      )
-    );
+    const fee = chargeFees
+      ? roundMoney(Number(snap.cancellation_charge) || 0)
+      : 0;
+    const paymentGatewayBase = chargeFees
+      ? roundMoney(
+          (earningsByVendor.get(vendorId)?.lines || []).reduce(
+            (sum, line) => sum + (line.inclusive_amount / (1 + Math.max(0, line.gst_rate) / 100)),
+            0
+          )
+        )
+      : 0;
     const saleAlreadyHasLogistics = options?.knownVendors?.some(
       (row) => row.vendor_id === vendorId
     );
-    const logistic = options?.chargeLogistics === false || saleAlreadyHasLogistics
-      ? 0
-      : resolveVendorLogisticFee(orderMetadata, vendorId);
-    if (fee <= 0 && logistic <= 0 && paymentGatewayBase <= 0) continue;
+    const logistic =
+      !chargeFees || options?.chargeLogistics === false || saleAlreadyHasLogistics
+        ? 0
+        : resolveVendorLogisticFee(orderMetadata, vendorId);
+
+    if (!chargeFees) {
+      console.log(
+        `[vendor-earnings] cancel visibility ₹0 for ${vendorId} order ${orderId}: packet not booked`
+      );
+    }
+
+    if (fee <= 0 && logistic <= 0 && paymentGatewayBase <= 0 && !recordVisibility) {
+      continue;
+    }
 
     const ledger = calculateVendorLedgerSettlement({
       category: "cancellation",
@@ -1349,7 +1372,10 @@ async function insertCancelFeeDebitsForOrder(
       logistic_fee: logistic,
       cancellation_fee: fee,
       payment_gateway_base: paymentGatewayBase,
-      payment_method: options?.chargePaymentGateway === false ? "" : String(orderMetadata?.payment_method || ""),
+      payment_method:
+        !chargeFees || options?.chargePaymentGateway === false
+          ? ""
+          : String(orderMetadata?.payment_method || ""),
       rates: {
         platform_rate: snap.platform_fee_rate,
         commission_rate: snap.commission_rate,
@@ -1362,7 +1388,11 @@ async function insertCancelFeeDebitsForOrder(
       },
     });
     const debit = roundMoney(Number(ledger.balance_delta) || 0);
-    if (debit >= 0) continue;
+    // Charged cancels must produce a negative debit. Zero-fee visibility rows are allowed.
+    if (debit > 0) continue;
+    if (debit === 0 && fee <= 0 && logistic <= 0 && paymentGatewayBase <= 0 && !recordVisibility) {
+      continue;
+    }
 
     const syntheticOrderId = `cancel-fee:${orderId}`;
     const label = displayId ? `CANCEL-${displayId}` : `CANCEL-${orderId.slice(-6)}`;
@@ -1448,6 +1478,72 @@ async function insertCancelFeeDebitsForOrder(
   }
 
   return insertedCount;
+}
+
+/**
+ * Backfill cancel-fee ledger rows for cancelled orders that never got one
+ * (e.g. customer cancel before delivery — previously skipped entirely).
+ * Zero fee when packet was never booked; charges only when booking/admin rules apply.
+ */
+export async function ensureVendorCancelledOrderLedgerRows(
+  vendorId: string,
+  pool: Pool
+): Promise<number> {
+  if (!vendorId) return 0;
+
+  const missing = await pool.query<{
+    order_id: string;
+    order_display_id: string | null;
+    metadata: Record<string, unknown> | null;
+  }>(
+    `
+      SELECT DISTINCT
+        o.id AS order_id,
+        o.display_id::text AS order_display_id,
+        o.metadata
+      FROM "order" o
+      JOIN order_item oi ON oi.order_id = o.id
+      JOIN order_line_item oli ON oi.item_id = oli.id
+      LEFT JOIN product_variant pv ON oli.variant_id = pv.id
+      LEFT JOIN product p ON COALESCE(oli.product_id, pv.product_id) = p.id
+      WHERE o.status = 'canceled'
+        AND p.metadata->>'vendor_id' = $1
+        AND NOT EXISTS (
+          SELECT 1
+          FROM vendor_earnings_log vel
+          WHERE vel.vendor_id = $1
+            AND (
+              vel.order_id = o.id
+              OR vel.order_id = 'cancel-fee:' || o.id
+            )
+        )
+      ORDER BY o.id
+      LIMIT 200
+    `,
+    [vendorId]
+  );
+
+  let inserted = 0;
+  for (const row of missing.rows) {
+    const meta = row.metadata || {};
+    // Admin cancel (incl. vendor never accepted) still forces the configured charge.
+    // Customer cancel before booking stays ₹0 visibility only.
+    const adminCancel =
+      meta.cancellation_source === "admin" ||
+      meta.cancelled_by_admin === true ||
+      meta.admin_cancel_charge_status === "recorded" ||
+      meta.admin_cancel_charge_status === "pending";
+
+    inserted += await insertCancelFeeDebitsForOrder(row.order_id, pool, [vendorId], {
+      knownVendors: [
+        { vendor_id: vendorId, order_display_id: row.order_display_id },
+      ],
+      orderMetadata: row.metadata,
+      recordVisibilityEvenIfZero: true,
+      forceCancellationCharge: adminCancel,
+    });
+  }
+  return inserted;
 }
 
 /** One debit for the vendor whose item an admin moved to another seller. */
@@ -1774,10 +1870,16 @@ export async function reverseVendorEarningsForOrder(
       }
     }
 
+    // Admin cancel always applies the configured charge even if the vendor
+    // never accepted / packet was never booked. Customer cancel only charges
+    // after booking (unless applyCancellationCharge is explicitly set).
+    const forceAdminCharge =
+      options?.applyCancellationCharge === true || /admin[-_\s]?cancel/i.test(reason);
+
     cancelFees = await insertCancelFeeDebitsForOrder(orderId, pool, vendorIds, {
       knownVendors,
       orderMetadata,
-      forceCancellationCharge: options?.applyCancellationCharge === true,
+      forceCancellationCharge: forceAdminCharge,
     });
   }
 

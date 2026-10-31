@@ -57,7 +57,8 @@ export function readCancellationInfo(
           ? "customer"
           : null
 
-  const note = customerReason || vendorMessage
+  // `note` is customer-facing only. Vendor message stays in vendor_message.
+  const note = customerReason
   const isCancelled = status === "canceled" || status === "cancelled"
   return {
     is_cancelled: isCancelled,

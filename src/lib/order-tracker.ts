@@ -275,7 +275,9 @@ export function getTrackHeroContent(
         ? "OWEG has cancelled your order."
         : "This order was cancelled.",
       description: note
-        ? `Reason: ${note}`
+        ? adminCancelled
+          ? `Message from OWEG: ${note}`
+          : `Reason: ${note}`
         : "Contact support if you need help.",
     };
   }

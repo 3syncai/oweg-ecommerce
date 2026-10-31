@@ -13,6 +13,7 @@ import {
   setVendorOrderCorsHeaders,
   updateVendorOrderWorkflow,
 } from "../../../../../lib/vendor-order-workflow"
+import { orderCustomerShipping } from "../../../../../lib/order-customer-shipping"
 
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
   setVendorOrderCorsHeaders(res)
@@ -168,26 +169,17 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       result.order.email
     )
 
-    const summary = ((result.order as any).summary || {}) as Record<string, any>
     const meta = ((result.order as any).metadata || {}) as Record<string, any>
-    // Customer-facing shipping; free shipping → 0 on invoice (PPT requirement)
-    const shippingRaw = [
-      (result.order as any).shipping_total,
-      (result.order as any).shipping_amount,
-      summary.shipping_total,
-      summary.original_shipping_total,
-      summary.current_shipping_total,
-      meta.shipping_total,
-      meta.shipping_amount,
-    ]
-    let shippingTotal = 0
-    for (const raw of shippingRaw) {
-      const n = Number(raw)
-      if (Number.isFinite(n) && n >= 0) {
-        shippingTotal = Math.round(n * 100) / 100
-        break
-      }
-    }
+    // Customer-paid delivery fee (under-₹500 → ₹50 incl. GST). Same rule as ledger.
+    // Multi-vendor: only the first workflow vendor shows shipping on their invoice.
+    const workflowVendors = Object.keys(
+      (meta.vendor_order_workflows as Record<string, unknown> | undefined) || {}
+    ).sort()
+    const isShippingVendor =
+      workflowVendors.length <= 1 || workflowVendors[0] === auth.vendor_id
+    const shippingTotal = isShippingVendor
+      ? Math.round(orderCustomerShipping(meta, vendorTotal) * 100) / 100
+      : 0
 
     const vendor = await retrieveVendorOrThrow(req, auth.vendor_id)
     const vendorAddressParts = [
@@ -201,10 +193,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     const invoiceOrder = {
       ...result.order,
+      // Keep full order metadata so coin / coupon / OWEG10 discounts render on the PDF
+      metadata: meta,
       items: enrichedItems,
       subtotal: vendorTotal,
       shipping_total: shippingTotal,
       shipping_amount: shippingTotal,
+      customer_shipping_total: shippingTotal,
+      // Payable after discounts + shipping (generator recomputes from metadata + lines)
       total: Math.round((vendorTotal + shippingTotal) * 100) / 100,
       invoice_number: `INV-${result.order.display_id || result.order.id}-${auth.vendor_id.slice(-4)}`,
       customer_gstin: customerGst.gstin,
