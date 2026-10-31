@@ -4,6 +4,7 @@
 // Type definitions (imported types only, no server-side code)
 export type MedusaCategory = {
   id: string;
+  rank?: number;
   name?: string;
   title?: string;
   handle?: string;

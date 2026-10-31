@@ -3,12 +3,14 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, Megaphone } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Zap, ArrowRight } from 'lucide-react'
 import { Heart, ImageOff } from 'lucide-react'
 import axios from 'axios'
 import { useAuth } from '@/contexts/AuthProvider'
 import { useAddToWishlistWithNotification } from '@/hooks/useWishlistMutations'
 import { ProductCardQuickActions } from '@/components/modules/ProductCardQuickActions'
+import styles from './FlashSaleSection.module.css'
+import { flashSaleCountdown, flashSaleTimerUnits, flashSaleTitle } from '@/lib/flash-sale-display'
 
 type FlashSaleProduct = {
   id: string
@@ -26,6 +28,7 @@ type FlashSaleProduct = {
     mrp?: number
     price?: number
   }
+  display_pricing?: { variant_id: string; price: number; mrp: number; from: boolean }
   variant_id?: string
   flash_sale_price?: number // Flash sale price in rupees
   original_price?: number // Original price in rupees
@@ -38,6 +41,7 @@ type FlashSaleProduct = {
 type FlashSaleData = {
   active: boolean
   flash_sale: {
+    title?: string | null
     expires_at: string | null
     time_remaining_ms: number
     item_count: number
@@ -48,13 +52,15 @@ type FlashSaleData = {
 const inr = new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
 })
 
-const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: boolean }> = ({ showImageFallback = false, inStockOnly = false }) => {
+const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: boolean; view?: 'carousel' | 'all' }> = ({ showImageFallback = false, inStockOnly = false, view = 'carousel' }) => {
   const [flashSaleData, setFlashSaleData] = useState<FlashSaleData | null>(null)
   const [loading, setLoading] = useState(true)
   const [timeRemaining, setTimeRemaining] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const [failed, setFailed] = useState(false)
   const fetching = useRef(false)
   const refreshedExpiry = useRef<string | null>(null)
 
@@ -62,15 +68,20 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
     if (fetching.current || document.visibilityState === 'hidden') return
     fetching.current = true
     try {
-      const response = await axios.get(`/api/medusa/flash-sale/products${inStockOnly ? '?in_stock=1' : ''}`)
+      const query = new URLSearchParams()
+      if (inStockOnly) query.set('in_stock', '1')
+      if (view === 'all') query.set('all', '1')
+      const response = await axios.get(`/api/medusa/flash-sale/products${query.size ? `?${query}` : ''}`)
+      setFailed(response.status !== 200 || response.data?.unavailable === true)
       setFlashSaleData(response.status === 200 ? response.data : { active: false, flash_sale: null, products: [] })
     } catch {
+      setFailed(true)
       setFlashSaleData({ active: false, flash_sale: null, products: [] })
     } finally {
       fetching.current = false
       setLoading(false)
     }
-  }, [inStockOnly])
+  }, [inStockOnly, view])
 
   useEffect(() => {
     void fetchFlashSale()
@@ -112,14 +123,36 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
   }, [flashSaleData?.flash_sale?.expires_at, fetchFlashSale])
 
   const updateCountdown = (ms: number) => {
-    const totalSeconds = Math.floor(ms / 1000)
-    const days = Math.floor(totalSeconds / 86400)
-    const hours = Math.floor((totalSeconds % 86400) / 3600)
-    const minutes = Math.floor((totalSeconds % 3600) / 60)
-    const seconds = totalSeconds % 60
-    setTimeRemaining({ days, hours, minutes, seconds })
+    setTimeRemaining(flashSaleCountdown(ms))
   }
 
+  if (loading) {
+    return view === 'all' ? <div className="oweg-container" role="status"><p>Loading flash sale deals…</p><div className={styles.grid} aria-hidden="true">{Array.from({length: 8}, (_, i) => <div key={i} className={styles.skeleton} />)}</div></div> : null
+  }
+
+  if (!flashSaleData?.active || !flashSaleData?.flash_sale || !flashSaleData?.products || flashSaleData.products.length === 0) {
+    return view === 'all' ? <div className="oweg-container space-y-4 py-10">
+      <h1 className="oweg-title">Flash sale deals</h1>
+      <p role={failed ? 'alert' : 'status'}>{failed ? 'Deals couldn’t load. Please try again.' : 'There are no active in-stock deals right now. Check back soon.'}</p>
+      {failed && <button type="button" className={styles.browse} onClick={() => void fetchFlashSale()}>Try again</button>}
+      <Link href="/" className="underline">Back to shopping</Link>
+    </div> : null
+  }
+
+  return <FlashSaleShowcase data={flashSaleData} timeRemaining={timeRemaining} showImageFallback={showImageFallback} view={view} />
+}
+
+/** Presentation is separate from polling so real data and preview fixtures use the same layout. */
+export function FlashSaleShowcase({ data, timeRemaining, showImageFallback = false, view = 'carousel' }: {
+  data: FlashSaleData;
+  timeRemaining: { days: number; hours: number; minutes: number; seconds: number };
+  showImageFallback?: boolean;
+  view?: 'carousel' | 'all';
+}) {
+  const title = flashSaleTitle(data.flash_sale?.title)
+  const units = flashSaleTimerUnits(timeRemaining)
+  const Heading = view === 'all' ? 'h1' : 'h2'
+  const scrollRef = useRef<HTMLDivElement>(null)
   const scrollByPage = (direction: -1 | 1) => {
     const node = scrollRef.current
     if (!node) return
@@ -127,66 +160,29 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
     node.scrollBy({ left: direction * amount, behavior: 'smooth' })
   }
 
-  const scrollLeft = () => scrollByPage(-1)
-
-  const scrollRight = () => scrollByPage(1)
-
-  if (loading) {
-    return null
-  }
-
-  if (!flashSaleData?.active || !flashSaleData?.flash_sale || !flashSaleData?.products || flashSaleData.products.length === 0) {
-    return null
-  }
-
   return (
-    <section className="oweg-section-tight">
+    <section className={`oweg-section-tight ${view === 'all' ? styles.allDeals : ''}`} aria-label={title}>
       <div className="oweg-container">
-        <div className="oweg-section-head">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
-            <span className="inline-flex items-center gap-2">
-              <Megaphone className="h-5 w-5 shrink-0 text-pink-500 md:h-6 md:w-6" />
-              <h2 className="oweg-title">FLASH SALE</h2>
-            </span>
-            {/* Countdown Timer */}
-            <div className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 font-mono text-sm font-semibold tabular-nums text-[var(--oweg-ink-soft)] ring-1 ring-[var(--oweg-border)] md:text-base">
-              <span>{String(timeRemaining.days).padStart(1, '0')}</span>
-              <span className="text-[var(--oweg-ink-muted)]">:</span>
-              <span>{String(timeRemaining.hours).padStart(2, '0')}</span>
-              <span className="text-[var(--oweg-ink-muted)]">:</span>
-              <span>{String(timeRemaining.minutes).padStart(2, '0')}</span>
-              <span className="text-[var(--oweg-ink-muted)]">:</span>
-              <span>{String(timeRemaining.seconds).padStart(2, '0')}</span>
+        <div className={styles.showcase}>
+          <div className={styles.promotion}>
+            <div className={styles.headline}><Zap size={30} aria-hidden /><Heading>{title}</Heading></div>
+            <p>Grab the best deals before time runs out!</p>
+            <div className={styles.countdown} role="timer" aria-label={`${units.map(({value, label}) => `${value} ${label.toLowerCase()}`).join(', ')} remaining`}>
+              {units.map(({value, label}) => (
+                <div key={label}><strong>{String(value).padStart(2, '0')}</strong><span>{label}</span></div>
+              ))}
             </div>
+            {view === 'carousel' ? <Link className={styles.browse} href="/flash-sale" prefetch={false}>View all deals <ArrowRight size={17} aria-hidden /></Link> : <Link className={styles.browse} href="/">Back to shopping</Link>}
+            {view === 'carousel' && <div className={styles.arrows}>
+              <button type="button" onClick={() => scrollByPage(-1)} aria-label="Scroll flash sale left"><ChevronLeft size={18} /></button>
+              <button type="button" onClick={() => scrollByPage(1)} aria-label="Scroll flash sale right"><ChevronRight size={18} /></button>
+            </div>}
           </div>
-          <div className="hidden shrink-0 gap-2 sm:flex">
-            <button
-              type="button"
-              onClick={scrollLeft}
-              className="oweg-rail-btn"
-              aria-label="Scroll flash sale left"
-            >
-              <ChevronLeft className="h-4.5 w-4.5" />
-            </button>
-            <button
-              type="button"
-              onClick={scrollRight}
-              className="oweg-rail-btn"
-              aria-label="Scroll flash sale right"
-            >
-              <ChevronRight className="h-4.5 w-4.5" />
-            </button>
+          <div ref={scrollRef} className={view === 'all' ? styles.grid : styles.track} role="region" aria-label={view === 'all' ? 'All flash sale products' : 'Flash Sale product carousel'} tabIndex={view === 'all' ? undefined : 0}>
+            {data.products.map(product => (
+              <FlashSaleProductCard key={product.id} product={product} showImageFallback={showImageFallback} />
+            ))}
           </div>
-        </div>
-        <div
-          ref={scrollRef}
-          className="oweg-rail oweg-rail-bleed scrollbar-hidden"
-          role="region"
-          aria-label="Flash Sale product carousel"
-        >
-          {flashSaleData.products.map((product) => (
-            <FlashSaleProductCard key={product.id} product={product} showImageFallback={showImageFallback} />
-          ))}
         </div>
       </div>
     </section>
@@ -196,12 +192,11 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
 // Flash Sale Product Card Component (matching ProductCard design)
 function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSaleProduct; showImageFallback?: boolean }) {
   const [failedImage, setFailedImage] = useState<string | null>(null)
-  const [isHovered, setIsHovered] = useState(false)
   const { customer } = useAuth()
   const { addToWishlist, isLoading: isAddingToWishlist } = useAddToWishlistWithNotification(product.id)
 
   // Get variant_id from product
-  const variantId = product.variant_id || product.variants?.[0]?.id || null
+  const variantId = product.display_pricing?.variant_id || product.variant_id || product.variants?.[0]?.id || null
 
   // Defensive coercion: Postgres NUMERIC columns serialize as strings
   // ("900.00"), so `flash_sale_price` / `original_price` may arrive as
@@ -217,40 +212,6 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
     return 0
   }
 
-  const calculatePrice = () => {
-    if (product.flash_sale_price !== undefined && product.flash_sale_price !== null) {
-      return toNumber(product.flash_sale_price)
-    }
-    if (product.metadata?.price) {
-      return toNumber(product.metadata.price)
-    }
-    const variant = product.variants?.[0]
-    const price = variant?.prices?.[0]?.amount
-    if (price) {
-      return toNumber(price) / 100 // Convert from cents
-    }
-    return 0
-  }
-
-  const calculateMRP = () => {
-    if (product.original_price !== undefined && product.original_price !== null) {
-      return toNumber(product.original_price)
-    }
-    if (product.metadata?.mrp) {
-      return toNumber(product.metadata.mrp)
-    }
-    return calculatePrice()
-  }
-
-  const calculateDiscount = () => {
-    const mrp = calculateMRP()
-    const price = calculatePrice()
-    if (mrp > price && mrp > 0) {
-      return Math.round(((mrp - price) / mrp) * 100)
-    }
-    return 0
-  }
-
   const getProductImage = () => {
     if (product.thumbnail) return product.thumbnail
     if (product.images && product.images.length > 0) {
@@ -259,9 +220,9 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
     return '/placeholder-product.png'
   }
 
-  const price = calculatePrice()
-  const mrp = calculateMRP()
-  const discount = calculateDiscount()
+  const price = toNumber(product.display_pricing?.price ?? product.flash_sale_price ?? product.metadata?.price)
+  const mrp = toNumber(product.display_pricing?.mrp ?? product.original_price ?? product.metadata?.mrp)
+  const discount = mrp > price && price > 0 ? Math.round(((mrp - price) / mrp) * 100) : 0
   const imageUrl = getProductImage()
   const productHref = `/productDetail/${encodeURIComponent(product.id)}`
 
@@ -278,68 +239,28 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
   }
 
   return (
-    <div className="oweg-rail-item">
-      <Link
-        href={productHref}
-        className="group relative flex h-full w-full flex-col overflow-visible rounded-[var(--oweg-radius-lg)] border border-[var(--oweg-border)] bg-white shadow-[var(--oweg-shadow-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--oweg-green)] hover:shadow-[var(--oweg-shadow-md)]"
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-      >
-        <div className="relative aspect-square overflow-visible rounded-t-[var(--oweg-radius-lg)] bg-[var(--oweg-surface-subtle)]">
-          <div className="absolute inset-0 overflow-hidden rounded-t-[var(--oweg-radius-lg)]">
-            {showImageFallback && failedImage === imageUrl ? (
-              <div className="flex h-full flex-col items-center justify-center gap-2 text-[var(--oweg-ink-muted)]" role="img" aria-label={`${product.title}: image unavailable`}>
-                <ImageOff className="h-8 w-8 opacity-40" strokeWidth={1.25} />
-                <span className="text-[11px]">Image unavailable</span>
-              </div>
-            ) : <Image
-              src={imageUrl}
-              alt={product.title}
-              fill
-              className="object-contain p-3 transition-transform duration-300 ease-out group-hover:scale-[1.04]"
-              sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 20vw"
-              onError={showImageFallback ? () => setFailedImage(imageUrl) : undefined}
-            />}
-          </div>
-          <ProductCardQuickActions
-            variantId={variantId ?? undefined}
-            productName={product.title}
-            isHovered={isHovered}
-          >
-            <button
-              type="button"
-              onClick={handleWishlist}
-              title="Add to Wishlist"
-              disabled={isAddingToWishlist}
-              className={`w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-lg border hover:text-red-500 transition ${
-                isWishlisted ? "text-red-500 border-red-200" : "text-gray-700"
-              } ${isAddingToWishlist ? "opacity-60 cursor-not-allowed" : ""}`}
-            >
-              <Heart className="w-4 h-4" fill={isWishlisted ? "currentColor" : "none"} />
-            </button>
-          </ProductCardQuickActions>
+    <article className={styles.card}>
+      <div className={styles.media}>
+        <Link href={productHref} prefetch={false} className={styles.imageLink} aria-label={product.title}>
+          {showImageFallback && failedImage === imageUrl ? (
+            <div className={styles.fallback} role="img" aria-label={`${product.title}: image unavailable`}><ImageOff size={26} /><span>Image unavailable</span></div>
+          ) : <Image src={imageUrl} alt={product.title} fill className={styles.image} sizes="(max-width: 639px) 160px, 190px" onError={showImageFallback ? () => setFailedImage(imageUrl) : undefined} />}
+        </Link>
+        <span className={styles.deal}>Deal</span>
+        <button type="button" onClick={handleWishlist} disabled={isAddingToWishlist} className={styles.wishlist} aria-label={`Add ${product.title} to wishlist`} aria-pressed={isWishlisted}>
+          <Heart size={18} fill={isWishlisted ? 'currentColor' : 'none'} aria-hidden />
+        </button>
+      </div>
+      <div className={styles.body}>
+        <Link href={productHref} prefetch={false} className={styles.title}>{product.title}</Link>
+        <div className={styles.pricing}>
+          <span className={styles.price}>{product.display_pricing?.from && <span className={styles.from}>From </span>}{inr.format(price)}</span>
+          {mrp > price && <del>{inr.format(mrp)}</del>}
+          {discount > 0 && <span className={styles.discount}>{discount}% OFF</span>}
         </div>
-        <div className="flex flex-1 flex-col p-2.5 sm:p-3">
-          <div className="mb-2 flex flex-wrap items-start gap-1.5">
-            <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white">
-              {discount}% off
-            </span>
-            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">
-              Limited
-            </span>
-          </div>
-          <p className="mb-2 line-clamp-2 flex-1 text-[13px] leading-snug text-[var(--oweg-ink-soft)] sm:text-sm">
-            {product.title}
-          </p>
-          <div className="mt-auto flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="text-base font-bold text-[var(--oweg-ink)] sm:text-lg">
-              {inr.format(price)}
-            </span>
-            <span className="text-xs text-[var(--oweg-ink-muted)] line-through">{inr.format(mrp)}</span>
-          </div>
-        </div>
-      </Link>
-    </div>
+        <ProductCardQuickActions variantId={variantId ?? undefined} selectionHref={product.variants?.length === 1 ? undefined : productHref} productName={product.title} isHovered={false} layout="inline" />
+      </div>
+    </article>
   )
 }
 

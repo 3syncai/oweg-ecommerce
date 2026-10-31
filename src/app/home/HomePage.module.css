@@ -96,23 +96,19 @@
 .pauseButton { position: absolute; top: 8px; right: 8px; z-index: 20; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; background: #ffffffd9; color: #214f3d; }
 .pauseButton:hover { background: #fff; }
 
-.categoryGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .8rem; }
-.categoryTile {
-  display: flex;
-  justify-content: center;
-  min-width: 0;
-  padding: 1rem .5rem;
-  border: 1px solid #e3e8dc;
-  border-radius: 18px;
-  background: #fff;
-  transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
+.categoryGrid { display: grid; grid-auto-flow: column; grid-auto-columns: clamp(76px, 8vw, 104px); gap: .75rem; justify-content: space-between; align-items: center; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; padding: 4px 2px 8px; scrollbar-width: thin; scrollbar-color: #b8cba6 transparent; }
+.categoryGrid:focus-visible { outline: 2px solid #5b8b35; outline-offset: 3px; }
+.categoryTile { display: block; min-width: 0; scroll-snap-align: start; transition: transform 180ms ease; }
+.categoryTile:hover { transform: translateY(-3px); }
+.categoryArtwork { display: block; width: 100%; height: auto; aspect-ratio: 3 / 4; object-fit: contain; }
+.categories { scroll-margin-top: 220px; padding-block: 1rem; }
+.home .categories { margin-block: 1rem; padding-block: 0; }
+.home .categories + :global(.oweg-section-tight) { margin-top: 1.5rem; }
+.categories :global(.oweg-section-head) { margin-bottom: .65rem; }
+.pageBannerPair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+@media (max-width: 639px) {
+  .pageBannerPair { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
 }
-.categoryTile:nth-child(3n+2) { background: #f3f5ec; }
-.categoryTile:nth-child(3n+3) { background: #f7f3ec; }
-.categoryTile:hover { border-color: #b5c8a8; background: #edf3e6; transform: translateY(-3px); }
-.categoryTile :global(.oweg-icon-tile) { background: transparent; border: 0; box-shadow: none; }
-.categoryLabel { max-width: 140px; min-height: 2.6em; display: flex !important; align-items: center; justify-content: center; color: #344a40 !important; }
-.categories { scroll-margin-top: 340px; }
 
 .deliveryCard { background: #f0f4ea; border-color: #dfe8d5; box-shadow: none; }
 .home :global(.oweg-media) { border-radius: 20px; border: 1px solid #e4e8df; }
@@ -123,12 +119,13 @@
 .home :global(.oweg-surface-card) { border-radius: 18px; box-shadow: none; }
 
 @media (min-width: 1280px) {
-  .categoryGrid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .categoryGrid { gap: 1rem; }
 }
 
 @media (max-width: 1023px) {
   .intro { align-items: flex-start; flex-direction: column; gap: 1rem; }
 }
+
 
 @media (max-width: 767px) {
   .heroStage { aspect-ratio: 800 / 400; }
@@ -150,11 +147,10 @@
   .eyebrow { font-size: .6rem; letter-spacing: .12em; }
   .introActions { flex-wrap: wrap; gap: .5rem; }
   .primaryLink, .secondaryLink { font-size: .75rem; padding-inline: .9rem; gap: .35rem; }
-  .categoryGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; }
-  .categoryTile { padding: .75rem .25rem; border-radius: 14px; }
-  .categoryTile :global(.oweg-icon-tile) { width: 48px; height: 48px; }
-  .categoryTile :global(.oweg-icon-tile) svg { width: 30px; height: 30px; }
-  .categoryLabel { font-size: .67rem; line-height: 1.4; min-height: 2.8em; }
+  .categoryGrid { grid-auto-columns: 72px; gap: .6rem; }
+  .home .categories :global(.oweg-title) { font-size: 1.2rem; }
+  .categories :global(.oweg-subtle) { font-size: .73rem; }
+  .categories { padding-block: .75rem; }
   .home :global(.oweg-subtle) { font-size: .8rem; }
   .home :global(.oweg-media) { border-radius: 14px; }
   .categories { scroll-margin-top: 160px; }
@@ -168,7 +164,16 @@
 .viewAll:focus-visible { outline: 2px solid #6ba93f; outline-offset: 3px; border-radius: 5px; }
 .discoveryGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .discoveryGrid > * { min-width: 0; }
-.discoverySkeleton { min-height: 270px; background: #eef2e8; border: 1px solid #e2e8db; border-radius: 18px; }
+.discoverySkeleton { overflow: hidden; min-height: 270px; background: #fff; border: 1px solid #e2e8db; border-radius: 10px; }
+.skeletonImage { aspect-ratio: 1.15; background: #edf1ea; }
+.skeletonBody { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+.skeletonBody span { display: block; height: 12px; width: 90%; border-radius: 4px; background: #edf1ea; }
+.skeletonBody span:nth-child(2) { width: 65%; }
+.skeletonBody span:nth-child(3) { width: 45%; height: 18px; margin-top: 4px; }
+.skeletonBody span:last-child { width: 100%; height: 40px; margin-top: 4px; }
+.discoverySkeleton { animation: discoveryPulse 1.5s ease-in-out infinite; }
+@keyframes discoveryPulse { 50% { opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .discoverySkeleton { animation: none; } }
 .discoveryActions { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 26px 0 6px; text-align: center; }
 .discoveryActions button:disabled { opacity: .65; cursor: wait; }
 /* Appending a batch must not pin the viewport to the footer and fetch every page. */
@@ -176,3 +181,9 @@
 @media (min-width: 640px) { .discoveryGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; } }
 @media (min-width: 1024px) { .discoveryGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (min-width: 1400px) { .discoveryGrid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
+/* Compact editorial pair: preserve gift artwork and contain the wide fan banner. */
+.giftingRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: center; }
+@media (max-width: 639px) {
+  .giftingRow { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
+}

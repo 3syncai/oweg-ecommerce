@@ -29,9 +29,11 @@ import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 import { warmRazorpayCheckout } from "@/lib/razorpay-warmup";
 import styles from "@/components/shopping/Shopping.module.css";
 import PurchaseJourney from "@/components/shopping/PurchaseJourney";
+import { cartVariantLabel } from "@/lib/cart-variant-label";
 interface CartItemUI {
   id: string;
   name: string;
+  variantLabel?: string;
   price: number; // major unit (e.g., 350 -> 350)
   quantity: number;
   maxQuantity: number;
@@ -410,6 +412,7 @@ const mapCartPayloadToItems = (payload?: CartApiPayload): CartItemUI[] => {
     return {
       id: String(it.id ?? Math.random().toString(36).slice(2, 9)),
       name: String(name),
+      variantLabel: cartVariantLabel(it),
       image: image ? String(image) : undefined,
       quantity: qty,
       maxQuantity,
@@ -953,6 +956,7 @@ const Cart: React.FC = () => {
                       <div className="text-sm md:text-[15px] font-semibold text-[#2c342f] line-clamp-2">
                         {item.name}
                       </div>
+                      {item.variantLabel && <p className="mt-1 text-xs text-[#5f7168]">{item.variantLabel}</p>}
                       <div className="md:hidden mt-1 text-sm font-medium text-slate-600">
                         {formatCurrency(item.price, item.currency || activeCurrency)}
                       </div>

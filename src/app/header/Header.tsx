@@ -2,6 +2,7 @@
 
 import React from "react";
 import navStyles from "./HeaderNavigation.module.css";
+import { compareCategoryRank } from "@/lib/category-rank";
 import { createPortal } from "react-dom";
 import {
   Search,
@@ -118,18 +119,18 @@ const buildNavCategories = (categories: MedusaCategory[]) => {
     title: node.title,
     handle: node.handle,
     children: node.children
-      .sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999))
+      .sort(compareCategoryRank)
       .map(stripParent),
   });
 
   const roots = Array.from(nodes.values())
     .filter((node) => !node.parentId)
-    .sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999));
+    .sort(compareCategoryRank);
 
   // Show all root categories in the primary nav (with or without subcategories).
   // Categories that do have children will render a dropdown; leaf categories link directly.
   const withChildren = roots
-    .sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999))
+    .sort(compareCategoryRank)
     .map((node) => stripParent(node));
 
   const withoutChildren: NavCategory[] = [];
@@ -318,7 +319,7 @@ const Header: React.FC = () => {
   const desktopGridItems = React.useMemo(() => {
     const items: NavCategory[] = [...desktopVisibleCategories];
     if (desktopMoreCategories.length > 0) {
-      items.unshift({ id: "__more__", title: "All departments", handle: "" } as NavCategory);
+      items.unshift({ id: "__more__", title: "All Category", handle: "" } as NavCategory);
     }
     return items;
   }, [desktopVisibleCategories, desktopMoreCategories.length]);
@@ -1219,12 +1220,12 @@ const Header: React.FC = () => {
             }
           }}
           role="navigation"
-          aria-label="All departments"
+          aria-label="All Category"
         >
           <div className={navStyles.panelHeading}>
             <span className={navStyles.panelHeadingIcon}><Menu className="h-4 w-4" /></span>
             <div>
-              <p>Shop by department</p>
+              <p>Shop by category</p>
               <span>Find something for every day</span>
             </div>
           </div>
@@ -1444,7 +1445,7 @@ const Header: React.FC = () => {
 
               {/* Search Bar - Center (flex: 1) */}
               <div className={navStyles.search}>
-                <div className="flex gap-0 relative items-stretch">
+                <div className={`${navStyles.searchFrame} flex gap-0 relative items-stretch`}>
                   {/* Category Dropdown ("All") - Pixel Perfect */}
                   <div className="relative" data-browse-root>
                     <button
@@ -1541,7 +1542,8 @@ const Header: React.FC = () => {
                     <Input
                       type="text"
                       placeholder={selectedFilter ? `Search in ${selectedFilter.title}...` : "Search for products, categories and more..."}
-                      className="h-10 rounded-none border-y border-gray-300 border-x-0 px-4 text-sm focus:ring-2 focus:ring-header-accent focus:border-y-header-accent focus:z-10"
+                      aria-label="Search products"
+                      className={`${navStyles.searchInput} h-10 rounded-none border-y border-gray-300 border-x-0 px-4 text-sm`}
                       value={q}
                       onChange={(e) => {
                         setQ(e.target.value);
@@ -1711,14 +1713,15 @@ const Header: React.FC = () => {
                           }
                         }}
                         placeholder="Search products, categories..."
-                        className="h-12 rounded-full border-gray-200 bg-white shadow-sm pr-14"
+                        aria-label="Search products"
+                        className={`${navStyles.searchInput} ${navStyles.mobileSearchInput} h-12 rounded-full border-gray-200 bg-white shadow-sm pr-14`}
                       />
                       <div className="absolute inset-y-1 right-4 flex items-center">
                         <button
                           type="button"
                           aria-label="Search"
                           onClick={() => navigateToSearch()}
-                          className="w-10 h-10 rounded-full bg-header-accent text-white flex items-center justify-center cursor-pointer"
+                          className={`${navStyles.searchSubmit} w-10 h-10 rounded-full bg-header-accent text-white flex items-center justify-center cursor-pointer`}
                         >
                           <Search className="w-5 h-5" />
                         </button>
@@ -1808,7 +1811,7 @@ const Header: React.FC = () => {
                                 type="button"
                               >
                                 <span className={navStyles.categoryIcon}><Menu className="h-4 w-4" /></span>
-                                <span className={navStyles.categoryText}>All departments</span>
+                                <span className={navStyles.categoryText}>All Category</span>
                                 <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${allOpen ? "rotate-180" : ""}`} />
                               </button>
                             </div>
@@ -1876,7 +1879,7 @@ const Header: React.FC = () => {
               >
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <p className="text-lg font-semibold text-header-text">All categories</p>
+                    <p className="text-lg font-semibold text-header-text">All Category</p>
                   </div>
                   <button
                     type="button"

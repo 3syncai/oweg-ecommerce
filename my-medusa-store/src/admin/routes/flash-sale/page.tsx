@@ -258,6 +258,7 @@ const FlashSalePage = () => {
       })
       
       const payload = {
+        title: formData.title.trim(),
         items,
       }
 
@@ -536,6 +537,7 @@ const FlashSalePage = () => {
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 placeholder="Flash Sale Title"
+                maxLength={120}
               />
             </div>
 

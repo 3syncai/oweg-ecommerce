@@ -3,6 +3,7 @@
 import { getPriceListPrices } from "./price-lists";
 import { mergeCatalogProductDetails } from "./catalog-product-group";
 import { isVariantPurchasable } from "./stock-availability";
+import { isStorefrontCategoryGroup, storefrontCategoryGroup } from "./home-subcategories";
 export { isVariantPurchasable } from "./stock-availability";
 
 export type MedusaCategory = {
@@ -461,6 +462,8 @@ export async function findCategoryByTitleOrHandle(
 
   const all = await fetchCategories({ revalidate: 120 });
 
+  if (isStorefrontCategoryGroup(targetSlug)) return storefrontCategoryGroup(targetSlug, all);
+
   // 1) Exact title/name — prevents "Cameras" matching Medusa q → "E-Cameras"
   let found = all.find(
     (c) =>
@@ -623,6 +626,9 @@ export function collectDescendantCategoryIds(
 export async function fetchCategoryById(
   categoryId: string,
 ): Promise<MedusaCategory | undefined> {
+  if (isStorefrontCategoryGroup(categoryId)) {
+    return storefrontCategoryGroup(categoryId, await fetchCategories({ revalidate: 120 }));
+  }
   const params = new URLSearchParams({
     id: categoryId,
     include_descendants_tree: "true",
@@ -699,6 +705,12 @@ export async function fetchProductsByCategoryId(
   options?: { includeSubcategories?: boolean; offset?: number },
 ): Promise<MedusaProductListResult> {
   const offset = options?.offset ?? 0;
+  if (isStorefrontCategoryGroup(categoryId)) {
+    const group = storefrontCategoryGroup(categoryId, await fetchCategories({ revalidate: 120 }));
+    return fetchProductsByCategoryIds(
+      (group?.category_children || []).flatMap(collectDescendantCategoryIds), limit, offset,
+    );
+  }
   if (options?.includeSubcategories) {
     const category = (await fetchCategoryById(categoryId)) || undefined;
     const categoryIds = category
@@ -1411,6 +1423,7 @@ export function toUiProduct(p: MedusaProduct) {
     limitedDeal: discount >= 20,
     opencartId: metadata["opencart_id"] as string | number | undefined,
     variant_id: purchasableVariant?.id,
+    variant_count: p.variants?.length,
     handle: p?.handle,
     category_ids:
       p?.categories?.map((c) => c.id).filter((id): id is string => !!id) || [],
