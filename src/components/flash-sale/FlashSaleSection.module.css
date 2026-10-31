@@ -27,6 +27,7 @@
 .title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.6em; color: #344e42; font-size: 12px; line-height: 1.3; font-weight: 500; }
 .pricing { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; margin-top: auto; }
 .price { font-size: 17px; font-weight: 800; color: #182f24; }
+.from { font-size: 10px; font-weight: 500; }
 .pricing del { color: #8b938e; font-size: 10px; }
 .discount { margin-left: auto; border-radius: 3px; padding: 2px 4px; color: #554611; background: #ffdb64; font-size: 9px; font-weight: 700; }
 .fallback { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; color: #758479; }

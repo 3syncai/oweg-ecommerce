@@ -16,6 +16,23 @@ function load(file, mocks = {}) {
   return module.exports
 }
 const display = load('src/lib/flash-sale-display.ts')
+
+test('deal display selects the cheapest stocked size and keeps that size MRP paired', () => {
+  const {lowestFlashSalePricing} = load('src/lib/home-flash-sale.ts', {'./medusa':{}})
+  const variants = [{id:'large',price:1500,mrp:2200,inventory_quantity:2},
+    {id:'small',price:1090,mrp:1800,inventory_quantity:4},
+    {id:'empty',price:10,mrp:3000,inventory_quantity:0}]
+  const quote = lowestFlashSalePricing(variants,'large',1400)
+  assert.equal(quote.variant_id,'small')
+  assert.equal(quote.price,1090)
+  assert.equal(quote.mrp,1800)
+  assert.equal(quote.from,true)
+  const sale = lowestFlashSalePricing(variants,'large','900.00')
+  assert.equal(sale.price,900)
+  assert.equal(sale.mrp,2200)
+  assert.equal(variants[0].price,1500)
+  assert.equal(lowestFlashSalePricing([variants[2]],'empty',5),undefined)
+})
 test('countdown splits 24+ hours into days and never shows invalid or negative numbers', () => {
   for (const [ms, expected] of [[(49*3600+125)*1000, [2,1,2,5]], [86400000,[1,0,0,0]], [86399000,[0,23,59,59]], [0,[0,0,0,0]],[-1,[0,0,0,0]],[NaN,[0,0,0,0]]]) {
     assert.deepEqual(Object.values(display.flashSaleCountdown(ms)), expected)
