@@ -189,7 +189,7 @@ export default function MyRewardPage() {
                           <div className="space-y-0.5">
                             <div className="font-medium text-gray-900">{tx.description}</div>
                             {tx.order_id && (
-                              <Link href={`/order/details/${tx.order_id}`} className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1">
+                              <Link href={`/account/orders/${encodeURIComponent(tx.order_id)}`} className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1">
                                 <FileText className="w-3 h-3" />
                                 View Order
                               </Link>

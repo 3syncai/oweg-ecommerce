@@ -16,6 +16,7 @@ import {
 } from "@/lib/order-tracker";
 import type { OrderDetail, ReturnRequest } from "@/lib/order-types";
 import { sanitizeTextInput } from "@/lib/order-utils";
+import { returnPayoutError } from "@/lib/return-payout-validation";
 
 export function useOrderDetail(orderId?: string) {
   const { customer, refresh } = useAuth();
@@ -345,18 +346,9 @@ export function useOrderDetail(orderId?: string) {
     }
 
     if (returnType === "return") {
-      if (payoutMethod === "upi") {
-        const safeUpi = upiId.trim();
-        if (!/^[\w.-]{2,256}@[a-zA-Z]{2,64}$/.test(safeUpi)) {
-          setReturnError("Please enter a valid UPI ID (example: name@upi).");
-          return;
-        }
-      } else if (
-        !bankDetails.account_name ||
-        !bankDetails.account_number ||
-        !bankDetails.ifsc_code
-      ) {
-        setReturnError("Bank details are required for the refund.");
+      const payoutError = returnPayoutError(payoutMethod, upiId, bankDetails);
+      if (payoutError) {
+        setReturnError(payoutError);
         return;
       }
     }
@@ -369,10 +361,10 @@ export function useOrderDetail(orderId?: string) {
             ? { method: "upi" as const, upi_id: upiId.trim() }
             : {
                 method: "bank" as const,
-                account_name: bankDetails.account_name,
-                account_number: bankDetails.account_number,
-                ifsc_code: bankDetails.ifsc_code,
-                bank_name: bankDetails.bank_name || undefined,
+                account_name: bankDetails.account_name.trim(),
+                account_number: bankDetails.account_number.trim(),
+                ifsc_code: bankDetails.ifsc_code.trim().toUpperCase(),
+                bank_name: bankDetails.bank_name.trim() || undefined,
               }
           : undefined;
 
@@ -414,7 +406,7 @@ export function useOrderDetail(orderId?: string) {
         setReturnError(data?.error || "Unable to submit return request.");
         return;
       }
-      setReturnSuccess("Return request submitted. We will update you after approval.");
+      setReturnSuccess(`${returnType === "replacement" ? "Replacement" : "Return"} request submitted. We will update you after approval.`);
       resetReturnForm();
       await loadReturnRequests();
     } catch (error) {

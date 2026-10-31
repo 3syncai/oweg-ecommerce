@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   AddFabPlusIcon,
   QtyCheckAddedIcon,
@@ -16,6 +17,7 @@ import {
 
 export type ProductCardQuickActionsProps = {
   variantId?: string;
+  selectionHref?: string;
   productName: string;
   disabled?: boolean;
   isHovered: boolean;
@@ -32,6 +34,7 @@ function stopCardNavigation(event: React.MouseEvent<HTMLButtonElement>) {
 
 export function ProductCardQuickActions({
   variantId,
+  selectionHref,
   productName,
   disabled = false,
   isHovered,
@@ -40,7 +43,7 @@ export function ProductCardQuickActions({
   children,
   layout = "overlay",
 }: ProductCardQuickActionsProps) {
-  const { line } = useCartLineByVariant(variantId);
+  const { line } = useCartLineByVariant(selectionHref ? undefined : variantId);
   const { addToCart, isLoading: isAdding } = useAddToCartWithNotification(productName);
   const { updateQuantity, isUpdating } = useUpdateCartLineQuantity();
   const [showAddedFlash, setShowAddedFlash] = useState(false);
@@ -66,7 +69,7 @@ export function ProductCardQuickActions({
 
   const handleAdd = async (event: React.MouseEvent<HTMLButtonElement>) => {
     stopCardNavigation(event);
-    if (!variantId || disabled || isBusy) return;
+    if (!variantId || selectionHref || disabled || isBusy) return;
     await addToCart(variantId);
     setShowAddedFlash(true);
   };
@@ -90,7 +93,14 @@ export function ProductCardQuickActions({
       } ${className}`}
       style={{ pointerEvents }}
     >
-      {inCart ? (
+      {selectionHref && !disabled ? (
+        <Link href={selectionHref} prefetch={false}
+          onClick={(event) => event.stopPropagation()}
+          aria-label={`Choose options for ${productName}`}
+          className="flex h-10 w-full items-center justify-center rounded-md bg-[#155344] px-2 text-sm font-semibold text-white hover:bg-[#103f34]">
+          Choose options
+        </Link>
+      ) : inCart ? (
         <div
           className={`flex items-center justify-between border border-[#1F2A33]/20 bg-white overflow-hidden ${layout === "inline" ? "h-10 w-full rounded-md" : "h-9 min-w-[96px] rounded-full shadow-lg"} ${
             isBusy ? "opacity-70 cursor-wait pointer-events-none" : ""

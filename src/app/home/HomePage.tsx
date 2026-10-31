@@ -7,15 +7,12 @@ import { ArrowUpRight, ChevronLeft, ChevronRight, MapPin, Pause, Play, UserRound
 import styles from './HomePage.module.css';
 import { useQuery } from '@tanstack/react-query';
 import { ProductCard } from '@/components/modules/ProductCard';
-import type { MedusaCategory } from '@/lib/medusa';
 import { useAuth } from '@/contexts/AuthProvider';
-import { useStoreCategories } from '@/hooks/useStoreCategories';
 import { normalizeBrandKey, resolveBrandLogo, getCollectionLogoUrl, getCollectionLogoScale } from '@/lib/brand-logos';
 import { BrandLogoImage, brandLogoFallbackHandler } from '@/components/modules/BrandLogoImage';
 import FlashSaleSection from '@/components/flash-sale/FlashSaleSection';
-import CategoryIconTile from '@/components/ui/icons/CategoryIconTile';
 import HomeDiscovery from './HomeDiscovery';
-import { selectHomeCategories } from '@/lib/home-category-tiles';
+import { HOME_SUBCATEGORIES } from '@/lib/home-subcategories';
 
 // UI product type (used by carousel/cards)
 type UIProduct = {
@@ -28,6 +25,7 @@ type UIProduct = {
   discount: number;
   limitedDeal?: boolean;
   variant_id?: string;
+  variant_count?: number;
   handle?: string;
   sourceTag?: string;
   inventory_quantity?: number;
@@ -130,6 +128,7 @@ function ProductCarousel({
                       discount={product.discount}
                       limitedDeal={product.limitedDeal}
                       variant_id={product.variant_id}
+                      variant_count={product.variant_count}
                       handle={product.handle}
                       sourceTag={sourceTag}
                       inventory_quantity={product.inventory_quantity}
@@ -151,10 +150,6 @@ const HERO_SLIDES = [
   { src: '/main-banners/creative-v2/technology-desktop.webp', mobileSrc: '/main-banners/creative-v2/technology-mobile.webp', href: '/c/computer-%26-mobile-accessories', label: 'Plug into possibilities — shop computer and mobile accessories' },
   { src: '/main-banners/creative-v2/health-desktop.webp', mobileSrc: '/main-banners/creative-v2/health-mobile.webp', href: '/c/health-care', label: 'A moment, just for you — shop Sassiest Health Care' },
   { src: '/main-banners/creative-v2/kitchen-desktop.webp', mobileSrc: '/main-banners/creative-v2/kitchen-mobile.webp', href: '/c/kitchen-appliances', label: 'Good food. Great company. — shop kitchen appliances' },
-];
-
-const BAG_SECTION_BANNERS = [
-  { image: '/Mixer_banner.png', href: '/c/kitchen-appliances/kitchen-appliances-mixer-grinders-juicer', alt: 'Shop mixer grinders' },
 ];
 
 /**
@@ -407,28 +402,28 @@ function PromoBanners() {
   );
 }
 
-/** Category discovery strip driven by the existing category SVG set. */
-function CategoryStrip({ categories }: { categories: MobileCategory[] }) {
-  if (!categories.length) return null;
-
+/** Supplied artwork includes its own label and frame. */
+function CategoryStrip() {
   return (
     <section id="home-categories" className={`oweg-section-tight ${styles.categories}`}>
       <div className="oweg-container">
         <div className="oweg-section-head">
           <div className="min-w-0">
-            <p className={styles.eyebrow}>Find your next favourite</p>
             <h2 className="oweg-title">Shop by subcategory</h2>
-            <p className="oweg-subtle mt-1">For your home, your routine, and everything in between.</p>
           </div>
         </div>
-        <div className={styles.categoryGrid}>
-          {categories.map((cat) => (
+        <div className={styles.categoryGrid} role="region" aria-label="Shop subcategories" tabIndex={0}>
+          {HOME_SUBCATEGORIES.map((cat) => (
             <Link
-              key={cat.id}
-              href={cat.handle ? `/c/${encodeURIComponent(cat.handle)}` : '/c'}
+              key={cat.href}
+              href={cat.href}
+              prefetch={false}
               className={`group ${styles.categoryTile}`}
             >
-              <CategoryIconTile handle={cat.handle} title={cat.title} size="lg" labelClassName={styles.categoryLabel} />
+              <Image src={`/subcategory-banners/${cat.image}`} alt={cat.title}
+                width={1145} height={1536} sizes="(max-width: 639px) 72px, 104px"
+                className={styles.categoryArtwork}
+                style={cat.artworkScale ? { transform: `scale(${cat.artworkScale})` } : undefined} />
             </Link>
           ))}
         </div>
@@ -436,15 +431,6 @@ function CategoryStrip({ categories }: { categories: MobileCategory[] }) {
     </section>
   );
 }
-
-type MobileCategory = {
-  id: string;
-  title: string;
-  handle?: string;
-  image?: string;
-  children?: MobileCategory[];
-  rank?: number;
-};
 
 type FeedSectionPayload = {
   key: string;
@@ -607,12 +593,6 @@ export default function HomePage({
     ...(spotlightSection?.products || []),
   ].map(product => product.catalog_product_id || String(product.id)))), [sectionsToRender, spotlightSection]);
 
-  const categoriesQuery = useStoreCategories();
-  const categoriesData: MedusaCategory[] = useMemo(
-    () => (Array.isArray(categoriesQuery.data) ? categoriesQuery.data : []),
-    [categoriesQuery.data]
-  );
-
   const brandCollectionsQuery = useQuery({
     queryKey: ['home-featured-brands'],
     queryFn: async () => {
@@ -629,33 +609,6 @@ export default function HomePage({
     staleTime: 1000 * 60,
   });
   const brandCollections = brandCollectionsQuery.data ?? [];
-
-  const mobileCategories: MobileCategory[] = useMemo(() => {
-    const seen = new Set<string>();
-    const result: MobileCategory[] = [];
-    selectHomeCategories(categoriesData).forEach((node) => {
-      if (!node) return;
-      const id = (node.id || node.handle || node.title || node.name || Math.random().toString()).toString();
-      if (seen.has(id)) return;
-      seen.add(id);
-      result.push({
-        id,
-        title: (node.title || node.name || 'Category').toString(),
-        handle: node.handle || undefined,
-        rank: typeof (node as MedusaCategory).rank === 'number' ? (node as MedusaCategory).rank : undefined,
-        image:
-          (node as MedusaCategory & { metadata?: { thumbnail?: string; image?: string } }).metadata?.thumbnail ||
-          (node as MedusaCategory & { metadata?: { thumbnail?: string; image?: string } }).metadata?.image ||
-          undefined,
-      });
-    });
-    return result.sort((a, b) => {
-      const rankA = a.rank ?? 9999;
-      const rankB = b.rank ?? 9999;
-      if (rankA !== rankB) return rankA - rankB;
-      return a.title.localeCompare(b.title);
-    });
-  }, [categoriesData]);
 
   const loading =
     sectionsToRender.some((section) => section.loading) ||
@@ -719,7 +672,28 @@ export default function HomePage({
         <h1 className="sr-only">Good finds. Everyday living.</h1>
         <HeroBanner />
 
-        <CategoryStrip categories={mobileCategories} />
+        <CategoryStrip />
+
+        <FlashSaleSection showImageFallback inStockOnly />
+
+        <section className="oweg-section-tight">
+          <div className={`oweg-container ${styles.pageBannerPair}`}>
+            <BannerTile
+              src="/page-banners/appliances-wide-v2.webp"
+              href="/c/kitchen-appliances"
+              alt="Up to 80% off selected appliances — shop kitchen appliances"
+              ratio="3.28"
+              sizes="(min-width: 640px) 50vw, 100vw"
+            />
+            <BannerTile
+              src="/page-banners/coupon-wide-v2.webp"
+              href="/coupon-policy"
+              alt="Use OWEG10 on your first purchase — view coupon terms"
+              ratio="3.28"
+              sizes="(min-width: 640px) 50vw, 100vw"
+            />
+          </div>
+        </section>
 
         {(!pincode || !customer) && (
           <section className="oweg-section-tight">
@@ -777,18 +751,6 @@ export default function HomePage({
           </section>
         )}
 
-        <FlashSaleSection showImageFallback inStockOnly />
-
-        <section className="oweg-section-tight">
-          <div className="oweg-container">
-            <BannerTile
-              src="/App_Banner-4.png"
-              href="/c/kitchen-appliances"
-              alt="Shop kitchen appliances"
-              sizes="(min-width: 1400px) 1400px, 100vw"
-            />
-          </div>
-        </section>
 
         {sectionsToRender.map((section, idx) => (
           <React.Fragment key={`${section.key || section.title}-${idx}`}>
@@ -800,40 +762,22 @@ export default function HomePage({
               loading={section.loading}
             />
             {idx === 1 && <PromoBanners />}
-            {idx === 2 && (
-              <section className={`oweg-section-tight ${styles.desktopBanners}`}>
-                <div className="oweg-container grid gap-3 sm:gap-4 md:grid-cols-2">
-                  <BannerTile
-                    src="/App_Banner-5.png"
-                    href="/c/home-appliances"
-                    alt="Shop home appliances"
-                    ratio="2.41"
-                    sizes="(min-width: 768px) 50vw, 100vw"
-                  />
-                  <BannerTile
-                    src="/App_Banner-7.png"
-                    href="/c/computer-%26-mobile-accessories"
-                    alt="Shop computer and mobile accessories"
-                    ratio="2.41"
-                    sizes="(min-width: 768px) 50vw, 100vw"
-                  />
-                </div>
-              </section>
-            )}
             {idx === 3 && (
               <section className="oweg-section-tight">
-                <div className="oweg-container space-y-3 sm:space-y-4">
+                <div className={`oweg-container ${styles.giftingRow}`}>
                   <BannerTile
-                    src="/App_Banner-6.png"
+                    src="/page-banners/fans-wide-v2.webp"
                     href="/c/ceiling-fans"
                     alt="Shop ceiling fans"
-                    sizes="(min-width: 1400px) 1400px, 100vw"
+                    ratio="3.28"
+                    sizes="(min-width: 640px) 50vw, 100vw"
                   />
                   <BannerTile
-                    src="/App_Banner-8.png"
-                    href="/c/water-heaters-%26-geysers"
-                    alt="Shop water heaters and geysers"
-                    sizes="(min-width: 1400px) 1400px, 100vw"
+                    src="/page-banners/gifting-wide-v2.webp"
+                    href="/c/kitchen-appliances"
+                    alt="Gifting items — explore kitchen appliances and gift ideas"
+                    ratio="3.28"
+                    sizes="(min-width: 640px) 50vw, 100vw"
                   />
                 </div>
               </section>
@@ -843,19 +787,7 @@ export default function HomePage({
 
         {sectionsToRender.length <= 1 && <PromoBanners />}
 
-        <section className="oweg-section-tight">
-          <div className="oweg-container">
-            {BAG_SECTION_BANNERS.map((banner) => (
-              <BannerTile
-                key={banner.href}
-                src={banner.image}
-                href={banner.href}
-                alt={banner.alt}
-                sizes="(min-width: 1400px) 1400px, 100vw"
-              />
-            ))}
-          </div>
-        </section>
+
 
         {spotlightSection ? (
           <ProductCarousel

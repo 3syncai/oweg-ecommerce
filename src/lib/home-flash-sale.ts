@@ -7,10 +7,16 @@ type FlashData = {
   flash_sale?: Record<string, unknown> | null
 }
 
-export async function inStockHomeFlashSale(data: FlashData) {
-  const source = Array.isArray(data.products) ? data.products.slice(0, 60) : []
+export async function inStockHomeFlashSale(data: FlashData, options: { all?: boolean } = {}) {
+  const source = Array.isArray(data.products) ? (options.all ? data.products : data.products.slice(0, 60)) : []
   if (!data.active || !source.length) return { ...data, active: false, products: [] }
-  const current = await fetchProductsByIds(source.map(product => product.id))
+  const ids = [...new Set(source.map(product => product.id))]
+  const current = []
+  // The public catalogue lookup is capped at 60 IDs. Keep each request bounded,
+  // but do not silently drop later deals on the full sale page.
+  for (let offset = 0; offset < ids.length; offset += 60) {
+    current.push(...await fetchProductsByIds(ids.slice(offset, offset + 60)))
+  }
   const stockedVariants = new Set(current.flatMap(product => (product.variants || [])
     .filter(variant => typeof variant.inventory_quantity === "number" && variant.inventory_quantity > 0)
     .map(variant => variant.id)))

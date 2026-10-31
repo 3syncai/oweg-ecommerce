@@ -1,6 +1,7 @@
 import { MedusaService, MedusaError } from "@medusajs/framework/utils"
 import { Modules } from "@medusajs/framework/utils"
 import FlashSaleItem from "./models/flash-sale-item"
+import { normalizeFlashSaleTitle } from "../../lib/flash-sale-title"
 
 class FlashSaleModuleService extends MedusaService({
   FlashSaleItem,
@@ -9,6 +10,7 @@ class FlashSaleModuleService extends MedusaService({
    * Create a flash sale item with price override
    */
   async createFlashSaleItem(input: {
+    title?: string | null
     product_id: string
     variant_id: string
     flash_sale_price: number // in rupees
@@ -27,6 +29,7 @@ class FlashSaleModuleService extends MedusaService({
     
     // Store the flash sale item (price override happens on fetch/display)
     return await this.createFlashSaleItems({
+      title: normalizeFlashSaleTitle(input.title),
       product_id: input.product_id,
       variant_id: input.variant_id,
       flash_sale_price: input.flash_sale_price,
@@ -40,6 +43,7 @@ class FlashSaleModuleService extends MedusaService({
    * Create multiple flash sale items (batch)
    */
   async createFlashSaleItemsBatch(input: Array<{
+    title?: string | null
     product_id: string
     variant_id: string
     flash_sale_price: number
@@ -61,6 +65,7 @@ class FlashSaleModuleService extends MedusaService({
     
     // Format items
     const items = input.map(item => ({
+      title: normalizeFlashSaleTitle(item.title),
       product_id: item.product_id,
       variant_id: item.variant_id,
       flash_sale_price: item.flash_sale_price,
@@ -70,6 +75,16 @@ class FlashSaleModuleService extends MedusaService({
     }))
     
     return await super.createFlashSaleItems(items)
+  }
+
+  /** Full storefront listing, without the ORM's default first-page limit. */
+  async getAllFlashSaleItems() {
+    const items: Awaited<ReturnType<typeof this.listFlashSaleItems>> = []
+    for (let skip = 0; ; skip += 100) {
+      const page = await this.listFlashSaleItems({}, { take: 100, skip, order: { id: 'ASC' } })
+      items.push(...page)
+      if (page.length < 100) return items
+    }
   }
 
   /**

@@ -21,6 +21,7 @@ export type ProductCardProps = {
   discount: number;
   limitedDeal?: boolean;
   variant_id?: string;
+  variant_count?: number;
   handle?: string;
   sourceTag?: string;
   sourceCategoryId?: string;
@@ -48,6 +49,7 @@ export function ProductCard({
   discount,
   limitedDeal,
   variant_id,
+  variant_count,
   handle,
   sourceTag,
   sourceCategoryId,
@@ -125,7 +127,7 @@ export function ProductCard({
           </div>
           {discount > 0 && mrp > price && <span className={styles.discount}>{discount}% OFF</span>}
         </div>
-        <ProductCardQuickActions variantId={variant_id} productName={name} disabled={isOutOfStock} isHovered={false} inventoryQuantity={inventory_quantity} layout="inline" />
+        <ProductCardQuickActions variantId={variant_id} selectionHref={variant_count === 1 ? undefined : productHref} productName={name} disabled={isOutOfStock} isHovered={false} inventoryQuantity={inventory_quantity} layout="inline" />
       </div>
     </article>
   );

@@ -16,6 +16,8 @@ type PasswordFieldProps = {
   placeholder: string;
   onChange: (value: string) => void;
   onToggle: () => void;
+  readOnly?: boolean;
+  onFocus?: () => void;
 };
 
 function PasswordField({
@@ -26,6 +28,8 @@ function PasswordField({
   placeholder,
   onChange,
   onToggle,
+  readOnly,
+  onFocus,
 }: PasswordFieldProps) {
   return (
     <div>
@@ -38,9 +42,13 @@ function PasswordField({
           type={visible ? "text" : "password"}
           placeholder={placeholder}
           value={value}
+          readOnly={readOnly}
+          onFocus={onFocus}
           onChange={(event) => onChange(event.target.value)}
           className="h-10 rounded-lg border-slate-200 bg-slate-50/50 pr-10 text-sm shadow-none placeholder:text-slate-400 focus-visible:border-green-600 focus-visible:ring-green-600/20"
-          autoComplete="off"
+          autoComplete={id === "current-password" ? "off" : "new-password"}
+          data-1p-ignore={id === "current-password" ? true : undefined}
+          data-lpignore={id === "current-password" ? "true" : undefined}
         />
         <button
           type="button"
@@ -66,6 +74,8 @@ export default function AccountSecurityCard() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [editingPassword, setEditingPassword] = useState(false);
+  const [currentPasswordFocused, setCurrentPasswordFocused] = useState(false);
 
   const trimmedCurrent = currentPassword.trim();
   const trimmedNew = newPassword.trim();
@@ -110,6 +120,8 @@ export default function AccountSecurityCard() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      setEditingPassword(false);
+      setCurrentPasswordFocused(false);
       toast.success("Password updated. Please sign in again.");
       await logout();
     } catch (error) {
@@ -140,12 +152,38 @@ export default function AccountSecurityCard() {
 
       <div className="space-y-4 p-5">
         <p className="text-xs leading-relaxed text-slate-500">Change your password to keep your account secure.</p>
+        {!editingPassword ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={() => {
+              setCurrentPassword("");
+              setNewPassword("");
+              setConfirmPassword("");
+              setPasswordError(null);
+              setCurrentPasswordFocused(false);
+              setShowCurrentPassword(false);
+              setShowNewPassword(false);
+              setShowConfirmPassword(false);
+              setEditingPassword(true);
+            }}
+          >
+            Change password
+          </Button>
+        ) : (
+        <form autoComplete="off" className="space-y-4" onSubmit={(event) => {
+          event.preventDefault();
+          if (!savingPassword && canSubmit) void handlePasswordSave();
+        }}>
         <PasswordField
           id="current-password"
           label="Current Password"
           value={currentPassword}
           visible={showCurrentPassword}
           placeholder="Enter current password"
+          readOnly={!currentPasswordFocused}
+          onFocus={() => setCurrentPasswordFocused(true)}
           onChange={(value) => {
             setCurrentPassword(value);
             setPasswordError(null);
@@ -186,19 +224,28 @@ export default function AccountSecurityCard() {
         ) : null}
 
         <Button
-          type="button"
+          type="submit"
           size="sm"
           className={`h-10 w-full rounded-lg text-xs font-semibold ${
             !canSubmit
               ? "cursor-not-allowed bg-slate-100 text-slate-500 hover:bg-slate-100"
               : "bg-[#326b29] text-white hover:bg-[#285722]"
           }`}
-          onClick={handlePasswordSave}
           disabled={savingPassword || !canSubmit}
         >
           {savingPassword ? "Saving..." : "Update password"}
         </Button>
+        <Button type="button" variant="ghost" className="w-full" disabled={savingPassword} onClick={() => {
+          setCurrentPassword("");
+          setNewPassword("");
+          setConfirmPassword("");
+          setPasswordError(null);
+          setCurrentPasswordFocused(false);
+          setEditingPassword(false);
+        }}>Cancel</Button>
         <p className="text-[11px] leading-relaxed text-slate-400">Your new password must be at least 8 characters.</p>
+        </form>
+        )}
       </div>
     </section>
   );

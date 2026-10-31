@@ -4,13 +4,14 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
 
-function loadActions({ line, stock = 3, disabled = false, layout = 'inline' } = {}) {
+function loadActions({ line, stock = 3, disabled = false, layout = 'inline', selectionHref } = {}) {
   const calls = [];
   const jsx = (type, props) => ({ type, props: props || {} });
   const mocks = {
     react: { useEffect: () => {}, useState: value => [value, () => {}] },
     'react/jsx-runtime': { jsx, jsxs: jsx },
-    '@/hooks/useCart': { useCartLineByVariant: () => ({ line }) },
+    'next/link': { default: 'a' },
+    '@/hooks/useCart': { useCartLineByVariant: id => ({ line: id ? line : undefined }) },
     '@/hooks/useCartMutations': {
       useAddToCartWithNotification: () => ({ addToCart: async id => calls.push(['add', id]), isLoading: false }),
       useUpdateCartLineQuantity: () => ({ updateQuantity: async (...args) => calls.push(['quantity', ...args]), isUpdating: false }),
@@ -24,7 +25,7 @@ function loadActions({ line, stock = 3, disabled = false, layout = 'inline' } = 
     if (!(name in mocks)) throw new Error(name);
     return mocks[name];
   } });
-  const tree = module.exports.ProductCardQuickActions({ variantId: 'variant-1', productName: 'Air fryer', inventoryQuantity: stock, disabled, layout, isHovered: false });
+  const tree = module.exports.ProductCardQuickActions({ variantId: 'variant-1', selectionHref, productName: 'Air fryer', inventoryQuantity: stock, disabled, layout, isHovered: false });
   const buttons = [];
   function walk(node) {
     if (!node || typeof node !== 'object') return;
@@ -62,4 +63,13 @@ test('flash-sale overlay mode keeps its existing hover visibility', () => {
   const { tree } = loadActions({ layout: 'overlay' });
   assert.equal(tree.props.style.pointerEvents, 'none');
   assert.match(tree.props.className, /absolute top-2 right-2/);
+});
+
+test('multi-variant card links to selection even when its default variant is already in cart', () => {
+  const { tree, buttons, calls } = loadActions({ selectionHref: '/productDetail/air-fryer?id=prod_1', line: { lineId: 'old-line', quantity: 1 } });
+  assert.equal(buttons.length, 0);
+  const link = tree.props.children[0];
+  assert.equal(link.props.href, '/productDetail/air-fryer?id=prod_1');
+  assert.equal(link.props.children, 'Choose options');
+  assert.equal(calls.length, 0);
 });

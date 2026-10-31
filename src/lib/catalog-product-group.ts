@@ -12,6 +12,7 @@ type Card = {
   handle?: string
   inventory_quantity?: number
   variant_id?: string
+  variant_count?: number
 }
 
 /** One customer-facing card per catalog identity, priced from its cheapest in-stock offer. */
@@ -35,6 +36,9 @@ export function groupCatalogProductCards<T extends Card>(cards: T[]): T[] {
       mrp: lowest.mrp,
       discount: lowest.discount,
       variant_id: lowest.variant_id,
+      // Different seller listings may contribute additional sizes/colours.
+      // For groups, require selection rather than trusting one listing's count.
+      variant_count: group.length === 1 ? canonical.variant_count : undefined,
       inventory_quantity: lowest.inventory_quantity,
       image: canonical.image === "/oweg_logo.png" ? lowest.image : canonical.image,
     } as T

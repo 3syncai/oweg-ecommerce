@@ -12,6 +12,7 @@ import { buildLoginUrl } from '@/lib/auth-redirect'
 import { toast } from 'sonner'
 import type { DetailedProduct as DetailedProductType, MedusaCategory } from '@/lib/medusa'
 import { isVariantPurchasable, resolveColorImageUrls } from '@/lib/medusa'
+import { initialProductOptions, selectedProductVariant, changeProductOption } from '@/lib/product-variant-selection'
 import Breadcrumbs from './components/Breadcrumbs'
 import CompareTable from './components/CompareTable'
 import DeliveryInfo from './components/DeliveryInfo'
@@ -109,6 +110,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const [cartActionPending, setCartActionPending] = useState(false)
   const [buyNowPending, setBuyNowPending] = useState(false)
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({})
+  const [explicitVariantId, setExplicitVariantId] = useState<string | null>(null)
   const [selectedSellerVariantId, setSelectedSellerVariantId] = useState<string | null>(null)
   const [selectedImage, setSelectedImage] = useState(0)
   const [activeTab, setActiveTab] = useState<DescriptionTab>('description')
@@ -170,42 +172,16 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const { flashSaleInfo } = useFlashSale(currentProductId)
 
   useEffect(() => {
-    if (!product?.options?.length) {
-      setSelectedOptions({})
-      return
-    }
-
-    const preferredVariant =
-      product.variants.find((variant) => variant.id === product.variant_id) ??
-      product.variants[0]
-
-    const defaults: Record<string, string> = {}
-    for (const option of product.options) {
-      defaults[option.title] =
-        preferredVariant?.options[option.title] ?? option.values[0] ?? ''
-    }
-
-    setSelectedOptions(defaults)
+    setSelectedOptions(product ? initialProductOptions(product) : {})
+    setExplicitVariantId(null)
+    setSelectedSellerVariantId(null)
     setQuantity(1)
   }, [product?.id])
 
   const selectedVariant = useMemo(() => {
-    if (!product?.variants?.length) return null
-    if (!product.options?.length) {
-      return (
-        product.variants.find((variant) => variant.id === product.variant_id) ??
-        product.variants[0]
-      )
-    }
-
-    const match = product.variants.find((variant) =>
-      product.options.every(
-        (option) => variant.options[option.title] === selectedOptions[option.title]
-      )
-    )
-
-    return match ?? product.variants[0]
-  }, [product, selectedOptions])
+    return product ? selectedProductVariant(product, selectedOptions, explicitVariantId) : null
+  }, [product, selectedOptions, explicitVariantId])
+  const selectionRequired = Boolean(product?.variants.length && !selectedVariant)
 
   const { data: sellerOffers, isLoading: sellerOffersLoading } = useSellerOffers(selectedVariant?.id)
   const visibleSellerOffers = useMemo(() => sellerOffers?.map(offer => ({
@@ -218,7 +194,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   // The first offer is shown as "Selected" even before the buyer clicks it.
   // Carry that visible choice through cart and checkout as well.
   const sellerChoicePinned = Boolean(selectedSellerOffer)
-  const purchaseVariantId = selectedSellerOffer?.variant_id ?? selectedVariant?.id ?? product?.variant_id
+  const purchaseVariantId = selectedVariant ? (selectedSellerOffer?.variant_id ?? selectedVariant.id) : undefined
   const sellerHasStock = selectedSellerOffer ? selectedSellerOffer.available > 0 : undefined
   const sellerInventory = selectedSellerOffer?.available
 
@@ -242,43 +218,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       return
     }
 
-    setSelectedOptions((prev) => {
-      const next = { ...prev, [optionTitle]: value }
-
-      const variantMatchesSelection = (candidate: Record<string, string>) =>
-        product.variants.some((variant) =>
-          product.options.every((opt) => {
-            const selected = candidate[opt.title]
-            if (!selected) return true
-            return variant.options[opt.title] === selected
-          })
-        )
-
-      for (const opt of product.options) {
-        if (opt.title === optionTitle) continue
-        const current = next[opt.title]
-        if (!current) {
-          const firstValid = opt.values.find((val) =>
-            variantMatchesSelection({ ...next, [opt.title]: val })
-          )
-          if (firstValid) next[opt.title] = firstValid
-          continue
-        }
-
-        if (!variantMatchesSelection(next)) {
-          const replacement = opt.values.find((val) =>
-            variantMatchesSelection({ ...next, [opt.title]: val })
-          )
-          if (replacement) {
-            next[opt.title] = replacement
-          } else {
-            delete next[opt.title]
-          }
-        }
-      }
-
-      return next
-    })
+    setSelectedOptions((prev) => changeProductOption(product, prev, optionTitle, value))
+    setSelectedSellerVariantId(null)
     setQuantity(1)
   }, [product])
 
@@ -1090,6 +1031,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
   useEffect(() => {
     if (!product?.id) return
+    if (selectionRequired) return
     if (!(sellerHasStock ?? hasStock)) {
       if (outOfStockToastRef.current !== product.id) {
         notifyOutOfStock()
@@ -1098,7 +1040,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     } else {
       outOfStockToastRef.current = null
     }
-  }, [product?.id, hasStock, sellerHasStock])
+  }, [product?.id, hasStock, sellerHasStock, selectionRequired])
 
   const handleQuantityChange = (delta: number) => {
     setQuantity((prev) => Math.min(maxPurchaseQuantity, Math.max(1, prev + delta)))
@@ -1154,6 +1096,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   };
 
   const handleAddToCart = async () => {
+    if (!selectedVariant || selectionRequired) { toast.error('Please choose your product options first.'); return }
     if (cartActionPending || buyNowPending || sellerOffersLoading) return
     if (!(sellerHasStock ?? hasStock)) {
       notifyOutOfStock()
@@ -1167,6 +1110,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   }
 
   const handleBuyNow = () => {
+    if (!selectedVariant || selectionRequired) { toast.error('Please choose your product options first.'); return }
     if (cartActionPending || buyNowPending || sellerOffersLoading) return
     if (!product) {
       notifyCartUnavailable()
@@ -1216,6 +1160,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
           variantId,
           quantity: Math.max(1, quantity),
           title: product.title,
+          variantTitle: selectedVariant ? (Object.entries(selectedVariant.options).filter(([, value]) => value && !/^default$/i.test(value)).map(([key, value]) => `${key}: ${value}`).join(' · ') || selectedVariant.title) : undefined,
           thumbnail: product.images?.[0] || product.thumbnail,
           priceMinor: effectivePrice,
           sellerSelected: checkoutSellerChoicePinned,
@@ -1404,6 +1349,9 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   quantity={quantity}
                   maxQuantity={maxPurchaseQuantity}
                   selectedOptions={selectedOptions}
+                  selectionRequired={selectionRequired}
+                  selectedVariantId={selectedVariant?.id}
+                  onVariantChange={(id) => { setExplicitVariantId(id); setSelectedSellerVariantId(null); setQuantity(1) }}
                   onOptionChange={handleOptionChange}
                   onQuantityChange={handleQuantityChange}
                   onAddToCart={handleAddToCart}
