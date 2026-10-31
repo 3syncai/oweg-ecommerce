@@ -15,13 +15,12 @@ export async function GET(req: NextRequest) {
     }
 
     // Otherwise return all categories
-    const categories = await fetchCategories({ revalidate: 120 });
+    const categories = await fetchCategories();
     return NextResponse.json(
       { categories },
       {
         headers: {
-          "Cache-Control":
-            "public, max-age=120, s-maxage=120, stale-while-revalidate=600",
+          "Cache-Control": "no-store",
         },
       },
     );

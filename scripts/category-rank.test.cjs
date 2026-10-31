@@ -33,3 +33,8 @@ test('equal ranks remain stable and unranked categories follow every numeric ran
   assert.equal(JSON.stringify(sortCategoriesByRank(input).map(c => c.id)),
     JSON.stringify(['tie-a', 'tie-b', 'high', 'missing', 'invalid', 'null']));
 });
+
+test('duplicated numeric ranks use the admin ID tie-break regardless of response order', () => {
+  const result = sortCategoriesByRank([{ id: 'z', rank: 6 }, { id: 'a', rank: 6 }]);
+  assert.equal(JSON.stringify(result.map(c => c.id)), JSON.stringify(['a', 'z']));
+});
