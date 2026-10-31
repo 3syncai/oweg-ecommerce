@@ -247,6 +247,7 @@ export default function OrderDetailContent({
     cancelMeta.cancelled_by_admin === true ||
     cancelMeta.cancellation_source === "admin" ||
     cancelMeta.cancelled_by === "admin";
+  // Customer-facing cancel message only (vendor notes are stripped in normalizeOrderForCustomer).
   const cancellationNote =
     (typeof cancelMeta.customer_cancel_reason === "string" &&
       cancelMeta.customer_cancel_reason.trim()) ||
@@ -263,8 +264,47 @@ export default function OrderDetailContent({
     <OrderDetailsIcon name="order-status" size={24} className="h-6 w-6" />
   );
 
-  const handleInvoiceClick = () => {
-    toast.info("Your invoice was emailed when the order was placed.");
+  const [invoicePending, setInvoicePending] = useState(false);
+
+  const handleInvoiceClick = async () => {
+    if (!order?.id || invoicePending) return;
+    setInvoicePending(true);
+    try {
+      const res = await fetch(
+        `/api/medusa/orders/${encodeURIComponent(order.id)}/invoice`,
+        { method: "GET", credentials: "include" }
+      );
+      if (!res.ok) {
+        let message = "Could not download invoice";
+        try {
+          const data = (await res.json()) as { error?: string };
+          if (data?.error) message = data.error;
+        } catch {
+          // ignore
+        }
+        throw new Error(message);
+      }
+      const blob = await res.blob();
+      const filenameMatch = /filename="?([^"]+)"?/i.exec(
+        res.headers.get("Content-Disposition") || ""
+      );
+      const filename =
+        filenameMatch?.[1] ||
+        `Invoice-OWEG-${order.display_id || order.id}.pdf`;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Invoice downloaded");
+    } catch (err: any) {
+      toast.error(err?.message || "Could not download invoice");
+    } finally {
+      setInvoicePending(false);
+    }
   };
 
   const handleCopyId = async () => {
@@ -387,10 +427,11 @@ export default function OrderDetailContent({
           action={
             <button
               type="button"
-              onClick={handleInvoiceClick}
-              className="text-xs font-semibold text-[#326b29] hover:underline"
+              disabled={invoicePending}
+              onClick={() => void handleInvoiceClick()}
+              className="text-xs font-semibold text-[#326b29] hover:underline disabled:opacity-50"
             >
-              View Invoice
+              {invoicePending ? "Downloading…" : "Download Invoice"}
             </button>
           }
         />
@@ -421,12 +462,13 @@ export default function OrderDetailContent({
           </p>
           {cancellationNote ? (
             <p className="mt-1 text-sm leading-relaxed text-[#7A271A]">
-              Reason: {cancellationNote}
+              {adminCancelled ? "Message from OWEG: " : "Reason: "}
+              {cancellationNote}
             </p>
           ) : null}
           <p className="mt-1 text-xs text-[#B42318]">
             {adminCancelled
-              ? "We emailed you this reason. Refunds for prepaid orders are processed separately."
+              ? "We emailed you this message. Refunds for prepaid orders are processed separately."
               : "If you paid online, the refund follows the details you submitted."}
           </p>
         </div>
@@ -606,7 +648,7 @@ export default function OrderDetailContent({
             ) : null}
             {displayTotals.coinDiscount > 0 ? (
               <div className="flex justify-between gap-3 text-[#326b29]">
-                <span>Discount</span>
+                <span>Coin Discount</span>
                 <span>-{formatOrderCurrency(displayTotals.coinDiscount, order?.currency_code)}</span>
               </div>
             ) : null}
@@ -651,9 +693,10 @@ export default function OrderDetailContent({
           />
           <ActionTile
             icon={<OrderDetailsIcon name="download-invoice" size={28} className="h-7 w-7" />}
-            label="Download Invoice"
+            label={invoicePending ? "Downloading…" : "Download Invoice"}
             tone="green"
-            onClick={handleInvoiceClick}
+            disabled={invoicePending}
+            onClick={() => void handleInvoiceClick()}
           />
           <ActionTile
             icon={<OrderDetailsIcon name="return-replace" size={28} className="h-7 w-7" />}

@@ -60,7 +60,97 @@ describe("cancellation fee CREDITED debit", () => {
     expect(inserts[0][4]).toBe(420.34)
   })
 
-  it("charges nothing when customer cancels before packet is booked", async () => {
+  it("charges cancellation fee when admin cancels an unaccepted (not booked) order", async () => {
+    const inserts: unknown[][] = []
+    const pool = {
+      query: jest.fn(async (sql: string, params: unknown[] = []) => {
+        if (sql.includes("UPDATE vendor_earnings_log") && sql.includes("REVERSED")) {
+          return { rowCount: 0, rows: [] }
+        }
+        if (sql.includes("ADD COLUMN") || sql.includes("CREATE TABLE")) {
+          return { rowCount: 0, rows: [] }
+        }
+        if (sql.includes("status = 'PAID'") && sql.includes("SELECT")) {
+          return { rowCount: 0, rows: [] }
+        }
+        if (sql.includes("p.metadata->>'vendor_id'") && sql.includes("order_item")) {
+          return {
+            rowCount: 1,
+            rows: [
+              {
+                vendor_id: "ven_unaccepted",
+                order_display_id: "3301",
+                line_total: 1850,
+                product_gst_rate: "18",
+                product_tax_code: null,
+                item_gst_rate: null,
+                item_tax_code: null,
+              },
+            ],
+          }
+        }
+        if (sql.includes("SELECT metadata") && sql.includes('"order"')) {
+          return {
+            rowCount: 1,
+            rows: [
+              {
+                metadata: {
+                  payment_method: "cod",
+                  cancellation_source: "admin",
+                  cancelled_by_admin: true,
+                  vendor_order_workflows: {
+                    ven_unaccepted: {
+                      stage: "to_accept",
+                      settlement_rates: {
+                        commission_rate: 2,
+                        platform_fee_rate: 5,
+                        cancellation_charge: 20,
+                        partner_rate: 0,
+                        service_gst_rate: 18,
+                        tcs_rate: 0.5,
+                        tds_rate: 0.1,
+                        snapshotted_at: "2026-01-01T00:00:00.000Z",
+                      },
+                    },
+                  },
+                },
+                display_id: "3301",
+              },
+            ],
+          }
+        }
+        if (
+          sql.includes("INSERT INTO vendor_earnings_log") &&
+          String(params[0] || "").startsWith("cancel-fee:")
+        ) {
+          inserts.push(params)
+          return { rowCount: 1, rows: [{ id: "ve_admin_cf" }] }
+        }
+        return { rowCount: 0, rows: [] }
+      }),
+    } as any
+
+    const result = await reverseVendorEarningsForOrder(
+      "order_unaccepted",
+      pool,
+      "admin-cancelled",
+      {
+        vendorIds: ["ven_unaccepted"],
+        vendorScoped: true,
+        applyCancellationCharge: true,
+      }
+    )
+
+    expect(result.cancel_fees).toBe(1)
+    expect(inserts).toHaveLength(1)
+    expect(inserts[0][0]).toBe("cancel-fee:order_unaccepted")
+    expect(inserts[0][1]).toBe("ven_unaccepted")
+    // 20 + 18% GST = 23.6 (COD → no payment gateway fee)
+    expect(inserts[0][3]).toBe(-23.6)
+    expect(inserts[0][8]).toBe(20)
+  })
+
+  it("records ₹0 cancel visibility when customer cancels before packet is booked", async () => {
     const calls: { sql: string; params: unknown[] }[] = []
     const pool = {
       query: jest.fn(async (sql: string, params: unknown[] = []) => {
@@ -119,6 +209,12 @@ describe("cancellation fee CREDITED debit", () => {
             ],
           }
         }
+        if (
+          sql.includes("INSERT INTO vendor_earnings_log") &&
+          String(params[0] || "").startsWith("cancel-fee:")
+        ) {
+          return { rowCount: 1, rows: [{ id: "ve_vis" }] }
+        }
         return { rowCount: 0, rows: [] }
       }),
     } as any
@@ -130,15 +226,21 @@ describe("cancellation fee CREDITED debit", () => {
     )
 
     expect(result.reversed).toBe(0)
-    expect(result.cancel_fees).toBe(0)
-    expect(result.skipped).toBe(true)
-    expect(
-      calls.some(
-        (c) =>
-          c.sql.includes("INSERT INTO vendor_earnings_log") &&
-          String(c.params[0] || "").startsWith("cancel-fee:")
-      )
-    ).toBe(false)
+    // Visibility row is inserted so Payments shows Cancelled — fee stays ₹0.
+    expect(result.cancel_fees).toBe(1)
+    expect(result.skipped).toBe(false)
+    const insert = calls.find(
+      (c) =>
+        c.sql.includes("INSERT INTO vendor_earnings_log") &&
+        String(c.params[0] || "").startsWith("cancel-fee:")
+    )
+    expect(insert).toBeTruthy()
+    expect(insert!.params[0]).toBe("cancel-fee:order_pre")
+    expect(insert!.params[1]).toBe("ven_pre")
+    // net / debit
+    expect(insert!.params[3]).toBe(0)
+    // cancellation_fee column
+    expect(insert!.params[8]).toBe(0)
   })
 
   it("inserts cancel-fee+logistics debit when packet is booked before delivery", async () => {

@@ -60,4 +60,23 @@ describe("order cancel metadata hygiene", () => {
     expect(next.cancelled_by_admin).toBe(true)
     expect(next.cancelled_by).toBe("admin")
   })
+
+  it("keeps customer note separate from vendor note on read", () => {
+    const info = readCancellationInfo({
+      status: "canceled",
+      metadata: {
+        customer_cancel_reason: "Sorry, item unavailable",
+        cancellation_reason: "Sorry, item unavailable",
+        vendor_cancel_message: "Do not pack — restock",
+        cancellation_note: "Do not pack — restock",
+        admin_cancel_note: "Do not pack — restock",
+        cancellation_source: "admin",
+        cancelled_by_admin: true,
+      },
+    })
+    expect(info.customer_reason).toBe("Sorry, item unavailable")
+    expect(info.vendor_message).toBe("Do not pack — restock")
+    expect(info.note).toBe("Sorry, item unavailable")
+    expect(info.note).not.toBe(info.vendor_message)
+  })
 })

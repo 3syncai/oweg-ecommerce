@@ -10,6 +10,7 @@ import {
   summarizeOrderGst,
   type OrderGstLine,
 } from "../lib/gst-inclusive"
+import { orderCustomerShipping } from "../lib/order-customer-shipping"
 
 /** Helvetica has no ₹ glyph — use ASCII-safe "Rs." for PDF. */
 const formatMoney = (amount: number) => {
@@ -168,21 +169,51 @@ function shortSku(raw: string): string {
   return `…${s.slice(-14)}`
 }
 
+/**
+ * Customer-paid shipping for the invoice.
+ * Prefer frozen checkout charge (`expected_shipping_price`) — Medusa summary often
+ * stores 0 even when the customer paid the under-₹500 delivery fee.
+ */
 function resolveShippingInclusive(order: any): number {
+  const items = Array.isArray(order?.items) ? order.items : []
+  const linesSubtotal = items.reduce((sum: number, item: any) => {
+    const qty = Number(item?.quantity) || Number(item?.detail?.quantity) || 1
+    const unit = Number(item?.unit_price) || 0
+    return sum + unit * qty
+  }, 0)
+  const subtotalHint =
+    Number(order?.subtotal) > 0 ? Number(order.subtotal) : linesSubtotal
+
+  // Explicit checkout freeze wins (including intentional free shipping = 0)
+  if (
+    order?.metadata?.expected_shipping_price !== undefined &&
+    order?.metadata?.expected_shipping_price !== null &&
+    String(order.metadata.expected_shipping_price).trim() !== ""
+  ) {
+    const frozen = Number(order.metadata.expected_shipping_price)
+    if (Number.isFinite(frozen) && frozen >= 0) {
+      return Math.round(frozen * 100) / 100
+    }
+  }
+
+  // Prefer any positive amount from Medusa / overrides (skip zeros that mask real fees)
   const candidates = [
     order?.shipping_total,
     order?.shipping_amount,
     order?.shipping_fee,
+    order?.customer_shipping_total,
     order?.summary?.shipping_total,
     order?.summary?.original_shipping_total,
+    order?.summary?.current_shipping_total,
     order?.metadata?.shipping_total,
     order?.metadata?.shipping_amount,
   ]
   for (const raw of candidates) {
     const n = Number(raw)
-    if (Number.isFinite(n) && n >= 0) return Math.round(n * 100) / 100
+    if (Number.isFinite(n) && n > 0) return Math.round(n * 100) / 100
   }
-  return 0
+
+  return Math.round(orderCustomerShipping(order?.metadata, subtotalHint) * 100) / 100
 }
 
 const DEFAULT_SHIPPING_GST_RATE = 18
@@ -674,6 +705,34 @@ export const generateInvoice = async (order: any) => {
               <Text style={styles.muted}>Shipping Charges</Text>
               <Text style={styles.line}>{formatMoney(shippingInclusive)}</Text>
             </View>
+            {discountInfo.oweg10 > 0 ? (
+              <View style={styles.totalRow}>
+                <Text style={styles.muted}>OWEG10 Discount</Text>
+                <Text style={styles.line}>-{formatMoney(discountInfo.oweg10)}</Text>
+              </View>
+            ) : null}
+            {discountInfo.promo > 0 ? (
+              <View style={styles.totalRow}>
+                <Text style={styles.muted}>Coupon / Promo Discount</Text>
+                <Text style={styles.line}>-{formatMoney(discountInfo.promo)}</Text>
+              </View>
+            ) : null}
+            {discountInfo.coin > 0 ? (
+              <View style={styles.totalRow}>
+                <Text style={styles.muted}>Coin Discount</Text>
+                <Text style={styles.line}>-{formatMoney(discountInfo.coin)}</Text>
+              </View>
+            ) : null}
+            {/* Fallback when only Medusa discount_total exists without metadata breakdown */}
+            {discountInfo.coin <= 0 &&
+            discountInfo.promo <= 0 &&
+            discountInfo.oweg10 <= 0 &&
+            discountInfo.medusa > 0 ? (
+              <View style={styles.totalRow}>
+                <Text style={styles.muted}>Discount</Text>
+                <Text style={styles.line}>-{formatMoney(discountInfo.medusa)}</Text>
+              </View>
+            ) : null}
             <View style={styles.grandRow}>
               <Text style={{ fontSize: 10, fontFamily: "Helvetica-Bold" }}>
                 Total
@@ -696,8 +755,10 @@ export const generateInvoice = async (order: any) => {
           </Text>
           <Text style={styles.muted}>
             Prices are GST-inclusive. Taxable value / GST amount above are a
-            breakdown of GST already included in the product price. Free shipping
-            is shown as Rs. 0.00.
+            breakdown of GST already included in the product price. Shipping
+            Charges show the delivery fee paid by the customer (Rs. 50 incl. GST
+            when the order value is under Rs. 500; Rs. 0.00 when free). Coin,
+            coupon, and OWEG10 discounts are listed separately when applied.
           </Text>
         </View>
 

@@ -19,6 +19,10 @@ import { variantPricesError } from "@/lib/variant-pricing"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
 import { simpleProductPrices, serializeProductEditVariants } from "@/lib/product-edit"
 import GstTaxCodeField from "@/components/GstTaxCodeField"
+import CategorySubcategoryPicker, {
+  buildCategoryPickerValue,
+  type CategorySubcategoryValue,
+} from "@/components/CategorySubcategoryPicker"
 import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorInventoryApi } from "@/lib/api/client"
 import {
   collectAllImageUrls,
@@ -68,6 +72,7 @@ type VariantSummary = {
 type CatalogCategory = {
   id: string
   name: string
+  parent_category_id?: string | null
 }
 
 type CatalogCollection = {
@@ -82,6 +87,7 @@ type EditFormData = {
   price: string
   discountedPrice: string
   categoryId: string
+  categoryRequest: string
   collectionId: string
   taxCode: string
   gstRate: string
@@ -95,10 +101,20 @@ const EMPTY_FORM: EditFormData = {
   price: "",
   discountedPrice: "",
   categoryId: "",
+  categoryRequest: "",
   collectionId: "",
   taxCode: "",
   gstRate: "",
   vendorRemark: "",
+}
+
+const EMPTY_CATEGORY_PICKER: CategorySubcategoryValue = {
+  categoryId: "",
+  categoryRequest: "",
+  parentId: "",
+  parentLabel: "",
+  subLabel: "",
+  requestedParentName: "",
 }
 
 const VendorProductEditPage = () => {
@@ -136,6 +152,9 @@ const VendorProductEditPage = () => {
   const [primaryVisualOption, setPrimaryVisualOption] = useState("")
   const [usedSkus, setUsedSkus] = useState<Set<string>>(new Set())
 
+  const [categoryPicker, setCategoryPicker] =
+    useState<CategorySubcategoryValue>(EMPTY_CATEGORY_PICKER)
+
   useEffect(() => {
     if (!productId) {
       router.push("/products")
@@ -154,7 +173,7 @@ const VendorProductEditPage = () => {
         const [productResponse, categoriesResponse, collectionsResponse, inventoryResponse] =
           await Promise.all([
           vendorProductsApi.get(productId),
-          vendorCategoriesApi.list({ limit: 100, offset: 0 }).catch(() => ({ product_categories: [] })),
+          vendorCategoriesApi.list({ limit: 500, offset: 0 }).catch(() => ({ product_categories: [] })),
           vendorCollectionsApi.list({ limit: 100, offset: 0 }).catch(() => ({ collections: [] })),
           vendorInventoryApi.list().catch(() => ({ success: false, inventory: [] })),
         ])
@@ -222,11 +241,20 @@ const VendorProductEditPage = () => {
           price: summary?.price != null ? String(summary.price) : "",
           discountedPrice: summary?.discounted_price != null ? String(summary.discounted_price) : "",
           categoryId: existingCategoryId,
+          categoryRequest: String(prod?.metadata?.category_request || ""),
           collectionId: existingCollectionId,
           taxCode: existingTaxCode,
           gstRate: existingGstRate,
           vendorRemark: "",
         }
+
+        setCategoryPicker(
+          buildCategoryPickerValue(
+            loadedCategories,
+            existingCategoryId,
+            String(prod?.metadata?.category_request || "")
+          )
+        )
 
         setFormData(nextForm)
         setInitialFormData(nextForm)
@@ -309,6 +337,9 @@ const VendorProductEditPage = () => {
     if (formData.price.trim() !== initialFormData.price.trim()) changes.push("price")
     if (formData.discountedPrice.trim() !== initialFormData.discountedPrice.trim()) changes.push("discounted_price")
     if (formData.categoryId !== initialFormData.categoryId) changes.push("category")
+    if (formData.categoryRequest.trim() !== initialFormData.categoryRequest.trim()) {
+      changes.push("category_request")
+    }
     if (formData.collectionId !== initialFormData.collectionId) changes.push("collection")
     if (formData.taxCode !== initialFormData.taxCode) changes.push("tax_code")
     if (formData.gstRate !== initialFormData.gstRate) changes.push("gst_rate")
@@ -511,6 +542,17 @@ const VendorProductEditPage = () => {
           tax_code: formData.taxCode || null,
           gst_rate: formData.gstRate !== "" ? Number(formData.gstRate) : null,
           last_vendor_changed_fields: allChangedFields,
+          ...(formData.categoryRequest.trim()
+            ? {
+                category_request: formData.categoryRequest.trim(),
+                category_request_status: "pending",
+                category_request_submitted_at: new Date().toISOString(),
+              }
+            : {
+                category_request: null,
+                category_request_status: null,
+                category_request_submitted_at: null,
+              }),
         },
       })
       if (!data?.product || data.atomic_edit_version !== 1) throw new Error("Backend update required. Reload after deploying the product editing backend.")
@@ -538,6 +580,13 @@ const VendorProductEditPage = () => {
       setInitialColorImages(colorImages)
       setInitialFormData(resetFormData)
       setFormData(resetFormData)
+      setCategoryPicker(
+        buildCategoryPickerValue(
+          categories,
+          resetFormData.categoryId,
+          resetFormData.categoryRequest
+        )
+      )
       if (!hasVariants) {
         setInitialVariantRows(savedRows)
         setInitialHasVariants(false)
@@ -775,36 +824,46 @@ const VendorProductEditPage = () => {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <select
-                  value={formData.categoryId}
-                  onChange={(e) => handleFieldChange("categoryId", e.target.value)}
-                  className="h-10 w-full rounded-md border border-ui-border-base bg-ui-bg-base px-3 text-sm text-ui-fg-base outline-none transition focus:ring-2 focus:ring-ui-border-interactive"
-                >
-                  <option value="">Select category</option>
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Brand</Label>
-                <select
-                  value={formData.collectionId}
-                  onChange={(e) => handleFieldChange("collectionId", e.target.value)}
-                  className="h-10 w-full rounded-md border border-ui-border-base bg-ui-bg-base px-3 text-sm text-ui-fg-base outline-none transition focus:ring-2 focus:ring-ui-border-interactive"
-                >
-                  <option value="">Select brand</option>
-                  {collections.map((collection) => (
-                    <option key={collection.id} value={collection.id}>
-                      {collection.title}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2 md:items-start">
+                <CategorySubcategoryPicker
+                  categories={categories}
+                  value={categoryPicker}
+                  onChange={(next) => {
+                    setCategoryPicker(next)
+                    setFormData((prev) => ({
+                      ...prev,
+                      categoryId: next.categoryId,
+                      categoryRequest: next.categoryRequest,
+                    }))
+                  }}
+                />
+                <div className="space-y-2">
+                  <Label>
+                    Brand <span className="font-normal text-ui-fg-muted">(Optional)</span>
+                  </Label>
+                  <Text size="small" className="text-ui-fg-muted">
+                    Select the brand for this product
+                  </Text>
+                  <div className="relative">
+                    <select
+                      value={formData.collectionId}
+                      onChange={(e) => handleFieldChange("collectionId", e.target.value)}
+                      className="h-10 w-full appearance-none rounded-lg border border-ui-border-base bg-ui-bg-base py-2 pl-3 pr-9 text-sm text-ui-fg-base outline-none transition focus:border-ui-fg-interactive"
+                    >
+                      <option value="">Select brand</option>
+                      {collections.map((collection) => (
+                        <option key={collection.id} value={collection.id}>
+                          {collection.title}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-ui-fg-muted">
+                      <svg aria-hidden viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M5 7.5 10 12.5 15 7.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-2 md:col-span-2">

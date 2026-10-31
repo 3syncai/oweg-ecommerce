@@ -757,7 +757,8 @@ export function formatVendorOrder(
     vendor_status_label: statusLabel,
     cancelled: isCancelled,
     cancelled_by: cancellation.source,
-    cancellation_note: cancellation.vendor_message || cancellation.note,
+    // Vendor portal must never see the customer-facing cancel message.
+    cancellation_note: cancellation.vendor_message || null,
     cancellation_at: cancellation.cancelled_at,
     cancellation_label: cancellation.cancelled_by_label,
     payment_type: getPaymentType(order),
