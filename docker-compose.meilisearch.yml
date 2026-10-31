@@ -1,0 +1,34 @@
+# Meilisearch for QWEG product search (run on your VPS).
+# Usage:
+#   cp .env.meilisearch.example .env.meilisearch   # set a strong MEILI_MASTER_KEY
+#   docker compose -f docker-compose.meilisearch.yml --env-file .env.meilisearch up -d
+#
+# Then set on Medusa + Next.js hosts:
+#   MEILI_HOST=http://127.0.0.1:7700   # or private VPS IP / docker network
+#   MEILI_MASTER_KEY=<same key>
+#
+# Full reindex from Medusa:
+#   cd my-medusa-store && npx medusa exec ./scripts/sync-products-to-search.ts
+
+services:
+  meilisearch:
+    image: getmeili/meilisearch:v1.11
+    container_name: oweg-meilisearch
+    restart: unless-stopped
+    ports:
+      # Bind to localhost only — put Nginx/Caddy in front if you need remote access.
+      - "127.0.0.1:7700:7700"
+    environment:
+      MEILI_ENV: production
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?Set MEILI_MASTER_KEY in .env.meilisearch}
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - meili_data:/meili_data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7700/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  meili_data:

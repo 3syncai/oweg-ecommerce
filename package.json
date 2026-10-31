@@ -22,7 +22,6 @@
     "test:search-typos-live": "node --experimental-strip-types scripts/verify-search-typos.ts"
   },
   "dependencies": {
-    "@opensearch-project/opensearch": "^3.5.1",
     "@radix-ui/react-label": "^2.1.8",
     "@radix-ui/react-radio-group": "^1.3.8",
     "@radix-ui/react-select": "^2.2.6",
@@ -36,6 +35,7 @@
     "date-fns": "^4.1.0",
     "isomorphic-dompurify": "^3.18.0",
     "lucide-react": "^0.473.0",
+    "meilisearch": "^0.62.0",
     "mysql2": "^3.15.3",
     "next": "^16.1.4",
     "pg": "^8.16.3",

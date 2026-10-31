@@ -1,4 +1,4 @@
-import client from "@/lib/opensearch"
+import { getMeiliClient, getProductsIndexName } from "@/lib/meilisearch"
 import { normalizeSearchQuery, rewriteSearchTypos } from "@/lib/search-query-normalize"
 
 export type SearchOptions = {
@@ -13,183 +13,6 @@ export type SearchOptions = {
 export type SearchProductsResult = {
   hits: SearchHit[]
   total: number
-}
-
-const SOURCE_FIELDS = [
-  "id",
-  "handle",
-  "title",
-  "subtitle",
-  "description",
-  "thumbnail",
-  "brand",
-  "price",
-  "mrp",
-  "discount",
-  "in_stock",
-  "rating",
-  "popularity_score",
-  "status",
-  "category_ids",
-  "collection_id",
-]
-
-type ScopeFilters = {
-  categoryId?: string
-  collectionId?: string
-  category?: string
-}
-
-function significantTokens(normalizedQuery: string): string {
-  return normalizedQuery
-    .split(" ")
-    .filter((t) => t.length >= 2)
-    .join(" ")
-}
-
-/** Explicit fuzziness for short catalog tokens (3–6 chars); AUTO otherwise. */
-function fuzzinessForQuery(normalizedQuery: string): 1 | 2 | "AUTO" {
-  const tokens = normalizedQuery.split(" ").filter(Boolean)
-  if (tokens.length === 0) return "AUTO"
-  const shortCatalog = tokens.every((t) => t.length >= 3 && t.length <= 6)
-  if (!shortCatalog) return "AUTO"
-  // Single short token: allow up to 2 edits (fane→fan, faan→fan after collapse)
-  if (tokens.length === 1) return 2
-  return 1
-}
-
-function buildScopeFilters(scope: ScopeFilters) {
-  const filters: Record<string, unknown>[] = [
-    { term: { status: "published" } },
-    // Keep storefront totals/pagination aligned with sellable hits.
-    { term: { in_stock: true } },
-  ]
-
-  if (scope.categoryId?.trim()) {
-    filters.push({ term: { category_ids: scope.categoryId.trim() } })
-  } else if (scope.category?.trim()) {
-    filters.push({
-      match: {
-        category_titles: {
-          query: scope.category.trim(),
-          operator: "and",
-        },
-      },
-    })
-  }
-
-  if (scope.collectionId?.trim()) {
-    filters.push({ term: { collection_id: scope.collectionId.trim() } })
-  }
-
-  return filters
-}
-
-function buildUnifiedQuery(normalizedQuery: string, scope: ScopeFilters) {
-  const fuzziness = fuzzinessForQuery(normalizedQuery)
-
-  return {
-    function_score: {
-      query: {
-        bool: {
-          filter: buildScopeFilters(scope),
-          should: [
-            // Primary-tier clauses (higher boosts)
-            {
-              multi_match: {
-                query: normalizedQuery,
-                fields: ["title^18", "brand^10"],
-                type: "phrase",
-                boost: 10,
-              },
-            },
-            {
-              multi_match: {
-                query: normalizedQuery,
-                fields: [
-                  "title^12",
-                  "title.prefix^8",
-                  "brand^6",
-                  "category_titles^3",
-                  "description^1.2",
-                ],
-                type: "best_fields",
-                operator: "or",
-                minimum_should_match: 1,
-                boost: 4,
-              },
-            },
-            {
-              multi_match: {
-                query: normalizedQuery,
-                fields: ["title.prefix^10", "title^6"],
-                type: "phrase_prefix",
-                boost: 3,
-              },
-            },
-            {
-              multi_match: {
-                query: normalizedQuery,
-                fields: ["title^5", "brand^3"],
-                type: "best_fields",
-                fuzziness,
-                prefix_length: 1,
-                fuzzy_transpositions: true,
-                max_expansions: 50,
-                operator: "or",
-                boost: 1.8,
-              },
-            },
-            // Wide-fallback clauses (lower boosts) — same round trip
-            {
-              multi_match: {
-                query: normalizedQuery,
-                fields: ["title^6", "brand^4", "category_titles^2", "description", "title.prefix^5"],
-                type: "best_fields",
-                operator: "or",
-                minimum_should_match: 1,
-                boost: 2,
-              },
-            },
-            {
-              multi_match: {
-                query: normalizedQuery,
-                fields: ["title^4", "brand^2"],
-                type: "best_fields",
-                fuzziness,
-                prefix_length: 0,
-                fuzzy_transpositions: true,
-                max_expansions: 50,
-                operator: "or",
-                minimum_should_match: 1,
-                boost: 1.4,
-              },
-            },
-          ],
-          minimum_should_match: 1,
-        },
-      },
-      score_mode: "sum",
-      boost_mode: "sum",
-      functions: [
-        { filter: { term: { in_stock: true } }, weight: 2.0 },
-        { field_value_factor: { field: "popularity_score", factor: 0.15, missing: 0 } },
-        { field_value_factor: { field: "rating", factor: 0.2, missing: 0 } },
-        { field_value_factor: { field: "sales_30d", factor: 0.03, missing: 0 } },
-        {
-          gauss: {
-            created_at: {
-              origin: "now",
-              scale: "60d",
-              offset: "7d",
-              decay: 0.4,
-            },
-          },
-          weight: 0.4,
-        },
-      ],
-    },
-  }
 }
 
 export type SearchHit = {
@@ -209,18 +32,65 @@ export type SearchHit = {
   status?: string
 }
 
+type ScopeFilters = {
+  categoryId?: string
+  collectionId?: string
+  category?: string
+}
+
+function significantTokens(normalizedQuery: string): string {
+  return normalizedQuery
+    .split(" ")
+    .filter((t) => t.length >= 2)
+    .join(" ")
+}
+
+function quoteFilterValue(value: string): string {
+  return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
+}
+
+function buildFilter(scope: ScopeFilters): string[] {
+  const filters = ['status = "published"', "in_stock = true"]
+
+  if (scope.categoryId?.trim()) {
+    filters.push(`category_ids = ${quoteFilterValue(scope.categoryId.trim())}`)
+  } else if (scope.category?.trim()) {
+    filters.push(`category_titles = ${quoteFilterValue(scope.category.trim())}`)
+  }
+
+  if (scope.collectionId?.trim()) {
+    filters.push(`collection_id = ${quoteFilterValue(scope.collectionId.trim())}`)
+  }
+
+  return filters
+}
+
 function isInStockHit(product: SearchHit): boolean {
   if (typeof product.in_stock === "boolean") return product.in_stock
   return false
 }
 
-function mapHits(response: any): SearchHit[] {
-  const hits = (response.body ?? response).hits?.hits
+function mapHits(hits: Array<Record<string, unknown>> | undefined): SearchHit[] {
   if (!Array.isArray(hits) || hits.length === 0) return []
-  return hits.map((hit: any) => hit._source as SearchHit)
+  return hits.map((hit) => ({
+    id: String(hit.id ?? ""),
+    handle: hit.handle ? String(hit.handle) : undefined,
+    title: hit.title ? String(hit.title) : undefined,
+    subtitle: hit.subtitle ? String(hit.subtitle) : undefined,
+    description: hit.description ? String(hit.description) : undefined,
+    thumbnail: (hit.thumbnail as string | null | undefined) ?? null,
+    brand: hit.brand ? String(hit.brand) : undefined,
+    price: typeof hit.price === "number" ? hit.price : undefined,
+    mrp: typeof hit.mrp === "number" ? hit.mrp : undefined,
+    discount: typeof hit.discount === "number" ? hit.discount : undefined,
+    in_stock: typeof hit.in_stock === "boolean" ? hit.in_stock : undefined,
+    rating: typeof hit.rating === "number" ? hit.rating : undefined,
+    popularity_score:
+      typeof hit.popularity_score === "number" ? hit.popularity_score : undefined,
+    status: hit.status ? String(hit.status) : undefined,
+  }))
 }
 
-/** Single OpenSearch round trip (primary + wide clauses combined). */
 async function runSearch(
   normalizedQuery: string,
   scope: ScopeFilters,
@@ -228,28 +98,41 @@ async function runSearch(
   offset = 0
 ): Promise<{ hits: SearchHit[]; total: number }> {
   try {
-    const response = await client.search({
-      index: "products",
-      from: Math.max(0, offset),
-      size: limit,
-      _source: SOURCE_FIELDS,
-      body: {
-        query: buildUnifiedQuery(normalizedQuery, scope) as any,
-        track_total_hits: true,
-      },
+    const client = getMeiliClient()
+    const index = client.index(getProductsIndexName())
+    const result = await index.search(normalizedQuery, {
+      limit,
+      offset: Math.max(0, offset),
+      filter: buildFilter(scope),
+      attributesToRetrieve: [
+        "id",
+        "handle",
+        "title",
+        "subtitle",
+        "description",
+        "thumbnail",
+        "brand",
+        "price",
+        "mrp",
+        "discount",
+        "in_stock",
+        "rating",
+        "popularity_score",
+        "status",
+      ],
     })
-    const body = response.body ?? response
-    const hits = mapHits(response)
-    const totalRaw = body.hits?.total
+
+    const hits = mapHits(result.hits as Array<Record<string, unknown>>)
     const total =
-      typeof totalRaw === "number"
-        ? totalRaw
-        : typeof totalRaw?.value === "number"
-          ? totalRaw.value
+      typeof result.estimatedTotalHits === "number"
+        ? result.estimatedTotalHits
+        : typeof (result as { totalHits?: number }).totalHits === "number"
+          ? (result as { totalHits: number }).totalHits
           : hits.length + Math.max(0, offset)
+
     return { hits, total }
   } catch (error) {
-    console.error("❌ OpenSearch query error:", error)
+    console.error("❌ Meilisearch query error:", error)
     return { hits: [], total: 0 }
   }
 }
@@ -289,7 +172,6 @@ export async function searchProducts(
   try {
     if (!rawNormalized) return { hits: [], total: 0 }
 
-    // Prefer typo-corrected query first.
     let result = await runSearch(rewritten, scope, limit, offset)
     if (result.hits.length > 0) return result
 
@@ -304,7 +186,6 @@ export async function searchProducts(
       if (result.hits.length > 0) return result
     }
 
-    // Parallel per-token merge (cap 4) — avoids sequential fan-out on misses.
     const parts = significantTokens(rewritten).split(" ").filter(Boolean).slice(0, 4)
     if (parts.length > 1) {
       const lists = await Promise.all(

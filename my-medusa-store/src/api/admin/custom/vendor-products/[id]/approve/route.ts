@@ -2,8 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules, ProductStatus, ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { variantPricesError } from "../../../../../../lib/variant-pricing"
 import { fetchProductVariantMatrix } from "../../../../../../lib/vendor-product-variants"
-import client from "../../../../../../utils/opensearch"
-import { PRODUCTS_INDEX, buildSearchDocument, ensureProductsIndex } from "../../../../../../utils/search-index"
+import { upsertProductToSearch } from "../../../../../../utils/search-index"
 import { CatalogConflict, withCatalogLock } from "../../../../../../lib/catalog-identity"
 import { reviewCatalogVariantRequests } from "../../../../../../lib/shared-catalog-offer"
 
@@ -85,7 +84,7 @@ const approveProduct = async (req: MedusaRequest, res: MedusaResponse) => {
       // Don't fail approval if sales channel linking fails
     }
 
-    // Sync immediately to OpenSearch (don't rely only on async subscribers)
+    // Sync immediately to Meilisearch (don't rely only on async subscribers)
     try {
       const productService = req.scope.resolve("productService") as any
       const productForIndex = await productService.retrieve(id, {
@@ -99,19 +98,10 @@ const approveProduct = async (req: MedusaRequest, res: MedusaResponse) => {
         ],
       })
 
-      await ensureProductsIndex()
-      const doc = buildSearchDocument(productForIndex as Record<string, any>)
-
-      await client.index({
-        index: PRODUCTS_INDEX,
-        id,
-        refresh: true,
-        body: doc,
-      })
-
-      console.log(`✅ OpenSearch synced on approve for product ${id}`)
+      await upsertProductToSearch(productForIndex as Record<string, any>)
+      console.log(`✅ Meilisearch synced on approve for product ${id}`)
     } catch (indexError: any) {
-      console.error("❌ Failed to sync OpenSearch on approval:", indexError?.message || indexError)
+      console.error("❌ Failed to sync Meilisearch on approval:", indexError?.message || indexError)
       // Keep approval successful even if indexing fails temporarily
     }
 

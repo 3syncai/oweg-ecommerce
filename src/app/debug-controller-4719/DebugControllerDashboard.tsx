@@ -20,6 +20,7 @@ type SystemInfo = {
   medusaOnline: boolean;
   databaseConfigured: boolean;
   opensearchConfigured: boolean;
+  meilisearchConfigured?: boolean;
 };
 
 function ToggleRow({
@@ -241,7 +242,7 @@ export default function DebugControllerDashboard() {
       setDeleteConfirm(null);
       await searchProducts();
       if (token) await loadDashboard(token);
-      await runAction("remove-opensearch-product", { productId });
+      await runAction("remove-meili-product", { productId });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
     }
@@ -584,7 +585,7 @@ export default function DebugControllerDashboard() {
               <p>Medusa: <span className={system.medusaOnline ? "text-emerald-400" : "text-rose-400"}>{system.medusaOnline ? "Online" : "Offline"}</span></p>
               <p>Backend URL: <span className="text-white break-all">{system.medusaUrl}</span></p>
               <p>Database: <span className={system.databaseConfigured ? "text-emerald-400" : "text-rose-400"}>{system.databaseConfigured ? "Connected" : "Missing"}</span></p>
-              <p>OpenSearch: <span className={system.opensearchConfigured ? "text-emerald-400" : "text-amber-400"}>{system.opensearchConfigured ? "Configured" : "Not configured"}</span></p>
+              <p>Meilisearch: <span className={(system.meilisearchConfigured ?? system.opensearchConfigured) ? "text-emerald-400" : "text-amber-400"}>{(system.meilisearchConfigured ?? system.opensearchConfigured) ? "Configured" : "Not configured"}</span></p>
             </div>
           ) : null}
         </section>
@@ -729,9 +730,9 @@ export default function DebugControllerDashboard() {
             <Button
               variant="outline"
               className="border-slate-700 justify-start h-auto py-3"
-              onClick={() => runAction("sync-opensearch-index")}
+              onClick={() => runAction("sync-meili-index")}
             >
-              Verify OpenSearch index
+              Verify Meilisearch index
             </Button>
             <Button
               variant="outline"

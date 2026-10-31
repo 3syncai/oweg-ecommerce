@@ -1,7 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules, ProductStatus } from "@medusajs/framework/utils"
-import client from "../../../../../../utils/opensearch"
-import { PRODUCTS_INDEX } from "../../../../../../utils/search-index"
+import { deleteSearchDocument } from "../../../../../../utils/search-index"
 
 export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
   try {
@@ -23,18 +22,12 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
       },
     })
 
-    // Remove from OpenSearch immediately on reject
+    // Remove from Meilisearch immediately on reject
     try {
-      await client.delete({
-        index: PRODUCTS_INDEX,
-        id,
-        refresh: true,
-      })
-      console.log(`🗑️ OpenSearch document removed on reject for product ${id}`)
+      await deleteSearchDocument(id)
+      console.log(`🗑️ Meilisearch document removed on reject for product ${id}`)
     } catch (deleteError: any) {
-      if (deleteError?.meta?.statusCode !== 404) {
-        console.error("❌ Failed removing product from OpenSearch on reject:", deleteError?.message || deleteError)
-      }
+      console.error("❌ Failed removing product from Meilisearch on reject:", deleteError?.message || deleteError)
     }
 
     return res.json({ product: updatedProduct })

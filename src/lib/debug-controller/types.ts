@@ -52,6 +52,8 @@ export type DebugAction =
   | "revalidate-all"
   | "remove-opensearch-product"
   | "sync-opensearch-index"
+  | "remove-meili-product"
+  | "sync-meili-index"
   | "clear-flash-sale-cache"
   | "mark-order-delivered"
   | "sync-debug-delivery-ledger"

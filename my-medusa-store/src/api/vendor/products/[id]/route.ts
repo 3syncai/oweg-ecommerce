@@ -3,8 +3,7 @@ import { CatalogConflict, protectCatalogEdit, publicVariantSku, withCatalogLock 
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../../_lib/guards"
 import { Modules } from "@medusajs/framework/utils"
-import client from "../../../../utils/opensearch"
-import { PRODUCTS_INDEX } from "../../../../utils/search-index"
+import { deleteSearchDocument } from "../../../../utils/search-index"
 import {
   parseColorImagesFromMetadata,
   parsePrimaryVisualOptionFromMetadata,
@@ -157,17 +156,11 @@ export async function updateOffer(req: MedusaRequest, res: MedusaResponse, auth:
     }
     const updatedProduct = await saveVendorProductEdit(req, productId, auth.vendor_id, body)
 
-    // Product is moved to pending/draft after vendor edit; remove stale published doc from OpenSearch.
+    // Product is moved to pending/draft after vendor edit; remove stale published doc from Meilisearch.
     try {
-      await client.delete({
-        index: PRODUCTS_INDEX,
-        id: productId,
-        refresh: true,
-      })
+      await deleteSearchDocument(productId)
     } catch (deleteError: any) {
-      if (deleteError?.meta?.statusCode !== 404) {
-        console.warn("Failed removing product from OpenSearch during vendor edit:", deleteError?.message)
-      }
+      console.warn("Failed removing product from Meilisearch during vendor edit:", deleteError?.message)
     }
 
     if (matrixResponse) {
@@ -226,18 +219,12 @@ export async function DELETE(req: MedusaRequest, res: MedusaResponse) {
     await productModuleService.deleteProducts([productId])
 
     try {
-      await client.delete({
-        index: PRODUCTS_INDEX,
-        id: productId,
-        refresh: true,
-      })
+      await deleteSearchDocument(productId)
     } catch (searchDeleteError: any) {
-      if (searchDeleteError?.meta?.statusCode !== 404) {
-        console.warn(
-          "Failed removing product from OpenSearch during vendor delete:",
-          searchDeleteError?.message
-        )
-      }
+      console.warn(
+        "Failed removing product from Meilisearch during vendor delete:",
+        searchDeleteError?.message
+      )
     }
 
     return res.json({ message: "Product deleted successfully" })
