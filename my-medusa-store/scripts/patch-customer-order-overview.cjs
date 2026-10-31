@@ -84,6 +84,7 @@ module.exports = function patchCustomerOrderOverview() {
   require("./patch-order-list.cjs")()
   require("./patch-product-sidebar.cjs")()
   require("./patch-product-detail.cjs")()
+  require("./patch-product-media.cjs").apply()
 }
 if (require.main === module) module.exports()
 require("./patch-product-list.cjs")()

@@ -162,7 +162,7 @@ export default defineConfig({
         default: "s3",
         providers: [
           {
-            resolve: "@medusajs/file-s3",
+            resolve: "./src/modules/oweg-s3",
             id: "s3",
             options: {
               bucket: process.env.S3_BUCKET,
@@ -178,9 +178,6 @@ export default defineConfig({
                   ? `https://${bucket}.s3.${region}.amazonaws.com`
                   : configured
               })(),
-              additionalOptions: {
-                ACL: undefined,
-              },
             },
           },
         ],
