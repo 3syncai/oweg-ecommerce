@@ -409,7 +409,7 @@ function CategoryStrip() {
       <div className="oweg-container">
         <div className="oweg-section-head">
           <div className="min-w-0">
-            <h2 className="oweg-title">Shop by subcategory</h2>
+            <h2 className="oweg-title">Shop by Sub-Category</h2>
           </div>
         </div>
         <div className={styles.categoryGrid} role="region" aria-label="Shop subcategories" tabIndex={0}>

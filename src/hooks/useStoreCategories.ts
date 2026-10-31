@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import type { MedusaCategory } from "@/services/medusa";
+import { sortCategoriesByRank } from "@/lib/category-rank";
 
 export const STORE_CATEGORIES_QUERY_KEY = ["store-categories"] as const;
 
@@ -11,7 +12,7 @@ async function fetchStoreCategories(): Promise<MedusaCategory[]> {
     throw new Error("Unable to load categories");
   }
   const data = await res.json();
-  return Array.isArray(data.categories) ? (data.categories as MedusaCategory[]) : [];
+  return Array.isArray(data.categories) ? sortCategoriesByRank(data.categories as MedusaCategory[]) : [];
 }
 
 export function useStoreCategories() {

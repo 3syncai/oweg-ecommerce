@@ -28,6 +28,7 @@ type FlashSaleProduct = {
     mrp?: number
     price?: number
   }
+  display_pricing?: { variant_id: string; price: number; mrp: number; from: boolean }
   variant_id?: string
   flash_sale_price?: number // Flash sale price in rupees
   original_price?: number // Original price in rupees
@@ -195,7 +196,7 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
   const { addToWishlist, isLoading: isAddingToWishlist } = useAddToWishlistWithNotification(product.id)
 
   // Get variant_id from product
-  const variantId = product.variant_id || product.variants?.[0]?.id || null
+  const variantId = product.display_pricing?.variant_id || product.variant_id || product.variants?.[0]?.id || null
 
   // Defensive coercion: Postgres NUMERIC columns serialize as strings
   // ("900.00"), so `flash_sale_price` / `original_price` may arrive as
@@ -211,40 +212,6 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
     return 0
   }
 
-  const calculatePrice = () => {
-    if (product.flash_sale_price !== undefined && product.flash_sale_price !== null) {
-      return toNumber(product.flash_sale_price)
-    }
-    if (product.metadata?.price) {
-      return toNumber(product.metadata.price)
-    }
-    const variant = product.variants?.[0]
-    const price = variant?.prices?.[0]?.amount
-    if (price) {
-      return toNumber(price) / 100 // Convert from cents
-    }
-    return 0
-  }
-
-  const calculateMRP = () => {
-    if (product.original_price !== undefined && product.original_price !== null) {
-      return toNumber(product.original_price)
-    }
-    if (product.metadata?.mrp) {
-      return toNumber(product.metadata.mrp)
-    }
-    return calculatePrice()
-  }
-
-  const calculateDiscount = () => {
-    const mrp = calculateMRP()
-    const price = calculatePrice()
-    if (mrp > price && mrp > 0) {
-      return Math.round(((mrp - price) / mrp) * 100)
-    }
-    return 0
-  }
-
   const getProductImage = () => {
     if (product.thumbnail) return product.thumbnail
     if (product.images && product.images.length > 0) {
@@ -253,9 +220,9 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
     return '/placeholder-product.png'
   }
 
-  const price = calculatePrice()
-  const mrp = calculateMRP()
-  const discount = calculateDiscount()
+  const price = toNumber(product.display_pricing?.price ?? product.flash_sale_price ?? product.metadata?.price)
+  const mrp = toNumber(product.display_pricing?.mrp ?? product.original_price ?? product.metadata?.mrp)
+  const discount = mrp > price && price > 0 ? Math.round(((mrp - price) / mrp) * 100) : 0
   const imageUrl = getProductImage()
   const productHref = `/productDetail/${encodeURIComponent(product.id)}`
 
@@ -287,7 +254,7 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
       <div className={styles.body}>
         <Link href={productHref} prefetch={false} className={styles.title}>{product.title}</Link>
         <div className={styles.pricing}>
-          <span className={styles.price}>{inr.format(price)}</span>
+          <span className={styles.price}>{product.display_pricing?.from && <span className={styles.from}>From </span>}{inr.format(price)}</span>
           {mrp > price && <del>{inr.format(mrp)}</del>}
           {discount > 0 && <span className={styles.discount}>{discount}% OFF</span>}
         </div>
