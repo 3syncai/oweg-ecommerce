@@ -114,6 +114,43 @@
 .location > div { min-width: 0; }
 .location:hover { opacity: .8; }
 .search { flex: 1; min-width: 100px; }
+.searchFrame {
+  border-radius: 8px;
+  transition: box-shadow 160ms ease;
+}
+.searchInput {
+  caret-color: #326b29;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+.searchInput:focus, .searchInput:focus-visible {
+  outline: none;
+  border-color: #6b9e56;
+  box-shadow: none;
+}
+.searchFrame:focus-within {
+  box-shadow: 0 0 0 1px #6b9e56, 0 0 0 4px #7ac94320;
+}
+.searchFrame:focus-within input,
+.searchFrame:focus-within > button,
+.searchFrame:focus-within > [data-browse-root] > button {
+  border-color: #6b9e56;
+}
+.searchFrame input:focus-visible, .searchFrame button:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.searchFrame button:focus-visible { background-color: #eaf4df; color: #17483b; }
+.mobileSearchInput:focus, .mobileSearchInput:focus-visible {
+  background-color: #fcfef9;
+  box-shadow: 0 0 0 3px #7ac94326, 0 3px 10px #17483b0a;
+}
+.searchSubmit:focus-visible {
+  outline: 2px solid #17483b;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .searchFrame, .searchInput { transition: none; }
+}
 .actions { display: flex; align-items: center; gap: 15px; flex-shrink: 0; }
 .accountButton, .actionLink { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 52px; min-height: 44px; color: #17483b; }
 .accountButton { padding-inline: 8px; }

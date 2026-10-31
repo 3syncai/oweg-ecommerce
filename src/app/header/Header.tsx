@@ -1441,7 +1441,7 @@ const Header: React.FC = () => {
 
               {/* Search Bar - Center (flex: 1) */}
               <div className={navStyles.search}>
-                <div className="flex gap-0 relative items-stretch">
+                <div className={`${navStyles.searchFrame} flex gap-0 relative items-stretch`}>
                   {/* Category Dropdown ("All") - Pixel Perfect */}
                   <div className="relative" data-browse-root>
                     <button
@@ -1538,7 +1538,8 @@ const Header: React.FC = () => {
                     <Input
                       type="text"
                       placeholder={selectedFilter ? `Search in ${selectedFilter.title}...` : "Search for products, categories and more..."}
-                      className="h-10 rounded-none border-y border-gray-300 border-x-0 px-4 text-sm focus:ring-2 focus:ring-header-accent focus:border-y-header-accent focus:z-10"
+                      aria-label="Search products"
+                      className={`${navStyles.searchInput} h-10 rounded-none border-y border-gray-300 border-x-0 px-4 text-sm`}
                       value={q}
                       onChange={(e) => {
                         setQ(e.target.value);
@@ -1708,14 +1709,15 @@ const Header: React.FC = () => {
                           }
                         }}
                         placeholder="Search products, categories..."
-                        className="h-12 rounded-full border-gray-200 bg-white shadow-sm pr-14"
+                        aria-label="Search products"
+                        className={`${navStyles.searchInput} ${navStyles.mobileSearchInput} h-12 rounded-full border-gray-200 bg-white shadow-sm pr-14`}
                       />
                       <div className="absolute inset-y-1 right-4 flex items-center">
                         <button
                           type="button"
                           aria-label="Search"
                           onClick={() => navigateToSearch()}
-                          className="w-10 h-10 rounded-full bg-header-accent text-white flex items-center justify-center cursor-pointer"
+                          className={`${navStyles.searchSubmit} w-10 h-10 rounded-full bg-header-accent text-white flex items-center justify-center cursor-pointer`}
                         >
                           <Search className="w-5 h-5" />
                         </button>
