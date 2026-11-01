@@ -49,6 +49,21 @@ test('caller-supplied header/config behavior is preserved', async () => {
   assert.equal(calls[0].headers.get('X-Request'), 'fixture')
   assert.deepEqual(calls[0].params, { q: '' }); assert.equal(calls[0].timeout, 1234)
 })
+
+test('product list forwards cancellation without changing filters or legacy calls', async () => {
+  fixture({ products: [], count: 0 })
+  const controller = new AbortController()
+  await api.vendorProductsApi.list({ limit: 20, offset: 40, status: 'pending', q: '%_test' }, controller.signal)
+  assert.equal(calls[0].signal, controller.signal)
+  const query = new URL(calls[0].url, 'http://localhost').searchParams
+  assert.equal(query.get('limit'), '20'); assert.equal(query.get('offset'), '40')
+  assert.equal(query.get('status'), 'pending'); assert.equal(query.get('q'), '%_test')
+  controller.abort()
+  await assert.rejects(api.vendorProductsApi.list({ limit: 20 }, controller.signal))
+  assert.equal(calls.length, 1, 'an already cancelled request must not reach the adapter')
+  await api.vendorProductsApi.list()
+  assert.equal(calls[1].url, '/api/medusa/vendor/products')
+})
 test('login keeps its separate headers and returns nullable vendor/reset flag unchanged', async () => {
   const value = { token: 'fixture', vendor_user: { id: 'vu_1', email: 'vendor@example.com', vendor_id: null, must_reset_password: true }, vendor: null }
   fixture(value)

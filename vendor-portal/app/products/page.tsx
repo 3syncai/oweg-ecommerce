@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Container, Heading, Text, Button } from "@medusajs/ui"
 import { ArchiveBox, MagnifyingGlass, Plus, ArrowUpRightMini, Tag, ChevronLeft, ChevronRight } from "@medusajs/icons"
 import VendorShell from "@/components/VendorShell"
@@ -113,7 +113,11 @@ const VendorProductsPage = () => {
     return () => window.clearTimeout(id)
   }, [search])
 
+  const productRequest = useRef<AbortController | null>(null)
   const loadProducts = useCallback(async () => {
+    productRequest.current?.abort()
+    const controller = new AbortController()
+    productRequest.current = controller
     const cacheKey = pageCacheKey("products", {
       status: statusFilter,
       page,
@@ -135,7 +139,8 @@ const VendorProductsPage = () => {
         offset: (page - 1) * PAGE_SIZE,
         q: searchDebounced || undefined,
         status: statusFilter === "all" ? undefined : statusFilter,
-      })
+      }, controller.signal)
+      if (controller.signal.aborted) return
       const nextProducts = data?.products || []
       const nextTotal =
         typeof data?.count === "number" ? data.count : nextProducts.length
@@ -158,6 +163,7 @@ const VendorProductsPage = () => {
       } satisfies ProductsCachePayload)
       setError(null)
     } catch (e: unknown) {
+      if (controller.signal.aborted) return
       if (e instanceof ApiError && e.status === 403) {
         router.push("/pending")
         return
@@ -166,7 +172,7 @@ const VendorProductsPage = () => {
       setError(message)
       console.warn("Products error:", message)
     } finally {
-      setLoading(false)
+      if (!controller.signal.aborted) setLoading(false)
     }
   }, [router, page, searchDebounced, statusFilter])
 
@@ -177,6 +183,7 @@ const VendorProductsPage = () => {
       return
     }
     void loadProducts()
+    return () => productRequest.current?.abort()
   }, [router, loadProducts])
 
   useVendorLive({

@@ -1,3 +1,5 @@
+import { getSharedDbPool } from "../../../lib/db-pool"
+import { vendorProductSelection } from "../../../lib/vendor-product-list"
 import { loadShareProduct, sharedProductDraft, validProductShare } from "../../../lib/product-share"
 import { prepareSharedCatalogOffer } from "../../../lib/shared-catalog-offer"
 import { CatalogConflict, cleanVendorMetadata, prepareCatalogOffer, publicVariantSku, withCatalogLock } from "../../../lib/catalog-identity"
@@ -43,85 +45,56 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const q = String(req.query?.q || "").trim().toLowerCase()
     const statusFilter = String(req.query?.status || "").trim().toLowerCase()
 
+    const selection = await vendorProductSelection(
+      getSharedDbPool(), auth.vendor_id, pagination, q, statusFilter
+    )
     const query = req.scope.resolve("query")
-    const { data: products } = await query.graph({
-      entity: "product",
-      fields: [
-        "id",
-        "title",
-        "subtitle",
-        "description",
-        "handle",
-        "status",
-        "thumbnail",
-        "images.*",
-        "metadata",
-        "created_at",
-        "updated_at",
-        "collection_id",
-        "type_id",
-        "variants.id",
-        "variants.title",
-        "variants.sku",
-        "variants.manage_inventory",
-        "options.*",
-        "tags.*",
-        "categories.id",
-      ],
-      filters: {
-        metadata: {
-          vendor_id: auth.vendor_id,
-        },
-      },
-    })
-
-    let vendorProducts = (products || []).map((product: any) => ({ ...product, variants: (product.variants || []).map((variant: any) => ({ ...variant, sku: publicVariantSku(product, variant) })) }))
-
-    const resolveListStatus = (p: any): "published" | "pending" | "draft" => {
-      const approval = String(p?.metadata?.approval_status || "").toLowerCase()
-      if (approval === "pending") return "pending"
-      const status = String(p?.status || "").toLowerCase()
-      if (status === "published") return "published"
-      return "draft"
-    }
-
-    const counts = { total: 0, published: 0, draft: 0, pending: 0 }
-    for (const p of vendorProducts) {
-      counts.total += 1
-      const s = resolveListStatus(p)
-      counts[s] += 1
-    }
-
-    if (statusFilter && statusFilter !== "all") {
-      vendorProducts = vendorProducts.filter(
-        (p: any) => resolveListStatus(p) === statusFilter
-      )
-    }
-
-    if (q) {
-      vendorProducts = vendorProducts.filter((p: any) => {
-        const hay = [p.title, p.handle, p.subtitle, p.id]
-          .map((v) => String(v || "").toLowerCase())
-          .join(" ")
-        return hay.includes(q)
+    const productsById = new Map<string, any>()
+    // Legacy dashboard/search callers still get all products, in bounded graph reads.
+    for (let i = 0; i < selection.ids.length; i += 100) {
+      const ids = selection.ids.slice(i, i + 100)
+      const { data: products } = await query.graph({
+        entity: "product",
+        fields: [
+          "id",
+          "title",
+          "subtitle",
+          "description",
+          "handle",
+          "status",
+          "thumbnail",
+          "images.*",
+          "metadata",
+          "created_at",
+          "updated_at",
+          "collection_id",
+          "type_id",
+          "variants.id",
+          "variants.title",
+          "variants.sku",
+          "variants.manage_inventory",
+          "options.*",
+          "tags.*",
+          "categories.id",
+        ],
+        filters: { id: ids },
+        pagination: { take: ids.length },
       })
+      for (const product of products || []) {
+        // Never expose a product reassigned to another vendor during hydration.
+        if (product.metadata?.vendor_id !== auth.vendor_id) continue
+        productsById.set(product.id, {
+          ...product,
+          variants: (product.variants || []).map((variant: any) => ({
+            ...variant, sku: publicVariantSku(product, variant),
+          })),
+        })
+      }
     }
-
-    vendorProducts.sort((a: any, b: any) => {
-      const at = new Date(a.updated_at || a.created_at || 0).getTime()
-      const bt = new Date(b.updated_at || b.created_at || 0).getTime()
-      return bt - at
-    })
-
-    const total = vendorProducts.length
-    const page = pagination.all
-      ? vendorProducts
-      : vendorProducts.slice(pagination.offset, pagination.offset + pagination.limit)
-
     return res.json({
-      products: page,
-      counts,
-      ...paginationMeta(total, pagination),
+      products: selection.ids.map(id => productsById.get(id)).filter(Boolean),
+      counts: selection.counts,
+      ...paginationMeta(selection.count, pagination),
     })
   } catch (error: any) {
     console.error("Vendor products list error:", error)
