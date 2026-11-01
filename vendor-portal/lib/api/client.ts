@@ -419,7 +419,7 @@ export const vendorBrandsApi = {
 
 // Vendor Products API
 export const vendorProductsApi = {
-  list: async (params?: { limit?: number; offset?: number; q?: string; status?: string; all?: boolean }) => {
+  list: async (params?: { limit?: number; offset?: number; q?: string; status?: string; all?: boolean }, signal?: AbortSignal) => {
     const qs = new URLSearchParams()
     if (params?.all) qs.set('all', '1')
     if (params?.limit != null) qs.set('limit', String(params.limit))
@@ -433,7 +433,7 @@ export const vendorProductsApi = {
       limit?: number
       offset?: number
       counts?: { total: number; published: number; draft: number; pending: number }
-    }>(`/vendor/products${suffix}`)
+    }>(`/vendor/products${suffix}`, { signal })
   },
 
   get: async (id: string) => {
