@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   Badge,
   Button,
@@ -15,6 +15,8 @@ import {
 } from "@medusajs/ui"
 import VendorShell from "@/components/VendorShell"
 import PageSkeleton from "@/components/PageSkeleton"
+import ProductImageDropzone from "@/components/ProductImageDropzone"
+import { productImageSelectionError, uploadProductImageFiles } from "@/lib/product-image-upload"
 import { variantPricesError } from "@/lib/variant-pricing"
 import VariantMatrixEditor from "@/components/VariantMatrixEditor"
 import { simpleProductPrices, serializeProductEditVariants } from "@/lib/product-edit"
@@ -23,7 +25,8 @@ import CategorySubcategoryPicker, {
   buildCategoryPickerValue,
   type CategorySubcategoryValue,
 } from "@/components/CategorySubcategoryPicker"
-import { vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorInventoryApi } from "@/lib/api/client"
+import type { ProductMetadata } from "@/lib/api/contracts"
+import { ApiError, vendorProductsApi, vendorCategoriesApi, vendorCollectionsApi, vendorInventoryApi } from "@/lib/api/client"
 import {
   collectAllImageUrls,
   detectVisualOption,
@@ -53,7 +56,7 @@ type Product = {
   updated_at: string
   thumbnail?: string | null
   images?: Array<{ url: string }>
-  metadata?: Record<string, any>
+  metadata?: ProductMetadata | null
   categories?: Array<{ id: string; name?: string }>
   collection_id?: string | null
   collection?: { id: string; title?: string } | null
@@ -147,6 +150,8 @@ const VendorProductEditPage = () => {
   const [initialGalleryImages, setInitialGalleryImages] = useState<UploadedImageRef[]>([])
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
   const [initialThumbnailUrl, setInitialThumbnailUrl] = useState<string | null>(null)
+  const imageUploadActive = useRef(false)
+  const imageSection = useRef<HTMLDivElement>(null)
   const [uploadingImages, setUploadingImages] = useState(false)
   const [uploadingVariantImages, setUploadingVariantImages] = useState(false)
   const [primaryVisualOption, setPrimaryVisualOption] = useState("")
@@ -154,6 +159,21 @@ const VendorProductEditPage = () => {
 
   const [categoryPicker, setCategoryPicker] =
     useState<CategorySubcategoryValue>(EMPTY_CATEGORY_PICKER)
+
+  useEffect(() => {
+    // Files dropped outside an upload target must not navigate away from unsaved edits.
+    const preventFileNavigation = (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes("Files")) return
+      event.preventDefault()
+      if (event.type === "drop") toast.error("Drop images inside the image upload area")
+    }
+    window.addEventListener("dragover", preventFileNavigation)
+    window.addEventListener("drop", preventFileNavigation)
+    return () => {
+      window.removeEventListener("dragover", preventFileNavigation)
+      window.removeEventListener("drop", preventFileNavigation)
+    }
+  }, [])
 
   useEffect(() => {
     if (!productId) {
@@ -178,9 +198,9 @@ const VendorProductEditPage = () => {
           vendorInventoryApi.list().catch(() => ({ success: false, inventory: [] })),
         ])
 
-        const prod = (productResponse as any)?.product as Product
-        const summary = (productResponse as any)?.variant_summary as VariantSummary | null
-        const matrix = (productResponse as any)?.variant_matrix as {
+        const prod = productResponse.product
+        const summary = productResponse.variant_summary as VariantSummary | null
+        const matrix = productResponse.variant_matrix as {
           options?: Array<{ title: string; values: string[] }>
           variants?: Array<{
             id: string
@@ -194,40 +214,42 @@ const VendorProductEditPage = () => {
             option_values: Record<string, string>
           }>
         } | null
-        const loadedColorImages = ((productResponse as any)?.color_images || {}) as Record<
+        const loadedColorImages = (productResponse.color_images || {}) as Record<
           string,
           string[]
         >
-        const loadedPrimaryVisual = (productResponse as any)?.primary_visual_option as string | undefined
+        const loadedPrimaryVisual = productResponse.primary_visual_option as string | undefined
 
         if (!prod) {
           setLoading(false)
           return
         }
 
-        const loadedCategories = (categoriesResponse as any)?.product_categories || []
-        const loadedCollections = (collectionsResponse as any)?.collections || []
+        const loadedCategories = categoriesResponse.product_categories || []
+        const loadedCollections = collectionsResponse.collections || []
 
         setAtomicEditSupported(productResponse.atomic_edit_version === 1)
         setProduct(prod)
         setVariantSummary(summary || null)
         setCategories(loadedCategories)
         setCollections(loadedCollections)
-        if ((inventoryResponse as any)?.success) {
+        if (inventoryResponse.success) {
           setUsedSkus(
-            buildUsedSkuSet((inventoryResponse as any).inventory || [], productId)
+            buildUsedSkuSet(inventoryResponse.inventory || [], productId)
           )
         }
 
-        const existingCategoryId =
+        const existingCategoryId = String(
           prod?.categories?.[0]?.id ||
           (Array.isArray(prod?.metadata?.categories) ? prod.metadata.categories[0] : "") ||
           ""
-        const existingCollectionId =
+        )
+        const existingCollectionId = String(
           prod?.collection_id ||
           prod?.collection?.id ||
           prod?.metadata?.collection_id ||
           ""
+        )
         const existingTaxCode = String(prod?.metadata?.tax_code || "")
         const existingGstRate =
           prod?.metadata?.gst_rate != null && prod?.metadata?.gst_rate !== ""
@@ -311,13 +333,13 @@ const VendorProductEditPage = () => {
         setPrimaryVisualOption(
           loadedPrimaryVisual || detectVisualOption(optionDefs.map((o) => o.title)) || ""
         )
-      } catch (e: any) {
-        if (e?.status === 403) {
+      } catch (e: unknown) {
+        if (e instanceof ApiError && e.status === 403) {
           router.push("/pending")
           return
         }
 
-        const message = e?.message || "Failed to load product details"
+        const message = e instanceof Error ? e.message : "Failed to load product details"
         setLoadError(message)
         toast.error("Error", { description: message })
       } finally {
@@ -389,29 +411,23 @@ const VendorProductEditPage = () => {
   const previewImage = (thumbnailUrl && allImageUrls.includes(thumbnailUrl)
     ? thumbnailUrl : allImageUrls[0]) || null
 
-  const handleImageUpload = async (files: FileList | null) => {
-    if (!files?.length) return
-    const images = Array.from(files)
-    if (images.some((file) => !file.type.startsWith("image/"))) {
-      toast.error("Please select image files")
-      return
-    }
+  const handleImageUpload = async (files: File[]) => {
+    if (!files.length || imageUploadActive.current || saving) return
+    const validationError = productImageSelectionError(files)
+    if (validationError) { toast.error(validationError); return }
+    imageUploadActive.current = true
     setUploadingImages(true)
     try {
-      // Keep successful uploads even if another file fails.
-      const results = await Promise.allSettled(images.map(async (file) => {
+      const { uploaded, errors } = await uploadProductImageFiles(files, async file => {
         const data = await vendorProductsApi.uploadImage(file)
-        const uploaded = data.files?.[0] || data
-        if (!uploaded.url) throw new Error("No image URL returned")
-        return { url: uploaded.url, originalName: file.name }
-      }))
-      const uploaded = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : [])
-      setGalleryImages((previous) => [...previous, ...uploaded])
-      if (results.some((result) => result.status === "rejected")) {
-        const failed = results.find((result) => result.status === "rejected")
-        toast.error("Image upload failed", { description: failed?.status === "rejected" && failed.reason instanceof Error ? failed.reason.message : "Please try again." })
-      }
+        const image = data.files?.[0] || data
+        if (!image?.url) throw new Error("No image URL returned")
+        return { url: image.url, originalName: file.name }
+      })
+      setGalleryImages(previous => [...previous, ...uploaded])
+      if (errors.length) toast.error("Some images could not be uploaded", { description: errors[0] })
     } finally {
+      imageUploadActive.current = false
       setUploadingImages(false)
     }
   }
@@ -612,8 +628,8 @@ const VendorProductEditPage = () => {
         description: "Admin will review your changes shortly.",
       })
       setApprovalSentOpen(true)
-    } catch (e: any) {
-      toast.error("Error", { description: e?.message || "Failed to update product" })
+    } catch (e: unknown) {
+      toast.error("Error", { description: e instanceof Error ? e.message : "Failed to update product" })
     } finally {
       setSaving(false)
     }
@@ -629,8 +645,8 @@ const VendorProductEditPage = () => {
       await vendorProductsApi.delete(productId)
       toast.success("Deleted", { description: "Product deleted successfully" })
       router.push("/products")
-    } catch (e: any) {
-      toast.error("Error", { description: e?.message || "Failed to delete product" })
+    } catch (e: unknown) {
+      toast.error("Error", { description: e instanceof Error ? e.message : "Failed to delete product" })
     } finally {
       setDeleting(false)
     }
@@ -685,9 +701,9 @@ const VendorProductEditPage = () => {
             ? "Product is now hidden from the storefront."
             : "Product is now visible on the storefront."),
       })
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast.error("Error", {
-        description: e?.message || `Failed to ${action} product`,
+        description: e instanceof Error ? e.message : `Failed to ${action} product`,
       })
     } finally {
       setStatusUpdating(false)
@@ -795,7 +811,10 @@ const VendorProductEditPage = () => {
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ui-border-base bg-ui-bg-subtle p-3">
                 <Text size="small">{hasVariants ? "Manage photos for each variant below." : "Add or update your product photos below."}</Text>
-                <a href="#product-images" className="text-sm font-medium text-ui-fg-interactive underline">Upload / edit images</a>
+                <Button type="button" variant="secondary" size="small" onClick={() => {
+                  imageSection.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  imageSection.current?.focus({ preventScroll: true })
+                }}>Upload / edit images</Button>
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label>Product name *</Label>
@@ -920,7 +939,7 @@ const VendorProductEditPage = () => {
               </div>
             </div>
 
-            <div id="product-images" className="scroll-mt-6 border-t border-ui-border-base pt-5">
+            <div ref={imageSection} tabIndex={-1} id="product-images" className="scroll-mt-6 border-t border-ui-border-base pt-5">
               <Heading level="h2" className="mb-3 text-base font-['Space_Grotesk',var(--font-geist-sans)]">
                 Product images & variants
               </Heading>
@@ -938,24 +957,9 @@ const VendorProductEditPage = () => {
                 onImageUploadStateChange={setUploadingVariantImages}
                 simpleProductExtras={
                   <div className="space-y-4">
-                    <Label htmlFor="product-image-upload">Product images</Label>
+                    <Text weight="plus">Product images</Text>
                     <Text size="small" className="text-ui-fg-subtle">Upload photos, remove old images, or choose the thumbnail shown in your listing.</Text>
-                    <Label htmlFor="product-image-upload" className="flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-ui-border-base bg-ui-bg-subtle p-4 text-center hover:border-ui-border-interactive focus-within:ring-2 focus-within:ring-ui-border-interactive">
-                      <span className="font-medium">{uploadingImages ? "Uploading images…" : "Choose product images"}</span>
-                      <span className="text-xs text-ui-fg-subtle">Select one or more images from your device</span>
-                    <input
-                      className="sr-only"
-                      id="product-image-upload"
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      disabled={uploadingImages || saving}
-                      onChange={(event) => {
-                        void handleImageUpload(event.target.files)
-                        event.target.value = ""
-                      }}
-                    />
-                    </Label>
+                    <ProductImageDropzone onFiles={files => { void handleImageUpload(files) }} uploading={uploadingImages} disabled={saving} />
                     <div className="flex flex-wrap gap-4">
                       {galleryImages.map((image, index) => (
                         <div key={`${image.url}-${index}`} className="space-y-2 rounded-lg border border-ui-border-base p-2">

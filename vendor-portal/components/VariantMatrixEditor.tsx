@@ -2,6 +2,8 @@
 
 import React, { useMemo, useRef, useState } from "react"
 import { Button, Heading, Input, Label, Switch, Text, toast } from "@medusajs/ui"
+import ProductImageDropzone from "@/components/ProductImageDropzone"
+import { productImageSelectionError, uploadProductImageFiles } from "@/lib/product-image-upload"
 import { vendorProductsApi } from "@/lib/api/client"
 import ProductPriceCalculator, { type LogisticsEstimateDetails } from "@/components/ProductPriceCalculator"
 import {
@@ -153,7 +155,7 @@ export default function VariantMatrixEditor({
   const [uploadingFor, setUploadingFor] = useState<string | null>(null)
   const [newColorInput, setNewColorInput] = useState("")
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false)
-  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const imageUploadActive = useRef(false)
 
   const normalizedOptions = useMemo(
     () => normalizeProductOptions(productOptions),
@@ -384,24 +386,26 @@ export default function VariantMatrixEditor({
     toast.success("Prices applied to all rows")
   }
 
-  const handleVisualImageUpload = async (visualValue: string, files: FileList | null) => {
-    if (!files?.length) return
+  const handleVisualImageUpload = async (visualValue: string, files: File[]) => {
+    if (!files.length || imageUploadActive.current) return
+    const validationError = productImageSelectionError(files)
+    if (validationError) { toast.error(validationError); return }
+    imageUploadActive.current = true
     onImageUploadStateChange?.(true)
     setUploadingFor(visualValue)
     try {
-      const results = await Promise.allSettled(Array.from(files).map(uploadImageToS3))
-      const uploaded = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : [])
+      const { uploaded, errors } = await uploadProductImageFiles(files, uploadImageToS3)
       onColorImagesChange({
         ...colorImages,
         [visualValue]: [...(colorImages[visualValue] || []), ...uploaded],
       })
-      const failed = results.find((result) => result.status === "rejected")
-      if (failed?.status === "rejected") throw failed.reason
+      if (errors.length) throw new Error(errors[0])
     } catch (err) {
       toast.error("Upload failed", {
         description: err instanceof Error ? err.message : "Could not upload",
       })
     } finally {
+      imageUploadActive.current = false
       setUploadingFor(null)
       onImageUploadStateChange?.(false)
     }
@@ -572,29 +576,14 @@ export default function VariantMatrixEditor({
                     key={value}
                     className="rounded-lg border border-dashed border-ui-border-base p-4 hover:border-ui-border-strong transition-colors"
                   >
-                    <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="mb-3 space-y-3">
                       <Text weight="plus">{value}</Text>
-                      <input
-                        ref={(el) => {
-                          fileInputRefs.current[value] = el
-                        }}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        onChange={(e) => {
-                          void handleVisualImageUpload(value, e.target.files)
-                          e.target.value = ""
-                        }}
-                      />
-                      <Button type="button"
-                        variant="secondary"
-                        size="small"
+                      <ProductImageDropzone
+                        label={`${value} images`}
+                        uploading={uploadingFor === value}
                         disabled={uploadingFor !== null}
-                        onClick={() => fileInputRefs.current[value]?.click()}
-                      >
-                        {uploadingFor === value ? "Uploading…" : "+ Add photos"}
-                      </Button>
+                        onFiles={files => { void handleVisualImageUpload(value, files) }}
+                      />
                     </div>
                     {(colorImages[value]?.length || 0) > 0 ? (
                       <div className="flex flex-wrap gap-2">
@@ -917,29 +906,14 @@ export default function VariantMatrixEditor({
                   key={value}
                   className="rounded-lg border border-dashed border-ui-border-base p-4"
                 >
-                  <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="mb-3 space-y-3">
                     <Text weight="plus">{value}</Text>
-                    <input
-                      ref={(el) => {
-                        fileInputRefs.current[value] = el
-                      }}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => {
-                        void handleVisualImageUpload(value, e.target.files)
-                        e.target.value = ""
-                      }}
-                    />
-                    <Button type="button"
-                      variant="secondary"
-                      size="small"
-                      disabled={uploadingFor !== null}
-                      onClick={() => fileInputRefs.current[value]?.click()}
-                    >
-                      {uploadingFor === value ? "Uploading…" : "+ Add photos"}
-                    </Button>
+                    <ProductImageDropzone
+                        label={`${value} images`}
+                        uploading={uploadingFor === value}
+                        disabled={uploadingFor !== null}
+                        onFiles={files => { void handleVisualImageUpload(value, files) }}
+                      />
                   </div>
                   {(colorImages[value]?.length || 0) > 0 ? (
                     <div className="flex flex-wrap gap-2">
