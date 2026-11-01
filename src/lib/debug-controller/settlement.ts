@@ -14,6 +14,10 @@ export async function forceSettleDebugOrder(pool: Pool, orderId: string) {
   const db = await pool.connect();
   try {
     await db.query("BEGIN");
+    // Backward-compatible while the partner ledger migration rolls out separately.
+    const ledger = await db.query<{ enabled: boolean }>(
+      "SELECT to_regclass('public.partner_commission_wallet_ledger') IS NOT NULL AS enabled"
+    );
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", ["commission:" + orderId]);
     const order = await db.query(`SELECT id FROM "order" WHERE id = $1 AND status <> 'canceled' AND deleted_at IS NULL FOR UPDATE`, [orderId]);
     if (!order.rowCount) throw new Error("Active order not found");
@@ -50,6 +54,22 @@ export async function forceSettleDebugOrder(pool: Pool, orderId: string) {
         userId = row.affiliate_user_id;
       }
       if (!userId) throw new Error(`Commission ${row.id} has no supported wallet recipient`);
+      if (ledger.rows[0]?.enabled) {
+        const receipt = await db.query(`INSERT INTO partner_commission_wallet_ledger(commission_id, customer_id, amount)
+          VALUES ($1::text, $2, $3::numeric) ON CONFLICT (commission_id) DO NOTHING RETURNING commission_id`,
+          [row.id, userId, row.affiliate_commission]);
+        const zeroCorrection = !receipt.rowCount ? await db.query(`UPDATE partner_commission_wallet_ledger
+          SET amount=$3::numeric, legacy_baseline=false WHERE commission_id=$1::text
+          AND customer_id=$2 AND amount=0 AND reversed_at IS NULL RETURNING commission_id`,
+          [row.id, userId, row.affiliate_commission]) : null;
+        if (!receipt.rowCount && !zeroCorrection?.rowCount) {
+          const previous = await db.query(`SELECT 1 FROM partner_commission_wallet_ledger
+            WHERE commission_id=$1::text AND customer_id=$2 AND amount=$3::numeric AND reversed_at IS NULL`,
+            [row.id, userId, row.affiliate_commission]);
+          if (!previous.rowCount) throw new Error(`Commission ${row.id} has a conflicting wallet receipt`);
+          continue;
+        }
+      }
       await db.query(`INSERT INTO customer_wallet(customer_id, coins_balance) VALUES ($1::text, $2)
         ON CONFLICT (customer_id) DO UPDATE SET coins_balance = customer_wallet.coins_balance + EXCLUDED.coins_balance`,
         [userId, row.affiliate_commission]);
