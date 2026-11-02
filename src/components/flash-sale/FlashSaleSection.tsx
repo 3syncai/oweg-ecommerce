@@ -38,7 +38,7 @@ type FlashSaleProduct = {
   }
 }
 
-type FlashSaleData = {
+export type FlashSaleData = {
   active: boolean
   flash_sale: {
     title?: string | null
@@ -56,9 +56,9 @@ const inr = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 2,
 })
 
-const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: boolean; view?: 'carousel' | 'all' }> = ({ showImageFallback = false, inStockOnly = false, view = 'carousel' }) => {
-  const [flashSaleData, setFlashSaleData] = useState<FlashSaleData | null>(null)
-  const [loading, setLoading] = useState(true)
+const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: boolean; view?: 'carousel' | 'all'; initialData?: FlashSaleData }> = ({ showImageFallback = false, inStockOnly = false, view = 'carousel', initialData }) => {
+  const [flashSaleData, setFlashSaleData] = useState<FlashSaleData | null>(initialData ?? null)
+  const [loading, setLoading] = useState(!initialData)
   const [timeRemaining, setTimeRemaining] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
   const [failed, setFailed] = useState(false)
   const fetching = useRef(false)
@@ -84,12 +84,12 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
   }, [inStockOnly, view])
 
   useEffect(() => {
-    void fetchFlashSale()
+    if (!initialData) void fetchFlashSale()
     const interval = setInterval(() => { void fetchFlashSale() }, 60000)
     const onVisible = () => { if (document.visibilityState === 'visible') void fetchFlashSale() }
     document.addEventListener('visibilitychange', onVisible)
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible) }
-  }, [fetchFlashSale])
+  }, [fetchFlashSale, initialData])
 
   useEffect(() => {
     if (!flashSaleData?.flash_sale?.expires_at) {
@@ -127,7 +127,7 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
   }
 
   if (loading) {
-    return view === 'all' ? <div className="oweg-container" role="status"><p>Loading flash sale deals…</p><div className={styles.grid} aria-hidden="true">{Array.from({length: 8}, (_, i) => <div key={i} className={styles.skeleton} />)}</div></div> : null
+    return view === 'all' ? <div className="oweg-container" role="status"><p>Loading flash sale deals…</p><div className={styles.grid} aria-hidden="true">{Array.from({length: 8}, (_, i) => <div key={i} className={styles.skeleton} />)}</div></div> : <FlashSaleSkeleton />
   }
 
   if (!flashSaleData?.active || !flashSaleData?.flash_sale || !flashSaleData?.products || flashSaleData.products.length === 0) {
@@ -140,6 +140,10 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
   }
 
   return <FlashSaleShowcase data={flashSaleData} timeRemaining={timeRemaining} showImageFallback={showImageFallback} view={view} />
+}
+
+export function FlashSaleSkeleton() {
+  return <section className="oweg-section-tight" aria-label="Loading deals" role="status"><div className="oweg-container" style={{ minHeight: 330, display: 'flex', gap: 12, overflow: 'hidden' }} aria-hidden="true">{[0,1,2,3].map(i => <div key={i} className={styles.skeleton} style={{ minWidth: i === 0 ? 280 : 200, height: 310 }} />)}</div><span className="sr-only">Loading deals</span></section>
 }
 
 /** Presentation is separate from polling so real data and preview fixtures use the same layout. */

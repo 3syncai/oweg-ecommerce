@@ -139,11 +139,15 @@ test('admin save forwards its validated title without changing prices or variant
 })
 test('all-deals API uses an independent cache and requests the complete upstream catalogue', async () => {
   const calls=[],filters=[]
+  const cache=load('src/lib/flash-sale-cache.ts')
+  const server=load('src/lib/flash-sale-server.ts',{
+    axios:{get:async url=>{calls.push(url);return {data:{active:true,products:[]}}}},
+    '@/lib/flash-sale-cache':cache,
+    '@/lib/home-flash-sale':{inStockHomeFlashSale:async(data,options)=>{filters.push(options);return data}},
+  })
   const route=load('src/app/api/medusa/flash-sale/products/route.ts',{
     'next/server':{NextResponse:{json:(data,options)=>({data,...options})}},
-    axios:{get:async url=>{calls.push(url);return {data:{active:true,products:[]}}}},
-    '@/lib/flash-sale-cache':load('src/lib/flash-sale-cache.ts'),
-    '@/lib/home-flash-sale':{inStockHomeFlashSale:async(data,options)=>{filters.push(options);return data}},
+    '@/lib/flash-sale-server':server, '@/lib/flash-sale-cache':cache,
   })
   for(const query of ['in_stock=1','in_stock=1&all=1','in_stock=1&all=1']) {
     await route.GET({nextUrl:new URL('https://shop.example/api/medusa/flash-sale/products?'+query)})

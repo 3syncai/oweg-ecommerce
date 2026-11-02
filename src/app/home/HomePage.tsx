@@ -453,8 +453,10 @@ type HomeFeedPayload = {
 
 export default function HomePage({
   initialFeed,
+  sectionsOnly = false,
 }: {
   initialFeed?: HomeFeedPayload;
+  sectionsOnly?: boolean;
 }) {
   const { customer } = useAuth();
   const [placeName, setPlaceName] = useState<string | null>(() => {
@@ -669,15 +671,11 @@ export default function HomePage({
     }
   };
 
+  const Content = sectionsOnly ? 'div' : 'main';
   return (
     <div className={`oweg-page min-h-screen ${styles.home}`}>
-      <main className={`w-full pb-8 ${styles.content}`}>
-        <h1 className="sr-only">Good finds. Everyday living.</h1>
-        <HeroBanner />
-
-        <CategoryStrip />
-
-        <FlashSaleSection showImageFallback inStockOnly />
+      <Content className={`w-full pb-8 ${styles.content}`}>
+        {!sectionsOnly && <><h1 className="sr-only">Good finds. Everyday living.</h1><HeroBanner /><CategoryStrip /><FlashSaleSection showImageFallback inStockOnly /></>}
 
         <section className="oweg-section-tight">
           <div className={`oweg-container ${styles.pageBannerPair}`}>
@@ -869,8 +867,16 @@ export default function HomePage({
         {!loading && displayError && (
           <div className="oweg-container text-sm text-red-500">{displayError}</div>
         )}
-      </main>
+      </Content>
     </div>
   );
 }
 
+
+// Client interactivity for hero/categories never waits for the product feed.
+export function HomeShell() {
+  return <section className={styles.home} aria-label="Storefront highlights"><HeroBanner /><CategoryStrip /></section>;
+}
+export function HomeFeedSkeleton() {
+  return <div className="oweg-container" role="status" aria-label="Loading products" style={{ minHeight: 420 }}><ProductCarousel title="Popular picks" products={[]} loading /></div>;
+}

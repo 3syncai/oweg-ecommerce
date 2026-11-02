@@ -1,0 +1,53 @@
+{
+  "note": "Synthetic actual Page composition, mocked 350ms feed/150ms deals, simplified visuals. Not live Web Vitals.",
+  "runs": [
+    {
+      "mode": "before",
+      "lcp": 428,
+      "cls": 0.19590616861979168,
+      "flash": 553.2000000476837,
+      "ttfb": 381.8000000715256,
+      "criticalApiRequests": 1
+    },
+    {
+      "mode": "before",
+      "lcp": 388,
+      "cls": 0.19590616861979168,
+      "flash": 534.7999999523163,
+      "ttfb": 365.2000000476837,
+      "criticalApiRequests": 1
+    },
+    {
+      "mode": "before",
+      "lcp": 392,
+      "cls": 0.19590616861979168,
+      "flash": 533.5,
+      "ttfb": 361.10000002384186,
+      "criticalApiRequests": 1
+    },
+    {
+      "mode": "after",
+      "lcp": 40,
+      "cls": 0,
+      "flash": 154.79999995231628,
+      "ttfb": 3.6999999284744263,
+      "criticalApiRequests": 0
+    },
+    {
+      "mode": "after",
+      "lcp": 48,
+      "cls": 0,
+      "flash": 160.69999992847443,
+      "ttfb": 2.5,
+      "criticalApiRequests": 0
+    },
+    {
+      "mode": "after",
+      "lcp": 40,
+      "cls": 0,
+      "flash": 156.89999997615814,
+      "ttfb": 2.899999976158142,
+      "criticalApiRequests": 0
+    }
+  ]
+}
