@@ -1,7 +1,6 @@
-import { checkoutOrderAccessError } from "@/lib/checkout-order-access";
+import { loadAuthorizedCheckoutOrder } from "@/lib/checkout-order-access";
 import { NextResponse } from "next/server";
 import { readStoreCart } from "@/lib/medusa-admin";
-import { loadCheckoutOrder } from "@/lib/checkout-order";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 import {
   enrichOrderWithSummaryTotals,
@@ -42,10 +41,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "orderId is required" }, { status: 400 });
   }
 
-  const accessError = await checkoutOrderAccessError(req, orderId);
-  if (accessError) return accessError;
-
-  const loaded = await loadCheckoutOrder(orderId);
+  const access = await loadAuthorizedCheckoutOrder(req, orderId);
+  if (access.error) return access.error;
+  const loaded = access.loaded;
   const rawOrder = loaded?.order || null;
   if (!rawOrder) {
     return NextResponse.json(
@@ -86,9 +84,10 @@ export async function GET(req: Request) {
       shipping_address: order.shipping_address,
       billing_address: order.billing_address,
       metadata: { payment_method: metadata.payment_method, mode: metadata.mode,
-        cod_status: metadata.cod_status, razorpay_payment_status: metadata.razorpay_payment_status },
+        cod_status: metadata.cod_status, razorpay_payment_status: metadata.razorpay_payment_status,
+        checkout_duplicate_suppressed: metadata.checkout_duplicate_suppressed },
     },
-  });
+  }, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 function normalizeSubtotalFromCart(cart: Record<string, unknown> | null) {

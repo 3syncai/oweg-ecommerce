@@ -2,14 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Check, Clock3, Loader2, MapPin, Package, ShieldCheck, ShoppingBag, Sparkles, TriangleAlert } from "lucide-react";
-import { formatOrderCurrency } from "@/lib/order-utils";
+import { ArrowRight, Check, Clock3, Copy, Loader2, MapPin, Package, ShieldCheck, ShoppingBag, Sparkles, TriangleAlert } from "lucide-react";
+import { confirmationOrderHref } from "@/lib/checkout-confirmation";
+
+function formatOrderCurrency(amount: number, currency = "INR") {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: currency.toUpperCase(), maximumFractionDigits: 2 }).format(amount);
+}
 
 export type ConfirmationOrder = {
   id: string;
   display_id?: number | string;
   currency_code?: string;
-  items?: { id: string; title: string; quantity: number; total: number; thumbnail?: string }[];
+  items?: { id: string; title: string; quantity: number; total: number; thumbnail?: string; variant_title?: string }[];
+  display_totals?: { itemsSubtotal?: number; shipping?: number; coinDiscount?: number; oweg10Discount?: number; promoDiscount?: number };
   shipping_address?: Record<string, unknown>;
 };
 
@@ -37,6 +42,7 @@ export function OrderConfirmation({ order, orderId, complete, failed, cod, messa
   polling: boolean;
   onRefresh: () => void;
 }) {
+  const [copyMessage, setCopyMessage] = useState("");
   const address = order?.shipping_address;
   const text = (key: string) => typeof address?.[key] === "string" ? String(address[key]).trim() : "";
   const name = [text("first_name"), text("last_name")].filter(Boolean).join(" ");
@@ -45,6 +51,13 @@ export function OrderConfirmation({ order, orderId, complete, failed, cod, messa
   const itemCount = order?.items?.reduce((sum, item) => sum + item.quantity, 0);
   const label = failed ? "Confirmation delayed" : complete ? "Order confirmed" : "Confirming your order";
   const Icon = failed ? TriangleAlert : complete ? Check : Loader2;
+  const totals = order?.display_totals;
+  const breakdown = [
+    ["Items subtotal", totals?.itemsSubtotal], ["Shipping", totals?.shipping],
+    ["OWEG10 discount", totals?.oweg10Discount === undefined ? undefined : -totals.oweg10Discount],
+    ["Promo discount", totals?.promoDiscount === undefined ? undefined : -totals.promoDiscount],
+    ["Coins redeemed", totals?.coinDiscount === undefined ? undefined : -totals.coinDiscount],
+  ] as const;
   return (
     <div className="min-h-[75vh] bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10 lg:py-12">
       <div className="mx-auto max-w-6xl">
@@ -79,6 +92,7 @@ export function OrderConfirmation({ order, orderId, complete, failed, cod, messa
                 <ProductPhoto src={item.thumbnail} title={item.title} />
                 <div className="min-w-0 flex-1">
                   <p className="break-words text-sm font-medium leading-6 sm:text-base">{item.title}</p>
+                  {item.variant_title && !/^default(?: variant)?$/i.test(item.variant_title) && <p className="mt-1 text-xs text-slate-600">{item.variant_title}</p>}
                   <p className="mt-1 text-sm text-slate-500">Quantity: {item.quantity}</p>
                   <p className="mt-1 text-sm font-semibold sm:hidden">{formatOrderCurrency(item.total, order?.currency_code)}</p>
                 </div>
@@ -86,16 +100,19 @@ export function OrderConfirmation({ order, orderId, complete, failed, cod, messa
               </div>)}
               {!order?.items?.length && (loading || !order && !failed && !!orderId ? <div className="space-y-5 py-6" aria-label="Loading order details">{[0, 1].map(i => <div key={i} className="flex gap-4 motion-safe:animate-pulse"><div className="h-20 w-20 rounded-xl bg-slate-100" /><div className="flex-1 space-y-3 py-3"><div className="h-4 w-3/4 rounded bg-slate-100" /><div className="h-3 w-1/3 rounded bg-slate-100" /></div></div>)}</div> : <p className="py-8 text-sm text-slate-500">Order details are currently unavailable. You can check My Orders for updates.</p>)}
             </div>
-            {orderId && <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-4 sm:px-7"><p className="text-xs text-slate-500">Order reference</p><p className="mt-1 break-all font-mono text-xs leading-5 text-slate-600">{orderId}</p></div>}
+            {orderId && <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-4 sm:px-7"><p className="text-xs text-slate-500">Order reference</p><p className="mt-1 break-all font-mono text-xs leading-5 text-slate-600">{orderId}</p><button type="button" className="mt-2 inline-flex min-h-11 items-center gap-2 text-xs font-medium text-[var(--oweg-ink-soft)]" onClick={async () => { try { await navigator.clipboard.writeText(orderId); setCopyMessage("Reference copied"); } catch { setCopyMessage("Select the reference above to copy it"); } }}><Copy className="h-3.5 w-3.5" aria-hidden /> Copy reference</button><span role="status" className="ml-2 text-xs text-slate-500">{copyMessage}</span></div>}
           </section>
 
           <div className="min-w-0 space-y-5">
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="payment-summary">
               <h2 id="payment-summary" className="text-lg font-semibold">Payment summary</h2>
+              {totals && <dl className="mt-4 space-y-2 text-sm">{breakdown.map(([label, value]) => typeof value === "number" && (value !== 0 || label === "Shipping" || label === "Items subtotal") ? <div key={label} className="flex justify-between gap-3"><dt className="text-slate-500">{label}</dt><dd className="text-right">{label === "Shipping" && value === 0 ? "Free" : formatOrderCurrency(value, order?.currency_code)}</dd></div> : null)}</dl>}
               <div className="mt-5 flex items-center justify-between gap-3 text-sm"><span className="text-slate-500">Payment</span><span className="text-right font-medium">{cod ? "Cash on delivery" : complete ? "Paid online" : failed ? "To be verified" : "Awaiting confirmation"}</span></div>
               <div className="mt-5 flex items-center justify-between gap-3 border-t border-slate-100 pt-5"><span className="text-sm font-medium">{cod ? "Amount to pay" : complete ? "Total paid" : "Order total"}</span><span className="text-2xl font-semibold tracking-tight">{amount}</span></div>
               {cod && <p className="mt-2 text-xs leading-5 text-slate-500">Pay when your order arrives.</p>}
-              <Link href="/account/orders" className="mt-6 flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[var(--oweg-green)] px-4 text-sm font-semibold text-[var(--oweg-ink)] transition-colors hover:bg-[var(--oweg-green-dark)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--oweg-green-dark)]">View my orders <ArrowRight className="h-4 w-4" aria-hidden /></Link>
+              <Link href={complete && orderId ? confirmationOrderHref(orderId) : "/account/orders"} className="mt-6 flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[var(--oweg-green)] px-4 text-sm font-semibold text-[var(--oweg-ink)] transition-colors hover:bg-[var(--oweg-green-dark)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--oweg-green-dark)]">{complete ? "View this order" : "View my orders"} <ArrowRight className="h-4 w-4" aria-hidden /></Link>
+              {complete && <p className="mt-3 text-xs leading-5 text-slate-500">Tracking updates will appear in your order details after dispatch.</p>}
+              {failed && <Link href="/contact" className="mt-3 block py-2 text-center text-sm underline">Contact support</Link>}
               <Link href="/" className="mt-3 flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-medium transition-colors hover:border-[var(--oweg-green)] hover:bg-[var(--oweg-surface-tint)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--oweg-green-dark)]"><ShoppingBag className="h-4 w-4" aria-hidden /> Continue shopping</Link>
               {!complete && orderId && <button type="button" onClick={onRefresh} disabled={loading || polling} className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm font-medium text-[var(--oweg-ink-soft)] disabled:text-slate-500">{polling || loading ? <><Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden /> Checking order…</> : "Check order status"}</button>}
             </section>
