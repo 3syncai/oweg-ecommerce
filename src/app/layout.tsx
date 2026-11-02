@@ -10,6 +10,7 @@ import HeaderSkeleton from "./header/HeaderSkeleton";
 import MobileBottomNavShell from "@/components/mobile/MobileBottomNavShell";
 
 import { Providers } from "./providers";
+import CartSuccessMotion from "@/components/ui/CartSuccessMotion";
 import CartProvider from "@/contexts/CartProvider";
 import AuthProvider from "@/contexts/AuthProvider";
 import AppToaster from "@/components/ui/app-toaster";
@@ -99,6 +100,7 @@ export default function RootLayout({
           <DebugControllerProvider>
             <AuthProvider>
               <CartProvider>
+                <CartSuccessMotion />
                 <SmoothScroll />
                 <ServiceWorkerRegister />
                 <Suspense fallback={null}>

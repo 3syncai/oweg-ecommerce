@@ -10,6 +10,7 @@ import {
   useState,
 } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import { queueWishlist, wishlistIds } from "@/lib/wishlist-client"
 import { queueCartWrite } from "@/lib/cart-client"
 import { clearUserSessionCache } from "@/lib/client-session-cache"
 
@@ -29,6 +30,7 @@ type AuthContextValue = {
   refreshing: boolean
   refresh: () => Promise<void>
   setCustomer: (customer: StoreCustomer) => void
+  updateWishlist: (id: string, update: (ids: string[]) => string[]) => void
   logout: () => Promise<void>
 }
 
@@ -54,17 +56,21 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [initializing, setInitializing] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const customerRef = useRef<StoreCustomer>(null)
+  const wishlistRevision = useRef(0)
 
-  // Keep ref in sync with state
-  useEffect(() => {
-    customerRef.current = customer
-  }, [customer])
-
+  // Every state writer also updates the ref synchronously so queued wishlist
+  // intents cannot cross an account switch before React renders again.
   const refresh = useCallback(async () => {
     setRefreshing(true)
     try {
       const prevCustomer = customerRef.current
-      const next = await fetchSession()
+      const revision = wishlistRevision.current
+      let next = await fetchSession()
+      const current = customerRef.current
+      if (next && current?.id === next.id && revision !== wishlistRevision.current) {
+        next = { ...next, metadata: { ...next.metadata, wishlist: current.metadata?.wishlist } }
+      }
+      customerRef.current = next
       setCustomer(next)
       
       // If user just logged in (was null, now has customer), merge guest cart
@@ -102,6 +108,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       }
     } catch (err) {
       console.warn("Failed to refresh session", err)
+      customerRef.current = null
       setCustomer(null)
     } finally {
       setRefreshing(false)
@@ -126,12 +133,14 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       console.warn("Failed to logout", err)
     } finally {
       clearUserSessionCache(queryClient, previousCustomerId)
+      customerRef.current = null
       setCustomer(null)
     }
   }, [queryClient])
 
   const setCustomerState = useCallback((value: StoreCustomer) => {
-    const prevCustomer = customer
+    const prevCustomer = customerRef.current
+    customerRef.current = value
     setCustomer(value)
     setInitializing(false)
     
@@ -168,7 +177,36 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         }
       }).finally(() => { void queryClient.invalidateQueries({ queryKey: ["cart"] }) })
     }
-  }, [customer, queryClient])
+  }, [queryClient])
+
+  const updateWishlist = useCallback((id: string, update: (ids: string[]) => string[]) => {
+    const current = customerRef.current
+    if (!current || current.id !== id) return
+    const next = { ...current, metadata: { ...current.metadata, wishlist: update(wishlistIds(current.metadata?.wishlist)) } }
+    wishlistRevision.current++
+    customerRef.current = next
+    setCustomer(next)
+  }, [])
+
+  useEffect(() => {
+    if (!customer?.id) return
+    const id = customer.id
+    const reconcile = () => {
+      void queueWishlist(async () => {
+        if (customerRef.current?.id !== id) return
+        const response = await fetch("/api/medusa/wishlist?ids=1", { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(10_000) })
+        if (!response.ok) return
+        const data = await response.json()
+        if (data.customer?.id !== id || !Array.isArray(data.wishlist)) return
+        updateWishlist(id, () => data.wishlist)
+        void queryClient.invalidateQueries({ queryKey: ["wishlist", id] })
+      }).catch(() => undefined)
+    }
+    const onStorage = (event: StorageEvent) => { if (event.key === "oweg_wishlist_updated") reconcile() }
+    window.addEventListener("storage", onStorage)
+    window.addEventListener("focus", reconcile)
+    return () => { window.removeEventListener("storage", onStorage); window.removeEventListener("focus", reconcile) }
+  }, [customer?.id, queryClient, updateWishlist])
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -177,9 +215,10 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       refreshing,
       refresh,
       setCustomer: setCustomerState,
+      updateWishlist,
       logout,
     }),
-    [customer, initializing, refreshing, refresh, setCustomerState, logout]
+    [customer, initializing, refreshing, refresh, setCustomerState, updateWishlist, logout]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

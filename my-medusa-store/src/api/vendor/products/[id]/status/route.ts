@@ -1,9 +1,9 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules, ProductStatus, ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { syncProductToSearch } from "../../../../../utils/sync-product-search"
 import { requireApprovedVendor } from "../../../_lib/guards"
 import {
   deleteSearchDocument,
-  upsertProductToSearch,
 } from "../../../../../utils/search-index"
 
 function setCorsHeaders(res: MedusaResponse) {
@@ -162,19 +162,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
 
     try {
-      const productService = req.scope.resolve("productService") as any
-      const productForIndex = await productService.retrieve(productId, {
-        relations: [
-          "variants",
-          "variants.prices",
-          "variants.options",
-          "collection",
-          "categories",
-          "tags",
-        ],
-      })
-
-      await upsertProductToSearch(productForIndex as Record<string, any>)
+      await syncProductToSearch(req.scope, productId)
     } catch (indexError: any) {
       console.error(
         "Failed to sync Meilisearch on vendor publish:",

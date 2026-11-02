@@ -8,6 +8,7 @@ function loadActions({ line, stock = 3, disabled = false, layout = 'inline', sel
   const calls = [];
   const jsx = (type, props) => ({ type, props: props || {} });
   const mocks = {
+    '@/lib/cart-flight': { captureCartFlight: () => undefined },
     react: { useEffect: () => {}, useState: value => [value, () => {}] },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'next/link': { default: 'a' },
@@ -35,7 +36,7 @@ function loadActions({ line, stock = 3, disabled = false, layout = 'inline', sel
     for (const child of Array.isArray(children) ? children.flat(Infinity) : [children]) walk(child);
   }
   walk(tree);
-  const event = { preventDefault() { calls.push(['prevent']); }, stopPropagation() { calls.push(['stop']); } };
+  const event = { currentTarget: { closest: () => null }, preventDefault() { calls.push(['prevent']); }, stopPropagation() { calls.push(['stop']); } };
   return { tree, buttons, calls, event };
 }
 

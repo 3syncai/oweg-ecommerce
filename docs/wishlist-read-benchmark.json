@@ -1,0 +1,35 @@
+{
+  "note": "Synthetic actual old/new GET route: 12 product detail reads, each fixed at 20ms; no live network/database.",
+  "runs": [
+    {
+      "mode": "before",
+      "duration_ms": 408,
+      "maxConcurrentDetails": 1
+    },
+    {
+      "mode": "before",
+      "duration_ms": 369,
+      "maxConcurrentDetails": 1
+    },
+    {
+      "mode": "before",
+      "duration_ms": 370,
+      "maxConcurrentDetails": 1
+    },
+    {
+      "mode": "after",
+      "duration_ms": 87,
+      "maxConcurrentDetails": 4
+    },
+    {
+      "mode": "after",
+      "duration_ms": 92,
+      "maxConcurrentDetails": 4
+    },
+    {
+      "mode": "after",
+      "duration_ms": 94,
+      "maxConcurrentDetails": 4
+    }
+  ]
+}

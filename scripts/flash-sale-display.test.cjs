@@ -139,11 +139,15 @@ test('admin save forwards its validated title without changing prices or variant
 })
 test('all-deals API uses an independent cache and requests the complete upstream catalogue', async () => {
   const calls=[],filters=[]
+  const cache=load('src/lib/flash-sale-cache.ts')
+  const server=load('src/lib/flash-sale-server.ts',{
+    axios:{get:async url=>{calls.push(url);return {data:{active:true,products:[]}}}},
+    '@/lib/flash-sale-cache':cache,
+    '@/lib/home-flash-sale':{inStockHomeFlashSale:async(data,options)=>{filters.push(options);return data}},
+  })
   const route=load('src/app/api/medusa/flash-sale/products/route.ts',{
     'next/server':{NextResponse:{json:(data,options)=>({data,...options})}},
-    axios:{get:async url=>{calls.push(url);return {data:{active:true,products:[]}}}},
-    '@/lib/flash-sale-cache':load('src/lib/flash-sale-cache.ts'),
-    '@/lib/home-flash-sale':{inStockHomeFlashSale:async(data,options)=>{filters.push(options);return data}},
+    '@/lib/flash-sale-server':server, '@/lib/flash-sale-cache':cache,
   })
   for(const query of ['in_stock=1','in_stock=1&all=1','in_stock=1&all=1']) {
     await route.GET({nextUrl:new URL('https://shop.example/api/medusa/flash-sale/products?'+query)})
@@ -171,4 +175,17 @@ test('full store response includes the saved heading and all published deals acr
   assert.equal(result.products[0].flash_sale.title,'Weekend Deals')
   assert.equal(result.products[0].flash_sale_price,90)
   assert.equal(result.products.at(-1).id,'p-73')
+})
+
+test('overlapping home stock validations coalesce, then revalidate fresh inventory on the next request', async () => {
+  let reads=0, checks=0
+  const server=load('src/lib/flash-sale-server.ts',{
+    axios:{get:async()=>{reads++;return{data:{active:true,products:[]}}}},
+    '@/lib/flash-sale-cache':load('src/lib/flash-sale-cache.ts'),
+    '@/lib/home-flash-sale':{inStockHomeFlashSale:async data=>{checks++;await new Promise(resolve=>setTimeout(resolve,5));return data}},
+  })
+  await Promise.all(Array.from({length:20},()=>server.loadFlashSale({homeOnly:true})))
+  assert.equal(reads,1);assert.equal(checks,1)
+  await server.loadFlashSale({homeOnly:true})
+  assert.equal(reads,1);assert.equal(checks,2)
 })

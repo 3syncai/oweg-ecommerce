@@ -1,0 +1,62 @@
+.toaster[data-sonner-toaster] {
+  --width: 360px;
+  font-family: inherit;
+}
+.toaster .toast[data-sonner-toast][data-styled="true"] {
+  padding: 10px 48px 10px 12px;
+  min-height: 60px;
+  gap: 10px;
+  border: 1px solid #dce5df;
+  border-radius: 14px;
+  background: #fff;
+  color: #173f35;
+  box-shadow: 0 6px 24px #153e351a;
+}
+/* Hover/keyboard expansion must not expose a pile of old action messages. */
+.toaster [data-sonner-toast]:not([data-front="true"]) { visibility: hidden; pointer-events: none; }
+.toaster .content { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.toaster .title { font-size: 14px; font-weight: 600; line-height: 1.45; }
+.toaster .description { font-size: 13px; line-height: 1.45; color: #52635e; overflow-wrap: anywhere; }
+.toaster .toast[data-type="error"] { border-color: #edc9c5; }
+.toaster .toast[data-type="error"] [data-icon] { color: #b42318; }
+.toaster .toast[data-type="success"] [data-icon] { color: #19734b; }
+.toaster .toast .action[data-button] {
+  margin: 0;
+  flex-shrink: 0;
+  min-height: 36px;
+  height: auto;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: #155345;
+  color: white;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.toaster .close[data-close-button] {
+  left: auto;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  color: #53665e;
+  border: 0;
+}
+.toaster .action:focus-visible, .toaster .close:focus-visible { outline: 2px solid #427f34; outline-offset: 2px; }
+@media (max-width: 767px) {
+  .toaster[data-sonner-toaster] {
+    width: min(400px, calc(100vw - 24px));
+    right: max(12px, env(safe-area-inset-right, 0px));
+    left: auto;
+    bottom: calc(85px + env(safe-area-inset-bottom, 0px));
+  }
+  .toaster .toast[data-sonner-toast][data-styled="true"] { padding-right: 48px; }
+  .toaster .toast .action[data-button], .toaster .close[data-close-button] { min-height: 44px; }
+  .toaster .close[data-close-button] { width: 44px; height: 44px; right: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toaster[data-sonner-toaster], .toaster [data-sonner-toast] { transition: none; animation: none; }
+}

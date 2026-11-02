@@ -1,15 +1,18 @@
 "use client";
 
 import BrandLoader from "@/components/ui/BrandLoader";
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowUpRight, Heart, HeartOff, ImageOff, Loader2, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
+import { notifyCartAddSuccess, notifyWishlistRemoved, notifyWishlistSuccess, notifyActionError, SHOPPING_FEEDBACK_ID } from "@/lib/notifications";
 import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import AccountLoginPrompt from "@/components/account/AccountLoginPrompt";
 import { useAuth } from "@/contexts/AuthProvider";
+import { useToggleWishlist } from "@/hooks/useWishlistMutations";
 import { useAddToCart } from "@/hooks/useCartMutations";
 import { cn } from "@/lib/utils";
 import styles from "./WishlistContent.module.css";
@@ -24,6 +27,7 @@ type WishlistProduct = {
   mrp?: number;
   discount?: number;
   variant_id?: string;
+  variant_count?: number;
   variants?: { id?: string }[];
 };
 
@@ -59,9 +63,16 @@ function WishlistImage({ src, title, priority }: { src: string; title: string; p
 }
 
 export default function WishlistContent({ embedded = false }: WishlistContentProps) {
-  const { customer, setCustomer, initializing } = useAuth();
+  const { customer, initializing } = useAuth();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const addCart = useAddToCart();
+  const wishlistWrite = useToggleWishlist();
+  const currentCustomer = useRef(customer?.id);
+  useLayoutEffect(() => {
+    currentCustomer.current = customer?.id;
+    return () => { currentCustomer.current = undefined; toast.dismiss(SHOPPING_FEEDBACK_ID); };
+  }, [customer?.id]);
 
   const currency = useMemo(
     () =>
@@ -97,7 +108,8 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
     },
   });
 
-  const products: WishlistProduct[] = wishlistQuery.data ?? [];
+  const savedIds = new Set(Array.isArray(customer?.metadata?.wishlist) ? customer.metadata.wishlist.map(String) : []);
+  const products: WishlistProduct[] = (wishlistQuery.data ?? []).filter(product => savedIds.has(product.id));
   const showSkeleton =
     Boolean(customer) &&
     (wishlistQuery.isLoading ||
@@ -111,34 +123,23 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
         : null;
 
   const handleRemove = async (productId: string) => {
+    const owner = customer?.id;
+    const removedProduct = products.find(product => product.id === productId);
     try {
-      const res = await fetch("/api/medusa/wishlist", {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ productId }),
+      const result = await wishlistWrite.mutateAsync({ productId, saved: false });
+      if (!result.wishlist || currentCustomer.current !== owner) return;
+      queryClient.setQueryData<WishlistProduct[]>(["wishlist", owner], (prev) => (prev || []).filter(p => p.id !== productId));
+      notifyWishlistRemoved(() => {
+        if (currentCustomer.current !== owner) return;
+        void wishlistWrite.mutateAsync({ productId, saved: true }).then(data => {
+          if (!data.wishlist || currentCustomer.current !== owner) return;
+          if (removedProduct) queryClient.setQueryData<WishlistProduct[]>(["wishlist", owner], prev =>
+            (prev || []).some(product => product.id === productId) ? prev : [...(prev || []), removedProduct]);
+          notifyWishlistSuccess();
+        }).catch(error => { if (currentCustomer.current === owner) notifyActionError("Couldn’t restore item", error instanceof Error ? error.message : "Please try again."); });
       });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        const message = (data && (data.error || data.message)) || "Unable to remove item.";
-        throw new Error(message);
-      }
-      queryClient.setQueryData<WishlistProduct[]>(["wishlist", customer?.id], (prev) =>
-        (prev || []).filter((p) => p.id !== productId)
-      );
-      if (data?.wishlist && Array.isArray(data.wishlist) && customer) {
-        setCustomer({
-          ...customer,
-          metadata: {
-            ...(customer.metadata || {}),
-            wishlist: data.wishlist,
-          },
-        });
-      }
-      toast.success("Removed from wishlist");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to remove item.";
-      toast.error(message);
+      notifyActionError("Couldn’t remove item", err instanceof Error ? err.message : "Please try again.");
     }
   };
 
@@ -151,7 +152,7 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
     }
     try {
       await addCart.mutateAsync({ variant_id: variantId, quantity: 1 });
-      toast.success("Added to cart");
+      notifyCartAddSuccess(product.title || "Item", 1, () => router.push("/cart"));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to add to cart.";
       toast.error(message);
@@ -290,6 +291,9 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
                     </div>
                   </div>
                   <div className={styles.actions}>
+                    {(product.variant_count ?? 1) > 1 ? (
+                      <Link href={href} className={styles.primaryButton}>Choose options</Link>
+                    ) : (
                     <button
                       type="button"
                       className={styles.primaryButton}
@@ -299,9 +303,12 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
                       <ShoppingCart className="h-4 w-4" />
                       <span>Add to cart</span>
                     </button>
+                    )}
                     <button
                       type="button"
                       className={styles.removeButton}
+                      disabled={wishlistWrite.isPending}
+                      aria-busy={wishlistWrite.isPending || undefined}
                       onClick={() => void handleRemove(product.id)}
                       aria-label="Remove from wishlist"
                     >

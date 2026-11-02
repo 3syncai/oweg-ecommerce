@@ -1,41 +1,11 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/medusa"
-import { upsertProductToSearch } from "../utils/search-index"
+import { syncProductToSearch } from "../utils/sync-product-search"
 
 export default async function productCreatedHandler({
-  event,
-  container,
+  event, container,
 }: SubscriberArgs<{ id: string }>) {
-  console.log("🟡 Product created event triggered:", event.data.id)
-
-  try {
-    const productService = container.resolve("productService")
-
-    const product = await productService.retrieve(event.data.id, {
-      relations: [
-        "variants",
-        "variants.prices",
-        "variants.options",
-        "collection",
-        "categories",
-        "tags",
-      ],
-    })
-
-    console.log("🟡 Product fetched:", product.title, "| Status:", product.status)
-
-    if (product.status !== "published") {
-      console.log(`⏭️ Skipping — product is in draft: ${product.title}`)
-      return
-    }
-
-    await upsertProductToSearch(product as unknown as Record<string, any>)
-    console.log("🔥 Product indexed in Meilisearch:", product.title)
-  } catch (error) {
-    console.error("❌ Error indexing product:", error)
-    throw error
-  }
+  // Always fetch current persisted state; propagate failures for event-bus retry.
+  await syncProductToSearch(container, event.data.id)
 }
 
-export const config: SubscriberConfig = {
-  event: "product.created",
-}
+export const config: SubscriberConfig = { event: "product.created" }

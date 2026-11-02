@@ -1,23 +1,32 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
+import { ACTION_STATUS_EVENT } from "@/lib/notifications";
+import styles from "./app-toaster.module.css";
 
-const AppToaster = () => (
-  <Toaster
-    position="top-right"
-    richColors
-    closeButton
-    toastOptions={{
-      unstyled: false,
-      classNames: {
-        toast:
-          "rounded-xl border border-slate-100 shadow-xl bg-white/95 backdrop-blur px-5 py-4 text-slate-900",
-        description: "text-sm text-slate-600",
-        actionButton:
-          "ml-3 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 hover:bg-slate-100",
-      },
-    }}
-  />
-);
-
-export default AppToaster;
+export default function AppToaster() {
+  const [status, setStatus] = useState({ message: "", version: 0 });
+  useEffect(() => {
+    const announce = (event: Event) => setStatus(current => ({ message: (event as CustomEvent<string>).detail, version: current.version + 1 }));
+    window.addEventListener(ACTION_STATUS_EVENT, announce);
+    return () => window.removeEventListener(ACTION_STATUS_EVENT, announce);
+  }, []);
+  return <>
+    <div className="sr-only" role="status" aria-live="polite" aria-atomic="true"><span key={status.version}>{status.message}</span></div>
+    <Toaster
+      position="bottom-right"
+      className={styles.toaster}
+      theme="light"
+      closeButton
+      visibleToasts={1}
+      expand={false}
+      duration={4500}
+      offset={24}
+      mobileOffset={{ bottom: "calc(85px + env(safe-area-inset-bottom, 0px))", left: 12, right: 12 }}
+      pauseWhenPageIsHidden
+      containerAriaLabel="Shopping updates"
+      toastOptions={{ classNames: { toast: styles.toast, content: styles.content, title: styles.title, description: styles.description, actionButton: styles.action, closeButton: styles.close } }}
+    />
+  </>;
+}

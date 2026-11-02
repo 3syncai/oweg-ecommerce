@@ -889,7 +889,7 @@ const Header: React.FC = () => {
   const renderSuggestionsPanel = (mobile: boolean) => {
     if (!showSuggestionsPanel) return null;
     const panelClass = mobile
-      ? "absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 max-h-[60vh] overflow-y-auto"
+      ? `${navStyles.mobileSuggestions} bg-white rounded-xl shadow-xl ring-1 ring-black/5`
       : "absolute top-full left-0 mt-1 z-50 w-full bg-white rounded-md shadow-lg ring-1 ring-black/5 max-h-[60vh] overflow-auto";
 
     return (
@@ -1087,7 +1087,7 @@ const Header: React.FC = () => {
       if (browseRoot && !browseRoot.contains(target)) {
         setBrowseOpen(false);
       }
-      if (!target.closest(".relative.flex")) {
+      if (!target.closest("[data-search-root]")) {
         setShowSuggest(false);
       }
       if (moreMenuRef.current && !moreMenuRef.current.contains(target)) {
@@ -1538,7 +1538,7 @@ const Header: React.FC = () => {
                   </div>
 
                   {/* Search Input - Pixel Perfect */}
-                  <div className="flex-1 flex relative">
+                  <div className="flex-1 flex relative" data-search-root>
                     <Input
                       type="text"
                       placeholder={selectedFilter ? `Search in ${selectedFilter.title}...` : "Search for products, categories and more..."}
@@ -1657,7 +1657,7 @@ const Header: React.FC = () => {
                     cartPreviewTimer.current = setTimeout(() => setCartPreviewOpen(false), 300);
                   }}
                 >
-                  <Link href="/cart" className={navStyles.actionLink}>
+                  <Link href="/cart" data-cart-target className={navStyles.actionLink}>
                     <div className="relative shrink-0">
                       <CartIcon className="w-6 h-6 text-header-text" count={cartCount} />
                     </div>
@@ -1691,7 +1691,8 @@ const Header: React.FC = () => {
                 {!isMobileSimplifiedHeader && (
                   <>
                     <div
-                      className={`overflow-hidden transition-[max-height,opacity,transform,margin] duration-300 ease-out ${
+                      data-search-expanded={showTopBarMobile}
+                      className={`${navStyles.mobileSearchChrome} transition-[max-height,opacity,transform,margin] duration-300 ease-out ${
                         showTopBarMobile
                           ? "max-h-40 opacity-100 translate-y-0 mt-1"
                           : "max-h-0 opacity-0 -translate-y-2 mt-0 pointer-events-none"
@@ -1699,7 +1700,7 @@ const Header: React.FC = () => {
                       aria-hidden={!showTopBarMobile}
                       inert={!showTopBarMobile}
                     >
-                    <div className="relative mobile-search-bar px-3">
+                    <div className="relative mobile-search-bar px-3" data-search-root>
                       <Input
                         value={q}
                         onChange={(e) => {

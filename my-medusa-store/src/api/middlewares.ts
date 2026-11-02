@@ -227,6 +227,11 @@ async function logDraftOrderHardDelete(
 export default defineMiddlewares({
   routes: [
     {
+      matcher: "/store/customer-wishlist",
+      method: ["POST"],
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
       matcher: "/store/return-requests/images",
       method: ["POST"],
       bodyParser: { sizeLimit: "5mb" },
