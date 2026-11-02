@@ -10,6 +10,7 @@ import {
   useState,
 } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import { queueCartWrite } from "@/lib/cart-client"
 import { clearUserSessionCache } from "@/lib/client-session-cache"
 
 export type StoreCustomer = {
@@ -69,12 +70,13 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       // If user just logged in (was null, now has customer), merge guest cart
       if (!prevCustomer && next) {
         // Trigger merge asynchronously without blocking
-        void (async () => {
+        void queueCartWrite(async () => {
           try {
             const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null
             if (guestCartId) {
               const mergeRes = await fetch("/api/medusa/cart/merge", {
                 method: "POST",
+                signal: AbortSignal.timeout(20_000),
                 headers: {
                   "content-type": "application/json",
                   "x-guest-cart-id": guestCartId,
@@ -96,7 +98,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
             console.warn("Failed to merge guest cart", mergeErr)
             // Don't fail the login if merge fails
           }
-        })()
+        }).finally(() => { void queryClient.invalidateQueries({ queryKey: ["cart"] }) })
       }
     } catch (err) {
       console.warn("Failed to refresh session", err)
@@ -105,7 +107,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       setRefreshing(false)
       setInitializing(false)
     }
-  }, [])
+  }, [queryClient])
 
   useEffect(() => {
     void refresh()
@@ -136,12 +138,13 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     // If user just logged in (was null, now has customer), merge guest cart
     if (!prevCustomer && value) {
       // Trigger merge asynchronously without blocking
-      void (async () => {
+      void queueCartWrite(async () => {
         try {
           const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null
           if (guestCartId) {
             const mergeRes = await fetch("/api/medusa/cart/merge", {
               method: "POST",
+              signal: AbortSignal.timeout(20_000),
               headers: {
                 "content-type": "application/json",
                 "x-guest-cart-id": guestCartId,
@@ -163,9 +166,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           console.warn("Failed to merge guest cart", mergeErr)
           // Don't fail the login if merge fails
         }
-      })()
+      }).finally(() => { void queryClient.invalidateQueries({ queryKey: ["cart"] }) })
     }
-  }, [customer])
+  }, [customer, queryClient])
 
   const value = useMemo<AuthContextValue>(
     () => ({

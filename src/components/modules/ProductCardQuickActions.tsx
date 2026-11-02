@@ -9,6 +9,7 @@ import {
   QtyPlusIcon,
 } from "@/components/ui/icons/product-actions";
 import { Loader2 } from "lucide-react";
+import { notifyActionError } from "@/lib/notifications";
 import { useCartLineByVariant } from "@/hooks/useCart";
 import {
   useAddToCartWithNotification,
@@ -70,20 +71,24 @@ export function ProductCardQuickActions({
   const handleAdd = async (event: React.MouseEvent<HTMLButtonElement>) => {
     stopCardNavigation(event);
     if (!variantId || selectionHref || disabled || isBusy) return;
-    await addToCart(variantId);
-    setShowAddedFlash(true);
+    try {
+      await addToCart(variantId);
+      setShowAddedFlash(true);
+    } catch { /* The add hook already reports the error; keep the card usable. */ }
   };
 
   const handleIncrement = async (event: React.MouseEvent<HTMLButtonElement>) => {
     stopCardNavigation(event);
     if (!line?.lineId || isBusy || atMaxQty) return;
-    await updateQuantity(line.lineId, quantity + 1, productName);
+    try { await updateQuantity(line.lineId, quantity + 1, productName); }
+    catch (error) { notifyActionError("Unable to update quantity", error instanceof Error ? error.message : "Please try again."); }
   };
 
   const handleDecrement = async (event: React.MouseEvent<HTMLButtonElement>) => {
     stopCardNavigation(event);
     if (!line?.lineId || isBusy) return;
-    await updateQuantity(line.lineId, quantity - 1, productName);
+    try { await updateQuantity(line.lineId, quantity - 1, productName); }
+    catch (error) { notifyActionError("Unable to update quantity", error instanceof Error ? error.message : "Please try again."); }
   };
 
   return (

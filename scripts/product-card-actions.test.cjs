@@ -18,6 +18,7 @@ function loadActions({ line, stock = 3, disabled = false, layout = 'inline', sel
     },
     '@/components/ui/icons/product-actions': {},
     'lucide-react': {},
+    '@/lib/notifications': { notifyActionError: (...args) => calls.push(['error', ...args]) },
   };
   const output = ts.transpileModule(fs.readFileSync('src/components/modules/ProductCardQuickActions.tsx', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const module = { exports: {} };

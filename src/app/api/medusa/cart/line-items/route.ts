@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import axios from 'axios'
-import { applyFlashSalePricesToCart } from '@/lib/flash-sale-cart-mapper'
+import { cartFlashSale, priceCartPayload } from '@/lib/cart-flash-prices'
 
 const CART_COOKIE = "cart_id"
 const GUEST_CART_HEADER = "x-guest-cart-id"
@@ -36,6 +36,7 @@ async function backend(path: string, init?: RequestInit) {
           return init.body
         }
       })() : init.body) : undefined,
+      timeout: 15_000,
       validateStatus: () => true, // Don't throw on any status
     })
     
@@ -69,18 +70,8 @@ function buildCartCreateBody(): RequestInit["body"] {
 
 export const dynamic = "force-dynamic"
 
-const FLASH_SALE_CACHE_TTL_MS = 60_000
-let flashSaleCache: { data: unknown; expires: number } | null = null
-
 async function getFlashSaleData() {
-  if (flashSaleCache && flashSaleCache.expires > Date.now()) {
-    return flashSaleCache.data
-  }
-  const flashSaleRes = await backend("/store/flash-sale/products")
-  if (!flashSaleRes.ok) return null
-  const flashSaleData = await flashSaleRes.json()
-  flashSaleCache = { data: flashSaleData, expires: Date.now() + FLASH_SALE_CACHE_TTL_MS }
-  return flashSaleData
+  try { return await cartFlashSale() } catch { return null }
 }
 
 type EnsureCartResult = {
@@ -163,8 +154,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const variant_id: string = body.variant_id
-    const quantity: number = Number(body.quantity || 1)
-    if (!variant_id) return NextResponse.json({ error: "variant_id required" }, { status: 400 })
+    const quantity: number = Number(body.quantity ?? 1)
+    if (typeof variant_id !== "string" || !variant_id.trim()) return NextResponse.json({ error: "variant_id required" }, { status: 400 })
     if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY_PER_ITEM) {
       return NextResponse.json({ error: `Maximum ${MAX_QUANTITY_PER_ITEM} units per item` }, { status: 400 })
     }
@@ -190,6 +181,9 @@ export async function POST(req: NextRequest) {
       if (existingQuantity + quantity > MAX_QUANTITY_PER_ITEM) {
         return NextResponse.json({ error: `Maximum ${MAX_QUANTITY_PER_ITEM} units per item` }, { status: 400 })
       }
+    }
+    if (!existingCartRes.ok && existingCartRes.status !== 404 && existingCartRes.status !== 410) {
+      return NextResponse.json({ error: "Unable to verify your current cart. Please try again." }, { status: 503 })
     }
     if (Number(selectedOffer.available) < existingQuantity + quantity) {
       return NextResponse.json({ error: `Only ${selectedOffer.available} units are available from this seller` }, { status: 409 })
@@ -219,29 +213,13 @@ export async function POST(req: NextRequest) {
 
     const data = await res.json()
     
-    // Map cart prices using flash_sale_item table after adding item
-    try {
-      const flashSaleData = await getFlashSaleData()
-      if (flashSaleData) {
-        const cart = data.cart || data
-        if (cart) {
-          const updatedCart = applyFlashSalePricesToCart(cart, flashSaleData)
-          if (data.cart) {
-            data.cart = updatedCart
-          } else {
-            Object.assign(data, updatedCart)
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Failed to map flash sale prices in cart:", error)
-    }
-    
+    const pricedData = await priceCartPayload(data)
+
     // Always persist cart identity after a successful add. Previously we only set
     // the cookie when one already existed, so logged-in users (and cleared-cookie
     // sessions) got guestCartId in JSON but never a cookie — preview stayed empty
     // and quantity PATCH failed with "cart_id not found".
-    const payloadWithId = { ...data, guestCartId: cartId }
+    const payloadWithId = { ...pricedData, guestCartId: cartId }
     const next = NextResponse.json(payloadWithId)
     next.cookies.set(CART_COOKIE, cartId, { httpOnly: false, sameSite: "lax", path: "/" })
     return next

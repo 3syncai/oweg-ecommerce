@@ -7,7 +7,7 @@ import {
   extractCartItems,
   type CartApiPayload,
 } from "@/lib/cart-helpers";
-import { getGuestCartId, setGuestCartId } from "@/lib/guest-cart";
+import { readCart } from "@/lib/cart-client";
 
 export type CartLineInfo = {
   lineId: string;
@@ -79,105 +79,15 @@ export function clearCartQueryCache(
   queryClient.removeQueries({ queryKey: getCartQueryKey(customerId) });
 }
 
-function cloneCartPayload(payload: CartApiPayload | undefined): CartApiPayload | undefined {
-  if (!payload) return undefined;
-  return JSON.parse(JSON.stringify(payload)) as CartApiPayload;
-}
-
-function replaceCartItems(payload: CartApiPayload, items: CartApiPayload[]): CartApiPayload {
-  if (payload.cart && typeof payload.cart === "object") {
-    return {
-      ...payload,
-      cart: {
-        ...(payload.cart as CartApiPayload),
-        items,
-        line_items: items,
-      },
-    };
-  }
-  return {
-    ...payload,
-    items,
-    line_items: items,
-  };
-}
-
-export function optimisticAddVariantToCart(
-  current: CartApiPayload | undefined,
-  variantId: string,
-  quantity: number
-): CartApiPayload {
-  const base = cloneCartPayload(current) ?? { items: [] as CartApiPayload[] };
-  const items = [...extractCartItems(base)];
-  const existing = findCartLineByVariant(items, variantId);
-
-  if (existing) {
-    const index = items.findIndex((item) => String(item.id) === existing.lineId);
-    if (index >= 0) {
-      items[index] = {
-        ...items[index],
-        quantity: existing.quantity + quantity,
-      };
-    }
-  } else {
-    items.push({
-      id: `optimistic-${variantId}-${Date.now()}`,
-      variant_id: variantId,
-      quantity,
-    });
-  }
-
-  return replaceCartItems(base, items);
-}
-
-export function optimisticUpdateLineInCart(
-  current: CartApiPayload | undefined,
-  lineId: string,
-  quantity: number
-): CartApiPayload | undefined {
-  if (!current) return current;
-  const base = cloneCartPayload(current)!;
-  const items = extractCartItems(base).map((item) =>
-    String(item.id) === lineId ? { ...item, quantity } : item
-  );
-  return replaceCartItems(base, items);
-}
-
-export function optimisticRemoveLineFromCart(
-  current: CartApiPayload | undefined,
-  lineId: string
-): CartApiPayload | undefined {
-  if (!current) return current;
-  const base = cloneCartPayload(current)!;
-  const items = extractCartItems(base).filter((item) => String(item.id) !== lineId);
-  return replaceCartItems(base, items);
-}
-
-async function fetchCartPayload(): Promise<CartApiPayload> {
-  const guestCartId = getGuestCartId();
-  const res = await fetch("/api/medusa/cart", {
-    cache: "no-store",
-    credentials: "include",
-    headers: {
-      ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
-    },
-  });
-  if (!res.ok) {
-    throw new Error("Failed to load cart");
-  }
-  const data = (await res.json()) as CartApiPayload;
-  if (data.guestCartId && typeof data.guestCartId === "string") {
-    setGuestCartId(data.guestCartId);
-  }
-  return data;
-}
-
 export function useCart() {
-  const { customer } = useAuth();
+  const { customer, initializing } = useAuth();
+  const customerId = customer?.id;
   return useQuery({
-    queryKey: getCartQueryKey(customer?.id),
-    queryFn: fetchCartPayload,
+    queryKey: getCartQueryKey(customerId),
+    queryFn: ({ signal }) => readCart(signal),
+    enabled: !initializing,
     staleTime: 5_000,
+    retry: 1,
     refetchOnWindowFocus: true,
   });
 }

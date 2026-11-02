@@ -2,6 +2,7 @@
 
 "use client";
 
+import { useAddToCart } from "@/hooks/useCartMutations";
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -28,7 +29,8 @@ const inr = new Intl.NumberFormat("en-IN", {
 
 export function ProductDetailClient({ product }: ProductDetailClientProps) {
   const [selectedImage, setSelectedImage] = useState(0);
-  const [isAdding, setIsAdding] = useState(false);
+  const addCart = useAddToCart();
+  const isAdding = addCart.isPending;
   const [selectedSellerVariantId, setSelectedSellerVariantId] = useState<string | null>(null);
   const { data: sellerOffers, isLoading: sellerOffersLoading } = useSellerOffers(product.variant_id);
   const selectedSellerOffer = sellerOffers?.find(offer => offer.variant_id === selectedSellerVariantId) ?? sellerOffers?.[0];
@@ -46,26 +48,12 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
       return;
     }
 
-    setIsAdding(true);
     try {
-      await fetch("/api/medusa/cart", { method: "POST" });
-      const response = await fetch("/api/medusa/cart/line-items", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          variant_id: purchaseVariantId,
-          quantity: 1,
-          seller_selected: sellerChoicePinned,
-        }),
-      });
-
-      if (!response.ok) throw new Error("Failed to add to cart");
+      await addCart.mutateAsync({ variant_id: purchaseVariantId, quantity: 1, seller_selected: sellerChoicePinned });
       alert("Added to cart successfully!");
     } catch (error) {
       console.error("Failed to add to cart:", error);
       alert("Failed to add to cart. Please try again.");
-    } finally {
-      setIsAdding(false);
     }
   };
 

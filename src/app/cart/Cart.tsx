@@ -1,16 +1,15 @@
 ﻿"use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Minus, Plus, Trash2, ChevronRight, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useIsMutating } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useCartSummary } from "@/contexts/CartProvider";
-import { useAuth } from "@/contexts/AuthProvider";
-import { writeCartQueryCache } from "@/hooks/useCart";
+import { useCart } from "@/hooks/useCart";
+import { CART_MUTATION_KEY, useUpdateCartLineItem, useRemoveCartLineItem } from "@/hooks/useCartMutations";
 import {
   extractCartObject,
   type CartApiPayload,
@@ -19,11 +18,8 @@ import {
 } from "@/lib/cart-helpers";
 import {
   notifyActionError,
-  notifyCartUpdated,
   notifyCouponCheckoutOnly,
   notifyCouponInvalid,
-  notifyQuantityUpdated,
-  notifyRemoveItem,
 } from "@/lib/notifications";
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 import { warmRazorpayCheckout } from "@/lib/razorpay-warmup";
@@ -140,7 +136,6 @@ const formatCurrency = (
   }
 };
 
-const REMOVE_ANIMATION_MS = 320;
 
 /**
  * Convert a raw numeric 'amount' to major units using safer heuristics.
@@ -431,235 +426,25 @@ const mapCartPayloadToItems = (payload?: CartApiPayload): CartItemUI[] => {
 };
 
 const Cart: React.FC = () => {
-  const { syncFromCartPayload } = useCartSummary();
-  const { customer } = useAuth();
-  const queryClient = useQueryClient();
-  const [cartItems, setCartItems] = useState<CartItemUI[]>([]);
-  const [couponCode, setCouponCode] = useState<string>("");
-  const [mounted, setMounted] = useState<boolean>(false);
-  const [removingIds, setRemovingIds] = useState<Record<string, boolean>>({});
-  const [updatingIds, setUpdatingIds] = useState<Record<string, boolean>>({});
+  const cart = useCart();
+  const update = useUpdateCartLineItem();
+  const remove = useRemoveCartLineItem();
+  const pendingWrites = useIsMutating({ mutationKey: CART_MUTATION_KEY }) > 0;
+  const cartItems = useMemo(() => mapCartPayloadToItems(cart.data), [cart.data]);
+  const loading = cart.isPending || (pendingWrites && cartItems.length === 0);
+  const [couponCode, setCouponCode] = useState("");
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
-  // Note: the referral code is intentionally NOT auto-filled into the Coupon
-  // input on the cart page anymore. A referral code is not a coupon, and
-  // pre-filling it here confused customers. The /checkout page still fetches
-  // and applies the referral code silently at order time
-  // (see src/app/checkout/page.tsx :: fetchReferralCode), so attribution to
-  // the referrer is unaffected.
-
-  const deriveErrorMessage = useCallback((payload: unknown, fallback: string): string => {
-    if (payload && typeof payload === "object") {
-      const record = payload as Record<string, unknown>;
-      const msg = record.error || record.message;
-      if (typeof msg === "string" && msg.trim()) return msg;
-    }
-    if (typeof payload === "string" && payload.trim()) return payload;
-    return fallback;
-  }, []);
-
-  const applyCartPayload = useCallback(
-    (payload?: CartApiPayload, options?: { delayMs?: number }) => {
-      syncFromCartPayload(payload);
-      writeCartQueryCache(queryClient, customer?.id, payload);
-      const mapped = mapCartPayloadToItems(payload);
-      const applyState = () => setCartItems(mapped);
-      if (options?.delayMs) {
-        window.setTimeout(applyState, options.delayMs);
-      } else {
-        applyState();
-      }
-    },
-    [syncFromCartPayload, queryClient, customer?.id]
-  );
-
-  const rehydrateCart = useCallback(
-    async (options?: { delayMs?: number }) => {
-      try {
-        // Get guest cart ID if available
-        const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
-
-        const res = await fetch("/api/medusa/cart", {
-          cache: "no-store",
-          credentials: "include",
-          headers: {
-            ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
-          },
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as CartApiPayload;
-
-        // Store guest cart ID if returned
-        if (data.guestCartId && typeof window !== "undefined" && typeof data.guestCartId === "string") {
-          localStorage.setItem("guest_cart_id", data.guestCartId);
-        }
-
-        applyCartPayload(data, options);
-      } catch (err) {
-        console.warn("Failed to refresh cart from server", err);
-      }
-    },
-    [applyCartPayload]
-  );
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadCart(): Promise<void> {
-      try {
-        // Get guest cart ID if available
-        const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
-
-        const res = await fetch("/api/medusa/cart", {
-          cache: "no-store",
-          credentials: "include",
-          headers: {
-            ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
-          },
-        });
-        if (!res.ok) {
-          // fallback demo items if API not available
-          if (!cancelled) {
-            setCartItems([
-              {
-                id: "demo-1",
-                name: "24 Energy 100 Watt Emergency Bulb",
-                price: 490,
-                quantity: 1,
-                maxQuantity: 10,
-                image: "/next.svg",
-                currency: "INR",
-              },
-              {
-                id: "demo-2",
-                name: "24 Energy High Quality Mosquito Bat With Led Light",
-                price: 350,
-                quantity: 2,
-                maxQuantity: 10,
-                image: "/next.svg",
-                currency: "INR",
-              },
-            ]);
-          }
-          return;
-        }
-
-        const data = (await res.json()) as CartApiPayload;
-
-        // Store guest cart ID if returned
-        if (data.guestCartId && typeof window !== "undefined" && typeof data.guestCartId === "string") {
-          localStorage.setItem("guest_cart_id", data.guestCartId);
-        }
-
-        if (!cancelled) {
-          applyCartPayload(data);
-        }
-      } catch {
-        // ignore and keep demo if set
-      }
-    }
-
-    loadCart();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [applyCartPayload]);
-
-  const updateQuantity = async (
-    id: string,
-    newQuantity: number,
-    label = "Item"
-  ): Promise<void> => {
-    if (newQuantity < 1 || updatingIds[id]) return;
-    setUpdatingIds((state) => ({ ...state, [id]: true }));
-    try {
-      // Get guest cart ID if available
-      const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
-
-      const res = await fetch(`/api/medusa/cart/line-items/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-          ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
-        },
-        body: JSON.stringify({ quantity: newQuantity }),
-        credentials: "include",
-      });
-      const payload = await res.json().catch(() => null);
-      if (!res.ok) {
-        const message = deriveErrorMessage(
-          payload,
-          "Could not update quantity. Please try again."
-        );
-        throw new Error(message);
-      }
-      notifyQuantityUpdated(label, newQuantity);
-      applyCartPayload((payload as CartApiPayload) ?? undefined);
-    } catch (err) {
-      console.warn("Failed to update quantity", err);
-      const message =
-        err instanceof Error ? err.message : "Could not update quantity. Please try again.";
-      notifyActionError("Unable to update quantity", message);
-    } finally {
-      setUpdatingIds((state) => {
-        const copy = { ...state };
-        delete copy[id];
-        return copy;
-      });
-    }
+  const updateQuantity = async (lineId: string, quantity: number, label: string) => {
+    if (quantity < 1 || pendingWrites) return;
+    try { await update.mutateAsync({ lineId, quantity, label }); }
+    catch (error) { notifyActionError("Unable to update quantity", error instanceof Error ? error.message : "Please try again."); }
   };
-
-  const removeItem = async (item: CartItemUI): Promise<void> => {
-    if (removingIds[item.id]) return;
-    setRemovingIds((state) => ({ ...state, [item.id]: true }));
-    try {
-      // Get guest cart ID if available
-      const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
-
-      const res = await fetch(`/api/medusa/cart/line-items/${encodeURIComponent(item.id)}`, {
-        method: "DELETE",
-        headers: {
-          ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
-        },
-        credentials: "include",
-      });
-      const payload = await res.json().catch(() => null);
-      if (!res.ok) {
-        const message = deriveErrorMessage(
-          payload,
-          "Unable to remove this item right now. Please try again."
-        );
-        throw new Error(message);
-      }
-      notifyRemoveItem(item.name);
-      if (payload) {
-        applyCartPayload((payload as CartApiPayload) ?? undefined, { delayMs: REMOVE_ANIMATION_MS });
-      }
-      await rehydrateCart({ delayMs: REMOVE_ANIMATION_MS });
-      window.setTimeout(() => {
-        setRemovingIds((state) => {
-          const copy = { ...state };
-          delete copy[item.id];
-          return copy;
-        });
-      }, REMOVE_ANIMATION_MS);
-    } catch (err) {
-      console.warn("Failed to remove cart item", err);
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Unable to remove this item right now. Please try again.";
-      notifyActionError("Unable to remove item", message);
-      setRemovingIds((state) => {
-        const copy = { ...state };
-        delete copy[item.id];
-        return copy;
-      });
-    }
+  const removeItem = async (item: CartItemUI) => {
+    if (pendingWrites) return;
+    try { await remove.mutateAsync({ lineId: item.id, label: item.name }); }
+    catch (error) { notifyActionError("Unable to remove item", error instanceof Error ? error.message : "Please try again."); }
   };
 
   const handleApplyCoupon = (): void => {
@@ -901,22 +686,34 @@ const Cart: React.FC = () => {
           <div className={styles.cartLayout}>
           <div className={`${styles.cartItems} space-y-3`}>
 
-            {cartItems.length === 0 && (
+            {loading && (
+              <div role="status" aria-label="Loading your cart" className="space-y-3 p-4">
+                <p>Loading your cart…</p>
+                {[0, 1].map(id => <div key={id} aria-hidden="true" className="h-32 animate-pulse rounded-xl bg-slate-100" />)}
+              </div>
+            )}
+            {cart.isError && (
+              <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+                <p>We couldn&apos;t refresh your cart. Please try again before checking out.</p>
+                <Button className="mt-3" disabled={cart.isFetching || pendingWrites} onClick={() => void cart.refetch()}>Retry loading cart</Button>
+              </div>
+            )}
+            {!loading && !cart.isError && !pendingWrites && cartItems.length === 0 && (
               <div className={styles.emptyState}>
                 <h2>Your cart is empty</h2><p>Find something you love and add it to your cart.</p>
                 <Link href="/" className={styles.primaryButton}>Continue shopping</Link>
               </div>
             )}
             {cartItems.map((item) => {
-              const isRemoving = !!removingIds[item.id];
-              const isUpdating = !!updatingIds[item.id];
-              const controlsDisabled = isRemoving || isUpdating;
+              const isRemoving = remove.isPending && remove.variables?.lineId === item.id;
+              const isUpdating = update.isPending && update.variables?.lineId === item.id;
+              const controlsDisabled = pendingWrites || isRemoving || isUpdating;
               return (
                 <div
                   key={item.id}
                   className={`cart-line-card ${cartCard} ${styles.lineCard} flex flex-col md:flex-row md:items-center gap-4 md:gap-6 transition-all transform ${
                     mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
-                  } ${isRemoving ? "opacity-0 scale-95" : ""}`}
+                  } ${isRemoving ? "opacity-60" : ""}`}
                   style={{ transitionDuration: "320ms" }}
                 >
                   <div className="flex items-center gap-3 md:gap-4 w-full md:w-3/5 min-w-0">
@@ -929,7 +726,7 @@ const Cart: React.FC = () => {
                       aria-label={`Remove ${item.name}`}
                       aria-busy={isRemoving || undefined}
                       type="button"
-                      disabled={isRemoving}
+                      disabled={controlsDisabled}
                     >
                       {isRemoving ? (
                         <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" aria-hidden />
@@ -1068,7 +865,8 @@ const Cart: React.FC = () => {
                 <Button
                   variant="outline"
                   className={`px-5 py-3 h-11 ${cartOutline}`}
-                  onClick={notifyCartUpdated}
+                  disabled={pendingWrites || cart.isFetching}
+                  onClick={() => void cart.refetch()}
                 >
                   Update cart
                 </Button>
@@ -1194,7 +992,7 @@ const Cart: React.FC = () => {
               </div>
 
               <div className="px-4 md:px-6 pb-4 md:pb-6 pt-0">
-                {cartItems.length === 0 ? (
+                {cartItems.length === 0 || loading || pendingWrites || cart.isError ? (
                   <Button
                     className={`w-full h-11 md:h-12 text-sm md:text-base ${cartCta}`}
                     disabled
