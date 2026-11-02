@@ -1,4 +1,5 @@
 'use client'
+import { useToggleWishlist } from "@/hooks/useWishlistMutations"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -132,7 +133,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const sourceCategoryIdParam = searchParams?.get('sourceCategoryId')?.trim() || undefined
   const sourceCategoryHandleParam = searchParams?.get('sourceCategoryHandle')?.trim() || undefined
   const referralCodeParam = searchParams?.get('ref')?.trim() || undefined
-  const { customer, setCustomer } = useAuth()
+  const { customer } = useAuth()
 
   // Store referral code in localStorage when detected
   useEffect(() => {
@@ -1153,6 +1154,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     router.push(`/checkout?${params.toString()}`)
   }
 
+  const wishlistWrite = useToggleWishlist()
+
   const handleAddToWishlist = async () => {
     await addProductToWishlist(product?.id, product?.title)
   }
@@ -1178,28 +1181,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     if (wishlistBusy) return
     try {
       setWishlistBusy(true)
-      const res = await fetch('/api/medusa/wishlist', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ productId: id }),
-      })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        const message =
-          (data && (data.error || data.message)) || 'Unable to save to wishlist.'
-        toast.error(message)
-        return
-      }
-      if (data?.wishlist && Array.isArray(data.wishlist)) {
-        setCustomer({
-          ...(customer || {}),
-          metadata: {
-            ...(customer?.metadata || {}),
-            wishlist: data.wishlist,
-          },
-        })
-      }
+      await wishlistWrite.mutateAsync({ productId: id, saved: true })
       notifyWishlistSuccess(label ?? 'Item')
     } catch (err) {
       console.warn('addProductToWishlist failed', err)

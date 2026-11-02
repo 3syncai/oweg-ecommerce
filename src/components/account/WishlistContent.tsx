@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import AccountLoginPrompt from "@/components/account/AccountLoginPrompt";
 import { useAuth } from "@/contexts/AuthProvider";
+import { useToggleWishlist } from "@/hooks/useWishlistMutations";
 import { useAddToCart } from "@/hooks/useCartMutations";
 import { cn } from "@/lib/utils";
 import styles from "./WishlistContent.module.css";
@@ -59,9 +60,10 @@ function WishlistImage({ src, title, priority }: { src: string; title: string; p
 }
 
 export default function WishlistContent({ embedded = false }: WishlistContentProps) {
-  const { customer, setCustomer, initializing } = useAuth();
+  const { customer, initializing } = useAuth();
   const queryClient = useQueryClient();
   const addCart = useAddToCart();
+  const wishlistWrite = useToggleWishlist();
 
   const currency = useMemo(
     () =>
@@ -97,7 +99,8 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
     },
   });
 
-  const products: WishlistProduct[] = wishlistQuery.data ?? [];
+  const savedIds = new Set(Array.isArray(customer?.metadata?.wishlist) ? customer.metadata.wishlist.map(String) : []);
+  const products: WishlistProduct[] = (wishlistQuery.data ?? []).filter(product => savedIds.has(product.id));
   const showSkeleton =
     Boolean(customer) &&
     (wishlistQuery.isLoading ||
@@ -112,29 +115,8 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
 
   const handleRemove = async (productId: string) => {
     try {
-      const res = await fetch("/api/medusa/wishlist", {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ productId }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        const message = (data && (data.error || data.message)) || "Unable to remove item.";
-        throw new Error(message);
-      }
-      queryClient.setQueryData<WishlistProduct[]>(["wishlist", customer?.id], (prev) =>
-        (prev || []).filter((p) => p.id !== productId)
-      );
-      if (data?.wishlist && Array.isArray(data.wishlist) && customer) {
-        setCustomer({
-          ...customer,
-          metadata: {
-            ...(customer.metadata || {}),
-            wishlist: data.wishlist,
-          },
-        });
-      }
+      await wishlistWrite.mutateAsync({ productId, saved: false });
+      queryClient.setQueryData<WishlistProduct[]>(["wishlist", customer?.id], (prev) => (prev || []).filter(p => p.id !== productId));
       toast.success("Removed from wishlist");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to remove item.";

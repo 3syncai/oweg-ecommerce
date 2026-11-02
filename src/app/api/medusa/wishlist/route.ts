@@ -36,11 +36,14 @@ function toWishlistArray(metadata: Record<string, unknown> | null | undefined): 
 
 async function fetchWishlistProducts(ids: string[]) {
   const products = []
-  for (const id of ids) {
+  const uniqueIds = [...new Set(ids)]
+  // Bounded fan-out protects the backend; output retains the saved order.
+  for (let offset = 0; offset < uniqueIds.length; offset += 4) {
+    const batch = await Promise.all(uniqueIds.slice(offset, offset + 4).map(async (id) => {
     try {
       const detail = await fetchProductDetail(id)
-      if (!detail) continue
-      products.push({
+      if (!detail) return null
+      return {
         id: detail.id,
         title: detail.title,
         handle: detail.handle,
@@ -50,10 +53,14 @@ async function fetchWishlistProducts(ids: string[]) {
         mrp: detail.mrp,
         discount: detail.discount,
         variant_id: detail.variant_id,
-      })
-    } catch (err) {
-      console.warn("wishlist: failed to fetch detail", id, err)
+        variant_count: detail.variants?.length || 1,
+      }
+    } catch {
+      console.warn("wishlist: detail unavailable", id)
+      return null
     }
+    }))
+    products.push(...batch.filter((item) => item !== null))
   }
   return products
 }
@@ -88,7 +95,7 @@ export async function GET(req: NextRequest) {
     const mePayload = await meRes.json()
     const customer = mePayload?.customer || mePayload
     const wishlistIds = toWishlistArray(customer?.metadata)
-    const products = await fetchWishlistProducts(wishlistIds)
+    const products = req.nextUrl.searchParams.get("ids") === "1" ? [] : await fetchWishlistProducts(wishlistIds)
     const response = NextResponse.json({ customer, products, wishlist: wishlistIds }, { status: 200 })
     appendUpstreamCookies(response, meRes)
     return response
@@ -98,131 +105,31 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
+async function write(req: NextRequest, saved: boolean) {
   try {
     const forwardedCookie = req.headers.get("cookie") || undefined
-    const forwardedHeaders = {
-      origin: req.headers.get("origin") ?? undefined,
-      referer: req.headers.get("referer") ?? undefined,
-      "user-agent": req.headers.get("user-agent") ?? undefined,
-    }
-    if (!forwardedCookie) {
-      return NextResponse.json({ error: "Please sign in to save items." }, { status: 401 })
-    }
-
-    const body = (await req.json()) as WishlistBody
-    const productId = body?.productId?.toString().trim()
-    if (!productId) {
-      return NextResponse.json({ error: "Product id is required." }, { status: 400 })
-    }
-
-    const meRes = await medusaStoreFetch("/store/customers/me", {
-      method: "GET",
-      forwardedCookie,
-      forwardedHeaders,
+    if (!forwardedCookie) return NextResponse.json({ error: "Please sign in to update wishlist." }, { status: 401 })
+    const body = await req.json().catch(() => null) as WishlistBody | null
+    const productId = typeof body?.productId === "string" ? body.productId.trim() : ""
+    if (!productId || productId.length > 200) return NextResponse.json({ error: "Product id is required." }, { status: 400 })
+    const upstream = await medusaStoreFetch("/store/customer-wishlist", {
+      method: "POST", forwardedCookie,
+      forwardedHeaders: {
+        origin: req.headers.get("origin") ?? undefined,
+        referer: req.headers.get("referer") ?? undefined,
+        "user-agent": req.headers.get("user-agent") ?? undefined,
+      },
+      body: JSON.stringify({ productId, saved }),
     })
-    if (!meRes.ok) {
-      const payload = await extractErrorPayload(meRes)
-      const message = toErrorMessage(payload, "Unable to verify your account.")
-      const status = meRes.status === 401 ? 401 : meRes.status
-      return NextResponse.json({ error: message }, { status })
-    }
-    const mePayload = await meRes.json()
-    const me = mePayload?.customer || mePayload
-    const existingMetadata =
-      (me?.metadata && typeof me.metadata === "object" ? (me.metadata as Record<string, unknown>) : {}) || {}
-    const wishlist = Array.isArray(existingMetadata.wishlist)
-      ? (existingMetadata.wishlist as unknown[]).map((id) => String(id)).filter(Boolean)
-      : []
-    if (!wishlist.includes(productId)) {
-      wishlist.push(productId)
-    }
-
-    const updateRes = await medusaStoreFetch("/store/customers/me", {
-      method: "POST",
-      forwardedCookie,
-      forwardedHeaders,
-      body: JSON.stringify({
-        metadata: {
-          ...existingMetadata,
-          wishlist,
-        },
-      }),
-    })
-
-    if (!updateRes.ok) {
-      const payload = await extractErrorPayload(updateRes)
-      const message = toErrorMessage(payload, "Unable to save to wishlist.")
-      return NextResponse.json({ error: message }, { status: updateRes.status })
-    }
-
-    const response = NextResponse.json({ wishlist }, { status: 200 })
-    appendUpstreamCookies(response, updateRes)
+    const data = await upstream.json().catch(() => ({ error: "Unable to update wishlist." }))
+    const response = NextResponse.json(data, { status: upstream.status, headers: { "Cache-Control": "private, no-store" } })
+    appendUpstreamCookies(response, upstream)
     return response
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unable to save to wishlist."
-    return NextResponse.json({ error: message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: "Unable to update wishlist. Please retry." }, { status: 502 })
   }
 }
 
-export async function DELETE(req: NextRequest) {
-  try {
-    const forwardedCookie = req.headers.get("cookie") || undefined
-    const forwardedHeaders = {
-      origin: req.headers.get("origin") ?? undefined,
-      referer: req.headers.get("referer") ?? undefined,
-      "user-agent": req.headers.get("user-agent") ?? undefined,
-    }
-    if (!forwardedCookie) {
-      return NextResponse.json({ error: "Please sign in to update wishlist." }, { status: 401 })
-    }
-
-    const body = (await req.json().catch(() => ({}))) as WishlistBody
-    const productId = body?.productId?.toString().trim()
-    if (!productId) {
-      return NextResponse.json({ error: "Product id is required." }, { status: 400 })
-    }
-
-    const meRes = await medusaStoreFetch("/store/customers/me", {
-      method: "GET",
-      forwardedCookie,
-      forwardedHeaders,
-    })
-    if (!meRes.ok) {
-      const payload = await extractErrorPayload(meRes)
-      const message = toErrorMessage(payload, "Unable to verify your account.")
-      const status = meRes.status === 401 ? 401 : meRes.status
-      return NextResponse.json({ error: message }, { status })
-    }
-    const mePayload = await meRes.json()
-    const me = mePayload?.customer || mePayload
-    const existingMetadata =
-      (me?.metadata && typeof me.metadata === "object" ? (me.metadata as Record<string, unknown>) : {}) || {}
-    const wishlist = toWishlistArray(existingMetadata).filter((id) => id !== productId)
-
-    const updateRes = await medusaStoreFetch("/store/customers/me", {
-      method: "POST",
-      forwardedCookie,
-      forwardedHeaders,
-      body: JSON.stringify({
-        metadata: {
-          ...existingMetadata,
-          wishlist,
-        },
-      }),
-    })
-
-    if (!updateRes.ok) {
-      const payload = await extractErrorPayload(updateRes)
-      const message = toErrorMessage(payload, "Unable to update wishlist.")
-      return NextResponse.json({ error: message }, { status: updateRes.status })
-    }
-
-    const response = NextResponse.json({ wishlist }, { status: 200 })
-    appendUpstreamCookies(response, updateRes)
-    return response
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unable to update wishlist."
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
+// Explicit intents are idempotent; never toggle on the server or replay POST blindly.
+export const POST = (req: NextRequest) => write(req, true)
+export const DELETE = (req: NextRequest) => write(req, false)
