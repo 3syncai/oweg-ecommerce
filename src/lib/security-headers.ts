@@ -5,6 +5,8 @@ const IMAGE_HOSTS = [
   "images.unsplash.com",
   "medusa-public-images.s3.eu-west-1.amazonaws.com",
   "medusa-public-images.s3.amazonaws.com",
+  // Existing vendor catalog images may retain their original StoreHippo URLs.
+  "cdn.storehippo.com",
   "www.oweg.in",
   "oweg.in",
   "oweg-product-images.s3.ap-south-1.amazonaws.com",
