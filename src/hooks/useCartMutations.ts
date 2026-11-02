@@ -1,6 +1,6 @@
 "use client";
 
-import { cartConfirmed, type CartFlight } from "@/lib/cart-flight";
+import { beginCartFlight, settleCartFlight, type CartFlight } from "@/lib/cart-flight";
 import { useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -42,14 +42,29 @@ function useCartWriter() {
     });
 }
 
+// Per-tab deduplication closes the gap before React disables a rapidly tapped
+// button, including two mounted cards for the same variant. Cross-tab ordering
+// stays on the existing cart writer/Web Lock path.
+const pendingAdds = new Map<string, Promise<Awaited<ReturnType<typeof writeCart>>>>();
 export function useAddToCart() {
   const write = useCartWriter();
+  const { customer } = useAuth();
   return useMutation({
     mutationKey: CART_MUTATION_KEY,
     retry: false,
-    mutationFn: ({ variant_id, quantity = 1, seller_selected }: AddToCartParams) =>
-      write("/api/medusa/cart/line-items", "POST", { variant_id, quantity, seller_selected }),
-    onSuccess: (_data, variables) => { clearStaleBuyNowSnapshot(); warmRazorpayCheckout(); cartConfirmed(variables.animationSource); },
+    mutationFn: ({ variant_id, quantity = 1, seller_selected, animationSource }: AddToCartParams) => {
+      const key = JSON.stringify([customer?.id ?? "guest", variant_id, quantity, seller_selected]);
+      const existing = pendingAdds.get(key);
+      if (existing) return existing;
+      // Motion is provisional feedback. It never increments the count itself.
+      const flight = beginCartFlight(animationSource);
+      const request = write("/api/medusa/cart/line-items", "POST", { variant_id, quantity, seller_selected })
+        .then(data => { settleCartFlight(flight, true); return data; }, error => { settleCartFlight(flight, false); throw error; })
+        .finally(() => { if (pendingAdds.get(key) === request) pendingAdds.delete(key); });
+      pendingAdds.set(key, request);
+      return request;
+    },
+    onSuccess: () => { clearStaleBuyNowSnapshot(); warmRazorpayCheckout(); },
   });
 }
 

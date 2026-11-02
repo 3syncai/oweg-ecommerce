@@ -2,30 +2,29 @@
 
 import { toast } from "sonner";
 
-const formatLine = (label?: string, quantity?: number) => {
-  const name = label?.trim() ? label.trim() : "Item";
-  return typeof quantity === "number" && quantity > 0
-    ? `${name} • Qty ${quantity}`
-    : name;
-};
+// A shared ID replaces old shopping feedback instead of stacking stale messages.
+export const SHOPPING_FEEDBACK_ID = "oweg-shopping-feedback";
+export const ACTION_STATUS_EVENT = "oweg:action-status";
+export function announceAction(message: string) {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(ACTION_STATUS_EVENT, { detail: message }));
+}
 
 export const notifyCartAddSuccess = (
-  label: string,
+  _label: string,
   quantity: number,
   onViewCart?: () => void
-) =>
-  toast.success("Added to cart!", {
-    description: formatLine(label, quantity),
-    action: onViewCart
-      ? {
-          label: "View Cart",
-          onClick: onViewCart,
-        }
-      : undefined,
-  });
+) => toast.success(quantity > 1 ? `${quantity} items added to cart` : "Added to cart", {
+  id: SHOPPING_FEEDBACK_ID,
+  duration: 5000,
+  description: undefined,
+  action: onViewCart ? { label: "View cart", onClick: onViewCart } : undefined,
+});
 
 export const notifyCartAddError = (message?: string) =>
-  toast.error("Unable to add to cart", {
+  toast.error("Couldn’t add item", {
+    id: SHOPPING_FEEDBACK_ID,
+    duration: 7000,
+    action: undefined,
     description: message?.trim() || "Please try again.",
   });
 
@@ -40,20 +39,24 @@ export const notifyOutOfStock = () =>
   });
 
 export const notifyWishlistLogin = (onLogin?: () => void) =>
-  toast.info("Login required", {
-    description: "Please sign in to save items to your wishlist.",
-    action: onLogin
-      ? {
-          label: "Login",
-          onClick: onLogin,
-        }
-      : undefined,
+  toast.info("Sign in to save items", {
+    id: SHOPPING_FEEDBACK_ID,
+    duration: 6000,
+    description: undefined,
+    action: onLogin ? { label: "Sign in", onClick: onLogin } : undefined,
   });
 
-export const notifyWishlistSuccess = (label?: string) =>
-  toast.success("Saved to wishlist!", {
-    description: formatLine(label),
+export const notifyWishlistSuccess = (_label?: string) => announceAction("Saved to wishlist");
+
+export const notifyWishlistRemoved = (onUndo: () => void) => {
+  let used = false;
+  return toast("Removed from wishlist", {
+    id: SHOPPING_FEEDBACK_ID,
+    duration: 6000,
+    description: undefined,
+    action: { label: "Undo", onClick: () => { if (!used) { used = true; onUndo(); } } },
   });
+};
 
 export const notifyCouponApplied = (code: string) =>
   toast.success("Coupon applied", {
@@ -70,15 +73,11 @@ export const notifyCouponInvalid = () =>
     description: "Please double-check and try again.",
   });
 
-export const notifyQuantityUpdated = (label: string, quantity: number) =>
-  toast("Quantity updated", {
-    description: formatLine(label, quantity),
-  });
+export const notifyQuantityUpdated = (_label: string, quantity: number) =>
+  announceAction(`Quantity updated to ${quantity}`);
 
-export const notifyRemoveItem = (label: string) =>
-  toast.info("Item removed from cart", {
-    description: formatLine(label),
-  });
+export const notifyRemoveItem = (_label: string) =>
+  toast("Removed from cart", { id: SHOPPING_FEEDBACK_ID, duration: 3500, description: undefined, action: undefined });
 
 export const notifyCartUpdated = () =>
   toast.success("Cart updated", {
@@ -92,5 +91,8 @@ export const notifyCheckoutComingSoon = () =>
 
 export const notifyActionError = (title: string, description?: string) =>
   toast.error(title, {
+    id: SHOPPING_FEEDBACK_ID,
+    duration: 7000,
+    action: undefined,
     description: description?.trim(),
   });

@@ -52,14 +52,14 @@ flowchart TD
   Mutation --> Backend[Existing cart API / stock validation]
   Backend --> Cache[Authoritative cart response updates shared query cache]
   Cache --> Count[Existing navbar count]
-  Cache --> Success[Confirmed success event]
-  Success --> Motion[React portal thumbnail flight / visible cart pulse]
-  Backend --> Failure[Failure: existing error and retry; no success motion]
+  Capture --> Motion[Immediate provisional GSAP morph / visible cart squash]
+  Motion --> Cleanup[1130ms cleanup / source restored]
+  Backend --> Failure[Failure: cancel provisional motion, restore image, existing error and retry]
 ```
 
-Verified edges: `ProductCardQuickActions.tsx` and PDP → `src/hooks/useCartMutations.ts:45` → `useCartWriter` / `src/lib/cart-client.ts` → shared cart query → `src/components/ui/CartSuccessMotion.tsx`. The mutation payload sent to the API is unchanged; geometry is UI-only. Motion starts after confirmed persistence, never delays the request/count or fabricates an increment. Missing image/target retains normal success feedback; reduced motion skips decoration. Geometry is responsive; a maximum of four flights can exist; animations/listeners/clones clean up. Failure leaves a usable Retry button. Quantity controls, seller selection, pricing, checkout and payment workers remain on their existing paths.
+Verified edges: `ProductCardQuickActions.tsx` and PDP → `src/hooks/useCartMutations.ts:45` → `useCartWriter` / `src/lib/cart-client.ts` → shared cart query → `src/components/ui/CartSuccessMotion.tsx`. The mutation payload sent to the API is unchanged; geometry is UI-only. Motion starts immediately on intent while the existing API runs in parallel. The GSAP timeline is 1130ms: detach (120ms), diamond stretch (210ms), compression (130ms), flight (550ms), cart squash (120ms). Only server-confirmed persistence updates count and quantity; motion never fabricates an increment. Failure cancels the clone and restores source visibility, with the existing error toast and GET reconciliation. Missing image/target retains normal success feedback; reduced motion skips decoration. Geometry is responsive; a maximum of four flights can exist; animations/listeners/clones clean up. Failure leaves a usable Retry button. Quantity controls, seller selection, pricing, checkout and payment workers remain on their existing paths.
 
-Alternative considered: optimistic flying/count before confirmation; rejected because a stock/network failure would falsely imply success. A new animation library was unnecessary: native Web Animations plus a React portal provides cancellation and reduced-motion support with no new runtime dependency.
+Updated user requirement: provisional motion before confirmation, with confirmed-only count. GSAP 3.15.0 drives a clipped diamond and GPU transforms inside a fixed, overflow-hidden portal. Source visibility is restored on completion, failure, preference changes and unmount. Cart impact ownership prevents overlapping flights from restoring another flight’s transform. Passive scroll/resize listeners dirty the destination measurement; layout is read again only when needed. Per-tab in-flight deduplication prevents rapid identical adds, while existing cross-tab Web Locks and cart writes are unchanged. This visual change does not change backend routes, checkout, inventory or payment-worker behavior. Real-device 60 FPS is a performance target, not a measured guarantee from desktop headless Chrome.
 
 ## Controlled before/after measurements
 
@@ -81,7 +81,7 @@ Passed:
 - Frontend full ESLint: zero errors, 22 pre-existing warnings. Targeted changed-file lint also passes.
 - Frontend and Medusa TypeScript checks; local optimized production build.
 - Unit/API regression suites: cart API, confirmation contracts, sale display/cache/enrichment, variant selection, product actions, shipping, search/read-readiness, wishlist queue/API/auth identity. The combined final runner has 56 entries, including the cart API script's nine internal scenarios.
-- Cart real-React mocked-browser harness: 15 cases, including confirmed-only motion at 390/1280px, failed and lost responses, counts, first-cart writes, cross-tab serialization, quantity/removal, reduced motion, missing image/target, animation disposal.
+- Cart real-React mocked-browser harness: 21 passing scenarios; updated cases include immediate parallel motion at 390/768/1280px, eight rapid identical intents issuing one POST, fast API confirmation during motion, scroll/resize destination refresh without overflow, mid-flight reduced-motion cancellation, failed and lost responses, counts, first-cart writes, cross-tab serialization, quantity/removal, reduced motion, missing image/target, animation disposal.
 - Wishlist real-React mocked-browser harness: six cases covering optimistic/shared pending, repeat add, rollback, two tabs, old responses and same-tick account switch.
 - Initial flash-sale server markup hydration: two viewport cases, no mismatch or duplicate initial fetch, visibility refresh and unmount cleanup.
 - Checkout confirmation mocked-browser harness: 11 cases, including COD/online confirmation gates, cancelled/draft/session expiry, hidden tab, recovery and cart clearing.
@@ -137,3 +137,13 @@ The pre-existing generated `my-medusa-store/.medusa/types/modules-bindings.d.ts`
 - [src/lib/cart-flight.ts](C:/Users/jhakr/OneDrive/Desktop/oweg_ecom_module/oweg-ecommerce/src/lib/cart-flight.ts)
 - [src/lib/flash-sale-server.ts](C:/Users/jhakr/OneDrive/Desktop/oweg_ecom_module/oweg-ecommerce/src/lib/flash-sale-server.ts)
 - [src/lib/wishlist-client.ts](C:/Users/jhakr/OneDrive/Desktop/oweg_ecom_module/oweg-ecommerce/src/lib/wishlist-client.ts)
+
+## Compact action feedback follow-up
+
+Shopping feedback now replaces one shared message rather than stacking full product names. Cart success keeps View cart; login keeps Sign in. Wishlist save and quantity changes use a polite status region without a visual popup. Errors remain visible and replace stale actions. Wishlist removal offers one-shot Undo through the existing authenticated wishlist mutation; session changes/page exit dismiss the old action, and failed restores reconcile rather than claiming success.
+
+The shared Sonner renderer uses neutral compact cards, an internal dismiss button, keyboard focus styles, reduced-motion CSS, safe-area offsets and 44px mobile action targets. Under 768px, the bar clears the existing 69px bottom navigation; desktop/tablet use the bottom corner. No backend or payment-worker change is required for this feedback follow-up.
+
+Verification: `node scripts/notification-feedback.browser.cjs` passes eight scenarios using real Sonner, wishlist UI and wishlist mutations with all requests intercepted. Tested 320/390/768/1280px bounds, mobile touch targets/navigation clearance, no focus theft, View cart/Sign in, silent status announcements, replacement, reduced motion, successful Undo, account switch and failed Undo. Existing cart (21 scenarios), wishlist (6 scenarios), and related cart/variant/wishlist regression suite (17 runner entries) pass. No live customer data was changed.
+
+Cart motion timing follow-up: travel increased from 260ms to 550ms with a gentler ease, and opacity stays solid until the final 140ms. Total duration is now 1130ms, following the request to see the product travel clearly. API requests and server-confirmed counts remain independent of this decorative timing.

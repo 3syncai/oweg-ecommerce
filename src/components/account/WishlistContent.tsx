@@ -1,12 +1,14 @@
 "use client";
 
 import BrandLoader from "@/components/ui/BrandLoader";
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowUpRight, Heart, HeartOff, ImageOff, Loader2, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
+import { notifyCartAddSuccess, notifyWishlistRemoved, notifyWishlistSuccess, notifyActionError, SHOPPING_FEEDBACK_ID } from "@/lib/notifications";
 import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import AccountLoginPrompt from "@/components/account/AccountLoginPrompt";
 import { useAuth } from "@/contexts/AuthProvider";
@@ -63,8 +65,14 @@ function WishlistImage({ src, title, priority }: { src: string; title: string; p
 export default function WishlistContent({ embedded = false }: WishlistContentProps) {
   const { customer, initializing } = useAuth();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const addCart = useAddToCart();
   const wishlistWrite = useToggleWishlist();
+  const currentCustomer = useRef(customer?.id);
+  useLayoutEffect(() => {
+    currentCustomer.current = customer?.id;
+    return () => { currentCustomer.current = undefined; toast.dismiss(SHOPPING_FEEDBACK_ID); };
+  }, [customer?.id]);
 
   const currency = useMemo(
     () =>
@@ -115,13 +123,23 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
         : null;
 
   const handleRemove = async (productId: string) => {
+    const owner = customer?.id;
+    const removedProduct = products.find(product => product.id === productId);
     try {
-      await wishlistWrite.mutateAsync({ productId, saved: false });
-      queryClient.setQueryData<WishlistProduct[]>(["wishlist", customer?.id], (prev) => (prev || []).filter(p => p.id !== productId));
-      toast.success("Removed from wishlist");
+      const result = await wishlistWrite.mutateAsync({ productId, saved: false });
+      if (!result.wishlist || currentCustomer.current !== owner) return;
+      queryClient.setQueryData<WishlistProduct[]>(["wishlist", owner], (prev) => (prev || []).filter(p => p.id !== productId));
+      notifyWishlistRemoved(() => {
+        if (currentCustomer.current !== owner) return;
+        void wishlistWrite.mutateAsync({ productId, saved: true }).then(data => {
+          if (!data.wishlist || currentCustomer.current !== owner) return;
+          if (removedProduct) queryClient.setQueryData<WishlistProduct[]>(["wishlist", owner], prev =>
+            (prev || []).some(product => product.id === productId) ? prev : [...(prev || []), removedProduct]);
+          notifyWishlistSuccess();
+        }).catch(error => { if (currentCustomer.current === owner) notifyActionError("Couldn’t restore item", error instanceof Error ? error.message : "Please try again."); });
+      });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to remove item.";
-      toast.error(message);
+      notifyActionError("Couldn’t remove item", err instanceof Error ? err.message : "Please try again.");
     }
   };
 
@@ -134,7 +152,7 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
     }
     try {
       await addCart.mutateAsync({ variant_id: variantId, quantity: 1 });
-      toast.success("Added to cart");
+      notifyCartAddSuccess(product.title || "Item", 1, () => router.push("/cart"));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to add to cart.";
       toast.error(message);

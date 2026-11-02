@@ -166,3 +166,19 @@
   .utilityLinks a:first-child { display: none; }
 }
 @media (max-width: 767px) { .mainContainer { padding: 8px 16px; } .topBar { display: none; } }
+
+/* The expanded search row must not clip its absolutely positioned suggestions.
+   Keep clipping only while collapsed so hidden controls cannot intercept taps. */
+.mobileSearchChrome { overflow: hidden; }
+.mobileSearchChrome[data-search-expanded="true"] { overflow: visible; }
+.mobileSuggestions {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 12px;
+  right: 12px;
+  z-index: 50;
+  max-height: 60vh;
+  max-height: min(60dvh, max(88px, calc(100dvh - var(--app-header-height, 180px) - 85px)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
