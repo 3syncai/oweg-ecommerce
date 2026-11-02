@@ -7,7 +7,7 @@ import { claimWishlist, releaseWishlist, queueWishlist, subscribeWishlist, wishl
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthProvider";
 import {
-  notifyCartAddError,
+  notifyActionError,
   notifyWishlistLogin,
   notifyWishlistSuccess,
 } from "@/lib/notifications";
@@ -40,7 +40,9 @@ export function useToggleWishlist() {
         return await queueWishlist(async () => {
           if (identity.current !== id) throw new Error("Your account changed. Please try again.");
           let before: string[] = [];
-          updateWishlist(id, ids => { before = ids; return saved ? [...new Set([...ids, productId])] : ids.filter(value => value !== productId); });
+          let sameSession = false;
+          updateWishlist(id, ids => { sameSession = true; before = ids; return saved ? [...new Set([...ids, productId])] : ids.filter(value => value !== productId); });
+          if (!sameSession) throw new Error("Your account changed. Please try again.");
           try {
             const response = await fetch("/api/medusa/wishlist", {
               method: saved ? "POST" : "DELETE",
@@ -89,13 +91,14 @@ export function useAddToWishlistWithNotification(productName?: string) {
 
     try {
       const result = await toggleWishlist.mutateAsync(productId);
-      notifyWishlistSuccess(productName || "Product");
+      if (result.wishlist) notifyWishlistSuccess(productName || "Product");
       return result;
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Unable to save to wishlist.";
-      notifyCartAddError(message);
-      throw err;
+      notifyActionError("Unable to save to wishlist", message);
+      // Event handlers already received visible feedback; avoid an unhandled rejection.
+      return undefined;
     }
   };
 

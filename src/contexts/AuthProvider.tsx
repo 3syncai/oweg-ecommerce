@@ -56,17 +56,21 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [initializing, setInitializing] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const customerRef = useRef<StoreCustomer>(null)
+  const wishlistRevision = useRef(0)
 
-  // Keep ref in sync with state
-  useEffect(() => {
-    customerRef.current = customer
-  }, [customer])
-
+  // Every state writer also updates the ref synchronously so queued wishlist
+  // intents cannot cross an account switch before React renders again.
   const refresh = useCallback(async () => {
     setRefreshing(true)
     try {
       const prevCustomer = customerRef.current
-      const next = await fetchSession()
+      const revision = wishlistRevision.current
+      let next = await fetchSession()
+      const current = customerRef.current
+      if (next && current?.id === next.id && revision !== wishlistRevision.current) {
+        next = { ...next, metadata: { ...next.metadata, wishlist: current.metadata?.wishlist } }
+      }
+      customerRef.current = next
       setCustomer(next)
       
       // If user just logged in (was null, now has customer), merge guest cart
@@ -104,6 +108,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       }
     } catch (err) {
       console.warn("Failed to refresh session", err)
+      customerRef.current = null
       setCustomer(null)
     } finally {
       setRefreshing(false)
@@ -134,7 +139,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   }, [queryClient])
 
   const setCustomerState = useCallback((value: StoreCustomer) => {
-    const prevCustomer = customer
+    const prevCustomer = customerRef.current
+    customerRef.current = value
     setCustomer(value)
     setInitializing(false)
     
@@ -171,12 +177,13 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         }
       }).finally(() => { void queryClient.invalidateQueries({ queryKey: ["cart"] }) })
     }
-  }, [customer, queryClient])
+  }, [queryClient])
 
   const updateWishlist = useCallback((id: string, update: (ids: string[]) => string[]) => {
     const current = customerRef.current
     if (!current || current.id !== id) return
     const next = { ...current, metadata: { ...current.metadata, wishlist: update(wishlistIds(current.metadata?.wishlist)) } }
+    wishlistRevision.current++
     customerRef.current = next
     setCustomer(next)
   }, [])

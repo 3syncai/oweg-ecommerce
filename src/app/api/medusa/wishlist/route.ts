@@ -44,7 +44,8 @@ async function fetchWishlistProducts(ids: string[]) {
       const detail = await fetchProductDetail(id)
       if (!detail) return null
       return {
-        id: detail.id,
+        // Keep the saved identity even when detail grouping picks another seller.
+        id,
         title: detail.title,
         handle: detail.handle,
         thumbnail: detail.thumbnail || detail.images?.[0],
@@ -79,6 +80,7 @@ export async function GET(req: NextRequest) {
 
     const meRes = await medusaStoreFetch("/store/customers/me", {
       method: "GET",
+      signal: AbortSignal.timeout(10_000),
       forwardedCookie,
       forwardedHeaders,
     })
@@ -113,7 +115,7 @@ async function write(req: NextRequest, saved: boolean) {
     const productId = typeof body?.productId === "string" ? body.productId.trim() : ""
     if (!productId || productId.length > 200) return NextResponse.json({ error: "Product id is required." }, { status: 400 })
     const upstream = await medusaStoreFetch("/store/customer-wishlist", {
-      method: "POST", forwardedCookie,
+      method: "POST", signal: AbortSignal.timeout(12_000), forwardedCookie,
       forwardedHeaders: {
         origin: req.headers.get("origin") ?? undefined,
         referer: req.headers.get("referer") ?? undefined,

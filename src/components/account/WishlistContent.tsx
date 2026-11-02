@@ -25,6 +25,7 @@ type WishlistProduct = {
   mrp?: number;
   discount?: number;
   variant_id?: string;
+  variant_count?: number;
   variants?: { id?: string }[];
 };
 
@@ -272,6 +273,9 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
                     </div>
                   </div>
                   <div className={styles.actions}>
+                    {(product.variant_count ?? 1) > 1 ? (
+                      <Link href={href} className={styles.primaryButton}>Choose options</Link>
+                    ) : (
                     <button
                       type="button"
                       className={styles.primaryButton}
@@ -281,9 +285,12 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
                       <ShoppingCart className="h-4 w-4" />
                       <span>Add to cart</span>
                     </button>
+                    )}
                     <button
                       type="button"
                       className={styles.removeButton}
+                      disabled={wishlistWrite.isPending}
+                      aria-busy={wishlistWrite.isPending || undefined}
                       onClick={() => void handleRemove(product.id)}
                       aria-label="Remove from wishlist"
                     >
