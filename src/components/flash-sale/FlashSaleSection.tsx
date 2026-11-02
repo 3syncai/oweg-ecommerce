@@ -59,7 +59,7 @@ const inr = new Intl.NumberFormat("en-IN", {
 const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: boolean; view?: 'carousel' | 'all'; initialData?: FlashSaleData }> = ({ showImageFallback = false, inStockOnly = false, view = 'carousel', initialData }) => {
   const [flashSaleData, setFlashSaleData] = useState<FlashSaleData | null>(initialData ?? null)
   const [loading, setLoading] = useState(!initialData)
-  const [timeRemaining, setTimeRemaining] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
+  const [timeRemaining, setTimeRemaining] = useState(() => flashSaleCountdown(initialData?.flash_sale?.time_remaining_ms ?? 0))
   const [failed, setFailed] = useState(false)
   const fetching = useRef(false)
   const refreshedExpiry = useRef<string | null>(null)

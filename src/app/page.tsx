@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import styles from './home/HomePage.module.css';
 import HomePage, { HomeShell, HomeFeedSkeleton } from './home/HomePage';
 import FlashSaleSection, { FlashSaleSkeleton, type FlashSaleData } from '@/components/flash-sale/FlashSaleSection';
 import { buildHomeFeedCached } from '@/lib/home-feed';
@@ -21,8 +22,8 @@ export default function Page() {
   // Attach rejection handlers immediately; each boundary handles its own failure.
   void feed.catch(() => undefined);
   void deals.catch(() => undefined);
-  return <main><h1 className="sr-only">Good finds. Everyday living.</h1><HomeShell />
+  return <div className={styles.home}><h1 className="sr-only">Good finds. Everyday living.</h1><HomeShell />
     <Suspense fallback={<FlashSaleSkeleton />}><Deals promise={deals} /></Suspense>
     <Suspense fallback={<HomeFeedSkeleton />}><Feed promise={feed} /></Suspense>
-  </main>;
+  </div>;
 }

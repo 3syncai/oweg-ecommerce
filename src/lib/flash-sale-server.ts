@@ -4,7 +4,7 @@ import { createFlashSaleCache, type FlashSalePayload } from '@/lib/flash-sale-ca
 const loadCached = createFlashSaleCache()
 const loadAllCached = createFlashSaleCache()
 
-export async function loadFlashSale({ all = false, homeOnly = false } = {}): Promise<FlashSalePayload> {
+async function loadAndValidate(all: boolean, homeOnly: boolean): Promise<FlashSalePayload> {
   const data = await (all ? loadAllCached : loadCached)(async () => {
       const backendUrl = process.env.MEDUSA_BACKEND_URL || process.env.BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
       const publishableKey = process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY || process.env.MEDUSA_PUBLISHABLE_KEY || process.env.MEDUSA_PUBLISHABLE_API_KEY
@@ -17,3 +17,17 @@ export async function loadFlashSale({ all = false, homeOnly = false } = {}): Pro
     })
   return (homeOnly ? await inStockHomeFlashSale(data as Parameters<typeof inStockHomeFlashSale>[0], { all }) : data) as FlashSalePayload
  }
+
+// Coalesce overlapping stock/price validations without caching stale inventory.
+// Raw campaign caching remains unchanged and all-deals stays isolated.
+const validating = new Map<boolean, Promise<FlashSalePayload>>()
+export function loadFlashSale({ all = false, homeOnly = false } = {}): Promise<FlashSalePayload> {
+  if (!homeOnly) return loadAndValidate(all, false)
+  const existing = validating.get(all)
+  if (existing) return existing
+  const request = loadAndValidate(all, true).finally(() => {
+    if (validating.get(all) === request) validating.delete(all)
+  })
+  validating.set(all, request)
+  return request
+}

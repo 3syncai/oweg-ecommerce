@@ -176,3 +176,16 @@ test('full store response includes the saved heading and all published deals acr
   assert.equal(result.products[0].flash_sale_price,90)
   assert.equal(result.products.at(-1).id,'p-73')
 })
+
+test('overlapping home stock validations coalesce, then revalidate fresh inventory on the next request', async () => {
+  let reads=0, checks=0
+  const server=load('src/lib/flash-sale-server.ts',{
+    axios:{get:async()=>{reads++;return{data:{active:true,products:[]}}}},
+    '@/lib/flash-sale-cache':load('src/lib/flash-sale-cache.ts'),
+    '@/lib/home-flash-sale':{inStockHomeFlashSale:async data=>{checks++;await new Promise(resolve=>setTimeout(resolve,5));return data}},
+  })
+  await Promise.all(Array.from({length:20},()=>server.loadFlashSale({homeOnly:true})))
+  assert.equal(reads,1);assert.equal(checks,1)
+  await server.loadFlashSale({homeOnly:true})
+  assert.equal(reads,1);assert.equal(checks,2)
+})

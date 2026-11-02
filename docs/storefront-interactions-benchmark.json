@@ -3,50 +3,50 @@
   "runs": [
     {
       "mode": "before",
-      "lcp": 428,
+      "lcp": 460,
       "cls": 0.19590616861979168,
-      "flash": 553.2000000476837,
-      "ttfb": 381.8000000715256,
+      "flash": 573.5,
+      "ttfb": 390.39999997615814,
       "criticalApiRequests": 1
     },
     {
       "mode": "before",
-      "lcp": 388,
+      "lcp": 404,
       "cls": 0.19590616861979168,
-      "flash": 534.7999999523163,
-      "ttfb": 365.2000000476837,
+      "flash": 533.0999999046326,
+      "ttfb": 363,
       "criticalApiRequests": 1
     },
     {
       "mode": "before",
-      "lcp": 392,
+      "lcp": 408,
       "cls": 0.19590616861979168,
-      "flash": 533.5,
-      "ttfb": 361.10000002384186,
+      "flash": 540.7000000476837,
+      "ttfb": 365.3000000715256,
       "criticalApiRequests": 1
     },
     {
       "mode": "after",
-      "lcp": 40,
+      "lcp": 52,
       "cls": 0,
-      "flash": 154.79999995231628,
-      "ttfb": 3.6999999284744263,
+      "flash": 157.60000002384186,
+      "ttfb": 6,
       "criticalApiRequests": 0
     },
     {
       "mode": "after",
       "lcp": 48,
       "cls": 0,
-      "flash": 160.69999992847443,
-      "ttfb": 2.5,
+      "flash": 153.5,
+      "ttfb": 4,
       "criticalApiRequests": 0
     },
     {
       "mode": "after",
-      "lcp": 40,
+      "lcp": 48,
       "cls": 0,
-      "flash": 156.89999997615814,
-      "ttfb": 2.899999976158142,
+      "flash": 162.40000009536743,
+      "ttfb": 3.9000000953674316,
       "criticalApiRequests": 0
     }
   ]
