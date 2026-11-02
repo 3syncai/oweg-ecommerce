@@ -1,4 +1,5 @@
 'use client'
+import { captureCartFlight } from "@/lib/cart-flight"
 import { useToggleWishlist } from "@/hooks/useWishlistMutations"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -1059,7 +1060,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
     const itemLabel = label ?? product?.title ?? "Item";
     try {
-      await addCart.mutateAsync({ variant_id: variantId, quantity: qty, seller_selected: sellerSelected });
+      await addCart.mutateAsync({ variant_id: variantId, quantity: qty, seller_selected: sellerSelected, animationSource: captureCartFlight(document.querySelector("[data-cart-product-gallery]")) });
       notifyCartAddSuccess(itemLabel, qty, goToCart);
     } catch (err) {
       console.warn("addVariantToCart failed", err);
@@ -1276,7 +1277,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
             {/* ====== MAIN TWO-COLUMN: LEFT = STICKY GALLERY, RIGHT = PAGE-SCROLL SUMMARY ====== */}
             <section className={styles.productLayout}>
               {/* LEFT: Sticky Image/Gallery */}
-              <div className={styles.galleryColumn}>
+              <div className={styles.galleryColumn} data-cart-product-gallery>
                 <ProductGallery
                   images={galleryImages}
                   selectedIndex={selectedImage}

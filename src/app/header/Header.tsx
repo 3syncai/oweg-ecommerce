@@ -1657,7 +1657,7 @@ const Header: React.FC = () => {
                     cartPreviewTimer.current = setTimeout(() => setCartPreviewOpen(false), 300);
                   }}
                 >
-                  <Link href="/cart" className={navStyles.actionLink}>
+                  <Link href="/cart" data-cart-target className={navStyles.actionLink}>
                     <div className="relative shrink-0">
                       <CartIcon className="w-6 h-6 text-header-text" count={cartCount} />
                     </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { cartConfirmed, type CartFlight } from "@/lib/cart-flight";
 import { useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -11,7 +12,7 @@ import { warmRazorpayCheckout } from "@/lib/razorpay-warmup";
 import { notifyCartAddError, notifyCartAddSuccess, notifyCartUnavailable, notifyQuantityUpdated, notifyRemoveItem } from "@/lib/notifications";
 
 export const CART_MUTATION_KEY = ["cart-mutation"] as const;
-type AddToCartParams = { variant_id: string; quantity?: number; seller_selected?: boolean };
+type AddToCartParams = { variant_id: string; quantity?: number; seller_selected?: boolean; animationSource?: CartFlight };
 type UpdateLineItemParams = { lineId: string; quantity: number; label?: string };
 type RemoveLineItemParams = { lineId: string; label?: string };
 
@@ -48,17 +49,17 @@ export function useAddToCart() {
     retry: false,
     mutationFn: ({ variant_id, quantity = 1, seller_selected }: AddToCartParams) =>
       write("/api/medusa/cart/line-items", "POST", { variant_id, quantity, seller_selected }),
-    onSuccess: () => { clearStaleBuyNowSnapshot(); warmRazorpayCheckout(); },
+    onSuccess: (_data, variables) => { clearStaleBuyNowSnapshot(); warmRazorpayCheckout(); cartConfirmed(variables.animationSource); },
   });
 }
 
 export function useAddToCartWithNotification(productName?: string) {
   const addToCart = useAddToCart();
   const router = useRouter();
-  const addToCartWithNotification = async (variant_id: string) => {
+  const addToCartWithNotification = async (variant_id: string, animationSource?: CartFlight) => {
     if (!variant_id) { notifyCartUnavailable(); return; }
     try {
-      const result = await addToCart.mutateAsync({ variant_id, quantity: 1 });
+      const result = await addToCart.mutateAsync({ variant_id, quantity: 1, animationSource });
       // View cart is offered only after the cart identity/items have been saved.
       notifyCartAddSuccess(productName || "Product", 1, () => router.push("/cart"));
       return result;

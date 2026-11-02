@@ -1,5 +1,6 @@
 "use client";
 
+import { captureCartFlight } from "@/lib/cart-flight";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -45,7 +46,7 @@ export function ProductCardQuickActions({
   layout = "overlay",
 }: ProductCardQuickActionsProps) {
   const { line } = useCartLineByVariant(selectionHref ? undefined : variantId);
-  const { addToCart, isLoading: isAdding } = useAddToCartWithNotification(productName);
+  const { addToCart, isLoading: isAdding, error: addError } = useAddToCartWithNotification(productName);
   const { updateQuantity, isUpdating } = useUpdateCartLineQuantity();
   const [showAddedFlash, setShowAddedFlash] = useState(false);
 
@@ -72,7 +73,7 @@ export function ProductCardQuickActions({
     stopCardNavigation(event);
     if (!variantId || selectionHref || disabled || isBusy) return;
     try {
-      await addToCart(variantId);
+      await addToCart(variantId, captureCartFlight(event.currentTarget.closest("article")));
       setShowAddedFlash(true);
     } catch { /* The add hook already reports the error; keep the card usable. */ }
   };
@@ -162,16 +163,16 @@ export function ProductCardQuickActions({
         <button
           type="button"
           onClick={handleAdd}
-          title={disabled ? "Out of Stock" : isAdding ? "Adding…" : "Add to Cart"}
+          title={disabled ? "Out of Stock" : isAdding ? "Adding…" : addError ? "Retry add to cart" : "Add to Cart"}
           disabled={!canAdd || isBusy}
           aria-busy={isAdding || undefined}
-          aria-label={disabled ? "Out of Stock" : isAdding ? "Adding to cart" : "Add to Cart"}
+          aria-label={disabled ? "Out of Stock" : isAdding ? "Adding to cart" : addError ? "Retry add to cart" : "Add to Cart"}
           className={`${layout === "inline" ? "relative flex h-10 w-full items-center justify-center gap-2 rounded-md border-0 bg-[#155344] px-2 text-sm font-semibold text-white hover:bg-[#103f34] disabled:bg-[#e9eeeb] disabled:text-[#75817b]" : "relative flex h-9 w-9 items-center justify-center border-0 bg-transparent p-0 shadow-none before:absolute before:-inset-1 before:content-['']"} transition ${
             canAdd && !isBusy ? "hover:scale-105" : "cursor-not-allowed"
           } ${isBusy ? "opacity-60 cursor-wait" : ""}`}
         >
           {layout === "inline" ? (
-            <>{isAdding && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}{disabled ? "Out of stock" : isAdding ? "Adding…" : "Add to Cart"}</>
+            <>{isAdding && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}{disabled ? "Out of stock" : isAdding ? "Adding…" : addError ? "Retry add to cart" : "Add to Cart"}</>
           ) : isAdding ? (
             <Loader2 className="h-7 w-7 animate-spin text-[#66C940] drop-shadow-md" aria-hidden />
           ) : (

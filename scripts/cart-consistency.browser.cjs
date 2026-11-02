@@ -10,15 +10,16 @@ async function main() {
       import{QueryClient,QueryClientProvider}from'@tanstack/react-query';
       import CartProvider,{useCartSummary}from'./src/contexts/CartProvider';
       import{useAddToCartWithNotification,useAddToCart}from'./src/hooks/useCartMutations';
+      import Motion from'./src/components/ui/CartSuccessMotion';import{captureCartFlight}from'./src/lib/cart-flight';
       import{useCart}from'./src/hooks/useCart';import Cart from'./src/app/cart/Cart';
       const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
       function Shop(){const[view,setView]=useState(false);window.openCart=()=>setView(true);
         const {count}=useCartSummary();const add=useAddToCartWithNotification('QA mouse');const raw=useAddToCart();
         useCart();window.burst=()=>Promise.allSettled(['variant_a','variant_b'].map(variant_id=>raw.mutateAsync({variant_id})));
-        return <><p data-testid="badge">{count}</p><button onClick={()=>setView(true)}>Open cart</button>
-        <button disabled={add.isLoading} onClick={()=>add.addToCart('variant_a').catch(()=>{})}>Add QA mouse</button>
+        return <><Motion/><a href="/cart" data-cart-target style={{position:"fixed",right:20,top:20,width:40,height:40}}>Cart</a><article><img alt="QA product" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='green'/%3E%3C/svg%3E" style={{width:100,height:100}}/></article><p data-testid="badge">{count}</p><button onClick={()=>setView(true)}>Open cart</button>
+        <button disabled={add.isLoading} onClick={()=>add.addToCart('variant_a',captureCartFlight(document.querySelector('article'))).catch(()=>{})}>Add QA mouse</button>
         <p data-testid="adding">{String(add.isLoading)}</p>{view&&<Cart/>}</>}
-      createRoot(document.getElementById('root')).render(<QueryClientProvider client={client}><CartProvider><Shop/></CartProvider></QueryClientProvider>);
+      const root=createRoot(document.getElementById('root'));window.dispose=()=>root.unmount();root.render(<QueryClientProvider client={client}><CartProvider><Shop/></CartProvider></QueryClientProvider>);
     `},
     bundle: true, write: false, format: 'iife', jsx: 'automatic', loader: { '.css': 'empty' },
     define: { 'process.env.NODE_ENV': '"production"' },
@@ -100,7 +101,7 @@ async function main() {
     await test('failed add never announces success or changes header/cart', {failWrite:true}, async p=>{
       await p.getByRole('button',{name:'Add QA mouse',exact:true}).click();
       await p.waitForFunction(()=>window.notices.some(n=>n.kind==='error'));
-      await badge(p,0);assert.equal(await p.evaluate(()=>window.notices.some(n=>n.kind==='success')),false);
+      await badge(p,0);assert.equal(await p.locator('[data-cart-flight]').count(),0);assert.equal(await p.evaluate(()=>window.notices.some(n=>n.kind==='success')),false);
     });
     await test('lost write response reconciles by GET and never replays POST', {loseResponse:true}, async p=>{
       await p.getByRole('button',{name:'Add QA mouse',exact:true}).click();
@@ -150,6 +151,25 @@ async function main() {
     });
     await test('cross-tab change event refreshes the active shared cart', {initial:true}, async p=>{
       await badge(p,1);await p.evaluate(()=>{window.serverItems[0].quantity=3;window.dispatchEvent(new StorageEvent('storage',{key:'oweg_cart_updated',newValue:'new'}));});await badge(p,3);
+    });
+    for(const mobile of [false,true]) await test(`confirmed fly animation at ${mobile?'mobile':'desktop'} target; count stays authoritative`, {holdWrite:true,mobile},async p=>{
+      await p.getByRole('button',{name:'Add QA mouse',exact:true}).click();await p.waitForTimeout(100);
+      assert.equal(await p.locator('[data-cart-flight]').count(),0);await badge(p,0);
+      await p.evaluate(()=>window.holdWrite=false);await badge(p,1);
+      await p.locator('[data-cart-flight]').waitFor();await p.waitForFunction(()=>!document.querySelector('[data-cart-flight]'));
+      assert.equal(await p.evaluate(()=>document.getAnimations().length),0);
+    });
+    await test('reduced motion skips decorative flight and still confirms the cart',{},async p=>{
+      await p.emulateMedia({reducedMotion:'reduce'});await p.getByRole('button',{name:'Add QA mouse',exact:true}).click();await badge(p,1);
+      await p.waitForTimeout(50);assert.equal(await p.locator('[data-cart-flight]').count(),0);
+    });
+    await test('missing target and thumbnail do not interrupt a successful addition',{},async p=>{
+      await p.evaluate(()=>{document.querySelector('[data-cart-target]').remove();document.querySelector('article img').remove()});
+      await p.getByRole('button',{name:'Add QA mouse',exact:true}).click();await badge(p,1);assert.equal(await p.locator('[data-cart-flight]').count(),0);
+    });
+    await test('unmount cancels in-flight decorative animations and removes clones',{},async p=>{
+      await p.getByRole('button',{name:'Add QA mouse',exact:true}).click();await badge(p,1);await p.locator('[data-cart-flight]').waitFor();
+      await p.evaluate(()=>window.dispose());assert.equal(await p.locator('[data-cart-flight]').count(),0);assert.equal(await p.evaluate(()=>document.getAnimations().length),0);
     });
     // Two real same-origin browser tabs, exercising native Web Locks + storage events.
     const context=await browser.newContext();

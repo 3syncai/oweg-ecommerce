@@ -732,6 +732,7 @@ export default function MobileBottomNav() {
             return (
               <button
                 key={item.key}
+                data-cart-target={item.key === "cart" ? "" : undefined}
                 type="button"
                 aria-label={item.label}
                 aria-current={active ? "page" : undefined}
