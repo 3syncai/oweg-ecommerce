@@ -4,7 +4,7 @@ import BrandLoader from "@/components/ui/BrandLoader";
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense } from "react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { ChevronLeft, ChevronRight, Heart, SearchX, SlidersHorizontal, Star, X } from "lucide-react"
 import Image from "next/image"
 import styles from "@/components/shopping/Shopping.module.css"
@@ -85,10 +85,13 @@ function SearchPageContent() {
   const requestedPage = Math.max(1, parseInt(params.get("page") || "1", 10) || 1)
 
   const [products, setProducts] = useState<SearchProduct[]>([])
-  const [filtered, setFiltered] = useState<SearchProduct[]>([])
+  const filtered = products
+  const [availableBrands, setAvailableBrands] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [retry, setRetry] = useState(0)
   const [totalCount, setTotalCount] = useState(0)
   const [hasMore, setHasMore] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(Boolean(q))
 
   const [minRating, setMinRating] = useState<number | null>(null)
   const [selectedBrands, setSelectedBrands] = useState<string[]>([])
@@ -103,16 +106,17 @@ function SearchPageContent() {
   useEffect(() => {
     if (!q) {
       setProducts([])
-      setFiltered([])
       setTotalCount(0)
       setHasMore(false)
       return
     }
 
     let cancelled = false
+    const controller = new AbortController()
 
     async function fetchProducts() {
       setLoading(true)
+      setError(null)
       try {
         const query = new URLSearchParams({
           q,
@@ -124,7 +128,15 @@ function SearchPageContent() {
         if (collectionId) query.set("collectionId", collectionId)
         else if (collection) query.set("collection", collection)
 
-        const res = await fetch(`/api/search?${query.toString()}`)
+        if (minRating) query.set('minRating', String(minRating))
+        selectedBrands.forEach(brand => query.append('brand', brand))
+        if (priceRange === 'under1000') query.set('priceMax', '999.99')
+        if (priceRange === '1000-5000') { query.set('priceMin', '1000'); query.set('priceMax', '5000') }
+        if (priceRange === '5000-10000') { query.set('priceMin', '5000.01'); query.set('priceMax', '10000') }
+        if (priceRange === '10000-20000') { query.set('priceMin', '10000.01'); query.set('priceMax', '20000') }
+        if (priceRange === 'over20000') query.set('priceMin', '20000.01')
+        const res = await fetch(`/api/search?${query.toString()}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) })
+        if (!res.ok) throw new Error('Search unavailable')
         const data = await res.json()
         if (cancelled) return
         const result = Array.isArray(data)
@@ -133,13 +145,13 @@ function SearchPageContent() {
             ? (data.products as SearchProduct[])
             : []
         setProducts(result)
-        setFiltered(result)
+        setAvailableBrands(Array.isArray(data?.brands) ? data.brands : [])
         setTotalCount(typeof data?.count === "number" ? data.count : result.length)
         setHasMore(data?.hasMore === true)
       } catch {
         if (!cancelled) {
+          setError("Search is temporarily unavailable. Please try again.")
           setProducts([])
-          setFiltered([])
           setTotalCount(0)
           setHasMore(false)
         }
@@ -151,42 +163,25 @@ function SearchPageContent() {
     fetchProducts()
     return () => {
       cancelled = true
+      controller.abort()
     }
-  }, [q, category, categoryId, collection, collectionId, requestedPage])
+  }, [q, category, categoryId, collection, collectionId, requestedPage, minRating, selectedBrands, priceRange, retry])
 
-  const allBrands = useMemo(
-    () => Array.from(new Set(products.map((p) => p.brand).filter(Boolean))) as string[],
-    [products]
-  )
-  const visibleBrands = allBrands.slice(0, 8)
-
-  useEffect(() => {
-    let result = [...products]
-    if (minRating) result = result.filter((p) => (p.rating || 0) >= minRating)
-    if (selectedBrands.length > 0) {
-      result = result.filter((p) => p.brand && selectedBrands.includes(p.brand))
-    }
-    if (priceRange) {
-      result = result.filter((p) => {
-        const price = toSafePrice(p.price)
-        if (priceRange === "under1000") return price < 1000
-        if (priceRange === "1000-5000") return price >= 1000 && price <= 5000
-        if (priceRange === "5000-10000") return price > 5000 && price <= 10000
-        if (priceRange === "10000-20000") return price > 10000 && price <= 20000
-        if (priceRange === "over20000") return price > 20000
-        return true
-      })
-    }
-    setFiltered(result)
-  }, [minRating, selectedBrands, priceRange, products])
+  const visibleBrands = Array.from(new Set([...selectedBrands, ...availableBrands])).slice(0, 12)
 
   const hasFilters = !!minRating || selectedBrands.length > 0 || !!priceRange
+  const resetPage = () => {
+    const next = new URLSearchParams(params.toString()); next.delete('page')
+    router.replace(`/search?${next.toString()}`, { scroll: false })
+  }
   const toggleBrand = (brand: string) => {
+    resetPage()
     setSelectedBrands((prev) =>
       prev.includes(brand) ? prev.filter((item) => item !== brand) : [...prev, brand]
     )
   }
   const clearFilters = () => {
+    resetPage()
     setMinRating(null)
     setSelectedBrands([])
     setPriceRange(null)
@@ -211,16 +206,17 @@ function SearchPageContent() {
                 {q ? `Results for "${q}"` : "Search products"}
               </h1>
               <p className="mt-1 text-sm text-slate-600">
-                {loading
+                {error ? "Search could not be loaded" : loading
                   ? "Looking for the best matches..."
                   : hasFilters
-                    ? `${filtered.length} on this page · ${totalCount} from search`
+                    ? `${totalCount} matching products`
                     : `${totalCount} product${totalCount === 1 ? "" : "s"} found`}
               </p>
             </div>
           </div>
         </div>
 
+        {error && <div role="alert" className="mb-6 rounded-xl border border-amber-300 p-4"><p>{error}</p><button type="button" onClick={() => setRetry(value => value + 1)} className="mt-2 underline">Retry search</button></div>}
         <div className={styles.resultsLayout}>
           <aside className={styles.filterRail} data-open={mobileFiltersOpen} aria-label="Search filters">
             <button type="button" className={styles.mobileFilterToggle} onClick={() => setMobileFiltersOpen((open) => !open)} aria-expanded={mobileFiltersOpen} aria-controls="search-filter-options"><span className="inline-flex items-center gap-2"><SlidersHorizontal size={16} /> Filters {hasFilters ? `(${selectedBrands.length + (priceRange ? 1 : 0) + (minRating ? 1 : 0)})` : ''}</span><ChevronRight size={16} className={mobileFiltersOpen ? 'rotate-90' : ''} /></button>
@@ -235,7 +231,7 @@ function SearchPageContent() {
               ) : null}
             </div>
             <div className={`${styles.filterOptions} space-y-5`}>
-              {allBrands.length > 0 ? (
+              {visibleBrands.length > 0 ? (
                 <section>
                   <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Brand</h3>
                   <div className="space-y-1">
@@ -253,7 +249,7 @@ function SearchPageContent() {
                 <div className="space-y-1">
                   {PRICE_OPTIONS.map((option) => (
                     <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 hover:bg-slate-50">
-                      <input type="radio" name="price" checked={priceRange === option.value} onChange={() => setPriceRange(priceRange === option.value ? null : option.value)} className="h-4 w-4 accent-emerald-600" />
+                      <input type="radio" name="price" checked={priceRange === option.value} onChange={() => { resetPage(); setPriceRange(priceRange === option.value ? null : option.value) }} className="h-4 w-4 accent-emerald-600" />
                       <span className="text-sm text-slate-700">{option.label}</span>
                     </label>
                   ))}
@@ -273,7 +269,7 @@ function SearchPageContent() {
               <BrandLoader label="Finding your next good find…" />
             ) : (
               <>
-                {filtered.length === 0 ? (
+                {filtered.length === 0 && !error ? (
                   <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
                     <SearchX className="mx-auto mb-3 h-6 w-6 text-slate-500" />
                     <h2 className="text-xl font-semibold text-slate-900">No results found</h2>

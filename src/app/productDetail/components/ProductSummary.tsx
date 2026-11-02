@@ -4,11 +4,13 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { GitCompare, Heart, Loader2, Minus, Plus, Share2, ShoppingCart } from 'lucide-react'
 import type { DetailedProduct as DetailedProductType } from '@/lib/medusa'
 import { isVariantPurchasable, resolveColorImageUrls } from '@/lib/medusa'
+import { flashSaleTitle } from '@/lib/flash-sale-display'
 import { FlashSaleBadge } from '@/components/flash-sale/FlashSaleBadge'
 import type { FlashSaleInfo } from '@/hooks/useFlashSale'
 import styles from '../ProductDetail.module.css'
 
 type ProductSummaryProps = {
+  deliveryInfo?: React.ReactNode
   product: DetailedProductType
   brandName: string
   ratingValue: number
@@ -87,6 +89,7 @@ function getSwatchImage(
 }
 
 const ProductSummary = ({
+  deliveryInfo,
   product,
   brandName,
   hasStock,
@@ -224,7 +227,7 @@ const ProductSummary = ({
           {flashSaleInfo?.active && (
             <>
               <span className="inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
-                FLASH SALE
+                {flashSaleTitle(flashSaleInfo.title)}
               </span>
               {flashSaleInfo.expires_at && (
                 <FlashSaleBadge
@@ -374,6 +377,7 @@ const ProductSummary = ({
         </button>
       </div>
 
+      {deliveryInfo}
       <div className={styles.purchaseArea}>
         <div className={styles.quantityRow}>
           <span className={styles.quantityLabel}>Quantity</span>

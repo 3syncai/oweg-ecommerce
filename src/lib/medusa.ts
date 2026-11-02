@@ -314,6 +314,7 @@ function api(path: string, init?: RequestInit & { revalidate?: number }) {
       ? { next: { revalidate } }
       : { cache: "no-store" }),
     ...requestInit,
+    signal: requestInit.signal ?? AbortSignal.timeout(8000),
     headers: {
       "content-type": "application/json",
       ...(publishableKey ? { "x-publishable-api-key": publishableKey } : {}),
@@ -749,7 +750,11 @@ export async function fetchCatalogCategoryProducts(
     return { ...page, complete: false };
   }
   const offsets = Array.from({ length: Math.max(0, Math.ceil(first.count / 60) - 1) }, (_, index) => (index + 1) * 60);
-  const rest = await Promise.all(offsets.map(offset => fetchProductsByCategoryId(categoryId, 60, { includeSubcategories: options.includeSubcategories, offset })));
+  const rest: MedusaProductListResult[] = [];
+  // Bound cold-cache fan-out while retaining full-category canonical deduplication.
+  for (let index = 0; index < offsets.length; index += 3) {
+    rest.push(...await Promise.all(offsets.slice(index, index + 3).map(offset => fetchProductsByCategoryId(categoryId, 60, { includeSubcategories: options.includeSubcategories, offset }))));
+  }
   return { products: dedupeMedusaProducts([first, ...rest].flatMap(page => page.products)), count: first.count, complete: true };
 }
 

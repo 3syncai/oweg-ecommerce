@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 
 export type FlashSaleInfo = {
+  title?: string
   active: boolean
   flash_sale_price?: number
   original_price?: number
@@ -55,6 +56,7 @@ export function useFlashSale(productId: string | undefined) {
               }
               setFlashSaleInfo({
                 active: true,
+                title: data.flash_sale?.title,
                 flash_sale_price: toNum(product.flash_sale_price),
                 original_price: toNum(product.original_price),
                 expires_at: product.flash_sale.expires_at,

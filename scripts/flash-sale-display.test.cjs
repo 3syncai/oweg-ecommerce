@@ -70,7 +70,7 @@ test('all-deals view renders every card in a grid with existing prices and varia
   assert.doesNotMatch(html, /Scroll flash sale|<span>Days<\/span>/)
 })
 test('legacy titles fall back and HTML in a title remains escaped text', () => {
-  assert.equal(display.flashSaleTitle(null),'Deal of the Day')
+  assert.equal(display.flashSaleTitle(null),'Featured deals')
   const html=renderToStaticMarkup(React.createElement(showcase.FlashSaleShowcase,{data:{...sale,products:[],flash_sale:{...sale.flash_sale,title:'<script>bad</script>'}},timeRemaining:display.flashSaleCountdown(1000)}))
   assert.match(html, /&lt;script&gt;bad&lt;\/script&gt;/)
   assert.doesNotMatch(html, /<script>/)

@@ -1,4 +1,4 @@
-import { Pool } from 'pg';
+import { getBoundedPool } from './bounded-pool';
 
 /**
  * Save Razorpay payment to database
@@ -30,9 +30,7 @@ export async function saveRazorpayPayment(payment: {
     return { success: false, error: 'DATABASE_URL not configured' };
   }
 
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-  });
+  const pool = getBoundedPool(process.env.DATABASE_URL!);
 
   try {
     const query = `
@@ -45,7 +43,7 @@ export async function saveRazorpayPayment(payment: {
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, now(), now(), $18
       )
-      ON CONFLICT (razorpay_payment_id) 
+      ON CONFLICT (razorpay_payment_id)
       DO UPDATE SET
         status = EXCLUDED.status,
         captured = EXCLUDED.captured,
@@ -77,12 +75,10 @@ export async function saveRazorpayPayment(payment: {
     ];
 
     const result = await pool.query(query, values);
-    await pool.end();
 
     console.log('✅ Payment saved to razorpay_payment table:', payment.razorpay_payment_id);
     return { success: true, data: result.rows[0] };
   } catch (err) {
-    await pool.end();
     console.error('❌ Failed to save payment to database:');
     console.error('Error details:', err);
     console.error('Payment data:', payment);
@@ -100,15 +96,13 @@ export async function updateOrderPaymentMetadata(orderId: string, _paymentData: 
   amount: number;
   status: string;
 }) {
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-  });
+  const pool = getBoundedPool(process.env.DATABASE_URL!);
 
   try {
     // Update order metadata to include payment captured info
     const query = `
-      UPDATE "order" 
-      SET 
+      UPDATE "order"
+      SET
         metadata = jsonb_set(
           COALESCE(metadata, '{}'::jsonb),
           '{razorpay_payment_captured}',
@@ -120,7 +114,6 @@ export async function updateOrderPaymentMetadata(orderId: string, _paymentData: 
     `;
 
     const result = await pool.query(query, [orderId]);
-    await pool.end();
 
     if (result.rows.length > 0) {
       console.log('✅ Order metadata updated with payment info:', orderId);
@@ -130,7 +123,6 @@ export async function updateOrderPaymentMetadata(orderId: string, _paymentData: 
       return { success: false, error: 'Order not found' };
     }
   } catch (err) {
-    await pool.end();
     console.error('❌ Failed to update order metadata:', err);
     return { success: false, error: String(err) };
   }

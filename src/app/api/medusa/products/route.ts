@@ -1,9 +1,9 @@
+import { fetchCatalogCategoryProducts } from "@/lib/catalogue-read-cache";
 import { NextRequest, NextResponse } from "next/server"
 import {
   findCategoryByTitleOrHandle,
   findCollectionByTitleOrHandle,
   fetchProductsByCategoryId,
-  fetchCatalogCategoryProducts,
   applySpecialPricesToProduct,
   fetchProductsByCollectionId,
   fetchProductsByTag,

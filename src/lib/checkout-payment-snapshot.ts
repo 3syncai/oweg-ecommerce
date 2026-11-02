@@ -1,4 +1,5 @@
-import { Pool } from "pg";
+import type { Pool } from "pg";
+import { getBoundedPool } from "./bounded-pool";
 import {watchCheckoutCapture} from "@/lib/payment-reliability";
 import {getPool} from "@/lib/wallet-ledger";
 import { getOrderById, getDraftOrderById, createDraftOrder } from "@/lib/medusa-admin";
@@ -41,15 +42,11 @@ export type CheckoutPaymentSnapshot = {
 
 function createPool(): Pool | null {
   if (!process.env.DATABASE_URL) return null;
-  return new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL.includes("amazonaws.com")
-      ? { rejectUnauthorized: false }
-      : undefined,
-  });
+  return getBoundedPool(process.env.DATABASE_URL, true);
 }
 
-async function withEnsureTable(pool: Pool) {
+let schemaReady: Promise<void> | null = null;
+async function createSnapshotSchema(pool: Pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS checkout_payment_snapshot (
       medusa_order_id TEXT PRIMARY KEY,
@@ -63,6 +60,12 @@ async function withEnsureTable(pool: Pool) {
     CREATE INDEX IF NOT EXISTS checkout_payment_snapshot_rzp_idx
       ON checkout_payment_snapshot (razorpay_order_id)
   `);
+}
+
+// Retain backwards-compatible bootstrap, but run DDL once per process, not per request.
+async function withEnsureTable(pool: Pool) {
+  if (!schemaReady) schemaReady = createSnapshotSchema(pool).catch(error => { schemaReady = null; throw error; });
+  return schemaReady;
 }
 
 function asAddress(value: unknown): CheckoutSnapshotAddress | null {
@@ -218,8 +221,6 @@ async function buildSnapshotFromRemnants(
   } catch (err) {
     console.warn("buildSnapshotFromRemnants failed", err);
     return null;
-  } finally {
-    await pool.end().catch(() => undefined);
   }
 }
 
@@ -247,8 +248,6 @@ export async function saveCheckoutPaymentSnapshot(
   } catch (err) {
     console.error("saveCheckoutPaymentSnapshot failed", err);
     return { ok: false, error: String(err) };
-  } finally {
-    await pool.end().catch(() => undefined);
   }
 }
 
@@ -269,8 +268,6 @@ export async function loadCheckoutPaymentSnapshot(
   } catch (err) {
     console.warn("loadCheckoutPaymentSnapshot failed", err);
     return null;
-  } finally {
-    await pool.end().catch(() => undefined);
   }
 }
 
@@ -292,8 +289,6 @@ export async function loadCheckoutPaymentSnapshotByRazorpayOrderId(
   } catch (err) {
     console.warn("loadCheckoutPaymentSnapshotByRazorpayOrderId failed", err);
     return null;
-  } finally {
-    await pool.end().catch(() => undefined);
   }
 }
 

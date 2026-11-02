@@ -52,11 +52,11 @@
 .buyButton:hover:enabled { background: #edf5e5; }
 .cartButton:disabled, .buyButton:disabled { background: #eef0eb; border-color: #d9ded3; color: #89917f; cursor: not-allowed; }
 .summary button:focus-visible, .gallery button:focus-visible, .tabs button:focus-visible { outline: 2px solid #557b35; outline-offset: 3px; }
-.delivery { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 20px 0 0; margin-top: 22px; border-top: 1px solid #e3e9dd; }
+.delivery { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 20px 0 0; margin-top: 22px; border-top: 1px solid #e3e9dd; }
 .deliveryItem { display: flex; align-items: flex-start; gap: 9px; }
 .deliveryItem svg { flex-shrink: 0; width: 19px; height: 19px; margin-top: 2px; color: #698b48; }
-.deliveryItem h3 { margin-bottom: 4px; font-size: 12px; font-weight: 600; }
-.deliveryItem p { color: #717d65; font-size: 11px; line-height: 1.7; }
+.deliveryItem h3 { margin-bottom: 4px; font-size: 13px; font-weight: 600; }
+.deliveryItem p { color: #717d65; font-size: 13px; line-height: 1.7; }
 .gallery { min-width: 0; }
 .galleryLayout { display: flex; flex-direction: column; gap: 14px; }
 .verticalThumbs { display: none; }
@@ -161,3 +161,5 @@
   .sellerPrice { font-size: 15px; }
   .delivery { grid-template-columns: 1fr; }
 }
+
+@media (min-width: 640px) { .delivery { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

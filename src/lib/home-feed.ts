@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import {
   fetchCategories,
   fetchProductsByCategoryId,
@@ -58,6 +59,8 @@ const homeFeedGlobal: HomeFeedGlobalCache = (() => {
   return g.__owegHomeFeedCache;
 })();
 
+const readSharedHomeFeed = unstable_cache(buildHomeFeed, ['home-feed-v2'], { revalidate: 60, tags: ['catalogue'] });
+
 export async function buildHomeFeedCached(): Promise<{
   feed: HomeFeedResult;
   cacheHit: boolean;
@@ -70,7 +73,7 @@ export async function buildHomeFeedCached(): Promise<{
     const feed = await homeFeedGlobal.inFlight;
     return { feed, cacheHit: true };
   }
-  homeFeedGlobal.inFlight = buildHomeFeed()
+  homeFeedGlobal.inFlight = readSharedHomeFeed()
     .then((feed) => {
       homeFeedGlobal.cache = {
         value: feed,

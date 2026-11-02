@@ -29,7 +29,7 @@ export async function GET(
   const { pin: raw } = await ctx.params;
   const pin = String(raw || "").replace(/\D/g, "").slice(0, 6);
 
-  if (pin.length < 4) {
+  if (!/^[1-9]\d{5}$/.test(pin)) {
     return NextResponse.json(
       { place: null, error: "invalid_pincode" },
       { status: 400 }
@@ -41,7 +41,7 @@ export async function GET(
   try {
     const res = await fetch(url, {
       headers: { Accept: "application/json" },
-      cache: "no-store",
+      next: { revalidate: 86400 },
       signal: AbortSignal.timeout(4000),
     });
     if (!res.ok) {
