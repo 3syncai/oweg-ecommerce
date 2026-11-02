@@ -401,6 +401,31 @@ export const vendorGstApi = {
 }
 
 export const vendorBrandsApi = {
+  uploadAuthorization: async (brandName: string, file: File) => {
+    const formData = new FormData()
+    formData.append('brand_name', brandName)
+    formData.append('file', file)
+    const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
+    try {
+      // Use the same routing as other vendor requests. Let the browser set the
+      // multipart boundary; a direct backend request requires separate CORS.
+      const response = await axios.post<{ authorization?: { file_url?: string } }>(
+        `${API_URL}/vendor/brands/upload-authorization`, formData,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      )
+      return response.data
+    } catch (error: unknown) {
+      if (error instanceof AxiosError) {
+        const data: unknown = error.response?.data
+        const serverError = isRecord(data) && typeof data.error === 'string' ? data.error : ''
+        const message = serverError || readMessage(data, error.response
+          ? 'Brand letter could not be saved. Please retry.'
+          : 'Unable to upload the brand letter. Your selection is kept; please retry.')
+        throw new ApiError(error.response?.status || 0, message, data)
+      }
+      throw error
+    }
+  },
   checkAuthorization: async (brandName: string) => {
     return apiRequest<{
       requires_authorization: boolean
