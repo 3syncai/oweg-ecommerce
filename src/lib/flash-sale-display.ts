@@ -1,5 +1,5 @@
 export function flashSaleTitle(value: unknown): string {
-  return typeof value === 'string' && value.trim() ? value.trim() : 'Deal of the Day'
+  return typeof value === 'string' && value.trim() ? value.trim() : 'Featured deals'
 }
 
 export function flashSaleCountdown(ms: number) {

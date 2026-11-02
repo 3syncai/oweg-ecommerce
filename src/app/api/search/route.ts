@@ -11,6 +11,7 @@ import {
   findCategoryByTitleOrHandle,
   findCollectionByTitleOrHandle,
 } from "@/lib/medusa"
+import { parseSearchFilters, hasSearchFilters, searchRecallTerm, matchesSearchWords, matchesSearchFilters } from "@/lib/search-filters"
 import { rewriteSearchTypos } from "@/lib/search-query-normalize"
 import {
   MEDUSA_LIST_MAX_LIMIT,
@@ -58,11 +59,12 @@ export async function GET(req: NextRequest) {
   )
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1
   const pageSize = Number.isFinite(pageSizeRaw)
-    ? Math.max(1, Math.min(pageSizeRaw, 100))
+    ? Math.max(1, Math.min(Math.floor(pageSizeRaw), 60))
     : 24
   // Meilisearch maxTotalHits is configured at 10000; keep offset under it.
-  const MAX_SEARCH_OFFSET = 9900
-  const offset = Math.min((page - 1) * pageSize, MAX_SEARCH_OFFSET)
+  const MAX_SEARCH_RESULTS = 10000
+  const offset = (page - 1) * pageSize
+  if (offset >= MAX_SEARCH_RESULTS) return NextResponse.json({ error: "Please refine your search to see more results" }, { status: 400 })
 
   const category = searchParams.get("category") || undefined
   const categoryIdParam = searchParams.get("categoryId") || undefined
@@ -76,6 +78,10 @@ export async function GET(req: NextRequest) {
     )
   }
 
+  let filters
+  try { filters = parseSearchFilters(searchParams) } catch {
+    return NextResponse.json({ error: 'Invalid search filters' }, { status: 400 })
+  }
   try {
     const normalized = query.trim()
     const searchQuery = rewriteSearchTypos(normalized) || normalized
@@ -92,23 +98,26 @@ export async function GET(req: NextRequest) {
       collectionId = resolved?.id
     }
 
+    let indexUnavailable = false
     const meiliResults = await searchProductsMeili(searchQuery, {
       limit: pageSize,
       offset,
       categoryId,
       collectionId,
       category: !categoryId ? category : undefined,
-    }).catch(() => ({ hits: [] as SearchHit[], total: 0 }))
+      ...filters,
+    }).catch(() => { indexUnavailable = true; return { hits: [] as SearchHit[], total: 0, brands: [] as string[] } })
 
-    if (Array.isArray(meiliResults.hits) && meiliResults.hits.length > 0) {
+    if (!indexUnavailable && (meiliResults.total > 0 || hasSearchFilters(filters))) {
       // in_stock is filtered in Meilisearch; keep post-filter for stale index docs.
       const inStockHits = meiliResults.hits.filter(isInStockHit).map(mapSearchHit)
 
-      if (inStockHits.length > 0) {
-        const count = meiliResults.total
+      {
+        const count = Math.min(meiliResults.total, MAX_SEARCH_RESULTS)
         return NextResponse.json({
           products: inStockHits,
           count,
+          brands: meiliResults.brands || [],
           page,
           pageSize,
           hasMore: offset + pageSize < count,
@@ -121,13 +130,23 @@ export async function GET(req: NextRequest) {
       // Medusa list max is 60; align page size so we never slice past the fetch window.
       const medusaPageSize = Math.min(pageSize, MEDUSA_LIST_MAX_LIMIT)
       const fetchLimit = overfetchLimit(medusaPageSize, MEDUSA_LIST_MAX_LIMIT)
-      const medusaResult = await searchProductsMedusa({
+      let medusaResult = await searchProductsMedusa({
         q: searchQuery,
-        limit: fetchLimit,
-        offset,
+        limit: hasSearchFilters(filters) ? MEDUSA_LIST_MAX_LIMIT : fetchLimit,
+        offset: hasSearchFilters(filters) ? 0 : offset,
         categoryId,
         collectionId,
       })
+      let recallApproximate = false
+      // Medusa q is contiguous text; require every word after a bounded anchor lookup.
+      const recallTerm = searchRecallTerm(searchQuery)
+      if (!medusaResult.count && recallTerm !== searchQuery) {
+        const recalled = await searchProductsMedusa({ q: recallTerm, limit: MEDUSA_LIST_MAX_LIMIT, offset: 0, categoryId, collectionId })
+        const matched = recalled.products.filter(product => isMedusaProductInStock(product) && matchesSearchWords(`${product.title || ''} ${product.subtitle || ''}`, searchQuery))
+        recallApproximate = recalled.count > recalled.products.length
+        if (recallApproximate && !matched.length) throw new Error("Incomplete fallback cannot establish an empty result")
+        medusaResult = { products: hasSearchFilters(filters) ? matched : matched.slice(offset, offset + fetchLimit), count: matched.length }
+      }
       const fallbackFiltered: SearchApiProduct[] = medusaResult.products
         .filter(isMedusaProductInStock)
         .map((product) => {
@@ -137,7 +156,7 @@ export async function GET(req: NextRequest) {
             handle: ui.handle,
             title: ui.name,
             thumbnail: ui.image,
-            brand: undefined,
+            brand: ui.brand,
             price: ui.price,
             mrp: ui.mrp,
             discount: ui.discount,
@@ -146,6 +165,16 @@ export async function GET(req: NextRequest) {
             inventory_quantity: ui.inventory_quantity,
           }
         })
+
+      if (hasSearchFilters(filters)) {
+        // A complete small Medusa result can be filtered globally even during index downtime.
+        // Never pretend a capped first window represents a larger catalogue.
+        if (recallApproximate || medusaResult.count > medusaResult.products.length) throw new Error('Index required for complete filtered results')
+        const matched = fallbackFiltered.filter(product => matchesSearchFilters(product, filters))
+        return NextResponse.json({ products: matched.slice(offset, offset + medusaPageSize), count: matched.length,
+          brands: Array.from(new Set(fallbackFiltered.map(product => product.brand).filter(Boolean))),
+          page, pageSize: medusaPageSize, hasMore: offset + medusaPageSize < matched.length, countIsApproximate: false })
+      }
 
       const sliced = sliceFilteredPage({
         filtered: fallbackFiltered,
@@ -162,18 +191,12 @@ export async function GET(req: NextRequest) {
         page,
         pageSize: medusaPageSize,
         hasMore: sliced.hasMore,
-        countIsApproximate: sliced.countIsApproximate,
+        countIsApproximate: recallApproximate || sliced.countIsApproximate,
+        brands: [],
       })
     } catch (medusaError) {
       console.error("❌ Medusa search fallback error:", medusaError)
-      return NextResponse.json({
-        products: [],
-        count: 0,
-        page,
-        pageSize: Math.min(pageSize, MEDUSA_LIST_MAX_LIMIT),
-        hasMore: false,
-        countIsApproximate: false,
-      })
+      return NextResponse.json({ error: 'Search is temporarily unavailable. Please retry.' }, { status: 503, headers: { 'Cache-Control': 'no-store', 'Retry-After': '5' } })
     }
   } catch (error) {
     console.error("❌ Search API error:", error)

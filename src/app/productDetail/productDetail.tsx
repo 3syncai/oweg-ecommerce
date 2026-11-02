@@ -116,6 +116,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const [selectedImage, setSelectedImage] = useState(0)
   const [activeTab, setActiveTab] = useState<DescriptionTab>('description')
   const [pinCode, setPinCode] = useState('')
+  const pinLookup = useRef<AbortController | null>(null)
+  useEffect(() => () => pinLookup.current?.abort(), [])
   const [pinStatus, setPinStatus] = useState<PinStatus>('idle')
   const [pinMessage, setPinMessage] = useState('')
   const [compareModalOpen, setCompareModalOpen] = useState(false)
@@ -719,6 +721,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     setActiveTab('description')
     setPinStatus('idle')
     setPinMessage('')
+    pinLookup.current?.abort()
     setPinCode('')
     setCompareSelection([])
   }, [productId])
@@ -1228,35 +1231,35 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   }
 
   const handlePinInputChange = (value: string) => {
+    pinLookup.current?.abort()
     setPinCode(value)
     setPinStatus('idle')
     setPinMessage('')
   }
 
-  const handlePinCheck = () => {
-    if (!pinCode || pinCode.trim().length < 6) {
-      setPinMessage('Please enter a valid 6 digit PIN code')
+  const handlePinCheck = async () => {
+    pinLookup.current?.abort()
+    if (!/^[1-9]\d{5}$/.test(pinCode)) {
+      setPinMessage('Please enter a valid 6-digit Indian pincode.')
       setPinStatus('unavailable')
       return
     }
+    const controller = new AbortController()
+    pinLookup.current = controller
     setPinStatus('checking')
     setPinMessage('')
-    const deadline = Date.now() + 3 * 24 * 60 * 60 * 1000
-    const eta = new Intl.DateTimeFormat('en-IN', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-    }).format(new Date(deadline))
-
-    setTimeout(() => {
-      const available = !pinCode.trim().startsWith('9')
-      setPinStatus(available ? 'available' : 'unavailable')
-      setPinMessage(
-        available
-          ? `FREE delivery available. Expected by ${eta}.`
-          : 'Delivery is currently unavailable for this PIN code.'
-      )
-    }, 600)
+    try {
+      const response = await fetch(`/api/pincode/${pinCode}`, { signal: controller.signal })
+      const data = await response.json()
+      if (controller.signal.aborted) return
+      if (!response.ok || !data.place) throw new Error('Postal lookup failed')
+      setPinStatus('available')
+      setPinMessage(`${data.place}. Postal area found; courier serviceability and delivery estimate are confirmed at checkout when available.`)
+    } catch {
+      if (controller.signal.aborted) return
+      setPinStatus('unavailable')
+      setPinMessage('Could not verify this postal area. Check the pincode or try again. You can also confirm your address at checkout.')
+    }
   }
 
   const descriptionHasHtml = Boolean(product?.description && /<\/?[a-z][\s\S]*>/i.test(product.description))
@@ -1308,6 +1311,15 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
               {/* RIGHT: Summary scrolls with the page (no nested scroll) */}
               <div className={styles.summaryColumn}>
                 <ProductSummary
+                  deliveryInfo={
+                <DeliveryInfo
+                  pinCode={pinCode}
+                  pinStatus={pinStatus}
+                  pinMessage={pinMessage}
+                  onPinCodeChange={handlePinInputChange}
+                  onCheck={handlePinCheck}
+                />
+                  }
                   product={displayProduct ?? product}
                   brandName={brandName}
                   ratingValue={ratingValue}
@@ -1336,13 +1348,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                     <SellerOffers offers={visibleSellerOffers} selectedVariantId={purchaseVariantId} onSelect={id => { setSelectedSellerVariantId(id); setQuantity(1) }} formatPrice={value => inr.format(value)} />
                   ) : null}
                 />
-                <DeliveryInfo
-                  pinCode={pinCode}
-                  pinStatus={pinStatus}
-                  pinMessage={pinMessage}
-                  onPinCodeChange={handlePinInputChange}
-                  onCheck={handlePinCheck}
-                />
+
               </div>
             </section>
 

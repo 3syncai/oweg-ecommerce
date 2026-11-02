@@ -1,7 +1,8 @@
+import { searchFilterExpressions, type SearchFilters } from "@/lib/search-filters"
 import { getMeiliClient, getProductsIndexName } from "@/lib/meilisearch"
 import { normalizeSearchQuery, rewriteSearchTypos } from "@/lib/search-query-normalize"
 
-export type SearchOptions = {
+export type SearchOptions = SearchFilters & {
   limit?: number
   offset?: number
   categoryId?: string
@@ -13,6 +14,7 @@ export type SearchOptions = {
 export type SearchProductsResult = {
   hits: SearchHit[]
   total: number
+  brands?: string[]
 }
 
 export type SearchHit = {
@@ -32,17 +34,10 @@ export type SearchHit = {
   status?: string
 }
 
-type ScopeFilters = {
+type ScopeFilters = SearchFilters & {
   categoryId?: string
   collectionId?: string
   category?: string
-}
-
-function significantTokens(normalizedQuery: string): string {
-  return normalizedQuery
-    .split(" ")
-    .filter((t) => t.length >= 2)
-    .join(" ")
 }
 
 function quoteFilterValue(value: string): string {
@@ -50,7 +45,7 @@ function quoteFilterValue(value: string): string {
 }
 
 function buildFilter(scope: ScopeFilters): string[] {
-  const filters = ['status = "published"', "in_stock = true"]
+  const filters = ['status = "published"', "in_stock = true", ...searchFilterExpressions(scope)]
 
   if (scope.categoryId?.trim()) {
     filters.push(`category_ids = ${quoteFilterValue(scope.categoryId.trim())}`)
@@ -96,14 +91,15 @@ async function runSearch(
   scope: ScopeFilters,
   limit: number,
   offset = 0
-): Promise<{ hits: SearchHit[]; total: number }> {
-  try {
+): Promise<SearchProductsResult> {
     const client = getMeiliClient()
     const index = client.index(getProductsIndexName())
     const result = await index.search(normalizedQuery, {
       limit,
       offset: Math.max(0, offset),
       filter: buildFilter(scope),
+      facets: ["brand"],
+      matchingStrategy: "all",
       attributesToRetrieve: [
         "id",
         "handle",
@@ -130,85 +126,19 @@ async function runSearch(
           ? (result as { totalHits: number }).totalHits
           : hits.length + Math.max(0, offset)
 
-    return { hits, total }
-  } catch (error) {
-    console.error("❌ Meilisearch query error:", error)
-    return { hits: [], total: 0 }
-  }
+    return { hits, total, brands: Object.keys(result.facetDistribution?.brand || {}) }
 }
 
-function mergeHitsById(hitLists: SearchHit[][], limit: number): SearchHit[] {
-  const merged: SearchHit[] = []
-  const seen = new Set<string>()
-  for (const list of hitLists) {
-    for (const hit of list) {
-      if (!hit.id || seen.has(hit.id)) continue
-      seen.add(hit.id)
-      merged.push(hit)
-      if (merged.length >= limit) return merged
-    }
-  }
-  return merged
-}
-
-export async function searchProducts(
-  query: string,
-  options: SearchOptions = {}
-): Promise<SearchProductsResult> {
-  const rawNormalized = normalizeSearchQuery(query)
-  const rewritten = rewriteSearchTypos(rawNormalized)
-  const limit = Math.max(1, Math.min(options.limit ?? 48, 100))
-  const MAX_SEARCH_OFFSET = 9900
-  const rawOffset = Number.isFinite(options.offset as number)
-    ? Math.floor(options.offset as number)
-    : 0
-  const offset = Math.max(0, Math.min(rawOffset, MAX_SEARCH_OFFSET))
-  const scope: ScopeFilters = {
-    categoryId: options.categoryId,
-    collectionId: options.collectionId,
-    category: options.category,
-  }
-
-  try {
-    if (!rawNormalized) return { hits: [], total: 0 }
-
-    let result = await runSearch(rewritten, scope, limit, offset)
-    if (result.hits.length > 0) return result
-
-    if (rewritten !== rawNormalized) {
-      result = await runSearch(rawNormalized, scope, limit, offset)
-      if (result.hits.length > 0) return result
-    }
-
-    const tokensOnly = significantTokens(rewritten)
-    if (tokensOnly && tokensOnly !== rewritten) {
-      result = await runSearch(tokensOnly, scope, limit, offset)
-      if (result.hits.length > 0) return result
-    }
-
-    const parts = significantTokens(rewritten).split(" ").filter(Boolean).slice(0, 4)
-    if (parts.length > 1) {
-      const lists = await Promise.all(
-        parts.map((part) => runSearch(part, scope, limit + offset, 0))
-      )
-      const merged = mergeHitsById(
-        lists.map((l) => l.hits),
-        limit + offset
-      )
-      if (merged.length > 0) {
-        return {
-          hits: merged.slice(offset, offset + limit),
-          total: Math.max(...lists.map((l) => l.total), merged.length),
-        }
-      }
-    }
-
-    console.log("⚠️ No results found for query:", rawNormalized, "(rewritten:", rewritten + ")")
-    return { hits: [], total: 0 }
-  } catch (error) {
-    console.error("❌ searchProducts error:", error)
-    return { hits: [], total: 0 }
-  }
+export async function searchProducts(query: string, options: SearchOptions = {}): Promise<SearchProductsResult> {
+  const normalized = normalizeSearchQuery(query)
+  if (!normalized) return { hits: [], total: 0, brands: [] }
+  const rewritten = rewriteSearchTypos(normalized)
+  const limit = Math.max(1, Math.min(Math.floor(options.limit ?? 24), 100))
+  const offset = Math.max(0, Math.min(Math.floor(options.offset || 0), 9999))
+  const result = await runSearch(rewritten, options, limit, offset)
+  // A later empty page is not a new query. Preserve its real total and filters.
+  if (result.total > 0 || rewritten === normalized) return result
+  return runSearch(normalized, options, limit, offset)
 }
 
 export { isInStockHit }

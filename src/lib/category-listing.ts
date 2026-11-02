@@ -1,6 +1,6 @@
+import { fetchCatalogCategoryProducts } from "@/lib/catalogue-read-cache";
 import {
   fetchProductsByCategoryId,
-  fetchCatalogCategoryProducts,
   applySpecialPricesToProduct,
   isMedusaProductInStock,
   toUiProduct,

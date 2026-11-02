@@ -1,6 +1,7 @@
 /** Local config shape — avoid ESM type-only import issues under CJS/TS builds. */
 type MeiliConfig = {
   host: string
+  timeout?: number
   apiKey?: string
 }
 
@@ -61,6 +62,7 @@ export function getMeiliClient(): MeiliClient {
     const Meilisearch = resolveMeilisearchConstructor()
     client = new Meilisearch({
       host,
+      timeout: 4000,
       apiKey: apiKey || undefined,
     })
   }

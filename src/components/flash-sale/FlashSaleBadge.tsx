@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { Clock } from 'lucide-react'
-import { formatTimeRemaining } from '@/hooks/useFlashSale'
+import { flashSaleCountdown, flashSaleTimerUnits } from '@/lib/flash-sale-display'
 
 type FlashSaleBadgeProps = {
   expiresAt?: string
@@ -10,7 +10,7 @@ type FlashSaleBadgeProps = {
 }
 
 export function FlashSaleBadge({ expiresAt, timeRemainingMs: initialTimeRemaining }: FlashSaleBadgeProps) {
-  const [timeRemaining, setTimeRemaining] = useState(initialTimeRemaining || 0)
+  const [timeRemaining, setTimeRemaining] = useState(initialTimeRemaining ?? 0)
   const [startTime] = useState(() => Date.now())
 
   useEffect(() => {
@@ -34,18 +34,19 @@ export function FlashSaleBadge({ expiresAt, timeRemainingMs: initialTimeRemainin
     // Update every second
     const interval = setInterval(updateTimer, 1000)
     return () => clearInterval(interval)
-  }, [expiresAt, initialTimeRemaining])
+  }, [expiresAt, initialTimeRemaining, startTime])
 
   if (timeRemaining <= 0) return null
 
-  const { hours, minutes, seconds } = formatTimeRemaining(timeRemaining)
+  const units = flashSaleTimerUnits(flashSaleCountdown(timeRemaining))
 
   return (
-    <div className="inline-flex items-center gap-2 bg-red-50 border-2 border-red-500 rounded-lg px-4 py-2 shadow-md">
-      <Clock className="w-5 h-5 text-red-700" />
+    <div className="inline-flex max-w-full flex-wrap items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+      <Clock className="w-4 h-4 shrink-0 text-red-700" aria-hidden />
       <span className="text-sm font-semibold text-red-700">Ends in:</span>
-      <span className="font-mono text-lg font-bold text-red-700">
-        {String(hours).padStart(2, '0')}:{String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
+      <span className="font-mono text-sm font-semibold text-red-700"
+        aria-label={units.map(unit => `${unit.value} ${unit.label.toLowerCase()}`).join(', ')}>
+        {units.map(unit => `${String(unit.value).padStart(2, '0')}${unit.label[0].toLowerCase()}`).join(' : ')}
       </span>
     </div>
   )

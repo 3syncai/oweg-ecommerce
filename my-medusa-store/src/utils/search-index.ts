@@ -250,6 +250,7 @@ export async function ensureProductsIndex(): Promise<void> {
       "category_titles",
       "collection_id",
       "price",
+      "rating",
       "brand",
       "tags",
     ],

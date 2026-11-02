@@ -41,6 +41,7 @@ test('cart and checkout labels use the chosen line attributes and hide the defau
 const Summary=load('src/app/productDetail/components/ProductSummary.tsx',{
   'lucide-react':new Proxy({},{get:()=>()=>null}),
   '@/lib/medusa':{isVariantPurchasable:v=>v.inventory_quantity>0,resolveColorImageUrls:()=>[]},
+  '@/lib/flash-sale-display':load('src/lib/flash-sale-display.ts'),
   '@/components/flash-sale/FlashSaleBadge':{FlashSaleBadge:()=>null},
   '../ProductDetail.module.css':new Proxy({},{get:(_,key)=>String(key)}),
 }).default;

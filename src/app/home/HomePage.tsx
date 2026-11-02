@@ -357,7 +357,7 @@ function PromoBanners() {
       image: '/Inductions_Cooktops_banner.png',
       href: '/c/inductions-%26-cooktops',
       alt: 'Shop inductions and cooktops',
-      
+
     },
     {
       image: '/Iron_banner.png',
@@ -420,9 +420,12 @@ function CategoryStrip() {
               prefetch={false}
               className={`group ${styles.categoryTile}`}
             >
-              <Image src={`/subcategory-banners/${cat.image}`} alt={cat.title}
-                width={1145} height={1536} sizes="(max-width: 639px) 72px, 104px"
-                className={styles.categoryArtwork}
+              {/* Pre-sized local assets avoid sending full artwork for a small tile. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/subcategory-banners/responsive/${cat.image.replace(/\.[^.]+$/, '')}-160.webp`}
+                srcSet={[160, 240, 320].map(width => `/subcategory-banners/responsive/${cat.image.replace(/\.[^.]+$/, '')}-${width}.webp ${width}w`).join(', ')}
+                alt={cat.title} width={1145} height={1536} loading="lazy" decoding="async"
+                sizes="(max-width: 639px) 72px, 104px" className={styles.categoryArtwork}
                 style={cat.artworkScale ? { transform: `scale(${cat.artworkScale})` } : undefined} />
             </Link>
           ))}
