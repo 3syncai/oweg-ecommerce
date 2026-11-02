@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import AccountLoginPrompt from "@/components/account/AccountLoginPrompt";
 import { useAuth } from "@/contexts/AuthProvider";
+import { useAddToCart } from "@/hooks/useCartMutations";
 import { cn } from "@/lib/utils";
 import styles from "./WishlistContent.module.css";
 
@@ -60,6 +61,7 @@ function WishlistImage({ src, title, priority }: { src: string; title: string; p
 export default function WishlistContent({ embedded = false }: WishlistContentProps) {
   const { customer, setCustomer, initializing } = useAuth();
   const queryClient = useQueryClient();
+  const addCart = useAddToCart();
 
   const currency = useMemo(
     () =>
@@ -141,24 +143,14 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
   };
 
   const handleAddToCart = async (product: WishlistProduct) => {
+    if (addCart.isPending) return;
     const variantId = product?.variant_id || product?.variants?.[0]?.id;
     if (!variantId) {
       toast.error("No variant available to add to cart.");
       return;
     }
     try {
-      await fetch("/api/medusa/cart", { method: "POST", credentials: "include" });
-      const res = await fetch("/api/medusa/cart/line-items", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ variant_id: variantId, quantity: 1 }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        const message = (data && (data.error || data.message)) || "Unable to add to cart.";
-        throw new Error(message);
-      }
+      await addCart.mutateAsync({ variant_id: variantId, quantity: 1 });
       toast.success("Added to cart");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to add to cart.";
@@ -301,6 +293,7 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
                     <button
                       type="button"
                       className={styles.primaryButton}
+                      disabled={addCart.isPending}
                       onClick={() => void handleAddToCart(product)}
                     >
                       <ShoppingCart className="h-4 w-4" />

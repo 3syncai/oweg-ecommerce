@@ -1,305 +1,105 @@
-// useCartMutations: React Query hooks for cart operations
-
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useCartSummary } from "@/contexts/CartProvider";
-import {
-  notifyCartAddError,
-  notifyCartAddSuccess,
-  notifyCartUnavailable,
-  notifyQuantityUpdated,
-  notifyRemoveItem,
-} from "@/lib/notifications";
-import type { CartApiPayload } from "@/lib/cart-helpers";
 import { useRouter } from "next/navigation";
-import { getGuestCartId, setGuestCartId } from "@/lib/guest-cart";
+import { useAuth } from "@/contexts/AuthProvider";
+import { getCartQueryKey, writeCartQueryCache } from "@/hooks/useCart";
+import { queueCartWrite, writeCart } from "@/lib/cart-client";
 import { clearStaleBuyNowSnapshot } from "@/lib/checkout-redirects";
 import { warmRazorpayCheckout } from "@/lib/razorpay-warmup";
-import { useAuth } from "@/contexts/AuthProvider";
-import {
-  clearCartQueryCache,
-  getCartQueryKey,
-  optimisticAddVariantToCart,
-  optimisticRemoveLineFromCart,
-  optimisticUpdateLineInCart,
-  writeCartQueryCache,
-} from "@/hooks/useCart";
+import { notifyCartAddError, notifyCartAddSuccess, notifyCartUnavailable, notifyQuantityUpdated, notifyRemoveItem } from "@/lib/notifications";
 
-type AddToCartParams = {
-  variant_id: string;
-  quantity?: number;
-};
+export const CART_MUTATION_KEY = ["cart-mutation"] as const;
+type AddToCartParams = { variant_id: string; quantity?: number; seller_selected?: boolean };
+type UpdateLineItemParams = { lineId: string; quantity: number; label?: string };
+type RemoveLineItemParams = { lineId: string; label?: string };
 
-type AddToCartResponse = {
-  cart?: unknown;
-  id?: string;
-  guestCartId?: string;
-  [key: string]: unknown;
-};
-
-type UpdateLineItemParams = {
-  lineId: string;
-  quantity: number;
-  label?: string;
-};
-
-type RemoveLineItemParams = {
-  lineId: string;
-  label?: string;
-};
-
-function buildCartHeaders(_customer: unknown): Record<string, string> {
-  // Always forward guest cart id when present. Logged-in users may lack a
-  // cart_id cookie (e.g. after login without merge); the header is the fallback.
-  const guestCartId = getGuestCartId();
-  if (guestCartId) {
-    return { "x-guest-cart-id": guestCartId };
-  }
-  return {};
+function useCartWriter() {
+  const queryClient = useQueryClient();
+  const { customer } = useAuth();
+  const identity = customer?.id;
+  const identityRef = useRef(identity);
+  useEffect(() => { identityRef.current = identity; }, [identity]);
+  return (path: string, method: "POST" | "PATCH" | "DELETE", body?: Record<string, unknown>) =>
+    queueCartWrite(async () => {
+      if (identityRef.current !== identity) throw new Error("Your session changed. Please try again.");
+      const queryKey = getCartQueryKey(identity);
+      await queryClient.cancelQueries({ queryKey, exact: true });
+      try {
+        const data = await writeCart(path, method, body);
+        if (identityRef.current === identity) writeCartQueryCache(queryClient, identity, data);
+        // storage events notify other tabs; this tab already has the authoritative response.
+        try { localStorage.setItem("oweg_cart_updated", `${Date.now()}:${Math.random()}`); } catch { /* storage may be disabled */ }
+        return data;
+      } catch (error) {
+        // Reconcile an uncertain outcome with GET, never by replaying the write.
+        // Do not await: readCart waits until this queued operation has finished.
+        void queryClient.invalidateQueries({ queryKey, exact: true });
+        throw error;
+      }
+    });
 }
 
-/**
- * Hook for adding items to cart using React Query
- */
 export function useAddToCart() {
-  const queryClient = useQueryClient();
-  const { count, syncFromCartPayload, bumpCount, restoreCount } = useCartSummary();
-  const { customer } = useAuth();
-  const cartQueryKey = getCartQueryKey(customer?.id);
-
+  const write = useCartWriter();
   return useMutation({
-    mutationFn: async ({ variant_id, quantity = 1 }: AddToCartParams) => {
-      const response = await fetch("/api/medusa/cart/line-items", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...buildCartHeaders(customer),
-        },
-        body: JSON.stringify({ variant_id, quantity }),
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        const message =
-          (payload && (payload.error || payload.message)) ||
-          "Could not add to cart";
-        throw new Error(message);
-      }
-
-      const payload = (await response.json()) as AddToCartResponse;
-
-      // Persist for guests and logged-in users (cookie may be missing on prod/login).
-      if (payload.guestCartId && typeof payload.guestCartId === "string") {
-        setGuestCartId(payload.guestCartId);
-      }
-
-      return payload;
-    },
-    onMutate: async ({ variant_id, quantity = 1 }) => {
-      await queryClient.cancelQueries({ queryKey: cartQueryKey });
-      const previousPayload = queryClient.getQueryData<CartApiPayload>(cartQueryKey);
-      const previousCount = count;
-      bumpCount(quantity);
-      const optimisticPayload = optimisticAddVariantToCart(previousPayload, variant_id, quantity);
-      writeCartQueryCache(queryClient, customer?.id, optimisticPayload);
-      return { previousCount, previousPayload };
-    },
-    onSuccess: (data) => {
-      warmRazorpayCheckout();
-      if (data) {
-        syncFromCartPayload(data as unknown as Parameters<typeof syncFromCartPayload>[0]);
-        writeCartQueryCache(
-          queryClient,
-          customer?.id,
-          data as unknown as CartApiPayload
-        );
-      }
-    },
-    onError: (_error, _variables, context) => {
-      if (context && typeof context.previousCount === "number") {
-        restoreCount(context.previousCount);
-      }
-      if (context?.previousPayload !== undefined) {
-        writeCartQueryCache(queryClient, customer?.id, context.previousPayload);
-      } else {
-        clearCartQueryCache(queryClient, customer?.id);
-      }
-    },
+    mutationKey: CART_MUTATION_KEY,
+    retry: false,
+    mutationFn: ({ variant_id, quantity = 1, seller_selected }: AddToCartParams) =>
+      write("/api/medusa/cart/line-items", "POST", { variant_id, quantity, seller_selected }),
+    onSuccess: () => { clearStaleBuyNowSnapshot(); warmRazorpayCheckout(); },
   });
 }
 
-/**
- * Hook for adding product to cart with notifications
- */
 export function useAddToCartWithNotification(productName?: string) {
   const addToCart = useAddToCart();
   const router = useRouter();
-
   const addToCartWithNotification = async (variant_id: string) => {
-    if (!variant_id) {
-      notifyCartUnavailable();
-      return;
-    }
-
-    const label = productName || "Product";
-    notifyCartAddSuccess(label, 1, () => router.push("/cart"));
-
+    if (!variant_id) { notifyCartUnavailable(); return; }
     try {
-      clearStaleBuyNowSnapshot();
-      router.prefetch("/checkout");
-      return await addToCart.mutateAsync({ variant_id, quantity: 1 });
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Could not add to cart";
-      notifyCartAddError(message);
-      throw err;
+      const result = await addToCart.mutateAsync({ variant_id, quantity: 1 });
+      // View cart is offered only after the cart identity/items have been saved.
+      notifyCartAddSuccess(productName || "Product", 1, () => router.push("/cart"));
+      return result;
+    } catch (error) {
+      notifyCartAddError(error instanceof Error ? error.message : "Could not add to cart");
+      throw error;
     }
   };
-
-  return {
-    addToCart: addToCartWithNotification,
-    isLoading: addToCart.isPending,
-    error: addToCart.error,
-  };
+  return { addToCart: addToCartWithNotification, isLoading: addToCart.isPending, error: addToCart.error };
 }
 
-/**
- * Hook for updating cart line item quantity
- */
 export function useUpdateCartLineItem() {
-  const queryClient = useQueryClient();
-  const { syncFromCartPayload } = useCartSummary();
-  const { customer } = useAuth();
-  const cartQueryKey = getCartQueryKey(customer?.id);
-
+  const write = useCartWriter();
   return useMutation({
-    mutationFn: async ({ lineId, quantity }: UpdateLineItemParams) => {
-      const response = await fetch(
-        `/api/medusa/cart/line-items/${encodeURIComponent(lineId)}`,
-        {
-          method: "PATCH",
-          headers: {
-            "content-type": "application/json",
-            ...buildCartHeaders(customer),
-          },
-          body: JSON.stringify({ quantity }),
-          credentials: "include",
-        }
-      );
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        const message =
-          (payload && (payload.error || payload.message)) ||
-          "Could not update quantity";
-        throw new Error(message);
-      }
-
-      return (await response.json()) as CartApiPayload;
-    },
-    onMutate: async ({ lineId, quantity }) => {
-      await queryClient.cancelQueries({ queryKey: cartQueryKey });
-      const previousPayload = queryClient.getQueryData<CartApiPayload>(cartQueryKey);
-      const optimisticPayload = optimisticUpdateLineInCart(previousPayload, lineId, quantity);
-      if (optimisticPayload) {
-        writeCartQueryCache(queryClient, customer?.id, optimisticPayload);
-      }
-      return { previousPayload };
-    },
-    onSuccess: (data, variables) => {
-      if (data) {
-        syncFromCartPayload(data);
-        writeCartQueryCache(queryClient, customer?.id, data);
-      }
-      if (variables.label) {
-        notifyQuantityUpdated(variables.label, variables.quantity);
-      }
-    },
-    onError: (_error, _variables, context) => {
-      if (context?.previousPayload !== undefined) {
-        writeCartQueryCache(queryClient, customer?.id, context.previousPayload);
-      }
+    mutationKey: CART_MUTATION_KEY,
+    retry: false,
+    mutationFn: ({ lineId, quantity }: UpdateLineItemParams) =>
+      write(`/api/medusa/cart/line-items/${encodeURIComponent(lineId)}`, "PATCH", { quantity }),
+    onSuccess: (_data, variables) => {
+      if (variables.label) notifyQuantityUpdated(variables.label, variables.quantity);
     },
   });
 }
 
-/**
- * Hook for removing a cart line item
- */
 export function useRemoveCartLineItem() {
-  const queryClient = useQueryClient();
-  const { syncFromCartPayload } = useCartSummary();
-  const { customer } = useAuth();
-  const cartQueryKey = getCartQueryKey(customer?.id);
-
+  const write = useCartWriter();
   return useMutation({
-    mutationFn: async ({ lineId }: RemoveLineItemParams) => {
-      const response = await fetch(
-        `/api/medusa/cart/line-items/${encodeURIComponent(lineId)}`,
-        {
-          method: "DELETE",
-          headers: {
-            ...buildCartHeaders(customer),
-          },
-          credentials: "include",
-        }
-      );
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        const message =
-          (payload && (payload.error || payload.message)) ||
-          "Could not remove item";
-        throw new Error(message);
-      }
-
-      return (await response.json()) as CartApiPayload;
-    },
-    onMutate: async ({ lineId }) => {
-      await queryClient.cancelQueries({ queryKey: cartQueryKey });
-      const previousPayload = queryClient.getQueryData<CartApiPayload>(cartQueryKey);
-      const optimisticPayload = optimisticRemoveLineFromCart(previousPayload, lineId);
-      if (optimisticPayload) {
-        writeCartQueryCache(queryClient, customer?.id, optimisticPayload);
-      }
-      return { previousPayload };
-    },
-    onSuccess: (data, variables) => {
-      if (data) {
-        syncFromCartPayload(data);
-        writeCartQueryCache(queryClient, customer?.id, data);
-      }
-      if (variables.label) {
-        notifyRemoveItem(variables.label);
-      }
-    },
-    onError: (_error, _variables, context) => {
-      if (context?.previousPayload !== undefined) {
-        writeCartQueryCache(queryClient, customer?.id, context.previousPayload);
-      }
-    },
+    mutationKey: CART_MUTATION_KEY,
+    retry: false,
+    mutationFn: ({ lineId }: RemoveLineItemParams) =>
+      write(`/api/medusa/cart/line-items/${encodeURIComponent(lineId)}`, "DELETE"),
+    onSuccess: (_data, variables) => { if (variables.label) notifyRemoveItem(variables.label); },
   });
 }
 
 export function useUpdateCartLineQuantity() {
-  const updateLineItem = useUpdateCartLineItem();
-  const removeLineItem = useRemoveCartLineItem();
-
-  const updateQuantity = async (
-    lineId: string,
-    nextQuantity: number,
-    label?: string
-  ) => {
-    if (nextQuantity < 1) {
-      return removeLineItem.mutateAsync({ lineId, label });
-    }
-    return updateLineItem.mutateAsync({ lineId, quantity: nextQuantity, label });
-  };
-
+  const update = useUpdateCartLineItem();
+  const remove = useRemoveCartLineItem();
   return {
-    updateQuantity,
-    isUpdating: updateLineItem.isPending || removeLineItem.isPending,
+    updateQuantity: (lineId: string, quantity: number, label?: string) => quantity < 1
+      ? remove.mutateAsync({ lineId, label }) : update.mutateAsync({ lineId, quantity, label }),
+    isUpdating: update.isPending || remove.isPending,
   };
 }

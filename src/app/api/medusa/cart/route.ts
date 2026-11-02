@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import axios from 'axios'
-import { applyFlashSalePricesToCart } from '@/lib/flash-sale-cart-mapper'
+import { priceCartPayload } from '@/lib/cart-flash-prices'
 
 const CART_COOKIE = "cart_id"
 const GUEST_CART_HEADER = "x-guest-cart-id"
@@ -29,6 +29,7 @@ async function backend(path: string, init?: RequestInit) {
       url,
       headers: { ...headers, ...(init?.headers as Record<string, string>) },
       data: init?.body ? (typeof init.body === 'string' ? JSON.parse(init.body) : init.body) : undefined,
+      timeout: 15_000,
       validateStatus: () => true, // Don't throw on any status
     })
     
@@ -60,12 +61,6 @@ function buildCartCreateBody(): RequestInit["body"] {
   return JSON.stringify(payload)
 }
 
-function cartLineCount(cart: { items?: unknown[]; line_items?: unknown[] } | null | undefined): number {
-  if (!cart) return 0
-  const items = cart.items ?? cart.line_items ?? []
-  return Array.isArray(items) ? items.length : 0
-}
-
 const EMPTY_CART = {
   cart: {
     id: null,
@@ -94,28 +89,18 @@ export async function GET(req: NextRequest) {
     if (res.ok) {
       const data = await res.json()
       
-      // Skip flash-sale fan-out when cart is empty — shaves ~0.5–1s off shell loads
-      if (cartLineCount(data?.cart) > 0) {
-        try {
-          const flashSaleRes = await backend('/store/flash-sale/products')
-          if (flashSaleRes.ok) {
-            const flashSaleData = await flashSaleRes.json()
-            if (data.cart) {
-              data.cart = applyFlashSalePricesToCart(data.cart, flashSaleData)
-            }
-          }
-        } catch (error) {
-          console.error('Failed to map flash sale prices in cart:', error)
-        }
-      }
-      
-      return NextResponse.json(data)
+      return NextResponse.json(await priceCartPayload(data), { headers: { "Cache-Control": "private, no-store" } })
+    }
+    // Upstream/network errors are not evidence that the customer has an empty cart.
+    if (res.status !== 404 && res.status !== 410) {
+      return NextResponse.json({ error: "Your cart is temporarily unavailable. Please try again." }, { status: 503, headers: { "Cache-Control": "private, no-store" } })
+
     }
   }
 
   // Anonymous shell: do not create a Medusa cart until ensure=1 or add-to-cart
   if (!ensure) {
-    return NextResponse.json(EMPTY_CART)
+    return NextResponse.json(EMPTY_CART, { headers: { "Cache-Control": "private, no-store" } })
   }
 
   // create

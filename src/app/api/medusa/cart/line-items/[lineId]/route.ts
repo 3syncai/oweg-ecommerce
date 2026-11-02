@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { priceCartPayload } from "@/lib/cart-flash-prices";
 
 const CART_COOKIE = "cart_id";
 const GUEST_CART_HEADER = "x-guest-cart-id";
@@ -25,6 +26,7 @@ async function backend(path: string, init?: RequestInit) {
   if (sc) headers["x-sales-channel-id"] = sc;
   return fetch(`${base}${path}`, {
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
     ...init,
     headers: { ...headers, ...(init?.headers as HeadersInit) },
   });
@@ -113,8 +115,10 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       const message = deriveErrorMessage(payload, "Unable to update cart item");
       return NextResponse.json({ error: message, details: payload }, { status: res.status });
     }
-    const data = await res.json();
-    const response = NextResponse.json(data);
+    const raw = await res.json();
+    // Medusa v2 deletion returns the updated cart in `parent`, not `cart`.
+    const data = raw.parent ? { ...raw, cart: raw.parent } : raw;
+    const response = NextResponse.json(await priceCartPayload(data), { headers: { "Cache-Control": "private, no-store" } });
     if (shouldSetCookie) {
       response.cookies.set(CART_COOKIE, cartId, { httpOnly: false, sameSite: "lax", path: "/" });
     }
@@ -145,8 +149,10 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
       const message = deriveErrorMessage(payload, "Unable to remove cart item");
       return NextResponse.json({ error: message, details: payload }, { status: res.status });
     }
-    const data = await res.json();
-    const response = NextResponse.json(data);
+    const raw = await res.json();
+    // Medusa v2 deletion returns the updated cart in `parent`, not `cart`.
+    const data = raw.parent ? { ...raw, cart: raw.parent } : raw;
+    const response = NextResponse.json(await priceCartPayload(data), { headers: { "Cache-Control": "private, no-store" } });
     if (shouldSetCookie) {
       response.cookies.set(CART_COOKIE, cartId, { httpOnly: false, sameSite: "lax", path: "/" });
     }

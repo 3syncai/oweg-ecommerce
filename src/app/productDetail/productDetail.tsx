@@ -46,7 +46,7 @@ import {
   notifyWishlistSuccess,
 } from '@/lib/notifications'
 import { useAuth } from '@/contexts/AuthProvider'
-import { useCartSummary } from '@/contexts/CartProvider'
+import { useAddToCart } from '@/hooks/useCartMutations'
 import { useFlashSale } from '@/hooks/useFlashSale'
 import HealthCareAgeGate from '@/components/modules/HealthCareAgeGate'
 import SellerOffers from '@/components/modules/SellerOffers'
@@ -107,7 +107,8 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [quantity, setQuantity] = useState(1)
-  const [cartActionPending, setCartActionPending] = useState(false)
+  const addCart = useAddToCart()
+  const cartActionPending = addCart.isPending
   const [buyNowPending, setBuyNowPending] = useState(false)
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({})
   const [explicitVariantId, setExplicitVariantId] = useState<string | null>(null)
@@ -122,7 +123,6 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const [compareSelection, setCompareSelection] = useState<RelatedProduct[]>([])
   const [compareDetails, setCompareDetails] = useState<Record<string, DetailedProductType | null>>({})
   const [compareDetailsLoading, setCompareDetailsLoading] = useState<Record<string, boolean>>({})
-  const { count, syncFromCartPayload, bumpCount, restoreCount } = useCartSummary()
   const outOfStockToastRef = useRef<string | null>(null)
   const [wishlistBusy, setWishlistBusy] = useState(false)
   const sourceTagParam = searchParams?.get('sourceTag')?.trim() || undefined
@@ -1053,45 +1053,13 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     }
     if (cartActionPending) return
 
-    const guestCartId = typeof window !== "undefined" ? localStorage.getItem("guest_cart_id") : null;
     const itemLabel = label ?? product?.title ?? "Item";
-
-    setCartActionPending(true)
-    notifyCartAddSuccess(itemLabel, qty, goToCart);
-    const previousCount = count;
-    bumpCount(qty);
-
     try {
-      const res = await fetch("/api/medusa/cart/line-items", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
-        },
-        body: JSON.stringify({ variant_id: variantId, quantity: qty, seller_selected: sellerSelected }),
-        credentials: "include",
-      });
-      const payload = await res.json().catch(() => null);
-      if (!res.ok) {
-        const message =
-          (payload && (payload.error || payload.message)) || "Unable to add to cart right now.";
-        throw new Error(message);
-      }
-
-      if (payload?.guestCartId && typeof window !== "undefined" && typeof payload.guestCartId === "string") {
-        localStorage.setItem("guest_cart_id", payload.guestCartId);
-      }
-
-      if (payload) {
-        syncFromCartPayload(payload);
-      }
+      await addCart.mutateAsync({ variant_id: variantId, quantity: qty, seller_selected: sellerSelected });
+      notifyCartAddSuccess(itemLabel, qty, goToCart);
     } catch (err) {
-      restoreCount(previousCount);
       console.warn("addVariantToCart failed", err);
-      const message = err instanceof Error ? err.message : undefined;
-      notifyCartAddError(message);
-    } finally {
-      setCartActionPending(false)
+      notifyCartAddError(err instanceof Error ? err.message : undefined);
     }
   };
 
