@@ -12,7 +12,6 @@ import {
   clx,
 } from "@medusajs/ui"
 import * as XLSX from "xlsx"
-import axios from "axios"
 import styles from "@/components/bulk-upload/BulkUpload.module.css"
 import VendorShell from "@/components/VendorShell"
 import BrandLetterPreview from "@/components/bulk-upload/BrandLetterPreview"
@@ -640,9 +639,6 @@ const VendorProductsBulkUploadPage = () => {
       return next
     })
 
-    const API_URL =
-      process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000"
-
     // Track per-call success/failure rather than relying on the post-await
     // imageMap closure (which can be stale from a still-batched setState).
     let okCount = 0
@@ -652,16 +648,8 @@ const VendorProductsBulkUploadPage = () => {
       await Promise.all(
         matched.slice(start, start + 4).map(async ({ key, file }) => {
           try {
-            const fd = new FormData()
-            fd.append("productName", "bulk-upload")
-            fd.append("files", file)
-
-            const res = await axios.post(
-              `${API_URL}/vendor/products/upload-image`,
-              fd,
-              { headers: { Authorization: `Bearer ${token}` } }
-            )
-            const uploaded = res.data?.files?.[0]
+            const response = await vendorProductsApi.uploadImage(file, "bulk-upload")
+            const uploaded = response.files?.[0]
             if (!uploaded?.url) throw new Error("Upload returned no URL")
 
             setImageMap((prev) => ({

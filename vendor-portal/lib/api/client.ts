@@ -566,9 +566,10 @@ export const vendorProductsApi = {
     }
   },
 
-  uploadImage: async (file: File) => {
+  uploadImage: async (file: File, productName?: string) => {
     const formData = new FormData()
-    formData.append('file', file)
+    if (productName) formData.append('productName', productName)
+    formData.append(productName ? 'files' : 'file', file)
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
     const headers: Record<string, string> = {}

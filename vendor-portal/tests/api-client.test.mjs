@@ -78,6 +78,19 @@ test('bulk brand workflow cannot bypass the vendor client for checks or uploads'
   assert.match(source, /vendorBrandsApi\.uploadAuthorization\(display, file\)/)
   assert.doesNotMatch(source, /\$\{API_URL\}\/vendor\/brands\//)
 })
+
+test('bulk product photos use the proxy while preserving multipart field names', async () => {
+  fixture({ files: [{ url: 'https://example.invalid/product.png' }] })
+  const file = new File(['image'], 'photo.png', { type: 'image/png' })
+  await api.vendorProductsApi.uploadImage(file, 'bulk-upload')
+  assert.equal(calls[0].url, '/api/medusa/vendor/products/upload-image')
+  assert.equal(calls[0].headers.get('Authorization'), 'Bearer fixture-vendor-token')
+  assert.equal(calls[0].data.get('productName'), 'bulk-upload')
+  assert.equal(calls[0].data.get('files').name, 'photo.png')
+  const source = fs.readFileSync(new URL('../app/products/bulk-upload/page.tsx', import.meta.url), 'utf8')
+  assert.match(source, /vendorProductsApi\.uploadImage\(file, "bulk-upload"\)/)
+  assert.doesNotMatch(source, /NEXT_PUBLIC_MEDUSA_BACKEND_URL|axios\.(?:post|get)/)
+})
 test('caller-supplied header/config behavior is preserved', async () => {
   fixture({ ok: true })
   await api.apiRequest('/fixture', { method: 'PATCH', headers: { 'X-Request': 'fixture' }, params: { q: '' }, timeout: 1234 })
