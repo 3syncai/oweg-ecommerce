@@ -6,14 +6,16 @@ import { Loader2 } from "lucide-react";
 import { OrderConfirmation } from "@/components/orders/OrderConfirmation";
 import Link from "next/link";
 import { useCartSummary } from "@/contexts/CartProvider";
+import { checkoutConfirmationState, confirmationPollDelay } from "@/lib/checkout-confirmation";
 
 type OrderSummary = {
   id: string;
   display_id?: number | string;
+  status?: string;
   payment_status?: string;
   is_draft_order?: boolean;
   total?: number;
-  display_totals?: { grandTotal?: number };
+  display_totals?: { grandTotal?: number; itemsSubtotal?: number; shipping?: number; coinDiscount?: number; oweg10Discount?: number; promoDiscount?: number };
   currency_code?: string;
   items?: Array<{
     id: string;
@@ -22,6 +24,7 @@ type OrderSummary = {
     unit_price?: number;
     total: number;
     thumbnail?: string;
+    variant_title?: string;
   }>;
   shipping_address?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
@@ -52,9 +55,8 @@ function OrderSuccessPageInner() {
   const clearedCartRef = useRef(false);
   const confirmStartedRef = useRef(false);
   const inFlightOrders = useRef(new Map<string, Promise<FetchOrderResult>>());
+  const orderRequests = useRef(new Set<AbortController>());
   const maxPollAttempts = 30;
-  const maxConsecutiveNotFound = 5;
-  const pollIntervalMs = isConfirmingFlow ? 1000 : 2000;
 
   async function confirmCodOrder(refId: string) {
     const res = await fetch("/api/checkout/cod", {
@@ -69,14 +71,19 @@ function OrderSuccessPageInner() {
 
   type FetchOrderResult = { order: OrderSummary | null; notFound: boolean };
 
-  async function fetchOrder(targetId: string = orderId): Promise<FetchOrderResult> {
+  async function fetchOrder(targetId: string = orderId, statusOnly = false): Promise<FetchOrderResult> {
     if (!targetId) return { order: null, notFound: false };
-    const existing = inFlightOrders.current.get(targetId);
+    const key = `${targetId}:${statusOnly ? "status" : "summary"}`;
+    const existing = inFlightOrders.current.get(key);
     if (existing) return existing;
     setLoading(true);
-    const request = (async (): Promise<FetchOrderResult> => {
+    const controller = new AbortController();
+    orderRequests.current.add(controller);
+    const deadline = setTimeout(() => controller.abort(), 15000);
+    let request!: Promise<FetchOrderResult>;
+    request = (async (): Promise<FetchOrderResult> => {
       try {
-        const res = await fetch(`/api/checkout/order-summary?orderId=${encodeURIComponent(targetId)}`, { cache: "no-store" });
+        const res = await fetch(`/api/checkout/${statusOnly ? "confirmation-status" : "order-summary"}?orderId=${encodeURIComponent(targetId)}`, { cache: "no-store", signal: controller.signal });
         if (res.status === 401) { setAuthRequired(true); setPolling(false); return { order: null, notFound: false }; }
         if (res.status === 404) return { order: null, notFound: true };
         if (!res.ok) return { order: null, notFound: false };
@@ -86,11 +93,13 @@ function OrderSuccessPageInner() {
         console.error("fetchOrder error", err);
         return { order: null, notFound: false };
       } finally {
-        inFlightOrders.current.delete(targetId);
+        clearTimeout(deadline);
+        orderRequests.current.delete(controller);
+        if (inFlightOrders.current.get(key) === request) inFlightOrders.current.delete(key);
         setLoading(inFlightOrders.current.size > 0);
       }
     })();
-    inFlightOrders.current.set(targetId, request);
+    inFlightOrders.current.set(key, request);
     return request;
   }
 
@@ -111,6 +120,13 @@ function OrderSuccessPageInner() {
     pollAttempts.current = 0;
     consecutiveNotFound.current = 0;
     confirmStartedRef.current = false;
+    clearedCartRef.current = false;
+    const requests = orderRequests.current;
+    const inFlight = inFlightOrders.current;
+    return () => {
+      for (const request of requests) request.abort();
+      inFlight.clear();
+    };
   }, [orderId]);
 
   useEffect(() => {
@@ -272,11 +288,17 @@ function OrderSuccessPageInner() {
             return;
           }
         } else {
-          await fetch("/api/checkout/razorpay/reconcile", {
+          const reconcileRes = await fetch("/api/checkout/razorpay/reconcile", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ medusaOrderId: orderId }),
           });
+          const reconciled = await reconcileRes.json().catch(() => ({})) as { orderId?: string; medusaOrderId?: string };
+          const finalId = reconciled.orderId || reconciled.medusaOrderId;
+          if (!cancelled && reconcileRes.ok && finalId && finalId !== orderId) {
+            router.replace(`/order/success?orderId=${encodeURIComponent(finalId)}&confirming=1`);
+            return;
+          }
         }
 
         if (!cancelled) {
@@ -326,41 +348,34 @@ function OrderSuccessPageInner() {
 
     async function tick() {
       if (cancelled) return;
+      if (document.visibilityState === "hidden") {
+        timer = setTimeout(() => { void tick(); }, 10000);
+        return;
+      }
       pollAttempts.current += 1;
-      const { order: latest, notFound } = await fetchOrder();
+      const { order: latest, notFound } = await fetchOrder(orderId, true);
       if (cancelled) return;
 
       if (notFound) {
         consecutiveNotFound.current += 1;
       } else if (latest) {
         consecutiveNotFound.current = 0;
-        setOrder(latest);
-        const codStatus =
-          typeof latest?.metadata?.cod_status === "string" ? latest.metadata.cod_status : undefined;
-        const statusValue =
-          typeof latest?.metadata?.razorpay_payment_status === "string"
-            ? latest.metadata?.razorpay_payment_status
-            : typeof latest?.payment_status === "string"
-              ? latest.payment_status
-              : undefined;
-        const isConfirmed =
-          codStatus === "confirmed" ||
-          statusValue === "captured" ||
-          statusValue === "paid" ||
-          statusValue === "cod";
-        if (isConfirmed) {
+        const state = checkoutConfirmationState(latest);
+        setOrder(previous => ({ ...previous, ...latest, metadata: { ...previous?.metadata, ...latest.metadata } }));
+        if (state.complete || state.cancelled) {
           setPolling(false);
           setConfirmFailed(false);
+          const details = await fetchOrder();
+          if (!cancelled && details.order) setOrder(details.order);
           return;
         }
       }
 
       if (
-        consecutiveNotFound.current >= maxConsecutiveNotFound ||
         pollAttempts.current >= maxPollAttempts
       ) {
         stopPollingWithFailure(
-          consecutiveNotFound.current >= maxConsecutiveNotFound
+          consecutiveNotFound.current > 0
             ? "We couldn't find this order anymore. If you paid, check My Orders — your payment may still have gone through under a different reference."
             : "Confirmation is taking longer than expected. Check My Orders or contact support with your order reference."
         );
@@ -369,12 +384,12 @@ function OrderSuccessPageInner() {
 
       timer = setTimeout(() => {
         void tick();
-      }, pollIntervalMs);
+      }, confirmationPollDelay(pollAttempts.current));
     }
 
     if (polling) {
       pollAttempts.current = 0;
-      timer = setTimeout(() => { void tick(); }, pollIntervalMs);
+      timer = setTimeout(() => { void tick(); }, confirmationPollDelay(0));
     }
 
     return () => {
@@ -394,19 +409,23 @@ function OrderSuccessPageInner() {
     typeof order?.metadata?.payment_method === "string"
       ? (order.metadata.payment_method as string)
       : undefined;
-  const isCod = isCodCheckout || orderPaymentMethod === "cod" || rawPaymentStatus === "cod";
+  const confirmation = checkoutConfirmationState(order);
+  const isCod = confirmation.cod || (!order && isCodCheckout);
   const codStatus =
     typeof order?.metadata?.cod_status === "string" ? order.metadata.cod_status : undefined;
   const isCodPending = isCod && codStatus !== "confirmed" && !confirmFailed;
-  const isPaidOnline = rawPaymentStatus === "captured" || rawPaymentStatus === "paid";
-  const isOrderComplete = !confirmFailed && (isPaidOnline || (isCod && codStatus === "confirmed" && !order?.is_draft_order));
+  const isPaidOnline = confirmation.paid;
+  const isOrderComplete = confirmation.complete;
   const isPaid = isOrderComplete;
-  const statusMessage = confirmFailed
+  const statusMessage = confirmation.cancelled ? "This order was cancelled. Check its details for the latest payment or refund status."
+    : confirmFailed && !isOrderComplete
     ? confirmFailReason || "We couldn't confirm this order."
     : isCodPending
       ? "We're confirming your order. This usually takes a few seconds."
       : isCod
         ? "Your order is confirmed. Pay when your order arrives."
+        : isPaidOnline && !isOrderComplete
+          ? "Payment received. We’re finishing your order confirmation; please don’t pay again."
         : isPaidOnline
           ? "Your payment is confirmed. We'll share updates on your order."
           : rawPaymentStatus
@@ -459,9 +478,9 @@ function OrderSuccessPageInner() {
   }, [isPaid, orderMode, orderPaymentMethod, orderId, refreshCart]);
 
   useEffect(() => {
-    if (!orderId || !isConfirmingFlow || isCodCheckout || confirmFailed || authRequired) return;
+    if (!orderId || isCod || confirmFailed || authRequired || confirmation.cancelled) return;
     if (!initialOrderChecked) return;
-    if (isPaidOnline || polling || autoPollingStarted) return;
+    if (isOrderComplete || polling || autoPollingStarted) return;
     setAutoPollingStarted(true);
     setPolling(true);
   }, [
@@ -469,15 +488,16 @@ function OrderSuccessPageInner() {
     autoPollingStarted,
     confirmFailed,
     initialOrderChecked,
-    isCodCheckout,
+    isCod,
+    confirmation.cancelled,
     isConfirmingFlow,
-    isPaidOnline,
+    isOrderComplete,
     orderId,
     polling,
   ]);
 
   useEffect(() => {
-    if (!orderId || !isConfirmingFlow || !isCodPending || confirmFailed || authRequired) return;
+    if (!orderId || !isCodPending || isOrderComplete || confirmation.cancelled || confirmFailed || authRequired) return;
     if (!initialOrderChecked) return;
     if (polling || autoPollingStarted) return;
     setAutoPollingStarted(true);
@@ -488,18 +508,21 @@ function OrderSuccessPageInner() {
     confirmFailed,
     initialOrderChecked,
     isCodPending,
+    isOrderComplete,
+    confirmation.cancelled,
     isConfirmingFlow,
     orderId,
     polling,
   ]);
 
   const totalRupees = resolveOrderTotalRupees(order);
-  const coinsEarned = isPaid && totalRupees !== undefined ? Math.round(totalRupees * 0.01) : null;
+  // Do not invent wallet rewards from the order total; the ledger owns eligibility.
+  const coinsEarned = null;
 
   if (authRequired) return <div className="min-h-[75vh] bg-slate-50 px-4 py-10"><section className="mx-auto max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"><h1 className="text-2xl font-semibold text-slate-900">Sign in to view your order</h1><p className="mt-3 text-sm leading-6 text-slate-600">Your session has expired. Sign in with the account used at checkout to see your order and payment status.</p><p className="mt-3 text-sm text-slate-600">You do not need to make another payment.</p><Link className="mt-6 inline-flex min-h-11 items-center justify-center rounded-lg bg-[var(--oweg-green)] px-5 py-3 font-medium text-[var(--oweg-ink)]" href={`/login?redirect=${encodeURIComponent(`/order/success?${params.toString()}`)}`}>Sign in to view order</Link><p className="mt-5 break-all font-mono text-xs text-slate-500">Order reference: {orderId}</p></section></div>;
 
   return <OrderConfirmation
-    order={order} orderId={orderId} complete={isOrderComplete} failed={confirmFailed || !orderId}
+    order={order} orderId={orderId} complete={isOrderComplete} failed={(!isOrderComplete && confirmFailed) || confirmation.cancelled || !orderId}
     cod={isCod} message={orderId ? statusMessage : "Open My Orders to find your purchases and their latest status."} total={totalRupees} coins={coinsEarned}
     loading={loading} polling={polling}
     onRefresh={() => {
