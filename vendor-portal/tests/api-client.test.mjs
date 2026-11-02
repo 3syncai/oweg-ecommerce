@@ -43,6 +43,41 @@ test('ordinary requests preserve URLs, auth/key headers, payload and response id
   assert.equal(calls[0].headers.get('Content-Type'), 'application/json')
   assert.deepEqual(body(calls[0]), { store_name: '' })
 })
+
+test('brand letter upload uses vendor proxy with multipart data and vendor auth', async () => {
+  const value = { authorization: { file_url: 'https://example.invalid/Generic.pdf' } }
+  fixture(value)
+  const file = new File(['%PDF-fixture'], 'Generic.pdf', { type: 'application/pdf' })
+  assert.equal(await api.vendorBrandsApi.uploadAuthorization('Generic', file), value)
+  assert.equal(calls[0].url, '/api/medusa/vendor/brands/upload-authorization')
+  assert.equal(calls[0].headers.get('Authorization'), 'Bearer fixture-vendor-token')
+  assert(calls[0].data instanceof FormData)
+  assert.equal(calls[0].data.get('brand_name'), 'Generic')
+  assert.equal(calls[0].data.get('file').name, 'Generic.pdf')
+  assert.notEqual(calls[0].headers.get('Content-Type'), 'application/json')
+})
+
+test('brand authorization check uses the same proxy and preserves brand name', async () => {
+  fixture({ status: 'pending' })
+  await api.vendorBrandsApi.checkAuthorization('Generic')
+  assert.equal(calls[0].url, '/api/medusa/vendor/brands/check-authorization')
+  assert.deepEqual(calls[0].params, { brand_name: 'Generic' })
+})
+
+test('brand uploads expose server failures and retain a retryable network message', async () => {
+  const file = new File(['fixture'], 'Generic.pdf', { type: 'application/pdf' })
+  fail(httpError({ error: 'Storage temporarily unavailable' }, 503))
+  await assert.rejects(api.vendorBrandsApi.uploadAuthorization('Generic', file), error => error.status === 503 && error.message === 'Storage temporarily unavailable')
+  fail(new AxiosError('Network Error', 'ERR_NETWORK'))
+  await assert.rejects(api.vendorBrandsApi.uploadAuthorization('Generic', file), /selection is kept; please retry/)
+})
+
+test('bulk brand workflow cannot bypass the vendor client for checks or uploads', () => {
+  const source = fs.readFileSync(new URL('../app/products/bulk-upload/page.tsx', import.meta.url), 'utf8')
+  assert.match(source, /vendorBrandsApi\.checkAuthorization\(display\)/)
+  assert.match(source, /vendorBrandsApi\.uploadAuthorization\(display, file\)/)
+  assert.doesNotMatch(source, /\$\{API_URL\}\/vendor\/brands\//)
+})
 test('caller-supplied header/config behavior is preserved', async () => {
   fixture({ ok: true })
   await api.apiRequest('/fixture', { method: 'PATCH', headers: { 'X-Request': 'fixture' }, params: { q: '' }, timeout: 1234 })

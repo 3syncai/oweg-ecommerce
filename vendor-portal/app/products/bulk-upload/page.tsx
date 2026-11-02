@@ -36,6 +36,7 @@ import {
   Tag,
 } from "@medusajs/icons"
 import {
+  vendorBrandsApi,
   vendorCategoriesApi,
   vendorCollectionsApi,
   vendorProductsApi,
@@ -246,9 +247,6 @@ const VendorProductsBulkUploadPage = () => {
       typeof window !== "undefined" ? localStorage.getItem("vendor_token") : null
     if (!token) return
 
-    const API_URL =
-      process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000"
-
     const session = brandSessionRef.current
     uniqueBrands.forEach(async ({ key, display }) => {
       if (brandsCheckedRef.current.has(key)) return
@@ -257,15 +255,8 @@ const VendorProductsBulkUploadPage = () => {
       setBrandAuthMap((prev) => ({ ...prev, [key]: { status: "checking" } }))
 
       try {
-        const res = await axios.get(
-          `${API_URL}/vendor/brands/check-authorization`,
-          {
-            params: { brand_name: display },
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        )
+        const data = await vendorBrandsApi.checkAuthorization(display)
         if (session !== brandSessionRef.current) return
-        const data = res.data || {}
         const status = data.status as string | undefined
         const fileUrl: string | undefined = data.authorization?.file_url
         setBrandAuthMap(prev => prev[key]?.status !== "checking" ? prev : ({
@@ -921,17 +912,8 @@ const VendorProductsBulkUploadPage = () => {
       const token = localStorage.getItem("vendor_token")
       if (!token) throw new Error("Please sign in again before submitting.")
       await submitBrandLetters(uniqueBrands, brandAuthMap, async (display, file) => {
-        const API_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000"
-        const fd = new FormData()
-        fd.append("brand_name", display)
-        fd.append("file", file)
-        try {
-          const response = await axios.post<{ authorization?: { file_url?: string } }>(`${API_URL}/vendor/brands/upload-authorization`, fd, { headers: { Authorization: `Bearer ${token}` } })
-          return response.data.authorization?.file_url || ""
-        } catch (cause) {
-          const error = uploadError(cause)
-          throw new Error(error.response?.data?.error || error.response?.data?.message || error.message || "Failed to upload brand letter")
-        }
+        const response = await vendorBrandsApi.uploadAuthorization(display, file)
+        return response.authorization?.file_url || ""
       }, (key, state) => setBrandAuthMap(prev => ({ ...prev, [key]: state })))
     } catch (cause) {
       submittingRef.current = false
