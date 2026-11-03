@@ -19,7 +19,6 @@ import SmoothScroll from "@/components/SmoothScroll";
 import { DebugControllerProvider } from "@/components/debug-controller/DebugControllerProvider";
 import SiteProtections from "@/components/debug-controller/SiteProtections";
 import ConditionalWhatsAppWidget from "@/components/debug-controller/ConditionalWhatsAppWidget";
-import PushNotificationPrompt from "@/components/account/PushNotificationPrompt";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
 
 /** Self-hosted so CI/build does not depend on fonts.gstatic.com */
@@ -127,7 +126,6 @@ export default function RootLayout({
                   <MobileBottomNavShell />
                   <ConditionalWhatsAppWidget />
                   <PWAInstallPrompt />
-                  <PushNotificationPrompt />
                 </div>
 
                 <AppToaster />

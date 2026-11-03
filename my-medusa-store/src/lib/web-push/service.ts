@@ -64,7 +64,7 @@ export async function dispatchPushBatch(workerPool?: Pool) {
             const c = current.rows[0]
             const snapshot = c.snapshot_at || new Date()
             const recipients = await client.query(`SELECT s.id FROM oweg_push_subscription s JOIN customer account ON account.id=s.customer_id AND account.deleted_at IS NULL
-              WHERE s.active AND s.created_at<=$1 AND ($2::uuid IS NULL OR s.id>$2)
+              WHERE s.active AND s.installed_app AND s.created_at<=$1 AND ($2::uuid IS NULL OR s.id>$2)
               AND (jsonb_array_length($3::jsonb)=0 OR s.customer_id IN (SELECT jsonb_array_elements_text($3::jsonb)))
               ORDER BY s.id LIMIT 250`, [snapshot, c.cursor_id, JSON.stringify(c.audience)])
             if (recipients.rows.length) await client.query(`INSERT INTO oweg_push_delivery(id,campaign_id,subscription_id,click_token)
@@ -86,14 +86,16 @@ export async function dispatchPushBatch(workerPool?: Pool) {
     ) UPDATE oweg_push_delivery d SET status='sending',attempts=d.attempts+1,lease_token=$1,lease_until=now()+interval '2 minutes'
       FROM batch WHERE d.id=batch.id RETURNING d.id`, [token])
     const deliver = async (item: { id: string }) => {
-      const result = await pool.query(`SELECT d.*,c.title,c.body,c.url,c.image,c.expires_at,s.endpoint,s.p256dh,s.auth,s.active,c.status AS campaign_status,
+      const result = await pool.query(`SELECT d.*,c.title,c.body,c.url,c.image,c.expires_at,s.endpoint,s.p256dh,s.auth,s.active,s.installed_app,c.status AS campaign_status,
         EXISTS(SELECT 1 FROM customer account WHERE account.id=s.customer_id AND account.deleted_at IS NULL) AS customer_exists
         FROM oweg_push_delivery d JOIN oweg_push_campaign c ON c.id=d.campaign_id JOIN oweg_push_subscription s ON s.id=d.subscription_id
         WHERE d.id=$1 AND d.lease_token=$2`, [item.id, token])
       const d = result.rows[0]
       if (!d) return
-      if (!d.active || !d.customer_exists || d.campaign_status !== 'sending' || new Date(d.expires_at).getTime() <= Date.now() || !safeEndpoint(d.endpoint)) {
-        await pool.query(`UPDATE oweg_push_delivery SET status='cancelled',lease_token=NULL WHERE id=$1 AND lease_token=$2`, [d.id, token]); return
+      if (!d.active || !d.installed_app || !d.customer_exists || d.campaign_status !== 'sending' || new Date(d.expires_at).getTime() <= Date.now() || !safeEndpoint(d.endpoint)) {
+        await pool.query(`UPDATE oweg_push_delivery SET status='cancelled',lease_token=NULL,
+          attempts=CASE WHEN $3::boolean THEN attempts-1 ELSE attempts END
+          WHERE id=$1 AND lease_token=$2`, [d.id, token, !d.installed_app]); return
       }
       try {
         const payload = JSON.stringify({ title: d.title, body: d.body, url: d.url, image: d.image, tag: `oweg-${d.campaign_id}`, clickToken: d.click_token })

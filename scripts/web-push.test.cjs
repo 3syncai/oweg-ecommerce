@@ -41,7 +41,7 @@ const clicks = load('api/store/push-clicks/route.ts');
 const inbox = load('api/store/push-inbox/route.ts');
 function response() { return { code: 200, value: null, setHeader() {}, end() { return this }, status(code) { this.code = code; return this }, json(value) { this.value = value; return this } } }
 async function call(fn, body, actor = 'cus_test', query = {}) { const res = response(); await fn({ body, query, auth_context: actor ? { actor_id: actor } : undefined }, res); return res }
-const subscription = n => ({ endpoint: `https://fcm.googleapis.com/fcm/send/test${n}`, keys: { p256dh: keys.publicKey, auth: Buffer.alloc(16, n).toString('base64url') } });
+const subscription = n => ({ installed_app: true, endpoint: `https://fcm.googleapis.com/fcm/send/test${n}`, keys: { p256dh: keys.publicKey, auth: Buffer.alloc(16, n).toString('base64url') } });
 const campaign = () => ({ title: 'A real fixture', body: 'No live sends', url: '/flash-sale', image: '', audience: [], expires_at: new Date(Date.now() + 86400000).toISOString() });
 
 test('push validation rejects SSRF, external links, malformed keys and invalid schedules', () => {
@@ -49,6 +49,7 @@ test('push validation rejects SSRF, external links, malformed keys and invalid s
   for (const url of ['//evil.test','/\\evil.test','/%2fexample.com','https://evil.test','/%0Aevil']) assert.equal(validation.safeDestination(url), false);
   assert.equal(validation.safeDestination('/productDetail/fixture?id=123'), true);
   assert.equal(validation.subscriptionSchema.safeParse(subscription(1)).success, true);
+  assert.equal(validation.subscriptionSchema.safeParse({ ...subscription(1), installed_app: undefined }).success, false);
   assert.equal(validation.subscriptionSchema.safeParse({ ...subscription(1), keys: { auth: 'bad', p256dh: 'bad' } }).success, false);
   assert.equal(validation.campaignSchema.safeParse({ ...campaign(), expires_at: 'yesterday' }).success, false);
   assert.equal(validation.retryDelay(5), 480);
@@ -70,6 +71,11 @@ test('migration repeat safety; consent, ownership, draft revision and queue reco
     assert.equal((await call(customer.DELETE, { endpoint: subscription(1).endpoint }, 'cus_other')).code, 200);
     assert.equal((await db.query('SELECT active FROM oweg_push_subscription')).rows[0].active, true);
     assert.equal((await call(customer.GET, null, 'cus_other', { endpoint: subscription(1).endpoint })).value.active, false);
+    const legacy = subscription(9);
+    await db.query('INSERT INTO oweg_push_subscription(id,customer_id,endpoint,p256dh,auth) VALUES($1,$2,$3,$4,$5)',
+      [randomUUID(),'cus_other',legacy.endpoint,legacy.keys.p256dh,legacy.keys.auth]);
+    assert.equal((await call(customer.GET, null, 'cus_other', { endpoint: legacy.endpoint })).value.active, false);
+    assert.equal((await call(admin.POST, { action: 'test', campaign: campaign(), test_customer: 'cus_other' })).code, 400);
     const saved = await call(admin.POST, { action: 'save', campaign: campaign() }, 'user_admin');
     const c = saved.value.campaign;
     assert.equal(c.status, 'draft');
@@ -111,7 +117,7 @@ test('migration repeat safety; consent, ownership, draft revision and queue reco
     await db.query("UPDATE oweg_push_delivery SET next_attempt=now()-interval '1 second' WHERE id=$1", [delivery.id]);
     send = async () => { throw Object.assign(new Error('Gone'), { statusCode: 410 }) };
     await service.dispatchPushBatch();
-    assert.equal((await db.query('SELECT active FROM oweg_push_subscription WHERE customer_id=$1', ['cus_other'])).rows[0].active, false);
+    assert.equal((await db.query('SELECT active FROM oweg_push_subscription WHERE customer_id=$1 AND installed_app', ['cus_other'])).rows[0].active, false);
     assert.equal((await db.query('SELECT status FROM oweg_push_delivery WHERE id=$1', [delivery.id])).rows[0].status, 'failed');
     // A missed provider notification is still visible in that recipient's inbox.
     assert.equal((await call(inbox.GET,null,'cus_other')).value.notifications.length,1);
@@ -127,6 +133,14 @@ test('migration repeat safety; consent, ownership, draft revision and queue reco
     await call(customer.DELETE, { endpoint: subscription(1).endpoint });
     await service.dispatchPushBatch(); assert.equal(networkCalls, callsBefore);
     await call(customer.POST, subscription(1));
+    result = await call(admin.POST, { action: 'test', campaign: campaign(), test_customer: 'cus_test' });
+    // A receipt prepared by the previous worker cannot deliver to a legacy browser subscription.
+    const legacyId = (await db.query('SELECT id FROM oweg_push_subscription WHERE endpoint=$1', [legacy.endpoint])).rows[0].id;
+    await db.query('INSERT INTO oweg_push_delivery(id,campaign_id,subscription_id,click_token) VALUES($1,$2,$3,$4)',
+      [randomUUID(),result.value.campaign.id,legacyId,randomUUID()]);
+    await db.query("UPDATE oweg_push_campaign SET prepared=true,status='sending' WHERE id=$1", [result.value.campaign.id]);
+    await service.dispatchPushBatch(); assert.equal(networkCalls, callsBefore);
+    assert.equal((await db.query('SELECT status FROM oweg_push_delivery WHERE campaign_id=$1',[result.value.campaign.id])).rows[0].status,'cancelled');
     result = await call(admin.POST, { action: 'test', campaign: campaign(), test_customer: 'cus_test' });
     await db.query("UPDATE oweg_push_campaign SET expires_at=now()-interval '1 second' WHERE id=$1", [result.value.campaign.id]);
     await service.dispatchPushBatch(); assert.equal(networkCalls, callsBefore);
@@ -181,8 +195,8 @@ test('6000 opted-in browsers drain in bounded batches with no duplicate receipts
     await db.exec(fs.readFileSync('my-medusa-store/migrations/web-push.sql','utf8').replace('SELECT pg_advisory_xact_lock(74638291);',''));
     await db.exec("CREATE TABLE customer(id text PRIMARY KEY,deleted_at timestamptz);INSERT INTO customer VALUES('cus_scale',NULL)");
     const ids=Array.from({length:6000},()=>randomUUID());
-    await db.query(`INSERT INTO oweg_push_subscription(id,customer_id,endpoint,p256dh,auth)
-      SELECT unnest($1::uuid[]),'cus_scale',unnest($2::text[]),$3,$4`,[ids,ids.map(id=>'https://fcm.googleapis.com/fcm/send/'+id),keys.publicKey,subscription(1).keys.auth]);
+    await db.query(`INSERT INTO oweg_push_subscription(id,customer_id,endpoint,p256dh,auth,installed_app)
+      SELECT unnest($1::uuid[]),'cus_scale',unnest($2::text[]),$3,$4,true`,[ids,ids.map(id=>'https://fcm.googleapis.com/fcm/send/'+id),keys.publicKey,subscription(1).keys.auth]);
     const result=await call(admin.POST,{action:'test',campaign:campaign(),test_customer:'cus_scale'});
     let active=0,peak=0,total=0,rounds=0;
     send=async()=>{active++;peak=Math.max(peak,active);await new Promise(resolve=>setImmediate(resolve));active--;total++};
@@ -238,7 +252,7 @@ test('audience search includes unsubscribed customers, limits pilot eligibility 
  db=new PGlite();try{
   await db.exec(fs.readFileSync('my-medusa-store/migrations/web-push.sql','utf8').replace('SELECT pg_advisory_xact_lock(74638291);',''));
   await db.exec("CREATE TABLE customer(id text PRIMARY KEY,email text,first_name text,last_name text,created_at timestamptz DEFAULT now(),deleted_at timestamptz);INSERT INTO customer(id,email,first_name) VALUES('cus_one','one@example.test','One'),('cus_two','two@example.test','Two'),('cus_no','no@example.test','No');INSERT INTO customer(id,email,deleted_at) VALUES('cus_deleted','deleted@example.test',now())");
-  for(const id of ['cus_one','cus_two','cus_deleted'])await db.query("INSERT INTO oweg_push_subscription(id,customer_id,endpoint,p256dh,auth) VALUES($1,$2,$3,'key','key')",[randomUUID(),id,'https://fcm.googleapis.com/'+id]);
+  for(const id of ['cus_one','cus_two','cus_deleted'])await db.query("INSERT INTO oweg_push_subscription(id,customer_id,endpoint,p256dh,auth,installed_app) VALUES($1,$2,$3,'key','key',true)",[randomUUID(),id,'https://fcm.googleapis.com/'+id]);
   const selector=load('api/admin/push-notifications/customers/route.ts');
   const result=await call(selector.GET,{}, 'admin', {limit:'1',offset:'0'});
   assert.equal(result.value.total,3);assert.equal(result.value.customers.length,1);assert(!('endpoint' in result.value.customers[0]));

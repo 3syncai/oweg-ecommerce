@@ -15,7 +15,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     (SELECT count(*)::int FROM oweg_push_delivery d WHERE d.campaign_id=c.id AND d.clicked_at IS NOT NULL) AS clicked,
     (SELECT count(*)::int FROM oweg_push_delivery d WHERE d.campaign_id=c.id AND d.status='failed') AS failed
     FROM oweg_push_campaign c ORDER BY created_at DESC LIMIT 25 OFFSET $1`, [offset])
-  const subscribers = await pool.query('SELECT count(*)::int AS count FROM oweg_push_subscription WHERE active')
+  const subscribers = await pool.query('SELECT count(*)::int AS count FROM oweg_push_subscription WHERE active AND installed_app')
   const worker = await pool.query(`SELECT COALESCE(last_success_at>now()-interval '3 minutes' AND
     (last_error_at IS NULL OR last_error_at<=last_success_at),false) AS healthy FROM oweg_push_worker_state WHERE worker_id='web-push'`)
   return res.json({ campaigns: rows.rows, total: rows.rows[0]?.total || 0, subscribers: subscribers.rows[0].count,
@@ -35,7 +35,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     if (!campaign) return res.status(400).json({ error: 'Campaign details required.' })
     if (action === 'test' && (!test_customer || !pushConfigured() || process.env.WEB_PUSH_ENABLED !== 'true')) return res.status(400).json({ error: 'Sending must be enabled and a test customer selected.' })
     if (action === 'test') {
-      const count = await pool.query('SELECT 1 FROM oweg_push_subscription WHERE active AND customer_id=$1 LIMIT 1', [test_customer])
+      const count = await pool.query('SELECT 1 FROM oweg_push_subscription WHERE active AND installed_app AND customer_id=$1 LIMIT 1', [test_customer])
       if (!count.rowCount) return res.status(400).json({ error: 'Test customer has not enabled browser notifications.' })
     }
     const values = [campaign.title, campaign.body, campaign.url, campaign.image, JSON.stringify(action === 'test' ? [test_customer] : campaign.audience), campaign.expires_at]

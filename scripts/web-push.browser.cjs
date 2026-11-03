@@ -111,31 +111,47 @@ const campaign = { id: '11111111-1111-4111-8111-111111111111', revision: 1, titl
       if(process.env.PUSH_QA_SCREENSHOTS && [390,1280].includes(width)) await page.screenshot({ path: path.join(process.env.PUSH_QA_SCREENSHOTS,`oweg-push-admin-${width}.png`), fullPage:true });
       assert.deepEqual(errors,[]); await page.close();
     }
-    for (const fail of [false,true]) {
+    for (const mode of ["installed", "error", "tab"]) {
+      const fail = mode === "error";
       const page=await browser.newPage({viewport:{width:390,height:844}});let writes=0;
       await page.route('**/*',route=>{
         if(new URL(route.request().url()).pathname.startsWith('/api/')){
-          if(route.request().method()==='POST'){writes++;return route.fulfill({status:fail?503:200,contentType:'application/json',body:JSON.stringify(fail?{error:'Fixture unavailable'}:{active:true})})}
+          if(route.request().method()==='POST'){assert.equal(route.request().postDataJSON().installed_app,true);writes++;return route.fulfill({status:fail?503:200,contentType:'application/json',body:JSON.stringify(fail?{error:'Fixture unavailable'}:{active:true})})}
           return route.fulfill({contentType:'application/json',body:JSON.stringify({configured:true,customer_id:'cus_test',active:writes>0&&!fail,publicKey:'B'.repeat(87)})});
         }
         return route.fulfill({contentType:'text/html',body:'<div id="root"></div>'});
       });
       await page.goto('http://localhost:34567/');
-      await page.evaluate(()=>{
-        window.permissionCalls=0;window.unsubscribed=0;window.nativeChecks=0;window.qaSubscription=null;
+      await page.evaluate((standalone)=>{
+        Object.defineProperty(navigator,'standalone',{value:standalone});window.permissionCalls=0;window.unsubscribed=0;window.nativeChecks=0;window.qaSubscription=null;
         Object.defineProperty(window,'PushManager',{value:class{}});
         Object.defineProperty(window,'Notification',{value:{permission:'granted',requestPermission:()=>{window.permissionCalls++;return Promise.resolve('granted')}}});
         const sub={endpoint:'https://fcm.googleapis.com/fcm/send/qa',toJSON:()=>({endpoint:'https://fcm.googleapis.com/fcm/send/qa',expirationTime:null,keys:{p256dh:'test',auth:'test'}}),unsubscribe:async()=>{window.unsubscribed++;return true}};
         Object.defineProperty(navigator,'serviceWorker',{value:{getRegistration:async()=>({active:true,pushManager:{getSubscription:async()=>window.qaSubscription,subscribe:async()=>{window.qaSubscription=sub;return sub}},showNotification:async()=>{window.nativeChecks++},getNotifications:async()=>[{}]})}});
-      });
+      }, mode !== 'tab');
       await page.addScriptTag({content:customer.outputFiles.find(f=>f.path.endsWith('.js')).text});
-      const enable=page.getByRole('button',{name:'Enable notifications',exact:true});await enable.waitFor();
+      if(mode === 'tab'){
+        await page.getByText(/Open the installed OWEG app/).waitFor();
+        assert.equal(await page.getByRole('radio').count(),0);
+        assert.equal(await page.evaluate(()=>window.permissionCalls),0);
+        assert.equal(writes,0);
+        await page.close();
+        continue;
+      }
+      const enable=page.getByRole('radio',{name:'Allow product updates',exact:true});await enable.waitFor();
       assert.equal(await page.evaluate(()=>window.permissionCalls),0);
       await enable.click();
-      await page.getByText(fail?'Fixture unavailable':'You’re subscribed to OWEG offers and updates on this browser.',{exact:true}).waitFor();
+      if(fail) await page.getByText('Fixture unavailable',{exact:true}).waitFor(); else await page.waitForFunction(()=>document.querySelector('input[type=radio]')?.checked);
       assert.equal(writes,1); assert.equal(await page.evaluate(()=>window.permissionCalls),0);
       assert.equal(await page.evaluate(()=>window.unsubscribed),fail?1:0);
-      if(!fail){await page.getByRole('button',{name:'Test notification on this device',exact:true}).click();await page.getByText(/Your browser created the test notification/).waitFor();assert.equal(await page.evaluate(()=>window.nativeChecks),1);assert.equal(writes,1);}
+      if(!fail){
+        const off=page.getByRole('radio',{name:'Don’t allow notifications'});
+        await off.click();
+        await page.waitForFunction(()=>document.querySelectorAll('input[type=radio]')[1]?.checked);
+        assert.equal(await page.evaluate(()=>window.unsubscribed),1);
+        assert.equal(writes,1);
+      }
+
       await page.close();
     }
     console.log('PASS responsive admin 320/390/768/1280, draft/confirmation boundary, no automatic sends, customer explicit consent and rollback on failure.');
@@ -160,67 +176,11 @@ const campaign = { id: '11111111-1111-4111-8111-111111111111', revision: 1, titl
     await page.close();
   }}finally{await deliveryBrowser.close()}
   console.log('PASS delivery pincode layout/touch targets at 320/360/390/642/768/1280, no overflow and submit preserved.');
-  const onboarding=await bundle('./src/components/account/PushNotificationPrompt.tsx',false,'',"import{disableBrowserPush,enableBrowserPush}from'./src/lib/browser-push';window.qaDisable=disableBrowserPush;window.qaEnable=enableBrowserPush;");
   const profile=await bundle('./src/components/mobile/MobileProfileSheet.tsx',false,'customer={{id:"cus_test"}} customerName="Test customer" deliverLocation="401107" onClose={()=>{window.qaMenuClosed=true}} onLogin={()=>{}} onSignup={()=>{}} onSignOut={()=>{}}');
   const promptBrowser=await chromium.launch({executablePath:process.env.QA_CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
-  async function promptFixture(options={}){
-    const page=await promptBrowser.newPage({viewport:{width:options.width||390,height:844}});
-    let registered=false,writes=0,reads=0;
-    await page.addInitScript(options=>{
-      window.qaCustomer=options.guest?null:{id:'cus_test'};
-      window.qaUnsubscribed=0;
-      window.qaBlockSubscribe=Boolean(options.blockSubscribe);
-      Object.defineProperty(navigator,'standalone',{value:Boolean(options.standalone),configurable:true});
-      if(options.ios)Object.defineProperty(navigator,'userAgent',{value:'iPhone Safari',configurable:true});
-      Object.defineProperty(window,'PushManager',{value:class{},configurable:true});
-      Object.defineProperty(window,'Notification',{value:{permission:localStorage.getItem('qa.permission')||options.permission||'default',requestPermission:async()=>{
-        localStorage.setItem('qa.promptCalls',String(Number(localStorage.getItem('qa.promptCalls')||0)+1));window.Notification.permission='granted';localStorage.setItem('qa.permission','granted');return 'granted';
-      }},configurable:true});
-      const sub={endpoint:'https://fcm.googleapis.com/fcm/send/fixture',toJSON:()=>({endpoint:'https://fcm.googleapis.com/fcm/send/fixture',keys:{p256dh:'fixture',auth:'fixture'}}),unsubscribe:async()=>{window.qaUnsubscribed++;localStorage.removeItem('qa.subscription');window.qaSubscription=null;return true}};
-      window.qaSubscription=localStorage.getItem('qa.subscription')==='1'?sub:null;
-      Object.defineProperty(navigator,'serviceWorker',{value:{getRegistration:async()=>({active:true,pushManager:{getSubscription:async()=>window.qaSubscription,subscribe:async()=>{
-        if(window.qaBlockSubscribe)await new Promise(resolve=>{window.qaReleaseSubscribe=resolve});
-        window.qaSubscription=sub;localStorage.setItem('qa.subscription','1');return sub;
-      }}})},configurable:true});
-    },options);
-    await page.route('**/*',route=>{
-      const req=route.request();const u=new URL(req.url());
-      if(u.pathname==='/api/medusa/push-subscriptions'){
-        if(req.method()==='POST'){writes++;const body=req.postDataJSON();assert.equal(body.expected_customer_id,'cus_test');registered=true;return route.fulfill({contentType:'application/json',body:'{"active":true}'})}
-        if(req.method()==='DELETE'){registered=false;return route.fulfill({contentType:'application/json',body:'{"active":false}'})}
-        reads++;return route.fulfill({contentType:'application/json',body:JSON.stringify({configured:true,customer_id:options.wrongAccount?'cus_other':'cus_test',active:registered&&u.searchParams.has('endpoint'),publicKey:'B'.repeat(87)})});
-      }
-      return route.fulfill({contentType:'text/html',body:'<div id="root"></div>'});
-    });
-    async function render(){await page.addStyleTag({content:utilityCss+'\n'+onboarding.outputFiles.find(p=>p.path.endsWith('.css')).text});await page.addScriptTag({content:onboarding.outputFiles.find(p=>p.path.endsWith('.js')).text})}
-    await page.goto('http://onboarding-fixture.test'+(options.path||'/'));await render();
-    return {page,render,writes:()=>writes,reads:()=>reads,clearRegistration:()=>{registered=false}};
-  }
-  try{
-    for(const width of [320,390,768,1280]){
-      const fixture=await promptFixture({width});const page=fixture.page;
-      await page.getByRole('button',{name:'Enable notifications',exact:true}).waitFor();
-      assert.equal(await page.evaluate(()=>localStorage.getItem('qa.promptCalls')),null);assert.equal(fixture.writes(),0);
-      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'onboarding overflow '+width);
-      const enable=await page.getByRole('button',{name:'Enable notifications',exact:true}).boundingBox();assert(enable.height>=44);
-      await page.getByRole('button',{name:'Enable notifications',exact:true}).click();
-      await page.waitForFunction(()=>!document.querySelector('[aria-labelledby="push-onboarding-title"]'));
-      assert.equal(fixture.writes(),1);assert.equal(await page.evaluate(()=>localStorage.getItem('qa.promptCalls')),'1');
-      await page.reload();await fixture.render();await page.waitForTimeout(1600);
-      assert.equal(fixture.writes(),1);assert.equal(await page.evaluate(()=>localStorage.getItem('qa.promptCalls')),'1');
-      fixture.clearRegistration();await page.evaluate(()=>localStorage.removeItem('qa.subscription'));
-      await page.reload();await fixture.render();await page.waitForTimeout(1700);
-      assert.equal(fixture.writes(),2);assert.equal(await page.evaluate(()=>localStorage.getItem('qa.promptCalls')),'1');
-      await page.close();
-    }
-    const later=await promptFixture();await later.page.getByRole('button',{name:'Not now',exact:true}).click();await later.page.reload();await later.render();await later.page.waitForTimeout(1500);assert.equal(await later.page.getByRole('button',{name:'Enable notifications',exact:true}).count(),0);assert.equal(later.writes(),0);await later.page.close();
-    const guest=await promptFixture({guest:true,standalone:true});await guest.page.getByRole('button',{name:'Enable notifications',exact:true}).click();await guest.page.getByRole('link',{name:'Sign in to finish',exact:true}).waitFor();assert.equal(guest.writes(),0);assert.equal(guest.reads(),0);await guest.page.close();
-    for(const options of [{permission:'denied'},{ios:true},{path:'/checkout'},{permission:'granted',wrongAccount:true}]){
-      const fixture=await promptFixture(options);await fixture.page.waitForTimeout(1600);assert.equal(await fixture.page.getByRole('button',{name:'Enable notifications',exact:true}).count(),0);assert.equal(fixture.writes(),0);assert.equal(await fixture.page.evaluate(()=>localStorage.getItem('qa.promptCalls')),null);await fixture.page.close();
-    }
-    const race=await promptFixture({blockSubscribe:true});await race.page.getByRole('button',{name:'Enable notifications',exact:true}).click();await race.page.waitForFunction(()=>typeof window.qaReleaseSubscribe==='function');await race.page.evaluate(async()=>{await window.qaDisable();window.qaReleaseSubscribe()});await race.page.getByText('Notification setup cancelled. Please try again.',{exact:true}).waitFor();assert.equal(race.writes(),0);assert.equal(await race.page.evaluate(()=>window.qaUnsubscribed),1);assert.match(await race.page.evaluate(async()=>{try{await window.qaEnable({customerId:'cus_test'});return 'unexpected success'}catch(e){return e.message}}),/cancelled/);assert.equal(race.writes(),0);await race.page.close();
+  try {
     const menu=await promptBrowser.newPage({viewport:{width:390,height:844}});await menu.route('**/*',r=>r.fulfill({contentType:'text/html',body:'<div id="root"></div>'}));await menu.goto('http://profile-fixture.test/');await menu.addStyleTag({content:utilityCss});await menu.addScriptTag({content:profile.outputFiles.find(p=>p.path.endsWith('.js')).text});const link=menu.getByRole('link',{name:'Notifications',exact:true});assert.equal(await link.getAttribute('href'),'/account/notifications');await link.evaluate(el=>el.addEventListener('click',e=>e.preventDefault()));await link.click();assert.equal(await menu.evaluate(()=>window.qaMenuClosed),true);await menu.close();
-    console.log('PASS notification onboarding: mobile/desktop opt-in, no automatic native prompts, one permission across reload/login recovery, guest PWA, dismissal, blocked/iOS/checkout safeguards, logout race and mobile-menu link.');
+    console.log('PASS mobile notification settings link.');
   }finally{await promptBrowser.close()}
 
   const inboxBundle=await bundle('./src/components/account/NotificationInbox.tsx',false);
