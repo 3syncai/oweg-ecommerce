@@ -1,3 +1,5 @@
+import { isStandalonePwa } from './open-storefront-link'
+
 const API = '/api/medusa/push-subscriptions'
 let subscriptionEpoch = 0
 let setupSuspended = false
@@ -8,7 +10,6 @@ type PushOptions = { customerId?: string; signal?: AbortSignal }
 function assertCurrent(epoch: number, signal?: AbortSignal) {
   if (setupSuspended || epoch !== subscriptionEpoch || signal?.aborted) throw new Error('Notification setup cancelled. Please try again.')
 }
-function updated() { window.dispatchEvent(new Event('oweg:push-updated')) }
 /** Wait a bounded time for a newly installed PWA's service worker, without blocking rendering. */
 export async function activePushRegistration(signal?: AbortSignal) {
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -23,19 +24,8 @@ export async function activePushRegistration(signal?: AbortSignal) {
   }
   return null
 }
-/** User-triggered local display check; no push provider or data writes. */
-export async function testBrowserNotification() {
-  if (Notification.permission !== 'granted') throw new Error('Allow notifications for OWEG in your browser first.')
-  const registration = await navigator.serviceWorker.getRegistration('/')
-  if (!registration?.active) throw new Error('Reload OWEG to finish activating browser notifications.')
-  await registration.showNotification('OWEG browser check', {
-    body: 'This checks notification display on this device. No order or wallet data has changed.',
-    icon: '/icon-192x192.png', tag: 'oweg-browser-check', data: { url: '/account/notifications' },
-  })
-  return (await registration.getNotifications({ tag: 'oweg-browser-check' })).length > 0
-}
-export async function disableBrowserPush() {
-  setupSuspended = true
+export async function disableBrowserPush({ signOut = true } = {}) {
+  if (signOut) setupSuspended = true
   subscriptionEpoch++
   pending.clear()
   if (!('serviceWorker' in navigator)) return
@@ -47,14 +37,14 @@ export async function disableBrowserPush() {
     fetch(API, { method: 'DELETE', credentials: 'include', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ endpoint: subscription.endpoint }), signal: AbortSignal.timeout(3000) }),
   ])
-  updated()
   if (server.status === 'rejected' || !server.value.ok) {
     if (browser.status === 'rejected' || !browser.value) throw new Error('Unable to disable notifications. Please retry or disable them in browser settings.')
-    throw new Error('Browser disabled. Server preference could not be updated; please retry later.')
+    return
   }
 }
 /** Native permission is requested synchronously from the Enable click, and never requested again when granted. */
 export function enableBrowserPush(options: PushOptions = {}): Promise<void> {
+  if (!isStandalonePwa()) return Promise.reject(new Error('Open the installed OWEG app to enable notifications.'))
   const key = options.customerId || 'manual'
   const existing = pending.get(key)
   if (existing) return existing
@@ -84,12 +74,11 @@ export function enableBrowserPush(options: PushOptions = {}): Promise<void> {
       assertCurrent(epoch,options.signal)
       const json = subscription.toJSON()
       const saved = await fetch(API, { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys, ...(options.customerId ? { expected_customer_id: options.customerId } : {}) }), signal: AbortSignal.timeout(8000) })
+        body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys, installed_app: true, ...(options.customerId ? { expected_customer_id: options.customerId } : {}) }), signal: AbortSignal.timeout(8000) })
       const data = await saved.json()
       conflict = saved.status === 409
       assertCurrent(epoch,options.signal)
       if (!saved.ok) throw new Error(data.error || 'Unable to save notification preference.')
-      updated()
     } catch (error) {
       if (!previous || conflict || epoch !== subscriptionEpoch || options.signal?.aborted) await subscription.unsubscribe().catch(()=>undefined)
       throw error
@@ -99,21 +88,4 @@ export function enableBrowserPush(options: PushOptions = {}): Promise<void> {
   const clear = () => { if (pending.get(key) === operation) pending.delete(key) }
   void operation.then(clear,clear)
   return operation
-}
-/** Restore an already-granted device after login; never displays a native permission prompt. */
-export async function restoreBrowserPush(customerId: string, signal?: AbortSignal) {
-  if (Notification.permission !== 'granted') return false
-  const epoch = subscriptionEpoch
-  assertCurrent(epoch,signal)
-  const registration = await activePushRegistration(signal)
-  assertCurrent(epoch,signal)
-  if (!registration) return false
-  const subscription = await registration.pushManager.getSubscription()
-  assertCurrent(epoch,signal)
-  const response = await fetch(API + (subscription ? '?endpoint='+encodeURIComponent(subscription.endpoint) : ''), { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(8000) })
-  const state = await response.json()
-  assertCurrent(epoch,signal)
-  if (!response.ok || !state.configured || state.customer_id !== customerId) return false
-  if (!subscription || !state.active) await enableBrowserPush({ customerId, signal })
-  return true
 }

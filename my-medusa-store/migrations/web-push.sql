@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS oweg_push_subscription (
  p256dh text NOT NULL, auth text NOT NULL, active boolean NOT NULL DEFAULT true,
  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE oweg_push_subscription ADD COLUMN IF NOT EXISTS installed_app boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS oweg_push_customer_idx ON oweg_push_subscription(customer_id) WHERE active;
 CREATE TABLE IF NOT EXISTS oweg_push_campaign (
  id uuid PRIMARY KEY, title text NOT NULL, body text NOT NULL, url text NOT NULL,
