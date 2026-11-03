@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getMedusaBackendUrl } from "@/lib/medusa-proxy"
+import { checkRateLimit, clientIpFromRequest } from "@/lib/simple-rate-limit"
 
 export const dynamic = "force-dynamic"
 
@@ -26,6 +27,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { message: "email and password required" },
       { status: 400 }
+    )
+  }
+
+  const limited = checkRateLimit({
+    key: `vendor-portal-login:${email.toLowerCase()}:${clientIpFromRequest(req)}`,
+    limit: 10,
+    windowMs: 60_000,
+  })
+  if (!limited.allowed) {
+    return NextResponse.json(
+      { message: "Too many login attempts. Try again shortly." },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } }
     )
   }
 

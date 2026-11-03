@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { isSafeRedirect } from "@/lib/auth-redirect"
 import { getDebugControllerSettings } from "@/lib/debug-controller/settings"
+import { clientIpFromRequest, rateLimitOrNull } from "@/lib/simple-rate-limit"
 
 const GUARDED_AUTH_ROUTES = new Set(["/login", "/signup"])
 const MAINTENANCE_BYPASS = new Set([
@@ -52,6 +53,50 @@ function isMaintenanceBypass(pathname: string) {
 
 export async function middleware(req: NextRequest) {
   const { pathname, origin, searchParams } = req.nextUrl
+
+  // App-level rate limits for auth / wallet / register (best-effort per instance).
+  if (req.method === "POST") {
+    const ip = clientIpFromRequest(req)
+    if (
+      pathname === "/api/medusa/auth/login" ||
+      pathname.startsWith("/api/medusa/auth/login-otp/")
+    ) {
+      const blocked = rateLimitOrNull(req, {
+        key: `mw-auth:${pathname}:${ip}`,
+        limit: 20,
+        windowMs: 60_000,
+        message: "Too many sign-in attempts. Try again shortly.",
+      })
+      if (blocked) return blocked
+    }
+    if (pathname === "/api/medusa/customers/register") {
+      const blocked = rateLimitOrNull(req, {
+        key: `mw-register:${ip}`,
+        limit: 8,
+        windowMs: 60_000,
+        message: "Too many registration attempts. Try again shortly.",
+      })
+      if (blocked) return blocked
+    }
+    if (pathname.startsWith("/api/store/wallet/")) {
+      const blocked = rateLimitOrNull(req, {
+        key: `mw-wallet:${pathname}:${ip}`,
+        limit: 40,
+        windowMs: 60_000,
+        message: "Too many wallet requests. Try again shortly.",
+      })
+      if (blocked) return blocked
+    }
+    if (pathname.includes("/orders/") && pathname.endsWith("/cancel")) {
+      const blocked = rateLimitOrNull(req, {
+        key: `mw-cancel:${pathname}:${ip}`,
+        limit: 10,
+        windowMs: 60_000,
+        message: "Too many cancel attempts. Try again shortly.",
+      })
+      if (blocked) return blocked
+    }
+  }
 
   if (
     process.env.NODE_ENV === "production" &&

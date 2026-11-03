@@ -3,6 +3,8 @@
  * Best-effort (not shared across instances); still blocks trivial abuse.
  */
 
+import { NextResponse } from "next/server"
+
 type Bucket = { timestamps: number[] }
 
 const buckets = new Map<string, Bucket>()
@@ -63,4 +65,24 @@ export function clientIpFromRequest(req: { headers: { get: (name: string) => str
     if (first) return first
   }
   return req.headers.get("x-real-ip")?.trim() || "unknown"
+}
+
+/** Convenience: 429 JSON when over limit, else null. */
+export function rateLimitOrNull(
+  req: { headers: { get: (name: string) => string | null } },
+  options: { key: string; limit: number; windowMs?: number; message?: string }
+): NextResponse | null {
+  const result = checkRateLimit({
+    key: options.key,
+    limit: options.limit,
+    windowMs: options.windowMs ?? 60_000,
+  })
+  if (result.allowed) return null
+  return NextResponse.json(
+    { error: options.message || "Too many requests. Try again shortly." },
+    {
+      status: 429,
+      headers: { "Retry-After": String(result.retryAfterSec) },
+    }
+  )
 }
