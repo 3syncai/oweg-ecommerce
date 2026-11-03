@@ -2,87 +2,51 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireVendorAuth } from "../../_lib/guards"
 import { boundedUpload } from "../../../../lib/bounded-upload"
 import * as path from "path"
-import * as fs from "fs"
 import { randomUUID } from "node:crypto"
 import { S3Client } from "@aws-sdk/client-s3"
 import { Upload } from "@aws-sdk/lib-storage"
 import { s3PublicBaseUrl } from "../../../../lib/s3-access"
 
-// CORS headers helper
-function setCorsHeaders(res: MedusaResponse, req?: MedusaRequest) {
-  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000']
-  const origin = (req as any)?.headers?.origin || (req as any)?.req?.headers?.origin
-  if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin)
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
-  res.setHeader('Access-Control-Allow-Credentials', 'true')
+function setCorsHeaders(res: MedusaResponse) {
+  /* CORS via vendorCorsMiddleware */ void 0
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, x-publishable-api-key"
+  )
+  res.setHeader("Access-Control-Allow-Credentials", "true")
 }
 
 export const OPTIONS = async (req: MedusaRequest, res: MedusaResponse) => {
-  setCorsHeaders(res, req)
+  setCorsHeaders(res)
   return res.status(200).end()
 }
 
-/**
- * Read environment variable from .env file directly (bypasses system env vars)
- */
-function readFromEnvFile(key: string): string | undefined {
-  try {
-    const envPath = path.join(process.cwd(), '.env')
-    if (fs.existsSync(envPath)) {
-      const envContent = fs.readFileSync(envPath, 'utf-8')
-      const lines = envContent.split('\n')
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
-          const [envKey, ...valueParts] = trimmed.split('=')
-          if (envKey.trim() === key) {
-            const value = valueParts.join('=').trim()
-            // Remove quotes if present
-            return value.replace(/^["']|["']$/g, '')
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.error(`Error reading .env file for ${key}:`, error)
-  }
-  return undefined
-}
-
+/** Process env only — never read .env from disk. */
 function getS3Config() {
-  // First try system env vars
-  let s3Region = process.env.S3_REGION?.trim()
-  let s3AccessKeyId = process.env.S3_ACCESS_KEY_ID?.trim()
-  let s3SecretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim()
-  let s3Bucket = process.env.S3_BUCKET?.trim()
-  
-  // If access key looks like a placeholder, read from .env file directly
-  if (s3AccessKeyId && (s3AccessKeyId.includes('REPLACE_ME') || s3AccessKeyId.includes('<'))) {
-    console.log('⚠️  System env var contains placeholder, reading from .env file...')
-    const envFileKey = readFromEnvFile('S3_ACCESS_KEY_ID')
-    if (envFileKey && !envFileKey.includes('REPLACE_ME') && !envFileKey.includes('<')) {
-      s3AccessKeyId = envFileKey
-      console.log('✅ Using S3_ACCESS_KEY_ID from .env file')
+  const s3Region = process.env.S3_REGION?.trim()
+  const s3AccessKeyId = process.env.S3_ACCESS_KEY_ID?.trim()
+  const s3SecretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim()
+  const s3Bucket = process.env.S3_BUCKET?.trim()
+
+  if (
+    !s3Region ||
+    !s3AccessKeyId ||
+    !s3SecretAccessKey ||
+    !s3Bucket ||
+    s3AccessKeyId.includes("REPLACE_ME") ||
+    s3AccessKeyId.includes("<") ||
+    s3SecretAccessKey.includes("REPLACE_ME") ||
+    s3SecretAccessKey.includes("<")
+  ) {
+    return {
+      s3Region: undefined,
+      s3AccessKeyId: undefined,
+      s3SecretAccessKey: undefined,
+      s3Bucket: undefined,
     }
   }
-  
-  // Also read other values from .env if they're missing
-  if (!s3Region) s3Region = readFromEnvFile('S3_REGION')
-  if (!s3SecretAccessKey) s3SecretAccessKey = readFromEnvFile('S3_SECRET_ACCESS_KEY')
-  if (!s3Bucket) s3Bucket = readFromEnvFile('S3_BUCKET')
-  
-  // If secret key might be placeholder, read from .env
-  if (s3SecretAccessKey && (s3SecretAccessKey.includes('REPLACE_ME') || s3SecretAccessKey.includes('<'))) {
-    const envFileSecret = readFromEnvFile('S3_SECRET_ACCESS_KEY')
-    if (envFileSecret && !envFileSecret.includes('REPLACE_ME') && !envFileSecret.includes('<')) {
-      s3SecretAccessKey = envFileSecret
-      console.log('✅ Using S3_SECRET_ACCESS_KEY from .env file')
-    }
-  }
-  
+
   return { s3Region, s3AccessKeyId, s3SecretAccessKey, s3Bucket }
 }
 
@@ -111,7 +75,7 @@ function isValidVideoMimeType(mimeType: string): boolean {
 }
 
 export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
-  setCorsHeaders(res, req)
+  setCorsHeaders(res)
   
   // Early return for OPTIONS preflight
   if ((req as any).method === 'OPTIONS') {

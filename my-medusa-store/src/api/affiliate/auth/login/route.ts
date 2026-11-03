@@ -2,15 +2,10 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import AffiliateModuleService from "../../../../modules/affiliate/service"
 import { AFFILIATE_MODULE } from "../../../../modules/affiliate"
 import { signAffiliateToken } from "../../_lib/token"
+import { setAllowlistedCors } from "../../../../lib/store-cors-allowlist"
 
-// CORS headers helper
 function setCorsHeaders(res: MedusaResponse, req?: MedusaRequest) {
-  const origin = req?.headers.origin || '*'
-  // When using credentials, we must specify the exact origin, not '*'
-  res.setHeader('Access-Control-Allow-Origin', origin)
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
-  res.setHeader('Access-Control-Allow-Credentials', 'true')
+  setAllowlistedCors(res, req)
 }
 
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {

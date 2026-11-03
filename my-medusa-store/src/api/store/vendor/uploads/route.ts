@@ -1,6 +1,8 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
 import { boundedUpload } from "../../../../lib/bounded-upload"
+import { setAllowlistedCors } from "../../../../lib/store-cors-allowlist"
+import { verifyVendorSignupUploadToken } from "../../../../lib/vendor-signup-upload-token"
 import path from "path"
 import { randomUUID } from "crypto"
 import { verifyVendorToken } from "../../../vendor/_lib/token"
@@ -25,15 +27,7 @@ import { verifyVendorToken } from "../../../vendor/_lib/token"
  */
 
 function setCorsHeaders(res: MedusaResponse, req?: MedusaRequest) {
-  const origin = req?.headers.origin || "*"
-  // When using credentials, we must echo the exact origin (not `*`).
-  res.setHeader("Access-Control-Allow-Origin", origin)
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, x-publishable-api-key"
-  )
-  res.setHeader("Access-Control-Allow-Credentials", "true")
+  setAllowlistedCors(res, req as { headers?: { origin?: string } })
 }
 
 function getS3Config() {
@@ -104,6 +98,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
 
     const vendorClaims = await readVendorClaims(req)
+    const signupToken = String(
+      (req.headers as any)["x-vendor-signup-token"] || ""
+    ).trim()
+    const hasSignupToken = verifyVendorSignupUploadToken(signupToken)
 
     const { s3Region, s3AccessKeyId, s3SecretAccessKey, s3Bucket } = getS3Config()
 
@@ -182,14 +180,29 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           file: NodeJS.ReadableStream,
           info: { filename: string; encoding: string; mimeType: string }
         ) => {
-          // Authenticated portal uploads (reports) require a vendor JWT.
-          // Signup docs only need the publishable key (checked above).
+          // Reports: vendor JWT. Signup docs: short-lived x-vendor-signup-token.
           if (uploadType === "report" && !vendorClaims) {
             file.resume()
             if (!resolved) {
               resolved = true
               clearTimeout(timeout)
               reject(Object.assign(new Error("Vendor authentication required for report uploads."), { statusCode: 401 }))
+            }
+            return
+          }
+          if (SIGNUP_TYPES.has(uploadType) && !vendorClaims && !hasSignupToken) {
+            file.resume()
+            if (!resolved) {
+              resolved = true
+              clearTimeout(timeout)
+              reject(
+                Object.assign(
+                  new Error(
+                    "Signup upload session required. Call POST /store/vendor/upload-session first."
+                  ),
+                  { statusCode: 401 }
+                )
+              )
             }
             return
           }

@@ -1,31 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
 import { applyExpiry, expireEarnedCoins } from "@/lib/wallet-ledger"
+import { requireCronSecret } from "@/lib/cron-auth"
 
 export const dynamic = "force-dynamic"
 
 /**
  * POST /api/cron/expire-coins
- * 
- * Cron job endpoint to expire old coins (1 year from earned date)
- * Call this daily via:
- * - Vercel Cron (vercel.json)
- * - External cron service (cron-job.org, etc.)
- * - Or manually for testing
- * 
- * Security: Use CRON_SECRET to prevent unauthorized access
+ *
+ * Cron job endpoint to expire old coins (1 year from earned date).
+ * Requires Authorization: Bearer $CRON_SECRET (mandatory).
  */
 export async function POST(req: NextRequest) {
     console.log("=== COIN EXPIRY CRON JOB STARTED ===")
 
     try {
-        // Optional: Verify cron secret for security
-        const authHeader = req.headers.get("authorization")
-        const cronSecret = process.env.CRON_SECRET
-
-        if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-            console.warn("Unauthorized cron request")
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-        }
+        const authError = requireCronSecret(req)
+        if (authError) return authError
 
         try {
             const expiredCoins = await expireEarnedCoins({ limit: 1000 })

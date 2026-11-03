@@ -69,6 +69,12 @@ export async function proxyMedusaRequest(
     headers.set("x-publishable-api-key", publishableKey);
   }
 
+  // Prefer HttpOnly session cookie over client-supplied Authorization.
+  const sessionToken = req.cookies.get("vendor_token")?.value?.trim();
+  if (sessionToken && !headers.has("authorization")) {
+    headers.set("Authorization", `Bearer ${sessionToken}`);
+  }
+
   const init: RequestInit = {
     method: req.method,
     headers,

@@ -1,5 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
+import { requireApprovedVendor } from "../../_lib/guards"
 
 interface DiscountItem {
   product_title: string
@@ -16,6 +17,9 @@ interface DiscountItem {
 }
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
+  const vendor = await requireApprovedVendor(req, res)
+  if (!vendor) return
+
   try {
     const pricingModule = req.scope.resolve(Modules.PRICING)
     const productModule = req.scope.resolve(Modules.PRODUCT)

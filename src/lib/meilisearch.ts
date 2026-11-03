@@ -24,9 +24,29 @@ export async function waitForMeiliTask(
 }
 
 const host = (process.env.MEILI_HOST || "http://127.0.0.1:7700").replace(/\/$/, "")
-const apiKey = process.env.MEILI_MASTER_KEY || process.env.MEILI_API_KEY || ""
 
-let client: MeiliClient | null = null
+/** Prefer search-only key for storefront; never prefer master for public search. */
+function resolveSearchApiKey(): string {
+  return (
+    process.env.MEILI_SEARCH_KEY?.trim() ||
+    process.env.MEILI_SEARCH_API_KEY?.trim() ||
+    process.env.MEILI_API_KEY?.trim() ||
+    ""
+  )
+}
+
+/** Admin/master key for index management (debug/controller only). */
+function resolveAdminApiKey(): string {
+  return (
+    process.env.MEILI_ADMIN_KEY?.trim() ||
+    process.env.MEILI_MASTER_KEY?.trim() ||
+    process.env.MEILI_API_KEY?.trim() ||
+    ""
+  )
+}
+
+let searchClient: MeiliClient | null = null
+let adminClient: MeiliClient | null = null
 
 function resolveMeilisearchConstructor(): new (config: MeiliConfig) => MeiliClient {
   // Avoid named-import casing issues across Next/Turbopack and CJS loaders.
@@ -57,16 +77,46 @@ function resolveMeilisearchConstructor(): new (config: MeiliConfig) => MeiliClie
   return Ctor
 }
 
+function createClient(apiKey: string): MeiliClient {
+  const Meilisearch = resolveMeilisearchConstructor()
+  return new Meilisearch({
+    host,
+    timeout: 4000,
+    apiKey: apiKey || undefined,
+  })
+}
+
+/** Storefront / search-only client. Falls back to admin key only outside production. */
 export function getMeiliClient(): MeiliClient {
-  if (!client) {
-    const Meilisearch = resolveMeilisearchConstructor()
-    client = new Meilisearch({
-      host,
-      timeout: 4000,
-      apiKey: apiKey || undefined,
-    })
+  if (!searchClient) {
+    let apiKey = resolveSearchApiKey()
+    if (!apiKey && process.env.NODE_ENV !== "production") {
+      apiKey = resolveAdminApiKey()
+    }
+    if (
+      process.env.NODE_ENV === "production" &&
+      !apiKey &&
+      resolveAdminApiKey()
+    ) {
+      throw new Error(
+        "[meilisearch] Set MEILI_SEARCH_KEY (search-only). Refusing MEILI_MASTER_KEY for storefront search in production."
+      )
+    }
+    searchClient = createClient(apiKey)
   }
-  return client
+  return searchClient
+}
+
+/** Index create/delete/settings — requires admin or master key. */
+export function getMeiliAdminClient(): MeiliClient {
+  if (!adminClient) {
+    const apiKey = resolveAdminApiKey()
+    if (!apiKey) {
+      throw new Error("MEILI_ADMIN_KEY or MEILI_MASTER_KEY is required for Meili admin operations")
+    }
+    adminClient = createClient(apiKey)
+  }
+  return adminClient
 }
 
 export function getProductsIndexName(): string {
@@ -74,7 +124,13 @@ export function getProductsIndexName(): string {
 }
 
 export function isMeiliConfigured(): boolean {
-  return Boolean(process.env.MEILI_HOST || process.env.MEILI_MASTER_KEY)
+  return Boolean(
+    process.env.MEILI_HOST ||
+      process.env.MEILI_SEARCH_KEY ||
+      process.env.MEILI_SEARCH_API_KEY ||
+      process.env.MEILI_API_KEY ||
+      process.env.MEILI_MASTER_KEY
+  )
 }
 
 export default getMeiliClient

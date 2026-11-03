@@ -390,9 +390,15 @@ export async function POST(req: Request) {
                 : 1;
           const quantity = Math.max(1, quantityRaw);
 
-          // Apply price override if it matches an overridden item (for Buy Now)
+          // Apply price override if it matches an overridden item (for Buy Now).
+          // Flash-sale enrichment rewrites record.unit_price — that must become catalog truth
+          // on the draft (not display-only), or Razorpay charges list price.
           const override = itemsOverride?.find(it => it.variant_id === variantId)
-          const unit_price = override?.unit_price
+          const cartUnit = Number(record.unit_price)
+          const overrideUnit = Number(override?.unit_price)
+          const unit_price = Number.isFinite(overrideUnit) && overrideUnit >= 0
+            ? (Number.isFinite(cartUnit) && cartUnit >= 0 ? Math.min(overrideUnit, cartUnit) : overrideUnit)
+            : (Number.isFinite(cartUnit) && cartUnit >= 0 ? cartUnit : undefined)
           const seller_selected = override?.seller_selected || (record.metadata as Record<string, unknown> | undefined)?.seller_selected === true
 
           return {

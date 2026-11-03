@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import axios from 'axios'
 import { priceCartPayload } from '@/lib/cart-flash-prices'
-
-const CART_COOKIE = "cart_id"
+import { CART_COOKIE, cartCookieOptions } from '@/lib/cart-cookie'
 const GUEST_CART_HEADER = "x-guest-cart-id"
 const SALES_CHANNEL_ID =
   process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID || process.env.MEDUSA_SALES_CHANNEL_ID
@@ -116,7 +115,7 @@ export async function GET(req: NextRequest) {
   if (newId) {
     // Persist both cookie and guestCartId so logged-in and guest clients share one cart.
     const withGuest = NextResponse.json({ ...json, guestCartId: newId })
-    withGuest.cookies.set(CART_COOKIE, newId, { httpOnly: false, sameSite: "lax", path: "/" })
+    withGuest.cookies.set(CART_COOKIE, newId, cartCookieOptions())
     return withGuest
   }
   return resp

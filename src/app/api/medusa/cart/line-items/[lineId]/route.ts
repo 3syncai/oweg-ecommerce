@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { priceCartPayload } from "@/lib/cart-flash-prices";
+import { CART_COOKIE, cartCookieOptions } from "@/lib/cart-cookie";
 
-const CART_COOKIE = "cart_id";
 const GUEST_CART_HEADER = "x-guest-cart-id";
 const MAX_QUANTITY_PER_ITEM = 10;
 
@@ -120,7 +120,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     const data = raw.parent ? { ...raw, cart: raw.parent } : raw;
     const response = NextResponse.json(await priceCartPayload(data), { headers: { "Cache-Control": "private, no-store" } });
     if (shouldSetCookie) {
-      response.cookies.set(CART_COOKIE, cartId, { httpOnly: false, sameSite: "lax", path: "/" });
+      response.cookies.set(CART_COOKIE, cartId, cartCookieOptions());
     }
     return response;
   } catch (e: unknown) {
@@ -154,7 +154,7 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
     const data = raw.parent ? { ...raw, cart: raw.parent } : raw;
     const response = NextResponse.json(await priceCartPayload(data), { headers: { "Cache-Control": "private, no-store" } });
     if (shouldSetCookie) {
-      response.cookies.set(CART_COOKIE, cartId, { httpOnly: false, sameSite: "lax", path: "/" });
+      response.cookies.set(CART_COOKIE, cartId, cartCookieOptions());
     }
     return response;
   } catch (e: unknown) {

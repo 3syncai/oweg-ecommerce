@@ -41,12 +41,16 @@ export async function POST(
     // Get the form data from the request
     const formData = await req.formData()
     
-    // Forward the form data to the Medusa backend
-    // Note: FormData will automatically set the correct content-type with boundary
+    const cookie = req.headers.get("cookie") || ""
+    if (!cookie) {
+      return NextResponse.json({ message: "Authentication required" }, { status: 401 })
+    }
+
+    // Forward the form data + customer session to the Medusa backend
     const res = await backend(`/store/products/${id}/reviews/upload-media`, {
       method: "POST",
       body: formData,
-      // Explicitly don't set content-type - FormData will set it with the boundary
+      headers: { cookie },
     })
     
     if (!res.ok) {

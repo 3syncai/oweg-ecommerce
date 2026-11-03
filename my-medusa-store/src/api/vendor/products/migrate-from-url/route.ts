@@ -2,7 +2,6 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
 import { randomUUID } from "node:crypto"
 import * as path from "path"
-import * as fs from "fs"
 import { requireApprovedVendor } from "../../_lib/guards"
 import {
   OwegScrapeError,
@@ -13,7 +12,7 @@ import {
 } from "../../../../lib/oweg-product-scraper"
 
 function setCorsHeaders(res: MedusaResponse) {
-  res.setHeader("Access-Control-Allow-Origin", "*")
+  /* CORS via vendorCorsMiddleware */ void 0
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
   res.setHeader(
     "Access-Control-Allow-Headers",
@@ -27,51 +26,28 @@ export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
   return res.status(200).end()
 }
 
-function readFromEnvFile(key: string): string | undefined {
-  try {
-    const envPath = path.join(process.cwd(), ".env")
-    if (!fs.existsSync(envPath)) return undefined
-    const envContent = fs.readFileSync(envPath, "utf-8")
-    for (const line of envContent.split("\n")) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue
-      const [envKey, ...valueParts] = trimmed.split("=")
-      if (envKey.trim() !== key) continue
-      return valueParts
-        .join("=")
-        .trim()
-        .replace(/^["']|["']$/g, "")
-    }
-  } catch (error) {
-    console.error(`Error reading .env file for ${key}:`, error)
-  }
-  return undefined
-}
-
+/** Process env only — never read .env from disk (file perms must not be a secret boundary). */
 function getS3Config() {
-  let s3Region = process.env.S3_REGION?.trim()
-  let s3AccessKeyId = process.env.S3_ACCESS_KEY_ID?.trim()
-  let s3SecretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim()
-  let s3Bucket = process.env.S3_BUCKET?.trim()
-
-  if (s3AccessKeyId && (s3AccessKeyId.includes("REPLACE_ME") || s3AccessKeyId.includes("<"))) {
-    const envFileKey = readFromEnvFile("S3_ACCESS_KEY_ID")
-    if (envFileKey && !envFileKey.includes("REPLACE_ME") && !envFileKey.includes("<")) {
-      s3AccessKeyId = envFileKey
-    }
-  }
-
-  if (!s3Region) s3Region = readFromEnvFile("S3_REGION")
-  if (!s3SecretAccessKey) s3SecretAccessKey = readFromEnvFile("S3_SECRET_ACCESS_KEY")
-  if (!s3Bucket) s3Bucket = readFromEnvFile("S3_BUCKET")
+  const s3Region = process.env.S3_REGION?.trim()
+  const s3AccessKeyId = process.env.S3_ACCESS_KEY_ID?.trim()
+  const s3SecretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim()
+  const s3Bucket = process.env.S3_BUCKET?.trim()
 
   if (
-    s3SecretAccessKey &&
-    (s3SecretAccessKey.includes("REPLACE_ME") || s3SecretAccessKey.includes("<"))
+    !s3Region ||
+    !s3AccessKeyId ||
+    !s3SecretAccessKey ||
+    !s3Bucket ||
+    s3AccessKeyId.includes("REPLACE_ME") ||
+    s3AccessKeyId.includes("<") ||
+    s3SecretAccessKey.includes("REPLACE_ME") ||
+    s3SecretAccessKey.includes("<")
   ) {
-    const envFileSecret = readFromEnvFile("S3_SECRET_ACCESS_KEY")
-    if (envFileSecret && !envFileSecret.includes("REPLACE_ME") && !envFileSecret.includes("<")) {
-      s3SecretAccessKey = envFileSecret
+    return {
+      s3Region: undefined,
+      s3AccessKeyId: undefined,
+      s3SecretAccessKey: undefined,
+      s3Bucket: undefined,
     }
   }
 

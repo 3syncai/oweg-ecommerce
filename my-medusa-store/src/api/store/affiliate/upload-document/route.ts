@@ -1,17 +1,12 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
 import { boundedUpload } from "../../../../lib/bounded-upload"
+import { setAllowlistedCors } from "../../../../lib/store-cors-allowlist"
 import path from "path"
 import { randomUUID } from "crypto"
 
-// CORS headers helper
 function setCorsHeaders(res: MedusaResponse, req?: MedusaRequest) {
-  const origin = req?.headers.origin || '*'
-  // When using credentials, we must specify the exact origin, not '*'
-  res.setHeader('Access-Control-Allow-Origin', origin)
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
-  res.setHeader('Access-Control-Allow-Credentials', 'true')
+  setAllowlistedCors(res, req as { headers?: { origin?: string } })
 }
 
 function getS3Config() {
@@ -40,6 +35,12 @@ export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   setCorsHeaders(res, req)
+
+  const customerId = (req as MedusaRequest & { auth_context?: { actor_id?: string } })
+    .auth_context?.actor_id
+  if (!customerId) {
+    return res.status(401).json({ message: "Sign in required to upload documents" })
+  }
 
   try {
     // Get S3 configuration

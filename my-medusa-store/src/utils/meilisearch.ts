@@ -23,7 +23,19 @@ export async function waitForMeiliTask(
 }
 
 const host = (process.env.MEILI_HOST || "http://127.0.0.1:7700").replace(/\/$/, "")
-const apiKey = process.env.MEILI_MASTER_KEY || process.env.MEILI_API_KEY || ""
+
+/**
+ * Medusa indexing / sync needs write privileges.
+ * Prefer dedicated admin key; fall back to master for ops scripts.
+ */
+function resolveAdminApiKey(): string {
+  return (
+    process.env.MEILI_ADMIN_KEY?.trim() ||
+    process.env.MEILI_MASTER_KEY?.trim() ||
+    process.env.MEILI_API_KEY?.trim() ||
+    ""
+  )
+}
 
 let client: MeiliClient | null = null
 
@@ -61,6 +73,7 @@ export function getMeiliClient(): MeiliClient {
     if (!host) {
       throw new Error("MEILI_HOST is not configured")
     }
+    const apiKey = resolveAdminApiKey()
     const Meilisearch = resolveMeilisearchConstructor()
     client = new Meilisearch({
       host,

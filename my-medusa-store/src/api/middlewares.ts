@@ -10,6 +10,7 @@ import { isBlockedFromDraftConvert } from "../lib/vendor-order-visibility"
 import { enforceAdminAccess, enforceAdminTokenRefresh } from "../lib/admin-access/middleware"
 import { recordAdminActivity } from "../lib/admin-access/activity-middleware"
 import { scopeAdminLogin } from "../lib/admin-access/admin-auth"
+import { requireVendorBearerMiddleware } from "./vendor/_lib/require-vendor-bearer"
 
 /**
  * Cross-origin cookie middleware for Chrome/Safari.
@@ -253,6 +254,28 @@ export default defineMiddlewares({
       middlewares: [authenticate("customer", ["session", "bearer"])],
     },
     {
+      matcher: "/store/orders/*/cancel",
+      method: ["POST"],
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
+      matcher: "/store/return-requests",
+      method: ["GET", "POST"],
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
+      matcher: "/store/products/*/reviews/upload-media",
+      method: ["POST"],
+      bodyParser: false,
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
+      matcher: "/store/affiliate/upload-document",
+      method: ["POST"],
+      bodyParser: false,
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
       matcher: "/auth",
       middlewares: [recordAdminActivity, crossOriginCookieMiddleware, scopeAdminLogin],
     },
@@ -277,7 +300,11 @@ export default defineMiddlewares({
     },
     {
       matcher: "/vendor",
-      middlewares: [vendorCorsMiddleware, crossOriginCookieMiddleware],
+      middlewares: [
+        vendorCorsMiddleware,
+        crossOriginCookieMiddleware,
+        requireVendorBearerMiddleware,
+      ],
     },
   ],
 })

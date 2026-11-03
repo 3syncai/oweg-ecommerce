@@ -7,7 +7,6 @@ const GUARDED_AUTH_ROUTES = new Set(["/login", "/signup"])
 const MAINTENANCE_BYPASS = new Set([
   "/maintenance",
   "/offline",
-  "/debug-controller-4719",
 ])
 
 const GUARDED_DEBUG_ROUTE_PREFIXES = [
@@ -19,8 +18,24 @@ const GUARDED_DEBUG_ROUTE_PREFIXES = [
   "/api/affiliate/debug-wallet",
 ]
 
+function isDebugControllerEnabled(): boolean {
+  // Production: require explicit opt-in. Dev/local always allowed.
+  if (process.env.NODE_ENV !== "production") return true
+  return process.env.ENABLE_DEBUG_CONTROLLER === "true"
+}
+
+function isDebugControllerPath(pathname: string) {
+  return (
+    pathname === "/debug-controller-4719" ||
+    pathname.startsWith("/debug-controller-4719/") ||
+    pathname.startsWith("/api/debug-controller")
+  )
+}
+
 function isProductionDebugRoute(pathname: string) {
-  if (pathname.startsWith("/api/debug-controller")) return false
+  if (isDebugControllerPath(pathname)) {
+    return !isDebugControllerEnabled()
+  }
   return GUARDED_DEBUG_ROUTE_PREFIXES.some((prefix) =>
     pathname.startsWith(prefix)
   )
@@ -28,7 +43,7 @@ function isProductionDebugRoute(pathname: string) {
 
 function isMaintenanceBypass(pathname: string) {
   if (MAINTENANCE_BYPASS.has(pathname)) return true
-  if (pathname.startsWith("/api/debug-controller")) return true
+  if (isDebugControllerPath(pathname) && isDebugControllerEnabled()) return true
   if (pathname.startsWith("/api/medusa/auth")) return true
   if (pathname.startsWith("/_next")) return true
   if (pathname.startsWith("/favicon")) return true

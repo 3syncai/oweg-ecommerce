@@ -7,10 +7,10 @@ import {
   extractErrorPayload,
   medusaStoreFetch,
 } from "@/lib/medusa-auth"
+import { CART_COOKIE, cartCookieOptions } from "@/lib/cart-cookie"
 
 export const dynamic = "force-dynamic"
 
-const CART_COOKIE = "cart_id"
 const GUEST_CART_HEADER = "x-guest-cart-id"
 
 async function backend(path: string, init?: RequestInit) {
@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
       const assignData = await assignRes.json()
       const response = NextResponse.json({ success: true, merged: true, cart: assignData.cart || assignData })
       appendUpstreamCookies(response, assignRes)
-      response.cookies.set(CART_COOKIE, guestCartId, { httpOnly: false, sameSite: "lax", path: "/" })
+      response.cookies.set(CART_COOKIE, guestCartId, cartCookieOptions())
       return response
     }
 
