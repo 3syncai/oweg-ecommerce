@@ -19,12 +19,12 @@ const DeliveryInfo = ({ pinCode, pinStatus, pinMessage, onPinCodeChange, onCheck
   <div className={styles.delivery}>
     <div style={{ gridColumn: '1 / -1' }} className="rounded-xl border border-slate-200 p-4 space-y-2">
       <h3 className="flex items-center gap-2 font-semibold"><MapPin size={18} aria-hidden /> Delivery & charges</h3>
-      <form className="flex gap-2" onSubmit={event => { event.preventDefault(); onCheck() }}>
+      <form className="flex flex-col gap-2 min-[360px]:flex-row" onSubmit={event => { event.preventDefault(); onCheck() }}>
         <label className="sr-only" htmlFor="product-delivery-pin">Delivery pincode</label>
         <input id="product-delivery-pin" inputMode="numeric" autoComplete="postal-code" maxLength={6}
           value={pinCode} onChange={event => onPinCodeChange(event.target.value.replace(/\D/g, '').slice(0, 6))}
-          placeholder="Enter 6-digit pincode" className="min-w-0 flex-1 rounded-lg border p-2" />
-        <button type="submit" disabled={pinStatus === 'checking'} className="rounded-lg bg-[#155344] px-3 text-white disabled:opacity-60">{pinStatus === 'checking' ? 'Checking…' : 'Check area'}</button>
+          placeholder="Enter 6-digit pincode" className="min-h-11 w-full min-w-0 flex-1 rounded-lg border p-2 text-base" />
+        <button type="submit" disabled={pinStatus === 'checking'} className="min-h-11 shrink-0 whitespace-nowrap rounded-lg bg-[#155344] px-3 py-2 text-sm text-white disabled:opacity-60">{pinStatus === 'checking' ? 'Checking…' : 'Check area'}</button>
       </form>
       <p role="status" aria-live="polite" className="text-sm text-slate-600">{pinMessage || 'Check your postal area. Courier availability and delivery estimate are confirmed at checkout when available.'}</p>
       <p className="text-sm">Shipping ₹{SHIPPING_CHARGE_RUPEES} for carts below ₹{FREE_SHIPPING_THRESHOLD_RUPEES}; free from ₹{FREE_SHIPPING_THRESHOLD_RUPEES}. Final order total appears before payment.</p>

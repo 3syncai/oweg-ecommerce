@@ -6,7 +6,7 @@ export const ADMIN_PERMISSION_GROUPS = [
   { id: "orders", label: "Orders", description: "Orders, draft orders and packet booking", paths: ["/orders", "/draft-orders", "/packet-booking"] },
   { id: "returns", label: "Returns", description: "Return requests, approvals and return packet booking", paths: ["/return-requests", "/return-packet-booking", "/returns", "/claims", "/exchanges"] },
   { id: "vendors", label: "Vendors", description: "Vendors, vendor requests and brand authorizations", paths: ["/vendors", "/vendor-requests", "/brand-authorizations"] },
-  { id: "marketing", label: "Marketing", description: "Flash sales, homepage content, promotions and campaigns", paths: ["/flash-sale", "/oweg-homepage", "/promotions", "/campaigns"] },
+  { id: "marketing", label: "Marketing", description: "Flash sales, homepage content, promotions and campaigns", paths: ["/flash-sale", "/oweg-homepage", "/promotions", "/campaigns", "/push-notifications"] },
   { id: "accounting", label: "Accounting", description: "Vendor payouts, commissions, claims and marketplace tax", paths: ["/vendor-payouts", "/vendor-commission", "/vendor-claims", "/vendor-marketplace-tax"] },
   { id: "partners", label: "Partner admins", description: "Manage the existing partner administrators and partner applications", paths: ["/affiliate-admins", "/affiliate-users"] },
 ] as const

@@ -9,6 +9,7 @@ const config = [
   // Ignore heavy / generated / workspace subfolders (adjust if needed)
   {
     ignores: [
+      ".local-push/**",
       "node_modules/**",
       ".next/**",
       "dist/**",

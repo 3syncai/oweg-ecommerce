@@ -21,6 +21,7 @@
 /build
 
 # misc
+.local-push/
 .DS_Store
 *.pem
 
@@ -111,5 +112,7 @@ public/swe-worker*
 # Local venv for PWA asset generation script
 .venv-pwa/
 .env.meilisearch
+.env.web-push
+**/.env.web-push
 .env.meilisearch.*
 !.env.meilisearch.example

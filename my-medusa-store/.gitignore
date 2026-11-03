@@ -44,6 +44,7 @@ temp/
 *.sqlite
 *.db
 *.sql
+!migrations/web-push.sql
 dump.rdb
 uploads/
 storage/

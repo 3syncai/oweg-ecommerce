@@ -54,3 +54,46 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+function storefrontPath(value: unknown) {
+  if (typeof value !== 'string') return '/'
+  try {
+    const decoded = decodeURIComponent(value)
+    if (!decoded.startsWith('/') || decoded.startsWith('//') || decoded.includes('\\') || [...decoded].some(c => c.charCodeAt(0) <= 32)) return '/'
+    const u = new URL(value, self.location.origin)
+    return u.origin === self.location.origin ? u.pathname + u.search + u.hash : '/'
+  } catch { return '/' }
+}
+self.addEventListener('push', event => {
+  event.waitUntil((async () => {
+    let data: Record<string, unknown> = {}
+    try { data = event.data?.json() || {} } catch { /* Always show a user-visible fallback. */ }
+    const options: NotificationOptions & { image?: string; renotify?: boolean } = {
+      body: typeof data.body === 'string' ? data.body.slice(0, 240) : 'Open OWEG for your latest updates.',
+      icon: '/icon-192x192.png', badge: '/icon-192x192.png',
+      tag: typeof data.tag === 'string' ? data.tag : 'oweg-update', renotify: false,
+      data: { url: storefrontPath(data.url), clickToken: typeof data.clickToken === 'string' ? data.clickToken : undefined },
+    }
+    if (typeof data.image === 'string') {
+      if (data.image.startsWith('/') && storefrontPath(data.image) !== '/') options.image = storefrontPath(data.image)
+      // Encrypted payloads come from our VAPID sender; remote image origins are validated there.
+      else { try { const image = new URL(data.image); if (image.protocol === 'https:' && !image.username && !image.password && !image.hash) options.image = image.href } catch { /* No optional image. */ } }
+    }
+    await self.registration.showNotification(typeof data.title === 'string' ? data.title.slice(0, 80) : 'OWEG', options)
+  })())
+})
+self.addEventListener('notificationclick', event => {
+  event.notification.close()
+  const url = new URL(storefrontPath(event.notification.data?.url), self.location.origin).href
+  const navigation = (async () => {
+    const tabs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    const existing = tabs.find(tab => tab.url === url)
+    if (existing) await existing.focus()
+    else await self.clients.openWindow(url)
+  })()
+  const token = event.notification.data?.clickToken
+  const tracking = typeof token === 'string' && token.length === 36 ? fetch('/api/medusa/push-clicks', {
+    method: 'POST', credentials: 'omit', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }), signal: AbortSignal.timeout(2500),
+  }) : Promise.resolve()
+  event.waitUntil(Promise.allSettled([navigation, tracking]))
+})

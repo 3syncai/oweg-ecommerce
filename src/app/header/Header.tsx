@@ -1679,7 +1679,7 @@ const Header: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-1">
                     <Link
-                      href="/notifications"
+                      href="/account/notifications"
                       className="oweg-tap relative flex items-center justify-center rounded-full text-[#7AC943] active:bg-[var(--oweg-surface-tint)]"
                       aria-label="Notifications"
                     >

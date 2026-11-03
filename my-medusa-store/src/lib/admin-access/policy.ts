@@ -7,7 +7,7 @@ const API_GROUPS: Array<[AdminPermission, string[]]> = [
   ["orders", ["orders", "draft-orders", "packet-booking", "fulfillments", "payment-collections", "payments"]],
   ["returns", ["return-requests", "return-packet-booking", "returns", "return-reasons", "claims", "exchanges"]],
   ["vendors", ["vendors", "brand-authorizations"]],
-  ["marketing", ["flash-sale", "featured-brands", "mega-menu-banners", "promotions", "campaigns"]],
+  ["marketing", ["flash-sale", "featured-brands", "mega-menu-banners", "promotions", "campaigns", "push-notifications"]],
   ["accounting", ["vendor-payouts", "vendor-commission", "vendor-reports", "vendor-marketplace-tax"]],
   ["partners", ["affiliate"]],
 ]
