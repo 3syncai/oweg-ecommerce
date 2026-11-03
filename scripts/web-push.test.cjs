@@ -10,6 +10,8 @@ const { PGlite } = require(process.env.PGLITE_MODULE || path.join(os.tmpdir(), '
 const keys = backend('web-push').generateVAPIDKeys();
 const env = { WEB_PUSH_PUBLIC_KEY: keys.publicKey, WEB_PUSH_PRIVATE_KEY: keys.privateKey, WEB_PUSH_SUBJECT: 'mailto:test@example.com', WEB_PUSH_ENABLED: 'true' };
 let db, send, networkCalls = 0;
+const imageUploads = [];
+let uploadFails = false;
 const pool = { query: (...args) => db.query(...args), connect: async () => ({ query: async (sql, args) => {
   if (sql.includes('pg_try_advisory_lock') || sql.includes('pg_try_advisory_xact_lock')) return { rows: [{ locked: true }] };
   if (sql.includes('pg_advisory_unlock')) return { rows: [] };
@@ -22,12 +24,13 @@ function load(file) {
   const mod = { exports: {} }; cache[absolute] = mod;
   const requireMock = name => {
     if (name.endsWith('/db-pool')) return { getSharedDbPool: () => pool };
+    if (name === '@aws-sdk/client-s3') return { S3Client: class { async send(command) { if(uploadFails)throw new Error('Mock transport failure'); imageUploads.push(command.input); return {} } destroy() {} }, PutObjectCommand: class { constructor(input) { this.input=input } }, GetObjectCommand: class {} };
     if (name === 'web-push') return { sendNotification: (...args) => { networkCalls++; return send(...args) } };
     if (name.startsWith('.')) return load(path.relative(path.resolve('my-medusa-store/src'), path.resolve(path.dirname(absolute), name + '.ts')));
     return backend(name);
   };
   const code = ts.transpileModule(fs.readFileSync(absolute, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
-  vm.runInNewContext(code, { require: requireMock, module: mod, exports: mod.exports, process: { env }, Buffer, URL, console, Date });
+  vm.runInNewContext(code, { require: requireMock, module: mod, exports: mod.exports, process: { env }, Buffer, URL, console, Date, AbortSignal });
   return mod.exports;
 }
 const validation = load('lib/web-push/validation.ts');
@@ -213,18 +216,41 @@ test('retention only removes expired terminal notification history and preserves
 });
 
 
-test('audience picker lists only opted-in active customers, paginates and escapes search',async()=>{
+test('audience search includes unsubscribed customers, limits pilot eligibility and escapes search',async()=>{
  db=new PGlite();try{
   await db.exec(fs.readFileSync('my-medusa-store/migrations/web-push.sql','utf8').replace('SELECT pg_advisory_xact_lock(74638291);',''));
   await db.exec("CREATE TABLE customer(id text PRIMARY KEY,email text,first_name text,last_name text,created_at timestamptz DEFAULT now(),deleted_at timestamptz);INSERT INTO customer(id,email,first_name) VALUES('cus_one','one@example.test','One'),('cus_two','two@example.test','Two'),('cus_no','no@example.test','No');INSERT INTO customer(id,email,deleted_at) VALUES('cus_deleted','deleted@example.test',now())");
   for(const id of ['cus_one','cus_two','cus_deleted'])await db.query("INSERT INTO oweg_push_subscription(id,customer_id,endpoint,p256dh,auth) VALUES($1,$2,$3,'key','key')",[randomUUID(),id,'https://fcm.googleapis.com/'+id]);
   const selector=load('api/admin/push-notifications/customers/route.ts');
   const result=await call(selector.GET,{}, 'admin', {limit:'1',offset:'0'});
-  assert.equal(result.value.total,2);assert.equal(result.value.customers.length,1);assert.equal(result.value.customers[0].devices,1);assert(!('endpoint' in result.value.customers[0]));
+  assert.equal(result.value.total,3);assert.equal(result.value.customers.length,1);assert(!('endpoint' in result.value.customers[0]));
   const next=await call(selector.GET,{}, 'admin', {limit:'1',offset:'1'});assert.notEqual(next.value.customers[0].id,result.value.customers[0].id);
   const search=await call(selector.GET,{}, 'admin', {q:'two@example.test'});assert.equal(search.value.customers[0].id,'cus_two');
+  const unsubscribed=await call(selector.GET,{}, 'admin', {q:'no@example.test'});assert.equal(unsubscribed.value.customers[0].devices,0);
+  const byName=await call(selector.GET,{}, 'admin', {q:'tWo'});assert.equal(byName.value.customers[0].id,'cus_two');
+  const eligible=await call(selector.GET,{}, 'admin', {eligible:'true'});assert.equal(eligible.value.total,2);assert(eligible.value.customers.every(c=>c.devices>0));
+  const deleted=await call(selector.GET,{}, 'admin', {q:'deleted@example.test'});assert.equal(deleted.value.total,0);
+  const large=validation.campaignSchema.safeParse({...campaign(),audience:Array.from({length:6000},(_,i)=>'cus_'+i),audience_mode:'selected'});assert.equal(large.success,true);
   const wildcard=await call(selector.GET,{}, 'admin', {q:'%'});assert.equal(wildcard.value.total,0);
   assert.equal(validation.campaignSchema.safeParse({...campaign(),audience:[],audience_mode:'selected'}).success,false);
   assert.equal(validation.campaignSchema.safeParse({...campaign(),audience:['cus_one'],audience_mode:'selected'}).success,true);
  }finally{await db.close()}
+});
+
+
+test('notification image uploads use dated isolated S3 keys, verified formats and no ACL',async()=>{
+ const images=load('lib/web-push/images.ts');
+ const id='11111111-1111-4111-8111-111111111111';
+ assert.equal(images.notificationImageKey('png',new Date('2026-11-03T13:30:00.123Z'),id),'notifications/2026/11/03/2026-11-03T13-30-00-123Z_'+id+'.png');
+ assert.throws(()=>images.notificationImageKey('../bad',new Date(),id));
+ assert.throws(()=>images.notificationImageType(Buffer.from('<svg>bad</svg>')));
+ assert.throws(()=>images.notificationImageType(Buffer.alloc(2*1024*1024+1)));
+ env.S3_BUCKET='qa-notification-bucket';env.S3_REGION='ap-south-1';
+ const png=Buffer.from([137,80,78,71,13,10,26,10,0]);
+ const before=imageUploads.length;const result=await images.uploadNotificationImage(png);
+ assert.equal(imageUploads.length,before+1);const object=imageUploads.at(-1);
+ assert.match(object.Key,/^notifications\/\d{4}\/\d{2}\/\d{2}\//);assert.equal(object.ContentType,'image/png');assert.equal(object.ACL,undefined);assert.equal(object.Metadata.purpose,'notification-campaign');assert.equal(object.ServerSideEncryption,'AES256');assert(result.url.endsWith(object.Key));
+ assert.equal(validation.safeImage(result.url),true);assert.equal(validation.safeImage('https://other-bucket.s3.ap-south-1.amazonaws.com/image.png'),false);
+ uploadFails=true;await assert.rejects(()=>images.uploadNotificationImage(png));uploadFails=false;
+ delete env.S3_BUCKET;delete env.S3_REGION;
 });

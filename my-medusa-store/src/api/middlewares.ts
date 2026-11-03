@@ -227,6 +227,13 @@ async function logDraftOrderHardDelete(
 export default defineMiddlewares({
   routes: [
     {
+      matcher: "/admin/push-notifications",
+      method: ["POST"],
+      // Allow large selected audiences without increasing unrelated request limits.
+      bodyParser: { sizeLimit: "5mb" },
+      middlewares: [],
+    },
+    {
       matcher: "/store/push-subscriptions",
       method: ["GET", "POST", "DELETE"],
       middlewares: [authenticate("customer", ["session", "bearer"])],
