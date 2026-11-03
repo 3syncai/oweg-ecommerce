@@ -51,6 +51,19 @@ const campaign = { id: '11111111-1111-4111-8111-111111111111', revision: 1, titl
       await logo.waitFor();
       const logoBox=await logo.boundingBox();assert(logoBox.width===76&&logoBox.height===22);
       assert.equal(writes.length, 0);
+      // History can be several screens below the editor. Details must reveal it,
+      // including when the same draft is reopened, without saving or sending.
+      for(let attempt=0;attempt<2;attempt++){
+        await page.getByRole('heading',{name:'Campaign history',exact:true}).scrollIntoViewIfNeeded();
+        await page.getByRole('button',{name:'Details',exact:true}).click();
+        const heading=page.getByRole('heading',{name:'Notification details',exact:true});
+        await heading.waitFor();
+        await page.waitForFunction(()=>document.activeElement?.textContent==='Notification details');
+        const box=await heading.boundingBox();assert(box.y>=0&&box.y<900,'Details did not reveal editor at '+width);
+        assert.equal(await page.getByLabel(/Title/).inputValue(),campaign.title);
+        await page.getByText('Draft — not sent',{exact:true}).waitFor();assert.equal(writes.length,0);
+      }
+      await page.getByRole('button',{name:'New notification',exact:true}).click();
       await page.getByLabel(/Title/).fill('A little treat ✨');
       await page.getByLabel(/Message/).fill('A customer-first fixture message');
       const uploadInput=page.getByLabel('Upload campaign image',{exact:true});
@@ -85,6 +98,7 @@ const campaign = { id: '11111111-1111-4111-8111-111111111111', revision: 1, titl
       await page.getByLabel(/Message/).fill('Edited fixture for save-before-confirm');
       await page.getByRole('button',{name:'Review & send',exact:true}).click();
       await page.getByRole('button',{name:'Confirm send',exact:true}).waitFor();
+      assert.equal(await page.getByRole('alert').evaluate(el=>el===document.activeElement),true);
       assert.equal(writes.length,2);assert.equal(writes[1].action,'save'); // A preview click never sends without confirmation.
       await page.getByRole('button',{name:'Go back',exact:true}).click();
       await page.getByRole('button',{name:'Review & send',exact:true}).click();
