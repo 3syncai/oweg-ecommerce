@@ -146,6 +146,7 @@ export default function NotificationsContent({ embedded = false }: Notifications
       ) : null}
 
       <BrowserPushPreferences />
+      <p className="text-sm text-gray-600">One permission covers browser notifications on this device. The preferences below are for email, SMS and WhatsApp.</p>
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
         {loading ? (
           <BrandLoader compact label="Loading notification settings…" />

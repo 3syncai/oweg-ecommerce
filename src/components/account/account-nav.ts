@@ -10,6 +10,7 @@ export const ACCOUNT_NAV: AccountNavItem[] = [
   { href: "/account", label: "My Account", icon: "my-account" },
   { href: "/account/orders", label: "Orders", icon: "orders" },
   { href: "/account/wishlist", label: "Wishlist", icon: "wishlist" },
+  { href: "/account/notifications", label: "Notifications", icon: "notifications" },
   { href: "/account/addresses", label: "Addresses", icon: "addresses" },
   { href: "/account/help", label: "Help & Support", icon: "help-and-support" },
 ];

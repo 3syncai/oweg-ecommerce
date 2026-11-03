@@ -443,20 +443,13 @@ html.debug-devtools-blocked body > *:not(.debug-devtools-shield) {
 }
 
 /* Header (moved from Header.tsx styled-jsx to avoid hydration jsx-* mismatches) */
-@font-face {
-  font-family: "OPTIHandelGothic-Light";
-  src: url("/fonts/OPTIHandelGothic-Light.woff2") format("woff2");
-  font-weight: 300;
-  font-style: normal;
-  font-display: swap;
-}
 
 .header-root {
   position: fixed !important;
   top: 0;
   left: 0;
   right: 0;
-  font-family: "OPTIHandelGothic-Light", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     Roboto, "Helvetica Neue", Arial;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

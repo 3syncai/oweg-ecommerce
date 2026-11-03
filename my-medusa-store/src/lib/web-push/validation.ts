@@ -27,6 +27,7 @@ export function safeImage(value: string): boolean {
 }
 const key = (bytes: number) => z.string().regex(/^[A-Za-z0-9_-]+$/).refine(s => Buffer.from(s, 'base64url').length === bytes)
 export const subscriptionSchema = z.object({
+  expected_customer_id: z.string().regex(/^cus_[A-Za-z0-9]+$/).optional(),
   endpoint: z.string().max(2048).refine(safeEndpoint, 'Unsupported push provider'),
   keys: z.object({ p256dh: key(65), auth: key(16) }).strict(),
 }).strict()

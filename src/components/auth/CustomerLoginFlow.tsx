@@ -414,7 +414,7 @@ export default function CustomerLoginFlow({
         isModal ? "p-6 md:p-7" : "p-8 md:p-10"
       } ${className}`.trim()}
       style={{
-        fontFamily: isModal ? 'OPTIHandelGothic-Light, "Inter", "Arial", sans-serif' : "inherit",
+        fontFamily: isModal ? '"Inter", "Arial", sans-serif' : "inherit",
       }}
     >
       {mounted && !isOnline && (
