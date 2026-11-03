@@ -1,4 +1,5 @@
 import { getBoundedPool } from './bounded-pool';
+import { tryGetStorefrontDatabaseUrl } from '@/lib/storefront-db';
 
 /**
  * Save Razorpay payment to database
@@ -25,12 +26,13 @@ export async function saveRazorpayPayment(payment: {
 }) {
   console.log('🔵 Attempting to save payment:', payment.razorpay_payment_id);
 
-  if (!process.env.DATABASE_URL) {
-    console.error('❌ DATABASE_URL not set!');
+  const dbUrl = tryGetStorefrontDatabaseUrl();
+  if (!dbUrl) {
+    console.error('❌ STOREFRONT_DATABASE_URL/DATABASE_URL not set!');
     return { success: false, error: 'DATABASE_URL not configured' };
   }
 
-  const pool = getBoundedPool(process.env.DATABASE_URL!);
+  const pool = getBoundedPool(dbUrl);
 
   try {
     const query = `
@@ -96,7 +98,11 @@ export async function updateOrderPaymentMetadata(orderId: string, _paymentData: 
   amount: number;
   status: string;
 }) {
-  const pool = getBoundedPool(process.env.DATABASE_URL!);
+  const dbUrl = tryGetStorefrontDatabaseUrl();
+  if (!dbUrl) {
+    return { success: false, error: "DATABASE_URL not configured" };
+  }
+  const pool = getBoundedPool(dbUrl);
 
   try {
     // Update order metadata to include payment captured info

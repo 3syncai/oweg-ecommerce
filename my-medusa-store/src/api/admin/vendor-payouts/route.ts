@@ -1,8 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Pool } from "pg"
 import {
-  listOrderIdsAlreadyOnPayout,
-  markVendorEarningsAsPaid,
+  claimVendorPayoutOrders,
   normalizePayoutOrderIds,
 } from "../../../lib/vendor-earnings"
 import { syncPendingRazorpayPayouts } from "../../../lib/vendor-payout-razorpay-sync"
@@ -112,55 +111,58 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
       return
     }
 
-    const alreadyClaimed = await listOrderIdsAlreadyOnPayout(
-      pool,
-      vendor_id,
-      scopedOrderIds
-    )
-    if (alreadyClaimed.length > 0) {
-      res.status(409).json({
-        message:
-          "One or more orders are already on a pending or completed payout",
-        order_ids: alreadyClaimed,
-      })
-      return
-    }
-
     const created_by =
       (req as any).auth_context?.actor_id || (req as any).user?.id || "admin"
     const payoutId = `vpayout_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const now = new Date()
 
-    await pool.query(
-      `
-        INSERT INTO vendor_payout (
-          id, vendor_id, amount, commission_amount, net_amount, commission_rate,
-          currency_code, transaction_id, payment_method, status, notes, order_ids,
-          created_by, created_at, updated_at
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6,
-          'inr', $7, $8, 'processed', $9, $10,
-          $11, $12, $12
-        )
-      `,
-      [
-        payoutId,
-        vendor_id,
-        amount,
-        commission_amount || 0,
-        net_amount || amount,
-        commission_rate || 0,
-        transaction_id,
-        payment_method,
-        notes || null,
-        JSON.stringify(scopedOrderIds),
-        created_by,
-        now,
-      ]
-    )
-
-    // Manual payouts are recorded as already settled by admin
-    const marked = await markVendorEarningsAsPaid(vendor_id, pool, scopedOrderIds)
+    const client = await pool.connect()
+    let marked = 0
+    try {
+      await client.query("BEGIN")
+      const claim = await claimVendorPayoutOrders(client, vendor_id, scopedOrderIds)
+      marked = claim.marked
+      await client.query(
+        `
+          INSERT INTO vendor_payout (
+            id, vendor_id, amount, commission_amount, net_amount, commission_rate,
+            currency_code, transaction_id, payment_method, status, notes, order_ids,
+            created_by, created_at, updated_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6,
+            'inr', $7, $8, 'processed', $9, $10,
+            $11, $12, $12
+          )
+        `,
+        [
+          payoutId,
+          vendor_id,
+          amount,
+          commission_amount || 0,
+          net_amount || amount,
+          commission_rate || 0,
+          transaction_id,
+          payment_method,
+          notes || null,
+          JSON.stringify(claim.claimedOrderIds),
+          created_by,
+          now,
+        ]
+      )
+      await client.query("COMMIT")
+    } catch (error: any) {
+      await client.query("ROLLBACK").catch(() => {})
+      if (error?.statusCode === 409) {
+        res.status(409).json({
+          message: error.message,
+          order_ids: error.order_ids || scopedOrderIds,
+        })
+        return
+      }
+      throw error
+    } finally {
+      client.release()
+    }
 
     const { rows } = await pool.query(`SELECT * FROM vendor_payout WHERE id = $1`, [
       payoutId,

@@ -35,6 +35,12 @@ export async function clearVendorClientCache(): Promise<void> {
 
   document.cookie = VENDOR_AUTH_COOKIE;
 
+  try {
+    await fetch("/api/auth/session", { method: "DELETE", credentials: "same-origin" });
+  } catch {
+    // ignore — still clear client caches
+  }
+
   if ("caches" in window) {
     try {
       const cacheNames = await caches.keys();

@@ -5,15 +5,10 @@ import { boundedUpload } from "../../../../lib/bounded-upload"
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
 import path from "path"
 import { randomUUID } from "crypto"
+import { setAllowlistedCors } from "../../../../lib/store-cors-allowlist"
 
-// CORS headers helper
 function setCorsHeaders(res: MedusaResponse, req?: MedusaRequest) {
-  const origin = req?.headers.origin || '*'
-  // When using credentials, we must specify the exact origin, not '*'
-  res.setHeader('Access-Control-Allow-Origin', origin)
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
-  res.setHeader('Access-Control-Allow-Credentials', 'true')
+  setAllowlistedCors(res, req)
 }
 
 export async function OPTIONS(req: MedusaRequest, res: MedusaResponse) {

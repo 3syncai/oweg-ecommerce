@@ -61,18 +61,27 @@ export async function settleReturnEarnings(pool:Pool,returnId:string) {
    for(const vendor of vendors) {
      if(vendor.status==='REVERSED'||Number(vendor.net_amount)<=0)continue
      const basis=basisFor('vendor_id',vendor.vendor_id);if(!basis.total||!basis.returned)continue
+     // net_amount already includes return_fee/reverse logistics when stamped on the sale row.
      const amount=await adjustment(client,{returnId,kind:'vendor',targetId:String(vendor.id),base:Math.round(Number(vendor.net_amount)*100),...basis})
      if(!amount)continue
      // Keep the original sale intact. A separate debit also works after the sale was paid out.
      await client.query(`INSERT INTO vendor_earnings_log
        SELECT (jsonb_populate_record(NULL::vendor_earnings_log,to_jsonb(v)||jsonb_build_object(
          'id',$2::text,'order_id',$3::text,'gross_amount',0,'taxable_amount',0,'gst_amount',0,
-         'commission_amount',0,'tcs_amount',0,'tds_amount',0,'logistic_fee',0,'return_fee',0,
+         'commission_amount',0,'tcs_amount',0,'tds_amount',0,'logistic_fee',0,
+         'return_fee',ROUND((COALESCE(v.return_fee,0)::numeric * $5::numeric) / NULLIF($6::numeric,0), 2),
          'platform_fee',0,'platform_gst',0,'partner_commission',0,'partner_gst',0,'commission_gst',0,
          'logistic_gst',0,'listing_gst',0,'listing_total',0,'cancellation_fee',0,
          'customer_shipping_fee',0,'customer_shipping_gst',0,'customer_shipping_total',0,
          'net_amount',$4::numeric,'status','CREDITED','credited_at',now(),'unlock_at',NULL,'created_at',now(),'updated_at',now()))).*
-       FROM vendor_earnings_log v WHERE v.id=$1 ON CONFLICT DO NOTHING`,[vendor.id,`vereturn_${returnId}_${vendor.vendor_id}`,`clawback:return:${returnId}`,-amount/100])
+       FROM vendor_earnings_log v WHERE v.id=$1 ON CONFLICT DO NOTHING`,[
+         vendor.id,
+         `vereturn_${returnId}_${vendor.vendor_id}`,
+         `clawback:return:${returnId}`,
+         -amount/100,
+         basis.returned,
+         basis.total,
+       ])
    }
    // Keep holds while any sibling return is unresolved. Never unlock a different order.
    await client.query(`UPDATE vendor_earnings_log SET status='CREDITED',credited_at=now(),updated_at=now()

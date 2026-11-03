@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { checkoutOrderAccessError } from "@/lib/checkout-order-access";
 import { loadCheckoutOrder } from "@/lib/checkout-order";
 import { completedCheckoutCartMatches } from "@/lib/completed-checkout-cart";
+import { CART_COOKIE, clearCartCookieOptions } from "@/lib/cart-cookie";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ cleared: false, reason: "cart_changed_since_checkout" });
   }
   const result = NextResponse.json({ cleared: true, clearedCartId: purchasedCartId });
-  result.cookies.set("cart_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
+  result.cookies.set(CART_COOKIE, "", clearCartCookieOptions());
   return result;
 }

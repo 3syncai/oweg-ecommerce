@@ -7,7 +7,7 @@ import { OPTIONS as productOptions, updateOffer } from "../route"
 export const OPTIONS = productOptions
 
 export async function PATCH(req: MedusaRequest, res: MedusaResponse) {
-  res.setHeader("Access-Control-Allow-Origin", "*")
+  /* CORS via vendorCorsMiddleware */ void 0
   res.setHeader("Access-Control-Allow-Credentials", "true")
   const auth = await requireApprovedVendor(req, res)
   if (!auth) return

@@ -2,8 +2,8 @@ import { forceSettleDebugOrder } from "@/lib/debug-controller/settlement";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { Pool } from "pg";
-import { getMeiliClient, getProductsIndexName, waitForMeiliTask } from "@/lib/meilisearch";
-import { scheduleVendorEarningsOnDelivery } from "@/lib/vendor-earnings";
+import { getMeiliAdminClient, getProductsIndexName, waitForMeiliTask } from "@/lib/meilisearch";
+import { scheduleVendorEarningsOnDelivery } from "@/lib/medusa-vendor-earnings";
 import {
   extractDebugAuthToken,
   verifyDebugControllerToken,
@@ -74,7 +74,7 @@ async function purgeAbandonedCarts(days = 7) {
 async function removeMeiliProduct(productId: string) {
   const index = getProductsIndexName();
   try {
-    const client = getMeiliClient();
+    const client = getMeiliAdminClient();
     const task = await client.index(index).deleteDocument(productId);
     await waitForMeiliTask(client, task.taskUid);
   } catch (error: unknown) {
@@ -88,7 +88,7 @@ async function removeMeiliProduct(productId: string) {
 
 async function syncMeiliIndex() {
   const index = getProductsIndexName();
-  const client = getMeiliClient();
+  const client = getMeiliAdminClient();
   try {
     await client.getIndex(index);
   } catch {

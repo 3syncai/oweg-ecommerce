@@ -19,14 +19,21 @@ const mysql = require('mysql2/promise');
 const { createProductsWorkflow } = require('@medusajs/medusa/core-flows');
 const { Modules, ProductStatus } = require('@medusajs/framework/utils');
 
-// OpenCart database configuration
-const openCartConfig = {
-  host: process.env.OPENCART_DB_HOST || '147.93.31.253',
-  port: parseInt(process.env.OPENCART_DB_PORT || '3306', 10),
-  user: process.env.OPENCART_DB_USER || 'oweg_user2',
-  password: process.env.OPENCART_DB_PASSWORD || 'Oweg#@123',
-  database: process.env.OPENCART_DB_NAME || 'oweg_db',
-};
+function requireOpenCartDbConfig() {
+  const host = process.env.OPENCART_DB_HOST?.trim()
+  const user = process.env.OPENCART_DB_USER?.trim()
+  const password = process.env.OPENCART_DB_PASSWORD
+  const database = process.env.OPENCART_DB_NAME?.trim()
+  const port = parseInt(process.env.OPENCART_DB_PORT || '3306', 10)
+  if (!host || !user || password == null || password === '' || !database) {
+    throw new Error(
+      'Missing OpenCart DB env: OPENCART_DB_HOST, OPENCART_DB_USER, OPENCART_DB_PASSWORD, OPENCART_DB_NAME'
+    )
+  }
+  return { host, port, user, password, database }
+}
+
+const openCartConfig = requireOpenCartDbConfig()
 
 // Migration configuration
 const BATCH_SIZE = 50; // Products per batch

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { spendCoins } from "@/lib/wallet-ledger"
 import { requireWalletMutationAuth } from "@/lib/wallet-mutation-auth"
+import { checkRateLimit, clientIpFromRequest } from "@/lib/simple-rate-limit"
 
 export const dynamic = "force-dynamic"
 
@@ -14,6 +15,15 @@ export async function POST(req: NextRequest) {
     try {
         const { auth, errorResponse } = await requireWalletMutationAuth(req)
         if (errorResponse) return errorResponse
+
+        const rateKey = `wallet-redeem:${auth.customerId || clientIpFromRequest(req)}`
+        const limited = checkRateLimit({ key: rateKey, limit: 20, windowMs: 60_000 })
+        if (!limited.allowed) {
+            return NextResponse.json(
+                { error: "Too many redeem attempts. Try again shortly." },
+                { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } }
+            )
+        }
 
         const body = await req.json()
         const { order_id, amount } = body

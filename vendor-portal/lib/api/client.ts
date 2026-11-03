@@ -76,7 +76,7 @@ export async function apiRequest<T>(
     defaultHeaders['x-publishable-api-key'] = PUBLISHABLE_KEY
   }
 
-  // Add authorization header if token exists
+  // Prefer same-origin Medusa proxy + HttpOnly cookie; legacy localStorage token as fallback.
   const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
   if (token) {
     defaultHeaders['Authorization'] = `Bearer ${token}`
@@ -92,6 +92,7 @@ export async function apiRequest<T>(
       },
       data: options.data,
       params: options.params,
+      withCredentials: true,
       ...options,
     })
 
@@ -164,9 +165,11 @@ export const vendorAuthApi = {
   },
 
   logout: async () => {
-    return apiRequest('/vendor/auth/logout', {
-      method: 'POST',
-    })
+    try {
+      await apiRequest('/vendor/auth/logout', { method: 'POST' })
+    } finally {
+      await fetch('/api/auth/session', { method: 'DELETE', credentials: 'same-origin' }).catch(() => undefined)
+    }
   },
 
   changePassword: async (currentPassword: string, newPassword: string) => {
@@ -332,9 +335,26 @@ export const vendorSignupApi = {
       headers['x-publishable-api-key'] = PUBLISHABLE_KEY
     }
 
+    if (type !== 'report') {
+      const session = await axios.post<{ token: string }>(
+        `${API_URL}/store/vendor/upload-session`,
+        {},
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(PUBLISHABLE_KEY ? { 'x-publishable-api-key': PUBLISHABLE_KEY } : {}),
+          },
+        }
+      )
+      if (session.data?.token) {
+        headers['x-vendor-signup-token'] = session.data.token
+      }
+    }
+
     try {
       const response = await axios.post<UploadResponse>(`${API_URL}/store/vendor/uploads`, formData, {
         headers,
+        withCredentials: true,
       })
       return response.data
     } catch (error: unknown) {

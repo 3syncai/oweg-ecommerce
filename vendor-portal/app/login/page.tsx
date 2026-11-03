@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import { safeVendorRedirect } from '@/lib/vendor-redirect'
 import Link from 'next/link'
-import { vendorAuthApi, vendorProfileApi } from '@/lib/api/client'
+import { vendorProfileApi } from '@/lib/api/client'
 import { ArrowRight, ChartNoAxesColumnIncreasing, CreditCard, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail, ShieldCheck, Truck, UsersRound } from 'lucide-react'
 import logo from '@/public/vendor/oweg-wordmark.svg'
 import laptopArtwork from '@/public/vendor/login-laptop.png'
@@ -44,15 +44,24 @@ function LoginForm() {
     setError('')
 
     try {
-      const response = await vendorAuthApi.login(email, password)
-      const token = response.token
+      const sessionRes = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ email, password, keepSignedIn }),
+      })
+      const response = await sessionRes.json().catch(() => ({}))
+      if (!sessionRes.ok) {
+        throw new Error(
+          typeof response?.message === 'string' ? response.message : 'Login failed'
+        )
+      }
 
-      // Store token in localStorage AND cookie for middleware
-      localStorage.setItem('vendor_token', token)
-      localStorage.setItem('vendor_user', JSON.stringify(response.vendor_user))
-
-      // Also set cookie for middleware to detect
-      document.cookie = `vendor_token=${token}; path=/; ${keepSignedIn ? 'max-age=86400; ' : ''}SameSite=Lax`
+      // Non-secret profile only — JWT lives in HttpOnly cookie.
+      if (response?.vendor_user) {
+        localStorage.setItem('vendor_user', JSON.stringify(response.vendor_user))
+      }
+      localStorage.removeItem('vendor_token')
 
       // Check if password reset needed
       if (response?.vendor_user?.must_reset_password) {

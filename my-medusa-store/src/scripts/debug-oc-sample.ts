@@ -1,16 +1,11 @@
 import mysql from 'mysql2/promise';
 import * as dotenv from 'dotenv';
 import path from 'path';
+import { requireOpenCartDbConfig } from './opencart-db-config';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
-const OPENCART_DB = {
-    host: process.env.OPENCART_DB_HOST || '147.93.31.253',
-    port: parseInt(process.env.OPENCART_DB_PORT || '3306', 10),
-    user: process.env.OPENCART_DB_USER || 'oweg_user2',
-    password: process.env.OPENCART_DB_PASSWORD || 'Oweg#@123',
-    database: process.env.OPENCART_DB_NAME || 'oweg_db',
-};
+const OPENCART_DB = requireOpenCartDbConfig();
 
 async function debugOC() {
     const connection = await mysql.createConnection(OPENCART_DB);

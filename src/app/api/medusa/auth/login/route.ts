@@ -11,6 +11,7 @@ import {
   isPasswordResetRequired,
   passwordResetRequiredPayload,
 } from "../_lib/password-recovery"
+import { clientIpFromRequest, rateLimitOrNull } from "@/lib/simple-rate-limit"
 
 export const dynamic = "force-dynamic"
 
@@ -88,6 +89,15 @@ function toErrorMessage(errorPayload: unknown, fallback: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = clientIpFromRequest(req)
+    const blocked = rateLimitOrNull(req, {
+      key: `customer-login:${ip}`,
+      limit: 15,
+      windowMs: 60_000,
+      message: "Too many sign-in attempts. Try again shortly.",
+    })
+    if (blocked) return blocked
+
     const body = (await req.json()) as LoginBody
     const forwardedHeaders = {
       origin: req.headers.get("origin") ?? undefined,

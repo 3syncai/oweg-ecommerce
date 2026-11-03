@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { settleOrderCancellationWallet } from "@/lib/order-cancel-wallet-settlement"
 import { verifyMedusaWebhookSecret } from "@/lib/medusa-webhook-auth"
-import { getPool } from "@/lib/wallet-ledger"
-import { reverseVendorEarningsForOrder } from "@/lib/vendor-earnings"
 
 export const dynamic = "force-dynamic"
 
@@ -71,25 +69,14 @@ export async function POST(req: NextRequest) {
             })
         }
 
+        // Vendor earnings reverse/cancel-fee runs on Medusa cancel paths only.
+        // Do not use the stale storefront vendor-earnings duplicate here.
         const wallet = await settleOrderCancellationWallet({
             orderId,
             event: String(event || "order.cancelled"),
             reason: `Order ${event || "cancelled/refunded"}`,
         })
         console.log("Coin reversal result:", wallet.earned_reverse)
-
-        let vendorEarningsReversal: Awaited<ReturnType<typeof reverseVendorEarningsForOrder>> | null = null
-        try {
-            const pool = getPool()
-            vendorEarningsReversal = await reverseVendorEarningsForOrder(
-                orderId,
-                pool,
-                event === "order.return_approved" ? "return" : "cancelled"
-            )
-            console.log("[vendor-earnings] reversal:", vendorEarningsReversal)
-        } catch (err) {
-            console.error("[vendor-earnings] reversal failed:", err)
-        }
 
         return NextResponse.json({
             success: true,
@@ -98,7 +85,7 @@ export async function POST(req: NextRequest) {
             coin_reversal: wallet.earned_reverse,
             coin_discount_refund: wallet.spend_refund,
             customer_affiliate: wallet.customer_affiliate,
-            vendor_earnings: vendorEarningsReversal
+            vendor_earnings: "handled_by_medusa",
         })
     } catch (error) {
         console.error("Order cancellation webhook error:", error)
