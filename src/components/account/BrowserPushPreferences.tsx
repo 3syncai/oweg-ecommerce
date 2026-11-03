@@ -1,8 +1,10 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useAuth } from '@/contexts/AuthProvider'
 import { enableBrowserPush, testBrowserNotification } from '@/lib/browser-push'
 
 export default function BrowserPushPreferences() {
+  const { customer } = useAuth()
   const [supported, setSupported] = useState(false)
   const [active, setActive] = useState(false)
   const [ready, setReady] = useState(false)
@@ -13,21 +15,24 @@ export default function BrowserPushPreferences() {
     const available = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
     setSupported(available)
     if (!available) { setBusy(false); return }
-    navigator.serviceWorker.getRegistration('/').then(async registration => {
+    const read = () => { void navigator.serviceWorker.getRegistration('/').then(async registration => {
       if (!registration?.active) { if (mounted) setMessage('Browser notifications are available on the production website. Reload after setup.'); return }
       const s = await registration.pushManager.getSubscription()
       const response = await fetch('/api/medusa/push-subscriptions' + (s ? '?endpoint=' + encodeURIComponent(s.endpoint) : ''), { cache: 'no-store', credentials: 'include', signal: AbortSignal.timeout(8000) })
       const data = await response.json()
       if (!response.ok) throw new Error('Unable to read settings')
       if (mounted) { setActive(Boolean(data.active) && Notification.permission === 'granted'); setReady(Boolean(data.configured)); if (!data.configured) setMessage('Browser notifications are being set up. Please try again later.') }
-    }).catch(() => { if (mounted) setMessage('Unable to read this browser’s settings.') }).finally(() => { if (mounted) setBusy(false) })
-    return () => { mounted = false }
-  }, [])
+    }).catch(() => { if (mounted) setMessage('Unable to read this browser’s settings.') }).finally(() => { if (mounted) setBusy(false) }) }
+    read()
+    window.addEventListener('oweg:push-updated',read)
+    window.addEventListener('focus',read)
+    return () => { mounted = false; window.removeEventListener('oweg:push-updated',read); window.removeEventListener('focus',read) }
+  }, [customer?.id])
   async function toggle() {
     if (busy || active) return
     setBusy(true); setMessage('')
     try {
-      await enableBrowserPush()
+      await enableBrowserPush({ customerId: customer?.id })
       setActive(true)
       setMessage('You’re subscribed to OWEG offers and updates on this browser.')
     } catch (e) { setMessage(e instanceof Error ? e.message : 'Unable to update notifications.') }

@@ -4,12 +4,12 @@ const path = require('node:path');
 const esbuild = require('esbuild');
 const ts = require('typescript'), fs = require('node:fs'), vm = require('node:vm');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'C:/Users/jhakr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
-async function bundle(entry, unused, props = '') {
-  return esbuild.build({ stdin: { resolveDir: process.cwd(), loader: 'tsx', contents: `import React from 'react';import{createRoot}from'react-dom/client';import Component from '${entry}';createRoot(document.getElementById('root')).render(<Component ${props}/>);` },
+async function bundle(entry, unused, props = '', extra = '') {
+  return esbuild.build({ stdin: { resolveDir: process.cwd(), loader: 'tsx', contents: `import React from 'react';import{createRoot}from'react-dom/client';import Component from '${entry}';${extra};createRoot(document.getElementById('root')).render(<Component ${props}/>);` },
     bundle: true, write: false, outdir: 'qa', format: 'iife', jsx: 'automatic', loader: { '.svg': 'dataurl' }, define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'fixture-boundaries', setup(b) {
-      b.onResolve({ filter: /(@medusajs\/(admin-sdk|icons)|with-admin-page-access|admin-backend$|admin-auth-fetch$|^next\/link$)/ }, a => ({ path: a.path, namespace: 'qa' }));
-      b.onLoad({ filter: /.*/, namespace: 'qa' }, a => ({ loader: 'js', contents: a.path === 'next/link' ? "import React from 'react';export default function Link(p){return React.createElement('a',p,p.children)}" : a.path.includes('admin-sdk') ? 'export const defineRouteConfig=x=>x;' : a.path.includes('icons') ? 'export const BellAlert=()=>null;' : a.path.includes('with-admin-page-access') ? 'export const withAdminPageAccess=x=>x;' : a.path.includes('admin-backend') ? "export const getAdminBackendUrl=()=>'';" : 'export const getAdminAuthHeaders=x=>new Headers(x);' }));
+      b.onResolve({ filter: /(@medusajs\/(admin-sdk|icons)|with-admin-page-access|admin-backend$|admin-auth-fetch$|AuthProvider$|^next\/(link|image|navigation)$)/ }, a => ({ path: a.path, namespace: 'qa' }));
+      b.onLoad({ filter: /.*/, namespace: 'qa' }, a => ({ loader: 'js', contents: a.path.endsWith('AuthProvider') ? "export const useAuth=()=>({customer:window.qaCustomer===undefined?{id:'cus_test'}:window.qaCustomer,initializing:false});" : a.path === 'next/navigation' ? "export const usePathname=()=>window.location.pathname;" : a.path === 'next/image' ? "import React from 'react';export default function Image({unoptimized,...p}){return React.createElement('img',p)}" : a.path === 'next/link' ? "import React from 'react';export default function Link(p){return React.createElement('a',p,p.children)}" : a.path.includes('admin-sdk') ? 'export const defineRouteConfig=x=>x;' : a.path.includes('icons') ? 'export const BellAlert=()=>null;' : a.path.includes('with-admin-page-access') ? 'export const withAdminPageAccess=x=>x;' : a.path.includes('admin-backend') ? "export const getAdminBackendUrl=()=>'';" : 'export const getAdminAuthHeaders=x=>new Headers(x);' }));
       b.onResolve({ filter: /^@\// }, a => ({ path: path.resolve('src', a.path.slice(2) + '.ts') }));
       b.onResolve({ filter: /^[^./]/ }, a => a.path.startsWith('@/') ? undefined : ({ path: require.resolve(a.path, { paths: [process.cwd()] }) }));
     } }],
@@ -102,24 +102,24 @@ const campaign = { id: '11111111-1111-4111-8111-111111111111', revision: 1, titl
       await page.route('**/*',route=>{
         if(new URL(route.request().url()).pathname.startsWith('/api/')){
           if(route.request().method()==='POST'){writes++;return route.fulfill({status:fail?503:200,contentType:'application/json',body:JSON.stringify(fail?{error:'Fixture unavailable'}:{active:true})})}
-          return route.fulfill({contentType:'application/json',body:JSON.stringify({configured:true,publicKey:'B'.repeat(87)})});
+          return route.fulfill({contentType:'application/json',body:JSON.stringify({configured:true,customer_id:'cus_test',active:writes>0&&!fail,publicKey:'B'.repeat(87)})});
         }
         return route.fulfill({contentType:'text/html',body:'<div id="root"></div>'});
       });
       await page.goto('http://localhost:34567/');
       await page.evaluate(()=>{
-        window.permissionCalls=0;window.unsubscribed=0;window.nativeChecks=0;
+        window.permissionCalls=0;window.unsubscribed=0;window.nativeChecks=0;window.qaSubscription=null;
         Object.defineProperty(window,'PushManager',{value:class{}});
         Object.defineProperty(window,'Notification',{value:{permission:'granted',requestPermission:()=>{window.permissionCalls++;return Promise.resolve('granted')}}});
         const sub={endpoint:'https://fcm.googleapis.com/fcm/send/qa',toJSON:()=>({endpoint:'https://fcm.googleapis.com/fcm/send/qa',expirationTime:null,keys:{p256dh:'test',auth:'test'}}),unsubscribe:async()=>{window.unsubscribed++;return true}};
-        Object.defineProperty(navigator,'serviceWorker',{value:{getRegistration:async()=>({active:true,pushManager:{getSubscription:async()=>null,subscribe:async()=>sub},showNotification:async()=>{window.nativeChecks++},getNotifications:async()=>[{}]})}});
+        Object.defineProperty(navigator,'serviceWorker',{value:{getRegistration:async()=>({active:true,pushManager:{getSubscription:async()=>window.qaSubscription,subscribe:async()=>{window.qaSubscription=sub;return sub}},showNotification:async()=>{window.nativeChecks++},getNotifications:async()=>[{}]})}});
       });
       await page.addScriptTag({content:customer.outputFiles.find(f=>f.path.endsWith('.js')).text});
       const enable=page.getByRole('button',{name:'Enable notifications',exact:true});await enable.waitFor();
       assert.equal(await page.evaluate(()=>window.permissionCalls),0);
       await enable.click();
       await page.getByText(fail?'Fixture unavailable':'You’re subscribed to OWEG offers and updates on this browser.',{exact:true}).waitFor();
-      assert.equal(writes,1); assert.equal(await page.evaluate(()=>window.permissionCalls),1);
+      assert.equal(writes,1); assert.equal(await page.evaluate(()=>window.permissionCalls),0);
       assert.equal(await page.evaluate(()=>window.unsubscribed),fail?1:0);
       if(!fail){await page.getByRole('button',{name:'Test notification on this device',exact:true}).click();await page.getByText(/Your browser created the test notification/).waitFor();assert.equal(await page.evaluate(()=>window.nativeChecks),1);assert.equal(writes,1);}
       await page.close();
@@ -146,6 +146,98 @@ const campaign = { id: '11111111-1111-4111-8111-111111111111', revision: 1, titl
     await page.close();
   }}finally{await deliveryBrowser.close()}
   console.log('PASS delivery pincode layout/touch targets at 320/360/390/642/768/1280, no overflow and submit preserved.');
+  const onboarding=await bundle('./src/components/account/PushNotificationPrompt.tsx',false,'',"import{disableBrowserPush,enableBrowserPush}from'./src/lib/browser-push';window.qaDisable=disableBrowserPush;window.qaEnable=enableBrowserPush;");
+  const profile=await bundle('./src/components/mobile/MobileProfileSheet.tsx',false,'customer={{id:"cus_test"}} customerName="Test customer" deliverLocation="401107" onClose={()=>{window.qaMenuClosed=true}} onLogin={()=>{}} onSignup={()=>{}} onSignOut={()=>{}}');
+  const promptBrowser=await chromium.launch({executablePath:process.env.QA_CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+  async function promptFixture(options={}){
+    const page=await promptBrowser.newPage({viewport:{width:options.width||390,height:844}});
+    let registered=false,writes=0,reads=0;
+    await page.addInitScript(options=>{
+      window.qaCustomer=options.guest?null:{id:'cus_test'};
+      window.qaUnsubscribed=0;
+      window.qaBlockSubscribe=Boolean(options.blockSubscribe);
+      Object.defineProperty(navigator,'standalone',{value:Boolean(options.standalone),configurable:true});
+      if(options.ios)Object.defineProperty(navigator,'userAgent',{value:'iPhone Safari',configurable:true});
+      Object.defineProperty(window,'PushManager',{value:class{},configurable:true});
+      Object.defineProperty(window,'Notification',{value:{permission:localStorage.getItem('qa.permission')||options.permission||'default',requestPermission:async()=>{
+        localStorage.setItem('qa.promptCalls',String(Number(localStorage.getItem('qa.promptCalls')||0)+1));window.Notification.permission='granted';localStorage.setItem('qa.permission','granted');return 'granted';
+      }},configurable:true});
+      const sub={endpoint:'https://fcm.googleapis.com/fcm/send/fixture',toJSON:()=>({endpoint:'https://fcm.googleapis.com/fcm/send/fixture',keys:{p256dh:'fixture',auth:'fixture'}}),unsubscribe:async()=>{window.qaUnsubscribed++;localStorage.removeItem('qa.subscription');window.qaSubscription=null;return true}};
+      window.qaSubscription=localStorage.getItem('qa.subscription')==='1'?sub:null;
+      Object.defineProperty(navigator,'serviceWorker',{value:{getRegistration:async()=>({active:true,pushManager:{getSubscription:async()=>window.qaSubscription,subscribe:async()=>{
+        if(window.qaBlockSubscribe)await new Promise(resolve=>{window.qaReleaseSubscribe=resolve});
+        window.qaSubscription=sub;localStorage.setItem('qa.subscription','1');return sub;
+      }}})},configurable:true});
+    },options);
+    await page.route('**/*',route=>{
+      const req=route.request();const u=new URL(req.url());
+      if(u.pathname==='/api/medusa/push-subscriptions'){
+        if(req.method()==='POST'){writes++;const body=req.postDataJSON();assert.equal(body.expected_customer_id,'cus_test');registered=true;return route.fulfill({contentType:'application/json',body:'{"active":true}'})}
+        if(req.method()==='DELETE'){registered=false;return route.fulfill({contentType:'application/json',body:'{"active":false}'})}
+        reads++;return route.fulfill({contentType:'application/json',body:JSON.stringify({configured:true,customer_id:options.wrongAccount?'cus_other':'cus_test',active:registered&&u.searchParams.has('endpoint'),publicKey:'B'.repeat(87)})});
+      }
+      return route.fulfill({contentType:'text/html',body:'<div id="root"></div>'});
+    });
+    async function render(){await page.addStyleTag({content:utilityCss+'\n'+onboarding.outputFiles.find(p=>p.path.endsWith('.css')).text});await page.addScriptTag({content:onboarding.outputFiles.find(p=>p.path.endsWith('.js')).text})}
+    await page.goto('http://onboarding-fixture.test'+(options.path||'/'));await render();
+    return {page,render,writes:()=>writes,reads:()=>reads,clearRegistration:()=>{registered=false}};
+  }
+  try{
+    for(const width of [320,390,768,1280]){
+      const fixture=await promptFixture({width});const page=fixture.page;
+      await page.getByRole('button',{name:'Enable notifications',exact:true}).waitFor();
+      assert.equal(await page.evaluate(()=>localStorage.getItem('qa.promptCalls')),null);assert.equal(fixture.writes(),0);
+      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'onboarding overflow '+width);
+      const enable=await page.getByRole('button',{name:'Enable notifications',exact:true}).boundingBox();assert(enable.height>=44);
+      await page.getByRole('button',{name:'Enable notifications',exact:true}).click();
+      await page.waitForFunction(()=>!document.querySelector('[aria-labelledby="push-onboarding-title"]'));
+      assert.equal(fixture.writes(),1);assert.equal(await page.evaluate(()=>localStorage.getItem('qa.promptCalls')),'1');
+      await page.reload();await fixture.render();await page.waitForTimeout(1600);
+      assert.equal(fixture.writes(),1);assert.equal(await page.evaluate(()=>localStorage.getItem('qa.promptCalls')),'1');
+      fixture.clearRegistration();await page.evaluate(()=>localStorage.removeItem('qa.subscription'));
+      await page.reload();await fixture.render();await page.waitForTimeout(1700);
+      assert.equal(fixture.writes(),2);assert.equal(await page.evaluate(()=>localStorage.getItem('qa.promptCalls')),'1');
+      await page.close();
+    }
+    const later=await promptFixture();await later.page.getByRole('button',{name:'Not now',exact:true}).click();await later.page.reload();await later.render();await later.page.waitForTimeout(1500);assert.equal(await later.page.getByRole('button',{name:'Enable notifications',exact:true}).count(),0);assert.equal(later.writes(),0);await later.page.close();
+    const guest=await promptFixture({guest:true,standalone:true});await guest.page.getByRole('button',{name:'Enable notifications',exact:true}).click();await guest.page.getByRole('link',{name:'Sign in to finish',exact:true}).waitFor();assert.equal(guest.writes(),0);assert.equal(guest.reads(),0);await guest.page.close();
+    for(const options of [{permission:'denied'},{ios:true},{path:'/checkout'},{permission:'granted',wrongAccount:true}]){
+      const fixture=await promptFixture(options);await fixture.page.waitForTimeout(1600);assert.equal(await fixture.page.getByRole('button',{name:'Enable notifications',exact:true}).count(),0);assert.equal(fixture.writes(),0);assert.equal(await fixture.page.evaluate(()=>localStorage.getItem('qa.promptCalls')),null);await fixture.page.close();
+    }
+    const race=await promptFixture({blockSubscribe:true});await race.page.getByRole('button',{name:'Enable notifications',exact:true}).click();await race.page.waitForFunction(()=>typeof window.qaReleaseSubscribe==='function');await race.page.evaluate(async()=>{await window.qaDisable();window.qaReleaseSubscribe()});await race.page.getByText('Notification setup cancelled. Please try again.',{exact:true}).waitFor();assert.equal(race.writes(),0);assert.equal(await race.page.evaluate(()=>window.qaUnsubscribed),1);assert.match(await race.page.evaluate(async()=>{try{await window.qaEnable({customerId:'cus_test'});return 'unexpected success'}catch(e){return e.message}}),/cancelled/);assert.equal(race.writes(),0);await race.page.close();
+    const menu=await promptBrowser.newPage({viewport:{width:390,height:844}});await menu.route('**/*',r=>r.fulfill({contentType:'text/html',body:'<div id="root"></div>'}));await menu.goto('http://profile-fixture.test/');await menu.addStyleTag({content:utilityCss});await menu.addScriptTag({content:profile.outputFiles.find(p=>p.path.endsWith('.js')).text});const link=menu.getByRole('link',{name:'Notifications',exact:true});assert.equal(await link.getAttribute('href'),'/account/notifications');await link.evaluate(el=>el.addEventListener('click',e=>e.preventDefault()));await link.click();assert.equal(await menu.evaluate(()=>window.qaMenuClosed),true);await menu.close();
+    console.log('PASS notification onboarding: mobile/desktop opt-in, no automatic native prompts, one permission across reload/login recovery, guest PWA, dismissal, blocked/iOS/checkout safeguards, logout race and mobile-menu link.');
+  }finally{await promptBrowser.close()}
+
+  const inboxBundle=await bundle('./src/components/account/NotificationInbox.tsx',false);
+  const inboxBrowser=await chromium.launch({executablePath:process.env.QA_CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+  try{
+    for(const width of [320,390,768,1280]){
+      const page=await inboxBrowser.newPage({viewport:{width,height:844}});let fail=false;
+      await page.route('**/*',route=>{
+        if(route.request().url().includes('/api/medusa/push-inbox')){
+          if(fail){fail=false;return route.fulfill({status:503,contentType:'application/json',body:'{}'})}
+          const second=route.request().url().includes('offset=20');
+          return route.fulfill({contentType:'application/json',body:JSON.stringify({notifications:[{id:second?'older':'latest',title:second?'Older update':'Diwali offer',body:'Your saved update '.repeat(15),url:'/flash-sale',image:null,sent_at:new Date().toISOString(),expired:second}],has_more:!second})})
+        }
+        return route.fulfill({contentType:'text/html',body:'<div id="root"></div>'})
+      });
+      await page.goto('http://inbox-fixture.test/notifications');
+      await page.addStyleTag({content:inboxBundle.outputFiles.find(p=>p.path.endsWith('.css')).text});
+      await page.addScriptTag({content:inboxBundle.outputFiles.find(p=>p.path.endsWith('.js')).text});
+      await page.getByRole('heading',{name:'Diwali offer'}).waitFor();
+      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'inbox overflow '+width);
+      assert.equal(await page.getByRole('link',{name:'Settings',exact:true}).getAttribute('href'),'/account/notifications');
+      fail=true;await page.getByRole('button',{name:'Next',exact:true}).click();await page.getByRole('alert').waitFor();
+      await page.getByRole('button',{name:'Try again'}).click();await page.getByRole('heading',{name:'Older update'}).waitFor();
+      await page.getByText('Offer ended',{exact:true}).waitFor();assert.equal(await page.getByRole('link',{name:'View update'}).count(),0);
+      assert.equal(await page.getByRole('button',{name:'Next',exact:true}).isDisabled(),true);
+      await page.getByRole('button',{name:'Previous',exact:true}).click();await page.getByRole('heading',{name:'Diwali offer'}).waitFor();
+      await page.close();
+    }
+    console.log('PASS customer inbox: responsive layouts, isolated feed, pagination, error retry, expired offer and separate settings.');
+  }finally{await inboxBrowser.close()}
+
   // Execute the real worker listeners with a fake Serwist/browser environment.
   const events={},notifications=[],opened=[];
   const self={location:{origin:'https://www.0weg.in'},addEventListener:(name,fn)=>events[name]=fn,registration:{showNotification:async(...args)=>notifications.push(args)},clients:{matchAll:async()=>[{url:'https://www.0weg.in/checkout',focus:async()=>{throw new Error('Must not steal checkout')}}],openWindow:async url=>opened.push(url)}};

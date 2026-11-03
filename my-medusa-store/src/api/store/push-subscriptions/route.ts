@@ -10,7 +10,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   if (!actor(req)) return res.status(401).json({ error: 'Please sign in.' })
   const endpoint = typeof req.query.endpoint === 'string' ? req.query.endpoint.slice(0, 2048) : ''
   const state = endpoint ? await getSharedDbPool().query('SELECT 1 FROM oweg_push_subscription WHERE customer_id=$1 AND endpoint=$2 AND active', [actor(req), endpoint]) : null
-  return res.json({ configured: pushConfigured(), publicKey: pushConfigured() ? process.env.WEB_PUSH_PUBLIC_KEY : null, active: Boolean(state?.rowCount) })
+  return res.json({ customer_id: actor(req), configured: pushConfigured(), publicKey: pushConfigured() ? process.env.WEB_PUSH_PUBLIC_KEY : null, active: Boolean(state?.rowCount) })
 }
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const customer = actor(req)
@@ -18,6 +18,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   if (!pushConfigured()) return res.status(503).json({ error: 'Browser notifications are not available yet.' })
   const parsed = subscriptionSchema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: 'Invalid browser subscription.' })
+  if (parsed.data.expected_customer_id && parsed.data.expected_customer_id !== customer) return res.status(409).json({ error: 'Account changed. Please retry notification setup.' })
   const account = await getSharedDbPool().query('SELECT 1 FROM customer WHERE id=$1 AND deleted_at IS NULL', [customer])
   if (!account.rowCount) return res.status(401).json({ error: 'Please sign in to an active customer account.' })
   const s = parsed.data

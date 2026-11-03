@@ -92,8 +92,8 @@ const Footer = () => {
             <div className="text-sm">
               <p>Ascent Retechno India Pvt Ltd</p>
               <p>
-                Av Pride, B-12, Ground Floor, Opp. Rahul, 
-                International School, Nilemore 4th Road, 
+                Av Pride, B-12, Ground Floor, Opp. Rahul,
+                International School, Nilemore 4th Road,
                 Nalasopara West, Thane, Maharashtra - 401203.
               </p>
               <a
@@ -137,14 +137,6 @@ const Footer = () => {
       </div>
       {/* Existing desktop footer styles */}
       <style jsx global>{`
-        /* Font: put actual file at /public/fonts/OPTIHandelGothic-Light.woff2 for best result */
-        @font-face {
-          font-family: "OPTIHandelGothic-Light";
-          src: url("/fonts/OPTIHandelGothic-Light.woff2") format("woff2");
-          font-weight: 300;
-          font-style: normal;
-          font-display: swap;
-        }
 
         :root {
           --footer-bg: #0b0b0b;
@@ -156,7 +148,7 @@ const Footer = () => {
         .footer-root {
           background: var(--footer-bg);
           color: var(--footer-text);
-          font-family: "OPTIHandelGothic-Light", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+          font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
           font-weight: 300;
           margin-top: auto;
           box-sizing: border-box;

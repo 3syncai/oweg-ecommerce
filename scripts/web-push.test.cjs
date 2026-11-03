@@ -38,6 +38,7 @@ const service = load('lib/web-push/service.ts');
 const admin = load('api/admin/push-notifications/route.ts');
 const customer = load('api/store/push-subscriptions/route.ts');
 const clicks = load('api/store/push-clicks/route.ts');
+const inbox = load('api/store/push-inbox/route.ts');
 function response() { return { code: 200, value: null, setHeader() {}, end() { return this }, status(code) { this.code = code; return this }, json(value) { this.value = value; return this } } }
 async function call(fn, body, actor = 'cus_test', query = {}) { const res = response(); await fn({ body, query, auth_context: actor ? { actor_id: actor } : undefined }, res); return res }
 const subscription = n => ({ endpoint: `https://fcm.googleapis.com/fcm/send/test${n}`, keys: { p256dh: keys.publicKey, auth: Buffer.alloc(16, n).toString('base64url') } });
@@ -63,6 +64,7 @@ test('migration repeat safety; consent, ownership, draft revision and queue reco
     await db.exec(sql); await db.exec(sql);
     await db.exec("CREATE TABLE customer(id text PRIMARY KEY,deleted_at timestamptz);INSERT INTO customer VALUES('cus_test',NULL),('cus_other',NULL)");
     assert.equal((await call(customer.POST, subscription(1), null)).code, 401);
+    assert.equal((await call(customer.POST, {...subscription(1),expected_customer_id:'cus_other'})).code,409);
     assert.equal((await call(customer.POST, subscription(1))).code, 200);
     assert.equal((await call(customer.POST, subscription(1), 'cus_other')).code, 409);
     assert.equal((await call(customer.DELETE, { endpoint: subscription(1).endpoint }, 'cus_other')).code, 200);
@@ -71,6 +73,7 @@ test('migration repeat safety; consent, ownership, draft revision and queue reco
     const saved = await call(admin.POST, { action: 'save', campaign: campaign() }, 'user_admin');
     const c = saved.value.campaign;
     assert.equal(c.status, 'draft');
+    assert.equal((await call(inbox.GET,null)).value.notifications.length,0);
     const edited = await call(admin.POST, { action: 'save', id: c.id, revision: 1, campaign: { ...campaign(), title: 'Edited' } });
     assert.equal(edited.value.campaign.revision, 2);
     assert.equal((await call(admin.POST, { action: 'send', id: c.id, revision: 1 })).code, 409);
@@ -83,6 +86,14 @@ test('migration repeat safety; consent, ownership, draft revision and queue reco
     assert.equal(networkCalls, 1);
     assert.equal((await db.query('SELECT status FROM oweg_push_campaign WHERE id=$1', [c.id])).rows[0].status, 'completed');
     assert.equal((await db.query('SELECT status FROM oweg_push_delivery')).rows[0].status, 'accepted');
+    assert.equal((await call(inbox.GET,null,null)).code,401);
+    assert.equal((await call(inbox.GET,null,'cus_test',{offset:'-1'})).code,400);
+    const ownInbox = await call(inbox.GET,null);
+    assert.equal(ownInbox.value.notifications.length,1);
+    assert.equal(ownInbox.value.notifications[0].id,c.id);
+    assert.equal((await call(inbox.GET,null,'cus_other')).value.notifications.length,0);
+    assert.equal((await call(inbox.GET,null,'cus_test',{offset:'20'})).value.notifications.length,0);
+    for(const secret of ['endpoint','click_token','p256dh','auth','audience']) assert.equal(Object.hasOwn(ownInbox.value.notifications[0],secret),false);
     const receipt = (await db.query('SELECT click_token FROM oweg_push_delivery')).rows[0].click_token;
     assert.equal((await call(clicks.POST,{token:'guess'})).code,400);
     assert.equal((await call(clicks.POST,{token:receipt})).code,204);
@@ -102,6 +113,8 @@ test('migration repeat safety; consent, ownership, draft revision and queue reco
     await service.dispatchPushBatch();
     assert.equal((await db.query('SELECT active FROM oweg_push_subscription WHERE customer_id=$1', ['cus_other'])).rows[0].active, false);
     assert.equal((await db.query('SELECT status FROM oweg_push_delivery WHERE id=$1', [delivery.id])).rows[0].status, 'failed');
+    // A missed provider notification is still visible in that recipient's inbox.
+    assert.equal((await call(inbox.GET,null,'cus_other')).value.notifications.length,1);
     assert.equal((await call(admin.POST, { action: 'test', campaign: campaign(), test_customer: 'cus_other' })).code, 400);
 
     result = await call(admin.POST, { action: 'test', campaign: campaign(), test_customer: 'cus_test' });
@@ -129,6 +142,8 @@ test('migration repeat safety; consent, ownership, draft revision and queue reco
     send = async () => undefined;
     await service.dispatchPushBatch();
     assert.equal((await db.query('SELECT status FROM oweg_push_delivery WHERE campaign_id=$1',[result.value.campaign.id])).rows[0].status,'accepted');
+    const deduped = await call(inbox.GET,null);
+    assert.equal(new Set(deduped.value.notifications.map(item=>item.id)).size,deduped.value.notifications.length);
     for(let n=10;n<25;n++) await call(customer.POST,subscription(n),'cus_test');
     result = await call(admin.POST, { action: 'test', campaign: campaign(), test_customer: 'cus_test' });
     const beforeBatch = networkCalls;
@@ -136,6 +151,9 @@ test('migration repeat safety; consent, ownership, draft revision and queue reco
     await service.dispatchPushBatch(); assert.equal(networkCalls-beforeBatch,16);
     await service.dispatchPushBatch(); assert.equal(networkCalls-beforeBatch,16);
     assert.equal((await db.query('SELECT count(*)::int AS count FROM oweg_push_delivery WHERE campaign_id=$1',[result.value.campaign.id])).rows[0].count,16);
+    assert.equal((await call(inbox.GET,null)).value.notifications.filter(item=>item.id===result.value.campaign.id).length,1);
+    await db.query("UPDATE oweg_push_campaign SET expires_at=now()-interval '1 second' WHERE id=$1",[result.value.campaign.id]);
+    assert.equal((await call(inbox.GET,null)).value.notifications.find(item=>item.id===result.value.campaign.id).expired,true);
     result = await call(admin.POST, { action: 'test', campaign: campaign(), test_customer: 'cus_test' });
     await db.query("UPDATE customer SET deleted_at=now() WHERE id='cus_test'");
     const beforeDeletion = networkCalls;

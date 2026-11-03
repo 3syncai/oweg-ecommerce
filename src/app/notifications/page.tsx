@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation'
+import NotificationInbox from '@/components/account/NotificationInbox'
 
 export default function NotificationsRedirect() {
-  redirect('/account/notifications')
+  return <NotificationInbox />
 }
