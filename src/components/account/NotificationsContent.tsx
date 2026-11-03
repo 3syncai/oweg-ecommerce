@@ -1,6 +1,7 @@
 "use client";
 
 import BrandLoader from "@/components/ui/BrandLoader";
+import BrowserPushPreferences from "./BrowserPushPreferences";
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -144,6 +145,7 @@ export default function NotificationsContent({ embedded = false }: Notifications
         </div>
       ) : null}
 
+      <BrowserPushPreferences />
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
         {loading ? (
           <BrandLoader compact label="Loading notification settings…" />

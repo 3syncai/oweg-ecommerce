@@ -17,6 +17,7 @@ export const ADMIN_RESPONSIBILITIES = [
   { id: "vendors.directory", group: "vendors", label: "Vendors & requests", pages: ["/vendors", "/vendor-requests"], apis: ["vendors"] },
   { id: "vendors.brands", group: "vendors", label: "Brand authorizations", pages: ["/brand-authorizations"], apis: ["brand-authorizations"] },
   { id: "marketing.sales", group: "marketing", label: "Flash sales", pages: ["/flash-sale"], apis: ["flash-sale"] },
+  { id: "marketing.notifications", group: "marketing", label: "Browser notifications", pages: ["/push-notifications"], apis: ["push-notifications"] },
   { id: "marketing.homepage", group: "marketing", label: "Homepage content", pages: ["/oweg-homepage"], apis: ["featured-brands", "mega-menu-banners"] },
   { id: "marketing.promotions", group: "marketing", label: "Promotions", pages: ["/promotions"], apis: ["promotions"] },
   { id: "marketing.campaigns", group: "marketing", label: "Campaigns", pages: ["/campaigns"], apis: ["campaigns"] },

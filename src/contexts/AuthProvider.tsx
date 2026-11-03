@@ -13,6 +13,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { queueWishlist, wishlistIds } from "@/lib/wishlist-client"
 import { queueCartWrite } from "@/lib/cart-client"
 import { clearUserSessionCache } from "@/lib/client-session-cache"
+import { disableBrowserPush } from "@/lib/browser-push"
 
 export type StoreCustomer = {
   id: string
@@ -125,6 +126,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const logout = useCallback(async () => {
     const previousCustomerId = customerRef.current?.id ?? null
     try {
+      await disableBrowserPush().catch(() => undefined)
       await fetch(LOGOUT_ENDPOINT, {
         method: "POST",
         credentials: "include",

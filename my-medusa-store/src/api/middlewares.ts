@@ -227,6 +227,11 @@ async function logDraftOrderHardDelete(
 export default defineMiddlewares({
   routes: [
     {
+      matcher: "/store/push-subscriptions",
+      method: ["GET", "POST", "DELETE"],
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
       matcher: "/store/customer-wishlist",
       method: ["POST"],
       middlewares: [authenticate("customer", ["session", "bearer"])],
