@@ -1,6 +1,6 @@
 import { defineRouteConfig } from '@medusajs/admin-sdk'
 import { BellAlert } from '@medusajs/icons'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getAdminBackendUrl } from '../../lib/admin-backend'
 import { getAdminAuthHeaders } from '../../lib/admin-auth-fetch'
 import { withAdminPageAccess } from '../../lib/with-admin-page-access'
@@ -16,7 +16,8 @@ async function request(body?: unknown, offset = 0) {
   const response = await fetch(`${getAdminBackendUrl()}/admin/push-notifications?offset=${offset}`, {
     method: body ? 'POST' : 'GET', credentials: 'include', cache: 'no-store',
     headers: getAdminAuthHeaders(body ? { 'content-type': 'application/json' } : undefined),
-    ...(body ? { body: JSON.stringify(body) } : { signal: AbortSignal.timeout(12000) }),
+    signal: AbortSignal.timeout(12000),
+    ...(body ? { body: JSON.stringify(body) } : {}),
   })
   const data = await response.json()
   if (!response.ok) throw new Error(data.error || data.message || 'Unable to load notifications. Has the push migration been installed?')
@@ -30,6 +31,8 @@ function PushNotifications() {
   const [offset, setOffset] = useState(0)
   const [preview, setPreview] = useState('Mobile')
   const [busy, setBusy] = useState(false)
+  const actionLock = useRef(false)
+  const [audienceBusy, setAudienceBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [schedule, setSchedule] = useState('')
   const [testCustomer, setTestCustomer] = useState('')
@@ -41,22 +44,23 @@ function PushNotifications() {
   useEffect(() => { void load() }, [load])
   function update<K extends keyof Draft>(key: K, value: Draft[K]) { setDraft(d => ({ ...d, [key]: value })); setDirty(true); setConfirm(null) }
   async function upload(file: File | undefined) {
-    if (!file || busy) return
+    if (!file || busy || actionLock.current) return
     if (!['image/png','image/jpeg','image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) { setMessage('Choose a PNG, JPEG or WebP image up to 2 MB.'); return }
-    setBusy(true); setMessage('Uploading image…')
+    actionLock.current = true; setBusy(true); setMessage('Uploading image…')
     try {
-      const body = new FormData(); body.append('files', file)
-      const response = await fetch(`${getAdminBackendUrl()}/admin/uploads`, { method: 'POST', credentials: 'include', headers: getAdminAuthHeaders(), body })
+      const body = new FormData(); body.append('file', file)
+      const response = await fetch(`${getAdminBackendUrl()}/admin/push-notifications/images`, { method: 'POST', credentials: 'include', headers: getAdminAuthHeaders(), body, signal: AbortSignal.timeout(20000) })
       const data = await response.json()
-      if (!response.ok || typeof data.files?.[0]?.url !== 'string') throw new Error('Image upload failed. Please retry.')
-      update('image', data.files[0].url); setMessage('Image uploaded. Save the draft to keep it.')
+      if (!response.ok || typeof data.image?.url !== 'string') throw new Error(data.error || 'Image upload failed. Please retry.')
+      update('image', data.image.url); setMessage('Image uploaded. Save the draft to keep it.')
     } catch (error) { setMessage((error as Error).message) }
-    finally { setBusy(false) }
+    finally { actionLock.current = false; setBusy(false) }
   }
   async function run(action: string, target = selected) {
-    if (busy) return
+    if (busy || actionLock.current) return
+    if (action === 'save' && audienceBusy) return
     if (action === 'save' && draft.audience_mode === 'selected' && !draft.audience.length) { setMessage('Select at least one opted-in customer, or explicitly choose All opted-in browsers.'); return }
-    setBusy(true); setMessage(''); setConfirm(null)
+    actionLock.current = true; setBusy(true); setMessage(''); setConfirm(null)
     try {
       const result = await request({ action, ...(target ? { id: target.id, revision: target.revision } : {}),
         ...(['save','test'].includes(action) ? { campaign: action === 'test' ? { ...draft, audience: [testCustomer], audience_mode: 'selected' } : draft } : {}),
@@ -68,15 +72,28 @@ function PushNotifications() {
       setMessage(action === 'save' ? 'Draft saved.' : action === 'cancel' ? 'Unsent notifications cancelled. Provider-accepted notifications cannot be recalled.' : 'Queued. The background job will process this; refresh history to check provider acceptance.')
       await load()
     } catch (error) { setMessage((error as Error).message) }
-    finally { setBusy(false) }
+    finally { actionLock.current = false; setBusy(false) }
+  }
+  async function prepare(action: 'send' | 'schedule') {
+    if (busy || actionLock.current || audienceBusy) return
+    if (draft.audience_mode === 'selected' && !draft.audience.length) { setMessage('Select at least one opted-in customer, or explicitly choose All opted-in browsers.'); return }
+    actionLock.current = true; setBusy(true); setMessage(''); setConfirm(null)
+    try {
+      if (!selected || dirty) {
+        const result = await request({ action: 'save', ...(selected ? { id: selected.id, revision: selected.revision } : {}), campaign: draft })
+        setSelected(result.campaign); setDirty(false)
+        await load()
+      }
+      setConfirm(action)
+    } catch (error) { setMessage((error as Error).message) }
+    finally { actionLock.current = false; setBusy(false) }
   }
   const editable = !selected || selected.status === 'draft'
-  const canSend = list?.configured && list.enabled && selected && !dirty && editable
+  const canSend = list?.configured && list.enabled && editable && !audienceBusy
   return <main className={styles.page}>
     <header className={styles.header}><div><p className={styles.eyebrow}>CUSTOMER ENGAGEMENT</p><h1>Browser notifications</h1><p>Thoughtful messages. The right moment. One OWEG experience.</p></div>
       <button onClick={() => { setSelected(null); setDraft(fresh()); setDirty(false); setConfirm(null) }} disabled={busy}>New notification</button></header>
     <div className={styles.stats}><span><strong>{list?.subscribers ?? '—'}</strong> opted-in browsers</span><span>{list?.configured ? 'VAPID configured' : 'VAPID not configured'}</span><span>{list?.enabled ? 'Background sending enabled' : 'Sending disabled'}</span><span>{list?.workerHealthy ? 'Notification worker healthy' : 'Notification worker waiting / offline'}</span></div>
-    <p role="status" aria-live="polite" className={styles.message}>{message}</p>
     <div className={styles.workspace}>
       <section className={styles.panel}><h2>{selected ? 'Notification details' : 'Create a notification'}</h2>
         <fieldset disabled={!editable || busy} className={styles.form}>
@@ -85,17 +102,21 @@ function PushNotifications() {
           <label>Open this storefront path<input value={draft.url} onChange={e => update('url', e.target.value)} placeholder="/flash-sale" /></label>
           <label>Optional image URL or storefront path<input value={draft.image} onChange={e => update('image', e.target.value)} placeholder="/page-banners/offer.webp" /></label>
           <label>Upload campaign image<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e => { void upload(e.target.files?.[0]); e.target.value = '' }} /></label>
-          <p className={styles.hint}>PNG, JPEG or WebP, up to 2 MB. Uploads use the existing media service; the public image origin must be allowed on the server. The OWEG app icon is added automatically.</p>
+          <p className={styles.hint}>PNG, JPEG or WebP, up to 2 MB. Images are stored under notifications/YYYY/MM/DD/ with unique UTC timestamped filenames. The OWEG app icon is added automatically.</p>
           <label>Audience<select value={draft.audience_mode || (draft.audience.length ? 'selected' : 'all')} onChange={e => { update('audience_mode', e.target.value as 'all' | 'selected'); update('audience', []) }}><option value="selected">Selected customers — pilot / targeted send</option><option value="all">All opted-in browsers</option></select></label>
-          {(draft.audience_mode === 'selected' || draft.audience.length > 0) && <AudiencePicker ids={draft.audience} onChange={ids => update('audience', ids)} onTest={setTestCustomer} />}
+          {(draft.audience_mode === 'selected' || draft.audience.length > 0) && <AudiencePicker ids={draft.audience} onChange={ids => update('audience', ids)} onTest={setTestCustomer} onBusyChange={setAudienceBusy} />}
           {draft.audience_mode === 'all' && <p className={styles.hint}>Broad audience: all eligible opted-in browsers. Choose Selected customers for a 50–100 customer pilot.</p>}
           <label>Stop showing after<input type="datetime-local" value={toLocal(draft.expires_at)} onChange={e => { if (e.target.value) update('expires_at', new Date(e.target.value).toISOString()) }} /></label>
         </fieldset>
-        <div className={styles.actions}><button disabled={busy || !editable} onClick={() => void run('save')}>Save draft</button>
-          <button className={styles.primary} disabled={busy || !canSend} onClick={() => setConfirm('send')}>Send now</button></div>
-        {dirty && <p className={styles.hint}>Save your latest changes before sending.</p>}
+        <div className={styles.actions}><button disabled={busy || audienceBusy || !editable} onClick={() => void run('save')}>Save draft</button>
+          <button className={styles.primary} disabled={busy || !canSend} onClick={() => void prepare('send')}>Review & send</button></div>
+        <p role="status" aria-live="polite" className={styles.message}>{message}</p>
+        {audienceBusy && <p className={styles.hint}>Wait for customer selection to finish before saving or sending.</p>}
+        {dirty && <p className={styles.hint}>Review & send saves your changes first, then asks for confirmation. No notification is sent until you confirm.</p>}
+        {!list?.configured && <p className={styles.hint}>Sending unavailable: configure VAPID keys on the backend.</p>}
+        {list?.configured && !list.enabled && <p className={styles.hint}>Sending is disabled on the backend. Drafts can still be saved.</p>}
         <div className={styles.form}><label>Schedule (your local time)<input type="datetime-local" value={schedule} onChange={e => setSchedule(e.target.value)} /></label>
-          <button disabled={busy || !canSend || !schedule} onClick={() => setConfirm('schedule')}>Schedule saved draft</button>
+          <button disabled={busy || !canSend || !schedule} onClick={() => void prepare('schedule')}>Review schedule</button>
           <label>Test customer ID<input value={testCustomer} onChange={e => setTestCustomer(e.target.value)} placeholder="cus_… (must opt in first on the storefront)" /></label>
           <button disabled={busy || !editable || !list?.enabled || !list.configured || !testCustomer} onClick={() => setConfirm('test')}>Send a test</button></div>
         {confirm && <div className={styles.confirm} role="alert"><strong>{confirm === 'test' ? `Send to test customer ${testCustomer}?` : `Queue ${draft.audience.length ? draft.audience.length + ' selected customers’ opted-in browsers' : 'all opted-in browsers'}?`}</strong>

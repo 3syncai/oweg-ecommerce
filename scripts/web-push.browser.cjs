@@ -23,12 +23,19 @@ const campaign = { id: '11111111-1111-4111-8111-111111111111', revision: 1, titl
   try {
     for (const width of [320,390,768,1280]) {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
-      const errors = [], writes = []; page.on('pageerror', e => errors.push(e.message));
+      const errors = [], writes = []; let uploads=0; page.on('pageerror', e => errors.push(e.message));
       await page.route('**/*', route => {
         const req = route.request();
+        if (new URL(req.url()).pathname === '/admin/push-notifications/images') {
+          uploads++;assert(req.headers()['content-type'].includes('multipart/form-data'));
+          return route.fulfill({status:uploads===1?200:503,contentType:'application/json',body:JSON.stringify(uploads===1?{image:{url:'https://qa-bucket.s3.ap-south-1.amazonaws.com/notifications/2026/11/03/fixture.png'}}:{error:'Fixture upload unavailable'})});
+        }
         if (new URL(req.url()).pathname === '/admin/push-notifications/customers') {
-          const size=Math.min(100,Number(new URL(req.url()).searchParams.get('limit')||25));
-          return route.fulfill({contentType:'application/json',body:JSON.stringify({customers:Array.from({length:size},(_,i)=>({id:'cus_fixture'+i,email:'customer'+i+'@example.test',first_name:'Customer',last_name:String(i),devices:1})),total:120})});
+          const params=new URL(req.url()).searchParams,size=Math.min(100,Number(params.get('limit')||25)),offset=Number(params.get('offset')||0);
+          const rows=Array.from({length:120},(_,i)=>({id:'cus_fixture'+i,email:'customer'+i+'@example.test',first_name:'Customer',last_name:String(i),devices:1}));
+          if(params.get('eligible')!=='true')rows.push({id:'cus_unsubscribed',email:'unsubscribed@example.test',first_name:'Unsubscribed',last_name:'Customer',devices:0});
+          const matches=rows.filter(c=>(c.email+' '+c.first_name+' '+c.last_name).toLowerCase().includes((params.get('q')||'').toLowerCase()));
+          return route.fulfill({contentType:'application/json',body:JSON.stringify({customers:matches.slice(offset,offset+size),total:matches.length})});
         }
         if (new URL(req.url()).pathname === '/admin/push-notifications') {
           if (req.method() === 'POST') { const body = req.postDataJSON(); writes.push(body); return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ campaign: { ...campaign, ...body.campaign } }) }) }
@@ -44,27 +51,46 @@ const campaign = { id: '11111111-1111-4111-8111-111111111111', revision: 1, titl
       await logo.waitFor();
       const logoBox=await logo.boundingBox();assert(logoBox.width===76&&logoBox.height===22);
       assert.equal(writes.length, 0);
-      assert(await page.getByRole('button',{name:'Send now',exact:true}).isDisabled());
       await page.getByLabel(/Title/).fill('A little treat ✨');
       await page.getByLabel(/Message/).fill('A customer-first fixture message');
+      const uploadInput=page.getByLabel('Upload campaign image',{exact:true});
+      await uploadInput.setInputFiles({name:'fixture.png',mimeType:'image/png',buffer:Buffer.from([137,80,78,71,13,10,26,10,0])});
+      await page.getByText('Image uploaded. Save the draft to keep it.',{exact:true}).waitFor();
+      const imageUrl=await page.getByLabel('Optional image URL or storefront path',{exact:true}).inputValue();assert(imageUrl.includes('/notifications/2026/11/03/'));
+      await uploadInput.setInputFiles({name:'second.png',mimeType:'image/png',buffer:Buffer.from([137,80,78,71,13,10,26,10,0])});
+      await page.getByText('Fixture upload unavailable',{exact:true}).waitFor();
+      assert.equal(await page.getByLabel('Optional image URL or storefront path',{exact:true}).inputValue(),imageUrl);
       await page.getByRole('button',{name:'Save draft',exact:true}).click();
       await page.getByText('Select at least one opted-in customer, or explicitly choose All opted-in browsers.',{exact:true}).waitFor();
       assert.equal(writes.length,0);
       await page.getByRole('button',{name:'Select first 50 matching',exact:true}).click();
-      await page.getByText('50/100 customers selected',{exact:true}).waitFor();
+      await page.getByText('50 customers selected',{exact:true}).waitFor();
       await page.getByRole('button',{name:'Select first 100 matching',exact:true}).click();
-      await page.getByText('100/100 customers selected',{exact:true}).waitFor();
+      await page.getByText('100 customers selected',{exact:true}).waitFor();
       await page.getByRole('checkbox').first().uncheck();
-      await page.getByText('99/100 customers selected',{exact:true}).waitFor();
+      await page.getByText('99 customers selected',{exact:true}).waitFor();
+      await page.getByRole('button',{name:'Select all matching subscribed',exact:true}).click();
+      await page.getByText('120 customers selected',{exact:true}).waitFor();
+      await page.getByLabel('Search customers',{exact:true}).fill('unsubscribed@example.test');
+      await page.getByText(/Not subscribed — browser permission required/).waitFor();
+      assert(await page.getByRole('checkbox').isDisabled());assert(await page.getByRole('button',{name:'Use for test',exact:true}).isDisabled());
+      assert.equal(writes.length,0);
+      await page.getByLabel('Search customers',{exact:true}).fill('');
       await page.getByRole('button',{name:'Clear selection',exact:true}).click();
-      await page.getByText('0/100 customers selected',{exact:true}).waitFor();
+      await page.getByText('0 customers selected',{exact:true}).waitFor();
       await page.locator('select').first().selectOption('all');
       await page.getByRole('button',{name:'Save draft',exact:true}).click();
       await page.getByText('Draft saved.',{exact:true}).waitFor();
       assert.equal(writes.length,1);
-      await page.getByRole('button',{name:'Send now',exact:true}).click();
-      assert.equal(writes.length,1); // A preview click never sends without confirmation.
+      await page.getByLabel(/Message/).fill('Edited fixture for save-before-confirm');
+      await page.getByRole('button',{name:'Review & send',exact:true}).click();
+      await page.getByRole('button',{name:'Confirm send',exact:true}).waitFor();
+      assert.equal(writes.length,2);assert.equal(writes[1].action,'save'); // A preview click never sends without confirmation.
       await page.getByRole('button',{name:'Go back',exact:true}).click();
+      await page.getByRole('button',{name:'Review & send',exact:true}).click();
+      await page.getByRole('button',{name:'Confirm send',exact:true}).click();
+      await page.getByText(/Queued. The background job/).waitFor();
+      assert.deepEqual(writes.map(w=>w.action),['save','save','send']);
       await page.getByRole('button',{name:'Desktop',exact:true}).click();
       assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth), `admin overflow at ${width}`);
       await page.getByRole('button',{name:'Mobile',exact:true}).click();
