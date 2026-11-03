@@ -647,9 +647,17 @@ export async function fetchProductsByCategoryIds(
   categoryIds: string[],
   limit = 20,
   offset = 0,
+  options?: { strict?: boolean },
 ): Promise<MedusaProductListResult> {
   const uniqueIds = Array.from(new Set(categoryIds.filter(Boolean)));
   if (uniqueIds.length === 0) return { products: [], count: 0 };
+  if (options?.strict) {
+    // Homepage refreshes must distinguish an unavailable category from an empty one.
+    const filters = uniqueIds.map((id): [string, string] => ["category_id[]", id]);
+    const result = await fetchStoreProducts(createBaseSearchParams(limit, filters, offset));
+    if (!Array.isArray(result.products)) throw new Error("Invalid category product response");
+    return result;
+  }
   if (uniqueIds.length === 1)
     return fetchProductsByCategoryId(uniqueIds[0], limit, { offset });
 

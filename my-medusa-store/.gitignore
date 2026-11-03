@@ -68,3 +68,4 @@ my-medusa-store/.medusa/
 
 # Local generated admin credentials
 .local-admin/
+!migrations/home-feed-snapshot.sql
