@@ -116,8 +116,10 @@ test('flash sale checks the exact sale variant, not another stocked size', async
 })
 test('a category containing only sold-out products is omitted, including popular picks', async () => {
   const api = load('src/lib/home-feed.ts', {
-    '@/lib/medusa': { fetchCategories: async () => [{ id: 'category', name: 'Empty' }],
-      fetchProductsByCategoryId: async () => ({ products: [product('sold', 0)] }) },
+    'next/cache': { unstable_cache: fn => fn },
+    './medusa': { fetchCategories: async () => [{ id: 'category', name: 'Empty' }],
+      collectDescendantCategoryIds: category => [category.id],
+      fetchProductsByCategoryIds: async () => ({ products: [product('sold', 0)] }) },
     './home-products': home,
   })
   const feed = await api.buildHomeFeed()
@@ -138,4 +140,20 @@ test('eight department tiles retain existing departments and include a real leaf
   assert.equal(selected.length, 8)
   assert.equal(selected.filter(category => category.id === 'bags').length, 1)
   assert.equal(selected.some(category => category.id === 'nested'), false)
+})
+
+test('a failed category refresh does not return a cacheable partial feed', async () => {
+  const api = load('src/lib/home-feed.ts', {
+    'next/cache': { unstable_cache: fn => fn },
+    './medusa': {
+      fetchCategories: async () => [{ id: 'healthy' }, { id: 'unavailable' }],
+      collectDescendantCategoryIds: category => [category.id],
+      fetchProductsByCategoryIds: async ([id]) => {
+        if (id === 'unavailable') throw new Error('upstream timeout')
+        return { products: [product('stocked', 5)] }
+      },
+    },
+    './home-products': home,
+  })
+  await assert.rejects(api.buildHomeFeed(), /Home feed refresh failed/)
 })

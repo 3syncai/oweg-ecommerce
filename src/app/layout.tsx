@@ -47,6 +47,7 @@ const plusJakarta = localFont({
       style: "normal",
     },
   ],
+  preload: false,
   variable: "--font-plus-jakarta",
   display: "swap",
 });
