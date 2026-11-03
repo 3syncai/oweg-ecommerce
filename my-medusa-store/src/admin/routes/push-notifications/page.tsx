@@ -32,6 +32,8 @@ function PushNotifications() {
   const [preview, setPreview] = useState('Mobile')
   const [busy, setBusy] = useState(false)
   const actionLock = useRef(false)
+  const editorHeading = useRef<HTMLHeadingElement>(null)
+  const confirmation = useRef<HTMLDivElement>(null)
   const [audienceBusy, setAudienceBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [schedule, setSchedule] = useState('')
@@ -42,6 +44,21 @@ function PushNotifications() {
     try { setList(await request(undefined, offset)) } catch (error) { setMessage((error as Error).message) }
   }, [offset])
   useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    if (!confirm) return
+    confirmation.current?.scrollIntoView({ block: 'center', behavior: 'auto' })
+    confirmation.current?.focus({ preventScroll: true })
+  }, [confirm])
+  function openCampaign(c: Campaign) {
+    setSelected(c)
+    setDraft({ title: c.title, body: c.body, url: c.url, image: c.image || '', audience: c.audience, audience_mode: c.audience.length ? 'selected' : 'all', expires_at: c.expires_at })
+    setDirty(false); setConfirm(null)
+    setMessage(c.status === 'draft' ? 'Draft opened. It has not been sent. Choose Review & send, then Confirm send to queue it.' : `Campaign opened. Current status: ${c.status}.`)
+    requestAnimationFrame(() => {
+      editorHeading.current?.scrollIntoView({ block: 'start', behavior: 'auto' })
+      editorHeading.current?.focus({ preventScroll: true })
+    })
+  }
   function update<K extends keyof Draft>(key: K, value: Draft[K]) { setDraft(d => ({ ...d, [key]: value })); setDirty(true); setConfirm(null) }
   async function upload(file: File | undefined) {
     if (!file || busy || actionLock.current) return
@@ -95,7 +112,8 @@ function PushNotifications() {
       <button onClick={() => { setSelected(null); setDraft(fresh()); setDirty(false); setConfirm(null) }} disabled={busy}>New notification</button></header>
     <div className={styles.stats}><span><strong>{list?.subscribers ?? '—'}</strong> opted-in browsers</span><span>{list?.configured ? 'VAPID configured' : 'VAPID not configured'}</span><span>{list?.enabled ? 'Background sending enabled' : 'Sending disabled'}</span><span>{list?.workerHealthy ? 'Notification worker healthy' : 'Notification worker waiting / offline'}</span></div>
     <div className={styles.workspace}>
-      <section className={styles.panel}><h2>{selected ? 'Notification details' : 'Create a notification'}</h2>
+      <section className={styles.panel} id="notification-editor"><h2 ref={editorHeading} tabIndex={-1} style={{ scrollMarginTop: 24 }}>{selected ? 'Notification details' : 'Create a notification'}</h2>
+        {selected && <p role="status" className={styles.hint}><strong>{selected.status === 'draft' ? 'Draft — not sent' : `Status: ${selected.status}`}</strong>{selected.status === 'draft' && ' · Review & send opens a confirmation. Saving or refreshing does not send a notification.'}</p>}
         <fieldset disabled={!editable || busy} className={styles.form}>
           <label>Title <small>{draft.title.length}/80</small><input maxLength={80} value={draft.title} onChange={e => update('title', e.target.value)} placeholder="A little treat for your home ✨" /></label>
           <label>Message <small>{draft.body.length}/240</small><textarea maxLength={240} rows={3} value={draft.body} onChange={e => update('body', e.target.value)} placeholder="Your next favourite find is waiting. Explore today’s picks." /></label>
@@ -119,7 +137,7 @@ function PushNotifications() {
           <button disabled={busy || !canSend || !schedule} onClick={() => void prepare('schedule')}>Review schedule</button>
           <label>Test customer ID<input value={testCustomer} onChange={e => setTestCustomer(e.target.value)} placeholder="cus_… (must opt in first on the storefront)" /></label>
           <button disabled={busy || !editable || !list?.enabled || !list.configured || !testCustomer} onClick={() => setConfirm('test')}>Send a test</button></div>
-        {confirm && <div className={styles.confirm} role="alert"><strong>{confirm === 'test' ? `Send to test customer ${testCustomer}?` : `Queue ${draft.audience.length ? draft.audience.length + ' selected customers’ opted-in browsers' : 'all opted-in browsers'}?`}</strong>
+        {confirm && <div ref={confirmation} tabIndex={-1} className={styles.confirm} role="alert"><strong>{confirm === 'test' ? `Send to test customer ${testCustomer}?` : `Queue ${draft.audience.length ? draft.audience.length + ' selected customers’ opted-in browsers' : 'all opted-in browsers'}?`}</strong>
           <p>{draft.title} · {confirm === 'schedule' ? schedule : 'Next background batch'}. This action sends a real notification.</p>
           <button className={styles.primary} disabled={busy} onClick={() => void run(confirm)}>Confirm {confirm}</button><button onClick={() => setConfirm(null)}>Go back</button></div>}
       </section>
@@ -135,7 +153,7 @@ function PushNotifications() {
     </div>
     <section className={styles.panel}><div className={styles.header}><div><h2>Campaign history</h2><p>Accepted means the push provider accepted the message. It does not confirm display or reading.</p></div><button disabled={busy} onClick={() => void load()}>Refresh status</button></div>
       <div className={styles.history}>{list?.campaigns.map(c => <article key={c.id}><div><strong>{c.title}</strong><p>{c.status} · {c.scheduled_at ? new Date(c.scheduled_at).toLocaleString() : 'Draft'}</p><small>{c.recipients} queued · {c.accepted} provider accepted · {c.failed} failed · {c.clicked || 0} clicked</small></div>
-        <div className={styles.actions}><button disabled={busy} onClick={() => { setSelected(c); setDraft({ title: c.title, body: c.body, url: c.url, image: c.image || '', audience: c.audience, audience_mode: c.audience.length ? 'selected' : 'all', expires_at: c.expires_at }); setDirty(false); setConfirm(null) }}>Details</button>
+        <div className={styles.actions}><button disabled={busy} aria-controls="notification-editor" onClick={() => openCampaign(c)}>Details</button>
           {['draft','scheduled','sending'].includes(c.status) && <button disabled={busy} onClick={() => void run('cancel', c)}>Cancel unsent</button>}</div></article>)}</div>
       {!list?.campaigns.length && <p className={styles.hint}>No campaigns yet. Save your first draft above.</p>}
       <div className={styles.actions}><button disabled={busy || offset === 0} onClick={() => setOffset(Math.max(0, offset - 25))}>Previous</button><span>Page {offset / 25 + 1}</span><button disabled={busy || (list?.campaigns.length || 0) < 25} onClick={() => setOffset(offset + 25)}>Next</button></div>
