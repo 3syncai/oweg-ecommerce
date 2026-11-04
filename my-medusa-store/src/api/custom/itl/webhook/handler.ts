@@ -129,10 +129,15 @@ export async function handleItlWebhook(req: MedusaRequest, res: MedusaResponse) 
   }
 
   const { should_schedule_earnings, ...patch } = logistics
+  const stampedPatch = {
+    ...patch,
+    easy_tracking_status: transition.status || null,
+    easy_tracking_checked_at: new Date().toISOString(),
+  }
 
   let nextMetadata = metadata
   if (vendorId) {
-    nextMetadata = mergeVendorWorkflowMetadata(metadata, vendorId, patch)
+    nextMetadata = mergeVendorWorkflowMetadata(metadata, vendorId, stampedPatch)
   } else {
     nextMetadata = {
       ...metadata,

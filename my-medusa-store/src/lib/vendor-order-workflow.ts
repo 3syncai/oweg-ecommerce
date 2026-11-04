@@ -86,8 +86,19 @@ export type VendorOrderWorkflow = {
    * - intent: vendor chose Easy (no AWB yet)
    * - awaiting_admin: legacy status for a packet awaiting admin booking
    * - booked: admin created shipment / AWB
+   * - cancelled: admin cancelled ITL/Shiprocket AWB — can rebook
    */
-  easy_booking_status?: "intent" | "awaiting_admin" | "booked" | null
+  easy_booking_status?:
+    | "intent"
+    | "awaiting_admin"
+    | "booked"
+    | "cancelled"
+    | null
+  /** Last Easy Ship cancel timestamp (admin) */
+  easy_cancelled_at?: string | null
+  /** Last tracked courier status snapshot from provider */
+  easy_tracking_status?: string | null
+  easy_tracking_checked_at?: string | null
   /** When admin booked Easy Ship courier */
   admin_booked_at?: string | null
   /** Optional vendor-entered tracking / label links (Easy or Self) */
@@ -358,12 +369,24 @@ export function deriveVendorStage(order: OrderLike, workflow: VendorOrderWorkflo
   return "to_accept"
 }
 
-export function getVendorOrderStatusLabel(stage: VendorOrderStage) {
+export function getVendorOrderStatusLabel(
+  stage: VendorOrderStage,
+  trackingStatus?: string | null
+) {
   if (stage === "cancelled") return "Cancelled"
   if (stage === "to_accept") return "Pending"
   if (stage === "to_pack") return "Not packed"
   if (stage === "to_dispatch") return "Not shipped"
-  if (stage === "in_transit") return "On the way"
+  if (stage === "delivered") return "Delivered"
+  if (stage === "in_transit") {
+    const t = normalizeTrackingStatus(trackingStatus || "")
+    if (t === "picked_up") return "Picked up · In transit"
+    if (t === "out_for_delivery") return "Out for delivery"
+    if (t === "ndr") return "Delivery attempt failed"
+    if (t === "rto_initiated" || t === "rto_in_transit") return "RTO in progress"
+    if (t === "rto_delivered") return "Returned to origin"
+    return "On the way"
+  }
   return "Delivered"
 }
 
@@ -736,7 +759,10 @@ export function formatVendorOrder(
       : "Cancelled"
     : isAcceptanceOverdue(workflow)
       ? "Acceptance overdue"
-      : getVendorOrderStatusLabel(stage)
+      : getVendorOrderStatusLabel(
+          stage,
+          workflow.easy_tracking_status || workflow.shiprocket_status
+        )
 
   const formatted: Record<string, any> = {
     ...order,
@@ -995,6 +1021,9 @@ export function buildShiprocketForwardPayload(
   const courierId = options?.courier_id != null ? Number(options.courier_id) : NaN
   if (Number.isFinite(courierId) && courierId > 0) {
     payload.courier_id = courierId
+  }
+  if (options?.courier_name) {
+    payload.courier_name = String(options.courier_name).trim()
   }
 
   return payload

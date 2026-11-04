@@ -82,22 +82,25 @@ export async function listPacketBookingQueue(opts?: {
     >) {
       if (workflow?.shipping_method !== "easy") continue
 
+      const cancelled = workflow.easy_booking_status === "cancelled"
       const booked = Boolean(
-        workflow.shiprocket_awb ||
-          workflow.easy_booking_status === "booked" ||
-          workflow.admin_booked_at
+        !cancelled &&
+          (workflow.shiprocket_awb ||
+            workflow.easy_booking_status === "booked" ||
+            workflow.admin_booked_at)
       )
 
       let status: PacketBookingQueueStatus | null = null
       if (booked) {
         status = "booked"
       } else if (
+        cancelled ||
         workflow.easy_booking_status === "intent" ||
         workflow.easy_booking_status === "awaiting_admin" ||
         workflow.stage === "to_pack"
       ) {
         // Easy Shipping is selected only after the vendor accepts the order.
-        // RTD is a later packing/handover step and must not block booking.
+        // Cancelled / not-serviceable bookings return here so admin can rebook.
         status = "awaiting_booking"
       }
       if (!status) continue

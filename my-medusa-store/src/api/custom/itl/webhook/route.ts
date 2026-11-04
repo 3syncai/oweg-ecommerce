@@ -1,17 +1,9 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { handleItlWebhook } from "./handler"
 
+/** Browser GET should not advertise this webhook. */
 export async function GET(_req: MedusaRequest, res: MedusaResponse) {
-  return res.json({
-    ok: true,
-    provider: "itl",
-    message: "POST tracking updates to this endpoint",
-    example_body: {
-      awb: "ITL-DUMMY-...",
-      status: "delivered | cash_collected | ndr | rto_initiated | rto_in_transit | rto_delivered",
-      reason: "customer_not_available | customer_refused (optional, for NDR/RTO)",
-    },
-  })
+  return res.status(404).json({ message: "Not found" })
 }
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {

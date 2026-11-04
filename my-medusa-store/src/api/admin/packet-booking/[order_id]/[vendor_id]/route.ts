@@ -3,6 +3,7 @@ import { Modules } from "@medusajs/framework/utils"
 import { getEasyShipProvider } from "../../../../../services/easy-ship"
 import { bookEasyShipmentForVendor } from "../../../../../lib/easy-ship-booking"
 import {
+  getItemUnitPrice,
   getPaymentType,
   getVendorProductIds,
   getVendorWorkflow,
@@ -115,11 +116,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const isCod = getPaymentType(order as any) === "PostPaid"
     const declaredValue = vendorItems.reduce((sum, item: any) => {
       const qty = Number(item?.quantity ?? 1) || 1
-      return sum + Number(item?.unit_price || 0) * qty
+      return sum + getItemUnitPrice(item) * qty
     }, 0)
+    const volumetricKg =
+      Math.round(((length * breadth * height) / 5000) * 10000) / 10000
+    const chargeableKg = Math.max(weight, volumetricKg)
 
     let couriers: any[] = []
     let courierError: string | null = null
+    let pincodeNotServiceable = false
     try {
       const listed = await provider.listCouriers({
         pickup_postcode: pickup.pin_code,
@@ -134,6 +139,28 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       couriers = listed.couriers || []
     } catch (e: any) {
       courierError = e?.message || "Failed to load couriers"
+      pincodeNotServiceable =
+        e?.code === "PINCODE_NOT_SERVICEABLE" ||
+        /not serviceable|non[- ]?serviceable|no .*courier/i.test(String(e?.message || ""))
+    }
+
+    const cancelled = workflow.easy_booking_status === "cancelled"
+    const alreadyBooked = Boolean(
+      !cancelled &&
+        (workflow.shiprocket_awb || workflow.easy_booking_status === "booked")
+    )
+
+    let tracking: Record<string, unknown> | null = null
+    const awb = String(workflow.shiprocket_awb || workflow.tracking_number || "").trim()
+    if (awb && alreadyBooked) {
+      try {
+        tracking = await provider.trackByAwb(awb)
+      } catch (trackErr: any) {
+        tracking = {
+          error: trackErr?.message || "Failed to fetch tracking",
+          current_status: workflow.easy_tracking_status || null,
+        }
+      }
     }
 
     return res.json({
@@ -165,7 +192,14 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         province: address.province || null,
         postal_code: deliveryPostcode || null,
       },
-      package: { weight, length, breadth, height },
+      package: {
+        weight,
+        length,
+        breadth,
+        height,
+        volumetric_weight: volumetricKg,
+        chargeable_weight: chargeableKg,
+      },
       suggested_package: suggested,
       payment_type: getPaymentType(order as any),
       items: vendorItems.map((item: any) => ({
@@ -179,7 +213,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       provider_label: provider.displayName,
       couriers,
       courier_error: courierError,
-      already_booked: Boolean(workflow.shiprocket_awb || workflow.easy_booking_status === "booked"),
+      pincode_not_serviceable: pincodeNotServiceable,
+      already_booked: alreadyBooked,
+      can_rebook: cancelled || !alreadyBooked,
+      tracking,
     })
   } catch (error: any) {
     console.error("[admin packet-booking] detail error:", error)
@@ -211,9 +248,13 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         message: "Vendor has not accepted this order yet",
       })
     }
-    if (workflow.shiprocket_awb || workflow.easy_booking_status === "booked") {
+    const isCancelled = workflow.easy_booking_status === "cancelled"
+    if (
+      !isCancelled &&
+      (workflow.shiprocket_awb || workflow.easy_booking_status === "booked")
+    ) {
       return res.status(409).json({
-        message: "Courier already booked for this vendor order",
+        message: "Courier already booked for this vendor order. Cancel it first to rebook.",
         awb: workflow.shiprocket_awb,
       })
     }
@@ -223,6 +264,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     if (!Number.isFinite(courierId) || courierId <= 0) {
       return res.status(400).json({ message: "Select a courier (courier_id)" })
     }
+
+    // After cancel, clear stale AWB fields before creating a fresh shipment
+    const bookingWorkflow = isCancelled
+      ? {
+          ...workflow,
+          shiprocket_awb: null,
+          shiprocket_order_id: null,
+          shiprocket_shipment_id: null,
+          tracking_number: null,
+          admin_booked_at: null,
+        }
+      : workflow
 
     const booked = await bookEasyShipmentForVendor(
       req,
@@ -239,7 +292,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         breadth: body.breadth != null ? Number(body.breadth) : workflow.easy_package_breadth,
         height: body.height != null ? Number(body.height) : workflow.easy_package_height,
       },
-      workflow
+      bookingWorkflow
     )
 
     const metadata = await updateVendorOrderWorkflow(req, order, vendorId, booked.patch)
@@ -294,12 +347,110 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     })
   } catch (error: any) {
     console.error("[admin packet-booking] book error:", error)
-    const status = /KYC|Select a courier|incomplete/i.test(String(error?.message || ""))
-      ? 400
-      : 500
+    const msg = String(error?.message || "")
+    const notServiceable =
+      error?.code === "PINCODE_NOT_SERVICEABLE" ||
+      /not serviceable|non[- ]?serviceable/i.test(msg)
+    const status = notServiceable
+      ? 422
+      : /KYC|Select a courier|incomplete|pickup_address/i.test(msg)
+        ? 400
+        : 500
     return res.status(status).json({
       message: error?.message || "Failed to book packet",
       detail: error?.detail || null,
+      pincode_not_serviceable: notServiceable,
+      can_retry: true,
+    })
+  }
+}
+
+/**
+ * DELETE /admin/packet-booking/:order_id/:vendor_id
+ * Cancel the Easy Ship (ITL/Shiprocket) booking so admin can rebook.
+ */
+export async function DELETE(req: MedusaRequest, res: MedusaResponse) {
+  const orderId = req.params?.order_id as string
+  const vendorId = req.params?.vendor_id as string
+  if (!orderId || !vendorId) {
+    return res.status(400).json({ message: "order_id and vendor_id are required" })
+  }
+
+  try {
+    const bundle = await loadOrderBundle(req, orderId, vendorId)
+    if (!bundle) return res.status(404).json({ message: "Order not found" })
+
+    const { order, workflow } = bundle
+    if (workflow.shipping_method !== "easy") {
+      return res.status(409).json({ message: "Vendor did not choose Easy Shipping" })
+    }
+
+    const awb = String(
+      workflow.shiprocket_awb || workflow.tracking_number || ""
+    ).trim()
+    if (!awb && workflow.easy_booking_status !== "booked") {
+      return res.status(409).json({
+        message: "No active Easy Ship booking to cancel",
+      })
+    }
+
+    const provider = getEasyShipProvider()
+    let providerCancel: Record<string, unknown> | null = null
+    const isDummyAwb = /DUMMY|ITL-DUMMY|ITL-REV-DUMMY/i.test(awb)
+    if (awb && !isDummyAwb) {
+      try {
+        // ITL cancel is AWB-based; Shiprocket adapter expects order ids —
+        // pass AWB first, fall back to shiprocket_order_id for Shiprocket.
+        const cancelIds =
+          provider.name === "shiprocket" && workflow.shiprocket_order_id
+            ? [String(workflow.shiprocket_order_id)]
+            : [awb]
+        providerCancel = await provider.cancelOrders(cancelIds)
+      } catch (cancelErr: any) {
+        const msg = String(cancelErr?.message || "")
+        // Already cancelled / not found → still clear local booking so admin can rebook
+        if (!/already|not found|invalid|cannot cancel/i.test(msg)) {
+          return res.status(502).json({
+            message: `Provider cancel failed: ${msg}`,
+          })
+        }
+        providerCancel = { warning: msg }
+      }
+    } else if (isDummyAwb) {
+      providerCancel = {
+        skipped: true,
+        reason: "Dummy AWB — cleared locally so you can rebook on live ITL",
+      }
+    }
+
+    const now = new Date().toISOString()
+    const metadata = await updateVendorOrderWorkflow(req, order, vendorId, {
+      shiprocket_awb: null,
+      shiprocket_order_id: null,
+      shiprocket_shipment_id: null,
+      shiprocket_status: "cancelled",
+      tracking_number: null,
+      tracking_url: null,
+      label_url: null,
+      easy_booking_status: "cancelled",
+      easy_cancelled_at: now,
+      easy_assign_warning: null,
+      admin_booked_at: null,
+    })
+
+    return res.json({
+      ok: true,
+      cancelled: true,
+      awb: awb || null,
+      provider: provider.name,
+      provider_cancel: providerCancel,
+      workflow: getVendorWorkflow(metadata, vendorId),
+      can_rebook: true,
+    })
+  } catch (error: any) {
+    console.error("[admin packet-booking] cancel error:", error)
+    return res.status(500).json({
+      message: error?.message || "Failed to cancel packet booking",
     })
   }
 }

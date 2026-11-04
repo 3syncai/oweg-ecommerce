@@ -188,12 +188,18 @@ export async function syncVendorShipmentTracking(input: {
   let stage = (workflow.stage || null) as VendorOrderStage | null
   let updated = false
 
-  // Carrier says package is moving → ensure Medusa shipment exists (In Transit)
+  // Carrier says package is moving → ensure Medusa shipment exists (In Transit).
+  // Easy Ship: allow auto-ship once AWB exists (admin may book before vendor RTD).
+  const hasEasyAwb = Boolean(
+    workflow.shipping_method === "easy" &&
+      (workflow.shiprocket_awb || workflow.tracking_number)
+  )
+  const canAutoShip = Boolean(workflow.rtd_at || hasEasyAwb)
   if (
     ensureShipped &&
     nextStage === "in_transit" &&
     !workflow.medusa_shipped_at &&
-    workflow.rtd_at
+    canAutoShip
   ) {
     try {
       const shipped = await shipVendorFulfillment(
@@ -209,6 +215,8 @@ export async function syncVendorShipmentTracking(input: {
         medusa_fulfillment_id: shipped.fulfillment_id,
         medusa_shipped_at: workflow.medusa_shipped_at || now,
         shiprocket_status: status || "shipped",
+        easy_tracking_status: status || "shipped",
+        easy_tracking_checked_at: now,
         dispatched_at: workflow.dispatched_at || now,
       })
       stage = "in_transit"
@@ -218,6 +226,18 @@ export async function syncVendorShipmentTracking(input: {
         `[shipment-sync] ship failed order=${order.id} vendor=${vendorId}:`,
         error?.message
       )
+      // Still flip vendor stage so portal shows In Transit even if Medusa ship fails
+      if (canAdvanceStage(stage, "in_transit")) {
+        const now = new Date().toISOString()
+        metadata = await persistWorkflow(container, order, vendorId, {
+          stage: "in_transit",
+          shiprocket_status: status || "picked_up",
+          easy_tracking_status: status || "picked_up",
+          easy_tracking_checked_at: now,
+        })
+        stage = "in_transit"
+        updated = true
+      }
     }
   }
 
@@ -230,6 +250,10 @@ export async function syncVendorShipmentTracking(input: {
     logistics.stage = "delivered"
   }
   const { should_schedule_earnings, ...logisticsPatch } = logistics
+  const trackingStamp = {
+    easy_tracking_status: status || null,
+    easy_tracking_checked_at: new Date().toISOString(),
+  }
 
   if (nextStage === "delivered") {
     const fulfillmentId = String(
@@ -257,6 +281,7 @@ export async function syncVendorShipmentTracking(input: {
 
     metadata = await persistWorkflow(container, order, vendorId, {
       ...logisticsPatch,
+      ...trackingStamp,
       stage: "delivered",
       shiprocket_status: "delivered",
       shiprocket_delivered_at: new Date().toISOString(),
@@ -276,7 +301,10 @@ export async function syncVendorShipmentTracking(input: {
       }
     }
   } else if (status === "cash_collected") {
-    metadata = await persistWorkflow(container, order, vendorId, logisticsPatch)
+    metadata = await persistWorkflow(container, order, vendorId, {
+      ...logisticsPatch,
+      ...trackingStamp,
+    })
     updated = true
     if (should_schedule_earnings || isCod) {
       try {
@@ -297,22 +325,34 @@ export async function syncVendorShipmentTracking(input: {
   ) {
     metadata = await persistWorkflow(container, order, vendorId, {
       ...logisticsPatch,
+      ...trackingStamp,
       stage: canAdvanceStage(stage, "in_transit") ? "in_transit" : stage || "in_transit",
     })
     stage = "in_transit"
     updated = true
   } else if (canAdvanceStage(stage, nextStage) && nextStage !== stage) {
+    // picked_up / in_transit / out_for_delivery → vendor "In Transit"
     metadata = await persistWorkflow(container, order, vendorId, {
       stage: nextStage,
       shiprocket_status: status || workflow.shiprocket_status || null,
+      ...trackingStamp,
+      ...(ndrReason ? { ndr_reason: ndrReason } : {}),
     })
     stage = nextStage
     updated = true
   } else if (status && status !== workflow.shiprocket_status) {
     metadata = await persistWorkflow(container, order, vendorId, {
       shiprocket_status: status,
+      ...trackingStamp,
       ...(ndrReason ? { ndr_reason: ndrReason } : {}),
+      // Easy Ship pickup must never leave vendor stuck on to_pack / to_dispatch
+      ...(nextStage === "in_transit" && canAdvanceStage(stage, "in_transit")
+        ? { stage: "in_transit" as VendorOrderStage }
+        : {}),
     })
+    if (nextStage === "in_transit" && canAdvanceStage(stage, "in_transit")) {
+      stage = "in_transit"
+    }
     updated = true
   }
 
@@ -339,6 +379,8 @@ export async function listOpenVendorShipmentsForSync(limit = 80): Promise<
           metadata::text ILIKE '%"stage":"in_transit"%'
           OR metadata::text ILIKE '%"stage":"to_dispatch"%'
           OR metadata::text ILIKE '%"stage":"to_pack"%'
+          OR metadata::text ILIKE '%"easy_booking_status":"booked"%'
+          OR metadata::text ILIKE '%"shiprocket_awb"%'
         )
       ORDER BY updated_at DESC NULLS LAST
       LIMIT $1
