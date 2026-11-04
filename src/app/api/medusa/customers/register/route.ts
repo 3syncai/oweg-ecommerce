@@ -7,6 +7,7 @@ import {
   medusaStoreFetch,
 } from "@/lib/medusa-auth"
 import { Pool } from "pg"
+import { clientIpFromRequest, rateLimitOrNull } from "@/lib/simple-rate-limit"
 
 export const dynamic = "force-dynamic"
 
@@ -55,6 +56,14 @@ function toErrorMessage(errorPayload: unknown, fallback: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    const blocked = rateLimitOrNull(req, {
+      key: `register:${clientIpFromRequest(req)}`,
+      limit: 8,
+      windowMs: 60_000,
+      message: "Too many registration attempts. Try again shortly.",
+    })
+    if (blocked) return blocked
+
     const body = (await req.json()) as RegisterBody
     const forwardedHeaders = {
       origin: req.headers.get("origin") ?? undefined,

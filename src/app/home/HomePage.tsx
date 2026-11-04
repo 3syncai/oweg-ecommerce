@@ -541,13 +541,14 @@ export default function HomePage({
   const sectionsToRender = useMemo(() => {
     const seen = new Set<string>();
     const merged: typeof autoSections = [];
-    const seenProducts = new Set<string>();
+
 
     const push = (section: (typeof autoSections)[number]) => {
       const key = (section.key || section.title || '').toLowerCase();
       if (!key || seen.has(key)) return;
       if (!section.loading && !(section.products?.length > 0)) return;
       seen.add(key);
+      const seenProducts = new Set<string>();
       const products = section.products.filter(product => {
         const id = product.catalog_product_id || String(product.id);
         if (!(Number(product.inventory_quantity) > 0) || seenProducts.has(id)) return false;
@@ -588,10 +589,9 @@ export default function HomePage({
   const spotlightSection = useMemo(() => {
     const section = homeFeedQuery.data?.spotlight;
     if (!section) return null;
-    const seen = new Set(sectionsToRender.flatMap(row => row.products.map(product => product.catalog_product_id || String(product.id))));
-    const products = section.products.filter(product => Number(product.inventory_quantity) > 0 && !seen.has(product.catalog_product_id || String(product.id)));
+    const products = section.products.filter(product => Number(product.inventory_quantity) > 0);
     return products.length ? { ...section, products } : null;
-  }, [homeFeedQuery.data?.spotlight, sectionsToRender]);
+  }, [homeFeedQuery.data?.spotlight]);
 
   const discoveryExcludedIds = useMemo(() => Array.from(new Set([
     ...sectionsToRender.flatMap(section => section.products),
@@ -753,6 +753,13 @@ export default function HomePage({
         )}
 
 
+        {!loading && displayError && (
+          <div className="oweg-container py-4 text-sm" role="status">
+            <p>Products are temporarily unavailable.</p>
+            <button type="button" className="mt-2 min-h-11 underline" disabled={homeFeedQuery.isFetching} onClick={() => void homeFeedQuery.refetch()}>Try again</button>
+          </div>
+        )}
+
         {sectionsToRender.map((section, idx) => (
           <React.Fragment key={`${section.key || section.title}-${idx}`}>
             <ProductCarousel
@@ -863,9 +870,6 @@ export default function HomePage({
           <div className="oweg-container py-3">
             <div className="h-14 w-full animate-pulse rounded-[var(--oweg-radius-lg)] bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
           </div>
-        )}
-        {!loading && displayError && (
-          <div className="oweg-container text-sm text-red-500">{displayError}</div>
         )}
       </Content>
     </div>

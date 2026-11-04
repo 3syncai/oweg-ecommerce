@@ -63,25 +63,26 @@ const VendorCategoriesPage = () => {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
 
   useEffect(() => {
+    let cancelled = false
     const fetchCategories = async () => {
       try {
-        const token = localStorage.getItem("vendor_token")
-        if (!token) {
-          router.push("/login")
-          setLoading(false)
-          return
-        }
+        const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+        const ok = await requireVendorSession((path) => router.replace(path))
+        if (cancelled || !ok) return
 
         const data = await vendorCategoriesApi.list({ limit: 100, offset: 0 })
-        setCategories(data.product_categories || [])
+        if (!cancelled) setCategories(data.product_categories || [])
       } catch (error) {
         console.error("Failed to fetch categories:", error)
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
-    fetchCategories()
+    void fetchCategories()
+    return () => {
+      cancelled = true
+    }
   }, [router])
 
   const toggleCategory = (categoryId: string) => {

@@ -1,20 +1,17 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { boundedUpload } from "../../../../../../lib/bounded-upload"
+import { setAllowlistedCors } from "../../../../../../lib/store-cors-allowlist"
 import * as path from "path"
 import * as fs from "fs"
 import { randomUUID } from "node:crypto"
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
 
-// CORS headers helper
-function setCorsHeaders(res: MedusaResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
-  res.setHeader('Access-Control-Allow-Credentials', 'true')
+function setCorsHeaders(res: MedusaResponse, req?: MedusaRequest) {
+  setAllowlistedCors(res, req as { headers?: { origin?: string } })
 }
 
 export const OPTIONS = async (req: MedusaRequest, res: MedusaResponse) => {
-  setCorsHeaders(res)
+  setCorsHeaders(res, req)
   return res.status(200).end()
 }
 
@@ -90,11 +87,17 @@ function sanitizeForPath(str: string): string {
 }
 
 export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
-  setCorsHeaders(res)
+  setCorsHeaders(res, req)
   
   // Early return for OPTIONS preflight
   if ((req as any).method === 'OPTIONS') {
     return res.status(200).end()
+  }
+
+  const customerId = (req as MedusaRequest & { auth_context?: { actor_id?: string } })
+    .auth_context?.actor_id
+  if (!customerId) {
+    return res.status(401).json({ message: "Sign in required to upload review media" })
   }
   
   try {

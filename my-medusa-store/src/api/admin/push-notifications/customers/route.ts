@@ -11,11 +11,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   // Treat wildcard characters literally; all values remain parameterized.
   const search = '%' + q.replace(/[\\%_]/g, '\\$&') + '%'
   const eligible = req.query.eligible === 'true'
-  const filter = `c.deleted_at IS NULL AND (NOT $3::boolean OR EXISTS (SELECT 1 FROM oweg_push_subscription s WHERE s.customer_id=c.id AND s.active))
+  const filter = `c.deleted_at IS NULL AND (NOT $3::boolean OR EXISTS (SELECT 1 FROM oweg_push_subscription s WHERE s.customer_id=c.id AND s.active AND s.installed_app))
     AND ($1='' OR c.email ILIKE $2 OR concat_ws(' ',c.first_name,c.last_name) ILIKE $2 OR c.id=$1)`
   const pool = getSharedDbPool()
   const rows = await pool.query(`SELECT c.id,c.email,c.first_name,c.last_name,
-    (SELECT count(*)::int FROM oweg_push_subscription s WHERE s.customer_id=c.id AND s.active) AS devices
+    (SELECT count(*)::int FROM oweg_push_subscription s WHERE s.customer_id=c.id AND s.active AND s.installed_app) AS devices
     FROM customer c WHERE ${filter} ORDER BY c.created_at DESC,c.id ASC LIMIT $4 OFFSET $5`, [q, search, eligible, limit, offset])
   const count = await pool.query(`SELECT count(*)::int AS total FROM customer c WHERE ${filter}`, [q, search, eligible])
   return res.json({ customers: rows.rows, total: count.rows[0].total, limit, offset })

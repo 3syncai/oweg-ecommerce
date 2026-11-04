@@ -45,16 +45,12 @@ function rememberDismissal() {
 
 export default function PWAInstallPrompt() {
   const [mounted, setMounted] = useState(false);
-  const [notificationPrompt, setNotificationPrompt] = useState(false);
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   const [showIosGuide, setShowIosGuide] = useState(false);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    const handle = (event: Event) => setNotificationPrompt(Boolean((event as CustomEvent).detail));
-    window.addEventListener("oweg:notification-prompt", handle);
-    return () => window.removeEventListener("oweg:notification-prompt", handle);
   }, []);
 
   useEffect(() => {
@@ -90,7 +86,7 @@ export default function PWAInstallPrompt() {
     };
   }, [mounted]);
 
-  if (!mounted || !visible || notificationPrompt) return null;
+  if (!mounted || !visible) return null;
 
   const dismiss = () => {
     rememberDismissal();

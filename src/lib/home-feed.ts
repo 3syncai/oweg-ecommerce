@@ -1,10 +1,10 @@
-import { unstable_cache } from "next/cache";
 import {
   fetchCategories,
-  fetchProductsByCategoryId,
+  fetchProductsByCategoryIds,
+  collectDescendantCategoryIds,
   toUiProduct,
   type MedusaCategory,
-} from "@/lib/medusa";
+} from "./medusa";
 import { inStockHomeProducts, homeProductKey } from "./home-products";
 
 export type HomeFeedUiProduct = ReturnType<typeof toUiProduct> & {
@@ -35,59 +35,7 @@ const MAX_SECTIONS = 6;
 const MAX_PER_SECTION = 12;
 const PER_CATEGORY_FETCH = 24;
 const MAX_CATEGORIES_TO_PROBE = 12;
-const CATEGORY_FETCH_CONCURRENCY = 6;
-const CATEGORY_FETCH_TIMEOUT_MS = 8000;
-const HOME_FEED_CACHE_TTL_MS = 60_000;
-
-type HomeFeedCacheEntry = {
-  expiresAt: number;
-  value: HomeFeedResult;
-};
-
-type HomeFeedGlobalCache = {
-  cache: HomeFeedCacheEntry | null;
-  inFlight: Promise<HomeFeedResult> | null;
-};
-
-const homeFeedGlobal: HomeFeedGlobalCache = (() => {
-  const g = globalThis as typeof globalThis & {
-    __owegHomeFeedCache?: HomeFeedGlobalCache;
-  };
-  if (!g.__owegHomeFeedCache) {
-    g.__owegHomeFeedCache = { cache: null, inFlight: null };
-  }
-  return g.__owegHomeFeedCache;
-})();
-
-const readSharedHomeFeed = unstable_cache(buildHomeFeed, ['home-feed-v2'], { revalidate: 60, tags: ['catalogue'] });
-
-export async function buildHomeFeedCached(): Promise<{
-  feed: HomeFeedResult;
-  cacheHit: boolean;
-}> {
-  const now = Date.now();
-  if (homeFeedGlobal.cache && homeFeedGlobal.cache.expiresAt > now) {
-    return { feed: homeFeedGlobal.cache.value, cacheHit: true };
-  }
-  if (homeFeedGlobal.inFlight) {
-    const feed = await homeFeedGlobal.inFlight;
-    return { feed, cacheHit: true };
-  }
-  homeFeedGlobal.inFlight = readSharedHomeFeed()
-    .then((feed) => {
-      homeFeedGlobal.cache = {
-        value: feed,
-        expiresAt: Date.now() + HOME_FEED_CACHE_TTL_MS,
-      };
-      return feed;
-    })
-    .finally(() => {
-      homeFeedGlobal.inFlight = null;
-    });
-  const feed = await homeFeedGlobal.inFlight;
-  return { feed, cacheHit: false };
-}
-
+const CATEGORY_FETCH_CONCURRENCY = 3;
 function humanizeHandle(handle?: string | null) {
   if (!handle) return "Products";
   return handle
@@ -149,33 +97,12 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("category fetch timeout")), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (err) => {
-        clearTimeout(timer);
-        reject(err);
-      }
-    );
-  });
-}
-
 type FilledSection = HomeFeedSection & { stockCount: number };
 
-async function fetchCategorySection(cat: MedusaCategory): Promise<FilledSection | null> {
+async function fetchCategorySection(cat: MedusaCategory): Promise<FilledSection | null | undefined> {
   if (!cat.id) return null;
   try {
-    const list = await withTimeout(
-      fetchProductsByCategoryId(cat.id, PER_CATEGORY_FETCH, {
-        includeSubcategories: true,
-      }),
-      CATEGORY_FETCH_TIMEOUT_MS
-    );
+    const list = await fetchProductsByCategoryIds(collectDescendantCategoryIds(cat), PER_CATEGORY_FETCH, 0, { strict: true });
     const products = Array.isArray(list.products) ? list.products : [];
     // Never backfill a home carousel with sold-out variants.
     const pool = inStockHomeProducts(products);
@@ -194,7 +121,7 @@ async function fetchCategorySection(cat: MedusaCategory): Promise<FilledSection 
       stockCount: ranked.filter((p) => (p.inventory_quantity ?? 0) > 0).length,
     };
   } catch {
-    return null;
+    return undefined;
   }
 }
 
@@ -213,6 +140,10 @@ export async function buildHomeFeed(): Promise<HomeFeedResult> {
   const settled = await mapWithConcurrency(roots, CATEGORY_FETCH_CONCURRENCY, (cat) =>
     fetchCategorySection(cat)
   );
+
+  if (settled.includes(undefined)) {
+    throw new Error("Home feed refresh failed while fetching category products");
+  }
 
   const filled = settled
     .filter((section): section is FilledSection => Boolean(section))

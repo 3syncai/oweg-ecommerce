@@ -57,8 +57,9 @@ test("ITL adapter sends actual kg, declared MRP and rounded cm, retaining tax an
   }
   try {
     const result=await new ItlProvider().listCouriers({pickup_postcode:"401107",delivery_postcode:"110001",weight:25,length:22.1,breadth:20,height:24,declared_value:2150})
-    assert.equal(data.shipping_weight_kg,25);assert.equal(data.shipping_length_cms,23);assert.equal(data.product_mrp,2150)
-    assert.equal(result.couriers[0].gst_amount,34.88);assert.equal(result.couriers[0].prepaid,true)
+    // ITL rate API caps weight at 10 kg; cm are ceil'd
+    assert.equal(data.shipping_weight_kg,"10");assert.equal(data.shipping_length_cms,"23");assert.equal(data.product_mrp,"2150")
+    assert.equal(result.couriers[0].gst_amount,34.88);assert.equal(result.couriers[0].freight_charge,180.25);assert.equal(result.couriers[0].prepaid,true)
   } finally {
     global.fetch=oldFetch
     if(token===undefined)delete process.env.ITL_ACCESS_TOKEN;else process.env.ITL_ACCESS_TOKEN=token

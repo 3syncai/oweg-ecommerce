@@ -2,6 +2,7 @@ import { safeVendorRedirect } from "./lib/vendor-redirect";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getDebugControllerSettings } from "./lib/debug-controller/settings";
+import { unsealVendorSession } from "./lib/api/token";
 
 const MAINTENANCE_BYPASS = new Set([
   "/maintenance",
@@ -52,7 +53,9 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  const token = request.cookies.get("vendor_token")?.value;
+  const rawToken = request.cookies.get("vendor_token")?.value || "";
+  const session = rawToken ? unsealVendorSession(rawToken) : null;
+  const authenticated = Boolean(session);
 
   const protectedPaths = [
     "/dashboard",
@@ -74,13 +77,26 @@ export async function middleware(request: NextRequest) {
   const authPaths = ["/login", "/signup"];
   const isAuthPath = authPaths.some((path) => pathname.startsWith(path));
 
-  if (isProtectedPath && !token) {
+  if (isProtectedPath && !authenticated) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname + request.nextUrl.search);
-    return NextResponse.redirect(loginUrl);
+    const res = NextResponse.redirect(loginUrl);
+    if (rawToken && !session) {
+      // Drop garbage / expired cookie so UI cannot look "logged in".
+      res.cookies.set("vendor_token", "", {
+        httpOnly: true,
+        secure:
+          process.env.NODE_ENV === "production" ||
+          Boolean(process.env.VERCEL),
+        sameSite: "lax",
+        path: "/",
+        maxAge: 0,
+      });
+    }
+    return res;
   }
 
-  if (isAuthPath && token) {
+  if (isAuthPath && authenticated) {
     return NextResponse.redirect(new URL(safeVendorRedirect(request.nextUrl.searchParams.get("redirect")), request.url));
   }
 

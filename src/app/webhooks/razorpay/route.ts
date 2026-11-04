@@ -94,7 +94,7 @@ function reconcileAmounts(medusaTotalRaw: number, razorpayMinor: number) {
   }
 
   if (razorpayMinor > 0) {
-    // Trust Razorpay payload to avoid dropping paid events; log mismatch upstream
+    // Caller must fail closed when matched=false — never settle on this fallback alone.
     return {
       matched: false,
       canonicalMajor: razorpayMinor / 100,
@@ -315,15 +315,26 @@ export async function POST(req: Request) {
   const medusaReported = safeNumber(order.total); // ambiguous unit (we will reconcile)
   const expectedCurrency = normalizeCurrency(order.currency_code);
 
-  // reconcile amounts
+  // reconcile amounts — fail closed on mismatch (do not trust Razorpay amount alone)
   const reconcile = reconcileAmounts(medusaReported, razorpayAmountPaise);
   if (!reconcile.matched) {
-    console.warn("amount reconciliation mismatch, falling back to trusted amount", {
+    console.error("razorpay webhook amount mismatch — refusing settlement", {
       medusaReported,
       razorpayAmountPaise,
       medusaCalculatedMinor: Math.round(medusaReported * 100),
       detectedScale: reconcile.detectedScale,
+      medusaOrderId,
+      paymentId: payment?.id,
     });
+    return NextResponse.json(
+      {
+        error: "amount_mismatch",
+        medusa_reported: medusaReported,
+        razorpay_amount_paise: razorpayAmountPaise,
+        detected_scale: reconcile.detectedScale,
+      },
+      { status: 409 }
+    );
   }
 
   const canonicalMinor = reconcile.canonicalMinor; // paise

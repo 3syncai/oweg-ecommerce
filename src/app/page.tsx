@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import styles from './home/HomePage.module.css';
 import HomePage, { HomeShell, HomeFeedSkeleton } from './home/HomePage';
 import FlashSaleSection, { FlashSaleSkeleton, type FlashSaleData } from '@/components/flash-sale/FlashSaleSection';
-import { buildHomeFeedCached } from '@/lib/home-feed';
+import { buildHomeFeedCached } from '@/lib/home-feed-cache';
 import { loadFlashSale } from '@/lib/flash-sale-server';
 
 async function Feed({ promise }: { promise: ReturnType<typeof buildHomeFeedCached> }) {

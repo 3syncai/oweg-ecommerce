@@ -21,7 +21,6 @@ type ReturnsCachePayload = {
 /** Prefetch default returns list so navbar → Returns feels instant. */
 export function warmReturnsCache() {
   if (typeof window === "undefined") return
-  if (!localStorage.getItem("vendor_token")) return
 
   const key = pageCacheKey("returns", { status: "all", page: 1 })
   if (hasPageCache(key)) return

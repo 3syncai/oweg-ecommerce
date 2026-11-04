@@ -13,7 +13,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { queueWishlist, wishlistIds } from "@/lib/wishlist-client"
 import { queueCartWrite } from "@/lib/cart-client"
 import { clearUserSessionCache } from "@/lib/client-session-cache"
-import { disableBrowserPush } from "@/lib/browser-push"
+import { disableBrowserPush, resumeBrowserPushSession } from "@/lib/browser-push"
 
 export type StoreCustomer = {
   id: string
@@ -54,6 +54,7 @@ async function fetchSession(): Promise<StoreCustomer> {
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
   const [customer, setCustomer] = useState<StoreCustomer>(null)
+  useEffect(() => { if (customer?.id) resumeBrowserPushSession() }, [customer?.id])
   const [initializing, setInitializing] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const customerRef = useRef<StoreCustomer>(null)

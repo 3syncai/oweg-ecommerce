@@ -204,6 +204,7 @@ const Header: React.FC = () => {
   const [viewportWidth, setViewportWidth] = React.useState(1280);
   const [desktopNavWidth, setDesktopNavWidth] = React.useState(0);
   const [showTopBarMobile, setShowTopBarMobile] = React.useState(true);
+  const [mobileHomeHeaderHidden, setMobileHomeHeaderHidden] = React.useState(false);
   const [showDesktopCategories, setShowDesktopCategories] = React.useState(true);
   const lastMobileScrollYRef = React.useRef(0);
   const chromeIgnoreUntilRef = React.useRef(0);
@@ -257,6 +258,7 @@ const Header: React.FC = () => {
   const [showSuggest, setShowSuggest] = React.useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const mobileSearchExpanded = showTopBarMobile && !(pathname === "/" && mobileHomeHeaderHidden);
   const [isCategoryOverlayOpen, setIsCategoryOverlayOpen] = React.useState(false);
   const [isJoinOverlayOpen, setIsJoinOverlayOpen] = React.useState(false);
   const [isProfileOverlayOpen, setIsProfileOverlayOpen] = React.useState(false);
@@ -653,11 +655,42 @@ const Header: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
+    const mobileHome = pathname === "/" ? window.matchMedia("(max-width: 767px)") : null;
+    let homeScrollAnchor = readMobileScrollY();
+    let homeHeaderHidden = false;
+    let frame = 0;
+    const handleBreakpoint = () => {
+      homeScrollAnchor = lastMobileScrollYRef.current = readMobileScrollY();
+      homeHeaderHidden = false;
+      setMobileHomeHeaderHidden(false);
+      setScrollChromeVisible(true);
+    };
+    mobileHome?.addEventListener("change", handleBreakpoint);
     let ticking = false;
-    const handleScroll = () => {
+    const handleScroll = (event?: Event) => {
       if (ticking) return;
+      if (mobileHome?.matches && event && event.target !== document && event.target !== window) return;
       ticking = true;
-      window.requestAnimationFrame(() => {
+      frame = window.requestAnimationFrame(() => {
+        if (mobileHome?.matches) {
+          const y = Math.max(0, readMobileScrollY());
+          const focusedControl = headerRootRef.current?.querySelector("input:focus, :focus-visible");
+          if (y < 24 || focusedControl || (homeHeaderHidden && homeScrollAnchor - y >= 16)) {
+            homeScrollAnchor = y;
+            if (homeHeaderHidden) {
+              homeHeaderHidden = false;
+              setMobileHomeHeaderHidden(false);
+            }
+          } else if (!homeHeaderHidden && y - homeScrollAnchor >= 32 && y >= (headerRootRef.current?.offsetHeight ?? 136)) {
+            homeScrollAnchor = y;
+            homeHeaderHidden = true;
+            setMobileHomeHeaderHidden(true);
+          } else {
+            homeScrollAnchor = homeHeaderHidden ? Math.max(homeScrollAnchor, y) : Math.min(homeScrollAnchor, y);
+          }
+          ticking = false;
+          return;
+        }
         const now = Date.now();
         const yProbe = readMobileScrollY();
         const deltaProbe = yProbe - lastMobileScrollYRef.current;
@@ -707,19 +740,20 @@ const Header: React.FC = () => {
         ticking = false;
       });
     };
-    lastMobileScrollYRef.current = readMobileScrollY();
-    setScrollChromeVisible(true);
+    handleBreakpoint();
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
     document.addEventListener("scroll", handleScroll, { passive: true, capture: true });
     return () => {
+      window.cancelAnimationFrame(frame);
+      mobileHome?.removeEventListener("change", handleBreakpoint);
       window.removeEventListener("scroll", handleScroll);
       document.removeEventListener("scroll", handleScroll, true);
       if (typeof document !== "undefined") {
         delete document.documentElement.dataset.owegScrollChrome;
       }
     };
-  }, [readMobileScrollY, setScrollChromeVisible]);
+  }, [pathname, readMobileScrollY, setScrollChromeVisible]);
 
   const fetchPlaceForPin = React.useCallback(async (pin: string) => {
     // Same-origin proxy — CSP connect-src blocks direct browser calls to api.postalpincode.in
@@ -1396,7 +1430,7 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header ref={headerRootRef} className="fixed top-0 left-0 right-0 z-[120] w-full header-root bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+    <header ref={headerRootRef} data-mobile-home={pathname === "/"} data-scroll-hidden={mobileHomeHeaderHidden} className={`fixed top-0 left-0 right-0 z-[120] w-full header-root bg-header-bg shadow-[0_2px_12px_rgba(0,0,0,0.06)] ${navStyles.mobileHomeHeader}`}>
       <div className="bg-header-bg">
         {/* Top Bar */}
         {!isMobile && (
@@ -1669,9 +1703,9 @@ const Header: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex flex-col gap-0 md:hidden bg-white">
-              <div className="bg-white/95 backdrop-blur border-b border-gray-100">
-                <div className="flex items-center justify-between gap-2 px-3 pb-2">
+            <div className={`flex flex-col gap-0 md:hidden bg-white ${navStyles.mobileHeaderSurface}`}>
+              <div className={`bg-white/95 backdrop-blur border-b border-gray-100 ${navStyles.mobileHeaderSurface}`}>
+                <div className={`flex items-center justify-between gap-2 px-3 pb-2 ${navStyles.mobileBrandRow}`}>
                   <div className="flex flex-1 items-center gap-2">
                     <Link href="/" className="flex items-center" aria-label="OWEG home">
                       <Image src="/oweg_logo.png" alt="OWEG" width={100} height={28} className="h-7 w-auto" priority />
@@ -1691,14 +1725,14 @@ const Header: React.FC = () => {
                 {!isMobileSimplifiedHeader && (
                   <>
                     <div
-                      data-search-expanded={showTopBarMobile}
+                      data-search-expanded={mobileSearchExpanded}
                       className={`${navStyles.mobileSearchChrome} transition-[max-height,opacity,transform,margin] duration-300 ease-out ${
                         showTopBarMobile
                           ? "max-h-40 opacity-100 translate-y-0 mt-1"
                           : "max-h-0 opacity-0 -translate-y-2 mt-0 pointer-events-none"
                       }`}
-                      aria-hidden={!showTopBarMobile}
-                      inert={!showTopBarMobile}
+                      aria-hidden={!mobileSearchExpanded}
+                      inert={!mobileSearchExpanded}
                     >
                     <div className="relative mobile-search-bar px-3" data-search-root>
                       <Input

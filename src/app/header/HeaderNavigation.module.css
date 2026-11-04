@@ -171,6 +171,38 @@
    Keep clipping only while collapsed so hidden controls cannot intercept taps. */
 .mobileSearchChrome { overflow: hidden; }
 .mobileSearchChrome[data-search-expanded="true"] { overflow: visible; }
+
+@media (max-width: 767px) {
+  /* Keep the measured header height stable while exposing the page under the brand row. */
+  .mobileHomeHeader[data-mobile-home="true"][data-scroll-hidden="true"],
+  .mobileHomeHeader[data-mobile-home="true"][data-scroll-hidden="true"] :global(.bg-header-bg),
+  .mobileHomeHeader[data-mobile-home="true"][data-scroll-hidden="true"] .mobileHeaderSurface {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    pointer-events: none;
+  }
+
+  .mobileHomeHeader[data-mobile-home="true"][data-scroll-hidden="true"] .mobileSearchChrome {
+    visibility: hidden;
+  }
+
+  .mobileHomeHeader[data-mobile-home="true"][data-scroll-hidden="true"] .mobileBrandRow {
+    position: relative;
+    isolation: isolate;
+    pointer-events: auto;
+  }
+
+  .mobileHomeHeader[data-mobile-home="true"][data-scroll-hidden="true"] .mobileBrandRow::before {
+    content: "";
+    position: absolute;
+    inset: -8px -16px 0;
+    z-index: -1;
+    background: white;
+    box-shadow: 0 2px 12px rgb(0 0 0 / 6%);
+  }
+}
 .mobileSuggestions {
   position: absolute;
   top: calc(100% + 8px);

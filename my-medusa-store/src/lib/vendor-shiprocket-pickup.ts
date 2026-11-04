@@ -135,7 +135,9 @@ export async function ensureVendorEasyShipPickup(
 
   const pickup = buildVendorPickupAddress(vendor)
   const provider = getEasyShipProvider()
-  await provider.ensurePickup(pickup)
+  const ensured = await provider.ensurePickup(pickup)
+  const pickupLocation = ensured.pickup_location || pickup.pickup_location
+  const warehouseIdMatch = /^ITLWH:(\d+)$/i.exec(String(pickupLocation))
 
   const metadata = (vendor.metadata && typeof vendor.metadata === "object"
     ? { ...vendor.metadata }
@@ -146,17 +148,20 @@ export async function ensureVendorEasyShipPickup(
     id: vendor.id,
     metadata: {
       ...metadata,
-      itl_pickup_location: pickup.pickup_location,
+      itl_pickup_location: pickupLocation,
       itl_pickup_fingerprint: pickup.fingerprint,
-      itl_pickup_pincode: pickup.pin_code,
+      itl_pickup_pincode: ensured.pin_code || pickup.pin_code,
+      ...(warehouseIdMatch
+        ? { itl_warehouse_id: warehouseIdMatch[1] }
+        : {}),
       easy_ship_provider: provider.name,
     },
   })
 
   return {
-    pickup_location: pickup.pickup_location,
-    pin_code: pickup.pin_code,
-    address: pickup,
+    pickup_location: pickupLocation,
+    pin_code: ensured.pin_code || pickup.pin_code,
+    address: { ...pickup, pickup_location: pickupLocation },
   }
 }
 

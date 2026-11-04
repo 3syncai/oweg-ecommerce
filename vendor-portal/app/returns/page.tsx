@@ -183,13 +183,16 @@ const VendorReturnsPage = () => {
   }, [router, page, statusFilter, searchDebounced])
 
   useEffect(() => {
-    const vendorToken = localStorage.getItem("vendor_token")
-    if (!vendorToken) {
-      router.push("/login")
-      return
+    let cancelled = false
+    void (async () => {
+      const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+      const ok = await requireVendorSession((path) => router.replace(path))
+      if (cancelled || !ok) return
+      void loadReturns()
+    })()
+    return () => {
+      cancelled = true
     }
-
-    void loadReturns()
   }, [router, loadReturns])
 
   useVendorLive({

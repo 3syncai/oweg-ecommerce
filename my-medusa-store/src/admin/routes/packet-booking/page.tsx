@@ -10,7 +10,13 @@ import {
   Text,
   toast,
 } from "@medusajs/ui"
-import { useCallback, useEffect, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react"
 
 type QueueItem = {
   order_id: string
@@ -34,6 +40,7 @@ type QueueItem = {
   shiprocket_awb: string | null
   tracking_number: string | null
   admin_booked_at: string | null
+  easy_booking_status?: string | null
   status: "awaiting_booking" | "booked"
 }
 
@@ -43,6 +50,9 @@ type Courier = {
   rate: number | null
   etd: string | null
   freight_charge: number | null
+  cod_charges?: number | null
+  gst_amount?: number | null
+  charge_weight?: number | null
 }
 
 type DetailPayload = {
@@ -72,7 +82,14 @@ type DetailPayload = {
     province: string | null
     postal_code: string | null
   }
-  package: { weight: number; length: number; breadth: number; height: number }
+  package: {
+    weight: number
+    length: number
+    breadth: number
+    height: number
+    volumetric_weight?: number
+    chargeable_weight?: number
+  }
   payment_type: string
   items: Array<{
     id: string
@@ -81,14 +98,32 @@ type DetailPayload = {
     unit_price?: number
     variant_title?: string | null
   }>
+  provider: string
   provider_label: string
   couriers: Courier[]
   courier_error: string | null
+  pincode_not_serviceable?: boolean
   already_booked: boolean
+  can_rebook?: boolean
+  tracking?: {
+    current_status?: string | null
+    status?: string | null
+    error?: string | null
+    tracking_data?: {
+      courier_name?: string | null
+      shipment_track_activities?: Array<Record<string, unknown>>
+    }
+  } | null
   workflow: {
     easy_courier_id?: number | null
     easy_courier_partner?: string | null
+    easy_booking_status?: string | null
+    easy_cancelled_at?: string | null
+    easy_tracking_status?: string | null
     shiprocket_awb?: string | null
+    tracking_number?: string | null
+    tracking_url?: string | null
+    admin_booked_at?: string | null
   }
 }
 
@@ -114,6 +149,55 @@ const formatDate = (iso: string | null | undefined) => {
   }
 }
 
+const isDummyAwb = (awb: string | null | undefined) =>
+  /DUMMY|ITL-DUMMY|ITL-REV-DUMMY/i.test(String(awb || ""))
+
+const humanizeStatus = (raw: string | null | undefined) => {
+  const s = String(raw || "").trim()
+  if (!s || /^unknown$/i.test(s)) return "Awaiting first scan"
+  return s
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+const statusBadgeColor = (
+  status: string
+): "green" | "orange" | "blue" | "red" | "grey" | "purple" => {
+  const s = status.toLowerCase()
+  if (/deliver|cash.?collect/.test(s)) return "green"
+  if (/cancel|rto|fail|ndr/.test(s)) return "red"
+  if (/out.?for|ofd/.test(s)) return "purple"
+  if (/transit|pickup|manifest|awb|book/.test(s)) return "blue"
+  if (/await|pending|unknown/.test(s)) return "orange"
+  return "grey"
+}
+
+async function copyText(value: string) {
+  try {
+    await navigator.clipboard.writeText(value)
+    toast.success("Copied")
+  } catch {
+    toast.error("Could not copy")
+  }
+}
+
+const MetaRow = ({
+  label,
+  children,
+  mono,
+}: {
+  label: string
+  children: ReactNode
+  mono?: boolean
+}) => (
+  <div className="grid grid-cols-[7.5rem_1fr] items-start gap-2 py-1.5 text-sm">
+    <span className="text-ui-fg-muted">{label}</span>
+    <span className={mono ? "font-mono text-[13px] tracking-tight" : ""}>
+      {children}
+    </span>
+  </div>
+)
+
 const PacketBookingPage = () => {
   const [tab, setTab] = useState<"open" | "booked">("open")
   const [items, setItems] = useState<QueueItem[]>([])
@@ -122,8 +206,14 @@ const PacketBookingPage = () => {
   const [detail, setDetail] = useState<DetailPayload | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [booking, setBooking] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const [selectedCourierId, setSelectedCourierId] = useState<number | null>(null)
-  const [pkg, setPkg] = useState({ weight: "", length: "", breadth: "", height: "" })
+  const [pkg, setPkg] = useState({
+    weight: "",
+    length: "",
+    breadth: "",
+    height: "",
+  })
 
   const loadQueue = useCallback(async () => {
     try {
@@ -154,6 +244,30 @@ const PacketBookingPage = () => {
     void loadQueue()
   }, [loadQueue])
 
+  const fetchDetail = async (
+    item: QueueItem,
+    dims?: { weight: string; length: string; breadth: string; height: string }
+  ) => {
+    const qs = new URLSearchParams()
+    const d = dims || {
+      weight: item.package_weight != null ? String(item.package_weight) : "",
+      length: item.package_length != null ? String(item.package_length) : "",
+      breadth: item.package_breadth != null ? String(item.package_breadth) : "",
+      height: item.package_height != null ? String(item.package_height) : "",
+    }
+    if (d.weight) qs.set("weight", d.weight)
+    if (d.length) qs.set("length", d.length)
+    if (d.breadth) qs.set("breadth", d.breadth)
+    if (d.height) qs.set("height", d.height)
+    const res = await fetch(
+      `/admin/packet-booking/${item.order_id}/${item.vendor_id}?${qs}`,
+      { credentials: "include", cache: "no-store" }
+    )
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || "Failed to load detail")
+    return data as DetailPayload
+  }
+
   const openBooking = async (item: QueueItem) => {
     setSelected(item)
     setDetail(null)
@@ -166,17 +280,7 @@ const PacketBookingPage = () => {
     })
     setDetailLoading(true)
     try {
-      const qs = new URLSearchParams()
-      if (item.package_weight) qs.set("weight", String(item.package_weight))
-      if (item.package_length) qs.set("length", String(item.package_length))
-      if (item.package_breadth) qs.set("breadth", String(item.package_breadth))
-      if (item.package_height) qs.set("height", String(item.package_height))
-      const res = await fetch(
-        `/admin/packet-booking/${item.order_id}/${item.vendor_id}?${qs}`,
-        { credentials: "include" }
-      )
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.message || "Failed to load detail")
+      const data = await fetchDetail(item)
       setDetail(data)
       setPkg({
         weight: String(data.package?.weight ?? ""),
@@ -184,11 +288,9 @@ const PacketBookingPage = () => {
         breadth: String(data.package?.breadth ?? ""),
         height: String(data.package?.height ?? ""),
       })
-      const preferred =
-        data.workflow?.easy_courier_id ||
-        data.couriers?.[0]?.courier_id ||
-        null
-      setSelectedCourierId(preferred)
+      setSelectedCourierId(
+        data.workflow?.easy_courier_id || data.couriers?.[0]?.courier_id || null
+      )
     } catch (e: any) {
       toast.error(e?.message || "Failed to open booking")
       setSelected(null)
@@ -201,23 +303,23 @@ const PacketBookingPage = () => {
     if (!selected) return
     setDetailLoading(true)
     try {
-      const qs = new URLSearchParams()
-      if (pkg.weight) qs.set("weight", pkg.weight)
-      if (pkg.length) qs.set("length", pkg.length)
-      if (pkg.breadth) qs.set("breadth", pkg.breadth)
-      if (pkg.height) qs.set("height", pkg.height)
-      const res = await fetch(
-        `/admin/packet-booking/${selected.order_id}/${selected.vendor_id}?${qs}`,
-        { credentials: "include" }
-      )
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.message || "Failed to refresh rates")
+      const data = await fetchDetail(selected, pkg)
       setDetail(data)
-      if (!selectedCourierId && data.couriers?.[0]) {
-        setSelectedCourierId(data.couriers[0].courier_id)
+      if (
+        selectedCourierId == null ||
+        !data.couriers?.some((c) => c.courier_id === selectedCourierId)
+      ) {
+        setSelectedCourierId(data.couriers?.[0]?.courier_id ?? null)
+      }
+      if (data.already_booked) {
+        toast.success("Status refreshed")
+      } else if (data.pincode_not_serviceable) {
+        toast.error(
+          "Pincode not serviceable right now. Try again later or adjust package dims."
+        )
       }
     } catch (e: any) {
-      toast.error(e?.message || "Failed to refresh couriers")
+      toast.error(e?.message || "Failed to refresh")
     } finally {
       setDetailLoading(false)
     }
@@ -249,12 +351,21 @@ const PacketBookingPage = () => {
         }
       )
       const data = await res.json()
-      if (!res.ok) throw new Error(data.message || "Booking failed")
-      toast.success(
-        data.awb ? `Courier booked · AWB ${data.awb}` : "Courier booked"
-      )
+      if (!res.ok) {
+        if (data.pincode_not_serviceable) {
+          toast.error(
+            data.message ||
+              "Pincode not serviceable. Refresh rates later and book again."
+          )
+          await refreshCouriers()
+          return
+        }
+        throw new Error(data.message || "Booking failed")
+      }
+      toast.success(data.awb ? `Booked · AWB ${data.awb}` : "Courier booked")
       setSelected(null)
       setDetail(null)
+      setTab("booked")
       await loadQueue()
     } catch (e: any) {
       toast.error(e?.message || "Booking failed")
@@ -263,324 +374,686 @@ const PacketBookingPage = () => {
     }
   }
 
+  const submitCancel = async () => {
+    if (!selected) return
+    const awb =
+      detail?.workflow?.shiprocket_awb ||
+      detail?.workflow?.tracking_number ||
+      selected.shiprocket_awb
+    const dummy = isDummyAwb(awb)
+    if (
+      !window.confirm(
+        dummy
+          ? `Clear dummy booking ${awb}? You can then book on live ITL.`
+          : awb
+            ? `Cancel AWB ${awb} on ITL? You can rebook after.`
+            : "Cancel this Easy Ship booking?"
+      )
+    ) {
+      return
+    }
+    setCancelling(true)
+    try {
+      const res = await fetch(
+        `/admin/packet-booking/${selected.order_id}/${selected.vendor_id}`,
+        { method: "DELETE", credentials: "include" }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || "Cancel failed")
+      toast.success(
+        dummy ? "Dummy booking cleared — pick a live courier" : "Cancelled — ready to rebook"
+      )
+      setTab("open")
+      const refreshed = await fetchDetail(selected, pkg)
+      setDetail(refreshed)
+      setSelectedCourierId(refreshed.couriers?.[0]?.courier_id ?? null)
+      await loadQueue()
+    } catch (e: any) {
+      toast.error(e?.message || "Cancel failed")
+    } finally {
+      setCancelling(false)
+    }
+  }
+
+  const closeModal = () => {
+    setSelected(null)
+    setDetail(null)
+  }
+
+  const awb = String(
+    detail?.workflow?.shiprocket_awb ||
+      detail?.workflow?.tracking_number ||
+      selected?.shiprocket_awb ||
+      ""
+  ).trim()
+  const trackingRaw =
+    detail?.tracking?.current_status ||
+    detail?.tracking?.status ||
+    detail?.workflow?.easy_tracking_status ||
+    null
+  const trackingLabel = humanizeStatus(trackingRaw)
+  const activities = detail?.tracking?.tracking_data?.shipment_track_activities || []
+  const selectedCourier = useMemo(
+    () => detail?.couriers?.find((c) => c.courier_id === selectedCourierId) || null,
+    [detail?.couriers, selectedCourierId]
+  )
+
   return (
     <Container className="p-6">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Heading level="h1">Packet Booking</Heading>
-          <Text size="small" className="mt-1 text-ui-fg-subtle">
-            Easy Ship orders appear after the vendor accepts and chooses Easy Shipping. You can
-            book the courier before RTD.
+        <div className="max-w-2xl">
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <Heading level="h1">Packet Booking</Heading>
+            <Badge size="2xsmall" color="blue">
+              Easy Ship · ITL
+            </Badge>
+          </div>
+          <Text size="small" className="text-ui-fg-subtle">
+            Book any live courier option, track AWB status, cancel, and rebook when a
+            pincode becomes serviceable.
           </Text>
         </div>
         <Button variant="secondary" size="small" onClick={() => void loadQueue()}>
-          Refresh
+          Refresh list
         </Button>
       </div>
 
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex flex-wrap gap-2">
         <Button
           size="small"
           variant={tab === "open" ? "primary" : "secondary"}
           onClick={() => setTab("open")}
         >
           Open queue
+          {!loading && tab === "open" ? (
+            <span className="ml-1.5 tabular-nums opacity-80">({items.length})</span>
+          ) : null}
         </Button>
         <Button
           size="small"
           variant={tab === "booked" ? "primary" : "secondary"}
           onClick={() => setTab("booked")}
         >
-          Booked
+          Recent bookings
+          {!loading && tab === "booked" ? (
+            <span className="ml-1.5 tabular-nums opacity-80">({items.length})</span>
+          ) : null}
         </Button>
       </div>
 
       {loading ? (
-        <Text className="text-ui-fg-muted">Loading…</Text>
+        <div className="rounded-xl border border-ui-border-base bg-ui-bg-subtle px-4 py-10 text-center">
+          <Text className="text-ui-fg-muted">Loading queue…</Text>
+        </div>
       ) : items.length === 0 ? (
-        <div className="rounded-lg border border-ui-border-base bg-ui-bg-subtle p-8 text-center">
-          <Text weight="plus">No orders in this queue</Text>
+        <div className="rounded-xl border border-dashed border-ui-border-base bg-ui-bg-subtle px-4 py-12 text-center">
+          <Text weight="plus">Nothing here yet</Text>
           <Text size="small" className="mt-1 text-ui-fg-subtle">
             {tab === "open"
-              ? "Orders appear when a vendor chooses Easy Shipping."
-              : "Booked Easy Ship packets will show here."}
+              ? "Orders land here when a vendor picks Easy Shipping — or after you cancel a booking."
+              : "Live bookings with AWB will appear in this list."}
           </Text>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-ui-border-base">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-ui-border-base bg-ui-bg-subtle">
-              <tr>
-                <th className="px-3 py-2 font-medium">Order</th>
-                <th className="px-3 py-2 font-medium">Vendor</th>
-                <th className="px-3 py-2 font-medium">Payment</th>
-                <th className="px-3 py-2 font-medium">Pickup PIN</th>
-                <th className="px-3 py-2 font-medium">RTD</th>
-                <th className="px-3 py-2 font-medium">Preferred</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr
-                  key={`${item.order_id}:${item.vendor_id}`}
-                  className="border-b border-ui-border-base/70 last:border-0"
-                >
-                  <td className="px-3 py-2.5">
-                    <Text weight="plus">#{item.order_display_id || "—"}</Text>
-                    <Text size="xsmall" className="text-ui-fg-muted">
-                      {item.order_id.slice(0, 18)}…
-                    </Text>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <Text size="small" weight="plus">
-                      {item.store_name || item.vendor_name || "Vendor"}
-                    </Text>
-                    <Text size="xsmall" className="text-ui-fg-muted">
-                      {item.vendor_email || item.vendor_id.slice(0, 12)}
-                    </Text>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <Badge size="2xsmall" color={item.payment_type === "PostPaid" ? "orange" : "green"}>
-                      {item.payment_type}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-2.5 tabular-nums">{item.pickup_pincode || "—"}</td>
-                  <td className="px-3 py-2.5 text-ui-fg-subtle">{formatDate(item.rtd_at)}</td>
-                  <td className="px-3 py-2.5">
-                    {item.preferred_courier_partner || "—"}
-                    {item.preferred_courier_rate != null ? (
-                      <Text size="xsmall" className="text-ui-fg-muted">
-                        {formatMoney(item.preferred_courier_rate)}
-                      </Text>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    {item.status === "booked" ? (
-                      <div>
-                        <Badge size="2xsmall" color="green">
-                          Booked
-                        </Badge>
-                        <Text size="xsmall" className="mt-0.5 text-ui-fg-muted">
-                          {item.shiprocket_awb || item.tracking_number || "AWB pending"}
-                        </Text>
-                      </div>
-                    ) : (
-                      <div>
-                        <Badge size="2xsmall" color="orange">
-                          Ready to book
-                        </Badge>
-                        <Text size="xsmall" className="mt-0.5 text-ui-fg-muted">
-                          {item.rtd_at ? "RTD marked" : "RTD pending — booking allowed"}
-                        </Text>
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    {item.status === "awaiting_booking" ? (
-                      <Button size="small" onClick={() => void openBooking(item)}>
-                        Review & book
-                      </Button>
-                    ) : (
-                      <Button
-                        size="small"
-                        variant="secondary"
-                        onClick={() => void openBooking(item)}
-                      >
-                        View
-                      </Button>
-                    )}
-                  </td>
+        <div className="overflow-hidden rounded-xl border border-ui-border-base">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[880px] text-left text-sm">
+              <thead className="border-b border-ui-border-base bg-ui-bg-subtle">
+                <tr className="text-ui-fg-muted">
+                  <th className="px-3 py-2.5 text-xs font-medium uppercase tracking-wide">
+                    Order
+                  </th>
+                  <th className="px-3 py-2.5 text-xs font-medium uppercase tracking-wide">
+                    Vendor
+                  </th>
+                  <th className="px-3 py-2.5 text-xs font-medium uppercase tracking-wide">
+                    Pay
+                  </th>
+                  <th className="px-3 py-2.5 text-xs font-medium uppercase tracking-wide">
+                    PIN
+                  </th>
+                  <th className="px-3 py-2.5 text-xs font-medium uppercase tracking-wide">
+                    Courier
+                  </th>
+                  <th className="px-3 py-2.5 text-xs font-medium uppercase tracking-wide">
+                    AWB / status
+                  </th>
+                  <th className="px-3 py-2.5 text-xs font-medium uppercase tracking-wide">
+                    Action
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((item) => {
+                  const rowAwb = item.shiprocket_awb || item.tracking_number
+                  const dummy = isDummyAwb(rowAwb)
+                  return (
+                    <tr
+                      key={`${item.order_id}:${item.vendor_id}`}
+                      className="border-b border-ui-border-base/60 transition-colors last:border-0 hover:bg-ui-bg-subtle/60"
+                    >
+                      <td className="px-3 py-3 align-top">
+                        <Text weight="plus">#{item.order_display_id || "—"}</Text>
+                        <Text size="xsmall" className="text-ui-fg-muted">
+                          {formatDate(item.rtd_at || item.admin_booked_at)}
+                        </Text>
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <Text size="small" weight="plus">
+                          {item.store_name || item.vendor_name || "Vendor"}
+                        </Text>
+                        <Text size="xsmall" className="text-ui-fg-muted">
+                          {item.vendor_email || "—"}
+                        </Text>
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <Badge
+                          size="2xsmall"
+                          color={item.payment_type === "PostPaid" ? "orange" : "green"}
+                        >
+                          {item.payment_type === "PostPaid" ? "COD" : "Prepaid"}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-3 align-top tabular-nums">
+                        {item.pickup_pincode || "—"}
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <Text size="small">
+                          {item.preferred_courier_partner ||
+                            (item.status === "booked" ? "—" : "Admin picks")}
+                        </Text>
+                        {item.preferred_courier_rate != null ? (
+                          <Text size="xsmall" className="text-ui-fg-muted">
+                            {formatMoney(item.preferred_courier_rate)}
+                          </Text>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        {item.status === "booked" ? (
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <Badge size="2xsmall" color="green">
+                                Booked
+                              </Badge>
+                              {dummy ? (
+                                <Badge size="2xsmall" color="orange">
+                                  Dummy
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <Text
+                              size="xsmall"
+                              className="font-mono text-ui-fg-subtle"
+                            >
+                              {rowAwb || "AWB pending"}
+                            </Text>
+                          </div>
+                        ) : item.easy_booking_status === "cancelled" ? (
+                          <Badge size="2xsmall" color="red">
+                            Cancelled · rebook
+                          </Badge>
+                        ) : (
+                          <Badge size="2xsmall" color="orange">
+                            Ready to book
+                          </Badge>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <Button
+                          size="small"
+                          variant={
+                            item.status === "awaiting_booking" ? "primary" : "secondary"
+                          }
+                          onClick={() => void openBooking(item)}
+                        >
+                          {item.status === "awaiting_booking"
+                            ? "Review & book"
+                            : "Manage"}
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-ui-border-base bg-ui-bg-base p-5 shadow-xl">
-            <div className="mb-4 flex items-start justify-between gap-3">
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-0 sm:items-center sm:p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeModal()
+          }}
+        >
+          <div className="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-ui-border-base bg-ui-bg-base shadow-2xl sm:rounded-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-ui-border-base px-5 py-4">
               <div>
-                <Heading level="h2">
-                  Book packet · #{selected.order_display_id || "—"}
+                <Text size="small" className="text-ui-fg-muted">
+                  {detail?.already_booked ? "Shipment" : "New booking"} ·{" "}
+                  {detail?.provider_label || "ITL"}
+                </Text>
+                <Heading level="h2" className="mt-0.5">
+                  Order #{selected.order_display_id || "—"}
                 </Heading>
                 <Text size="small" className="text-ui-fg-subtle">
-                  {selected.store_name || selected.vendor_name} · review addresses then book
+                  {selected.store_name || selected.vendor_name}
                 </Text>
               </div>
-              <Button
-                variant="secondary"
-                size="small"
-                onClick={() => {
-                  setSelected(null)
-                  setDetail(null)
-                }}
-              >
+              <Button variant="secondary" size="small" onClick={closeModal}>
                 Close
               </Button>
             </div>
 
-            {detailLoading && !detail ? (
-              <Text className="text-ui-fg-muted">Loading order…</Text>
-            ) : detail ? (
-              <div className="space-y-4">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-lg border border-ui-border-base p-3">
-                    <Text weight="plus" className="mb-2">
-                      Pickup (vendor)
-                    </Text>
-                    <Text size="small">{detail.pickup.name}</Text>
-                    <Text size="small" className="text-ui-fg-subtle">
-                      {detail.pickup.address}
-                    </Text>
-                    <Text size="small" className="text-ui-fg-subtle">
-                      {detail.pickup.city}, {detail.pickup.state} — {detail.pickup.pin_code}
-                    </Text>
-                    <Text size="small" className="text-ui-fg-subtle">
-                      {detail.pickup.phone}
-                    </Text>
-                  </div>
-                  <div className="rounded-lg border border-ui-border-base p-3">
-                    <Text weight="plus" className="mb-2">
-                      Drop (customer)
-                    </Text>
-                    <Text size="small">{detail.delivery.name || "—"}</Text>
-                    <Text size="small" className="text-ui-fg-subtle">
-                      {detail.delivery.address || "—"}
-                    </Text>
-                    <Text size="small" className="text-ui-fg-subtle">
-                      {[detail.delivery.city, detail.delivery.province, detail.delivery.postal_code]
-                        .filter(Boolean)
-                        .join(", ") || "—"}
-                    </Text>
-                    <Text size="small" className="text-ui-fg-subtle">
-                      {detail.delivery.phone || "—"}
-                    </Text>
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-ui-border-base p-3">
-                  <Text weight="plus" className="mb-2">
-                    Items · {detail.payment_type}
-                  </Text>
-                  <ul className="space-y-1">
-                    {detail.items.map((item) => (
-                      <li key={item.id} className="flex justify-between gap-3 text-sm">
-                        <span>
-                          {item.title}
-                          {item.variant_title ? ` · ${item.variant_title}` : ""} ×{" "}
-                          {item.quantity}
-                        </span>
-                        <span className="tabular-nums text-ui-fg-subtle">
-                          {formatMoney(Number(item.unit_price || 0) * Number(item.quantity || 1))}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {!detail.already_booked && (
-                  <>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {(
-                        [
-                          ["weight", "Weight (kg)"],
-                          ["length", "L (cm)"],
-                          ["breadth", "B (cm)"],
-                          ["height", "H (cm)"],
-                        ] as const
-                      ).map(([key, label]) => (
-                        <div key={key}>
-                          <Label>{label}</Label>
-                          <Input
-                            value={pkg[key]}
-                            onChange={(e) =>
-                              setPkg((prev) => ({ ...prev, [key]: e.target.value }))
-                            }
-                          />
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
+            <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              {detailLoading && !detail ? (
+                <Text className="text-ui-fg-muted">Loading order…</Text>
+              ) : detail ? (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-stretch">
+                    <div className="rounded-xl border border-ui-border-base bg-ui-bg-subtle/40 p-3.5">
+                      <Text
+                        size="xsmall"
+                        weight="plus"
+                        className="mb-2 uppercase tracking-wide text-ui-fg-muted"
+                      >
+                        Pickup
+                      </Text>
+                      <Text size="small" weight="plus">
+                        {detail.pickup.name}
+                      </Text>
+                      <Text size="small" className="mt-1 text-ui-fg-subtle">
+                        {detail.pickup.address}
+                      </Text>
                       <Text size="small" className="text-ui-fg-subtle">
-                        Couriers via {detail.provider_label}
+                        {detail.pickup.city}, {detail.pickup.state} ·{" "}
+                        <span className="tabular-nums">{detail.pickup.pin_code}</span>
                       </Text>
-                      <Button
-                        size="small"
-                        variant="secondary"
-                        disabled={detailLoading}
-                        onClick={() => void refreshCouriers()}
-                      >
-                        Refresh rates
-                      </Button>
-                    </div>
-                    {detail.courier_error ? (
-                      <Text size="small" className="text-red-600">
-                        {detail.courier_error}
+                      <Text size="small" className="mt-1 text-ui-fg-muted">
+                        {detail.pickup.phone}
                       </Text>
-                    ) : null}
-                    <div className="max-h-56 space-y-1.5 overflow-y-auto">
-                      {(detail.couriers || []).map((c) => (
-                        <button
-                          key={c.courier_id}
-                          type="button"
-                          onClick={() => setSelectedCourierId(c.courier_id)}
-                          className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm ${
-                            selectedCourierId === c.courier_id
-                              ? "border-ui-fg-interactive bg-ui-bg-interactive/10"
-                              : "border-ui-border-base hover:bg-ui-bg-subtle"
-                          }`}
-                        >
-                          <span>
-                            <span className="font-medium">{c.courier_name}</span>
-                            {c.etd ? (
-                              <span className="ml-2 text-ui-fg-muted">ETD {c.etd}</span>
-                            ) : null}
-                          </span>
-                          <span className="tabular-nums font-medium">
-                            {formatMoney(c.rate ?? c.freight_charge)}
-                          </span>
-                        </button>
-                      ))}
-                      {!detail.couriers?.length && !detail.courier_error ? (
-                        <Text size="small" className="text-ui-fg-muted">
-                          No couriers returned for this pincode / package.
-                        </Text>
-                      ) : null}
                     </div>
-                    <div className="flex justify-end gap-2 pt-2">
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          setSelected(null)
-                          setDetail(null)
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        disabled={booking || !selectedCourierId}
-                        isLoading={booking}
-                        onClick={() => void submitBook()}
-                      >
-                        Book courier
-                      </Button>
+                    <div className="hidden items-center justify-center sm:flex">
+                      <div className="flex flex-col items-center gap-1 text-ui-fg-muted">
+                        <span className="h-2 w-2 rounded-full bg-ui-fg-interactive" />
+                        <span className="h-10 w-px bg-ui-border-strong" />
+                        <span className="h-2 w-2 rounded-full border-2 border-ui-fg-interactive" />
+                      </div>
                     </div>
-                  </>
-                )}
-
-                {detail.already_booked && (
-                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
-                    <Text weight="plus" className="text-emerald-800">
-                      Courier already booked
-                    </Text>
-                    <Text size="small" className="text-emerald-900/80">
-                      AWB: {detail.workflow?.shiprocket_awb || "—"}
-                    </Text>
+                    <div className="rounded-xl border border-ui-border-base bg-ui-bg-subtle/40 p-3.5">
+                      <Text
+                        size="xsmall"
+                        weight="plus"
+                        className="mb-2 uppercase tracking-wide text-ui-fg-muted"
+                      >
+                        Drop
+                      </Text>
+                      <Text size="small" weight="plus">
+                        {detail.delivery.name || "—"}
+                      </Text>
+                      <Text size="small" className="mt-1 text-ui-fg-subtle">
+                        {detail.delivery.address || "—"}
+                      </Text>
+                      <Text size="small" className="text-ui-fg-subtle">
+                        {[
+                          detail.delivery.city,
+                          detail.delivery.province,
+                          detail.delivery.postal_code,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "—"}
+                      </Text>
+                      <Text size="small" className="mt-1 text-ui-fg-muted">
+                        {detail.delivery.phone || "—"}
+                      </Text>
+                    </div>
                   </div>
+
+                  <div className="rounded-xl border border-ui-border-base p-3.5">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <Text weight="plus">Items</Text>
+                      <Badge
+                        size="2xsmall"
+                        color={detail.payment_type === "PostPaid" ? "orange" : "green"}
+                      >
+                        {detail.payment_type === "PostPaid" ? "COD" : "Prepaid"}
+                      </Badge>
+                    </div>
+                    <ul className="divide-y divide-ui-border-base">
+                      {detail.items.map((item) => (
+                        <li
+                          key={item.id}
+                          className="flex justify-between gap-3 py-2 text-sm first:pt-0 last:pb-0"
+                        >
+                          <span className="text-ui-fg-base">
+                            {item.title}
+                            {item.variant_title ? (
+                              <span className="text-ui-fg-muted">
+                                {" "}
+                                · {item.variant_title}
+                              </span>
+                            ) : null}
+                            <span className="text-ui-fg-muted"> × {item.quantity}</span>
+                          </span>
+                          <span className="shrink-0 tabular-nums text-ui-fg-subtle">
+                            {formatMoney(
+                              Number(item.unit_price || 0) * Number(item.quantity || 1)
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {detail.already_booked && (
+                    <div className="space-y-3">
+                      {isDummyAwb(awb) ? (
+                        <div className="rounded-xl border border-orange-500/40 bg-orange-500/10 px-3.5 py-3">
+                          <Text weight="plus">Dummy booking (old simulator)</Text>
+                          <Text size="small" className="mt-1 text-ui-fg-subtle">
+                            This AWB was created before live ITL. Cancel it, then book again
+                            to get a real courier AWB and tracking.
+                          </Text>
+                        </div>
+                      ) : null}
+
+                      <div className="rounded-xl border border-ui-border-base bg-ui-bg-subtle/50 p-4">
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                          <Badge size="2xsmall" color="green">
+                            Courier booked
+                          </Badge>
+                          <Badge
+                            size="2xsmall"
+                            color={statusBadgeColor(String(trackingRaw || "awaiting"))}
+                          >
+                            {trackingLabel}
+                          </Badge>
+                          {isDummyAwb(awb) ? (
+                            <Badge size="2xsmall" color="orange">
+                              Dummy AWB
+                            </Badge>
+                          ) : null}
+                        </div>
+
+                        <div className="divide-y divide-ui-border-base">
+                          <MetaRow label="AWB" mono>
+                            <span className="inline-flex flex-wrap items-center gap-2">
+                              <span>{awb || "—"}</span>
+                              {awb ? (
+                                <button
+                                  type="button"
+                                  className="text-xs text-ui-fg-interactive underline"
+                                  onClick={() => void copyText(awb)}
+                                >
+                                  Copy
+                                </button>
+                              ) : null}
+                            </span>
+                          </MetaRow>
+                          <MetaRow label="Partner">
+                            {detail.workflow?.easy_courier_partner ||
+                              detail.tracking?.tracking_data?.courier_name ||
+                              "—"}
+                          </MetaRow>
+                          <MetaRow label="Booked">
+                            {formatDate(detail.workflow?.admin_booked_at)}
+                          </MetaRow>
+                          <MetaRow label="Live status">{trackingLabel}</MetaRow>
+                        </div>
+
+                        {detail.tracking?.error ? (
+                          <Text size="small" className="mt-3 text-ui-fg-subtle">
+                            Tracking note: {detail.tracking.error}
+                          </Text>
+                        ) : null}
+
+                        {activities.length > 0 ? (
+                          <div className="mt-4 border-t border-ui-border-base pt-3">
+                            <Text
+                              size="xsmall"
+                              weight="plus"
+                              className="mb-2 uppercase tracking-wide text-ui-fg-muted"
+                            >
+                              Recent scans
+                            </Text>
+                            <ul className="max-h-36 space-y-2 overflow-y-auto">
+                              {activities.slice(0, 6).map((act, idx) => (
+                                <li
+                                  key={idx}
+                                  className="text-xs text-ui-fg-subtle"
+                                >
+                                  <span className="text-ui-fg-base">
+                                    {String(
+                                      act.status ||
+                                        act.activity ||
+                                        act.scan ||
+                                        "Update"
+                                    )}
+                                  </span>
+                                  {act.location || act.date ? (
+                                    <span className="text-ui-fg-muted">
+                                      {" "}
+                                      ·{" "}
+                                      {[act.location, act.date]
+                                        .filter(Boolean)
+                                        .map(String)
+                                        .join(" · ")}
+                                    </span>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+
+                        {detail.workflow?.tracking_url ? (
+                          <a
+                            href={detail.workflow.tracking_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-3 inline-flex text-sm text-ui-fg-interactive underline"
+                          >
+                            Open tracking page
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+
+                  {!detail.already_booked && (
+                    <div className="space-y-3">
+                      {detail.workflow?.easy_booking_status === "cancelled" ? (
+                        <div className="rounded-xl border border-ui-border-base bg-ui-bg-subtle/50 px-3.5 py-3">
+                          <Text weight="plus">Ready to rebook</Text>
+                          <Text size="small" className="mt-1 text-ui-fg-subtle">
+                            Previous booking cancelled{" "}
+                            {formatDate(detail.workflow.easy_cancelled_at)}. Choose any
+                            live courier below.
+                          </Text>
+                        </div>
+                      ) : null}
+
+                      <div className="rounded-xl border border-ui-border-base p-3.5">
+                        <Text weight="plus" className="mb-3">
+                          Package
+                        </Text>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {(
+                            [
+                              ["weight", "Weight (kg)"],
+                              ["length", "L (cm)"],
+                              ["breadth", "B (cm)"],
+                              ["height", "H (cm)"],
+                            ] as const
+                          ).map(([key, label]) => (
+                            <div key={key}>
+                              <Label>{label}</Label>
+                              <Input
+                                value={pkg[key]}
+                                onChange={(e) =>
+                                  setPkg((prev) => ({
+                                    ...prev,
+                                    [key]: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        {detail.package?.chargeable_weight != null ? (
+                          <Text size="small" className="mt-2 text-ui-fg-subtle">
+                            Volumetric{" "}
+                            {Number(detail.package.volumetric_weight || 0).toFixed(2)}{" "}
+                            kg · chargeable{" "}
+                            <span className="font-medium text-ui-fg-base">
+                              {Number(detail.package.chargeable_weight).toFixed(2)} kg
+                            </span>
+                            {Number(detail.package.chargeable_weight) > 2 ? (
+                              <span className="text-orange-600">
+                                {" "}
+                                — large box dims inflate ITL rates; shrink L/B/H if wrong
+                              </span>
+                            ) : null}
+                          </Text>
+                        ) : null}
+                      </div>
+
+                      <div className="rounded-xl border border-ui-border-base p-3.5">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <Text weight="plus">Courier options</Text>
+                            <Text size="small" className="text-ui-fg-subtle">
+                              Live ITL totals = freight + COD fee + GST
+                              {selectedCourier
+                                ? ` · ${selectedCourier.courier_name}`
+                                : ""}
+                            </Text>
+                          </div>
+                          <Button
+                            size="small"
+                            variant="secondary"
+                            disabled={detailLoading}
+                            onClick={() => void refreshCouriers()}
+                          >
+                            Refresh rates
+                          </Button>
+                        </div>
+
+                        {detail.courier_error ? (
+                          <div className="mb-3 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2.5">
+                            <Text size="small">{detail.courier_error}</Text>
+                            {detail.pincode_not_serviceable ? (
+                              <Text size="small" className="mt-1 text-ui-fg-subtle">
+                                Not serviceable right now — change dims or retry later,
+                                then book again.
+                              </Text>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        <div className="max-h-72 space-y-1.5 overflow-y-auto pr-0.5">
+                          {(detail.couriers || []).map((c) => {
+                            const active = selectedCourierId === c.courier_id
+                            const total = c.rate ?? c.freight_charge
+                            return (
+                              <button
+                                key={c.courier_id}
+                                type="button"
+                                onClick={() => setSelectedCourierId(c.courier_id)}
+                                className={`flex w-full items-start justify-between gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+                                  active
+                                    ? "border-ui-fg-interactive bg-ui-bg-interactive/10 ring-1 ring-ui-fg-interactive/30"
+                                    : "border-ui-border-base hover:bg-ui-bg-subtle"
+                                }`}
+                              >
+                                <span className="min-w-0">
+                                  <span className="block font-medium">
+                                    {c.courier_name}
+                                  </span>
+                                  <span className="mt-0.5 block text-xs text-ui-fg-muted">
+                                    {[
+                                      c.etd ? `ETD ${c.etd}` : null,
+                                      c.charge_weight != null
+                                        ? `slab ${c.charge_weight} kg`
+                                        : null,
+                                      c.freight_charge != null
+                                        ? `freight ${formatMoney(c.freight_charge)}`
+                                        : null,
+                                      c.cod_charges != null && c.cod_charges > 0
+                                        ? `COD ${formatMoney(c.cod_charges)}`
+                                        : null,
+                                      c.gst_amount != null && c.gst_amount > 0
+                                        ? `GST ${formatMoney(c.gst_amount)}`
+                                        : null,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" · ")}
+                                  </span>
+                                </span>
+                                <span className="shrink-0 text-right">
+                                  <span className="block tabular-nums font-medium">
+                                    {formatMoney(total)}
+                                  </span>
+                                  <span className="text-[11px] text-ui-fg-muted">
+                                    total
+                                  </span>
+                                </span>
+                              </button>
+                            )
+                          })}
+                          {!detail.couriers?.length && !detail.courier_error ? (
+                            <Text size="small" className="text-ui-fg-muted">
+                              No couriers for this lane / package.
+                            </Text>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </div>
+
+            {detail ? (
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-ui-border-base bg-ui-bg-subtle/40 px-5 py-3">
+                {detail.already_booked ? (
+                  <>
+                    <Button
+                      size="small"
+                      variant="secondary"
+                      disabled={detailLoading}
+                      onClick={() => void refreshCouriers()}
+                    >
+                      Refresh status
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="danger"
+                      disabled={cancelling}
+                      isLoading={cancelling}
+                      onClick={() => void submitCancel()}
+                    >
+                      {isDummyAwb(awb) ? "Clear & rebook" : "Cancel booking"}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button size="small" variant="secondary" onClick={closeModal}>
+                      Close
+                    </Button>
+                    <Button
+                      size="small"
+                      disabled={
+                        booking || !selectedCourierId || !detail.couriers?.length
+                      }
+                      isLoading={booking}
+                      onClick={() => void submitBook()}
+                    >
+                      Book{" "}
+                      {selectedCourier ? selectedCourier.courier_name : "courier"}
+                    </Button>
+                  </>
                 )}
               </div>
             ) : null}

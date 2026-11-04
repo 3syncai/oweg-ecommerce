@@ -4,6 +4,7 @@ import {watchCheckoutCapture} from "@/lib/payment-reliability";
 import {getPool} from "@/lib/wallet-ledger";
 import { getOrderById, getDraftOrderById, createDraftOrder } from "@/lib/medusa-admin";
 import { extractCheckoutOrder } from "@/lib/checkout-order";
+import { tryGetStorefrontDatabaseUrl } from "@/lib/storefront-db";
 
 export type CheckoutSnapshotLine = {
   variant_id: string;
@@ -41,8 +42,9 @@ export type CheckoutPaymentSnapshot = {
 };
 
 function createPool(): Pool | null {
-  if (!process.env.DATABASE_URL) return null;
-  return getBoundedPool(process.env.DATABASE_URL, true);
+  const url = tryGetStorefrontDatabaseUrl();
+  if (!url) return null;
+  return getBoundedPool(url, true);
 }
 
 let schemaReady: Promise<void> | null = null;

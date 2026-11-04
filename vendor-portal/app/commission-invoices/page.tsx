@@ -203,11 +203,9 @@ const CommissionInvoicesPage = () => {
 
   const loadInvoice = useCallback(
     async (opts?: { background?: boolean }) => {
-      const vendorToken = localStorage.getItem("vendor_token")
-      if (!vendorToken) {
-        router.push("/login")
-        return
-      }
+      const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+      const ok = await requireVendorSession((path) => router.replace(path))
+      if (!ok) return
 
       if (opts?.background) setRefreshing(true)
       else setLoading(true)

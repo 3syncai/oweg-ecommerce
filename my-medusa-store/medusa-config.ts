@@ -3,7 +3,16 @@ import { resolveAdminBackendUrl } from "./src/lib/admin-backend-url"
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd())
 
-const INSECURE_SECRETS = new Set(["", "supersecret", "changeme"])
+const INSECURE_SECRETS = new Set([
+  "",
+  "supersecret",
+  "changeme",
+  "change-me",
+  "dev-jwt-secret",
+  "dev-cookie-secret",
+  "secret",
+  "password",
+])
 
 function resolveHttpSecret(
   envValue: string | undefined,

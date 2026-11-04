@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminFetch } from "@/lib/medusa-admin";
 import { medusaStoreFetch } from "@/lib/medusa-auth";
 import { settleOrderCancellationWallet } from "@/lib/order-cancel-wallet-settlement";
+import { checkRateLimit, clientIpFromRequest } from "@/lib/simple-rate-limit";
 
 type RefundPayoutBody =
   | { method: "upi"; upi_id: string }
@@ -50,6 +51,18 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
   const awaitedParams = await ctx.params;
   const orderId = awaitedParams?.id;
   if (!orderId) return NextResponse.json({ error: "Order id required" }, { status: 400 });
+
+  const limited = checkRateLimit({
+    key: `order-cancel:${orderId}:${clientIpFromRequest(req)}`,
+    limit: 8,
+    windowMs: 60_000,
+  });
+  if (!limited.allowed) {
+    return NextResponse.json(
+      { error: "Too many cancel attempts. Try again shortly." },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } }
+    );
+  }
 
   const forwardedCookie = req.headers.get("cookie") || undefined;
   if (!forwardedCookie) {

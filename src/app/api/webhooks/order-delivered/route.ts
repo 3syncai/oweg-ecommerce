@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { earnCoins, getPool } from "@/lib/wallet-ledger"
 import { creditPendingCoinsForOrder } from "@/lib/customer-affiliate-coins"
-import { scheduleVendorEarningsOnDelivery } from "@/lib/vendor-earnings"
 import { verifyMedusaWebhookSecret } from "@/lib/medusa-webhook-auth"
 
 export const dynamic = "force-dynamic"
@@ -43,16 +42,9 @@ export async function POST(req: NextRequest) {
         const pool = getPool()
 
         try {
-            // Vendor payout unlock timer (5 min after delivery)
-            let vendorEarningsResult: Awaited<
-                ReturnType<typeof scheduleVendorEarningsOnDelivery>
-            > | null = null
-            try {
-                vendorEarningsResult = await scheduleVendorEarningsOnDelivery(orderId, pool)
-                console.log("[vendor-earnings] delivery scheduled:", vendorEarningsResult)
-            } catch (vendorErr) {
-                console.error("[vendor-earnings] schedule on delivery failed:", vendorErr)
-            }
+            // Vendor earnings scheduling runs on Medusa ITL/Shiprocket delivery
+            // handlers — not the stale storefront vendor-earnings duplicate.
+            const vendorEarningsResult = "handled_by_medusa"
 
             const orderResult = await pool.query(
                 `SELECT customer_id FROM "order" WHERE id = $1`,

@@ -15,13 +15,13 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   let active = false
   if (provider === 'fcm') {
     const state = await getSharedDbPool().query(
-      `SELECT 1 FROM oweg_push_subscription WHERE customer_id=$1 AND provider='fcm' AND active LIMIT 1`,
+      `SELECT 1 FROM oweg_push_subscription WHERE customer_id=$1 AND provider='fcm' AND active AND installed_app LIMIT 1`,
       [actor(req)]
     )
     active = Boolean(state.rowCount)
   } else if (endpoint) {
     const state = await getSharedDbPool().query(
-      'SELECT 1 FROM oweg_push_subscription WHERE customer_id=$1 AND endpoint=$2 AND active',
+      'SELECT 1 FROM oweg_push_subscription WHERE customer_id=$1 AND endpoint=$2 AND active AND installed_app',
       [actor(req), endpoint]
     )
     active = Boolean(state.rowCount)
@@ -51,9 +51,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
     const endpoint = fcmEndpoint(parsed.data.token)
     const saved = await getSharedDbPool().query(
-      `INSERT INTO oweg_push_subscription(id,customer_id,endpoint,p256dh,auth,provider,platform)
-       VALUES($1,$2,$3,NULL,NULL,'fcm',$4)
-       ON CONFLICT(endpoint) DO UPDATE SET active=true,provider='fcm',platform=EXCLUDED.platform,updated_at=now()
+      `INSERT INTO oweg_push_subscription(id,customer_id,endpoint,p256dh,auth,provider,platform,installed_app)
+       VALUES($1,$2,$3,NULL,NULL,'fcm',$4,true)
+       ON CONFLICT(endpoint) DO UPDATE SET active=true,provider='fcm',platform=EXCLUDED.platform,installed_app=true,updated_at=now()
        WHERE oweg_push_subscription.customer_id=EXCLUDED.customer_id RETURNING id`,
       [randomUUID(), customer, endpoint, parsed.data.platform]
     )
@@ -71,9 +71,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
   const s = parsed.data
   const saved = await getSharedDbPool().query(
-    `INSERT INTO oweg_push_subscription(id,customer_id,endpoint,p256dh,auth,provider,platform)
-     VALUES($1,$2,$3,$4,$5,'web_push','web')
-     ON CONFLICT(endpoint) DO UPDATE SET active=true,p256dh=EXCLUDED.p256dh,auth=EXCLUDED.auth,provider='web_push',platform='web',updated_at=now()
+    `INSERT INTO oweg_push_subscription(id,customer_id,endpoint,p256dh,auth,provider,platform,installed_app)
+     VALUES($1,$2,$3,$4,$5,'web_push','web',true)
+     ON CONFLICT(endpoint) DO UPDATE SET active=true,p256dh=EXCLUDED.p256dh,auth=EXCLUDED.auth,provider='web_push',platform='web',installed_app=true,updated_at=now()
      WHERE oweg_push_subscription.customer_id=EXCLUDED.customer_id RETURNING id`,
     [randomUUID(), customer, s.endpoint, s.keys.p256dh, s.keys.auth]
   )

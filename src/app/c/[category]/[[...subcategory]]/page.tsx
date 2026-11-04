@@ -2,11 +2,7 @@ import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CategoryPageClient } from "./CategoryPageClient";
 import { findCategoryByTitleOrHandle } from "@/lib/medusa";
-import {
-  buildCategoryDealPreview,
-  buildCategoryPreviewImages,
-  buildCategoryProductsPage,
-} from "@/lib/category-listing";
+import { buildCategoryProductsPage } from "@/lib/category-listing";
 
 type PageProps = {
   params: Promise<{
@@ -102,32 +98,21 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
   const dealsOnly = firstParam(query.deals) === "1";
   const pageOffset = (requestedPage - 1) * PRODUCTS_PER_PAGE;
 
-  const subcategoryIds = subcategories
-    .map((sub) => sub.id)
-    .filter((id): id is string => typeof id === "string" && id.length > 0);
-
-  const [initialProducts, initialDeals, initialCategoryPreviews] =
-    await Promise.all([
-      buildCategoryProductsPage({
-        categoryId: activeCategoryId,
-        includeSubcategories,
-        limit: PRODUCTS_PER_PAGE,
-        offset: pageOffset,
-        priceMin:
-          typeof priceMin === "number" && Number.isFinite(priceMin)
-            ? priceMin
-            : undefined,
-        priceMax:
-          typeof priceMax === "number" && Number.isFinite(priceMax)
-            ? priceMax
-            : undefined,
-        dealsOnly,
-      }).catch(() => undefined),
-      buildCategoryDealPreview(activeCategoryId, includeSubcategories, 6).catch(
-        () => ({ products: [], total: 0 })
-      ),
-      buildCategoryPreviewImages(subcategoryIds).catch(() => ({})),
-    ]);
+  const initialProducts = await buildCategoryProductsPage({
+    categoryId: activeCategoryId,
+    includeSubcategories,
+    limit: PRODUCTS_PER_PAGE,
+    offset: pageOffset,
+    priceMin:
+      typeof priceMin === "number" && Number.isFinite(priceMin)
+        ? priceMin
+        : undefined,
+    priceMax:
+      typeof priceMax === "number" && Number.isFinite(priceMax)
+        ? priceMax
+        : undefined,
+    dealsOnly,
+  }).catch(() => undefined);
 
   return (
     <CategoryPageClient
@@ -137,8 +122,6 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
       categoryHandle={categoryParam}
       subcategoryHandle={subcategoryParam?.[0]}
       initialProducts={initialProducts}
-      initialDeals={initialDeals}
-      initialCategoryPreviews={initialCategoryPreviews}
     />
   );
 }

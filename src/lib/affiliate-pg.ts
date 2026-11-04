@@ -1,4 +1,5 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg"
+import { getStorefrontDatabaseUrl } from "@/lib/storefront-db"
 
 /**
  * Shared Postgres pool for the customer-affiliate routes.
@@ -28,8 +29,6 @@ import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg"
  * URL the code does not need to change.
  */
 
-const DATABASE_URL = process.env.DATABASE_URL
-
 const isLocalConnection = (url: string): boolean => {
   try {
     const u = new URL(url)
@@ -40,11 +39,7 @@ const isLocalConnection = (url: string): boolean => {
 }
 
 const buildPool = (): Pool => {
-  if (!DATABASE_URL) {
-    throw new Error(
-      "DATABASE_URL not configured (set it in your Vercel project environment)"
-    )
-  }
+  const DATABASE_URL = getStorefrontDatabaseUrl()
 
   const sslDisabled = process.env.PGSSLMODE === "disable"
   const needsSSL = !sslDisabled && !isLocalConnection(DATABASE_URL)

@@ -35,7 +35,7 @@ export async function enrichOrderWithSummaryTotals(
   order: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   const orderId = typeof order.id === "string" ? order.id : undefined;
-  if (!orderId || !process.env.DATABASE_URL) return order;
+  if (!orderId || !(process.env.STOREFRONT_DATABASE_URL || process.env.DATABASE_URL)) return order;
 
   try {
     const pool = getPool();
@@ -75,7 +75,7 @@ export async function enrichOrderWithSummaryTotals(
 export async function enrichOrdersWithSummaryTotals(
   orders: Record<string, unknown>[]
 ): Promise<Record<string, unknown>[]> {
-  if (!orders.length || !process.env.DATABASE_URL) return orders;
+  if (!orders.length || !(process.env.STOREFRONT_DATABASE_URL || process.env.DATABASE_URL)) return orders;
 
   const orderIds = orders
     .map((order) => (typeof order.id === "string" ? order.id : undefined))

@@ -41,6 +41,28 @@ try{for(const width of [320,390,563,768,1280]){
  await input.click();assert.equal(await panel.count(),1,'clicking inside mobile search must not dismiss suggestions');
  await page.mouse.click(width-2,700);assert.equal(await page.locator('[role="listbox"]:visible').count(),0);
  await input.fill('mouse');await panel.getByRole('option').first().waitFor();await input.press('Enter');assert.match(await page.evaluate(()=>window.destination),/^\/search\?/);
+ if(width<768){
+   await input.blur();
+   const header=page.locator('header[data-mobile-home="true"]');
+   const layoutOffset=await page.locator('#outside').evaluate(n=>getComputedStyle(n).paddingTop);
+   await page.evaluate(()=>window.scrollTo(0,400));
+   await input.waitFor({state:'hidden'});
+   for(const name of ['OWEG home','Notifications']){
+     const link=header.getByRole('link',{name,exact:true});
+     await link.click({trial:true});
+   }
+   assert(await header.evaluate(n=>{
+     const r=n.getBoundingClientRect();
+     return !n.contains(document.elementFromPoint(r.width/2,r.bottom-5));
+   }),'page below the sticky brand row must be tappable');
+   assert.equal(await page.locator('#outside').evaluate(n=>getComputedStyle(n).paddingTop),layoutOffset);
+   await page.evaluate(()=>window.scrollTo(0,375));
+   await input.waitFor();
+   await input.fill('mouse');await panel.getByRole('option').first().waitFor();
+   await page.evaluate(()=>window.scrollTo(0,500));
+   await page.waitForFunction(()=>window.scrollY===500);
+   assert.equal(await header.getAttribute('data-scroll-hidden'),'false','focused search stays visible');
+ }
  assert.deepEqual(errors,[]);console.log(`PASS ${width}px: results above poster, scroll/touch selection, empty state, inside/outside clicks and Enter search`);
  }finally{await page.close()}
 }}finally{await browser.close()}

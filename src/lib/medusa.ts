@@ -594,6 +594,23 @@ export async function searchProducts(params: {
   return await fetchStoreProducts(baseParams);
 }
 
+/** Fields consumed by toUiProduct and the home feed's in-stock filter. */
+export async function fetchDiscoveryProducts(offset: number, limit: number) {
+  const start = Date.now();
+  const params = createBaseSearchParams(limit, [], offset);
+  params.set("fields", [
+    "id", "title", "handle", "thumbnail", "images.url", "collection.title",
+    "categories.id", "metadata", "price", "variants.id", "variants.prices.amount",
+    "variants.calculated_price", "variants.inventory_quantity", "variants.manage_inventory",
+    "variants.allow_backorder", "variants.metadata",
+  ].join(","));
+  try {
+    return await fetchStoreProducts(params);
+  } finally {
+    console.info("[home-discovery] Medusa products read", { offset, limit, durationMs: Date.now() - start });
+  }
+}
+
 /** Bounded public product lookup for merchandising stock checks. */
 export async function fetchProductsByIds(ids: string[]): Promise<MedusaProduct[]> {
   const unique = Array.from(new Set(ids.filter(Boolean))).slice(0, 60);
@@ -647,9 +664,17 @@ export async function fetchProductsByCategoryIds(
   categoryIds: string[],
   limit = 20,
   offset = 0,
+  options?: { strict?: boolean },
 ): Promise<MedusaProductListResult> {
   const uniqueIds = Array.from(new Set(categoryIds.filter(Boolean)));
   if (uniqueIds.length === 0) return { products: [], count: 0 };
+  if (options?.strict) {
+    // Homepage refreshes must distinguish an unavailable category from an empty one.
+    const filters = uniqueIds.map((id): [string, string] => ["category_id[]", id]);
+    const result = await fetchStoreProducts(createBaseSearchParams(limit, filters, offset));
+    if (!Array.isArray(result.products)) throw new Error("Invalid category product response");
+    return result;
+  }
   if (uniqueIds.length === 1)
     return fetchProductsByCategoryId(uniqueIds[0], limit, { offset });
 

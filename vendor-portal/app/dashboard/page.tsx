@@ -665,13 +665,16 @@ const VendorDashboardPage = () => {
   }, [loadDashboardData])
 
   useEffect(() => {
-    const vendorToken = localStorage.getItem("vendor_token")
-    if (!vendorToken) {
-      router.push("/login")
-      return
+    let cancelled = false
+    void (async () => {
+      const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+      const ok = await requireVendorSession((path) => router.replace(path))
+      if (cancelled || !ok) return
+      void loadDashboardData()
+    })()
+    return () => {
+      cancelled = true
     }
-
-    void loadDashboardData()
   }, [router, loadDashboardData])
 
   useVendorLive({

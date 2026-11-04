@@ -13,18 +13,11 @@
 import 'dotenv/config'; // Loads .env from CWD
 import mysql from 'mysql2/promise';
 import { Client } from 'pg';
+import { requireMedusaDatabaseUrl, requireOpenCartDbConfig } from './opencart-db-config';
 
 // ================= CONFIG =================
-const OPENCART_DB = {
-    host: process.env.OPENCART_DB_HOST || '147.93.31.253',
-    port: parseInt(process.env.OPENCART_DB_PORT || '3306', 10),
-    user: process.env.OPENCART_DB_USER || 'oweg_user2',
-    password: process.env.OPENCART_DB_PASSWORD || 'Oweg#@123',
-    database: process.env.OPENCART_DB_NAME || 'oweg_db',
-};
-
-const MEDUSA_DB_URL = process.env.DATABASE_URL ||
-    'postgres://postgres:Oweg4719@oweg-ecom.cz282guu85co.ap-south-1.rds.amazonaws.com:5432/oweg_db?sslmode=no-verify';
+const OPENCART_DB = requireOpenCartDbConfig();
+const MEDUSA_DB_URL = requireMedusaDatabaseUrl();
 
 const BATCH_SIZE = 100; // Process products in batches
 // ===========================================

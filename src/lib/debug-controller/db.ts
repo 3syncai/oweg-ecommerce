@@ -3,8 +3,19 @@ import { Pool } from "pg";
 let pool: Pool | null = null;
 let tableReady: Promise<void> | null = null;
 
+function assertDebugDbAllowed(): void {
+  if (process.env.NODE_ENV === "production" && process.env.ENABLE_DEBUG_CONTROLLER !== "true") {
+    throw new Error("Debug controller DB is disabled (set ENABLE_DEBUG_CONTROLLER=true)");
+  }
+}
+
 export function getDebugControllerPool(): Pool {
-  const url = process.env.DATABASE_URL;
+  assertDebugDbAllowed();
+  // Prefer dedicated debug URL; otherwise scoped storefront URL — never silent.
+  const url =
+    process.env.DEBUG_CONTROLLER_DATABASE_URL?.trim() ||
+    process.env.STOREFRONT_DATABASE_URL?.trim() ||
+    process.env.DATABASE_URL?.trim();
   if (!url) {
     throw new Error("DATABASE_URL is not configured");
   }

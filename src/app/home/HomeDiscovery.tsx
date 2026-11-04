@@ -48,6 +48,7 @@ export default function HomeDiscovery({ excludeIds }: { excludeIds: string[] }) 
     initialPageParam: 0,
     enabled: nearby,
     staleTime: 60_000,
+    retry: false,
     queryFn: async ({ pageParam, signal }): Promise<HomeDiscoveryPage> => {
       const response = await fetch(`/api/home/discovery?offset=${pageParam}`, { signal })
       if (!response.ok) throw new Error("More products couldn’t load. Please try again.")
@@ -81,12 +82,12 @@ export default function HomeDiscovery({ excludeIds }: { excludeIds: string[] }) 
     if (!nearby || !sentinel.current || !hasNextPage || isFetching || isError || manualLoading || autoPaused || rows.needsFill) return
     const observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) void fetchNextPage({ cancelRefetch: false })
-    }, { rootMargin: "400px" })
+    }, { rootMargin: "650px" })
     observer.observe(sentinel.current)
     return () => observer.disconnect()
   }, [nearby, hasNextPage, isFetching, isError, fetchNextPage, pageCount, manualLoading, autoPaused, rows.needsFill])
   const showingSkeletons = !nearby || query.isPending || query.isFetchingNextPage || (rows.needsFill && !isError && !autoPaused && !manualLoading)
-  const skeletonCount = !query.data ? columns * 2 : columns
+  const skeletonCount = columns * 2
   if (query.data && !products.length && !query.hasNextPage && !query.isError) return null
   return <section ref={anchor} className="oweg-section-tight" aria-label="More products to explore">
     <div className="oweg-container">

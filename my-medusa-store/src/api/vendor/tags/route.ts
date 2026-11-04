@@ -2,7 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireVendorAuth } from "../_lib/guards"
 
 function setCorsHeaders(res: MedusaResponse) {
-  res.setHeader("Access-Control-Allow-Origin", "*")
+  /* CORS via vendorCorsMiddleware */ void 0
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
   res.setHeader(
     "Access-Control-Allow-Headers",

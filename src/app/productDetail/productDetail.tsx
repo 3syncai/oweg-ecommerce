@@ -557,7 +557,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   )
   const relatedQuery = useQuery({
     queryKey: ['related-products', relatedFetchSignature],
-    enabled: Boolean(currentProductId),
+    enabled: Boolean(currentProductId) && !categoriesQuery.isPending,
     queryFn: async () => {
       const typeQuery = product?.type || undefined
       const categoryLabel = product?.categories?.[0]?.title

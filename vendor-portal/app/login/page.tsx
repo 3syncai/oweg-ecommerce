@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useEffect, useRef, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import { safeVendorRedirect } from '@/lib/vendor-redirect'
 import Link from 'next/link'
-import { vendorAuthApi, vendorProfileApi } from '@/lib/api/client'
+import { vendorProfileApi } from '@/lib/api/client'
 import { ArrowRight, ChartNoAxesColumnIncreasing, CreditCard, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail, ShieldCheck, Truck, UsersRound } from 'lucide-react'
 import logo from '@/public/vendor/oweg-wordmark.svg'
 import laptopArtwork from '@/public/vendor/login-laptop.png'
@@ -13,7 +13,6 @@ import packageArtwork from '@/public/vendor/login-packages-branded.png'
 import styles from './login.module.css'
 
 function LoginForm() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -44,19 +43,28 @@ function LoginForm() {
     setError('')
 
     try {
-      const response = await vendorAuthApi.login(email, password)
-      const token = response.token
+      const sessionRes = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ email, password, keepSignedIn }),
+      })
+      const response = await sessionRes.json().catch(() => ({}))
+      if (!sessionRes.ok) {
+        throw new Error(
+          typeof response?.message === 'string' ? response.message : 'Login failed'
+        )
+      }
 
-      // Store token in localStorage AND cookie for middleware
-      localStorage.setItem('vendor_token', token)
-      localStorage.setItem('vendor_user', JSON.stringify(response.vendor_user))
-
-      // Also set cookie for middleware to detect
-      document.cookie = `vendor_token=${token}; path=/; ${keepSignedIn ? 'max-age=86400; ' : ''}SameSite=Lax`
+      // Non-secret profile only — JWT lives in HttpOnly cookie.
+      if (response?.vendor_user) {
+        localStorage.setItem('vendor_user', JSON.stringify(response.vendor_user))
+      }
+      localStorage.removeItem('vendor_token')
 
       // Check if password reset needed
       if (response?.vendor_user?.must_reset_password) {
-        router.push('/reset-password')
+        window.location.assign('/reset-password')
         return
       }
 
@@ -64,21 +72,17 @@ function LoginForm() {
       const vendor = response?.vendor
 
       if (vendor) {
-        // If vendor is rejected, redirect to reapply page
+        // Hard navigate so the new HttpOnly cookie is always sent to middleware.
         if (vendor.rejected_at) {
-          router.push('/reapply')
+          window.location.assign('/reapply')
           return
         }
-
-        // If vendor is approved, redirect to dashboard
         if (vendor.is_approved) {
           console.log('Login successful, redirecting to:', redirectPath)
-          router.replace(redirectPath)
+          window.location.assign(redirectPath)
           return
         }
-
-        // Vendor is pending, redirect to pending page
-        router.push('/pending')
+        window.location.assign('/pending')
         return
       }
 
@@ -87,25 +91,20 @@ function LoginForm() {
         const meResponse = await vendorProfileApi.getMe()
         const vendorData = meResponse.vendor
 
-        // If vendor is rejected, redirect to reapply page
         if (vendorData?.rejected_at) {
-          router.push('/reapply')
+          window.location.assign('/reapply')
           return
         }
-
-        // Vendor is approved - redirect to the intended path or dashboard
         if (vendorData?.is_approved) {
           console.log('Login successful, redirecting to:', redirectPath)
-          router.replace(redirectPath)
+          window.location.assign(redirectPath)
           return
         }
-
-        // Vendor is pending
-        router.push('/pending')
+        window.location.assign('/pending')
       } catch (meError: unknown) {
         // If 403, vendor not approved (pending)
         if (typeof meError === 'object' && meError !== null && 'status' in meError && meError.status === 403) {
-          router.push('/pending')
+          window.location.assign('/pending')
           return
         }
         // If 401, token might be invalid - clear and show error

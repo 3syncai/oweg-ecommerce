@@ -19,7 +19,6 @@ import SmoothScroll from "@/components/SmoothScroll";
 import { DebugControllerProvider } from "@/components/debug-controller/DebugControllerProvider";
 import SiteProtections from "@/components/debug-controller/SiteProtections";
 import ConditionalWhatsAppWidget from "@/components/debug-controller/ConditionalWhatsAppWidget";
-import PushNotificationPrompt from "@/components/account/PushNotificationPrompt";
 import ForceUpdateGate from "@/components/mobile/ForceUpdateGate";
 import NativeBootSplash from "@/components/mobile/NativeBootSplash";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
@@ -49,6 +48,7 @@ const plusJakarta = localFont({
       style: "normal",
     },
   ],
+  preload: false,
   variable: "--font-plus-jakarta",
   display: "swap",
 });
@@ -128,7 +128,6 @@ export default function RootLayout({
                   <MobileBottomNavShell />
                   <ConditionalWhatsAppWidget />
                   <PWAInstallPrompt />
-                  <PushNotificationPrompt />
                   <NativeBootSplash />
                   <ForceUpdateGate />
                 </div>

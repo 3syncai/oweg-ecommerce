@@ -69,6 +69,16 @@ export async function proxyMedusaRequest(
     headers.set("x-publishable-api-key", publishableKey);
   }
 
+  // Prefer HttpOnly portal session cookie → unwrap Medusa access token.
+  if (!headers.has("authorization")) {
+    const { unsealVendorSession } = await import("@/lib/api/token");
+    const sealed = req.cookies.get("vendor_token")?.value?.trim();
+    const session = sealed ? unsealVendorSession(sealed) : null;
+    if (session?.accessToken) {
+      headers.set("Authorization", `Bearer ${session.accessToken}`);
+    }
+  }
+
   const init: RequestInit = {
     method: req.method,
     headers,

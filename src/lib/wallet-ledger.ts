@@ -1,5 +1,6 @@
-import { Pool, PoolClient } from "pg";
+import { PoolClient } from "pg";
 import { heldCoins } from "@/lib/payment-reliability";
+import { getStorefrontPool } from "@/lib/storefront-db";
 
 export type LedgerType = "EARN" | "SPEND" | "REVERSE";
 
@@ -15,18 +16,8 @@ export type LedgerEntry = {
   created_at: string;
 };
 
-const DATABASE_URL = process.env.DATABASE_URL;
-
-let sharedPool: Pool | null = null;
-
-export function getPool(): Pool {
-  if (!DATABASE_URL) {
-    throw new Error("DATABASE_URL not configured");
-  }
-  if (!sharedPool) {
-    sharedPool = new Pool({ connectionString: DATABASE_URL });
-  }
-  return sharedPool;
+export function getPool() {
+  return getStorefrontPool();
 }
 
 async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {

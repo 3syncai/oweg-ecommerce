@@ -54,6 +54,7 @@ export async function bookEasyShipmentForVendor(
     input.rate != null && Number.isFinite(Number(input.rate))
       ? Number(input.rate)
       : Number(existing?.easy_courier_rate)
+  // Prefer ITL payable total (freight+COD+GST). Callers should pass courier.rate.
   const courierRate =
     Number.isFinite(rateRaw) && rateRaw >= 0 ? Math.round(rateRaw * 100) / 100 : 0
 
@@ -87,17 +88,26 @@ export async function bookEasyShipmentForVendor(
   const vendorItems = pickVendorItems(order, vendorProductIds)
   const provider = getEasyShipProvider()
 
-  const created = await provider.createForwardShipment(
-    buildShiprocketForwardPayload(order, vendorItems, vendorId, {
-      courier_id: courierId,
-      courier_name: courierName || null,
-      pickup_location: vendorPickup.pickup_location,
-      weight,
-      length,
-      breadth,
-      height,
-    }) as any
-  )
+  const forwardPayload = buildShiprocketForwardPayload(order, vendorItems, vendorId, {
+    courier_id: courierId,
+    courier_name: courierName || null,
+    pickup_location: vendorPickup.pickup_location,
+    weight,
+    length,
+    breadth,
+    height,
+  }) as Record<string, unknown>
+
+  // ITL live: pickup_location is ITLWH:{warehouse_id}; also pass logistics name
+  if (courierName) {
+    forwardPayload.courier_name = courierName
+    forwardPayload.logistics = courierName
+  }
+  if (vendorPickup.address) {
+    forwardPayload.pickup_pin_code = vendorPickup.pin_code
+  }
+
+  const created = await provider.createForwardShipment(forwardPayload)
 
   const shipmentId = created.shipment_id
   let awb = created.awb
