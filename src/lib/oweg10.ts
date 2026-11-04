@@ -230,7 +230,7 @@ export async function consumeOweg10Reservation(options: {
 }) {
   await ensureCouponUsageTable();
   const pool = getPool();
-  const result = await pool.query(
+  const result = await pool.query<{ consumed_at: Date }>(
     `
       UPDATE customer_coupon_usage
       SET status = 'consumed',
@@ -245,7 +245,7 @@ export async function consumeOweg10Reservation(options: {
         AND status = 'pending'
         AND expires_at IS NOT NULL
         AND expires_at >= NOW()
-      RETURNING order_id
+      RETURNING consumed_at
     `,
     [
       options.customerId,
@@ -257,7 +257,18 @@ export async function consumeOweg10Reservation(options: {
   );
 
   if (result.rows[0]) {
-    return { ok: true as const };
+    return { ok: true as const, consumedAt: result.rows[0].consumed_at };
+  }
+
+  // Checkout or a previous worker attempt may have already settled this reservation.
+  const receipt = await pool.query<{ consumed_at: Date }>(
+    `SELECT consumed_at FROM customer_coupon_usage
+     WHERE customer_id = $1 AND coupon_code = $2 AND order_id = $3
+       AND reservation_token = $4 AND status = 'consumed' AND consumed_at IS NOT NULL`,
+    [options.customerId, OWEG10_CODE, options.orderId, options.reservationToken]
+  );
+  if (receipt.rows[0]) {
+    return { ok: true as const, consumedAt: receipt.rows[0].consumed_at };
   }
 
   const status = await getOweg10Status(options.customerId);
