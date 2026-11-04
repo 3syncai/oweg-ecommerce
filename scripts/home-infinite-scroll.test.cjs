@@ -23,11 +23,21 @@ test('discovery loads at the scroll sentinel, stops on errors/end, and removes t
   }
   dom.window.IntersectionObserver = Observer
   const query = {
-    data: { pages: [{ products: [], nextOffset: 24 }] },
+    data: { pages: [{ products: [
+      { id: 'one', inventory_quantity: 1 }, { id: 'two', inventory_quantity: 1 },
+    ], nextOffset: 24 }] },
     hasNextPage: true, isFetching: false, isError: false, isPending: false,
     fetchNextPage: async options => calls.push(options),
   }
-  const context = { exports: {}, window: dom.window, IntersectionObserver: Observer, require: name => {
+  const context = { exports: {}, window: dom.window, getComputedStyle: () => ({ gridTemplateColumns: "1fr 1fr" }), IntersectionObserver: Observer, require: name => {
+    if (name === '@/lib/home-discovery-rows') {
+      const exports = {}
+      const file = path.join(__dirname, '../src/lib/home-discovery-rows.ts')
+      vm.runInNewContext(ts.transpileModule(fs.readFileSync(file, 'utf8'), {
+        compilerOptions: { module: ts.ModuleKind.CommonJS },
+      }).outputText, { exports })
+      return exports
+    }
     if (name === 'react') return React
     if (name === 'react/jsx-runtime') return require('react/jsx-runtime')
     if (name === '@tanstack/react-query') return { useInfiniteQuery: () => query }
