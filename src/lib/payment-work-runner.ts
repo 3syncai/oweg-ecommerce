@@ -26,10 +26,12 @@ export async function handleWork(job:PaymentWork) {
    if(meta.razorpay_payment_status!=='captured'&&meta.cod_status!=='confirmed')throw new Error('order_not_paid_or_cod_confirmed');
    const coinMinor=Number(meta.coin_discount_minor||0);
    if(coinMinor)await finalizeCoinSpendForOrder({orderId:job.aggregate_id,customerId:String(loaded.order.customer_id||''),amountMinor:coinMinor});
+   let couponConsumedAt: Date | undefined;
    if(meta.oweg10_reservation_token&&!meta.oweg10_consumed) {
      const customerId=String(meta.oweg10_customer_id||loaded.order.customer_id||'');
      const result=await consumeOweg10Reservation({customerId,reservationToken:String(meta.oweg10_reservation_token),orderId:job.aggregate_id,metadata:{source:'payment_work'}});
      if(!result.ok)throw new Error('coupon_settlement_requires_attention');
+     couponConsumedAt=result.consumedAt;
      await syncOweg10ConsumedCustomerMetadata(customerId);
    }
    await runPostConvertCheckoutSideEffects(job.aggregate_id,meta);
@@ -54,7 +56,11 @@ export async function handleWork(job:PaymentWork) {
        });
      });
    }
-   const result=await updateOrderMetadata(job.aggregate_id,{payment_post_process_done:true,cod_post_process_done:meta.payment_method==='cod'||undefined});
+   const result=await updateOrderMetadata(job.aggregate_id,{
+     payment_post_process_done:true,
+     cod_post_process_done:meta.payment_method==='cod'||undefined,
+     ...(couponConsumedAt ? {oweg10_consumed:true,oweg10_consumed_at:couponConsumedAt.toISOString()} : {}),
+   });
    if(!result.ok)throw new Error('paid_metadata_sync_failed');
    return;
  }
