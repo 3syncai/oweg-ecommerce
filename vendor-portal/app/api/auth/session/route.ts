@@ -7,7 +7,11 @@ export const dynamic = "force-dynamic"
 const COOKIE = "vendor_token"
 
 function cookieOptions(maxAgeSeconds: number) {
-  const secure = process.env.NODE_ENV === "production"
+  // Vercel / HTTPS always; also production local builds.
+  const secure =
+    process.env.NODE_ENV === "production" ||
+    Boolean(process.env.VERCEL) ||
+    process.env.VERCEL_ENV === "production"
   return {
     httpOnly: true,
     secure,

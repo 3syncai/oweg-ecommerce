@@ -208,15 +208,14 @@ const VendorProductNewPage = () => {
     const id = params.get("shared_product"), token = params.get("share")
     if (!id) return
     if (!token) { setShareError("The share link is incomplete. Ask the admin for a new link."); return }
-    if (!localStorage.getItem("vendor_token")) {
-      document.cookie = "vendor_token=; path=/; max-age=0; SameSite=Lax"
-      router.replace(`/login?${new URLSearchParams({ redirect: window.location.pathname + window.location.search })}`)
-      return
-    }
     let cancelled = false
-    setShareLoading(true)
-    apiRequest<{ product: any }>(`/vendor/catalog/${encodeURIComponent(id)}?${new URLSearchParams({ share: token })}`)
-      .then(({ product: p }) => {
+    void (async () => {
+      const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+      const ok = await requireVendorSession((path) => router.replace(path))
+      if (cancelled || !ok) return
+      setShareLoading(true)
+      try {
+        const { product: p } = await apiRequest<{ product: any }>(`/vendor/catalog/${encodeURIComponent(id)}?${new URLSearchParams({ share: token })}`)
         if (cancelled) return
         const m = p.metadata || {}
         setSharedProduct({ id, token, variants: (p.variants || []).map((variant: { sku: string; options: Record<string, string> }) => ({ sku: variant.sku, options: variant.options || {} })) })
@@ -236,14 +235,16 @@ const VendorProductNewPage = () => {
           primaryVisualOption: m.primary_visual_option || "",
         }))
         toast.success("Shared product loaded", { description: "Add your own price and stock. Brand authorization and admin review still apply." })
-      }).catch((error: any) => {
+      } catch (error: any) {
         if (cancelled) return
         if (error.status === 401) {
           localStorage.removeItem("vendor_token")
-          document.cookie = "vendor_token=; path=/; max-age=0; SameSite=Lax"
           router.replace(`/login?${new URLSearchParams({ redirect: window.location.pathname + window.location.search })}`)
         } else setShareError(error.message || "Could not load shared product")
-      }).finally(() => { if (!cancelled) setShareLoading(false) })
+      } finally {
+        if (!cancelled) setShareLoading(false)
+      }
+    })()
     return () => { cancelled = true }
   }, [router])
 
@@ -338,9 +339,6 @@ const VendorProductNewPage = () => {
 
   const loadUsedSkus = async () => {
     try {
-      const token = localStorage.getItem("vendor_token")
-      if (!token) return
-
       const data = await vendorInventoryApi.list()
       if (data.success) {
         setUsedSkus(buildUsedSkuSet(data.inventory || []))
@@ -352,9 +350,6 @@ const VendorProductNewPage = () => {
 
   const fetchCategoriesAndCollections = async () => {
     try {
-      const token = localStorage.getItem("vendor_token")
-      if (!token) return
-
       const [categoriesResult, collectionsResult, typesResult] = await Promise.allSettled([
         vendorCategoriesApi.list({ limit: 100 }),
         vendorCollectionsApi.list({ limit: 100 }),
@@ -557,13 +552,12 @@ const VendorProductNewPage = () => {
 
     setUploadingImages(true)
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
-      if (!token) {
+      const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+      const ok = await requireVendorSession((path) => router.replace(path))
+      if (!ok) {
         toast.error("Error", { description: "Not authenticated" })
         return
       }
-
-      const API_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
 
       // Get collection name if available
       const collectionName = formData.collection && collections.length > 0
@@ -582,10 +576,9 @@ const VendorProductNewPage = () => {
         formDataToSend.append("files", file)
       })
 
-      const uploadRes = await axios.post(`${API_URL}/vendor/products/upload-image`, formDataToSend, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      // Same-origin proxy attaches HttpOnly vendor_token as Bearer.
+      const uploadRes = await axios.post(`/api/medusa/vendor/products/upload-image`, formDataToSend, {
+        withCredentials: true,
       })
 
       const uploadData = uploadRes.data
@@ -617,13 +610,12 @@ const VendorProductNewPage = () => {
 
     setUploadingVideos(true)
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
-      if (!token) {
+      const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+      const ok = await requireVendorSession((path) => router.replace(path))
+      if (!ok) {
         toast.error("Error", { description: "Not authenticated" })
         return
       }
-
-      const API_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
 
       // Get collection name if available
       const collectionName = formData.collection && collections.length > 0
@@ -642,10 +634,8 @@ const VendorProductNewPage = () => {
         formDataToSend.append("files", file)
       })
 
-      const uploadRes = await axios.post(`${API_URL}/vendor/products/upload-video`, formDataToSend, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const uploadRes = await axios.post(`/api/medusa/vendor/products/upload-video`, formDataToSend, {
+        withCredentials: true,
       })
 
       const uploadData = uploadRes.data
@@ -833,10 +823,11 @@ const VendorProductNewPage = () => {
 
     setLoading(true)
 
-    const vendorToken = localStorage.getItem("vendor_token")
-    if (!vendorToken) {
+    const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+    const ok = await requireVendorSession((path) => router.replace(path))
+    if (!ok) {
+      setLoading(false)
       toast.error("Error", { description: "Not authenticated" })
-      router.push("/login")
       return
     }
 
@@ -845,7 +836,6 @@ const VendorProductNewPage = () => {
       let authorizationKeyForSharedProduct = sharedBrandAuthorizationKey
       if (brandAuthorizationFile && formData.brand) {
         try {
-          const API_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || 'http://localhost:9000'
           const authFormData = new FormData()
           authFormData.append("brand_name", formData.brand)
           authFormData.append("file", brandAuthorizationFile)
@@ -857,14 +847,9 @@ const VendorProductNewPage = () => {
           const uploadResponse = await axios.post<{
             authorization?: { file_key?: string }
           }>(
-            `${API_URL}/vendor/brands/upload-authorization`,
+            `/api/medusa/vendor/brands/upload-authorization`,
             authFormData,
-            {
-              headers: {
-                Authorization: `Bearer ${vendorToken}`,
-                "Content-Type": "multipart/form-data"
-              }
-            }
+            { withCredentials: true }
           )
           if (sharedProduct) {
             const key = uploadResponse.data.authorization?.file_key

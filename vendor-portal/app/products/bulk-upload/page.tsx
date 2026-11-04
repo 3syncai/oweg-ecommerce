@@ -124,12 +124,11 @@ const VendorProductsBulkUploadPage = () => {
   const brandSelectionRef = useRef<Record<string, number>>({})
 
   useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("vendor_token") : null
-    if (!token) {
-      router.push("/login")
-      return
-    }
-    ;(async () => {
+    let cancelled = false
+    void (async () => {
+      const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+      const ok = await requireVendorSession((path) => router.replace(path))
+      if (cancelled || !ok) return
       try {
         // We don't await all four in lockstep — types & tags are nice-to-have
         // and shouldn't block category/collection loading on their failures.
@@ -151,6 +150,7 @@ const VendorProductsBulkUploadPage = () => {
             return { product_tags: [] as Array<{ id: string; value: string }> }
           }),
         ])
+        if (cancelled) return
         setCategories(catData)
         setCollections(colData)
         setProductTypes(typesRes.product_types || [])
@@ -158,6 +158,7 @@ const VendorProductsBulkUploadPage = () => {
         setReferencesReady(true)
         setReferenceError("")
       } catch (cause: unknown) {
+        if (cancelled) return
         const err = uploadError(cause)
         if (err?.status === 403) {
           router.push("/pending")
@@ -167,6 +168,9 @@ const VendorProductsBulkUploadPage = () => {
         console.warn("Failed to load reference data:", err.message)
       }
     })()
+    return () => {
+      cancelled = true
+    }
   }, [router, referenceAttempt])
 
   const categoryByName = useMemo(() => {
@@ -242,9 +246,6 @@ const VendorProductsBulkUploadPage = () => {
   // `uniqueBrands` and we never cancel our own in-flight axios call.
   useEffect(() => {
     if (!uniqueBrands.length) return
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("vendor_token") : null
-    if (!token) return
 
     const session = brandSessionRef.current
     uniqueBrands.forEach(async ({ key, display }) => {
@@ -283,12 +284,6 @@ const VendorProductsBulkUploadPage = () => {
     brandDisplay: string,
     selected: File | File[]
   ) => {
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("vendor_token") : null
-    if (!token) {
-      toast.error("Not authenticated", { description: "Please sign in again" })
-      return
-    }
     if (submittingRef.current) return
     const files = Array.isArray(selected) ? selected : [selected]
     if (!files.length) return
@@ -623,13 +618,6 @@ const VendorProductsBulkUploadPage = () => {
   ): Promise<{ ok: number; failed: number }> => {
     if (!matched.length) return { ok: 0, failed: 0 }
 
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("vendor_token") : null
-    if (!token) {
-      toast.error("Not authenticated", { description: "Please sign in again" })
-      return { ok: 0, failed: matched.length }
-    }
-
     setUploadingImages(true)
     setImageMap((prev) => {
       const next = { ...prev }
@@ -897,8 +885,9 @@ const VendorProductsBulkUploadPage = () => {
     setPhase("uploading")
 
     try {
-      const token = localStorage.getItem("vendor_token")
-      if (!token) throw new Error("Please sign in again before submitting.")
+      const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+      const ok = await requireVendorSession((path) => router.replace(path))
+      if (!ok) throw new Error("Please sign in again before submitting.")
       await submitBrandLetters(uniqueBrands, brandAuthMap, async (display, file) => {
         const response = await vendorBrandsApi.uploadAuthorization(display, file)
         return response.authorization?.file_url || ""

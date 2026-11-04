@@ -173,12 +173,16 @@ const VendorReportsPage = () => {
   }, [router])
 
   useEffect(() => {
-    const vendorToken = localStorage.getItem("vendor_token")
-    if (!vendorToken) {
-      router.push("/login")
-      return
+    let cancelled = false
+    void (async () => {
+      const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+      const ok = await requireVendorSession((path) => router.replace(path))
+      if (cancelled || !ok) return
+      void loadBase()
+    })()
+    return () => {
+      cancelled = true
     }
-    void loadBase()
   }, [router, loadBase])
 
   const filteredReturns = useMemo(() => {
