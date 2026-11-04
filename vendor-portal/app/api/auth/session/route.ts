@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getMedusaBackendUrl } from "@/lib/medusa-proxy"
 import { checkRateLimit, clientIpFromRequest } from "@/lib/simple-rate-limit"
+import { sealVendorSession, unsealVendorSession } from "@/lib/api/token"
 
 export const dynamic = "force-dynamic"
 
 const COOKIE = "vendor_token"
 
 function cookieOptions(maxAgeSeconds: number) {
-  // Vercel / HTTPS always; also production local builds.
   const secure =
     process.env.NODE_ENV === "production" ||
     Boolean(process.env.VERCEL) ||
@@ -21,7 +21,11 @@ function cookieOptions(maxAgeSeconds: number) {
   }
 }
 
-/** POST — exchange email/password for an HttpOnly vendor session cookie. */
+function clearCookie(res: NextResponse) {
+  res.cookies.set(COOKIE, "", { ...cookieOptions(0), maxAge: 0 })
+}
+
+/** POST — exchange email/password for an HttpOnly portal session cookie. */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
   const email = typeof body.email === "string" ? body.email.trim() : ""
@@ -76,18 +80,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data, { status: upstream.status })
   }
 
-  const token = typeof (data as any).token === "string" ? (data as any).token : ""
-  if (!token) {
+  const accessToken = typeof (data as { token?: string }).token === "string"
+    ? (data as { token: string }).token
+    : ""
+  if (!accessToken) {
     return NextResponse.json({ message: "Login failed" }, { status: 502 })
   }
 
+  const sealed = sealVendorSession(accessToken)
+  if (!sealed) {
+    console.error("[vendor-session] Medusa returned a token the portal could not seal")
+    return NextResponse.json(
+      { message: "Login succeeded upstream but session could not be created. Try again." },
+      { status: 502 }
+    )
+  }
+
   const res = NextResponse.json({
-    vendor_user: (data as any).vendor_user || null,
-    vendor: (data as any).vendor || null,
+    vendor_user: (data as { vendor_user?: unknown }).vendor_user || null,
+    vendor: (data as { vendor?: unknown }).vendor || null,
+    authenticated: true,
   })
   res.cookies.set(
     COOKIE,
-    token,
+    sealed,
     cookieOptions(keepSignedIn ? 60 * 60 * 24 * 7 : 60 * 60 * 12)
   )
   return res
@@ -96,19 +112,18 @@ export async function POST(req: NextRequest) {
 /** DELETE — clear HttpOnly vendor session. */
 export async function DELETE() {
   const res = NextResponse.json({ ok: true })
-  res.cookies.set(COOKIE, "", { ...cookieOptions(0), maxAge: 0 })
+  clearCookie(res)
   return res
 }
 
 /** GET — session presence for middleware/UI (does not return the token). */
 export async function GET(req: NextRequest) {
-  const { verifyVendorToken } = await import("@/lib/api/token")
   const token = req.cookies.get(COOKIE)?.value
-  const claims = token ? verifyVendorToken(token) : null
-  if (token && !claims) {
+  const session = token ? unsealVendorSession(token) : null
+  if (token && !session) {
     const res = NextResponse.json({ authenticated: false })
-    res.cookies.set(COOKIE, "", { ...cookieOptions(0), maxAge: 0 })
+    clearCookie(res)
     return res
   }
-  return NextResponse.json({ authenticated: Boolean(claims) })
+  return NextResponse.json({ authenticated: Boolean(session) })
 }
