@@ -4,8 +4,8 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
-function load(file, imports) {
-  const context = { exports: {}, setTimeout, clearTimeout, require: name => {
+function load(file, imports, globals = {}) {
+  const context = { exports: {}, setTimeout, clearTimeout, ...globals, require: name => {
     if (name in imports) return imports[name]
     throw new Error(`Unexpected import: ${name}`)
   } }
@@ -68,15 +68,23 @@ test('seller listings collapse into one catalog card with a stocked offer', () =
   assert.equal(cards[0].id, 'catalog')
   assert.equal(cards[0].price, 50)
 })
-function discovery(rows) {
+function discovery(rows, beforeFetch = async () => {}, now = Date.now) {
   const calls = []
+  const shared = new Map()
   const api = load('src/lib/home-discovery.ts', {
+    'next/cache': { unstable_cache: fn => async offset => {
+      if (shared.has(offset)) return shared.get(offset)
+      const value = await fn(offset)
+      shared.set(offset, value)
+      return value
+    } },
     './home-products': home,
-    './medusa': { searchProducts: async ({ offset, limit }) => {
+    './medusa': { fetchDiscoveryProducts: async (offset, limit) => {
       calls.push(offset)
+      await beforeFetch()
       return { products: rows.slice(offset, offset + limit), count: rows.length }
     } },
-  })
+  }, { Date: { now } })
   return { ...api, calls }
 }
 test('bounded pages advance by consumed records without skipping products', async () => {
@@ -101,6 +109,29 @@ test('concurrent requests share a cached discovery page', async () => {
   await Promise.all([api.getHomeDiscoveryPage(0), api.getHomeDiscoveryPage(0)])
   await api.getHomeDiscoveryPage(0)
   assert.equal(api.calls.length, 1)
+})
+test('discovery rejects excess parallel origin work and recovers when a load fails', async () => {
+  let finish
+  const gate = new Promise((_, reject) => { finish = reject })
+  const api = discovery([product(1)], () => api.calls.length <= 4 ? gate : undefined)
+  const loads = Promise.allSettled([0, 1, 2, 3].map(offset => api.getHomeDiscoveryPage(offset)))
+  await assert.rejects(api.getHomeDiscoveryPage(4), /Discovery is busy/)
+  assert.equal(api.calls.length, 4)
+  finish(new Error('upstream failed'))
+  await loads
+  assert.equal((await api.getHomeDiscoveryPage(0)).page.products.length, 1)
+})
+test('discovery waits for fresh stock when the shared cache returns an expired page', async () => {
+  let clock = 1000
+  const rows = [product(1)]
+  const api = discovery(rows, undefined, () => clock)
+  assert.equal((await api.getHomeDiscoveryPage(0)).page.products.length, 1)
+  rows[0].variants[0].inventory_quantity = 0
+  clock += 60_001
+  const pages = await Promise.all([api.getHomeDiscoveryPage(0), api.getHomeDiscoveryPage(0)])
+  assert.equal(pages[0].page.products.length, 0)
+  assert.equal(pages[1].page.products.length, 0)
+  assert.equal(api.calls.length, 2)
 })
 test('flash sale checks the exact sale variant, not another stocked size', async () => {
   const api = load('src/lib/home-flash-sale.ts', { './medusa': { fetchProductsByIds: async () => [

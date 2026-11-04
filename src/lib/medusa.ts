@@ -594,6 +594,23 @@ export async function searchProducts(params: {
   return await fetchStoreProducts(baseParams);
 }
 
+/** Fields consumed by toUiProduct and the home feed's in-stock filter. */
+export async function fetchDiscoveryProducts(offset: number, limit: number) {
+  const start = Date.now();
+  const params = createBaseSearchParams(limit, [], offset);
+  params.set("fields", [
+    "id", "title", "handle", "thumbnail", "images.url", "collection.title",
+    "categories.id", "metadata", "price", "variants.id", "variants.prices.amount",
+    "variants.calculated_price", "variants.inventory_quantity", "variants.manage_inventory",
+    "variants.allow_backorder", "variants.metadata",
+  ].join(","));
+  try {
+    return await fetchStoreProducts(params);
+  } finally {
+    console.info("[home-discovery] Medusa products read", { offset, limit, durationMs: Date.now() - start });
+  }
+}
+
 /** Bounded public product lookup for merchandising stock checks. */
 export async function fetchProductsByIds(ids: string[]): Promise<MedusaProduct[]> {
   const unique = Array.from(new Set(ids.filter(Boolean))).slice(0, 60);
