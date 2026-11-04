@@ -7,7 +7,16 @@ export function safeDestination(value: string): boolean {
       new URL(value, 'https://www.0weg.in').origin === 'https://www.0weg.in'
   } catch { return false }
 }
+export function safeFcmToken(value: string): boolean {
+  return typeof value === 'string' && value.length >= 32 && value.length <= 4096 && /^[A-Za-z0-9_:-]+$/.test(value)
+}
+
+export function fcmEndpoint(token: string): string {
+  return `fcm:${token}`
+}
+
 export function safeEndpoint(value: string): boolean {
+  if (typeof value === 'string' && value.startsWith('fcm:')) return safeFcmToken(value.slice(4))
   try {
     const u = new URL(value)
     const h = u.hostname.toLowerCase()
@@ -30,6 +39,13 @@ export const subscriptionSchema = z.object({
   expected_customer_id: z.string().regex(/^cus_[A-Za-z0-9]+$/).optional(),
   endpoint: z.string().max(2048).refine(safeEndpoint, 'Unsupported push provider'),
   keys: z.object({ p256dh: key(65), auth: key(16) }).strict(),
+}).strict()
+
+export const nativeSubscriptionSchema = z.object({
+  provider: z.literal('fcm'),
+  token: z.string().max(4096).refine(safeFcmToken, 'Invalid device token'),
+  platform: z.enum(['ios', 'android']),
+  expected_customer_id: z.string().regex(/^cus_[A-Za-z0-9]+$/).optional(),
 }).strict()
 export const campaignSchema = z.object({
   title: z.string().trim().min(1).max(80), body: z.string().trim().min(1).max(240),

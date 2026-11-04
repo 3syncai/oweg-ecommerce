@@ -6,13 +6,16 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthProvider'
 import { isStandalonePwa } from '@/lib/open-storefront-link'
-import { activePushRegistration, enableBrowserPush, restoreBrowserPush, resumeBrowserPushSession } from '@/lib/browser-push'
+import { isNativeApp } from '@/lib/native-app'
+import { activePushRegistration } from '@/lib/browser-push'
+import { devicePushSupported, enableDevicePush, restoreDevicePush, resumeDevicePushSession } from '@/lib/device-push'
 import styles from './PushNotificationPrompt.module.css'
 
 const DISMISSED = 'oweg.push.onboarding.dismissed.v1'
 function dismissed() { try { return localStorage.getItem(DISMISSED) === '1' } catch { return false } }
 function rememberDismissal() { try { localStorage.setItem(DISMISSED,'1') } catch { /* Storage may be unavailable. */ } }
 function supported() {
+  if (isNativeApp()) return devicePushSupported()
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return false
   const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   return !ios || isStandalonePwa()
@@ -34,22 +37,40 @@ export default function PushNotificationPrompt() {
 
   useEffect(() => {
     if (initializing || !supported()) return
-    if (customerId) resumeBrowserPushSession()
+    if (customerId) resumeDevicePushSession()
     lastSync.current = { id: '', at: 0 }
     const controller = new AbortController()
     let running = false
     setVisible(false); setMessage(''); setGuestAllowed(false)
     async function check() {
-      if (running || lock.current || controller.signal.aborted || (!customerId && !isStandalonePwa())) return
+      if (running || lock.current || controller.signal.aborted || (!customerId && !isStandalonePwa() && !isNativeApp())) return
       running = true
       try {
+        if (isNativeApp()) {
+          if (dismissed()) return
+          if (customerId) {
+            const response = await fetch('/api/medusa/push-subscriptions?provider=fcm',{ credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(8000) })
+            const state = await response.json()
+            if (!response.ok || !(state.native_configured || state.configured) || state.customer_id !== customerId) return
+            if (state.active) {
+              setVisible(false)
+              if (lastSync.current.id !== customerId || Date.now()-lastSync.current.at > 60000) {
+                lastSync.current = { id: customerId, at: Date.now() }
+                await restoreDevicePush(customerId, controller.signal)
+              }
+              return
+            }
+          }
+          if (!controller.signal.aborted) setVisible(true)
+          return
+        }
         if (Notification.permission === 'denied') { setVisible(false); return }
         if (!await activePushRegistration(controller.signal) || controller.signal.aborted) return
         if (Notification.permission === 'granted') {
           setVisible(false)
           if (customerId && (lastSync.current.id !== customerId || Date.now()-lastSync.current.at > 60000)) {
             lastSync.current = { id: customerId, at: Date.now() }
-            await restoreBrowserPush(customerId,controller.signal)
+            await restoreDevicePush(customerId,controller.signal)
           }
           return
         }
@@ -85,9 +106,12 @@ export default function PushNotificationPrompt() {
     lock.current = true; setBusy(true); setMessage('')
     try {
       if (customerId) {
-        // This call starts the native prompt in the original click handler.
-        await enableBrowserPush({ customerId })
+        // Starts the OS permission prompt in the original click handler (web or Capacitor).
+        await enableDevicePush({ customerId })
         setVisible(false)
+      } else if (isNativeApp()) {
+        setGuestAllowed(true)
+        setMessage('Sign in to finish enabling OWEG notifications on this device.')
       } else {
         const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission()
         if (permission !== 'granted') { rememberDismissal(); setVisible(false); return }

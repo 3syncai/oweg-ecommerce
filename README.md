@@ -63,3 +63,9 @@ This app is configured as a Progressive Web App (PWA):
 - Manifest for app-like experience
 
 PWA works automatically on Vercel with HTTPS. See `DEPLOYMENT.md` for PWA configuration details.
+
+### Native iOS / Android (Capacitor)
+
+Customer storefront shell: [`mobile/`](./mobile/) (Preview → `https://0weg.in`, Prod → `https://oweg.in`).  
+**Build & try (team):** [`docs/MOBILE_APP_BUILD_FOR_TEAM.md`](./docs/MOBILE_APP_BUILD_FOR_TEAM.md)  
+Rollout / Play cutover: [`docs/MOBILE_APP_ROLLOUT.md`](./docs/MOBILE_APP_ROLLOUT.md).

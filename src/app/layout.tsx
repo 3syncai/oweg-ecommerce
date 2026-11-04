@@ -20,6 +20,8 @@ import { DebugControllerProvider } from "@/components/debug-controller/DebugCont
 import SiteProtections from "@/components/debug-controller/SiteProtections";
 import ConditionalWhatsAppWidget from "@/components/debug-controller/ConditionalWhatsAppWidget";
 import PushNotificationPrompt from "@/components/account/PushNotificationPrompt";
+import ForceUpdateGate from "@/components/mobile/ForceUpdateGate";
+import NativeBootSplash from "@/components/mobile/NativeBootSplash";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
 
 /** Self-hosted so CI/build does not depend on fonts.gstatic.com */
@@ -127,6 +129,8 @@ export default function RootLayout({
                   <ConditionalWhatsAppWidget />
                   <PWAInstallPrompt />
                   <PushNotificationPrompt />
+                  <NativeBootSplash />
+                  <ForceUpdateGate />
                 </div>
 
                 <AppToaster />

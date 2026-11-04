@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import webpush from 'web-push'
 import type { Pool } from 'pg'
 import { getSharedDbPool } from '../db-pool'
+import { fcmConfigured, sendFcmMessage } from './fcm'
 import { retryDelay, safeEndpoint } from './validation'
 
 export function pushConfigured() {
@@ -10,6 +11,12 @@ export function pushConfigured() {
   return /^[A-Za-z0-9_-]+$/.test(publicKey) && Buffer.from(publicKey, 'base64url').length === 65 &&
     /^[A-Za-z0-9_-]+$/.test(privateKey) && Buffer.from(privateKey, 'base64url').length === 32 &&
     /^(mailto:[^\s@]+@[^\s@]+|https:\/\/[^\s]+)$/.test(process.env.WEB_PUSH_SUBJECT || '')
+}
+
+export function pushDispatchEnabled() {
+  const web = pushConfigured() && process.env.WEB_PUSH_ENABLED === 'true'
+  const native = fcmConfigured() && process.env.FCM_PUSH_ENABLED === 'true'
+  return web || native
 }
 
 /** Keep terminal notification history for 90 days; never touch commerce rows. */
@@ -39,7 +46,9 @@ export async function cleanupPushHistory(pool: Pool) {
 
 /** Bounded DB-backed queue. No network calls inside a database transaction. */
 export async function dispatchPushBatch(workerPool?: Pool) {
-  if (!pushConfigured() || process.env.WEB_PUSH_ENABLED !== 'true') return { disabled: true }
+  if (!pushDispatchEnabled()) return { disabled: true }
+  const webEnabled = pushConfigured() && process.env.WEB_PUSH_ENABLED === 'true'
+  const fcmEnabled = fcmConfigured() && process.env.FCM_PUSH_ENABLED === 'true'
   const pool = workerPool || getSharedDbPool()
   // A dedicated connection owns the advisory lock, including across HTTP awaits.
   const guard = await pool.connect()
@@ -86,7 +95,7 @@ export async function dispatchPushBatch(workerPool?: Pool) {
     ) UPDATE oweg_push_delivery d SET status='sending',attempts=d.attempts+1,lease_token=$1,lease_until=now()+interval '2 minutes'
       FROM batch WHERE d.id=batch.id RETURNING d.id`, [token])
     const deliver = async (item: { id: string }) => {
-      const result = await pool.query(`SELECT d.*,c.title,c.body,c.url,c.image,c.expires_at,s.endpoint,s.p256dh,s.auth,s.active,c.status AS campaign_status,
+      const result = await pool.query(`SELECT d.*,c.title,c.body,c.url,c.image,c.expires_at,s.endpoint,s.p256dh,s.auth,s.active,s.provider,s.platform,c.status AS campaign_status,
         EXISTS(SELECT 1 FROM customer account WHERE account.id=s.customer_id AND account.deleted_at IS NULL) AS customer_exists
         FROM oweg_push_delivery d JOIN oweg_push_campaign c ON c.id=d.campaign_id JOIN oweg_push_subscription s ON s.id=d.subscription_id
         WHERE d.id=$1 AND d.lease_token=$2`, [item.id, token])
@@ -95,14 +104,37 @@ export async function dispatchPushBatch(workerPool?: Pool) {
       if (!d.active || !d.customer_exists || d.campaign_status !== 'sending' || new Date(d.expires_at).getTime() <= Date.now() || !safeEndpoint(d.endpoint)) {
         await pool.query(`UPDATE oweg_push_delivery SET status='cancelled',lease_token=NULL WHERE id=$1 AND lease_token=$2`, [d.id, token]); return
       }
+      const provider = d.provider === 'fcm' || String(d.endpoint).startsWith('fcm:') ? 'fcm' : 'web_push'
+      if (provider === 'fcm' && !fcmEnabled) {
+        await pool.query(`UPDATE oweg_push_delivery SET status='cancelled',lease_token=NULL,error_code='FCM_DISABLED' WHERE id=$1 AND lease_token=$2`, [d.id, token]); return
+      }
+      if (provider === 'web_push' && !webEnabled) {
+        await pool.query(`UPDATE oweg_push_delivery SET status='cancelled',lease_token=NULL,error_code='WEB_PUSH_DISABLED' WHERE id=$1 AND lease_token=$2`, [d.id, token]); return
+      }
       try {
-        const payload = JSON.stringify({ title: d.title, body: d.body, url: d.url, image: d.image, tag: `oweg-${d.campaign_id}`, clickToken: d.click_token })
-        if (Buffer.byteLength(payload) > 3800) throw Object.assign(new Error('Payload too large'), { statusCode: 413 })
-        await webpush.sendNotification({ endpoint: d.endpoint, keys: { p256dh: d.p256dh, auth: d.auth } }, payload, {
-          vapidDetails: { subject: process.env.WEB_PUSH_SUBJECT!, publicKey: process.env.WEB_PUSH_PUBLIC_KEY!, privateKey: process.env.WEB_PUSH_PRIVATE_KEY! },
-          TTL: Math.max(1, Math.min(86400, Math.floor((new Date(d.expires_at).getTime() - Date.now()) / 1000))),
-          timeout: 4000, urgency: 'normal',
-        })
+        const ttl = Math.max(1, Math.min(86400, Math.floor((new Date(d.expires_at).getTime() - Date.now()) / 1000)))
+        const tag = `oweg-${d.campaign_id}`
+        if (provider === 'fcm') {
+          const deviceToken = String(d.endpoint).startsWith('fcm:') ? String(d.endpoint).slice(4) : String(d.endpoint)
+          await sendFcmMessage({
+            token: deviceToken,
+            title: d.title,
+            body: d.body,
+            url: d.url,
+            image: d.image,
+            tag,
+            clickToken: d.click_token,
+            ttlSeconds: ttl,
+          })
+        } else {
+          const payload = JSON.stringify({ title: d.title, body: d.body, url: d.url, image: d.image, tag, clickToken: d.click_token })
+          if (Buffer.byteLength(payload) > 3800) throw Object.assign(new Error('Payload too large'), { statusCode: 413 })
+          await webpush.sendNotification({ endpoint: d.endpoint, keys: { p256dh: d.p256dh, auth: d.auth } }, payload, {
+            vapidDetails: { subject: process.env.WEB_PUSH_SUBJECT!, publicKey: process.env.WEB_PUSH_PUBLIC_KEY!, privateKey: process.env.WEB_PUSH_PRIVATE_KEY! },
+            TTL: ttl,
+            timeout: 4000, urgency: 'normal',
+          })
+        }
         await pool.query(`UPDATE oweg_push_delivery SET status='accepted',accepted_at=now(),lease_token=NULL,error_code=NULL WHERE id=$1 AND lease_token=$2`, [d.id, token])
       } catch (error: unknown) {
         const code = Number((error as { statusCode?: number }).statusCode) || 0

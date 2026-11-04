@@ -2,6 +2,7 @@
 
 import BrandLoader from "@/components/ui/BrandLoader";
 import BrowserPushPreferences from "./BrowserPushPreferences";
+import NativePushPreferences from "./NativePushPreferences";
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -14,6 +15,7 @@ import {
   type NotificationChannelSettings,
   type NotificationSettings,
 } from "@/lib/account-settings";
+import { isNativeApp } from "@/lib/native-app";
 import { cn } from "@/lib/utils";
 
 type NotificationsContentProps = {
@@ -86,10 +88,15 @@ export default function NotificationsContent({ embedded = false }: Notifications
   const [notifications, setNotifications] = useState<NotificationSettings>(
     accountSettings.notifications
   );
+  const [nativeShell, setNativeShell] = useState(false);
 
   useEffect(() => {
     setNotifications(accountSettings.notifications);
   }, [accountSettings.notifications]);
+
+  useEffect(() => {
+    setNativeShell(isNativeApp());
+  }, []);
 
   const toggleChannel = (
     rowKey: keyof NotificationSettings,
@@ -145,8 +152,12 @@ export default function NotificationsContent({ embedded = false }: Notifications
         </div>
       ) : null}
 
-      <BrowserPushPreferences />
-      <p className="text-sm text-gray-600">One permission covers browser notifications on this device. The preferences below are for email, SMS and WhatsApp.</p>
+      {nativeShell ? <NativePushPreferences /> : <BrowserPushPreferences />}
+      <p className="text-sm text-gray-600">
+        {nativeShell
+          ? "One permission covers app notifications on this device. The preferences below are for email, SMS and WhatsApp."
+          : "One permission covers browser notifications on this device. The preferences below are for email, SMS and WhatsApp."}
+      </p>
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
         {loading ? (
           <BrandLoader compact label="Loading notification settings…" />
