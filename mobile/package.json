@@ -1,0 +1,29 @@
+{
+  "name": "oweg-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OWEG customer Capacitor shell (Preview → 0weg.in, Prod → oweg.in)",
+  "scripts": {
+    "sync": "node scripts/sync-config.mjs && npx cap sync",
+    "sync:preview": "OWEG_APP_FLAVOR=preview npm run sync",
+    "sync:prod": "OWEG_APP_FLAVOR=production npm run sync",
+    "open:ios": "npx cap open ios",
+    "open:android": "npx cap open android",
+    "add:platforms": "npx cap add ios && npx cap add android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/app": "^7.1.0",
+    "@capacitor/browser": "^7.0.2",
+    "@capacitor/core": "^7.4.3",
+    "@capacitor/ios": "^7.4.3",
+    "@capacitor/push-notifications": "^7.0.3",
+    "@capacitor/splash-screen": "^7.0.3",
+    "@capacitor/status-bar": "^7.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
+    "@capacitor/cli": "^7.4.3",
+    "typescript": "^5.9.2"
+  }
+}

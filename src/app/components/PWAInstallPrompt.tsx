@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { isNativeApp } from "@/lib/native-app";
 import { isStandalonePwa } from "@/lib/open-storefront-link";
 
 type BeforeInstallPromptEvent = Event & {
@@ -54,7 +55,7 @@ export default function PWAInstallPrompt() {
 
   useEffect(() => {
     if (!mounted) return;
-    if (isStandalonePwa() || wasDismissedRecently()) return;
+    if (isNativeApp() || isStandalonePwa() || wasDismissedRecently()) return;
 
     const onBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
