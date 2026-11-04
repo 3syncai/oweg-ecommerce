@@ -2,7 +2,7 @@ import { safeVendorRedirect } from "./lib/vendor-redirect";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getDebugControllerSettings } from "./lib/debug-controller/settings";
-import { verifyVendorToken } from "./lib/api/token";
+import { unsealVendorSession } from "./lib/api/token";
 
 const MAINTENANCE_BYPASS = new Set([
   "/maintenance",
@@ -54,11 +54,8 @@ export async function middleware(request: NextRequest) {
   }
 
   const rawToken = request.cookies.get("vendor_token")?.value || "";
-  if (rawToken && process.env.NODE_ENV === "production" && !process.env.JWT_SECRET?.trim()) {
-    console.error("[vendor-middleware] JWT_SECRET is missing — cannot verify vendor_token cookie");
-  }
-  const claims = rawToken ? verifyVendorToken(rawToken) : null;
-  const authenticated = Boolean(claims);
+  const session = rawToken ? unsealVendorSession(rawToken) : null;
+  const authenticated = Boolean(session);
 
   const protectedPaths = [
     "/dashboard",
@@ -84,11 +81,13 @@ export async function middleware(request: NextRequest) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname + request.nextUrl.search);
     const res = NextResponse.redirect(loginUrl);
-    if (rawToken && !claims) {
+    if (rawToken && !session) {
       // Drop garbage / expired cookie so UI cannot look "logged in".
       res.cookies.set("vendor_token", "", {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure:
+          process.env.NODE_ENV === "production" ||
+          Boolean(process.env.VERCEL),
         sameSite: "lax",
         path: "/",
         maxAge: 0,

@@ -34,25 +34,26 @@ const VendorCollectionsPage = () => {
   const [searchQuery, setSearchQuery] = useState("")
 
   useEffect(() => {
+    let cancelled = false
     const fetchCollections = async () => {
       try {
-        const token = localStorage.getItem("vendor_token")
-        if (!token) {
-          router.push("/login")
-          setLoading(false)
-          return
-        }
+        const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+        const ok = await requireVendorSession((path) => router.replace(path))
+        if (cancelled || !ok) return
 
         const data = await vendorCollectionsApi.list({ limit: 100, offset: 0 })
-        setCollections(data.collections || [])
+        if (!cancelled) setCollections(data.collections || [])
       } catch (error) {
         console.error("Failed to fetch collections:", error)
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
-    fetchCollections()
+    void fetchCollections()
+    return () => {
+      cancelled = true
+    }
   }, [router])
 
   const stats = useMemo(() => {

@@ -69,10 +69,14 @@ export async function proxyMedusaRequest(
     headers.set("x-publishable-api-key", publishableKey);
   }
 
-  // Prefer HttpOnly session cookie over client-supplied Authorization.
-  const sessionToken = req.cookies.get("vendor_token")?.value?.trim();
-  if (sessionToken && !headers.has("authorization")) {
-    headers.set("Authorization", `Bearer ${sessionToken}`);
+  // Prefer HttpOnly portal session cookie → unwrap Medusa access token.
+  if (!headers.has("authorization")) {
+    const { unsealVendorSession } = await import("@/lib/api/token");
+    const sealed = req.cookies.get("vendor_token")?.value?.trim();
+    const session = sealed ? unsealVendorSession(sealed) : null;
+    if (session?.accessToken) {
+      headers.set("Authorization", `Bearer ${session.accessToken}`);
+    }
   }
 
   const init: RequestInit = {
