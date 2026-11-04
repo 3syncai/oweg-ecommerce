@@ -14,9 +14,9 @@ export function useCategoryProducts(
 ) {
   return useQuery<CategoryProductsPage, Error>({
     queryKey: ["category-products", categoryId, query],
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (!categoryId) throw new Error("Category ID required");
-      return getProductsByCategoryService(categoryId, query);
+      return getProductsByCategoryService(categoryId, query, signal);
     },
     enabled: !!categoryId,
     initialData,

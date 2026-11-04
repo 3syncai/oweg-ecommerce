@@ -21,10 +21,6 @@ import {
   isHealthCareCategoryHandle,
   isHealthCarePath,
 } from "@/lib/health-care-age-gate";
-import type {
-  CategoryDealPreview,
-  CategoryPreviewMap,
-} from "@/lib/category-listing";
 
 const PRODUCTS_PER_PAGE = 20;
 
@@ -67,12 +63,6 @@ type CategoryPageClientProps = {
   categoryHandle: string;
   subcategoryHandle?: string;
   initialProducts?: CategoryProductsPage;
-  initialDeals?: {
-    products: CategoryDealPreview[];
-    total: number;
-    categoryId?: string;
-  };
-  initialCategoryPreviews?: CategoryPreviewMap;
 };
 
 export function CategoryPageClient({
@@ -82,8 +72,6 @@ export function CategoryPageClient({
   categoryHandle,
   subcategoryHandle,
   initialProducts,
-  initialDeals,
-  initialCategoryPreviews,
 }: CategoryPageClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -107,10 +95,8 @@ export function CategoryPageClient({
     priceMax: parseNumberParam(searchParams?.get("price_max")),
     dealsOnly: searchParams?.get("deals") === "1",
   }));
-  const [dealPreview, setDealPreview] = useState<DealPreview[]>(
-    () => (initialDeals?.products as DealPreview[]) || []
-  );
-  const [dealCount, setDealCount] = useState(() => initialDeals?.total ?? 0);
+  const [dealPreview, setDealPreview] = useState<DealPreview[]>([]);
+  const [dealCount, setDealCount] = useState(0);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   const activeCategoryId = selectedSubcategory?.id || category.id;
@@ -146,7 +132,7 @@ export function CategoryPageClient({
     ],
   );
 
-  const { data: pageData, isLoading } = useCategoryProducts(
+  const { data: pageData, isLoading, isError, refetch } = useCategoryProducts(
     activeCategoryId,
     queryFilters,
     initialProducts &&
@@ -321,16 +307,9 @@ export function CategoryPageClient({
   ]);
 
   useEffect(() => {
-    if (
-      initialDeals &&
-      (!initialDeals.categoryId || initialDeals.categoryId === activeCategoryId)
-    ) {
-      setDealPreview((initialDeals.products as DealPreview[]) || []);
-      setDealCount(initialDeals.total ?? 0);
-      return;
-    }
-
-    let cancelled = false;
+    const controller = new AbortController();
+    setDealPreview([]);
+    setDealCount(0);
 
     async function loadDealPreview() {
       if (!activeCategoryId) {
@@ -349,19 +328,20 @@ export function CategoryPageClient({
         }
         const res = await fetch(
           `/api/medusa/deal-of-the-day?${params.toString()}`,
+          { signal: controller.signal },
         );
         if (!res.ok) {
           throw new Error(`Failed to load deals: ${res.status}`);
         }
         const data = await res.json();
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         const preview = Array.isArray(data.products) ? data.products : [];
         setDealPreview(preview);
         setDealCount(
           typeof data.total === "number" ? data.total : preview.length,
         );
       } catch (error) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setDealPreview([]);
           setDealCount(0);
         }
@@ -370,10 +350,8 @@ export function CategoryPageClient({
     }
 
     loadDealPreview();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeCategoryId, includeSubcategories, initialDeals]);
+    return () => controller.abort();
+  }, [activeCategoryId, includeSubcategories]);
 
   // Lock background scroll and allow Escape while the mobile filter sheet is open.
   useEffect(() => {
@@ -459,7 +437,7 @@ export function CategoryPageClient({
             {!selectedSubcategory && subcategories.length > 0 && (
               <section className={styles.browseCategories} aria-label="Browse subcategories">
                 <h2>Explore categories</h2>
-                <CategoryHeader categoryHandle={categoryHandle} subcategories={subcategories} initialPreviews={initialCategoryPreviews} />
+                <CategoryHeader categoryHandle={categoryHandle} subcategories={subcategories} />
               </section>
             )}
             <div className={styles.chips}>
@@ -469,11 +447,12 @@ export function CategoryPageClient({
             </div>
 
             {isLoading && <BrandLoader compact label="Finding your products…" />}
+            {isError && <p role="alert" className="py-4">Products couldn’t load. <button type="button" className="underline" onClick={() => void refetch()}>Try again</button></p>}
             <ProductGrid
               className={styles.productGrid}
               products={enrichedProducts}
               isLoading={isLoading}
-              showEmpty={!isLoading && filteredProducts.length === 0}
+              showEmpty={!isError && !isLoading && filteredProducts.length === 0}
             />
 
             {!isLoading && totalPages > 1 && (

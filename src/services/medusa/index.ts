@@ -124,6 +124,7 @@ export async function getCategoryByHandle(
 export async function getProductsByCategoryService(
   categoryId: string,
   params?: CategoryProductQueryParams,
+  signal?: AbortSignal,
 ): Promise<CategoryProductsPage> {
   const search = new URLSearchParams({
     categoryId,
@@ -147,6 +148,7 @@ export async function getProductsByCategoryService(
   }
 
   const response = await fetch(`/api/medusa/products?${search.toString()}`, {
+    signal,
     cache: "no-store",
   });
 
