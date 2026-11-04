@@ -359,12 +359,13 @@ export class ItlProvider implements EasyShipProvider {
   async ensurePickup(address: EasyShipPickupAddress) {
     this.assertConfigured()
 
+    // Multi-vendor: never prefer a fixed env warehouse over the vendor address.
+    // Order: match existing vendor warehouse → register new → env fallback last.
     const envWarehouse = String(
       process.env.ITL_PICKUP_ADDRESS_ID || process.env.ITL_WAREHOUSE_ID || ""
     ).trim()
     const pin = String(address.pin_code || "").replace(/\D/g, "")
 
-    // Prefer matching an already-registered warehouse for this vendor pin/name
     try {
       const warehouses = await this.listWarehouses()
       const company = String(address.vendor_name || address.name || "").trim()
@@ -379,7 +380,8 @@ export class ItlProvider implements EasyShipProvider {
         }) ||
         warehouses.find((w) => {
           const wPin = String(w.pincode || w.pin_code || "").replace(/\D/g, "")
-          return pin && wPin && wPin === pin
+          const statusOk = !w.status || /approv|active|1/i.test(String(w.status))
+          return pin && wPin && wPin === pin && statusOk
         })
 
       if (match?.id) {
@@ -392,55 +394,65 @@ export class ItlProvider implements EasyShipProvider {
       console.warn("[ITL] warehouse/get failed:", e?.message)
     }
 
+    // Register a new ITL warehouse for this vendor pickup address
+    try {
+      const { state_id, city_id } = await this.resolveStateCityIds(
+        address.state,
+        address.city
+      )
+      const addJson = await this.postJson(
+        `${STORE_API_BASE}/warehouse/add.json`,
+        {
+          company_name: String(address.vendor_name || address.name || "Vendor").slice(
+            0,
+            80
+          ),
+          address1: String(address.address || "").slice(0, 120),
+          address2: String(address.address_2 || "").slice(0, 120),
+          mobile: phone10(address.phone),
+          pincode: pin,
+          city_id,
+          state_id,
+          country_id: "101",
+        },
+        "warehouse/add"
+      )
+
+      const warehouseId =
+        addJson?.warehouse_id ||
+        addJson?.data?.warehouse_id ||
+        addJson?.data?.id ||
+        null
+      if (warehouseId) {
+        console.log(
+          `[ITL] Registered warehouse id=${warehouseId} pin=${pin} (may need partner approval before pickup)`
+        )
+        return {
+          pickup_location: encodeWarehousePickup(warehouseId),
+          pin_code: pin || address.pin_code,
+        }
+      }
+      console.warn(
+        "[ITL] warehouse/add returned no id:",
+        JSON.stringify(addJson).slice(0, 240)
+      )
+    } catch (e: any) {
+      console.warn("[ITL] warehouse/add failed:", e?.message)
+    }
+
     if (envWarehouse) {
+      console.warn(
+        `[ITL] Falling back to ITL_PICKUP_ADDRESS_ID=${envWarehouse} for pin=${pin} — courier may pickup from wrong address`
+      )
       return {
         pickup_location: encodeWarehousePickup(envWarehouse),
         pin_code: pin || address.pin_code,
       }
     }
 
-    // Register a new warehouse for this vendor pickup
-    const { state_id, city_id } = await this.resolveStateCityIds(
-      address.state,
-      address.city
+    throw new Error(
+      `ITL has no warehouse for vendor pin ${pin || "?"}. Register the vendor address in ITL (or set ITL_PICKUP_ADDRESS_ID as last-resort fallback).`
     )
-    const addJson = await this.postJson(
-      `${STORE_API_BASE}/warehouse/add.json`,
-      {
-        company_name: String(address.vendor_name || address.name || "Vendor").slice(
-          0,
-          80
-        ),
-        address1: String(address.address || "").slice(0, 120),
-        address2: String(address.address_2 || "").slice(0, 120),
-        mobile: phone10(address.phone),
-        pincode: pin,
-        city_id,
-        state_id,
-        country_id: "101",
-      },
-      "warehouse/add"
-    )
-
-    const warehouseId =
-      addJson?.warehouse_id ||
-      addJson?.data?.warehouse_id ||
-      addJson?.data?.id ||
-      null
-    if (!warehouseId) {
-      throw new Error(
-        `ITL warehouse/add succeeded but returned no warehouse_id: ${JSON.stringify(addJson).slice(0, 240)}`
-      )
-    }
-
-    console.log(
-      `[ITL] Registered warehouse id=${warehouseId} pin=${pin} (may need partner approval before pickup)`
-    )
-
-    return {
-      pickup_location: encodeWarehousePickup(warehouseId),
-      pin_code: pin || address.pin_code,
-    }
   }
 
   private resolvePickupAddressId(payload: Record<string, unknown>): string {
@@ -527,13 +539,13 @@ export class ItlProvider implements EasyShipProvider {
     const phone = phone10(payload.shipping_phone || payload.billing_phone)
     const email = String(payload.billing_email || payload.shipping_email || "")
 
+    // RTO/return goes back to the same vendor pickup warehouse (dynamic), not a fixed HQ.
     const returnAddressId =
+      String(payload.return_address_id || "").trim() ||
+      this.resolvePickupAddressId(payload) ||
       String(
-        payload.return_address_id ||
-          process.env.ITL_RETURN_ADDRESS_ID ||
-          process.env.ITL_PICKUP_ADDRESS_ID ||
-          ""
-      ).trim() || this.resolvePickupAddressId(payload)
+        process.env.ITL_RETURN_ADDRESS_ID || process.env.ITL_PICKUP_ADDRESS_ID || ""
+      ).trim()
 
     const shipment: Record<string, unknown> = {
       waybill: "",
