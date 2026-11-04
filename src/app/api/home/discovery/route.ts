@@ -8,10 +8,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid product offset" }, { status: 400 })
   }
   try {
-    return NextResponse.json(await getHomeDiscoveryPage(Number(raw)), {
-      headers: { "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=60" },
+    const { page, expiresAt } = await getHomeDiscoveryPage(Number(raw))
+    const remaining = expiresAt - Date.now()
+    if (remaining <= 0) throw new Error("Discovery page expired")
+    const sharedSeconds = Math.min(30, Math.floor(remaining / 1000))
+    return NextResponse.json(page, {
+      headers: { "Cache-Control": `public, max-age=0, s-maxage=${sharedSeconds}, must-revalidate` },
     })
   } catch {
-    return NextResponse.json({ error: "Unable to load more products. Please try again." }, { status: 503 })
+    return NextResponse.json({ error: "Unable to load more products. Please try again." }, {
+      status: 503,
+      headers: { "Cache-Control": "no-store", "Retry-After": "3" },
+    })
   }
 }

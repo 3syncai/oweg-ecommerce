@@ -48,6 +48,7 @@ export default function HomeDiscovery({ excludeIds }: { excludeIds: string[] }) 
     initialPageParam: 0,
     enabled: nearby,
     staleTime: 60_000,
+    retry: false,
     queryFn: async ({ pageParam, signal }): Promise<HomeDiscoveryPage> => {
       const response = await fetch(`/api/home/discovery?offset=${pageParam}`, { signal })
       if (!response.ok) throw new Error("More products couldn’t load. Please try again.")
