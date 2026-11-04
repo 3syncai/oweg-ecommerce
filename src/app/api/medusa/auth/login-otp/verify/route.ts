@@ -10,6 +10,7 @@ import {
   isPasswordResetRequired,
   passwordResetRequiredPayload,
 } from "../../_lib/password-recovery"
+import { clientIpFromRequest, rateLimitOrNull } from "@/lib/simple-rate-limit"
 
 export const dynamic = "force-dynamic"
 
@@ -28,6 +29,14 @@ function normalizeIndianPhone(input?: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    const blocked = rateLimitOrNull(req, {
+      key: `otp-verify:${clientIpFromRequest(req)}`,
+      limit: 20,
+      windowMs: 60_000,
+      message: "Too many OTP attempts. Try again shortly.",
+    })
+    if (blocked) return blocked
+
     const body = (await req.json()) as { email?: string; phone?: string; otp?: string }
     const forwardedHeaders = {
       origin: req.headers.get("origin") ?? undefined,

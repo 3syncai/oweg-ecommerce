@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg"
 import { allocateMinor, enqueuePaymentWork, lockWallet, transaction } from "./payment-reliability"
 import { matchesReassignedReturnItem } from "./vendor-reassignment-history"
+import { settleReturnEarnings } from "./return-earnings-settlement"
 
 type Allocation={item_id:string;quantity:number;basis_minor:number;coin_minor:number;cash_minor:number}
 export type ReturnQuote={return_id:string;order_id:string;cash_minor:number;coin_minor:number;allocations:Allocation[];already_recorded:boolean;payout_reference?:string}
@@ -57,45 +58,53 @@ export async function quoteReturnSettlement(client:PoolClient, returnId:string):
 /** Manual payout acknowledgement + exact coin refund + immutable receipt + retry work, one commit. */
 export async function recordManualReturnRefund(pool:Pool,input:{returnId:string;actorId:string;payoutReference:string;cashMinor:number}) {
  if(!input.actorId||!Number.isSafeInteger(input.cashMinor)||input.cashMinor<0||!/^[-A-Za-z0-9_./:]{4,120}$/.test(input.payoutReference))throw new Error("invalid_refund_receipt")
- return transaction(pool,async client=>{
-   const quote=await quoteReturnSettlement(client,input.returnId)
-   if(quote.already_recorded) {
-     if(quote.payout_reference!==input.payoutReference||quote.cash_minor!==input.cashMinor)throw new Error("refund_receipt_conflict")
-     return quote
+ const quote=await transaction(pool,async client=>{
+   const quoted=await quoteReturnSettlement(client,input.returnId)
+   if(quoted.already_recorded) {
+     if(quoted.payout_reference!==input.payoutReference||quoted.cash_minor!==input.cashMinor)throw new Error("refund_receipt_conflict")
+     return quoted
    }
-   if(quote.cash_minor!==input.cashMinor)throw new Error("refund_quote_changed")
-   const order=(await client.query('SELECT customer_id FROM "order" WHERE id=$1',[quote.order_id])).rows[0]
+   if(quoted.cash_minor!==input.cashMinor)throw new Error("refund_quote_changed")
+   const order=(await client.query('SELECT customer_id FROM "order" WHERE id=$1',[quoted.order_id])).rows[0]
    await lockWallet(client,order.customer_id)
    // Historical full-order credits must never be credited again by a partial return.
    const history=Number((await client.query(`SELECT COALESCE(SUM(amount),0) AS n FROM wallet_ledger WHERE customer_id=$1 AND type='EARN'
-     AND (idempotency_key=$2 OR (metadata->>'order_id'=$3 AND (left(idempotency_key,7)='refund-' OR metadata->>'source'='return_settlement')))`,[order.customer_id,`refund:order:${quote.order_id}`,quote.order_id])).rows[0].n)
-   const spent=Number((await client.query("SELECT COALESCE(SUM(-amount),0) AS n FROM wallet_ledger WHERE order_id=$1 AND type='SPEND'",[quote.order_id])).rows[0].n)
-   if(history+quote.coin_minor>spent)throw new Error("legacy_coin_refund_requires_reconciliation")
-   if(quote.coin_minor) {
+     AND (idempotency_key=$2 OR (metadata->>'order_id'=$3 AND (left(idempotency_key,7)='refund-' OR metadata->>'source'='return_settlement')))`,[order.customer_id,`refund:order:${quoted.order_id}`,quoted.order_id])).rows[0].n)
+   const spent=Number((await client.query("SELECT COALESCE(SUM(-amount),0) AS n FROM wallet_ledger WHERE order_id=$1 AND type='SPEND'",[quoted.order_id])).rows[0].n)
+   if(history+quoted.coin_minor>spent)throw new Error("legacy_coin_refund_requires_reconciliation")
+   if(quoted.coin_minor) {
      await client.query(`INSERT INTO wallet_ledger(customer_id,order_id,type,amount,reference_id,idempotency_key,metadata)
-       VALUES($1,NULL,'EARN',$2,$3,$3,$4)`,[order.customer_id,quote.coin_minor,`refund:return:${quote.return_id}`,JSON.stringify({order_id:quote.order_id,return_id:quote.return_id,source:"return_settlement"})])
-     await client.query("UPDATE wallet_account SET actual_balance=actual_balance+$1,updated_at=now() WHERE customer_id=$2",[quote.coin_minor,order.customer_id])
+       VALUES($1,NULL,'EARN',$2,$3,$3,$4)`,[order.customer_id,quoted.coin_minor,`refund:return:${quoted.return_id}`,JSON.stringify({order_id:quoted.order_id,return_id:quoted.return_id,source:"return_settlement"})])
+     await client.query("UPDATE wallet_account SET actual_balance=actual_balance+$1,updated_at=now() WHERE customer_id=$2",[quoted.coin_minor,order.customer_id])
    }
    await client.query(`INSERT INTO return_financial_settlement(return_id,order_id,actor_id,payout_reference,cash_minor,coin_minor,allocations)
-     VALUES($1,$2,$3,$4,$5,$6,$7)`,[quote.return_id,quote.order_id,input.actorId,input.payoutReference,quote.cash_minor,quote.coin_minor,JSON.stringify(quote.allocations)])
+     VALUES($1,$2,$3,$4,$5,$6,$7)`,[quoted.return_id,quoted.order_id,input.actorId,input.payoutReference,quoted.cash_minor,quoted.coin_minor,JSON.stringify(quoted.allocations)])
    const earnings=(await client.query(`SELECT COALESCE(SUM(amount),0) AS actual,
      COALESCE(SUM(COALESCE((metadata->>'original_award_minor')::numeric,amount)),0) AS original
-     FROM wallet_ledger WHERE customer_id=$1 AND order_id=$2 AND type='EARN'`,[order.customer_id,quote.order_id])).rows[0]
+     FROM wallet_ledger WHERE customer_id=$1 AND order_id=$2 AND type='EARN'`,[order.customer_id,quoted.order_id])).rows[0]
    const earned=Number(earnings.original)
    const totals=(await client.query(`SELECT
      COALESCE((SELECT SUM(basis_minor) FROM payment_order_item_snapshot WHERE order_id=$1),
      (SELECT SUM(round(oli.unit_price::numeric*100)*oi.quantity) FROM order_item oi JOIN order_line_item oli ON oli.id=oi.item_id WHERE oi.order_id=$1 AND oi.deleted_at IS NULL AND oli.deleted_at IS NULL)) AS basis,
      (SELECT COALESCE(SUM((a->>'basis_minor')::bigint),0) FROM return_financial_settlement s CROSS JOIN LATERAL jsonb_array_elements(s.allocations) a WHERE s.order_id=$1) AS returned,
-     (SELECT COALESCE(SUM(-amount),0) FROM wallet_ledger WHERE order_id=$1 AND customer_id=$2 AND type='REVERSE') AS reversed`,[quote.order_id,order.customer_id])).rows[0]
+     (SELECT COALESCE(SUM(-amount),0) FROM wallet_ledger WHERE order_id=$1 AND customer_id=$2 AND type='REVERSE') AS reversed`,[quoted.order_id,order.customer_id])).rows[0]
    const target=Math.max(0,Number(BigInt(earned)*BigInt(totals.returned)/BigInt(totals.basis))-(earned-Number(earnings.actual)))
    const reversal=Math.max(0,target-Number(totals.reversed))
    if(reversal) {
-     await client.query(`INSERT INTO wallet_ledger(customer_id,order_id,type,amount,idempotency_key,metadata) VALUES($1,$2,'REVERSE',$3,$4,$5)`,[order.customer_id,quote.order_id,-reversal,`return-earned:${quote.return_id}`,JSON.stringify({return_id:quote.return_id,reason:"partial_return"})])
+     await client.query(`INSERT INTO wallet_ledger(customer_id,order_id,type,amount,idempotency_key,metadata) VALUES($1,$2,'REVERSE',$3,$4,$5)`,[order.customer_id,quoted.order_id,-reversal,`return-earned:${quoted.return_id}`,JSON.stringify({return_id:quoted.return_id,reason:"partial_return"})])
      await client.query("UPDATE wallet_account SET actual_balance=actual_balance-$1,updated_at=now() WHERE customer_id=$2",[reversal,order.customer_id])
    }
-   const updated=await client.query("UPDATE return_request SET status='refunded',refunded_at=now(),updated_at=now() WHERE id=$1 AND status IN ('picked_up','received')",[quote.return_id])
+   const updated=await client.query("UPDATE return_request SET status='refunded',refunded_at=now(),updated_at=now() WHERE id=$1 AND status IN ('picked_up','received')",[quoted.return_id])
    if(updated.rowCount!==1)throw new Error("return_status_changed")
-   await enqueuePaymentWork(client,"return_refunded",quote.return_id,{order_id:quote.order_id})
-   return quote
+   await enqueuePaymentWork(client,"return_refunded",quoted.return_id,{order_id:quoted.order_id})
+   return quoted
  })
+ // Eager clawback so vendor payable is correct even if payment_work stalls.
+ // Idempotent with the worker path via return_target_adjustment.
+ try {
+   await settleReturnEarnings(pool, input.returnId)
+ } catch (error) {
+   console.warn("[return-financial-settlement] eager settleReturnEarnings deferred to worker:", error)
+ }
+ return quote
 }

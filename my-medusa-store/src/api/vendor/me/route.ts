@@ -5,7 +5,7 @@ import { VENDOR_MODULE } from "../../../modules/vendor"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  /* CORS via vendorCorsMiddleware */ void 0
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-publishable-api-key')
   res.setHeader('Access-Control-Allow-Credentials', 'true')

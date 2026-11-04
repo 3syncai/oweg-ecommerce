@@ -8,6 +8,7 @@ import {
 import {
   isRazorpayPayoutSettled,
   listOrderIdsAlreadyOnPayout,
+  lockVendorPayoutRowsForVendor,
   markVendorEarningsAsPaid,
   normalizePayoutOrderIds,
 } from "../../../../../lib/vendor-earnings"
@@ -110,14 +111,18 @@ export async function POST(
       return
     }
 
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+    const claimPool = new Pool({ connectionString: process.env.DATABASE_URL })
+    const claimClient = await claimPool.connect()
     try {
+      await claimClient.query("BEGIN")
+      await lockVendorPayoutRowsForVendor(claimClient, vendor_id)
       const alreadyClaimed = await listOrderIdsAlreadyOnPayout(
-        pool,
+        claimClient as any,
         vendor_id,
         scopedOrderIds
       )
       if (alreadyClaimed.length > 0) {
+        await claimClient.query("ROLLBACK")
         res.status(409).json({
           message:
             "One or more orders are already on a pending or completed payout",
@@ -125,8 +130,42 @@ export async function POST(
         })
         return
       }
+      // Reserve a pending payout row before calling Razorpay so concurrent
+      // admins cannot claim the same order_ids.
+      const reserveId = `vpayout_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      await claimClient.query(
+        `
+          INSERT INTO vendor_payout (
+            id, vendor_id, amount, commission_amount, net_amount, commission_rate,
+            currency_code, transaction_id, payment_method, status, notes, order_ids,
+            created_by, created_at, updated_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6,
+            'inr', $7, 'razorpay_payout', 'pending', $8, $9,
+            $10, NOW(), NOW()
+          )
+        `,
+        [
+          reserveId,
+          vendor_id,
+          amount + (commission_amount || 0),
+          commission_amount || 0,
+          amount,
+          commission_rate || 0,
+          `reserve_${reserveId}`,
+          notes || null,
+          JSON.stringify(scopedOrderIds),
+          (req as any).auth_context?.actor_id || (req as any).user?.id || "admin",
+        ]
+      )
+      await claimClient.query("COMMIT")
+      ;(req as any)._reserved_payout_id = reserveId
+    } catch (error: any) {
+      await claimClient.query("ROLLBACK").catch(() => {})
+      throw error
     } finally {
-      await pool.end().catch(() => {})
+      claimClient.release()
+      await claimPool.end().catch(() => {})
     }
 
     // Step 1: Create or get Razorpay Contact
@@ -232,39 +271,59 @@ export async function POST(
 
     const settled = isRazorpayPayoutSettled(payout.status)
     const localStatus = settled ? "processed" : "pending"
+    const reservedPayoutId = String((req as any)._reserved_payout_id || "")
+    const created_by =
+      (req as any).auth_context?.actor_id || (req as any).user?.id || "admin"
 
-    // Step 4: Save to database
-    const manager = req.scope.resolve("manager") as any
-    const created_by = (req as any).user?.id || "admin"
-
-    const payoutData = {
-      vendor_id,
-      amount: amount + (commission_amount || 0),
-      commission_amount: commission_amount || 0,
-      net_amount: amount,
-      commission_rate: commission_rate || 0,
-      currency_code: "inr",
-      transaction_id: internalTxnId,
-      payment_method: "razorpay_payout",
-      status: localStatus,
-      razorpay_contact_id: razorpayContactId,
-      razorpay_fund_account_id: fundAccount.id,
-      razorpay_payout_id: payout.id,
-      razorpay_status: payout.status,
-      utr: payout.utr,
-      failure_reason: payout.failure_reason,
-      notes: notes || null,
-      order_ids: JSON.stringify(scopedOrderIds),
-      created_by,
-      created_at: new Date(),
-      updated_at: new Date(),
+    // Step 4: Update the reserved payout row (do not insert a second claim)
+    const updatePool = new Pool({ connectionString: process.env.DATABASE_URL })
+    let result: { id: string } = { id: reservedPayoutId }
+    try {
+      if (!reservedPayoutId) {
+        throw new Error("Missing reserved payout id")
+      }
+      await updatePool.query(
+        `
+          UPDATE vendor_payout SET
+            amount = $2,
+            commission_amount = $3,
+            net_amount = $4,
+            commission_rate = $5,
+            transaction_id = $6,
+            status = $7,
+            razorpay_contact_id = $8,
+            razorpay_fund_account_id = $9,
+            razorpay_payout_id = $10,
+            razorpay_status = $11,
+            utr = $12,
+            failure_reason = $13,
+            notes = $14,
+            created_by = $15,
+            updated_at = NOW()
+          WHERE id = $1
+        `,
+        [
+          reservedPayoutId,
+          amount + (commission_amount || 0),
+          commission_amount || 0,
+          amount,
+          commission_rate || 0,
+          internalTxnId,
+          localStatus,
+          razorpayContactId,
+          fundAccount.id,
+          payout.id,
+          payout.status,
+          payout.utr || null,
+          payout.failure_reason || null,
+          notes || null,
+          created_by,
+        ]
+      )
+      result = { id: reservedPayoutId }
+    } finally {
+      await updatePool.end().catch(() => {})
     }
-
-    const result = await manager.transaction(async (em: any) => {
-      const payoutEntity = em.create("vendor_payout", payoutData)
-      await em.persistAndFlush(payoutEntity)
-      return payoutEntity
-    })
 
     // Mark CREDITED → PAID only after Razorpay confirms processed
     let markedPaid = 0

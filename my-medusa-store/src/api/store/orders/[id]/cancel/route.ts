@@ -5,6 +5,7 @@ import ShiprocketService from "../../../../../services/shiprocket"
 import { encryptBankDetails } from "../../../../../services/return-bank-crypto"
 import { getSharedDbPool } from "../../../../../lib/db-pool"
 import { reverseVendorEarningsForOrder } from "../../../../../lib/vendor-earnings"
+import { withVendorOrderAssignmentLock } from "../../../../../lib/vendor-order-assignment-lock"
 
 const BLOCKED_SHIPROCKET = new Set([
   "picked_up",
@@ -102,105 +103,113 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
 
   const orderModuleService = req.scope.resolve(Modules.ORDER)
-  const order = await orderModuleService.retrieveOrder(req.params.id, {
-    relations: ["items", "shipping_address", "billing_address"],
-  })
+  const orderId = String(req.params.id)
 
-  const orderAny = order as any
-  const orderCustomerId = order?.customer_id || orderAny?.customer?.id
-  if (orderCustomerId !== authContext.actor_id) {
-    throw new MedusaError(MedusaErrorTypes.UNAUTHORIZED, "Order does not belong to customer.")
-  }
-
-  const metadata = { ...(order.metadata || {}) } as Record<string, unknown>
-  const shiprocketStatus = String(metadata.shiprocket_status || "").toLowerCase()
-  const fulfillment = String(orderAny?.fulfillment_status || "").toLowerCase()
-
-  if (BLOCKED_SHIPROCKET.has(shiprocketStatus) || fulfillment === "shipped" || fulfillment === "delivered") {
-    throw new MedusaError(
-      MedusaErrorTypes.NOT_ALLOWED,
-      "Order already shipped. Please use return after delivery."
-    )
-  }
-
-  const body = (req.body || {}) as { reason?: unknown; refund_payout?: unknown }
-  const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 180) : ""
-  if (reason.length < 3) {
-    throw new MedusaError(MedusaErrorTypes.INVALID_DATA, "Cancellation reason is required.")
-  }
-
-  const requiresPayout = isPaidOnline(orderAny)
-  const refundPayout = parseRefundPayout(body.refund_payout)
-
-  if (requiresPayout && !refundPayout) {
-    throw new MedusaError(
-      MedusaErrorTypes.INVALID_DATA,
-      "Provide UPI ID or bank details for the refund."
-    )
-  }
-
-  if (refundPayout?.method === "upi") {
-    metadata.cancel_refund_method = "upi"
-    metadata.cancel_refund_payout_encrypted = encryptBankDetails({
-      method: "upi",
-      upi_id: refundPayout.upi_id,
+  return withVendorOrderAssignmentLock(orderId, async () => {
+    const order = await orderModuleService.retrieveOrder(orderId, {
+      relations: ["items", "shipping_address", "billing_address"],
     })
-    metadata.cancel_upi_masked = maskUpi(refundPayout.upi_id)
-    delete metadata.cancel_bank_last4
-  } else if (refundPayout?.method === "bank") {
-    metadata.cancel_refund_method = "bank"
-    metadata.cancel_refund_payout_encrypted = encryptBankDetails({
-      method: "bank",
-      account_name: refundPayout.account_name,
-      account_number: refundPayout.account_number,
-      ifsc_code: refundPayout.ifsc_code,
-      bank_name: refundPayout.bank_name || "",
-    })
-    metadata.cancel_bank_last4 = refundPayout.account_number.slice(-4)
-    delete metadata.cancel_upi_masked
-  }
 
-  // Persist customer cancel metadata BEFORE Medusa cancel so reason/source survive
-  // workflow failures. Never write customer reason into cancellation_note (vendor message).
-  metadata.customer_cancel_reason = reason
-  metadata.cancellation_reason = reason
-  delete metadata.cancellation_note
-  metadata.cancellation_source = "customer"
-  metadata.cancelled_by_admin = false
-  metadata.cancelled_by = "customer"
-  metadata.cancellation_requested_at = new Date().toISOString()
-  metadata.cancellation_requested_by = authContext.actor_id
+    const orderAny = order as any
+    if (String(orderAny?.status || "").toLowerCase().includes("cancel")) {
+      throw new MedusaError(MedusaErrorTypes.NOT_ALLOWED, "Order is already cancelled.")
+    }
 
-  await orderModuleService.updateOrders(order.id, { metadata })
+    const orderCustomerId = order?.customer_id || orderAny?.customer?.id
+    if (orderCustomerId !== authContext.actor_id) {
+      throw new MedusaError(MedusaErrorTypes.UNAUTHORIZED, "Order does not belong to customer.")
+    }
 
-  await cancelOrderWorkflow(req.scope).run({
-    input: {
-      order_id: order.id,
-      canceled_by: authContext.actor_id,
-    },
-  })
+    const metadata = { ...(order.metadata || {}) } as Record<string, unknown>
+    const shiprocketStatus = String(metadata.shiprocket_status || "").toLowerCase()
+    const fulfillment = String(orderAny?.fulfillment_status || "").toLowerCase()
 
-  // Courier after Medusa — if courier fails, order is already cancelled (log only).
-  const shiprocketOrderId = metadata.shiprocket_order_id
-  if (shiprocketOrderId) {
-    try {
-      const shiprocket = new ShiprocketService()
-      await shiprocket.cancelOrders([String(shiprocketOrderId)])
-      metadata.shiprocket_status = "cancelled"
-      await orderModuleService.updateOrders(order.id, { metadata })
-    } catch (error: any) {
-      console.warn(
-        "[store/orders/cancel] Shiprocket cancel after Medusa failed:",
-        error?.message || error
+    if (BLOCKED_SHIPROCKET.has(shiprocketStatus) || fulfillment === "shipped" || fulfillment === "delivered") {
+      throw new MedusaError(
+        MedusaErrorTypes.NOT_ALLOWED,
+        "Order already shipped. Please use return after delivery."
       )
     }
-  }
 
-  try {
-    await reverseVendorEarningsForOrder(order.id, getSharedDbPool(), "cancelled")
-  } catch (error) {
-    console.warn("[store/orders/cancel] earnings reverse skipped:", error)
-  }
+    const body = (req.body || {}) as { reason?: unknown; refund_payout?: unknown }
+    const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 180) : ""
+    if (reason.length < 3) {
+      throw new MedusaError(MedusaErrorTypes.INVALID_DATA, "Cancellation reason is required.")
+    }
 
-  return res.json({ success: true })
+    const requiresPayout = isPaidOnline(orderAny)
+    const refundPayout = parseRefundPayout(body.refund_payout)
+
+    if (requiresPayout && !refundPayout) {
+      throw new MedusaError(
+        MedusaErrorTypes.INVALID_DATA,
+        "Provide UPI ID or bank details for the refund."
+      )
+    }
+
+    if (refundPayout?.method === "upi") {
+      metadata.cancel_refund_method = "upi"
+      metadata.cancel_refund_payout_encrypted = encryptBankDetails({
+        method: "upi",
+        upi_id: refundPayout.upi_id,
+      })
+      metadata.cancel_upi_masked = maskUpi(refundPayout.upi_id)
+      delete metadata.cancel_bank_last4
+    } else if (refundPayout?.method === "bank") {
+      metadata.cancel_refund_method = "bank"
+      metadata.cancel_refund_payout_encrypted = encryptBankDetails({
+        method: "bank",
+        account_name: refundPayout.account_name,
+        account_number: refundPayout.account_number,
+        ifsc_code: refundPayout.ifsc_code,
+        bank_name: refundPayout.bank_name || "",
+      })
+      metadata.cancel_bank_last4 = refundPayout.account_number.slice(-4)
+      delete metadata.cancel_upi_masked
+    }
+
+    // Persist customer cancel metadata BEFORE Medusa cancel so reason/source survive
+    // workflow failures. Never write customer reason into cancellation_note (vendor message).
+    metadata.customer_cancel_reason = reason
+    metadata.cancellation_reason = reason
+    delete metadata.cancellation_note
+    metadata.cancellation_source = "customer"
+    metadata.cancelled_by_admin = false
+    metadata.cancelled_by = "customer"
+    metadata.cancellation_requested_at = new Date().toISOString()
+    metadata.cancellation_requested_by = authContext.actor_id
+
+    await orderModuleService.updateOrders(order.id, { metadata })
+
+    await cancelOrderWorkflow(req.scope).run({
+      input: {
+        order_id: order.id,
+        canceled_by: authContext.actor_id,
+      },
+    })
+
+    // Courier after Medusa — if courier fails, order is already cancelled (log only).
+    const shiprocketOrderId = metadata.shiprocket_order_id
+    if (shiprocketOrderId) {
+      try {
+        const shiprocket = new ShiprocketService()
+        await shiprocket.cancelOrders([String(shiprocketOrderId)])
+        metadata.shiprocket_status = "cancelled"
+        await orderModuleService.updateOrders(order.id, { metadata })
+      } catch (error: any) {
+        console.warn(
+          "[store/orders/cancel] Shiprocket cancel after Medusa failed:",
+          error?.message || error
+        )
+      }
+    }
+
+    try {
+      await reverseVendorEarningsForOrder(order.id, getSharedDbPool(), "cancelled")
+    } catch (error) {
+      console.warn("[store/orders/cancel] earnings reverse skipped:", error)
+    }
+
+    return res.json({ success: true })
+  })
 }

@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import axios from 'axios'
 import { cartFlashSale, priceCartPayload } from '@/lib/cart-flash-prices'
-
-const CART_COOKIE = "cart_id"
+import { CART_COOKIE, cartCookieOptions } from '@/lib/cart-cookie'
 const GUEST_CART_HEADER = "x-guest-cart-id"
 const SALES_CHANNEL_ID =
   process.env.NEXT_PUBLIC_MEDUSA_SALES_CHANNEL_ID || process.env.MEDUSA_SALES_CHANNEL_ID
@@ -221,7 +220,7 @@ export async function POST(req: NextRequest) {
     // and quantity PATCH failed with "cart_id not found".
     const payloadWithId = { ...pricedData, guestCartId: cartId }
     const next = NextResponse.json(payloadWithId)
-    next.cookies.set(CART_COOKIE, cartId, { httpOnly: false, sameSite: "lax", path: "/" })
+    next.cookies.set(CART_COOKIE, cartId, cartCookieOptions())
     return next
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "failed"

@@ -7,7 +7,7 @@ import {
 } from "../../../../../utils/search-index"
 
 function setCorsHeaders(res: MedusaResponse) {
-  res.setHeader("Access-Control-Allow-Origin", "*")
+  /* CORS via vendorCorsMiddleware */ void 0
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
   res.setHeader(
     "Access-Control-Allow-Headers",

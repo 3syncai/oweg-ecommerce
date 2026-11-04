@@ -369,6 +369,7 @@ export async function recomputeUnpaidVendorLedger(
     id: string;
     order_id: string;
     taxable_amount: string | number;
+    cashback_amount: string | number;
     gst_rate: string | number;
     logistic_fee: string | number;
     customer_shipping_total: string | number;
@@ -379,6 +380,7 @@ export async function recomputeUnpaidVendorLedger(
   }>(
     `
       SELECT id, order_id, taxable_amount, gst_rate,
+             COALESCE(cashback_amount, 0) AS cashback_amount,
              COALESCE(logistic_fee, 0) AS logistic_fee,
              COALESCE(customer_shipping_total, 0) AS customer_shipping_total,
              COALESCE(return_fee, 0) AS return_fee,
@@ -437,10 +439,19 @@ export async function recomputeUnpaidVendorLedger(
       Number(row.customer_shipping_total) || 0
     );
 
+    // New rows store taxable already net of cashback. Legacy rows with
+    // cashback_amount=0 still need fee base reduced by live cashback.
+    const storedTaxable = Number(row.taxable_amount) || 0
+    const storedCashback = Number(row.cashback_amount) || 0
+    const taxableForFees =
+      storedCashback > 0
+        ? storedTaxable
+        : Math.max(0, Math.round((storedTaxable - cashbackAmount) * 100) / 100)
+
     // Frozen order snapshot only — admin rate changes never rewrite these rows.
     const ledger = await ledgerForSaleRow({
       vendorId,
-      itemPrice: Number(row.taxable_amount) || 0,
+      itemPrice: taxableForFees,
       logisticFee: Number(row.logistic_fee) || 0,
       customerShippingTotal,
       cashbackAmount,
@@ -739,9 +750,15 @@ async function upsertVendorEarningRow(
   const logisticFee = resolveVendorLogisticFee(orderMetadata, row.vendor_id);
   const customerShippingTotal = resolveCustomerShippingTotal(orderMetadata, row.vendor_id);
   const returnFee = resolveVendorReturnFee(orderMetadata, row.vendor_id);
+  // Fee base = list taxable minus coupon/coin cashback so vendors are not
+  // commissioned on discounts the platform already refunds via cashback.
+  const taxableNetOfCashback = Math.max(
+    0,
+    Math.round((settlement.taxable_amount - cashbackAmount) * 100) / 100
+  );
   const ledger = await ledgerForSaleRow({
     vendorId: row.vendor_id,
-    itemPrice: settlement.taxable_amount,
+    itemPrice: taxableNetOfCashback,
     cashbackAmount,
     logisticFee,
     customerShippingTotal,
@@ -2108,6 +2125,68 @@ export async function listOrderIdsAlreadyOnPayout(
     }
   }
   return ids.filter((id) => claimed.has(id));
+}
+
+/** Serialize payout creation for one vendor (call inside an open transaction). */
+export async function lockVendorPayoutRowsForVendor(
+  client: { query: Pool["query"] },
+  vendorId: string
+): Promise<void> {
+  await client.query(
+    `SELECT id FROM vendor_payout WHERE vendor_id = $1 FOR UPDATE`,
+    [vendorId]
+  );
+}
+
+/**
+ * Atomically claim CREDITED earnings for a payout inside a transaction.
+ * Marks rows PAID first so a concurrent claim cannot take the same orders.
+ * Returns claimed order ids (subset that were still CREDITED).
+ */
+export async function claimVendorPayoutOrders(
+  client: Pool | { query: Pool["query"] },
+  vendorId: string,
+  orderIds: string[]
+): Promise<{ claimedOrderIds: string[]; marked: number }> {
+  const ids = normalizePayoutOrderIds(orderIds);
+  if (!vendorId || ids.length === 0) {
+    throw new Error("vendor_id and order_ids are required to claim a payout");
+  }
+
+  const already = await listOrderIdsAlreadyOnPayout(client as Pool, vendorId, ids);
+  if (already.length > 0) {
+    const err = new Error(
+      "One or more orders are already on a pending or completed payout"
+    ) as Error & { statusCode?: number; order_ids?: string[] };
+    err.statusCode = 409;
+    err.order_ids = already;
+    throw err;
+  }
+
+  const result = await client.query<{ order_id: string }>(
+    `
+      UPDATE vendor_earnings_log
+      SET status = 'PAID', updated_at = NOW()
+      WHERE vendor_id = $1
+        AND status = 'CREDITED'
+        AND order_id = ANY($2::text[])
+      RETURNING order_id
+    `,
+    [vendorId, ids]
+  );
+
+  const claimedOrderIds = [
+    ...new Set(result.rows.map((row) => String(row.order_id))),
+  ];
+  if (claimedOrderIds.length === 0) {
+    const err = new Error(
+      "No CREDITED earnings found for the requested order_ids"
+    ) as Error & { statusCode?: number };
+    err.statusCode = 409;
+    throw err;
+  }
+
+  return { claimedOrderIds, marked: result.rowCount ?? 0 };
 }
 
 /** Payable snapshot for admin payout screen (CREDITED only — not still unlocking).

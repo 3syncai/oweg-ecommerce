@@ -2,21 +2,15 @@ import { Client } from 'pg';
 import mysql from 'mysql2/promise';
 import * as dotenv from 'dotenv';
 import path from 'path';
+import { requireMedusaDatabaseUrl, requireOpenCartDbConfig } from './opencart-db-config';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 const medusaClient = new Client({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: requireMedusaDatabaseUrl(),
 });
 
-// Old OpenCart Credentials
-const ocConfig = {
-    host: '147.93.31.253',
-    port: 3306,
-    user: 'oweg_user2',
-    password: 'Oweg#@123',
-    database: 'oweg_db',
-};
+const ocConfig = requireOpenCartDbConfig();
 
 async function syncPrices() {
     let ocConnection;

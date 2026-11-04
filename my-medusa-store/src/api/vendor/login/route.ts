@@ -2,6 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import VendorModuleService from "../../../modules/vendor/service"
 import { VENDOR_MODULE } from "../../../modules/vendor"
 import { signVendorToken } from "../_lib/token"
+import { checkRateLimit, clientIpFromMedusaReq } from "../../../lib/simple-rate-limit"
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const vendorService: VendorModuleService = req.scope.resolve(VENDOR_MODULE)
@@ -12,6 +13,17 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   if (!email || !password) {
     return res.status(400).json({ message: "email and password required" })
+  }
+
+  const ip = clientIpFromMedusaReq(req as any)
+  const limited = checkRateLimit({
+    key: `vendor-login-legacy:${String(email).trim().toLowerCase()}:${ip}`,
+    limit: 10,
+    windowMs: 60_000,
+  })
+  if (!limited.allowed) {
+    res.setHeader("Retry-After", String(limited.retryAfterSec))
+    return res.status(429).json({ message: "Too many login attempts. Try again shortly." })
   }
 
   const user = await vendorService.authenticateVendorUser(email, password)

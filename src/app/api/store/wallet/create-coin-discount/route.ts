@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { adminFetch } from "@/lib/medusa-admin"
 import { spendCoins, creditAdjustment } from "@/lib/wallet-ledger"
 import { requireWalletMutationAuth } from "@/lib/wallet-mutation-auth"
+import { clientIpFromRequest, rateLimitOrNull } from "@/lib/simple-rate-limit"
 
 export const dynamic = "force-dynamic"
 
@@ -13,6 +14,14 @@ export async function POST(req: NextRequest) {
     console.log("=== CREATE COIN DISCOUNT API CALLED ===")
 
     try {
+        const blocked = rateLimitOrNull(req, {
+            key: `coin-discount:${clientIpFromRequest(req)}`,
+            limit: 20,
+            windowMs: 60_000,
+            message: "Too many coin discount attempts. Try again shortly.",
+        })
+        if (blocked) return blocked
+
         const { auth, errorResponse } = await requireWalletMutationAuth(req)
         if (errorResponse) return errorResponse
 

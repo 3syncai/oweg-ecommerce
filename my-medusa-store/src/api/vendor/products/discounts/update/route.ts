@@ -1,5 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
+import { requireApprovedVendor } from "../../../_lib/guards"
 
 interface UpdateDiscountPriceRequest {
     variant_id: string
@@ -9,6 +10,9 @@ interface UpdateDiscountPriceRequest {
 }
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
+    const vendor = await requireApprovedVendor(req, res)
+    if (!vendor) return
+
     try {
         const { variant_id, price_list_id, currency_code, amount } = req.body as UpdateDiscountPriceRequest
 
@@ -51,6 +55,24 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         }
 
         const price_set_id = priceSetResult.rows[0].price_set_id
+
+        const ownership = await knex.raw(
+          `
+            SELECT p.id
+            FROM product_variant pv
+            JOIN product p ON p.id = pv.product_id
+            WHERE pv.id = ?
+              AND p.metadata->>'vendor_id' = ?
+            LIMIT 1
+          `,
+          [variant_id, vendor.vendor_id]
+        )
+        if (!ownership.rows?.length) {
+          return res.status(403).json({
+            error: "Forbidden",
+            message: "Variant does not belong to this vendor",
+          })
+        }
 
         // Find the specific price to update
         const priceToUpdate = existingPrices.find(p =>
