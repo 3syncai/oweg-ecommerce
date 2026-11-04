@@ -54,6 +54,9 @@ export async function middleware(request: NextRequest) {
   }
 
   const rawToken = request.cookies.get("vendor_token")?.value || "";
+  if (rawToken && process.env.NODE_ENV === "production" && !process.env.JWT_SECRET?.trim()) {
+    console.error("[vendor-middleware] JWT_SECRET is missing — cannot verify vendor_token cookie");
+  }
   const claims = rawToken ? verifyVendorToken(rawToken) : null;
   const authenticated = Boolean(claims);
 

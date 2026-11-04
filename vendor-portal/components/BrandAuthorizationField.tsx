@@ -67,9 +67,6 @@ export const BrandAuthorizationField: React.FC<BrandAuthorizationProps> = ({
 
     const checkBrandAuthorization = async (brandName: string) => {
         try {
-            const token = localStorage.getItem("vendor_token")
-            if (!token) return
-
             const data = await vendorBrandsApi.checkAuthorization(brandName)
             if (currentBrandRef.current !== brandName || selectedFileRef.current) return
             const status =

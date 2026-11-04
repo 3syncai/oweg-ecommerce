@@ -86,12 +86,20 @@ export default function VendorSearchPage() {
   const [recentSearches, setRecentSearches] = useState<string[]>([])
 
   useEffect(() => {
-    const token = localStorage.getItem("vendor_token")
-    if (!token) {
-      router.push("/login")
-      return
+    let cancelled = false
+    void (async () => {
+      const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+      const ok = await requireVendorSession((path) => router.replace(path))
+      if (cancelled || !ok) return
+      bootstrapSearch()
+    })()
+    return () => {
+      cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router])
 
+  function bootstrapSearch() {
     try {
       const fromStorage = localStorage.getItem(RECENT_KEY)
       if (fromStorage) {
@@ -127,8 +135,8 @@ export default function VendorSearchPage() {
       }
     }
 
-    loadData()
-  }, [router])
+    void loadData()
+  }
 
   const normalizedQuery = query.trim().toLowerCase()
 

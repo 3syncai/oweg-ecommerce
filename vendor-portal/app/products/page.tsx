@@ -177,13 +177,17 @@ const VendorProductsPage = () => {
   }, [router, page, searchDebounced, statusFilter])
 
   useEffect(() => {
-    const vendorToken = localStorage.getItem("vendor_token")
-    if (!vendorToken) {
-      router.push("/login")
-      return
+    let cancelled = false
+    void (async () => {
+      const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+      const ok = await requireVendorSession((path) => router.replace(path))
+      if (cancelled || !ok) return
+      void loadProducts()
+    })()
+    return () => {
+      cancelled = true
+      productRequest.current?.abort()
     }
-    void loadProducts()
-    return () => productRequest.current?.abort()
   }, [router, loadProducts])
 
   useVendorLive({

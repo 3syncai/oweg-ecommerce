@@ -154,7 +154,6 @@ export default function VendorNotifications() {
 
   const loadNotifications = useCallback(async (pulseOverride?: VendorPulseSnapshot | null) => {
     if (typeof window === "undefined") return
-    if (!localStorage.getItem("vendor_token")) return
 
     try {
       const pulseRes =

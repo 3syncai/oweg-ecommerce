@@ -180,12 +180,16 @@ const VendorProfilePage = () => {
   }, [pendingMedia])
 
   useEffect(() => {
-    const vendorToken = localStorage.getItem("vendor_token")
-    if (!vendorToken) {
-      router.push("/login")
-      return
+    let cancelled = false
+    void (async () => {
+      const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+      const ok = await requireVendorSession((path) => router.replace(path))
+      if (cancelled || !ok) return
+      void loadProfile()
+    })()
+    return () => {
+      cancelled = true
     }
-    void loadProfile()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
 

@@ -14,11 +14,9 @@ export default function ReapplyPage() {
 
   useEffect(() => {
     const loadVendor = async () => {
-      const token = localStorage.getItem('vendor_token')
-      if (!token) {
-        router.push('/login')
-        return
-      }
+      const { requireVendorSession } = await import('@/lib/vendor-auth-client')
+      const ok = await requireVendorSession((path) => router.replace(path))
+      if (!ok) return
 
       try {
         const response = await vendorProfileApi.getMe()

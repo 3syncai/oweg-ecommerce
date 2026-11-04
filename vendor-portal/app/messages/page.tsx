@@ -40,11 +40,9 @@ const VendorMessagesPage = () => {
   const [error, setError] = useState<string | null>(null)
 
   const loadMessages = useCallback(async () => {
-    const vendorToken = localStorage.getItem("vendor_token")
-    if (!vendorToken) {
-      router.push("/login")
-      return
-    }
+    const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+    const ok = await requireVendorSession((path) => router.replace(path))
+    if (!ok) return
 
     try {
       const [summaryRes, listRes] = await Promise.all([

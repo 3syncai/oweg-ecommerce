@@ -36,15 +36,13 @@ let forceDuringRequest = false
 async function sharedTick(forceInvalidate = false) {
   if (typeof window === "undefined") return
   if (!sharedListeners.size) return
-  const token = localStorage.getItem("vendor_token")
-  if (!token) return
+  // Session is HttpOnly cookie — pulse goes through same-origin proxy with credentials.
   if (document.visibilityState === "hidden" && !forceInvalidate) return
   forceDuringRequest ||= forceInvalidate
   if (sharedRequest) return sharedRequest
   sharedRequest = (async () => {
     try {
       const pulse = await vendorPulseApi.get()
-      if (localStorage.getItem("vendor_token") !== token) return
       const revision = String(pulse.revision || "")
       const changed =
         forceDuringRequest ||
@@ -146,7 +144,6 @@ export function useVendorLive(options: UseVendorLiveOptions = {}) {
 
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return
-    if (!localStorage.getItem("vendor_token")) return
 
     const listener = listenerRef.current
     sharedListeners.add(listener)

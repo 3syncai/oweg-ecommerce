@@ -181,13 +181,11 @@ const VendorProductEditPage = () => {
       return
     }
 
-    const vendorToken = localStorage.getItem("vendor_token")
-    if (!vendorToken) {
-      router.push("/login")
-      return
-    }
-
+    let cancelled = false
     const loadPageData = async () => {
+      const { requireVendorSession } = await import("@/lib/vendor-auth-client")
+      const ok = await requireVendorSession((path) => router.replace(path))
+      if (cancelled || !ok) return
       setLoadError(null)
       try {
         const [productResponse, categoriesResponse, collectionsResponse, inventoryResponse] =
@@ -347,7 +345,10 @@ const VendorProductEditPage = () => {
       }
     }
 
-    loadPageData()
+    void loadPageData()
+    return () => {
+      cancelled = true
+    }
   }, [productId, router])
 
   const changedFields = useMemo(() => {
