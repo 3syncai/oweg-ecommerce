@@ -89,3 +89,22 @@ export function enableBrowserPush(options: PushOptions = {}): Promise<void> {
   void operation.then(clear,clear)
   return operation
 }
+
+/** Restore an installed app after login only when permission is already granted. */
+export async function restoreBrowserPush(customerId: string, signal?: AbortSignal): Promise<void> {
+  if (!isStandalonePwa() || typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+  const epoch = subscriptionEpoch
+  assertCurrent(epoch, signal)
+  const registration = await activePushRegistration(signal)
+  assertCurrent(epoch, signal)
+  if (!registration) return
+  const subscription = await registration.pushManager.getSubscription()
+  assertCurrent(epoch, signal)
+  const response = await fetch(API + (subscription ? '?endpoint=' + encodeURIComponent(subscription.endpoint) : ''), {
+    credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(8000),
+  })
+  const state = await response.json()
+  assertCurrent(epoch, signal)
+  if (!response.ok || !state.configured || state.customer_id !== customerId) return
+  if (!subscription || !state.active) await enableBrowserPush({ customerId, signal })
+}

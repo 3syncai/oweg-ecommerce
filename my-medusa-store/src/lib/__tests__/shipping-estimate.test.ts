@@ -53,13 +53,23 @@ test("ITL adapter sends actual kg, declared MRP and rounded cm, retaining tax an
   let data: Record<string,unknown> = {}
   global.fetch=async (_url,init)=>{
     data=JSON.parse(String(init?.body)).data
-    return new Response(JSON.stringify({status:"success",data:[{logistic_id:"1",logistic_name:"Carrier",service_type:"Surface",prepaid:"Y",pickup:"Y",rate:228.65,gst_charges:34.88,freight_charges:180.25}]}),{status:200})
+    return new Response(JSON.stringify({status:"success",data:[
+      {logistic_id:"1",logistic_name:"Carrier",logistic_service_type:"3",service_type:"Surface",prepaid:"Y",pickup:"Y",rate:228.65,gst_charges:34.88,freight_charges:180.25},
+      {logistic_name:"Air carrier",logistic_service_type:"7",service_type:"Air",prepaid:"Y",pickup:"Y",rate:59,gst_charges:9,freight_charges:50},
+      {logistic_name:"Unknown service",logistic_service_type:"99",prepaid:"Y",pickup:"Y",rate:59,gst_charges:9,freight_charges:50},
+      {logistic_name:"Legacy ground",logistic_service_type:"Ground",prepaid:"N",pickup:"Y",rate:59,gst_charges:9,freight_charges:50}
+    ]}),{status:200})
   }
   try {
     const result=await new ItlProvider().listCouriers({pickup_postcode:"401107",delivery_postcode:"110001",weight:25,length:22.1,breadth:20,height:24,declared_value:2150})
     // ITL rate API caps weight at 10 kg; cm are ceil'd
     assert.equal(data.shipping_weight_kg,"10");assert.equal(data.shipping_length_cms,"23");assert.equal(data.product_mrp,"2150")
-    assert.equal(result.couriers[0].gst_amount,34.88);assert.equal(result.couriers[0].freight_charge,180.25);assert.equal(result.couriers[0].prepaid,true)
+    const selected = economicalCourier(result.couriers)!
+    assert.equal(selected.courier_name,"Carrier");assert.equal(selected.gst_amount,34.88);assert.equal(selected.carrier_freight,180.25)
+    assert.equal(result.couriers.find(c=>c.courier_name==="Carrier")?.is_surface,true)
+    assert.equal(result.couriers.find(c=>c.courier_name==="Air carrier")?.is_surface,false)
+    assert.equal(result.couriers.find(c=>c.courier_name==="Unknown service")?.is_surface,false)
+    assert.equal(result.couriers.some(c=>c.courier_name==="Legacy ground"),false)
   } finally {
     global.fetch=oldFetch
     if(token===undefined)delete process.env.ITL_ACCESS_TOKEN;else process.env.ITL_ACCESS_TOKEN=token

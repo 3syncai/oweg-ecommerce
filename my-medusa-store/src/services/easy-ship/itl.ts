@@ -263,9 +263,11 @@ export class ItlProvider implements EasyShipProvider {
         row.delivery_tat != null
           ? `${row.delivery_tat} day(s)`
           : json?.expected_delivery_date || null
-      const serviceType = String(
-        row.logistic_service_type || row.service_type || ""
-      ).toLowerCase()
+      // Live ITL returns a numeric logistic_service_type (e.g. "3") alongside
+      // the readable service_type ("Surface"). An ID must not mask that label.
+      const serviceType = [row.service_type, row.logistic_service_type]
+        .map(value => String(value ?? "").trim().toLowerCase())
+        .find(value => /surface|ground|air|express/.test(value)) || ""
 
       couriers.push({
         courier_id: Number(row.logistic_id) || stableCourierId(logisticName),

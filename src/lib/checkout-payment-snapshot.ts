@@ -317,6 +317,7 @@ export async function recreateDraftFromCheckoutSnapshot(
     "mode",
     "cart_id",
     "referral_code",
+    "customer_affiliate_attribution",
     "coin_discount_code",
     "coin_reservation_id",
     "payment_reliability_version",

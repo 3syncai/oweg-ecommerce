@@ -55,6 +55,8 @@ const config: CapacitorConfig = {
     },
   },
   android: {
+    // Keep the storefront below the Android status bar and inside the system bars.
+    adjustMarginsForEdgeToEdge: "auto",
     allowMixedContent: false,
     backgroundColor: "#fafbf7",
   },
