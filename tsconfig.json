@@ -46,6 +46,7 @@
     ".next",
     "my-medusa-store",
     "vendor-portal",
+    "mobile",
     "public/sw.js",
     "public/swe-worker*"
   ]
