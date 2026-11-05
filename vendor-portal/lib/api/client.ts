@@ -335,23 +335,23 @@ export const vendorSignupApi = {
       headers['x-publishable-api-key'] = PUBLISHABLE_KEY
     }
 
-    if (type !== 'report') {
-      const session = await axios.post<{ token: string }>(
-        `${API_URL}/store/vendor/upload-session`,
-        {},
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            ...(PUBLISHABLE_KEY ? { 'x-publishable-api-key': PUBLISHABLE_KEY } : {}),
-          },
-        }
-      )
-      if (session.data?.token) {
-        headers['x-vendor-signup-token'] = session.data.token
-      }
-    }
-
     try {
+      if (type !== 'report') {
+        const session = await axios.post<{ token: string }>(
+          `${API_URL}/store/vendor/upload-session`,
+          {},
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              ...(PUBLISHABLE_KEY ? { 'x-publishable-api-key': PUBLISHABLE_KEY } : {}),
+            },
+          }
+        )
+        if (session.data?.token) {
+          headers['x-vendor-signup-token'] = session.data.token
+        }
+      }
+
       const response = await axios.post<UploadResponse>(`${API_URL}/store/vendor/uploads`, formData, {
         headers,
         withCredentials: true,

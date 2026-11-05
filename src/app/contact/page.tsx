@@ -21,7 +21,7 @@ const channels = [
     copy: "Ascent Retechno India Pvt Ltd Av Pride, B-12, Ground Floor, Opp. Rahul, International School, Nilemore 4th Road, Nalasopara West, Thane, Maharashtra - 401203.",
     action: "Open Maps",
     icon: MapPin,
-    href: "https://maps.google.com?q=AV+Crystal+Nallasopara+East+Palghar",
+    href: "https://www.google.com/maps/search/?api=1&query=19.429464%2C72.809120",
   },
 ];
 

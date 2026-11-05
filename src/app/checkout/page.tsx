@@ -101,6 +101,7 @@ function buildCheckoutWarmupFingerprint(input: {
     phone?: string;
   };
   referralCode: string;
+  customerAffiliateCode?: string;
   coinDiscount: number;
   oweg10Applied: boolean;
   oweg10CanApply: boolean;
@@ -131,6 +132,7 @@ function buildCheckoutWarmupFingerprint(input: {
     bs: input.billingSame,
     bi: input.billingSame ? null : input.billing,
     ref: input.referralCode.trim(),
+    customerAffiliateCode: input.customerAffiliateCode,
     coin: input.coinDiscount,
     o10: input.oweg10Applied && input.oweg10CanApply,
     promo: input.promoCode,
@@ -300,6 +302,8 @@ function CheckoutPageInner() {
   // Customer-affiliate (separate, customer-shared "?ref=" code) state
   const [affiliateCode, setAffiliateCode] = useState("");
   const [affiliateCodeApplied, setAffiliateCodeApplied] = useState(false);
+  const [affiliateCodeCleared, setAffiliateCodeCleared] = useState(false);
+  const customerAffiliateCode = affiliateCodeApplied ? affiliateCode : affiliateCodeCleared ? "" : undefined;
   const [affiliateValidating, setAffiliateValidating] = useState(false);
   const [affiliateName, setAffiliateName] = useState("");
   const [affiliateError, setAffiliateError] = useState<string | null>(null);
@@ -556,25 +560,28 @@ function CheckoutPageInner() {
         return;
       }
 
-      setAffiliateName(data.affiliate_name || "");
-
-      if (customer?.id) {
-        try {
-          await fetch("/api/customer-affiliate/track-referral", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              refer_code: trimmed,
-              referred_customer_id: customer.id,
-              referred_email: customer.email || null,
-              referred_name: [customer.first_name, customer.last_name].filter(Boolean).join(" ") || null,
-            }),
-          });
-        } catch (trackErr) {
-          console.warn("[affiliate] track-referral failed", trackErr);
-        }
+      if (!customer?.id) {
+        const message = "Please sign in to apply an affiliate code.";
+        setAffiliateError(message);
+        toast.error(message);
+        return;
       }
 
+      const tracked = await fetch("/api/customer-affiliate/track-referral", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ refer_code: trimmed, referred_customer_id: customer.id }),
+      });
+      const saved = await tracked.json().catch(() => null);
+      if (!tracked.ok || saved?.success !== true) {
+        const message = typeof saved?.error === "string"
+          ? saved.error : "Could not save the affiliate code. Please try again.";
+        setAffiliateError(message);
+        toast.error(message);
+        return;
+      }
+
+      setAffiliateName(data.affiliate_name || "");
       setAffiliateCode(trimmed);
       setAffiliateCodeApplied(true);
 
@@ -596,6 +603,7 @@ function CheckoutPageInner() {
   };
 
   const handleClearAffiliate = () => {
+    setAffiliateCodeCleared(true);
     setAffiliateCode("");
     setAffiliateCodeApplied(false);
     setAffiliateName("");
@@ -1265,6 +1273,7 @@ function CheckoutPageInner() {
       billing: normalizedBilling,
       billingSameAsShipping: billingSame,
       referralCode,
+      customerAffiliateCode,
       paymentMethod,
       mode: isBuyNow ? "buy_now" : "cart",
       coinDiscount,
@@ -1320,6 +1329,7 @@ function CheckoutPageInner() {
       billingSame,
       billing,
       referralCode,
+      customerAffiliateCode,
       coinDiscount,
       oweg10Applied,
       oweg10CanApply: oweg10Status.canApply,
@@ -1374,7 +1384,7 @@ function CheckoutPageInner() {
   // entered. A later edit invalidates its fingerprint and falls back to click.
   useEffect(() => {
     if (!customer?.id) return;
-    if (processing || totalsLoading || !isOweg10StatusReady || payableTotal <= 0) return;
+    if (processing || affiliateValidating || totalsLoading || !isOweg10StatusReady || payableTotal <= 0) return;
     if (paymentMethod === "razorpay" && onlineWarmupStartedRef.current) return;
     if (draftWarmupInFlightRef.current) return;
 
@@ -1444,6 +1454,7 @@ function CheckoutPageInner() {
   }, [
     paymentMethod,
     processing,
+    affiliateValidating,
     totalsLoading,
     isOweg10StatusReady,
     customer?.id,
@@ -1467,6 +1478,7 @@ function CheckoutPageInner() {
     billing.postalCode,
     billing.phone,
     referralCode,
+    customerAffiliateCode,
     coinDiscount,
     oweg10Applied,
     oweg10Status.canApply,
@@ -1697,7 +1709,7 @@ function CheckoutPageInner() {
   };
 
   const performCheckout = async () => {
-    if (processing) return;
+    if (processing || affiliateValidating) return;
     if (!isOweg10StatusReady) {
       if (!autoCheckoutNoticeShownRef.current) {
         toast.message("Checking OWEG10 eligibility before checkout...");
@@ -1777,6 +1789,7 @@ function CheckoutPageInner() {
   const cartItems = cart?.items || [];
   const payDisabled =
     processing ||
+    affiliateValidating ||
     (!isBuyNow && !cartItems.length) ||
     (isBuyNow && !buyNowItem && !variantFromQuery);
   const payButtonLabel = processing

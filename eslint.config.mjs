@@ -78,6 +78,13 @@ const config = [
       "react-hooks/set-state-in-effect": "off",
     },
   },
+  // The Capacitor shell has its own TypeScript project and dependencies.
+  {
+    files: ["mobile/capacitor.config.ts"],
+    languageOptions: {
+      parserOptions: { project: "./mobile/tsconfig.json" },
+    },
+  },
   // Node CommonJS utilities are linted, but are outside the application tsconfig.
   {
     files: ["scripts/**/*.cjs"],

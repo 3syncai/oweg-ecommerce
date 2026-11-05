@@ -8,7 +8,7 @@ const root = path.resolve(__dirname, '..');
 
 // Execute real handlers against mocked upstream/session/database boundaries.
 // No .env loading, network requests, live database or provider calls.
-function harness({ signedIn = false, sessionFailure = false, sessionId = 'cus_owner', existingCode = null, registered = true } = {}) {
+function harness({ signedIn = false, sessionFailure = false, sessionId = 'cus_owner', existingCode = null, registered = true, affiliateActive = true } = {}) {
   const calls = { queries: [], cacheReads: 0, upstream: [], releases: 0, admin: [] };
   const env = { DATABASE_URL: 'mock://isolated', INTERNAL_API_SECRET: 'fixture-internal-secret' };
   let savedCode = existingCode;
@@ -20,7 +20,7 @@ function harness({ signedIn = false, sessionFailure = false, sessionId = 'cus_ow
     if (sql.includes('SELECT 1 FROM affiliate_user')) return { rows: [] };
     if (sql.includes('FROM affiliate_user') || sql.includes('UNION SELECT')) return { rows: [{ id: 'agent_1' }] };
     if (sql.includes('SELECT email, first_name')) return { rows: [customer] };
-    if (sql.includes('FROM customer_referrer') && !sql.includes('coins_log') && !sql.includes('referrals')) return { rows: registered ? [{ id: 'ref_1', customer_id: sql.includes('UPPER(refer_code)') ? 'cus_affiliate' : sessionId, refer_code: 'AFF', is_active: true, earned_coins: 0, pending_coins: 0 }] : [] };
+    if (sql.includes('FROM customer_referrer') && !sql.includes('coins_log') && !sql.includes('referrals')) return { rows: registered ? [{ id: 'ref_1', customer_id: sql.includes('UPPER(refer_code)') ? 'cus_affiliate' : sessionId, refer_code: 'AFF', is_active: affiliateActive, earned_coins: 0, pending_coins: 0 }] : [] };
     if (sql.includes('INSERT INTO customer_referrer ')) return { rows: [{ id: 'ref_new', customer_id: sessionId, refer_code: params[1], earned_coins: 0, pending_coins: 0 }] };
     if (sql.includes('COUNT(*) as total')) return { rows: [{ total: 0 }] };
     return { rows: [] };
@@ -64,6 +64,14 @@ function harness({ signedIn = false, sessionFailure = false, sessionId = 'cus_ow
   });
   return { load, request, calls, env };
 }
+
+test('tracking rejects an inactive customer affiliate code even without preflight validation', async () => {
+  const h = harness({ signedIn: true, affiliateActive: false });
+  const route = h.load('src/app/api/customer-affiliate/track-referral/route.ts');
+  const response = await route.POST(h.request({ body: { refer_code: 'AFF' } }));
+  assert.equal(response.status, 400);
+  assert.equal(h.calls.queries.some(({ sql }) => sql.includes('INSERT INTO customer_referrer_referrals')), false);
+});
 
 const privateRoutes = [
   ['customer-affiliate/me', 'GET'], ['customer-affiliate/stats', 'GET'],

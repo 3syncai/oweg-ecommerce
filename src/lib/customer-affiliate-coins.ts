@@ -30,12 +30,14 @@ type LineItem = {
 
 async function fetchOrderLineItems(orderId: string): Promise<{
     customerId: string | null
+    metadata?: Record<string, unknown>
     items: LineItem[]
 }> {
     const pool = getPool()
     const res = await pool.query(
         `SELECT
             o.customer_id      AS customer_id,
+            o.metadata         AS order_metadata,
             oli.id             AS line_item_id,
             oli.product_id     AS product_id,
             COALESCE(oli.product_title, oli.title) AS product_name,
@@ -67,21 +69,25 @@ async function fetchOrderLineItems(orderId: string): Promise<{
         unit_price_rupees: parseFloat(String(r.unit_price)) || 0,
     }))
 
-    return { customerId, items }
+    return { customerId, items, metadata: res.rows[0].order_metadata ?? {} }
 }
 
-async function lookupCustomerReferrerForCustomer(customerId: string): Promise<{
+export async function lookupCustomerReferrerForCustomer(customerId: string, code?: string): Promise<{
     refer_code: string
     affiliate_customer_id: string
 } | null> {
     const pool = getPool()
     const res = await pool.query(
-        `SELECT refer_code, affiliate_customer_id
-         FROM customer_referrer_referrals
-         WHERE referred_customer_id = $1
-         ORDER BY referred_at DESC
+        `SELECT r.refer_code, r.affiliate_customer_id
+         FROM customer_referrer_referrals r
+         JOIN customer_referrer a ON a.customer_id = r.affiliate_customer_id
+           AND UPPER(a.refer_code) = UPPER(r.refer_code)
+         WHERE r.referred_customer_id = $1 AND a.is_active = TRUE
+           AND r.affiliate_customer_id <> $1
+           AND ($2::text IS NULL OR UPPER(r.refer_code) = $2)
+         ORDER BY r.referred_at DESC, r.refer_code
          LIMIT 1`,
-        [customerId]
+        [customerId, code ?? null]
     )
     if (res.rows.length === 0) return null
     return {
@@ -143,11 +149,16 @@ export async function logPendingCoinsForOrder(orderId: string): Promise<{
         return { skipped: true, reason: "already logged" }
     }
 
-    const { customerId, items } = await fetchOrderLineItems(orderId)
+    const { customerId, items, metadata } = await fetchOrderLineItems(orderId)
     if (!customerId) return { skipped: true, reason: "order has no customer_id" }
     if (items.length === 0) return { skipped: true, reason: "no line items" }
 
-    const ref = await lookupCustomerReferrerForCustomer(customerId)
+    // Older orders predate the snapshot. A new order with a null snapshot
+    // must never acquire a referrer from a later checkout.
+    const snapshot = metadata?.customer_affiliate_attribution
+    const ref = snapshot === undefined
+        ? await lookupCustomerReferrerForCustomer(customerId)
+        : snapshot as Awaited<ReturnType<typeof lookupCustomerReferrerForCustomer>>
     if (!ref) return { skipped: true, reason: "customer has no affiliate code" }
 
     if (ref.affiliate_customer_id === customerId) {

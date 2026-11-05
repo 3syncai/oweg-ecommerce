@@ -1194,7 +1194,7 @@ const VendorProductsBulkUploadPage = () => {
               </div>
               <div className={styles.fileStats}>
                 <Badge color="grey">Source rows: {new Set(rows.map(row => row.rowNumber)).size} · Variants: {rows.length}</Badge>
-                <Badge color="blue">Products: {new Set(rows.map(productGroupKey)).size} · Ready: {productGroupCount}</Badge>
+                <Badge color="blue">Products: {new Set(rows.map(productGroupKey)).size} · Valid product data: {productGroupCount}</Badge>
                 <Badge color="green">Valid rows: {validRows.length}</Badge>
                 {invalidRows.length > 0 && (
                   <Badge color="red">Errors: {invalidRows.length}</Badge>
@@ -1210,6 +1210,13 @@ const VendorProductsBulkUploadPage = () => {
               </div>
               <div className={styles.submitActions}>
                 {phase === "preview" && (
+                  <div className={styles.submitHelp}>
+                    <div
+                      className={styles.submitTrigger}
+                      tabIndex={submissionIssues.length ? 0 : undefined}
+                      aria-label={submissionIssues.length ? "Submission requirements" : undefined}
+                      aria-describedby={submissionIssues.length ? "bulk-submit-tooltip" : undefined}
+                    >
                   <Button
                     variant="primary"
                     onClick={handlePublish}
@@ -1222,6 +1229,20 @@ const VendorProductsBulkUploadPage = () => {
                       <span className="opacity-80"> ({pendingRowCount} rows)</span>
                     )}
                   </Button>
+                      {submissionIssues.length > 0 && (
+                        <div id="bulk-submit-tooltip" role="tooltip" className={styles.submitTooltip}>
+                          <strong>Complete these requirements to submit</strong>
+                          <p>{submissionIssues[0]}</p>
+                          {submissionIssues.length > 1 && <p>Plus {submissionIssues.length - 1} more. Review the checklist below.</p>}
+                        </div>
+                      )}
+                    </div>
+                    {submissionIssues.length > 0 && (
+                      <a href="#bulk-submit-issues" className={styles.requirementsLink}>
+                        Why can’t I submit? View {submissionIssues.length} requirement{submissionIssues.length === 1 ? "" : "s"}
+                      </a>
+                    )}
+                  </div>
                 )}
                 {phase === "done" && failedAfterUpload > 0 && (
                   <Button variant="secondary" onClick={() => setPhase("preview")}>Review failed products</Button>
@@ -1234,7 +1255,14 @@ const VendorProductsBulkUploadPage = () => {
               </div>
               {phase === "preview" && submissionIssues.length > 0 && (
                 <div id="bulk-submit-issues" role="status" className={styles.blockers}>
-                  <p className="font-medium">A few things to complete</p>
+                  <p className="font-medium">Complete these requirements to enable Submit</p>
+                  <p>Your file has been read. Review the items below, then return to Submit.</p>
+                  <div className={styles.requirementsActions}>
+                    <a href="#bulk-pricing">Review listing prices</a>
+                    {uniqueBrands.length > 0 && <a href="#bulk-brand-letters">Review brand letters</a>}
+                    {totalImages > 0 && <a href="#bulk-product-images">Review product photos</a>}
+                    {invalidRows.length > 0 && <a href="#bulk-product-details">Fix product details</a>}
+                  </div>
                   <ul className="mt-2 list-disc space-y-1 pl-5">{submissionIssues.map(issue => <li key={issue}>{issue}</li>)}</ul>
                 </div>
               )}

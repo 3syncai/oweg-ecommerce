@@ -60,6 +60,12 @@ jobs:
       - name: Run TypeScript type checking
         run: npm run type-check
 
+      - name: Type check Capacitor shell with its own dependencies
+        working-directory: mobile
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx tsc --noEmit
+
   build:
     name: Build Application
     runs-on: ubuntu-latest

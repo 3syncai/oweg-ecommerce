@@ -27,6 +27,17 @@
 .fileStats { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; grid-column: 1/-1; grid-row: 2; }
 .fileStats > * { border-radius: 7px; font-size: 11px; }
 .submitActions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.submitHelp { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; max-width: 100%; }
+.submitTrigger { position: relative; max-width: 100%; }
+.submitTrigger:focus-visible { outline: 2px solid #437844; outline-offset: 4px; border-radius: 10px; }
+.submitTooltip { display: none; position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; width: min(340px, calc(100vw - 64px)); padding: 14px; border: 1px solid #dce6df; border-radius: 12px; background: #fff; color: #193629; box-shadow: 0 8px 24px #183c2720; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; pointer-events: none; }
+.submitTooltip p { margin-top: 6px; }
+.submitTrigger:hover .submitTooltip, .submitTrigger:focus .submitTooltip { display: block; }
+.requirementsLink { font-size: 12px; color: #795628; text-decoration: underline; text-underline-offset: 3px; }
+.requirementsActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.requirementsActions a { padding: 8px 12px; border: 1px solid #d6a04a; border-radius: 8px; background: #fff; font-weight: 600; }
+.blockers { scroll-margin-top: 24px; overflow-wrap: anywhere; }
+@media(max-width:700px) { .submitHelp, .submitTrigger { width: 100%; align-items: stretch; } .requirementsLink { padding: 8px 0; } .requirementsActions a { min-height: 44px; display: inline-flex; align-items: center; } }
 .blockers { grid-column: 1/-1; border-left: 3px solid #d6a04a; border-radius: 0 10px 10px 0; background: #fcf9ef; padding: 14px 18px; color: #795628; font-size: 12px; line-height: 1.6; }
 .blockers ul { margin-top: 6px; }
 .sectionNav { display: flex; flex-wrap: wrap; gap: 6px; padding: 5px; border-bottom: 1px solid #dce6df; }

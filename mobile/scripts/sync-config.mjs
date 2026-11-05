@@ -51,6 +51,7 @@ const config = {
     },
   },
   android: {
+    adjustMarginsForEdgeToEdge: "auto",
     allowMixedContent: false,
     backgroundColor: "#fafbf7",
   },

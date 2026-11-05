@@ -16,6 +16,7 @@ import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 import { cartLineAmountRupees } from "@/lib/cart-helpers";
 import { applyFlashSalePricesToCart } from "@/lib/flash-sale-cart-mapper";
 import { getPool } from "@/lib/wallet-ledger";
+import { lookupCustomerReferrerForCustomer } from "@/lib/customer-affiliate-coins";
 import { reserveCheckoutCoins } from "@/lib/payment-reliability";
 import {eligibleCoinDiscount} from "@/lib/wallet-policy";
 import {
@@ -51,6 +52,7 @@ type DraftRequestBody = {
   billingSameAsShipping?: boolean;
   shippingMethod?: string;
   referralCode?: string;
+  customerAffiliateCode?: string;
   paymentMethod?: "razorpay" | "cod";
   itemsOverride?: Array<{ variant_id: string; quantity: number; price_minor?: number; seller_selected?: boolean }>;
   mode?: "buy_now" | "cart";
@@ -521,10 +523,19 @@ export async function POST(req: Request) {
         ? ((cart as Record<string, unknown>).customer_id as string)
         : undefined;
     const authCustomer = await authCustomerPromise;
-    if(!authCustomer?.id) return NextResponse.json({error:"Please sign in to checkout."},{status:401});
+    if(typeof authCustomer?.id !== "string" || !authCustomer.id) return NextResponse.json({error:"Please sign in to checkout."},{status:401});
     if(cartCustomerId && cartCustomerId!==authCustomer.id) return NextResponse.json({error:"Cart access denied"},{status:403});
     const resolvedCustomerId =
       (typeof authCustomer?.id === "string" ? authCustomer.id : undefined) || cartCustomerId;
+    const customerAffiliateCode = typeof body.customerAffiliateCode === "string"
+      ? body.customerAffiliateCode.trim().toUpperCase()
+      : undefined;
+    const customerAffiliateAttribution = customerAffiliateCode === ""
+      ? null
+      : await lookupCustomerReferrerForCustomer(authCustomer.id, customerAffiliateCode);
+    if (customerAffiliateCode && !customerAffiliateAttribution) {
+      return badRequest("This affiliate code could not be verified. Please apply it again or remove it.");
+    }
 
     if (body.oweg10Applied) {
       if (!resolvedCustomerId) {
@@ -555,6 +566,7 @@ export async function POST(req: Request) {
       metadata: {
         vendor_assignment_decisions: assignmentDecisions,
         payment_reliability_version: 1,
+        customer_affiliate_attribution: customerAffiliateAttribution,
         medusa_total_minor: Math.round((itemsTotal + shippingCharge - coinDiscountRupees - oweg10DiscountRupees - promoDiscountRupees) * 100),
         cart_id: cartId,
         referral_code: body.referralCode || null,

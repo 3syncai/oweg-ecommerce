@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const referrerRes = await pool.query(
-            `SELECT customer_id FROM customer_referrer
+            `SELECT customer_id, is_active FROM customer_referrer
              WHERE UPPER(refer_code) = $1
              LIMIT 1`,
             [referCode]
@@ -77,6 +77,10 @@ export async function POST(req: NextRequest) {
         }
 
         const affiliateCustomerId: string = referrerRes.rows[0].customer_id
+        if (referrerRes.rows[0].is_active !== true) {
+            await pool.end()
+            return NextResponse.json({ error: "This affiliate code is inactive." }, { status: 400 })
+        }
 
         if (affiliateCustomerId === referredId) {
             await pool.end()
