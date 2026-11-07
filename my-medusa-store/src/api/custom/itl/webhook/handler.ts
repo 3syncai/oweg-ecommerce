@@ -1,3 +1,5 @@
+import { enqueueNotification } from "../../../../services/interakt/outbox"
+import { itlNotificationEvent } from "../../../../services/interakt/interakt.service"
 import { shippingWebhookAuthError } from "../../../../lib/shipping-webhook-auth"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
@@ -204,6 +206,23 @@ export async function handleItlWebhook(req: MedusaRequest, res: MedusaResponse) 
           console.error(`[ITL] storefront delivery webhook failed:`, webhookErr)
         }
       }
+    }
+  }
+
+  // The existing authenticated handler owns shipment identity and transition validation.
+  // Replays may repair a missed enqueue; the database unique key suppresses duplicates.
+  const whatsappEvent = itlNotificationEvent(statusRaw)
+  const previousStatus = normalizeTrackingStatus(existingWf?.shiprocket_status || metadata.shiprocket_status)
+  const staleShipped = whatsappEvent === "order_shipped" &&
+    (existingWf?.stage === "delivered" || existingWf?.stage === "cancelled" ||
+      ["delivered", "cash_collected", "cancelled", "rto_initiated", "rto_in_transit", "rto_delivered"].includes(previousStatus))
+  if (whatsappEvent && !staleShipped && getItlMode() === "live") {
+    const shipment = existingWf || metadata
+    try {
+      await enqueueNotification(req.scope, match.id, whatsappEvent, shipment.tracking_url)
+    } catch {
+      // Request a carrier retry if durable enqueue failed, even after status persistence.
+      return res.status(503).json({ message: "Notification enqueue unavailable; retry webhook" })
     }
   }
 

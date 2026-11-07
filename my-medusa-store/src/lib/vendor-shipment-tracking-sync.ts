@@ -1,3 +1,5 @@
+import { enqueueNotification } from "../services/interakt/outbox"
+import { itlNotificationEvent } from "../services/interakt/interakt.service"
 import type { MedusaRequest } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { markOrderFulfillmentAsDeliveredWorkflow } from "@medusajs/medusa/core-flows"
@@ -108,6 +110,7 @@ async function fetchTrackingForWorkflow(workflow: VendorOrderWorkflow) {
           status: extractTrackingStatus(payload),
           source: trackSource,
         }),
+        notification_status: (payload as any).current_status,
         tracking_url:
           workflow.tracking_url || provider.trackingUrlForAwb(String(awb)) || null,
         label_url: workflow.label_url || null,
@@ -167,6 +170,7 @@ export async function syncVendorShipmentTracking(input: {
   if (workflow.stage === "delivered") {
     // Still allow COD cash_collected updates after delivery
     const peek = await fetchTrackingForWorkflow(workflow)
+    await enqueueItlTracking(container, order, workflow, peek)
     const peekStatus = normalizeTrackingStatus(peek?.status || "")
     if (peekStatus !== "cash_collected") {
       return {
@@ -179,6 +183,7 @@ export async function syncVendorShipmentTracking(input: {
   }
 
   const tracking = await fetchTrackingForWorkflow(workflow)
+  await enqueueItlTracking(container, order, workflow, tracking)
   const status = normalizeTrackingStatus(tracking?.status || workflow.shiprocket_status || "")
   const ndrReason = normalizeNdrReason(tracking?.ndr_reason || workflow.ndr_reason)
   const nextStage = stageFromTrackingStatus(status)
@@ -414,4 +419,15 @@ export async function listOpenVendorShipmentsForSync(limit = 80): Promise<
     }
   }
   return targets
+}
+
+async function enqueueItlTracking(container: any, order: OrderLike, workflow: VendorOrderWorkflow, tracking: any) {
+  const event = itlNotificationEvent(tracking?.notification_status)
+  const staleShipped = event === "order_shipped" &&
+    (workflow.stage === "delivered" || workflow.stage === "cancelled" ||
+      ["delivered", "cash_collected", "cancelled", "rto_initiated", "rto_in_transit", "rto_delivered"].includes(String(workflow.shiprocket_status)))
+  if (event && !staleShipped && !tracking?.error && tracking?.source === "itl" &&
+      workflow.shipping_method === "easy" && getEasyShipProvider().name === "itl" && process.env.ITL_MODE === "live") {
+    await enqueueNotification(container, order.id, event, tracking.tracking_url)
+  }
 }
