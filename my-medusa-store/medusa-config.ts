@@ -138,8 +138,15 @@ export default defineConfig({
     }),
   },
   modules: [
+    { resolve: "./src/modules/whatsapp-notification" },
     ...(process.env.REDIS_URL && (process.env.NODE_ENV === "production" || process.env.MEDUSA_DURABLE_REDIS === "true") ? [
-      { resolve: "@medusajs/medusa/event-bus-redis", options: { redisUrl: process.env.REDIS_URL } },
+      { resolve: "@medusajs/medusa/event-bus-redis", options: {
+        redisUrl: process.env.REDIS_URL,
+        // Medusa remembers completed subscribers; only failed handlers retry.
+        ...(process.env.INTERAKT_ENABLED === "true" ? {
+          jobOptions: { attempts: 5, backoff: { type: "exponential", delay: 5000 } },
+        } : {}),
+      } },
       { resolve: "@medusajs/medusa/workflow-engine-redis", options: { redis: { url: process.env.REDIS_URL } } },
       { resolve: "@medusajs/medusa/locking", options: { providers: [
         { resolve: "@medusajs/medusa/locking-redis", id: "redis", is_default: true, options: { redisUrl: process.env.REDIS_URL } },

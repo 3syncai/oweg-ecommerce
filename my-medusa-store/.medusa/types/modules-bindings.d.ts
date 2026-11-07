@@ -23,6 +23,7 @@ import type { IEventBusModuleService } from '@medusajs/framework/types'
 import type { IWorkflowEngineService } from '@medusajs/framework/types'
 import type { ILockingModule } from '@medusajs/framework/types'
 import type { IFileModuleService } from '@medusajs/framework/types'
+import type WhatsappNotification from '../../src/modules/whatsapp-notification'
 import type Vendor from '../../src/modules/vendor'
 import type VendorBrandAuthorization from '../../src/modules/vendor-brand-authorization'
 import type FlashSale from '../../src/modules/flash-sale'
@@ -57,6 +58,7 @@ declare module '@medusajs/framework/types' {
     'workflows': IWorkflowEngineService,
     'locking': ILockingModule,
     'file': IFileModuleService,
+    'whatsappNotification': InstanceType<(typeof WhatsappNotification)['service']>,
     'vendor': InstanceType<(typeof Vendor)['service']>,
     'vendorBrandAuthorization': InstanceType<(typeof VendorBrandAuthorization)['service']>,
     'flashSale': InstanceType<(typeof FlashSale)['service']>,

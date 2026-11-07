@@ -1,3 +1,4 @@
+import { COMMISSION_INVOICE_POLL_SCHEDULE, isMonthlyCommissionInvoiceDue } from "../lib/commission-invoice-schedule"
 import { Pool } from "pg"
 import { VENDOR_MODULE } from "../modules/vendor"
 import VendorModuleService from "../modules/vendor/service"
@@ -13,7 +14,8 @@ import { sendTransactionalEmail } from "../lib/password-reset/mailer"
  * On the 7th of every month (IST), snapshot each vendor's previous-month
  * commission/tax invoice so one-click download is ready.
  *
- * Cron is UTC: 18:35 on the 6th ≈ 00:05 IST on the 7th.
+ * Poll every five minutes; generate only at 00:05 IST on the 7th.
+ * Short timers avoid the local Medusa scheduler's monthly timeout overflow.
  */
 export default async function generateMonthlyCommissionInvoicesJob(container: any) {
   const logger = container.resolve("logger")
@@ -24,20 +26,7 @@ export default async function generateMonthlyCommissionInvoicesJob(container: an
   }
 
   const now = new Date()
-  const istParts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    day: "2-digit",
-    hour: "2-digit",
-    hour12: false,
-  }).formatToParts(now)
-  const day = Number(istParts.find((p) => p.type === "day")?.value || 0)
-  const hour = Number(istParts.find((p) => p.type === "hour")?.value || 0)
-
-  // Only run during early hours on the 7th IST (job may fire once around midnight).
-  if (day !== 7 || hour > 6) {
-    logger.info(`[commission-invoice-job] skip istDay=${day} istHour=${hour}`)
-    return
-  }
+  if (!isMonthlyCommissionInvoiceDue(now)) return
 
   const month = previousCalendarMonthWindow(now)
   if (!month.periodKey) {
@@ -117,6 +106,6 @@ export default async function generateMonthlyCommissionInvoicesJob(container: an
 
 export const config = {
   name: "generate-monthly-commission-invoices",
-  // 18:35 UTC on the 6th ≈ 00:05 IST on the 7th
-  schedule: "35 18 6 * *",
+  // Monthly eligibility is checked in IST inside the handler.
+  schedule: COMMISSION_INVOICE_POLL_SCHEDULE,
 }

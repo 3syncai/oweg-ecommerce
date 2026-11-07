@@ -7,6 +7,7 @@ import { OrderConfirmation } from "@/components/orders/OrderConfirmation";
 import Link from "next/link";
 import { useCartSummary } from "@/contexts/CartProvider";
 import { checkoutConfirmationState, confirmationPollDelay } from "@/lib/checkout-confirmation";
+import { fetchCheckoutOrder, type CheckoutOrderFetchResult } from "@/lib/checkout-order-request";
 
 type OrderSummary = {
   id: string;
@@ -56,6 +57,7 @@ function OrderSuccessPageInner() {
   const confirmStartedRef = useRef(false);
   const inFlightOrders = useRef(new Map<string, Promise<FetchOrderResult>>());
   const orderRequests = useRef(new Set<AbortController>());
+  const requestGeneration = useRef(0);
   const maxPollAttempts = 30;
 
   async function confirmCodOrder(refId: string) {
@@ -69,7 +71,7 @@ function OrderSuccessPageInner() {
     return data.medusaOrderId || refId;
   }
 
-  type FetchOrderResult = { order: OrderSummary | null; notFound: boolean };
+  type FetchOrderResult = CheckoutOrderFetchResult<OrderSummary>;
 
   async function fetchOrder(targetId: string = orderId, statusOnly = false): Promise<FetchOrderResult> {
     if (!targetId) return { order: null, notFound: false };
@@ -79,24 +81,21 @@ function OrderSuccessPageInner() {
     setLoading(true);
     const controller = new AbortController();
     orderRequests.current.add(controller);
-    const deadline = setTimeout(() => controller.abort(), 15000);
+    const generation = requestGeneration.current;
     let request!: Promise<FetchOrderResult>;
     request = (async (): Promise<FetchOrderResult> => {
       try {
-        const res = await fetch(`/api/checkout/${statusOnly ? "confirmation-status" : "order-summary"}?orderId=${encodeURIComponent(targetId)}`, { cache: "no-store", signal: controller.signal });
-        if (res.status === 401) { setAuthRequired(true); setPolling(false); return { order: null, notFound: false }; }
-        if (res.status === 404) return { order: null, notFound: true };
-        if (!res.ok) return { order: null, notFound: false };
-        const data = await res.json();
-        return { order: data.order as OrderSummary, notFound: false };
+        const result = await fetchCheckoutOrder<OrderSummary>(targetId, statusOnly, controller);
+        if (generation !== requestGeneration.current) return { order: null, notFound: false, cancelled: true };
+        if (result.authRequired) { setAuthRequired(true); setPolling(false); }
+        return result;
       } catch (err) {
         console.error("fetchOrder error", err);
         return { order: null, notFound: false };
       } finally {
-        clearTimeout(deadline);
         orderRequests.current.delete(controller);
         if (inFlightOrders.current.get(key) === request) inFlightOrders.current.delete(key);
-        setLoading(inFlightOrders.current.size > 0);
+        if (generation === requestGeneration.current) setLoading(inFlightOrders.current.size > 0);
       }
     })();
     inFlightOrders.current.set(key, request);
@@ -124,7 +123,9 @@ function OrderSuccessPageInner() {
     const requests = orderRequests.current;
     const inFlight = inFlightOrders.current;
     return () => {
+      requestGeneration.current += 1;
       for (const request of requests) request.abort();
+      requests.clear();
       inFlight.clear();
     };
   }, [orderId]);
@@ -324,11 +325,15 @@ function OrderSuccessPageInner() {
     if (!orderId) return;
     let mounted = true;
     (async () => {
-      const { order: o, notFound } = await fetchOrder();
-      if (!mounted) return;
+      const { order: o, notFound, cancelled, authRequired: needsAuth } = await fetchOrder();
+      if (!mounted || cancelled || needsAuth) return;
       if (o) setOrder(o);
       if (notFound) consecutiveNotFound.current += 1;
-      if (!o && !isConfirmingFlow) {
+      if (!o && !notFound) {
+        setAutoPollingStarted(true);
+        setPolling(true);
+      }
+      if (!o && notFound && !isConfirmingFlow) {
         stopPollingWithFailure(notFound
           ? "We couldn't find this order. Check My Orders or contact support with your order reference."
           : "We couldn't load your order details. Please check your connection and try checking the order status again.");
