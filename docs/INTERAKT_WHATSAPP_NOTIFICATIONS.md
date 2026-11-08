@@ -17,16 +17,18 @@
 - `src/services/interakt/outbox.ts`: durable enqueue, atomic claims, failure records, retries and sanitized outcome logs.
 - `src/modules/whatsapp-notification`: Medusa notification-log model/service and SQL outbox migration registered in `medusa-config.ts`. The table is intentionally managed by this explicit migration, without generated public CRUD routes.
 - `src/subscribers/whatsapp-order-placed.ts`: only `order.placed`, independent of email/invoice subscribers and the checkout transaction.
+- `src/subscribers/whatsapp-order-canceled.ts`: `order.canceled` from the successful Medusa cancellation workflow, with persisted cancellation-status checks before enqueue/send.
 - Existing ITL handler/tracking sync: reuse existing shipment matching, status processing and provider tracking URLs.
 - `src/jobs/send-whatsapp-notifications.ts`: drains up to 20 notifications per run, every minute.
 
-The three approved templates use `en` and body variables in exactly this order:
+The four approved templates use `en` and body variables in exactly this order:
 
 | Event | Template | Body variables |
 | --- | --- | --- |
 | order_placed | order_confirmation_utility | registered customer first name, display ID |
 | order_shipped | order_shipped_utility | registered customer first name, display ID, HTTPS tracking URL |
 | order_delivered | order_delivered_utility | registered customer first name, display ID |
+| order_cancelled | order_cancellation_utility | registered customer first name, display ID |
 
 Missing first names use the order shipping first name, then `Customer`. There is no hardcoded recipient or order reference.
 
@@ -36,9 +38,19 @@ Polling preserves the provider's raw current status for notification classificat
 
 The database key is `(order_id,event_type)`, across all vendors and webhook/polling sources. As requested, there is one notification of each type per order: the first eligible parcel supplies its tracking URL and delivery event. This is not a per-parcel notification system or an aggregation asserting that every parcel in a split order has arrived. Confirm that policy before enabling for split orders.
 
+## Successful cancellation trigger
+
+Customer cancellation (`/store/orders/:id/cancel`), admin cancellation (`/admin/orders/:id/admin-cancel`) and cancellation after replacement rejection all use the existing `cancelOrderWorkflow`. Medusa 2.11.3 emits the grouped `OrderWorkflowEvents.CANCELED` event (`order.canceled`); its SDK releases grouped events only once the workflow completes successfully and clears them on failure. Although the emit step appears before the final order-status step in the workflow definition, it is not dispatched at cancellation-request time.
+
+The new subscriber converts this event to the outbox's `order_cancelled` type. Both enqueue and the worker independently verify the order's persisted `canceled`/`cancelled` status and exclude drafts. `cancellation_requested_at`, cancellation notes, failed attempts, refund requests and courier cancellation alone cannot create this notification. A premature/failed event reserves no unique notification key, so a later successful cancellation can still enqueue normally.
+
+The same unique `(order_id,event_type)` prevents duplicate cancellation notifications. Template variables are exactly `bodyValues: [customerName, orderDisplayId]`, using the same registered-customer name and public `display_id` mapping as existing confirmation messages. Cancellation needs no tracking URL. The approved Interakt template owns the message text; the backend does not send or duplicate a free-text version.
+
+No cancellation route or refund/payment logic was modified. Interakt HTTP calls remain in the existing scheduled outbox worker. Provider failures are logged/retried by that worker and cannot interrupt or roll back an already-successful cancellation. Cancellation notifications use the same all-customer eligibility policy as the other order updates.
+
 ## Customer eligibility
 
-Order confirmations and ITL shipment/delivery updates are sent automatically to every customer with a valid registered Indian mobile number. No consent checkbox or `whatsapp_order_notifications_consent` metadata is checked at enqueue or send time, including historical `false` values. Existing metadata is preserved, not rewritten to imply an opt-in.
+Order confirmations, successful cancellation updates and ITL shipment/delivery updates are sent automatically to every customer with a valid registered Indian mobile number. No consent checkbox or `whatsapp_order_notifications_consent` metadata is checked at enqueue or send time, including historical `false` values. Existing metadata is preserved, not rewritten to imply an opt-in.
 
 Missing/invalid registered numbers still produce failure records. A changed registered phone is held as `registered_phone_changed` to prevent a queued message from being redirected to a different number; correct the recipient and review the same record before replay. Guest orders without a linked registered mobile fail eligibility. Historical failed notification rows are not automatically replayed by this policy change.
 ## Reliability and delivery semantics
@@ -57,14 +69,16 @@ Reconcile uncertain outcomes in Interakt using the logged message ID or opaque `
 
 Interakt delivery webhooks were evaluated: official docs provide `message_api_sent`, `message_api_delivered`, `message_api_read` and failure callbacks, with an `Interakt-Signature` HMAC-SHA256 signature over the raw body. This implementation does not add a delivery callback endpoint. A future callback must verify the raw-body signature with the separately shared webhook secret, correlate `data.message.id`/callback data, and apply monotonic delivery status updates. Until then, actual delivery must be verified in Interakt; API acceptance remains separate.
 
+Cancellation configuration: `INTERAKT_ORDER_CANCELLATION_TEMPLATE=order_cancellation_utility` is an optional backend override; the approved name is already the default. Ensure that template is approved in English with two body variables (customer name, order display ID) in the configured Interakt account. No new API key, frontend secret or callback endpoint is needed.
+
 ## AWS ECS deployment
 
 1. Deploy the backend source/image through the existing release pipeline. No frontend environment variables are needed. Keep `INTERAKT_ENABLED=false` until migration, provider configuration and staging checks are complete.
 2. Put `INTERAKT_API_KEY` and an independent `INTERAKT_LOG_ENCRYPTION_KEY` into AWS Secrets Manager or SSM SecureString. Generate the latter as 32 cryptographically random bytes encoded in 64 hex characters. Keep the key consistent across all API/worker tasks and releases; retain it for pending messages and encrypted log retention. Rotation requires re-encryption or explicit key versioning, not an immediate replacement.
 3. Reference these secrets in the ECS task definition's backend container `secrets` configuration. Give the task execution role access only to the required secret ARNs and KMS decrypt permission where applicable. Do not bake secrets into an image, commit them, or use `NEXT_PUBLIC_` variables. Scope DB/log access and RDS backups appropriately; set an operational retention policy for encrypted notification payloads.
-4. Set the nonsecret backend environment values from `my-medusa-store/.env.template`: the fixed Interakt API URL, three template names, and enable switch. Confirm all three templates are approved in English in the same Interakt account.
+4. Set the nonsecret backend environment values from `my-medusa-store/.env.template`: the fixed Interakt API URL, four template names, and enable switch. Confirm all four templates are approved in English in the same Interakt account.
 5. Set the existing `DATABASE_URL`, durable `REDIS_URL`, production Medusa secrets, and live ITL settings (`ITL_MODE=live`, existing credentials and webhook secret). Use the existing API/worker process topology; ensure a Medusa worker/shared process loads subscribers and scheduled jobs. No standalone Interakt service is required. API/worker ECS tasks need outbound HTTPS access to Interakt and the existing ITL endpoints, plus DB/Redis access.
-6. Run `npm run migrate` once from the backend directory in a release task with the same database configuration, before enabling the worker. The added migration creates `whatsapp_notification_log` with its unique constraint and pending index; the existing migration command also applies any other pending backend migrations. The command is the existing Linux deployment script; from Windows use `npx medusa db:migrate` with the normal backend environment. Do not run migration generation against this explicitly managed outbox to replace its schema.
+6. Run `npm run migrate` once from the backend directory in a release task with the same database configuration, before enabling the worker. The added migration creates `whatsapp_notification_log` with its unique constraint and pending index; the existing migration command also applies any other pending backend migrations. The command is the existing Linux deployment script; from Windows use `npx medusa db:migrate` with the normal backend environment. The cancellation extension adds `Migration20261108010000`, which expands the event-type check constraint while preserving existing rows and uniqueness. Apply it before loading the cancellation subscriber. Do not run migration generation against this explicitly managed outbox to replace its schema.
 7. Confirm the actual ITL account posts to the existing HTTPS `/custom/itl/webhook` route and supplies an existing supported secret header (`x-api-key`, `x-itl-webhook-secret` or `x-itl-signature`). The last header is currently treated by the repository as a shared secret, not a provider HMAC. Verify the real account's webhook payload/header contract and retry policy with ITL; no new provider signature scheme is assumed. Keep the authenticated polling fallback running.
 8. Enable `INTERAKT_ENABLED=true` on the API and worker tasks and roll out the new task definition. Monitor CloudWatch sanitized `interakt` outcomes, pending age, failed count and Redis subscriber failures. Multiple workers are protected by PostgreSQL claims/uniqueness, though throughput and provider limits still need monitoring.
 9. Rollback switch: set `INTERAKT_ENABLED=false` on API and worker tasks. Retain the table and encryption key for audit/reconciliation. Do not drop logs as part of application rollback.
@@ -79,7 +93,7 @@ GROUP BY event_type, status, error_details;
 
 ## Verification
 
-Verified locally: 37 tests passed and the backend TypeScript check completed with no diagnostics. The WhatsApp module migration was subsequently applied through the Medusa migrator during local testing, and a consented test confirmation was accepted by Interakt with a recorded message ID. Actual WhatsApp delivery has not been independently verified.
+Verified locally: 47 tests passed (Interakt, ITL hooks, shipping and vendor-cancellation regression checks) and the backend TypeScript check completed with no diagnostics. The WhatsApp module migration was subsequently applied through the Medusa migrator during local testing, and a consented test confirmation was accepted by Interakt with a recorded message ID. The additive cancellation migration was also applied locally and its expanded event constraint verified. No real order was cancelled and no live cancellation message was sent during implementation. Actual WhatsApp delivery has not been independently verified.
 
 From `my-medusa-store`:
 
@@ -100,6 +114,9 @@ Tests mock HTTP and database boundaries, exercise the existing ITL handler/polli
 - [ ] Remove/invalid the registered phone or remove the tracking URL; verify safe failure records and no sends. Verify that absent/false consent metadata does not block valid messages, and test registered number changes.
 - [ ] Simulate 429 in a mock/staging transport; verify backoff, attempt cap and eventual success. Simulate timeout/5xx and worker termination after send; verify manual-reconciliation failures and no automatic second send.
 - [ ] Confirm that an Interakt outage does not affect order placement or existing ITL earnings/status updates. Verify login/forgot-password OTP against the existing MSG91 staging configuration.
+- [ ] Successfully cancel an eligible test order through the customer/admin cancellation path. Verify exactly one `order_cancelled` row/message with customer name then display ID. Check that only a successful cancellation triggers it, including the replacement-rejection path where applicable.
+- [ ] Submit an invalid/blocked cancellation or simulate workflow failure. Verify no cancellation notification is queued. Replaying `order.canceled` for a still-pending/draft order must also queue nothing.
+- [ ] Replay the successful cancellation event; verify one unique row/message. Mock an Interakt timeout/5xx/429 and confirm the order stays cancelled while normal outbox failure/retry rules apply. Do not use real financial/refund transactions to simulate provider failures.
 - [ ] Compare accepted IDs against actual WhatsApp receipt in Interakt. Do not report a 201 response as delivered.
 
 Official references consulted:

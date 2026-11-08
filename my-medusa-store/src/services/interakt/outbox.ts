@@ -1,17 +1,20 @@
 import { randomUUID } from "node:crypto"
 import { Modules } from "@medusajs/framework/utils"
 import { getSharedDbPool } from "../../lib/db-pool"
-import { decryptPayload, encryptPayload, InteraktError, notificationPayload, sendInteraktTemplate, templateFor, type NotificationEvent } from "./interakt.service"
+import { decryptPayload, encryptPayload, InteraktError, isOrderSuccessfullyCancelled, notificationPayload, sendInteraktTemplate, templateFor, type NotificationEvent } from "./interakt.service"
 type Database = { query: (sql: string, params?: any[]) => Promise<{ rows: any[] }> }
-async function recipient(container: any, orderId: string) {
+async function recipient(container: any, orderId: string, cancellationOnly = false) {
   const order = await container.resolve(Modules.ORDER).retrieveOrder(orderId, { relations: ["shipping_address"] })
+  if (cancellationOnly && !isOrderSuccessfullyCancelled(order)) return { order, customer: null }
   const customer = order.customer_id ? await container.resolve(Modules.CUSTOMER).retrieveCustomer(order.customer_id) : null
   return { order, customer }
 }
 export async function enqueueNotification(container: any, orderId: string, event: NotificationEvent, trackingUrl?: string | null, database?: Database) {
   if (process.env.INTERAKT_ENABLED !== "true") return
   const db = database || getSharedDbPool()
-  const { order, customer } = await recipient(container, orderId)
+  const { order, customer } = await recipient(container, orderId, event === "order_cancelled")
+  // Do not reserve the unique event key for an uncompleted/failed cancellation.
+  if (event === "order_cancelled" && !isOrderSuccessfullyCancelled(order)) return
   let payload: ReturnType<typeof notificationPayload> | null = null
   let error: string | null = null
   try { payload = notificationPayload(order, customer, event, trackingUrl) }

@@ -99,3 +99,39 @@ test("late carrier shipped event after delivery never sends a new shipped messag
     assert.equal(calls, 0)
   } finally { outbox.enqueueNotification = original }
 })
+
+test("order.canceled subscriber queues only the completed cancellation, and repeated events deduplicate", async () => {
+  const f = fixture(), original = outbox.enqueueNotification
+  outbox.enqueueNotification = (c: any, id: string, e: any) => original(c, id, e, undefined, f.db)
+  const { default: subscriber, config } = require("../../subscribers/whatsapp-order-canceled")
+  const originalFetch = global.fetch
+  let httpCalls = 0
+  global.fetch = (async () => { httpCalls++; throw new Error("no inline provider request") }) as any
+  try {
+    assert.equal(config.event, "order.canceled")
+    f.order.status = "pending"
+    f.order.metadata.cancellation_requested_at = new Date().toISOString()
+    await subscriber({ event: { data: { id: f.order.id } }, container: f.scope })
+    assert.equal(f.entries.size, 0)
+    f.order.status = "canceled"
+    f.order.is_draft_order = false
+    await subscriber({ event: { data: { id: f.order.id } }, container: f.scope })
+    await subscriber({ event: { data: { id: f.order.id } }, container: f.scope })
+    assert.equal(f.entries.size, 1)
+    const entry = f.entries.get("order_hook:order_cancelled")!
+    assert.equal(entry[6], "order_cancellation_utility")
+    assert.equal(entry[7], "PENDING")
+    assert.equal(httpCalls, 0)
+    assert.equal(f.order.status, "canceled")
+  } finally { global.fetch = originalFetch; outbox.enqueueNotification = original }
+})
+test("an asynchronous cancellation enqueue failure cannot revert the cancelled order", async () => {
+  const f = fixture(), original = outbox.enqueueNotification
+  f.order.status = "canceled"
+  outbox.enqueueNotification = async () => { throw new Error("notification database unavailable") }
+  const { default: subscriber } = require("../../subscribers/whatsapp-order-canceled")
+  try {
+    await assert.rejects(subscriber({ event: { data: { id: f.order.id } }, container: f.scope }), /notification database unavailable/)
+    assert.equal(f.order.status, "canceled")
+  } finally { outbox.enqueueNotification = original }
+})

@@ -4,7 +4,7 @@ const WhatsappNotificationLog = model.define("whatsapp_notification_log", {
   id: model.id().primaryKey(),
   order_id: model.text(),
   customer_id: model.text().nullable(),
-  event_type: model.enum(["order_placed", "order_shipped", "order_delivered"]),
+  event_type: model.enum(["order_placed", "order_shipped", "order_delivered", "order_cancelled"]),
   recipient_phone: model.text().nullable(),
   payload_encrypted: model.text().nullable(),
   template_name: model.text(),
