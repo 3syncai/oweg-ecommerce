@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto"
-export type NotificationEvent = "order_placed" | "order_shipped" | "order_delivered"
+export type NotificationEvent = "order_placed" | "order_shipped" | "order_delivered" | "order_cancelled"
 export class InteraktError extends Error {
   constructor(public code: string, public retryable = false, public uncertain = false) { super(code) }
 }
@@ -41,10 +41,16 @@ export function templateFor(event: NotificationEvent): string {
     order_placed: ["INTERAKT_ORDER_CONFIRMATION_TEMPLATE", "order_confirmation_utility"],
     order_shipped: ["INTERAKT_ORDER_SHIPPED_TEMPLATE", "order_shipped_utility"],
     order_delivered: ["INTERAKT_ORDER_DELIVERED_TEMPLATE", "order_delivered_utility"],
+    order_cancelled: ["INTERAKT_ORDER_CANCELLATION_TEMPLATE", "order_cancellation_utility"],
   }[event]
   return process.env[config[0]]?.trim() || config[1]
 }
+/** Cancellation request metadata is not proof of a successfully cancelled order. */
+export function isOrderSuccessfullyCancelled(order: { status?: unknown; is_draft_order?: boolean } | null | undefined): boolean {
+  return order?.is_draft_order !== true && ["canceled", "cancelled"].includes(String(order?.status || "").toLowerCase())
+}
 export function notificationPayload(order: any, customer: any, event: NotificationEvent, trackingUrl?: string | null) {
+  if (event === "order_cancelled" && !isOrderSuccessfullyCancelled(order)) throw new InteraktError("order_not_cancelled")
   // Transactional order updates apply to every customer with a valid registered phone.
   const phone = indianPhone(customer?.phone)
   if (order.display_id == null) throw new InteraktError("missing_display_id")

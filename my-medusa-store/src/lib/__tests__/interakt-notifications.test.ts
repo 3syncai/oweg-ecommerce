@@ -9,6 +9,9 @@ process.env.INTERAKT_LOG_ENCRYPTION_KEY = "ab".repeat(32)
 const order: any = { id: "order_fixture", customer_id: "customer_fixture", display_id: 10582, metadata: {} }
 const customer: any = { first_name: "Fixture", phone: "+91 98765 43210", metadata: {} }
 const container = { resolve: (name: string) => name === "order" ? { retrieveOrder: async () => order } : { retrieveCustomer: async () => customer } }
+const cancelledOrder = { ...order, status: "canceled", is_draft_order: false }
+const scopeFor = (selectedOrder: any, selectedCustomer = customer) => ({ resolve: (name: string) => name === "order" ? { retrieveOrder: async () => selectedOrder } : { retrieveCustomer: async () => selectedCustomer } })
+const cancelledContainer = scopeFor(cancelledOrder)
 const silent = { info: (_: string) => {}, warn: (_: string) => {} }
 const accepted = async () => new Response('{"result":true,"id":"message_fixture"}', { status: 201 })
 // In-memory SQL boundary: checks the production conflict/locking statements; no live DB is contacted.
@@ -40,11 +43,11 @@ test("Indian formatting; missing, invalid and foreign phones", () => {
   assert.throws(() => indianPhone(null), /missing_phone/)
   for (const p of ["123", "test9876543210", "+1 9876543210", "5123456789"]) assert.throws(() => indianPhone(p), /invalid_phone/)
 })
-for (const event of ["order_placed", "order_shipped", "order_delivered"] as const) {
+for (const event of ["order_placed", "order_shipped", "order_delivered", "order_cancelled"] as const) {
   test(`${event}: consent metadata never gates transactional order updates`, () => {
     for (const flag of [undefined, false, true]) {
       const metadata = flag === undefined ? {} : { whatsapp_order_notifications_consent: flag }
-      const payload = notificationPayload({ ...order, metadata }, { ...customer, metadata }, event, "https://tracking.example/awb")
+      const payload = notificationPayload({ ...(event === "order_cancelled" ? cancelledOrder : order), metadata }, { ...customer, metadata }, event, "https://tracking.example/awb")
       assert.equal(payload.phone, "9876543210")
       assert.equal(payload.bodyValues[1], "10582")
     }
@@ -65,16 +68,17 @@ test("encrypted data roundtrip and tamper protection", () => {
   assert.ok(!encrypted.includes(customer.first_name)); assert.deepEqual(decryptPayload(encrypted), p)
   const data = Buffer.from(encrypted, "base64"); data[30] ^= 1; assert.throws(() => decryptPayload(data.toString("base64")))
 })
-for (const event of ["order_placed", "order_shipped", "order_delivered"] as const) test(`${event}: success and duplicate suppression`, async () => {
+for (const event of ["order_placed", "order_shipped", "order_delivered", "order_cancelled"] as const) test(`${event}: success and duplicate suppression`, async () => {
   const db = new MemoryDb(), calls: any[] = [], url = event === "order_shipped" ? "https://tracking.example/awb" : undefined
-  await Promise.all([enqueueNotification(container, order.id, event, url, db), enqueueNotification(container, order.id, event, url, db)])
+  const scope = event === "order_cancelled" ? cancelledContainer : container
+  await Promise.all([enqueueNotification(scope, order.id, event, url, db), enqueueNotification(scope, order.id, event, url, db)])
   assert.equal(db.rows.length, 1); assert.equal(db.rows[0].recipient_phone, "******3210")
   await processNotificationOutbox(db, (async (_: any, init: any) => { calls.push(init); return accepted() }) as any, silent)
   await processNotificationOutbox(db, accepted as any, silent)
   assert.equal(calls.length, 1)
   const body = JSON.parse(calls[0].body)
   assert.equal(body.countryCode, "+91"); assert.equal(body.phoneNumber, "9876543210"); assert.equal(calls[0].headers.Authorization, "Basic test-api-secret")
-  assert.equal(body.template.name, { order_placed: "order_confirmation_utility", order_shipped: "order_shipped_utility", order_delivered: "order_delivered_utility" }[event])
+  assert.equal(body.template.name, { order_placed: "order_confirmation_utility", order_shipped: "order_shipped_utility", order_delivered: "order_delivered_utility", order_cancelled: "order_cancellation_utility" }[event])
   assert.deepEqual(body.template.bodyValues, ["Fixture", "10582", ...(url ? [url] : [])])
   assert.equal(db.rows[0].status, "SENT"); assert.equal(db.rows[0].interakt_message_id, "message_fixture"); assert.equal(db.rows[0].delivery_status, "ACCEPTED")
 })
@@ -144,4 +148,46 @@ test("transient recipient lookup failure retries before any provider request", a
   const unavailable = { resolve: () => { throw new Error("database unavailable") } }
   await processNotificationOutbox(db, (() => { throw new Error("must not send") }) as any, silent, unavailable)
   assert.equal(db.rows[0].status, "PENDING"); assert.equal(db.rows[0].error_details, "recipient_lookup_failed")
+})
+
+test("cancellation requires persisted cancelled status, not a request or failed attempt", async () => {
+  for (const status of ["pending", "completed", "draft", "cancellation_requested", "cancel_failed", undefined]) {
+    const db = new MemoryDb()
+    await enqueueNotification(scopeFor({ ...order, status, metadata: { cancellation_requested_at: "2026-11-08T00:00:00Z" } }), order.id, "order_cancelled", null, db)
+    assert.equal(db.rows.length, 0, String(status))
+  }
+  const db = new MemoryDb()
+  await enqueueNotification(scopeFor({ ...cancelledOrder, is_draft_order: true }), order.id, "order_cancelled", null, db)
+  assert.equal(db.rows.length, 0)
+})
+test("cancellation uses exactly customer name then public display ID without a tracking URL", () => {
+  assert.deepEqual(notificationPayload(cancelledOrder, customer, "order_cancelled"), { phone: "9876543210", bodyValues: ["Fixture", "10582"] })
+  assert.throws(() => notificationPayload(order, customer, "order_cancelled"), /order_not_cancelled/)
+  assert.deepEqual(notificationPayload({ ...cancelledOrder, status: "cancelled" }, customer, "order_cancelled").bodyValues, ["Fixture", "10582"])
+})
+test("cancellation API failure is logged without changing the successful cancellation", async () => {
+  const db = new MemoryDb()
+  await enqueueNotification(cancelledContainer, order.id, "order_cancelled", null, db)
+  await processNotificationOutbox(db, (async () => new Response(null, { status: 503 })) as any, silent, cancelledContainer)
+  assert.equal(db.rows[0].status, "FAILED")
+  assert.equal(db.rows[0].error_details, "http_503")
+  assert.equal(cancelledOrder.status, "canceled")
+})
+test("cancellation is rechecked before send if an order is no longer cancelled", async () => {
+  const db = new MemoryDb()
+  await enqueueNotification(cancelledContainer, order.id, "order_cancelled", null, db)
+  let sent = 0
+  await processNotificationOutbox(db, (async () => { sent++; return accepted() }) as any, silent, container)
+  assert.equal(sent, 0)
+  assert.equal(db.rows[0].error_details, "order_not_cancelled")
+})
+test("missing or invalid registered cancellation recipient is logged without sending", async () => {
+  for (const [phone, code] of [["", "missing_phone"], ["123", "invalid_phone"]]) {
+    const db = new MemoryDb()
+    await enqueueNotification(scopeFor(cancelledOrder, { ...customer, phone }), order.id, "order_cancelled", null, db)
+    let sent = 0
+    await processNotificationOutbox(db, (async () => { sent++; return accepted() }) as any, silent)
+    assert.equal(sent, 0)
+    assert.equal(db.rows[0].error_details, code)
+  }
 })
