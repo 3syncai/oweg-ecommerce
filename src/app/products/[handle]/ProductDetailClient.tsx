@@ -6,6 +6,7 @@ import { useAddToCart } from "@/hooks/useCartMutations";
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { CategoryLink } from "@/components/modules/CategoryNavigation";
 import { ShoppingCart, Heart, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DetailedProduct } from "@/lib/medusa";
@@ -69,12 +70,12 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
           {product.categories.length > 0 && (
             <>
               <span className="mx-2">/</span>
-              <Link
+              <CategoryLink
                 href={`/c/${product.categories[0].handle || product.categories[0].id}`}
                 className="hover:text-[#7AC943]"
               >
                 {product.categories[0].title}
-              </Link>
+              </CategoryLink>
             </>
           )}
           <span className="mx-2">/</span>
@@ -230,13 +231,13 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {product.categories.map((category) => (
-                    <Link
+                    <CategoryLink
                       key={category.id}
                       href={`/c/${category.handle || category.id}`}
                       className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm hover:bg-[#7AC943] hover:text-white transition-colors"
                     >
                       {category.title}
-                    </Link>
+                    </CategoryLink>
                   ))}
                 </div>
               </div>

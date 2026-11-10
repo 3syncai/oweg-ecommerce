@@ -10,6 +10,7 @@ import {
 } from "react";
 import BrandLoader from "@/components/ui/BrandLoader";
 import Link from "next/link";
+import { CategoryLink } from "@/components/modules/CategoryNavigation";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -330,7 +331,8 @@ export default function MobileBottomNav() {
   const [selectedSubcategory, setSelectedSubcategory] =
     useState<MobileCategory | null>(null);
   const [subProducts, setSubProducts] = useState<InlineProduct[]>([]);
-  const [productsLoading, setProductsLoading] = useState(false);
+  const [settledSubcategory, setSettledSubcategory] = useState<MobileCategory | null>(null);
+  const productsLoading = selectedSubcategory !== null && selectedSubcategory !== settledSubcategory;
   const [priceSort, setPriceSort] = useState<"none" | "asc" | "desc">("none");
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
@@ -483,11 +485,11 @@ export default function MobileBottomNav() {
     const target = selectedSubcategory;
     if (!target) {
       setSubProducts([]);
-      setProductsLoading(false);
+      setSettledSubcategory(null);
       return;
     }
+    const controller = new AbortController();
     const fetchProducts = async () => {
-      setProductsLoading(true);
       try {
         const query =
           target.handle && target.handle.length > 0
@@ -497,12 +499,13 @@ export default function MobileBottomNav() {
               : "";
         if (!query) {
           setSubProducts([]);
-          setProductsLoading(false);
           return;
         }
         const res = await fetch(`/api/medusa/products?${query}&limit=24`, {
           cache: "no-store",
+          signal: controller.signal,
         });
+        if (controller.signal.aborted) return;
         if (!res.ok) {
           setSubProducts([]);
         } else {
@@ -522,16 +525,17 @@ export default function MobileBottomNav() {
               brand,
             };
           });
-          setSubProducts(products);
+          if (!controller.signal.aborted) setSubProducts(products);
         }
       } catch {
-        setSubProducts([]);
+        if (!controller.signal.aborted) setSubProducts([]);
       } finally {
-        setProductsLoading(false);
+        if (!controller.signal.aborted) setSettledSubcategory(target);
       }
     };
     void fetchProducts();
-  }, [selectedSubcategory, activeCategory]);
+    return () => controller.abort();
+  }, [selectedSubcategory]);
 
   useEffect(() => {
     setFiltersOpen(false);
@@ -929,7 +933,7 @@ export default function MobileBottomNav() {
                       <section className={navStyles.directorySection} aria-label={displayedCategory.title}>
                         <div className={navStyles.departmentHeading}>
                           <div><h3>{displayedCategory.title}</h3><p>Explore the collection</p></div>
-                          <Link href={`/c/${encodeURIComponent(displayedCategory.handle || displayedCategory.id)}`} onClick={closeCategory}>Shop all <ChevronRight size={14} aria-hidden="true" /></Link>
+                          <CategoryLink href={`/c/${encodeURIComponent(displayedCategory.handle || displayedCategory.id)}`} prefetch={false} onClick={closeCategory}>Shop all <ChevronRight size={14} aria-hidden="true" /></CategoryLink>
                         </div>
                         <ul className={navStyles.subcategoryGrid}>
                           {(displayedCategory.children || []).filter(child => !categorySearch.trim() || displayedCategory.title.toLowerCase().includes(categorySearch.trim().toLowerCase()) || child.title.toLowerCase().includes(categorySearch.trim().toLowerCase())).map(child => (
@@ -996,7 +1000,7 @@ export default function MobileBottomNav() {
                           <div className={navStyles.categoryTitleRow}>
                             <h3>{selectedSubcategory.title}</h3>
                             <span className={navStyles.resultCount} aria-live="polite">
-                              {productsLoading ? "Loading…" : `${filteredProducts.length} products`}
+                              {productsLoading ? "Loading products…" : `${filteredProducts.length} products`}
                             </span>
                           </div>
                         </div>

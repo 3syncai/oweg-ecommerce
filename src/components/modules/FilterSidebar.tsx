@@ -7,7 +7,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import type { MedusaCategory } from "@/services/medusa";
-import Link from "next/link";
+import { CategoryLink } from "@/components/modules/CategoryNavigation";
 import Image from "next/image";
 
 export type DealPreview = {
@@ -173,7 +173,7 @@ export function FilterSidebar({
 
                 return (
                   <li key={subcat.id}>
-                    <Link
+                    <CategoryLink
                       href={`/c/${categoryHandle}/${subcatHandle}`}
                       className={`block text-sm hover:text-[#7AC943] transition-colors ${
                         isActive
@@ -182,7 +182,7 @@ export function FilterSidebar({
                       }`}
                     >
                       {subcatTitle}
-                    </Link>
+                    </CategoryLink>
                   </li>
                 );
               })}

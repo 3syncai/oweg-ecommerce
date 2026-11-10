@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import Link from "next/link";
+import { CategoryLink } from "@/components/modules/CategoryNavigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import CategoryIconTile from "@/components/ui/icons/CategoryIconTile";
 import { mobileCategoryArtwork } from "@/lib/mobile-category-artwork";
@@ -95,7 +95,7 @@ export function CategoryHeader({
             const subcatHref = `/c/${categoryHandle}/${subcatHandle}`;
 
             return (
-              <Link
+              <CategoryLink
                 key={subcat.id}
                 href={subcatHref}
                 className={`group ${styles.tile}`}
@@ -108,7 +108,7 @@ export function CategoryHeader({
                   artworkSrc={mobileCategoryArtwork("subcategory", subcat.handle, subcatTitle)}
                   labelClassName={styles.label}
                 />
-              </Link>
+              </CategoryLink>
             );
           })}
       </div>

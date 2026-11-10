@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
+import { CategoryLink } from "@/components/modules/CategoryNavigation";
 import Image from 'next/image';
 import { ArrowUpRight, ChevronLeft, ChevronRight, MapPin, Pause, Play, UserRound } from 'lucide-react';
 import styles from './HomePage.module.css';
@@ -81,7 +82,7 @@ function ProductCarousel({
             <h2 className="oweg-title">{title}</h2>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {href && <Link href={href} className={styles.viewAll}>View all <ArrowUpRight size={14} /></Link>}
+            {href && <CategoryLink href={href} className={styles.viewAll}>View all <ArrowUpRight size={14} /></CategoryLink>}
             <button
               type="button"
               onClick={() => scroll('left')}
@@ -174,7 +175,7 @@ function BannerTile({
   className?: string;
 }) {
   return (
-    <Link
+    <CategoryLink
       href={href}
       aria-label={alt}
       className={`oweg-media group block w-full ${className}`}
@@ -188,7 +189,7 @@ function BannerTile({
         sizes={sizes}
         priority={priority}
       />
-    </Link>
+    </CategoryLink>
   );
 }
 
@@ -310,7 +311,7 @@ function HeroBanner() {
               }`}
               aria-hidden={!isActive}
             >
-              <Link href={slide.href} aria-label={slide.label} tabIndex={isActive ? 0 : -1} className="absolute inset-0 block">
+              <CategoryLink href={slide.href} aria-label={slide.label} tabIndex={isActive ? 0 : -1} className="absolute inset-0 block">
                 <picture>
                   <source media="(max-width: 767px)" srcSet={slide.mobileSrc} />
                   <Image
@@ -325,7 +326,7 @@ function HeroBanner() {
                     sizes="100vw"
                   />
                 </picture>
-              </Link>
+              </CategoryLink>
             </div>
           );
         })}
@@ -414,7 +415,7 @@ function CategoryStrip() {
         </div>
         <div className={styles.categoryGrid} role="region" aria-label="Shop subcategories" tabIndex={0}>
           {HOME_SUBCATEGORIES.map((cat) => (
-            <Link
+            <CategoryLink
               key={cat.href}
               href={cat.href}
               prefetch={false}
@@ -427,7 +428,7 @@ function CategoryStrip() {
                 alt={cat.title} width={1145} height={1536} loading="lazy" decoding="async"
                 sizes="(max-width: 639px) 72px, 104px" className={styles.categoryArtwork}
                 style={cat.artworkScale ? { transform: `scale(${cat.artworkScale})` } : undefined} />
-            </Link>
+            </CategoryLink>
           ))}
         </div>
       </div>
