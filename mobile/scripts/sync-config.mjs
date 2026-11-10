@@ -18,7 +18,7 @@ const productionAppId =
 
 const config = {
   appId: isPreview ? previewAppId : productionAppId,
-  appName: isPreview ? "OWEG Preview" : "OWEG",
+  appName: "Oweg Online Shopping App",
   webDir: "www",
   server: {
     // Match the final storefront origin so Capacitor injects the native bridge.

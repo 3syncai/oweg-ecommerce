@@ -1,9 +1,11 @@
 # OWEG mobile (Capacitor)
 
-Private **OWEG Preview** (`in.oweg.store.preview` → `https://0weg.in`) first, then production flavor → live OWEG store listings (`https://oweg.in`).
+Installed app name: **Oweg Online Shopping App**. The preview flavor (`in.oweg.store.preview` → `https://www.0weg.in`) remains separate from the production flavor (`https://oweg.in`).
 
-**Team build / try guide:** [`docs/MOBILE_APP_BUILD_FOR_TEAM.md`](../docs/MOBILE_APP_BUILD_FOR_TEAM.md)  
-Full rollout: [`docs/MOBILE_APP_ROLLOUT.md`](../docs/MOBILE_APP_ROLLOUT.md)  
+App icon and splash assets use the HD master at `resources/branding/logo.png`. Run `npm run assets:generate` from `mobile/` to regenerate Android and iOS assets. The Play Store listing name and icon must also be updated separately in Play Console.
+
+**Team build / try guide:** [`docs/MOBILE_APP_BUILD_FOR_TEAM.md`](../docs/MOBILE_APP_BUILD_FOR_TEAM.md)
+Full rollout: [`docs/MOBILE_APP_ROLLOUT.md`](../docs/MOBILE_APP_ROLLOUT.md)
 Firebase: [`firebase/README.md`](./firebase/README.md)
 
 ```bash
