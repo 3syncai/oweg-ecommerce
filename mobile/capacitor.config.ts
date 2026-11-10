@@ -24,7 +24,8 @@ const config: CapacitorConfig = {
   server: {
     // Remote storefront — UI is the website by design (Capacitor wrap).
     // Keep shop + Razorpay inside the WebView; do not open Safari for these hosts.
-    url: isPreview ? "https://0weg.in" : "https://oweg.in",
+    // Use the final origin: redirecting to www loses Android's origin-scoped bridge injection.
+    url: isPreview ? "https://www.0weg.in" : "https://oweg.in",
     cleartext: false,
     allowNavigation: [
       "0weg.in",
