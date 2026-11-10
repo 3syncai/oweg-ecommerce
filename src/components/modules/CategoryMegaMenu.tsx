@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
+import { CategoryLink } from "@/components/modules/CategoryNavigation";
 import { ArrowRight } from "lucide-react";
 import CategoryIconTile from "@/components/ui/icons/CategoryIconTile";
 import { normalizeCategorySlug } from "@/components/ui/icons/CategoryIcon";
@@ -130,7 +130,7 @@ export default function CategoryMegaMenu({
             </p>
             <div className="flex flex-wrap gap-2">
               {popularItems.map((sub) => (
-                <Link
+                <CategoryLink
                   key={sub.id}
                   href={getSubcategoryHref(parentHandle, sub.handle)}
                   className={chipClassName}
@@ -144,7 +144,7 @@ export default function CategoryMegaMenu({
                     orientation="horizontal"
                     labelClassName="max-w-[124px]"
                   />
-                </Link>
+                </CategoryLink>
               ))}
             </div>
           </div>
@@ -163,7 +163,7 @@ export default function CategoryMegaMenu({
         >
           <div className={`grid content-start items-start gap-1 ${subcategoryCols}`}>
             {category.children.map((sub) => (
-              <Link
+              <CategoryLink
                 key={sub.id}
                 href={getSubcategoryHref(parentHandle, sub.handle)}
                 className={itemClassName}
@@ -179,20 +179,20 @@ export default function CategoryMegaMenu({
                   className="w-full"
                   labelClassName="flex-1 text-[13px]"
                 />
-              </Link>
+              </CategoryLink>
             ))}
           </div>
         </div>
 
         <div className="mt-4 shrink-0 border-t border-gray-100 pt-3 px-2">
-          <Link
+          <CategoryLink
             href={getCategoryHref(category.handle)}
             className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#66C940] transition-colors hover:text-[#57b536]"
             onClick={onClose}
           >
             View all {category.title}
             <ArrowRight className="h-4 w-4" />
-          </Link>
+          </CategoryLink>
         </div>
       </div>
 

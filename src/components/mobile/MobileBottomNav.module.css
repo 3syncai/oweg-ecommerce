@@ -173,6 +173,7 @@
 .subcategoryTile > span:last-child { color:#405137; font-size:12px; font-weight:500; line-height:1.5; overflow-wrap:anywhere; }
 .subcategoryTile :global(.oweg-icon-tile) { background:transparent; border:0; box-shadow:none; }
 .subcategoryTile:hover { border-color:#cbdcbb; background:#f1f7e9; }
+.subcategoryTile:active { background:#e1efd9; }
 .directoryMessage { padding:20px 5px; color:#7b876e; font-size:12px; line-height:1.7; }
 .directoryMessage strong { color:#3c5031; }
 .directoryMessage button { min-height:44px; color:#527d31; text-decoration:underline; }

@@ -1,28 +1,32 @@
 "use client";
 
-import React from "react";
+import { useState } from "react";
+import Image from "next/image";
 import { catalogIconSrc } from "@/lib/catalog-icons";
 import CategoryIcon from "@/components/ui/icons/CategoryIcon";
 import SubcategoryIcon from "@/components/ui/icons/SubcategoryIcon";
 
-export type IconTileSize = "sm" | "md" | "lg";
+export type IconTileSize = "sm" | "md" | "lg" | "xl";
 
 const TILE_BOX: Record<IconTileSize, string> = {
   sm: "w-10 h-10",
   md: "w-14 h-14",
   lg: "w-16 h-16 sm:w-[72px] sm:h-[72px]",
+  xl: "h-[66px] w-[66px] sm:h-[84px] sm:w-[84px]",
 };
 
 const TILE_GLYPH: Record<IconTileSize, string> = {
   sm: "w-6 h-6",
   md: "w-8 h-8",
   lg: "w-9 h-9 sm:w-10 sm:h-10",
+  xl: "h-9 w-9 sm:h-11 sm:w-11",
 };
 
 const LABEL_TEXT: Record<IconTileSize, string> = {
   sm: "text-[11px] leading-tight",
   md: "text-xs leading-tight",
   lg: "text-[12px] sm:text-[13px] leading-snug",
+  xl: "text-[12px] sm:text-[13px] leading-snug",
 };
 
 type CategoryIconTileProps = {
@@ -42,6 +46,7 @@ type CategoryIconTileProps = {
   labelWrap?: boolean;
   className?: string;
   labelClassName?: string;
+  artworkSrc?: string | null;
 };
 
 /**
@@ -60,7 +65,10 @@ export default function CategoryIconTile({
   labelWrap = false,
   className = "",
   labelClassName = "",
+  artworkSrc,
 }: CategoryIconTileProps) {
+  const [failedArtwork, setFailedArtwork] = useState<string>();
+  const showArtwork = artworkSrc && artworkSrc !== failedArtwork;
   const suppliedIcon = Boolean(catalogIconSrc(kind, handle, title));
   const glyphClass = suppliedIcon ? "h-full w-full" : TILE_GLYPH[size];
   const text = label ?? title ?? "";
@@ -85,11 +93,22 @@ export default function CategoryIconTile({
         .join(" ")}
     >
       <span
-        className={`oweg-icon-tile shrink-0 ${TILE_BOX[size]}`}
+        className={`oweg-icon-tile shrink-0 ${TILE_BOX[size]} ${showArtwork ? "overflow-hidden" : ""}`}
         data-active={active ? "true" : "false"}
         data-pastel={suppliedIcon ? "true" : undefined}
       >
-        {glyph}
+        {showArtwork ? (
+          <Image
+            src={artworkSrc}
+            alt=""
+            width={192}
+            height={192}
+            unoptimized
+            loading="lazy"
+            className="h-full w-full object-cover"
+            onError={() => setFailedArtwork(artworkSrc)}
+          />
+        ) : glyph}
       </span>
       {showLabel && text ? (
         <span

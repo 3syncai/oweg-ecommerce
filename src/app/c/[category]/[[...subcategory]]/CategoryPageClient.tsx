@@ -434,11 +434,8 @@ export function CategoryPageClient({
               </button>
             </div>
 
-            {!selectedSubcategory && subcategories.length > 0 && (
-              <section className={styles.browseCategories} aria-label="Browse subcategories">
-                <h2>Explore categories</h2>
-                <CategoryHeader categoryHandle={categoryHandle} subcategories={subcategories} />
-              </section>
+            {!selectedSubcategory && (
+              <CategoryHeader categoryHandle={categoryHandle} subcategories={subcategories} />
             )}
             <div className={styles.chips}>
               {filters.brands.map((brand) => <button key={brand} type="button" className={styles.chip} onClick={() => handleFilterChange({ brands: filters.brands.filter((value) => value !== brand) })} aria-label={`Remove ${brand} filter`}>{brand}<X size={12} aria-hidden="true" /></button>)}

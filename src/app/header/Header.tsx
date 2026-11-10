@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { MedusaCategory } from "@/lib/medusa";
 import Link from "next/link";
+import { CategoryLink } from "@/components/modules/CategoryNavigation";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import { useCartSummary } from "@/contexts/CartProvider";
@@ -1276,7 +1277,7 @@ const Header: React.FC = () => {
               <div className="px-3 py-2 text-sm text-gray-500">Loading categories…</div>
              ) : allDesktopCategories.length ? (
               allDesktopCategories.map((cat) => (
-                <Link
+                <CategoryLink
                   key={cat.id}
                   href={getCategoryHref(cat.handle)}
                   className={`group flex items-center justify-between gap-2 px-2.5 py-2 transition ${navStyles.departmentLink}`}
@@ -1295,7 +1296,7 @@ const Header: React.FC = () => {
                     labelClassName="text-[13px]"
                   />
                   <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
-                </Link>
+                </CategoryLink>
               ))
             ) : navCatsEmpty ? (
               <div className="px-3 py-2 text-sm text-gray-500">No additional categories</div>
@@ -1305,13 +1306,13 @@ const Header: React.FC = () => {
             <div className={navStyles.departmentPreview}>
               <div className={navStyles.previewHeading}>
                 <div><p>{preview.title}</p><span>Explore this department</span></div>
-                <Link href={getCategoryHref(preview.handle)} onClick={() => setAllOpen(false)} className={navStyles.viewDepartment}>View all <ChevronRight size={14} aria-hidden="true" /></Link>
+                <CategoryLink href={getCategoryHref(preview.handle)} onClick={() => setAllOpen(false)} className={navStyles.viewDepartment}>View all <ChevronRight size={14} aria-hidden="true" /></CategoryLink>
               </div>
               <div className={`${navStyles.subcategoryList} scrollbar-hide`} onWheel={handleMenuWheel}>
                 {preview.children.length ? preview.children.map((subcategory) => (
-                  <Link key={subcategory.id} href={getCategoryHref(subcategory.handle)} className={navStyles.subcategoryLink} onClick={() => setAllOpen(false)}>
+                  <CategoryLink key={subcategory.id} href={getCategoryHref(subcategory.handle)} className={navStyles.subcategoryLink} onClick={() => setAllOpen(false)}>
                     <CategoryIconTile handle={subcategory.handle} title={subcategory.title} kind="subcategory" size="sm" orientation="horizontal" labelWrap className="w-full" labelClassName="text-xs" />
-                  </Link>
+                  </CategoryLink>
                 )) : <p className={navStyles.previewEmpty}>Browse all products in {preview.title}.</p>}
               </div>
             </div>
@@ -1871,7 +1872,7 @@ const Header: React.FC = () => {
                               startHideTimer();
                             }}
                           >
-                            <Link
+                            <CategoryLink
                               href={categoryHref}
                               ref={(el: HTMLAnchorElement | null) => { triggersRef.current[cat.id] = el; }}
                               className={navStyles.categoryLink}
@@ -1892,7 +1893,7 @@ const Header: React.FC = () => {
                                   activeCategoryId === cat.id ? "rotate-180" : ""
                                 }`}
                               />
-                            </Link>
+                            </CategoryLink>
                           </div>
                         );
                       })}
@@ -1958,7 +1959,7 @@ const Header: React.FC = () => {
                         const isOpen = mobileExpandedCat === cat.id;
                         if (!hasChildren) {
                           return (
-                            <Link
+                            <CategoryLink
                               key={cat.id}
                               href={getCategoryHref(cat.handle)}
                               className="oweg-tap group flex items-center justify-between gap-2 px-2.5 py-2.5 hover:bg-white"
@@ -1974,7 +1975,7 @@ const Header: React.FC = () => {
                                 labelClassName="text-sm"
                               />
                               <ChevronRight className="w-4 h-4 text-header-muted shrink-0" />
-                            </Link>
+                            </CategoryLink>
                           );
                         }
                         return (

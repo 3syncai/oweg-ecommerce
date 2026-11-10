@@ -21,6 +21,7 @@ import SiteProtections from "@/components/debug-controller/SiteProtections";
 import ConditionalWhatsAppWidget from "@/components/debug-controller/ConditionalWhatsAppWidget";
 import ForceUpdateGate from "@/components/mobile/ForceUpdateGate";
 import NativeBootSplash from "@/components/mobile/NativeBootSplash";
+import { CategoryNavigationProvider } from "@/components/modules/CategoryNavigation";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
 
 /** Self-hosted so CI/build does not depend on fonts.gstatic.com */
@@ -110,6 +111,7 @@ export default function RootLayout({
                   <AffiliateRefCapture />
                 </Suspense>
 
+                <CategoryNavigationProvider>
                 <div className="min-h-screen flex flex-col">
                   <Header />
 
@@ -131,6 +133,7 @@ export default function RootLayout({
                   <NativeBootSplash />
                   <ForceUpdateGate />
                 </div>
+                </CategoryNavigationProvider>
 
                 <AppToaster />
               </CartProvider>
