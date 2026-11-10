@@ -352,9 +352,9 @@ export default function MobileProfileSheet({
           onClick={() => {
             void onSignOut();
           }}
-          className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-[var(--oweg-radius-sm)] border border-red-300 bg-transparent px-4 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+          className="flex min-h-[48px] w-full items-center gap-3 rounded-xl border border-[#ebddda] bg-white px-4 text-sm font-semibold text-[#82383a] hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#82383a]"
         >
-          <LogOut className="h-4 w-4" />
+          <LogOut className="h-4 w-4" aria-hidden="true" />
           Sign out
         </button>
       ) : null}

@@ -16,17 +16,17 @@ const USER_SCOPED_QUERY_PREFIXES = [
  * Clears user-scoped React Query caches and session localStorage on logout.
  * Public catalog caches (home-products, categories, etc.) are intentionally preserved.
  */
-export function clearUserSessionCache(
-  queryClient: QueryClient,
-  customerId?: string | null
-) {
+export function clearCustomerSessionQueries(queryClient: QueryClient, customerId?: string | null) {
   if (customerId) {
     clearCartQueryCache(queryClient, customerId);
     for (const prefix of USER_SCOPED_QUERY_PREFIXES) {
       queryClient.removeQueries({ queryKey: [prefix, customerId] });
     }
   }
+}
 
+export function clearUserSessionCache(queryClient: QueryClient, customerId?: string | null) {
+  clearCustomerSessionQueries(queryClient, customerId);
   clearCartQueryCache(queryClient, null);
   clearGuestCartId();
   clearStaleBuyNowSnapshot();

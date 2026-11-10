@@ -1,4 +1,5 @@
 import { enqueueNotification } from "../../../../services/interakt/outbox"
+import { enqueueOrderEmail } from "../../../../services/order-email/outbox"
 import { itlNotificationEvent } from "../../../../services/interakt/interakt.service"
 import { shippingWebhookAuthError } from "../../../../lib/shipping-webhook-auth"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
@@ -218,10 +219,13 @@ export async function handleItlWebhook(req: MedusaRequest, res: MedusaResponse) 
       ["delivered", "cash_collected", "cancelled", "rto_initiated", "rto_in_transit", "rto_delivered"].includes(previousStatus))
   if (whatsappEvent && !staleShipped && getItlMode() === "live") {
     const shipment = existingWf || metadata
-    try {
-      await enqueueNotification(req.scope, match.id, whatsappEvent, shipment.tracking_url)
-    } catch {
-      // Request a carrier retry if durable enqueue failed, even after status persistence.
+    const [whatsapp, email] = await Promise.allSettled([
+      Promise.resolve().then(() => enqueueNotification(req.scope, match.id, whatsappEvent, shipment.tracking_url)),
+      enqueueOrderEmail({ orderId: match.id }, whatsappEvent),
+    ])
+    if (email.status === "rejected") console.warn(`[order-email] ITL webhook enqueue failed order=${match.id}`)
+    if (whatsapp.status === "rejected" || email.status === "rejected") {
+      // Retry the durable enqueue even after the tracking state was persisted.
       return res.status(503).json({ message: "Notification enqueue unavailable; retry webhook" })
     }
   }

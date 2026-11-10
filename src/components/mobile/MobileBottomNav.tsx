@@ -29,11 +29,14 @@ import {
   Search,
 } from "lucide-react";
 import type { MedusaCategory } from "@/lib/medusa";
+import { useDeliveryLocation } from "@/contexts/DeliveryLocationProvider";
 import { useAuth } from "@/contexts/AuthProvider";
 import { getOriginalImageUrl } from "@/lib/image-utils";
 import CategoryIcon from "@/components/ui/icons/CategoryIcon";
-import CategoryIconTile from "@/components/ui/icons/CategoryIconTile";
+import SubcategoryIcon from "@/components/ui/icons/SubcategoryIcon";
+import { mobileCategoryArtwork } from "@/lib/mobile-category-artwork";
 import MobileProfileSheet from "@/components/mobile/MobileProfileSheet";
+import LogoutConfirmModal from "@/components/account/LogoutConfirmModal";
 import { buildLoginUrl, buildSignupUrl } from "@/lib/auth-redirect";
 import navStyles from "./MobileBottomNav.module.css";
 import { useCartSummary } from "@/contexts/CartProvider";
@@ -70,6 +73,28 @@ type MobileCategory = {
   children?: MobileCategory[];
 };
 
+function CategoryArtwork({ category, kind, className }: {
+  category: MobileCategory;
+  kind: "category" | "subcategory";
+  className: string;
+}) {
+  const src = mobileCategoryArtwork(kind, category.handle, category.title);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const Icon = kind === "category" ? CategoryIcon : SubcategoryIcon;
+  const size = kind === "category" ? 112 : 192;
+
+  return (
+    <span className={className} aria-hidden="true">
+      {src && src !== failedSrc ? (
+        <Image src={src} alt="" width={size} height={size} unoptimized loading="lazy"
+          onError={() => setFailedSrc(src)} />
+      ) : (
+        <Icon handle={category.handle} title={category.title} className={navStyles.artworkFallback} />
+      )}
+    </span>
+  );
+}
+
 type ProductLike = {
   id?: string | number;
   handle?: string | number;
@@ -87,15 +112,6 @@ type ProductLike = {
   collection?: { title?: string | null; handle?: string | null };
 };
 
-const normalizeCategoryKey = (title?: string) =>
-  (title || "")
-    .toString()
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, "-");
-
 const buildCategoryList = (data?: unknown): MobileCategory[] => {
   const raw: MedusaCategory[] = Array.isArray(
     (data as { categories?: MedusaCategory[] })?.categories,
@@ -103,7 +119,9 @@ const buildCategoryList = (data?: unknown): MobileCategory[] => {
     ? ((data as { categories?: MedusaCategory[] })
         .categories as MedusaCategory[])
     : [];
-  return raw.map((cat, idx) => {
+  // The store API can return a child both at the top level and nested.
+  const childIds = new Set(raw.flatMap(cat => (cat.category_children || []).map(child => child.id)));
+  return raw.filter(cat => !cat.parent_category_id && !childIds.has(cat.id)).map((cat, idx) => {
     const baseId = cat.id || cat.handle || cat.title || `cat-${idx}`;
     return {
       id: baseId,
@@ -281,6 +299,8 @@ const Overlay = ({
       open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
     }`}
     onClick={onClose}
+    aria-hidden={!open}
+    inert={!open}
   >
     <div
       className={`absolute inset-x-0 top-0 bottom-0 transition-transform duration-200 ${
@@ -301,9 +321,10 @@ export default function MobileBottomNav() {
   const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { customer, logout } = useAuth();
+  const { customer } = useAuth();
+  const [signOutOpen, setSignOutOpen] = useState(false);
   const { count: cartCount } = useCartSummary();
-  const [storedPincode, setStoredPincode] = useState("");
+  const { pincode, place } = useDeliveryLocation();
   const resetPanels = useCallback(() => {
     setCategoryOpen(false);
     setProfileOpen(false);
@@ -314,7 +335,7 @@ export default function MobileBottomNav() {
     if (Array.isArray(list)) return list.length;
     return 0;
   }, [customer?.metadata]);
-  const { data: categoryData, isLoading: categoriesLoading } = useStoreCategories();
+  const { data: categoryData, isLoading: categoriesLoading, isError: categoriesError, refetch: refetchCategories } = useStoreCategories();
   const categories = useMemo(
     () => buildCategoryList({ categories: categoryData }),
     [categoryData],
@@ -419,12 +440,6 @@ export default function MobileBottomNav() {
   }, [categoryOpen, profileOpen]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const pin = window.localStorage.getItem("oweg_pincode") || "";
-    setStoredPincode(pin);
-  }, [overlayOpen, pathname]);
-
-  useEffect(() => {
     resetPanels();
   }, [pathname, resetPanels]);
 
@@ -439,34 +454,12 @@ export default function MobileBottomNav() {
     router.prefetch("/signup");
   }, [router]);
 
-  const categoriesWithChildren = useMemo(
-    () =>
-      categories.filter(
-        (cat) => Array.isArray(cat.children) && cat.children.length > 0,
-      ),
-    [categories],
-  );
-
-  useEffect(() => {
-    if (!categoryOpen) return;
-    if (selectedCategoryId) return;
-    const preferred = categoriesWithChildren.find(
-      (c) => normalizeCategoryKey(c.title) === "home-appliances",
-    );
-    const fallback = categoriesWithChildren[0];
-    const target = preferred || fallback;
-    if (target) {
-      setSelectedCategoryId(target.id);
-      setSelectedSubcategory(null);
-    }
-  }, [categoryOpen, categoriesWithChildren, selectedCategoryId]);
-
   const filteredCategories = useMemo(() => {
     const term = categorySearch.trim().toLowerCase();
-    if (selectedSubcategory || !term) return categoriesWithChildren;
-    return categoriesWithChildren.filter(cat => cat.title.toLowerCase().includes(term) ||
+    if (selectedSubcategory || !term) return categories;
+    return categories.filter(cat => cat.title.toLowerCase().includes(term) ||
       cat.children?.some(child => child.title.toLowerCase().includes(term)));
-  }, [categoriesWithChildren, categorySearch, selectedSubcategory]);
+  }, [categories, categorySearch, selectedSubcategory]);
 
   const displayedCategory = useMemo(() =>
     filteredCategories.find(c => c.id === selectedCategoryId) || filteredCategories[0] || null,
@@ -699,8 +692,8 @@ export default function MobileBottomNav() {
           | undefined)
       : undefined;
     const addressCity = firstAddress?.city || firstAddress?.country;
-    return metaPlace || addressCity || storedPincode || "Set your location";
-  }, [customer?.metadata, customer?.shipping_addresses, storedPincode]);
+    return place || pincode || metaPlace || addressCity || "Set your location";
+  }, [customer?.metadata, customer?.shipping_addresses, pincode, place]);
 
   const goNav = (href: string) => {
     resetPanels();
@@ -784,11 +777,11 @@ export default function MobileBottomNav() {
 
       {/* Category sheet */}
       <Overlay open={categoryOpen} onClose={closeCategory} scrollable={false} panelClassName={`bg-white ${navStyles.categoryPanel}`}>
-        <div className={`${navStyles.categorySheet} relative`}>
+        {categoryOpen && <div className={`${navStyles.categorySheet} relative`}>
           {(
             <>
               <div className={navStyles.directoryHeader}>
-                <div><p className={navStyles.directoryEyebrow}>FIND YOUR NEXT FAVOURITE</p><h2>Shop by category</h2></div>
+                <h2>All categories</h2>
                 <button type="button" aria-label="Close categories" onClick={closeCategory} className={navStyles.directoryClose}><X size={20} /></button>
               </div>
               {!selectedSubcategory && <div className={navStyles.directorySearch}>
@@ -864,16 +857,8 @@ export default function MobileBottomNav() {
                           aria-expanded={hasChildren ? isExpanded : undefined}
                           title={cat.title}
                         >
-                          <CategoryIconTile
-                            handle={cat.handle}
-                            title={cat.title}
-                            active={active}
-                            size="sm"
-                            orientation="horizontal"
-                            labelWrap
-                            className="min-w-0 flex-1"
-                            labelClassName={navStyles.drawerCategoryLabel}
-                          />
+                          <CategoryArtwork category={cat} kind="category" className={navStyles.drawerArtwork} />
+                          <span className={navStyles.drawerCategoryLabel}>{cat.title}</span>
                           {hasChildren ? (
                             <ChevronRight
                               className={`w-4 h-4 text-gray-500 transition-transform ${isExpanded ? "rotate-90" : ""}`}
@@ -915,7 +900,7 @@ export default function MobileBottomNav() {
                 {categoriesLoading ? <p className={navStyles.directoryMessage}>Loading…</p> : filteredCategories.map(cat => {
                   const active = displayedCategory?.id === cat.id;
                   return <button key={cat.id} type="button" className={navStyles.department} aria-pressed={active} onClick={() => { setSelectedCategoryId(cat.id); setSelectedSubcategory(null); }}>
-                    <CategoryIcon handle={cat.handle} title={cat.title} active={active} className="h-7 w-7" />
+                    <CategoryArtwork category={cat} kind="category" className={navStyles.railArtwork} />
                     <span>{cat.title}</span>
                   </button>;
                 })}
@@ -932,14 +917,18 @@ export default function MobileBottomNav() {
                     {!selectedSubcategory && displayedCategory && (
                       <section className={navStyles.directorySection} aria-label={displayedCategory.title}>
                         <div className={navStyles.departmentHeading}>
-                          <div><h3>{displayedCategory.title}</h3><p>Explore the collection</p></div>
-                          <CategoryLink href={`/c/${encodeURIComponent(displayedCategory.handle || displayedCategory.id)}`} prefetch={false} onClick={closeCategory}>Shop all <ChevronRight size={14} aria-hidden="true" /></CategoryLink>
+                          <div>
+                            <h3>{displayedCategory.title}</h3>
+                            <CategoryLink href={`/c/${encodeURIComponent(displayedCategory.handle || displayedCategory.id)}`} prefetch={false} onClick={closeCategory}>Shop all <ChevronRight size={14} aria-hidden="true" /></CategoryLink>
+                          </div>
+                          <CategoryArtwork category={displayedCategory} kind="category" className={navStyles.headingArtwork} />
                         </div>
+                        {!!displayedCategory.children?.length && <h4 className={navStyles.subcategoryHeading}>Shop by subcategory</h4>}
                         <ul className={navStyles.subcategoryGrid}>
                           {(displayedCategory.children || []).filter(child => !categorySearch.trim() || displayedCategory.title.toLowerCase().includes(categorySearch.trim().toLowerCase()) || child.title.toLowerCase().includes(categorySearch.trim().toLowerCase())).map(child => (
                             <li key={child.id}>
                               <button type="button" className={navStyles.subcategoryTile} onClick={() => { setSelectedCategoryId(displayedCategory.id); setSelectedSubcategory(child); }}>
-                                <CategoryIconTile kind="subcategory" handle={child.handle} title={child.title} size="md" showLabel={false} />
+                                <CategoryArtwork category={child} kind="subcategory" className={navStyles.subcategoryArtwork} />
                                 <span>{child.title}</span>
                               </button>
                             </li>
@@ -948,7 +937,13 @@ export default function MobileBottomNav() {
                         {!(displayedCategory.children || []).length && <p className={navStyles.directoryMessage}>Discover everything in {displayedCategory.title} using Shop all.</p>}
                       </section>
                     )}
-                    {!selectedSubcategory && !displayedCategory && !categoriesLoading && <div className={navStyles.directoryMessage}><strong>No matching categories</strong><p>Try a different name, such as kettle or kitchen.</p><button type="button" onClick={() => setCategorySearch("")}>Clear search</button></div>}
+                    {!selectedSubcategory && !displayedCategory && !categoriesLoading && (
+                      <div className={navStyles.directoryMessage}>
+                        {categoriesError ? <><strong>Categories couldn’t load</strong><button type="button" onClick={() => void refetchCategories()}>Try again</button></> :
+                          categorySearch ? <><strong>No matching categories</strong><p>Try a different name, such as kettle or kitchen.</p><button type="button" onClick={() => setCategorySearch("")}>Clear search</button></> :
+                            <strong>No categories available</strong>}
+                      </div>
+                    )}
 
                     {selectedSubcategory && (
                       <div className={navStyles.resultsHeader}>
@@ -1133,7 +1128,7 @@ export default function MobileBottomNav() {
               </div>
             </div>
           </div>
-        </div>
+        </div>}
       </Overlay>
 
       {/* Profile sheet */}
@@ -1155,13 +1150,13 @@ export default function MobileBottomNav() {
             closeProfile();
             router.replace(buildSignupUrl(pathname));
           }}
-          onSignOut={async () => {
-            await logout();
-            setProfileOpen(false);
-            router.refresh();
-          }}
+          onSignOut={() => setSignOutOpen(true)}
         />
       </Overlay>
+      <LogoutConfirmModal open={signOutOpen} onClose={() => setSignOutOpen(false)} onSignedOut={() => {
+        setProfileOpen(false);
+        router.refresh();
+      }} />
     </>
   );
 }

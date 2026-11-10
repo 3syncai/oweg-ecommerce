@@ -94,6 +94,9 @@ export default async function orderPlacedSubscriber({
 
   // Payment/COD confirmation owns the durable commission outbox.
 
+  // The order-email subscriber owns confirmation delivery when enabled.
+  if (process.env.ORDER_EMAIL_ENABLED === "true") return
+
   // 3. Generate Invoice
   let invoicePdfBuffer: Buffer | null = null
   try {

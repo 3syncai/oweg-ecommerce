@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import BrandLoader from "@/components/ui/BrandLoader";
 import OrderBreadcrumbs from "@/components/orders/OrderBreadcrumbs";
 import OrderCopyButton from "@/components/orders/OrderCopyButton";
 import OrderVerticalTimeline from "@/components/orders/OrderVerticalTimeline";
@@ -14,7 +14,6 @@ import {
   formatShippingAddress,
   getGoogleMapsUrl,
   getOrderDisplayLabel,
-  getEasyShipPartnerLabel,
   getShiprocketAwb,
 } from "@/lib/order-utils";
 
@@ -28,7 +27,6 @@ export default function TrackOrderContent({ orderId, orderNumber }: TrackOrderCo
 
   const displayLabel = getOrderDisplayLabel(order, orderNumber);
   const awb = getShiprocketAwb(order);
-  const partnerLabel = getEasyShipPartnerLabel(order);
   const hero = getTrackHeroContent(order, existingReturn);
   const statusImageSrc = resolveOrderStatusImage(order, existingReturn);
   const isCancelledHero = isCancelledStatusImage(statusImageSrc);
@@ -40,7 +38,7 @@ export default function TrackOrderContent({ orderId, orderNumber }: TrackOrderCo
   if (loading && !order) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#326b29]" />
+        <BrandLoader compact label="Checking your delivery status…" />
       </div>
     );
   }
@@ -114,16 +112,6 @@ export default function TrackOrderContent({ orderId, orderNumber }: TrackOrderCo
             <p className="mb-4 text-sm font-semibold text-slate-900">Delivery Details</p>
 
             <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF8E7]">
-                  <OrdersUiIcon name="delivery-partner" size={22} className="h-[22px] w-[22px]" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{partnerLabel}</p>
-                  <p className="text-xs text-slate-500">Delivery partner</p>
-                </div>
-              </div>
-
               {awb ? (
                 <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
                   <p className="text-xs text-slate-500">Tracking ID</p>

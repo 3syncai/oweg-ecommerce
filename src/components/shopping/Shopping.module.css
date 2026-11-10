@@ -11,13 +11,6 @@
 .filterRail h3 { color: #516a40; font-size: 12px; }
 .filterRail label { min-height: 36px; }
 .filterRail input[type='checkbox'], .filterRail input[type='radio'] { accent-color: #6eac40; }
-.filterSidebar > div { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible; }
-.filterSidebar > div > div { padding: 0; }
-.filterSidebar h2 { font-size: 16px; font-weight: 600; }
-.filterSidebar h3 { font-size: 13px; font-weight: 600; }
-.filterSidebar label { min-height: 32px; }
-.filterSidebar button { min-height: 32px; }
-.filterSidebar input[type='number'] { min-width: 0; }
 .categoryRail { scrollbar-width: thin; }
 .categoryRail :global(.text-\[\#7AC943\]) { color: #557b35; }
 .categoryRail :global(.hover\:text-\[\#7AC943\]):hover { color: #42652d; }
@@ -123,3 +116,27 @@
   .lineCard > div { width: auto; }
 }
 @media (prefers-reduced-motion: reduce) { .searchCard { transition: none; } }
+.pendingTrack {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e1ebda;
+}
+
+.pendingTrack > span {
+  display: block;
+  width: 38%;
+  height: 100%;
+  border-radius: inherit;
+  background: #477e31;
+  animation: totalsPending 1.35s ease-in-out infinite;
+}
+
+@keyframes totalsPending {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(270%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pendingTrack > span { animation: none; margin-inline: auto; }
+}

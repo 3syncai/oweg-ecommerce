@@ -1,13 +1,16 @@
 ﻿"use client"
 
 import BrandLoader from "@/components/ui/BrandLoader";
+import { useOnlineStatus, useSlowPending } from "@/hooks/useOnlineStatus";
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 import { useEffect, useState } from "react"
-import { ChevronLeft, ChevronRight, Heart, SearchX, SlidersHorizontal, Star, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, CircleAlert, Heart, Search, SearchX, SlidersHorizontal, Star, WifiOff, X } from "lucide-react"
 import Image from "next/image"
 import styles from "@/components/shopping/Shopping.module.css"
+import { ProductSortSelect } from "@/components/modules/ProductSortSelect"
+import { parseProductSort, type ProductSort } from "@/lib/product-sort"
 
 type SearchProduct = {
   id: string
@@ -75,6 +78,7 @@ function StarRow({ count }: { count: number }) {
 
 function SearchPageContent() {
   const router = useRouter()
+  const online = useOnlineStatus()
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const params = useSearchParams()
   const q = params.get("q")?.trim() || ""
@@ -82,6 +86,7 @@ function SearchPageContent() {
   const categoryId = params.get("categoryId")?.trim() || ""
   const collection = params.get("collection")?.trim() || ""
   const collectionId = params.get("collectionId")?.trim() || ""
+  const sort = parseProductSort(params.get("sort"))
   const requestedPage = Math.max(1, parseInt(params.get("page") || "1", 10) || 1)
 
   const [products, setProducts] = useState<SearchProduct[]>([])
@@ -92,6 +97,7 @@ function SearchPageContent() {
   const [totalCount, setTotalCount] = useState(0)
   const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(Boolean(q))
+  const slow = useSlowPending(loading && online)
 
   const [minRating, setMinRating] = useState<number | null>(null)
   const [selectedBrands, setSelectedBrands] = useState<string[]>([])
@@ -104,8 +110,10 @@ function SearchPageContent() {
   const currentPage = Math.min(Math.max(1, requestedPage), totalPages)
 
   useEffect(() => {
-    if (!q) {
+    if (!q || !online) {
       setProducts([])
+      setError(null)
+      setLoading(false)
       setTotalCount(0)
       setHasMore(false)
       return
@@ -127,6 +135,7 @@ function SearchPageContent() {
         else if (category) query.set("category", category)
         if (collectionId) query.set("collectionId", collectionId)
         else if (collection) query.set("collection", collection)
+        if (sort !== "default") query.set("sort", sort)
 
         if (minRating) query.set('minRating', String(minRating))
         selectedBrands.forEach(brand => query.append('brand', brand))
@@ -150,7 +159,7 @@ function SearchPageContent() {
         setHasMore(data?.hasMore === true)
       } catch {
         if (!cancelled) {
-          setError("Search is temporarily unavailable. Please try again.")
+          setError("We couldn’t load these results. Try the same search again.")
           setProducts([])
           setTotalCount(0)
           setHasMore(false)
@@ -165,7 +174,15 @@ function SearchPageContent() {
       cancelled = true
       controller.abort()
     }
-  }, [q, category, categoryId, collection, collectionId, requestedPage, minRating, selectedBrands, priceRange, retry])
+  }, [online, q, category, categoryId, collection, collectionId, requestedPage, minRating, selectedBrands, priceRange, retry, sort])
+
+  const changeSort = (nextSort: ProductSort) => {
+    const next = new URLSearchParams(params.toString())
+    next.delete("page")
+    if (nextSort === "default") next.delete("sort")
+    else next.set("sort", nextSort)
+    window.history.pushState(null, "", `/search?${next.toString()}`)
+  }
 
   const visibleBrands = Array.from(new Set([...selectedBrands, ...availableBrands])).slice(0, 12)
 
@@ -206,7 +223,7 @@ function SearchPageContent() {
                 {q ? `Results for "${q}"` : "Search products"}
               </h1>
               <p className="mt-1 text-sm text-slate-600">
-                {error ? "Search could not be loaded" : loading
+                {!online ? "Waiting for connection" : error ? "Search could not be loaded" : loading
                   ? "Looking for the best matches..."
                   : hasFilters
                     ? `${totalCount} matching products`
@@ -214,9 +231,9 @@ function SearchPageContent() {
               </p>
             </div>
           </div>
+          {q && <ProductSortSelect value={sort} onChange={changeSort} defaultLabel="Best match" />}
         </div>
 
-        {error && <div role="alert" className="mb-6 rounded-xl border border-amber-300 p-4"><p>{error}</p><button type="button" onClick={() => setRetry(value => value + 1)} className="mt-2 underline">Retry search</button></div>}
         <div className={styles.resultsLayout}>
           <aside className={styles.filterRail} data-open={mobileFiltersOpen} aria-label="Search filters">
             <button type="button" className={styles.mobileFilterToggle} onClick={() => setMobileFiltersOpen((open) => !open)} aria-expanded={mobileFiltersOpen} aria-controls="search-filter-options"><span className="inline-flex items-center gap-2"><SlidersHorizontal size={16} /> Filters {hasFilters ? `(${selectedBrands.length + (priceRange ? 1 : 0) + (minRating ? 1 : 0)})` : ''}</span><ChevronRight size={16} className={mobileFiltersOpen ? 'rotate-90' : ''} /></button>
@@ -265,18 +282,28 @@ function SearchPageContent() {
               {priceRange && <button type="button" className={styles.chip} onClick={() => setPriceRange(null)} aria-label="Remove price filter">{PRICE_OPTIONS.find((option) => option.value === priceRange)?.label}<X size={12} aria-hidden="true" /></button>}
               <button type="button" className={styles.clearFilters} onClick={clearFilters}>Clear filters</button>
             </div>}
-            {loading ? (
-              <BrandLoader label="Finding your next good find…" />
+            {!online ? (
+              <SearchMessage icon={WifiOff} title="Search is offline" description="Reconnect and we’ll load your search again." />
+            ) : loading ? (
+              <div role="status" aria-busy="true">
+                <p className="mb-3 text-sm text-slate-600">{slow ? "Search is taking longer than usual…" : "Looking for products…"}</p>
+                <div className={styles.productGrid} aria-hidden="true">
+                  {[0, 1, 2, 3].map(id => <div key={id} className="h-48 rounded-2xl bg-[#edf3e9] motion-safe:animate-pulse sm:h-56" />)}
+                </div>
+              </div>
+            ) : error ? (
+              <SearchMessage icon={CircleAlert} title="Search is temporarily unavailable" description={error}>
+                <button type="button" onClick={() => setRetry(value => value + 1)} className="mt-5 min-h-11 rounded-xl bg-[#155344] px-5 text-sm font-semibold text-white">Retry search</button>
+              </SearchMessage>
             ) : (
               <>
-                {filtered.length === 0 && !error ? (
-                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-                    <SearchX className="mx-auto mb-3 h-6 w-6 text-slate-500" />
-                    <h2 className="text-xl font-semibold text-slate-900">No results found</h2>
-                    <p className="mt-2 text-sm text-slate-600">
-                      {hasFilters ? "Try removing some filters." : `No products match "${q}" yet.`}
-                    </p>
-                  </div>
+                {filtered.length === 0 ? (
+                  <SearchMessage
+                    icon={q ? SearchX : Search}
+                    title={q ? "No matching products" : "What are you looking for?"}
+                    description={q ? (hasFilters ? "Try removing a filter to widen your search." : `No products match “${q}”. Try a shorter name, brand, or category.`) : "Use the search bar to find a product, brand, or category."}>
+                    {q && hasFilters && <button type="button" onClick={clearFilters} className="mt-5 min-h-11 rounded-xl border border-[#d5e3d3] px-5 text-sm font-semibold text-[#155344]">Clear filters</button>}
+                  </SearchMessage>
                 ) : (
                   <div className={styles.productGrid}>
                     {filtered.map((product) => {
@@ -333,6 +360,22 @@ function SearchPageContent() {
       </div>
     </div>
   )
+}
+
+function SearchMessage({ icon: Icon, title, description, children }: {
+  icon: typeof Search;
+  title: string;
+  description: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div role="status" className="rounded-2xl border border-[#dce7d9] bg-white px-5 py-10 text-center sm:px-8">
+      <span className="mx-auto mb-4 grid size-12 place-items-center rounded-2xl bg-[#eef5ea] text-[#155344]"><Icon size={23} aria-hidden="true" /></span>
+      <h2 className="text-lg font-bold text-[#17372f]">{title}</h2>
+      <p className="mx-auto mt-2 max-w-sm break-words text-sm leading-6 text-slate-600">{description}</p>
+      {children}
+    </div>
+  );
 }
 
 function SearchPageFallback() {

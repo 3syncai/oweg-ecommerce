@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { CategoryPageClient } from "./CategoryPageClient";
 import { findCategoryByTitleOrHandle } from "@/lib/medusa";
 import { buildCategoryProductsPage } from "@/lib/category-listing";
+import { parseCategoryBrands, parseCategoryPrice } from "@/lib/category-filters";
+import { parseProductSort } from "@/lib/product-sort";
 
 type PageProps = {
   params: Promise<{
@@ -42,7 +44,7 @@ export async function generateMetadata({
     : categoryTitle;
 
   return {
-    title: `${title} | OWEG`,
+    title,
     description: `Shop ${title} at OWEG. Best prices and quality products.`,
   };
 }
@@ -80,21 +82,7 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
   const activeCategoryId = selectedSubcategory?.id || category.id;
   const includeSubcategories = !selectedSubcategory;
   const pageRaw = Number(firstParam(query.page) || "1");
-  const requestedPage = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
-  const priceMinRaw = firstParam(query.price_min)?.trim();
-  const priceMaxRaw = firstParam(query.price_max)?.trim();
-  const priceMinParsed =
-    priceMinRaw && priceMinRaw.length > 0 ? Number(priceMinRaw) : undefined;
-  const priceMaxParsed =
-    priceMaxRaw && priceMaxRaw.length > 0 ? Number(priceMaxRaw) : undefined;
-  const priceMin =
-    typeof priceMinParsed === "number" && Number.isFinite(priceMinParsed)
-      ? priceMinParsed
-      : undefined;
-  const priceMax =
-    typeof priceMaxParsed === "number" && Number.isFinite(priceMaxParsed)
-      ? priceMaxParsed
-      : undefined;
+  const requestedPage = Number.isSafeInteger(pageRaw) && pageRaw > 0 ? pageRaw : 1;
   const dealsOnly = firstParam(query.deals) === "1";
   const pageOffset = (requestedPage - 1) * PRODUCTS_PER_PAGE;
 
@@ -103,14 +91,10 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
     includeSubcategories,
     limit: PRODUCTS_PER_PAGE,
     offset: pageOffset,
-    priceMin:
-      typeof priceMin === "number" && Number.isFinite(priceMin)
-        ? priceMin
-        : undefined,
-    priceMax:
-      typeof priceMax === "number" && Number.isFinite(priceMax)
-        ? priceMax
-        : undefined,
+    priceMin: parseCategoryPrice(firstParam(query.price_min)),
+    priceMax: parseCategoryPrice(firstParam(query.price_max)),
+    sort: parseProductSort(firstParam(query.sort)),
+    brands: parseCategoryBrands([query.brand ?? []].flat()),
     dealsOnly,
   }).catch(() => undefined);
 

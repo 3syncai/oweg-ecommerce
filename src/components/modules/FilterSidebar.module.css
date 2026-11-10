@@ -1,0 +1,43 @@
+.editor { display: flex; min-height: 0; flex-direction: column; color: #17372f; }
+.header { display: flex; align-items: center; gap: 10px; padding-bottom: 10px; }
+.header h2 { flex: 1; margin: 0; font-size: 17px; font-weight: 750; }
+.reset { min-height: 44px; padding: 0 4px; font-size: 13px; font-weight: 700; color: #286341; white-space: nowrap; }
+.reset:disabled { color: #63736b; opacity: .62; }
+.close { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid #d9e4d8; border-radius: 50%; background: #fff; }
+.sections { min-height: 0; }
+.sections > * { border-top: 1px solid #e1e9df; }
+.sections summary { display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 700; }
+.sections summary::-webkit-details-marker { display: none; }
+.sections details[open] > summary svg { transform: rotate(180deg); }
+.sections small { margin-inline-start: 6px; color: #426348; font-size: 11px; font-weight: 600; }
+.body { display: grid; gap: 12px; padding-bottom: 15px; }
+.ranges { display: flex; flex-wrap: wrap; gap: 6px; }
+.ranges button, .setRange { min-height: 36px; border: 1px solid #dbe5d8; border-radius: 8px; padding: 6px 9px; background: #fff; font-size: 12px; font-weight: 600; }
+.ranges button[aria-pressed="true"] { border-color: #528344; background: #edf5e8; color: #234d29; }
+.priceFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.priceFields label { display: grid; gap: 4px; color: #405b4a; font-size: 12px; font-weight: 650; }
+.body input:not([type="checkbox"]) { width: 100%; min-width: 0; min-height: 42px; border: 1px solid #dbe5d8; border-radius: 8px; background: #fff; padding: 7px 8px; color: #17372f; }
+.body input[aria-invalid="true"] { border-color: #b43c38; }
+.choices { display: grid; max-height: 250px; overflow-y: auto; overscroll-behavior: contain; }
+.choice, .choices a { display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 5px 3px; font-size: 13px; }
+.choices a { justify-content: space-between; }
+.choices a[aria-current="page"] { color: #286341; font-weight: 750; }
+.choice input, .deal input { width: 17px; height: 17px; flex-shrink: 0; accent-color: #286341; }
+.deal { display: flex; min-height: 52px; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.deal span { flex: 1; }
+.error { color: #a12e2b; font-size: 12px; }
+.hint { color: #54685c; font-size: 13px; }
+.editor :is(input, button, summary, a):focus-visible { outline: 2px solid #286341; outline-offset: 2px; }
+.sheet { position: fixed; inset: auto 0 0; width: min(100%, 560px); max-width: 100%; max-height: min(88dvh, 740px); margin: 0 auto; padding: 0; overflow: hidden; border: 0; border-radius: 22px 22px 0 0; background: #fff; box-shadow: 0 -14px 48px #142b2130; }
+.sheet::backdrop { background: #172e275c; }
+.sheet .editor { max-height: min(88dvh, 740px); }
+.sheet .header { flex-shrink: 0; padding: 10px 16px; border-bottom: 1px solid #e1e9df; }
+.sheet .header h2 { font-size: 20px; }
+.sheet .sections { overflow-y: auto; overscroll-behavior: contain; padding: 0 16px; }
+.sheet .sections > :first-child { border-top: 0; }
+.sheet .ranges button { min-height: 40px; }
+.sheet .body input:not([type="checkbox"]) { font-size: 16px; }
+.sheet .choices { max-height: none; overflow: visible; }
+.footer { flex-shrink: 0; border-top: 1px solid #e1e9df; padding: 10px 16px max(12px, env(safe-area-inset-bottom, 0px)); background: #fff; }
+.apply { width: 100%; min-height: 46px; border-radius: 10px; background: #155344; color: #fff; font-size: 14px; font-weight: 700; }
+.apply:hover { background: #103e32; }

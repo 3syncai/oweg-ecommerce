@@ -139,7 +139,7 @@ export default function CustomerLoginFlow({
       onSuccess(nextCustomer);
       return;
     }
-    await refresh();
+    await refresh({ afterSignIn: true });
     onSuccess({ id: "session" } as NonNullable<StoreCustomer>);
   }
 

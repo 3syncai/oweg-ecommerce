@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { ArrowRight, ClipboardList, Coins, Rocket, ShieldCheck, Store } from "lucide-react";
 import Link from "next/link";
 
@@ -75,3 +76,8 @@ export default function SellerRegistrationPage() {
     </div>
   );
 }
+
+export const metadata: Metadata = {
+  title: "Become an OWEG seller",
+  description: "Find out how to register your business and sell products on the OWEG marketplace.",
+};

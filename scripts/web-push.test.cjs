@@ -62,7 +62,9 @@ test('migration repeat safety; consent, ownership, draft revision and queue reco
   try {
     // Embedded PG has no multi-session advisory locks; only these are stubbed.
     const sql = fs.readFileSync('my-medusa-store/migrations/web-push.sql', 'utf8').replace('SELECT pg_advisory_xact_lock(74638291);', '');
+    const nativeSql = fs.readFileSync('my-medusa-store/migrations/native-push.sql', 'utf8').replace('SELECT pg_advisory_xact_lock(74638293);', '');
     await db.exec(sql); await db.exec(sql);
+    await db.exec(nativeSql); await db.exec(nativeSql);
     await db.exec("CREATE TABLE customer(id text PRIMARY KEY,deleted_at timestamptz);INSERT INTO customer VALUES('cus_test',NULL),('cus_other',NULL)");
     assert.equal((await call(customer.POST, subscription(1), null)).code, 401);
     assert.equal((await call(customer.POST, {...subscription(1),expected_customer_id:'cus_other'})).code,409);
@@ -193,6 +195,7 @@ test('6000 opted-in browsers drain in bounded batches with no duplicate receipts
   db = new PGlite(); env.WEB_PUSH_ENABLED = 'true';
   try {
     await db.exec(fs.readFileSync('my-medusa-store/migrations/web-push.sql','utf8').replace('SELECT pg_advisory_xact_lock(74638291);',''));
+    await db.exec(fs.readFileSync('my-medusa-store/migrations/native-push.sql', 'utf8').replace('SELECT pg_advisory_xact_lock(74638293);', ''));
     await db.exec("CREATE TABLE customer(id text PRIMARY KEY,deleted_at timestamptz);INSERT INTO customer VALUES('cus_scale',NULL)");
     const ids=Array.from({length:6000},()=>randomUUID());
     await db.query(`INSERT INTO oweg_push_subscription(id,customer_id,endpoint,p256dh,auth,installed_app)

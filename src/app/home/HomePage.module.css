@@ -176,6 +176,7 @@
 @media (prefers-reduced-motion: reduce) { .discoverySkeleton { animation: none; } }
 .discoveryActions { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 26px 0 6px; text-align: center; }
 .discoveryActions button:disabled { opacity: .65; cursor: wait; }
+.discoveryStatus { display: grid; min-height: 20px; place-items: center; }
 /* Appending a batch must not pin the viewport to the footer and fetch every page. */
 :global(body):has(.home) { overflow-anchor: none; }
 @media (min-width: 640px) { .discoveryGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; } }

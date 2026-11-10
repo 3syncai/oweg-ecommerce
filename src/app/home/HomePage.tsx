@@ -8,6 +8,7 @@ import { ArrowUpRight, ChevronLeft, ChevronRight, MapPin, Pause, Play, UserRound
 import styles from './HomePage.module.css';
 import { useQuery } from '@tanstack/react-query';
 import { ProductCard } from '@/components/modules/ProductCard';
+import { useDeliveryLocation } from "@/contexts/DeliveryLocationProvider";
 import { useAuth } from '@/contexts/AuthProvider';
 import { normalizeBrandKey, resolveBrandLogo, getCollectionLogoUrl, getCollectionLogoScale } from '@/lib/brand-logos';
 import { BrandLogoImage, brandLogoFallbackHandler } from '@/components/modules/BrandLogoImage';
@@ -460,28 +461,10 @@ export default function HomePage({
   sectionsOnly?: boolean;
 }) {
   const { customer } = useAuth();
-  const [placeName, setPlaceName] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return window.localStorage.getItem('oweg_pincode_place') || null;
-  });
+  const { pincode, choosePincode } = useDeliveryLocation();
   const [placeLoading, setPlaceLoading] = useState(false);
-  const [pincode, setPincode] = useState('');
   const [pinInput, setPinInput] = useState('');
-
-  useEffect(() => {
-    const hydratePlace = async () => {
-      if (pincode && !placeName) {
-        const place = await fetchPlaceName(pincode);
-        if (place) {
-          setPlaceName(place);
-          if (typeof window !== 'undefined') {
-            window.localStorage.setItem('oweg_pincode_place', place);
-          }
-        }
-      }
-    };
-    void hydratePlace();
-  }, [pincode, placeName]);
+  const [pinError, setPinError] = useState('');
 
   const homeFeedQuery = useQuery({
     queryKey: ['home-feed'],
@@ -628,19 +611,6 @@ export default function HomePage({
         : null;
   const displayError = errorMessage;
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem('oweg_pincode');
-    if (stored) {
-      setPincode(stored);
-      setPinInput(stored);
-    }
-    const storedPlace = window.localStorage.getItem('oweg_pincode_place');
-    if (storedPlace) {
-      setPlaceName(storedPlace);
-    }
-  }, []);
-
   const fetchPlaceName = async (pin: string) => {
     try {
       setPlaceLoading(true);
@@ -658,18 +628,14 @@ export default function HomePage({
 
   const handlePinSubmit = async () => {
     const trimmed = pinInput.trim();
-    if (!trimmed) return;
-    setPincode(trimmed);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('oweg_pincode', trimmed);
+    if (!/^[1-9]\d{5}$/.test(trimmed)) {
+      setPinError('Enter a valid six-digit pincode.');
+      return;
     }
+    setPinError('');
     const place = await fetchPlaceName(trimmed);
-    if (place) {
-      setPlaceName(place);
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('oweg_pincode_place', place);
-      }
-    }
+    if (place) choosePincode(trimmed, place);
+    else setPinError('Could not look up that pincode. Please try again.');
   };
 
   const Content = sectionsOnly ? 'div' : 'main';
@@ -721,14 +687,15 @@ export default function HomePage({
                     <button
                       type="button"
                       onClick={handlePinSubmit}
+                      disabled={placeLoading}
                       className={`oweg-tap ${styles.primaryLink}`}
                     >
                       Submit
                     </button>
                   </div>
                   {placeLoading ? (
-                    <p className="mt-2 text-xs text-[var(--oweg-ink-muted)]">Checking serviceability...</p>
-                  ) : null}
+                    <p role="status" className="mt-2 text-xs text-[var(--oweg-ink-muted)]">Looking up your area…</p>
+                  ) : pinError ? <p role="alert" className="mt-2 text-xs text-red-700">{pinError}</p> : null}
                 </div>
               ) : null}
 

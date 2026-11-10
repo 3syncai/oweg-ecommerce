@@ -13,7 +13,9 @@ import { Providers } from "./providers";
 import CartSuccessMotion from "@/components/ui/CartSuccessMotion";
 import CartProvider from "@/contexts/CartProvider";
 import AuthProvider from "@/contexts/AuthProvider";
+import DeliveryLocationProvider from "@/contexts/DeliveryLocationProvider";
 import AppToaster from "@/components/ui/app-toaster";
+import OfflineNotice from "@/components/ui/OfflineNotice";
 import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 import SmoothScroll from "@/components/SmoothScroll";
 import { DebugControllerProvider } from "@/components/debug-controller/DebugControllerProvider";
@@ -103,6 +105,7 @@ export default function RootLayout({
         <Providers>
           <DebugControllerProvider>
             <AuthProvider>
+              <DeliveryLocationProvider>
               <CartProvider>
                 <CartSuccessMotion />
                 <SmoothScroll />
@@ -122,11 +125,12 @@ export default function RootLayout({
                   >
                     {/* Kept inside the header offset so the announcement banner is
                         visible instead of sitting behind the fixed header. */}
+                    <OfflineNotice />
                     <SiteProtections />
                     {children}
                   </main>
 
-                  <Footer />
+                  <Footer year={new Date().getUTCFullYear()} />
                   <MobileBottomNavShell />
                   <ConditionalWhatsAppWidget />
                   <PWAInstallPrompt />
@@ -137,6 +141,7 @@ export default function RootLayout({
 
                 <AppToaster />
               </CartProvider>
+              </DeliveryLocationProvider>
             </AuthProvider>
           </DebugControllerProvider>
         </Providers>

@@ -25,9 +25,9 @@ Campaign titles are shared between home and PDP; untitled legacy campaigns use �
    ```bash
    npx medusa exec ./scripts/configure-search-filters.ts
    ```
-   It requires the existing production Meilisearch configuration. It updates filter attributes without deleting/rebuilding the index. Do not run the older destructive full reindex script for this rollout.
+   It requires the existing production Meilisearch configuration. It updates filter attributes, makes price sortable, and moves the existing `sort` rule ahead of relevance for explicit price sorts. It does not delete or replace indexed documents. Do not run the older destructive full reindex script for this rollout.
 3. Build/restart Medusa normally for the default settings change. Deploy the storefront through its normal Vercel production workflow.
-4. Check search-engine connectivity/configuration and index freshness. A local mocked search pass cannot certify the live index. Confirm `wireless mouse` finds the known in-stock Frontech mouse; price/brand filters, later pages and true zero results must agree.
+4. Check search-engine connectivity/configuration and index freshness. A local mocked search pass cannot certify the live index. Confirm `wireless mouse` finds the known in-stock Frontech mouse. Verify price order in both directions across page boundaries and check that Best match, filters and true zero results still work.
 5. Check mobile tiles select the derivative image; inspect pincode lookup, seller/variant selection, shipping threshold at ₹998/₹999, cart mutation, sale expiry and confirmation recovery.
 
 No payment or commission worker redeploy is required by this change. No infrastructure settings, live rate changes or production stress test were performed.

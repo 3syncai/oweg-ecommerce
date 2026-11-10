@@ -13,6 +13,7 @@ import {
 } from "@/lib/medusa"
 import { parseSearchFilters, hasSearchFilters, searchRecallTerm, matchesSearchWords, matchesSearchFilters } from "@/lib/search-filters"
 import { rewriteSearchTypos } from "@/lib/search-query-normalize"
+import { parseProductSort, sortProductsByPrice } from "@/lib/product-sort"
 import {
   MEDUSA_LIST_MAX_LIMIT,
   overfetchLimit,
@@ -53,6 +54,7 @@ function mapSearchHit(hit: SearchHit): SearchApiProduct {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const query = searchParams.get("q")
+  const sort = parseProductSort(searchParams.get("sort"))
   const pageRaw = Number(searchParams.get("page") || "1")
   const pageSizeRaw = Number(
     searchParams.get("pageSize") || searchParams.get("limit") || "24"
@@ -99,6 +101,7 @@ export async function GET(req: NextRequest) {
     }
 
     let indexUnavailable = false
+    const needsCompleteFallback = sort !== "default" || hasSearchFilters(filters)
     const meiliResults = await searchProductsMeili(searchQuery, {
       limit: pageSize,
       offset,
@@ -106,6 +109,7 @@ export async function GET(req: NextRequest) {
       collectionId,
       category: !categoryId ? category : undefined,
       ...filters,
+      sort,
     }).catch(() => { indexUnavailable = true; return { hits: [] as SearchHit[], total: 0, brands: [] as string[] } })
 
     if (!indexUnavailable && (meiliResults.total > 0 || hasSearchFilters(filters))) {
@@ -132,8 +136,8 @@ export async function GET(req: NextRequest) {
       const fetchLimit = overfetchLimit(medusaPageSize, MEDUSA_LIST_MAX_LIMIT)
       let medusaResult = await searchProductsMedusa({
         q: searchQuery,
-        limit: hasSearchFilters(filters) ? MEDUSA_LIST_MAX_LIMIT : fetchLimit,
-        offset: hasSearchFilters(filters) ? 0 : offset,
+        limit: needsCompleteFallback ? MEDUSA_LIST_MAX_LIMIT : fetchLimit,
+        offset: needsCompleteFallback ? 0 : offset,
         categoryId,
         collectionId,
       })
@@ -145,7 +149,7 @@ export async function GET(req: NextRequest) {
         const matched = recalled.products.filter(product => isMedusaProductInStock(product) && matchesSearchWords(`${product.title || ''} ${product.subtitle || ''}`, searchQuery))
         recallApproximate = recalled.count > recalled.products.length
         if (recallApproximate && !matched.length) throw new Error("Incomplete fallback cannot establish an empty result")
-        medusaResult = { products: hasSearchFilters(filters) ? matched : matched.slice(offset, offset + fetchLimit), count: matched.length }
+        medusaResult = { products: needsCompleteFallback ? matched : matched.slice(offset, offset + fetchLimit), count: matched.length }
       }
       const fallbackFiltered: SearchApiProduct[] = medusaResult.products
         .filter(isMedusaProductInStock)
@@ -166,11 +170,11 @@ export async function GET(req: NextRequest) {
           }
         })
 
-      if (hasSearchFilters(filters)) {
+      if (needsCompleteFallback) {
         // A complete small Medusa result can be filtered globally even during index downtime.
         // Never pretend a capped first window represents a larger catalogue.
         if (recallApproximate || medusaResult.count > medusaResult.products.length) throw new Error('Index required for complete filtered results')
-        const matched = fallbackFiltered.filter(product => matchesSearchFilters(product, filters))
+        const matched = sortProductsByPrice(fallbackFiltered.filter(product => matchesSearchFilters(product, filters)), sort)
         return NextResponse.json({ products: matched.slice(offset, offset + medusaPageSize), count: matched.length,
           brands: Array.from(new Set(fallbackFiltered.map(product => product.brand).filter(Boolean))),
           page, pageSize: medusaPageSize, hasMore: offset + medusaPageSize < matched.length, countIsApproximate: false })

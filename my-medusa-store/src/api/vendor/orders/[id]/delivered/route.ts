@@ -1,5 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { markOrderFulfillmentAsDeliveredWorkflow } from "@medusajs/medusa/core-flows"
+import { recordTrackingEmail } from "../../../../../services/order-email/outbox"
 import { requireApprovedVendor } from "../../../_lib/guards"
 import { getSharedDbPool } from "../../../../../lib/db-pool"
 import { scheduleVendorEarningsOnDelivery } from "../../../../../lib/vendor-earnings"
@@ -100,6 +101,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           }
         : { self_delivered_at: deliveredAt }),
     } as any)
+    await recordTrackingEmail(orderId, "order_delivered")
 
     try {
       const pool = getSharedDbPool()

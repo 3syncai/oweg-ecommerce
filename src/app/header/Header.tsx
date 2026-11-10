@@ -9,7 +9,6 @@ import {
   Menu,
   ChevronDown,
   ChevronRight,
-  X,
   Bell,
   User,
   Pencil,
@@ -42,7 +41,10 @@ import { toast } from "sonner";
 import AccountDropdown from "@/components/modules/AccountDropdown";
 import GuestAccountDropdown from "@/components/modules/GuestAccountDropdown";
 import LogoutConfirmModal from "@/components/account/LogoutConfirmModal";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import PincodeModal from "@/components/PincodeModal";
+import SavedDeliveryAddresses from "./SavedDeliveryAddresses";
+import { useDeliveryLocation } from "@/contexts/DeliveryLocationProvider";
 import { useStoreCategories } from "@/hooks/useStoreCategories";
 import WalletBalance from "@/components/wallet/WalletBalance";
 import { FREE_SHIPPING_THRESHOLD_RUPEES } from "@/lib/shipping-rules";
@@ -217,14 +219,13 @@ const Header: React.FC = () => {
     const se = document.scrollingElement;
     return se?.scrollTop || window.pageYOffset || window.scrollY || 0;
   }, []);
-  const [mobilePincode, setMobilePincode] = React.useState("");
-  const [mobilePlace, setMobilePlace] = React.useState<string | null>(null);
+  const { pincode: mobilePincode, place: mobilePlace, pickerOpen, openPicker, closePicker, choosePincode, fillPlace } = useDeliveryLocation();
   const [pinModalOpen, setPinModalOpen] = React.useState(false);
+  const openDeliveryLocation = () => customer?.id ? openPicker() : setPinModalOpen(true);
   const [pinInput, setPinInput] = React.useState("");
   const [pinSaving, setPinSaving] = React.useState(false);
   const [pinError, setPinError] = React.useState<string | null>(null);
-  const locationLabel = mobilePlace || mobilePincode || "Select location";
-  const hasSavedLocation = Boolean(mobilePincode || mobilePlace);
+  const locationLabel = (hasMounted && (mobilePlace || mobilePincode)) || "Select location";
 
   // dropdown states for portal:
   const [activeCategoryId, setActiveCategoryId] = React.useState<string | null>(null);
@@ -256,6 +257,8 @@ const Header: React.FC = () => {
   const [suggestions, setSuggestions] = React.useState<{ id: string; name: string; image?: string; handle?: string }[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = React.useState(false);
   const [suggestionsReady, setSuggestionsReady] = React.useState(false);
+  const [suggestionsError, setSuggestionsError] = React.useState(false);
+  const online = useOnlineStatus();
   const [showSuggest, setShowSuggest] = React.useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -285,15 +288,12 @@ const Header: React.FC = () => {
       isJoinOverlayOpen ||
       isProfileOverlayOpen ||
       pathname?.startsWith('/wishlist'));
-  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
-  const [mobileExpandedCat, setMobileExpandedCat] = React.useState<string | null>(null);
   const [, setMobileProfileOpen] = React.useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
   const [logoutModalOpen, setLogoutModalOpen] = React.useState(false);
   const moreMenuRef = React.useRef<HTMLDivElement | null>(null);
   const desktopNavRef = React.useRef<HTMLDivElement | null>(null);
   const mountedRef = React.useRef(false);
-  const mobileCategories = React.useMemo(() => [...navCategories, ...overflowCategories], [navCategories, overflowCategories]);
   const allDesktopCategories = React.useMemo(() => [...navCategories, ...overflowCategories], [navCategories, overflowCategories]);
   const desktopMinColumnWidth = React.useMemo(() => (viewportWidth >= 1280 ? 180 : 170), [viewportWidth]);
   const desktopGridColumnGap = React.useMemo(() => 12, []);
@@ -572,7 +572,6 @@ const Header: React.FC = () => {
   // Keep SSR and first client paint identical — customer comes from client auth/storage.
   const deliverTitle =
     hasMounted && customer ? `Deliver to ${customerName}` : "Deliver to";
-  const deliverNameLabel = hasMounted && customer ? customerName : "Deliver to";
 
   // mapping from category id to trigger element
   const triggersRef = React.useRef<Record<string, HTMLElement | null>>({});
@@ -770,27 +769,13 @@ const Header: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const pin = window.localStorage.getItem("oweg_pincode") || "";
-    const place = window.localStorage.getItem("oweg_pincode_place") || "";
-    setMobilePincode(pin);
-    setMobilePlace(place || null);
-  }, []);
-
-  React.useEffect(() => {
-    const hydratePlace = async () => {
-      if (mobilePincode && !mobilePlace) {
-        const place = await fetchPlaceForPin(mobilePincode);
-        if (place) {
-          setMobilePlace(place);
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem("oweg_pincode_place", place);
-          }
-        }
-      }
-    };
-    void hydratePlace();
-  }, [fetchPlaceForPin, mobilePincode, mobilePlace]);
+    if (!mobilePincode || mobilePlace) return;
+    let cancelled = false;
+    void fetchPlaceForPin(mobilePincode).then(place => {
+      if (!cancelled && place) fillPlace(mobilePincode, place);
+    });
+    return () => { cancelled = true; };
+  }, [fetchPlaceForPin, fillPlace, mobilePincode, mobilePlace]);
 
   React.useEffect(() => {
     if (pinModalOpen) {
@@ -801,7 +786,7 @@ const Header: React.FC = () => {
 
   const handleSavePincode = React.useCallback(async () => {
     const pin = pinInput.trim();
-    if (!pin || pin.length < 4) {
+    if (!/^[1-9]\d{5}$/.test(pin)) {
       setPinError("Please enter a valid pincode.");
       return;
     }
@@ -814,18 +799,13 @@ const Header: React.FC = () => {
         setPinError("Could not find that pincode. Please try again.");
         return;
       }
-      setMobilePincode(pin);
-      setMobilePlace(place);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("oweg_pincode", pin);
-        window.localStorage.setItem("oweg_pincode_place", place);
-      }
+      choosePincode(pin, place);
       toast.success(`Delivering to ${place}`);
       setPinModalOpen(false);
     } finally {
       setPinSaving(false);
     }
-  }, [fetchPlaceForPin, pinInput]);
+  }, [choosePincode, fetchPlaceForPin, pinInput]);
 
   const buildSearchParams = React.useCallback(
     (query: string, limit?: number) => {
@@ -853,7 +833,8 @@ const Header: React.FC = () => {
   // Debounced Meilisearch suggestions (same engine as /search results)
   React.useEffect(() => {
     const trimmed = q.trim();
-    if (trimmed.length < 2) {
+    setSuggestionsError(false);
+    if (trimmed.length < 2 || !online) {
       setSuggestions([]);
       setSuggestionsLoading(false);
       setSuggestionsReady(false);
@@ -868,8 +849,11 @@ const Header: React.FC = () => {
       setSuggestionsReady(false);
       const params = buildSearchParams(trimmed, 8);
 
-      fetch(`/api/search?${params.toString()}`, { signal: controller.signal })
-        .then((r) => r.json())
+      fetch(`/api/search?${params.toString()}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]) })
+        .then((r) => {
+          if (!r.ok) throw new Error("Search suggestions unavailable");
+          return r.json();
+        })
         .then((d) => {
           if (cancelled) return;
           type Row = {
@@ -895,14 +879,10 @@ const Header: React.FC = () => {
             .filter((p) => p.id && p.name);
           setSuggestions(list);
         })
-        .catch((err: unknown) => {
+        .catch(() => {
           if (cancelled) return;
-          const aborted =
-            typeof err === "object" &&
-            err !== null &&
-            "name" in err &&
-            (err as { name?: string }).name === "AbortError";
-          if (!aborted) setSuggestions([]);
+          setSuggestions([]);
+          setSuggestionsError(true);
         })
         .finally(() => {
           if (cancelled) return;
@@ -916,10 +896,10 @@ const Header: React.FC = () => {
       clearTimeout(id);
       controller.abort();
     };
-  }, [q, buildSearchParams, normalizeSuggestionImage, normalizeSuggestionText]);
+  }, [online, q, buildSearchParams, normalizeSuggestionImage, normalizeSuggestionText]);
 
   const showSuggestionsPanel =
-    showSuggest && q.trim().length >= 2 && (suggestionsLoading || suggestionsReady);
+    showSuggest && q.trim().length >= 2 && (!online || suggestionsLoading || suggestionsReady);
 
   const renderSuggestionsPanel = (mobile: boolean) => {
     if (!showSuggestionsPanel) return null;
@@ -932,17 +912,17 @@ const Header: React.FC = () => {
         {suggestionsLoading && (
           <div className="space-y-2 px-3 py-3" aria-busy="true">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="flex items-center gap-2 animate-pulse">
+              <div key={i} className="flex items-center gap-2 motion-safe:animate-pulse">
                 <div className={`rounded bg-gray-200 ${mobile ? "h-10 w-10" : "h-9 w-9"}`} />
                 <div className="h-3 flex-1 rounded bg-gray-200" />
               </div>
             ))}
           </div>
         )}
-        {!suggestionsLoading && suggestions.length === 0 && (
-          <div className="px-4 py-3 text-sm text-gray-500">No products found</div>
-        )}
-        {!suggestionsLoading &&
+        {!online || (!suggestionsLoading && suggestions.length === 0) ? (
+          <div role="status" className="px-4 py-3 text-sm text-gray-600">{!online ? "Reconnect to see suggestions." : suggestionsError ? "Suggestions unavailable. Press search to try again." : "No matching suggestions. Try another term."}</div>
+        ) : null}
+        {online && !suggestionsLoading &&
           suggestions.map((s) => {
             const slug = encodeURIComponent(String(s.handle || s.id));
             const href = `/productDetail/${slug}?id=${encodeURIComponent(String(s.id))}`;
@@ -1160,14 +1140,14 @@ const Header: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
-    const shouldLock = mobileMenuOpen || pinModalOpen;
+    const shouldLock = pinModalOpen;
     if (!shouldLock) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [mobileMenuOpen, pinModalOpen]);
+  }, [pinModalOpen]);
 
   // Dropdown portal for active category (inline element — NOT a nested component —
   // so Header re-renders do not remount the menu and reset scrollTop).
@@ -1463,7 +1443,7 @@ const Header: React.FC = () => {
                   <button
                     type="button"
                     className={`${navStyles.location} hidden lg:flex location-block`}
-                    onClick={() => setPinModalOpen(true)}
+                    onClick={openDeliveryLocation}
                   >
                     <LocationIcon className="w-5 h-5 text-header-text flex-shrink-0" />
                     <div className="text-left">
@@ -1629,7 +1609,7 @@ const Header: React.FC = () => {
                   <button
                     type="button"
                     className={navStyles.accountButton}
-                    onClick={() => setProfileMenuOpen((open) => !open)}
+                    onClick={() => setProfileMenuOpen(true)}
                     aria-label="Account menu"
                     aria-expanded={profileMenuOpen}
                     aria-haspopup="true"
@@ -1770,25 +1750,25 @@ const Header: React.FC = () => {
                       <div className="px-4 py-3 border-b border-gray-200 bg-white">
                         <h2 className="text-lg font-semibold text-gray-900">Category</h2>
                       </div>
-                    ) : mobilePincode ? (
+                    ) : (
                       <div className="px-3 py-1">
                         <div className="flex w-full items-center gap-2 text-sm">
                           <LocationIcon className="w-4 h-4 shrink-0 text-[#7AC943]" />
                           <span className="shrink-0 text-xs text-gray-600">Deliver to</span>
                           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900">
-                            {mobilePlace || mobilePincode}
+                            {locationLabel}
                           </span>
                           <button
                             type="button"
-                            onClick={() => setPinModalOpen(true)}
+                            onClick={openDeliveryLocation}
                             className="oweg-tap -mr-2 flex shrink-0 items-center justify-center rounded-full text-gray-700"
-                            aria-label="Edit pincode"
+                            aria-label="Change delivery location"
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
-                    ) : null}
+                    )}
                     </div>
                   </>
                 )}
@@ -1906,133 +1886,6 @@ const Header: React.FC = () => {
             </div>
           </nav>
 
-          {mobileMenuOpen && (
-            <div className="fixed inset-0 z-[140] md:hidden">
-              <div className="absolute inset-0 bg-black/40" onClick={() => setMobileMenuOpen(false)} />
-              <div
-                className="absolute left-0 top-0 bottom-0 w-[85%] max-w-sm bg-white shadow-2xl p-5 flex flex-col overflow-y-auto"
-                style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 180px)" }}
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-lg font-semibold text-header-text">All Category</p>
-                  </div>
-                  <button
-                    type="button"
-                    aria-label="Close menu"
-                    className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-header-text"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-3 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center text-[#7AC943] shadow-sm">
-                      <LocationIcon className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">
-                        {deliverNameLabel}
-                      </p>
-                      <p className="text-xs text-gray-600 truncate">{locationLabel}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPinModalOpen(true);
-                        setMobileMenuOpen(false);
-                      }}
-                      className="text-sm font-semibold text-[#7AC943]"
-                    >
-                      {hasSavedLocation ? "Change" : "Add"}
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-6">
-                  <div className="divide-y divide-gray-100 rounded-xl border border-gray-100 bg-gray-50/60 overflow-hidden">
-                    {navCatsLoading ? (
-                      <div className="py-3 text-sm text-gray-500">Loading categories...</div>
-                    ) : mobileCategories.length ? (
-                      mobileCategories.map((cat) => {
-                        const hasChildren = cat.children && cat.children.length > 0;
-                        const isOpen = mobileExpandedCat === cat.id;
-                        if (!hasChildren) {
-                          return (
-                            <CategoryLink
-                              key={cat.id}
-                              href={getCategoryHref(cat.handle)}
-                              className="oweg-tap group flex items-center justify-between gap-2 px-2.5 py-2.5 hover:bg-white"
-                              onClick={() => setMobileMenuOpen(false)}
-                            >
-                              <CategoryIconTile
-                                handle={cat.handle}
-                                title={cat.title}
-                                active={isCategoryActive(pathname, cat.handle)}
-                                size="sm"
-                                orientation="horizontal"
-                                className="min-w-0 flex-1"
-                                labelClassName="text-sm"
-                              />
-                              <ChevronRight className="w-4 h-4 text-header-muted shrink-0" />
-                            </CategoryLink>
-                          );
-                        }
-                        return (
-                          <div key={cat.id} className="py-1 px-2">
-                            <button
-                              type="button"
-                              className="oweg-tap group w-full flex items-center justify-between gap-2 py-2.5"
-                              onClick={() => setMobileExpandedCat(isOpen ? null : cat.id)}
-                            >
-                              <CategoryIconTile
-                                handle={cat.handle}
-                                title={cat.title}
-                                active={isCategoryActive(pathname, cat.handle) || isOpen}
-                                size="sm"
-                                orientation="horizontal"
-                                className="min-w-0 flex-1"
-                                labelClassName="text-sm font-semibold"
-                              />
-                              <ChevronDown className={`w-4 h-4 text-header-muted transition-transform shrink-0 ${isOpen ? "rotate-180" : ""}`} />
-                            </button>
-                            <div
-                              className={`overflow-hidden transition-[max-height,opacity] duration-200 ${isOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}`}
-                            >
-                              <div className="grid grid-cols-2 gap-1.5 pb-3 pl-1 pr-1 max-h-64 overflow-y-auto">
-                                {cat.children.map((child) => (
-                                  <Link
-                                    key={child.id}
-                                    href={getCategoryHref(child.handle)}
-                                    className="oweg-tap group flex items-center rounded-[var(--oweg-radius-md)] bg-white px-2 py-2 shadow-sm"
-                                    onClick={() => setMobileMenuOpen(false)}
-                                  >
-                                    <CategoryIconTile
-                                      kind="subcategory"
-                                      handle={child.handle}
-                                      title={child.title}
-                                      size="sm"
-                                      orientation="horizontal"
-                                      labelWrap
-                                      className="min-w-0 flex-1"
-                                      labelClassName="text-[12px] leading-snug"
-                                    />
-                                  </Link>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    ) : navCatsEmpty ? (
-                      <div className="py-3 text-sm text-gray-500">No categories available</div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
         </div>
         {/* Close header wrappers */}
       </div>
@@ -2041,6 +1894,11 @@ const Header: React.FC = () => {
       {categoryMegaMenuPortal}
       {allDepartmentsPortal}
       <CartPreviewPortal />
+
+      {pickerOpen && !pinModalOpen && <SavedDeliveryAddresses onEnterPincode={() => {
+        closePicker();
+        setPinModalOpen(true);
+      }} />}
 
       <PincodeModal
         open={pinModalOpen && mountedRef.current}

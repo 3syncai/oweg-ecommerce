@@ -7,7 +7,13 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const settings = await getDebugControllerSettings();
+  const settings = await getDebugControllerSettings().catch(() => null);
+  if (!settings) {
+    return NextResponse.json(
+      { error: "Site settings temporarily unavailable" },
+      { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "3" } }
+    );
+  }
   const response = NextResponse.json({ settings: toPublicSiteSettings(settings) });
   response.headers.set(
     "Cache-Control",

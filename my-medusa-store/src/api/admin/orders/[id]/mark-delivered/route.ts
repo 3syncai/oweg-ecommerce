@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { markOrderFulfillmentAsDeliveredWorkflow } from "@medusajs/medusa/core-flows"
+import { recordTrackingEmail } from "../../../../../services/order-email/outbox"
 import { Pool } from "pg"
 import {
   deriveVendorStage,
@@ -166,6 +167,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
 
     await orderModuleService.updateOrders(orderId, { metadata })
+    await recordTrackingEmail(orderId, "order_delivered")
 
     let earnings: any = null
     const pool = new Pool({ connectionString: process.env.DATABASE_URL })

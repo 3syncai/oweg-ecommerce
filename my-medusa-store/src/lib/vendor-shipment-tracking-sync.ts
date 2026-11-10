@@ -1,4 +1,5 @@
 import { enqueueNotification } from "../services/interakt/outbox"
+import { recordTrackingEmail } from "../services/order-email/outbox"
 import { itlNotificationEvent } from "../services/interakt/interakt.service"
 import type { MedusaRequest } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
@@ -173,6 +174,7 @@ export async function syncVendorShipmentTracking(input: {
     await enqueueItlTracking(container, order, workflow, peek)
     const peekStatus = normalizeTrackingStatus(peek?.status || "")
     if (peekStatus !== "cash_collected") {
+      await recordItlTrackingEmail(order, workflow, peek)
       return {
         updated: false,
         tracking: peek,
@@ -361,6 +363,7 @@ export async function syncVendorShipmentTracking(input: {
     updated = true
   }
 
+  await recordItlTrackingEmail(order, workflow, tracking)
   return { updated, tracking, status, stage, metadata }
 }
 
@@ -421,13 +424,24 @@ export async function listOpenVendorShipmentsForSync(limit = 80): Promise<
   return targets
 }
 
-async function enqueueItlTracking(container: any, order: OrderLike, workflow: VendorOrderWorkflow, tracking: any) {
+function itlTrackingEvent(workflow: VendorOrderWorkflow, tracking: any) {
   const event = itlNotificationEvent(tracking?.notification_status)
   const staleShipped = event === "order_shipped" &&
     (workflow.stage === "delivered" || workflow.stage === "cancelled" ||
       ["delivered", "cash_collected", "cancelled", "rto_initiated", "rto_in_transit", "rto_delivered"].includes(String(workflow.shiprocket_status)))
   if (event && !staleShipped && !tracking?.error && tracking?.source === "itl" &&
       workflow.shipping_method === "easy" && getEasyShipProvider().name === "itl" && process.env.ITL_MODE === "live") {
-    await enqueueNotification(container, order.id, event, tracking.tracking_url)
+    return event
   }
+  return null
+}
+
+async function enqueueItlTracking(container: any, order: OrderLike, workflow: VendorOrderWorkflow, tracking: any) {
+  const event = itlTrackingEvent(workflow, tracking)
+  if (event) await enqueueNotification(container, order.id, event, tracking.tracking_url)
+}
+
+async function recordItlTrackingEmail(order: OrderLike, workflow: VendorOrderWorkflow, tracking: any) {
+  const event = itlTrackingEvent(workflow, tracking)
+  if (event) await recordTrackingEmail(order.id, event)
 }
