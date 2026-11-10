@@ -21,7 +21,8 @@ const config = {
   appName: isPreview ? "OWEG Preview" : "OWEG",
   webDir: "www",
   server: {
-    url: isPreview ? "https://0weg.in" : "https://oweg.in",
+    // Match the final storefront origin so Capacitor injects the native bridge.
+    url: isPreview ? "https://www.0weg.in" : "https://oweg.in",
     cleartext: false,
     allowNavigation: [
       "0weg.in",
